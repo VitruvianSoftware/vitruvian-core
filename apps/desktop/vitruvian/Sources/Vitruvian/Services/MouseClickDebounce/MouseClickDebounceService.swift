@@ -5,6 +5,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// Filters a complete accidental click immediately after a healthy click.
 /// Healthy Down and Up events are never delayed. A suppressed bounce Down owns

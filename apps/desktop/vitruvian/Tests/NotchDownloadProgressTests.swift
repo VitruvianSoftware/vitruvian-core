@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Exercise the real native observer and filesystem reader against disposable
 /// files, including callback bursts, renames and cancellation behind a busy lane.

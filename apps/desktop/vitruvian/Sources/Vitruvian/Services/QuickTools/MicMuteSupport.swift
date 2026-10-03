@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The decisions behind a global microphone mute, kept apart from the audio
 /// calls so they can be pinned down by tests: which devices the mute has to

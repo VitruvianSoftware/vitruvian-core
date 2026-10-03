@@ -6,22 +6,22 @@ import Foundation
 /// Strings for the settings backup (export and import on the Advanced page).
 /// Same contract as the other FeatureStrings structs: memberwise init in
 /// declaration order, one static per language, all in this file.
-struct BackupFeatureStrings {
-    let title: String
-    let description: String
-    let exportButton: String
-    let importButton: String
-    let exported: String
-    let exportFailed: String
-    let importConfirmTitle: String
-    let importConfirmBody: String
-    let importMissingIslandBody: String
-    let importAction: String
-    let invalidFile: String
+package struct BackupFeatureStrings {
+    package let title: String
+    package let description: String
+    package let exportButton: String
+    package let importButton: String
+    package let exported: String
+    package let exportFailed: String
+    package let importConfirmTitle: String
+    package let importConfirmBody: String
+    package let importMissingIslandBody: String
+    package let importAction: String
+    package let invalidFile: String
 }
 
 extension FeatureStrings {
-    static func backup(_ language: AppLanguage) -> BackupFeatureStrings {
+    package static func backup(_ language: AppLanguage) -> BackupFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -43,7 +43,7 @@ extension FeatureStrings {
 }
 
 extension BackupFeatureStrings {
-    static let ko = BackupFeatureStrings(
+    package static let ko = BackupFeatureStrings(
         title: "백업",
         description: "설정을 다른 Mac으로 옮기세요. 모든 환경설정을 파일로 내보낸 뒤 그곳에서 가져올 수 있습니다. 빠른 메모의 텍스트, 클립보드 기록, 선반 항목 및 시스템 권한은 이 Mac 밖으로 나가지 않습니다.",
         exportButton: "설정 내보내기…",
@@ -56,7 +56,7 @@ extension BackupFeatureStrings {
         importAction: "가져오고 다시 시작",
         invalidFile: "이 파일은 유효한 Vitruvian 백업이 아닙니다."
     )
-    static let uk = BackupFeatureStrings(
+    package static let uk = BackupFeatureStrings(
         title: "Резервна копія",
         description: "Перенесіть свої налаштування на інший Mac: експортуйте всі параметри у файл та імпортуйте їх там. Нотатки Нотатника, історія буфера обміну, елементи Полиці та системні дозволи ніколи не залишають цей Mac.",
         exportButton: "Експортувати налаштування…",
@@ -72,7 +72,7 @@ extension BackupFeatureStrings {
 }
 
 extension BackupFeatureStrings {
-    static let enUS = BackupFeatureStrings(
+    package static let enUS = BackupFeatureStrings(
         title: "Backup",
         description: "Take your setup to another Mac: export every preference to a file and import it there. Your Scratchpad notes, clipboard history, Shelf items and system permissions never leave this Mac.",
         exportButton: "Export settings…",
@@ -86,7 +86,7 @@ extension BackupFeatureStrings {
         invalidFile: "This file is not a valid Vitruvian backup."
     )
 
-    static let ptBR = BackupFeatureStrings(
+    package static let ptBR = BackupFeatureStrings(
         title: "Backup",
         description: "Leve sua configuração para outro Mac: exporte todas as preferências para um arquivo e importe lá. O texto das suas notas no Rascunho, o histórico da área de transferência, os itens da área temporária e as permissões do sistema nunca saem deste Mac.",
         exportButton: "Exportar configurações…",
@@ -100,7 +100,7 @@ extension BackupFeatureStrings {
         invalidFile: "Este arquivo não é um backup válido do Vitruvian."
     )
 
-    static let tr = BackupFeatureStrings(
+    package static let tr = BackupFeatureStrings(
         title: "Yedek",
         description: "Kurulumunuzu başka bir Mac’e taşıyın: tüm tercihleri bir dosyaya aktarın ve orada içe aktarın. Karalama defteri notlarınızın metni, pano geçmişi, raf öğeleri ve sistem izinleri bu Mac’ten asla çıkmaz.",
         exportButton: "Ayarları dışa aktar…",
@@ -114,7 +114,7 @@ extension BackupFeatureStrings {
         invalidFile: "Bu dosya geçerli bir Vitruvian yedeği değil."
     )
 
-    static let ru = BackupFeatureStrings(
+    package static let ru = BackupFeatureStrings(
         title: "Резервная копия",
         description: "Перенесите настройки на другой Mac: экспортируйте все параметры в файл и импортируйте его там. Текст заметок в Черновике, история буфера обмена, объекты полки и системные разрешения никогда не покидают этот Mac.",
         exportButton: "Экспортировать настройки…",
@@ -128,7 +128,7 @@ extension BackupFeatureStrings {
         invalidFile: "Этот файл не является корректной резервной копией Vitruvian."
     )
 
-    static let es = BackupFeatureStrings(
+    package static let es = BackupFeatureStrings(
         title: "Copia de seguridad",
         description: "Lleva tu configuración a otro Mac: exporta todas las preferencias a un archivo e impórtalo allí. El texto de las notas de Borrador, el historial del portapapeles, los elementos del estante y los permisos del sistema nunca salen de este Mac.",
         exportButton: "Exportar ajustes…",
@@ -142,7 +142,7 @@ extension BackupFeatureStrings {
         invalidFile: "Este archivo no es una copia de seguridad válida de Vitruvian."
     )
 
-    static let sk = BackupFeatureStrings(
+    package static let sk = BackupFeatureStrings(
         title: "Záloha",
         description: "Preneste svoje nastavenia na iný Mac: exportujte všetky predvoľby do súboru a tam ich importujte. Poznámkový blok, história schránky, položky police a systémové povolenia nikdy neopustia tento Mac.",
         exportButton: "Exportovať nastavenia…",
@@ -156,7 +156,7 @@ extension BackupFeatureStrings {
         invalidFile: "Tento súbor nie je platná záloha Vitruvian."
     )
 
-    static let de = BackupFeatureStrings(
+    package static let de = BackupFeatureStrings(
         title: "Backup",
         description: "Nimm deine Einrichtung mit auf einen anderen Mac: exportiere alle Einstellungen in eine Datei und importiere sie dort. Der Text deiner Notizen im Schmierzettel, Zwischenablage-Verlauf, Ablage-Objekte und Systemberechtigungen verlassen diesen Mac nie.",
         exportButton: "Einstellungen exportieren…",
@@ -170,7 +170,7 @@ extension BackupFeatureStrings {
         invalidFile: "Diese Datei ist kein gültiges Vitruvian-Backup."
     )
 
-    static let fr = BackupFeatureStrings(
+    package static let fr = BackupFeatureStrings(
         title: "Sauvegarde",
         description: "Emportez votre configuration sur un autre Mac\u{00A0}: exportez toutes les préférences dans un fichier et importez-le là-bas. Le texte de vos notes dans Brouillon, l’historique du presse-papiers, les éléments de l’étagère et les autorisations système ne quittent jamais ce Mac.",
         exportButton: "Exporter les réglages…",
@@ -184,7 +184,7 @@ extension BackupFeatureStrings {
         invalidFile: "Ce fichier n’est pas une sauvegarde Vitruvian valide."
     )
 
-    static let it = BackupFeatureStrings(
+    package static let it = BackupFeatureStrings(
         title: "Backup",
         description: "Porta la tua configurazione su un altro Mac: esporta tutte le preferenze in un file e importalo lì. Il testo delle note in Bozza, la cronologia degli appunti, gli elementi della mensola e i permessi di sistema non lasciano mai questo Mac.",
         exportButton: "Esporta impostazioni…",
@@ -198,7 +198,7 @@ extension BackupFeatureStrings {
         invalidFile: "Questo file non è un backup Vitruvian valido."
     )
 
-    static let ja = BackupFeatureStrings(
+    package static let ja = BackupFeatureStrings(
         title: "バックアップ",
         description: "設定を別のMacへ。すべての環境設定をファイルに書き出し、そちらで読み込みます。クイックメモの本文、クリップボード履歴、シェルフの項目、システム権限がこのMacの外に出ることはありません。",
         exportButton: "設定を書き出す…",
@@ -212,7 +212,7 @@ extension BackupFeatureStrings {
         invalidFile: "このファイルは有効なVitruvianのバックアップではありません。"
     )
 
-    static let zhHans = BackupFeatureStrings(
+    package static let zhHans = BackupFeatureStrings(
         title: "备份",
         description: "把你的配置带到另一台 Mac：将所有偏好设置导出为文件并在那里导入。草稿板里的笔记文本、剪贴板历史、暂存架项目和系统权限永远不会离开这台 Mac。",
         exportButton: "导出设置…",
@@ -226,7 +226,7 @@ extension BackupFeatureStrings {
         invalidFile: "该文件不是有效的 Vitruvian 备份。"
     )
 
-    static let zhTW = BackupFeatureStrings(
+    package static let zhTW = BackupFeatureStrings(
         title: "備份",
         description: "把你的設定帶到另一台 Mac:將所有偏好設定匯出為檔案並在那裡匯入。草稿板中的筆記文字、剪貼板歷史、暫存架項目和系統權限永遠不會離開這台 Mac。",
         exportButton: "匯出設定…",
@@ -240,7 +240,7 @@ extension BackupFeatureStrings {
         invalidFile: "此檔案不是有效的 Vitruvian 備份。"
     )
 
-    static let zhHK = BackupFeatureStrings(
+    package static let zhHK = BackupFeatureStrings(
         title: "備份",
         description: "把你的設定帶到另一台 Mac:將所有偏好設定匯出為檔案並在那裡匯入。草稿板入面嘅筆記文字、剪貼板歷史、暫存架項目和系統權限永遠不會離開這台 Mac。",
         exportButton: "匯出設定…",

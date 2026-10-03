@@ -4,6 +4,7 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// The screenshot tool: freeze-first area, window and full screen capture
 /// with an annotation editor, pinned floating captures and direct clipboard

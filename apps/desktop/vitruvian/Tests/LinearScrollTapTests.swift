@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// The raw wheel tap's handler is extracted from ScrollInverter.swift on every
 /// test build (Tests/generate_sources.py) and fed real wheel events. Only the

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
+import VitruvianCore
 
 /// Decides which of this process's windows ScreenCaptureKit must exclude.
 /// Protected IDs are intersected with the actual own IDs from the same

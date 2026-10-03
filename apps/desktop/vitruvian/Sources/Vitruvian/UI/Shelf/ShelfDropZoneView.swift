@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The shelf docked under the menu bar icon or at the top center of the
 /// screen. It is a single thing in one place:

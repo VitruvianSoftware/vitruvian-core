@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Pure rules behind the quick toggles: the AppleScript sources, the Finder
 /// preference parsing and the eject filter, kept free of AppKit so the unit

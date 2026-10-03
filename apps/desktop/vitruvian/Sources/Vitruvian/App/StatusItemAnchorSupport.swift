@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// Pure geometry for anchoring the panel to a status item whose window frame
 /// may be lying. macOS 27 can leave a (re)created status item's window frame

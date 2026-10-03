@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The Mouse & Trackpad page: a legend of every mouse feature and whether it
 /// is on, each one a click away from its card, then one card per feature.

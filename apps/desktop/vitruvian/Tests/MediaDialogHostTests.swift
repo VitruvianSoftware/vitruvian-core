@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// The dialog host is extracted from production. Panels, windows and the
 /// application are doubles: no dialog opens and nothing activates.

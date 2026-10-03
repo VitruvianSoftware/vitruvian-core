@@ -6,6 +6,7 @@ import ApplicationServices
 import Combine
 import CoreGraphics
 import SwiftUI
+import VitruvianCore
 
 /// "Cleaning mode" temporarily locks the keyboard so the user can wipe it down
 /// without typing gibberish, then restores it on a deliberate gesture. The lock

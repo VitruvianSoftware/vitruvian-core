@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 enum MetricDetailKind: String, Equatable, Identifiable {
     case cpu, gpu, memory, network, disk, battery, power, fan, connectedDevices

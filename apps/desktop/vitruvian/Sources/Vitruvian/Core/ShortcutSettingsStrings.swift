@@ -3,14 +3,14 @@
 
 import Foundation
 
-struct ShortcutSettingsStrings {
-    let active: String
-    let inactive: String
-    let superKeyAlternativeFormat: String
+package struct ShortcutSettingsStrings {
+    package let active: String
+    package let inactive: String
+    package let superKeyAlternativeFormat: String
 }
 
 extension FeatureStrings {
-    static func shortcuts(_ language: AppLanguage) -> ShortcutSettingsStrings {
+    package static func shortcuts(_ language: AppLanguage) -> ShortcutSettingsStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -32,90 +32,90 @@ extension FeatureStrings {
 }
 
 extension ShortcutSettingsStrings {
-    static let enUS = ShortcutSettingsStrings(
+    package static let enUS = ShortcutSettingsStrings(
         active: "Active",
         inactive: "Inactive",
         superKeyAlternativeFormat: "or %@"
     )
 
-    static let ptBR = ShortcutSettingsStrings(
+    package static let ptBR = ShortcutSettingsStrings(
         active: "Ativo",
         inactive: "Inativo",
         superKeyAlternativeFormat: "ou %@"
     )
 
-    static let tr = ShortcutSettingsStrings(
+    package static let tr = ShortcutSettingsStrings(
         active: "Etkin",
         inactive: "Etkin değil",
         superKeyAlternativeFormat: "veya %@"
     )
 
-    static let ru = ShortcutSettingsStrings(
+    package static let ru = ShortcutSettingsStrings(
         active: "Активно",
         inactive: "Неактивно",
         superKeyAlternativeFormat: "или %@"
     )
 
-    static let es = ShortcutSettingsStrings(
+    package static let es = ShortcutSettingsStrings(
         active: "Activo",
         inactive: "Inactivo",
         superKeyAlternativeFormat: "o %@"
     )
 
-    static let sk = ShortcutSettingsStrings(
+    package static let sk = ShortcutSettingsStrings(
         active: "Aktívna",
         inactive: "Neaktívna",
         superKeyAlternativeFormat: "alebo %@"
     )
 
-    static let de = ShortcutSettingsStrings(
+    package static let de = ShortcutSettingsStrings(
         active: "Aktiv",
         inactive: "Inaktiv",
         superKeyAlternativeFormat: "oder %@"
     )
 
-    static let fr = ShortcutSettingsStrings(
+    package static let fr = ShortcutSettingsStrings(
         active: "Actif",
         inactive: "Inactif",
         superKeyAlternativeFormat: "ou %@"
     )
 
-    static let it = ShortcutSettingsStrings(
+    package static let it = ShortcutSettingsStrings(
         active: "Attiva",
         inactive: "Inattiva",
         superKeyAlternativeFormat: "oppure %@"
     )
 
-    static let ja = ShortcutSettingsStrings(
+    package static let ja = ShortcutSettingsStrings(
         active: "有効",
         inactive: "無効",
         superKeyAlternativeFormat: "または %@"
     )
 
-    static let ko = ShortcutSettingsStrings(
+    package static let ko = ShortcutSettingsStrings(
         active: "활성",
         inactive: "비활성",
         superKeyAlternativeFormat: "또는 %@"
     )
 
-    static let zhHans = ShortcutSettingsStrings(
+    package static let zhHans = ShortcutSettingsStrings(
         active: "已启用",
         inactive: "未启用",
         superKeyAlternativeFormat: "或 %@"
     )
 
-    static let zhTW = ShortcutSettingsStrings(
+    package static let zhTW = ShortcutSettingsStrings(
         active: "已啟用",
         inactive: "未啟用",
         superKeyAlternativeFormat: "或 %@"
     )
 
-    static let zhHK = ShortcutSettingsStrings(
+    package static let zhHK = ShortcutSettingsStrings(
         active: "已啟用",
         inactive: "未啟用",
         superKeyAlternativeFormat: "或 %@"
     )
-    static let uk = ShortcutSettingsStrings(
+    package static let uk = ShortcutSettingsStrings(
         active: "Активно",
         inactive: "Неактивно",
         superKeyAlternativeFormat: "або %@"

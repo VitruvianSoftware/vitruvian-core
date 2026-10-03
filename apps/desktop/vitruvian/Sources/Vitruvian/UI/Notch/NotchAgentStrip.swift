@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The closed island while an agent works: its mark on one side of the
 /// camera, one reading the person chose on the other. The wings are as wide

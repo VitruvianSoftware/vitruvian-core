@@ -5,6 +5,7 @@ import Accelerate
 import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// The actions that share the screen-selection surface. Availability is read
 /// when the chooser opens, so an uninstalled feature never leaves a dead mode

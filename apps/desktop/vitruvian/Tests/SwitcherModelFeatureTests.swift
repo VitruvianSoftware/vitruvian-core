@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
+import VitruvianCore
 
 enum SwitcherModelFeatureTests {
     private static func scrollNavigationChecks(_ suite: TestSuite) {

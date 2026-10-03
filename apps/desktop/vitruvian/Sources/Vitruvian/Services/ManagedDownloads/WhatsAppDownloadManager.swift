@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import VitruvianCore
 
 /// Scans only the top level of Downloads, surfaces files that macOS itself
 /// attributes to WhatsApp, and moves reviewed/eligible items to the Trash.

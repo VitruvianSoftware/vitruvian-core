@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Shared hints between the panel content and the AppKit popover host.
 final class PanelInteractionState {

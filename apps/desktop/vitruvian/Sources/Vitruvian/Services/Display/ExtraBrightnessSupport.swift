@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Pure math for the extra brightness boost, kept free of AppKit and Metal so
 /// the unit tests can pin its behavior.

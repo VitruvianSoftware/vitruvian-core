@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The clock keeps the right of the camera. The left shows the timer's mark,
 /// or its explicitly chosen companion: a download, working agents, the next

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Calls the actual native destination callbacks using a private pasteboard.
 /// No mouse events, application windows or real user preferences are involved.

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Generated production methods run with URLSession, controlled responses and a
 /// clock. No installed app is scanned, opened or changed by these contracts.

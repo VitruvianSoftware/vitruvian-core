@@ -5,6 +5,7 @@ import AppKit
 import IOKit.graphics
 import ObjectiveC.runtime
 import os
+import VitruvianCore
 
 /// One display the brightness feature can talk to.
 struct BrightnessDisplay: Identifiable, Equatable {

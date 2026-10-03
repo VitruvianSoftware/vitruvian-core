@@ -4,6 +4,7 @@
 import CoreGraphics
 import Darwin
 import Foundation
+import VitruvianCore
 
 enum TrafficLightButton {
     case close

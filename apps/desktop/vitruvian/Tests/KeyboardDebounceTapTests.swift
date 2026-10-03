@@ -4,6 +4,7 @@
 import CoreGraphics
 import Darwin
 import Foundation
+import VitruvianCore
 
 enum KeyboardDebounceTapTests {
     // The tap handler is extracted from production on every test build. Only

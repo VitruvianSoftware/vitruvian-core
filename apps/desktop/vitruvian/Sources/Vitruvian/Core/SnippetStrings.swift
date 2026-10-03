@@ -6,76 +6,76 @@ import Foundation
 /// Strings for the text snippets feature. Same contract as the other
 /// FeatureStrings structs: memberwise init in declaration order, one static
 /// per language, all in this file.
-struct SnippetFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let enable: String
-    let enableCaption: String
-    let addButton: String
-    let newTitle: String
-    let editTitle: String
-    let nameLabel: String
-    let namePlaceholder: String
-    let triggerLabel: String
-    let triggerPlaceholder: String
-    let replacementLabel: String
-    let replacementPlaceholder: String
-    let expansionLabel: String
-    let expansionImmediate: String
-    let expansionDelimiter: String
-    let variablesHint: String
-    let variablesCaption: String
-    let emptyList: String
-    let duplicateTrigger: String
-    let triggerTooShort: String
-    let deleteButton: String
-    let saveButton: String
-    let manageButton: String
-    let ignoreCaseLabel: String
-    let libraryTitle: String
-    let libraryToggle: String
-    let libraryCaption: String
-    let librarySearchPlaceholder: String
-    let libraryNoResults: String
-    let libraryEmpty: String
-    let libraryFooterHint: String
-    let folderLabel: String
-    let folderPlaceholder: String
-    let showInLibraryLabel: String
-    let variablesFormatCaption: String
-    let editorFormatCaption: String
-    let dateTimeInsertButton: String
-    let dateTimeEditButton: String
-    let dateTimeTypeLabel: String
-    let dateTimeKindDate: String
-    let dateTimeKindTime: String
-    let dateTimeKindDateTime: String
-    let dateTimeStyleLabel: String
-    let dateTimeStyleShort: String
-    let dateTimeStyleMedium: String
-    let dateTimeStyleLong: String
-    let dateTimeStyleFull: String
-    let dateTimeStyleISO8601: String
-    let dateTimeStyleCustom: String
-    let dateTimeStyleLocaleNote: String
-    let dateTimeTimezoneLabel: String
-    let dateTimeTimezoneDeviceDefault: String
-    let dateTimeTimezoneValid: String
-    let dateTimeTimezoneInvalid: String
-    let dateTimeTimezoneClear: String
-    let dateTimeTimezoneSearchPlaceholder: String
-    let dateTimePatternLabel: String
-    let dateTimePreviewLabel: String
-    let dateTimeConfirmInsert: String
-    let dateTimeConfirmUpdate: String
-    let soundToggle: String
-    let soundCaption: String
-    let soundPickerLabel: String
-    let soundUnavailable: String
+package struct SnippetFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let enable: String
+    package let enableCaption: String
+    package let addButton: String
+    package let newTitle: String
+    package let editTitle: String
+    package let nameLabel: String
+    package let namePlaceholder: String
+    package let triggerLabel: String
+    package let triggerPlaceholder: String
+    package let replacementLabel: String
+    package let replacementPlaceholder: String
+    package let expansionLabel: String
+    package let expansionImmediate: String
+    package let expansionDelimiter: String
+    package let variablesHint: String
+    package let variablesCaption: String
+    package let emptyList: String
+    package let duplicateTrigger: String
+    package let triggerTooShort: String
+    package let deleteButton: String
+    package let saveButton: String
+    package let manageButton: String
+    package let ignoreCaseLabel: String
+    package let libraryTitle: String
+    package let libraryToggle: String
+    package let libraryCaption: String
+    package let librarySearchPlaceholder: String
+    package let libraryNoResults: String
+    package let libraryEmpty: String
+    package let libraryFooterHint: String
+    package let folderLabel: String
+    package let folderPlaceholder: String
+    package let showInLibraryLabel: String
+    package let variablesFormatCaption: String
+    package let editorFormatCaption: String
+    package let dateTimeInsertButton: String
+    package let dateTimeEditButton: String
+    package let dateTimeTypeLabel: String
+    package let dateTimeKindDate: String
+    package let dateTimeKindTime: String
+    package let dateTimeKindDateTime: String
+    package let dateTimeStyleLabel: String
+    package let dateTimeStyleShort: String
+    package let dateTimeStyleMedium: String
+    package let dateTimeStyleLong: String
+    package let dateTimeStyleFull: String
+    package let dateTimeStyleISO8601: String
+    package let dateTimeStyleCustom: String
+    package let dateTimeStyleLocaleNote: String
+    package let dateTimeTimezoneLabel: String
+    package let dateTimeTimezoneDeviceDefault: String
+    package let dateTimeTimezoneValid: String
+    package let dateTimeTimezoneInvalid: String
+    package let dateTimeTimezoneClear: String
+    package let dateTimeTimezoneSearchPlaceholder: String
+    package let dateTimePatternLabel: String
+    package let dateTimePreviewLabel: String
+    package let dateTimeConfirmInsert: String
+    package let dateTimeConfirmUpdate: String
+    package let soundToggle: String
+    package let soundCaption: String
+    package let soundPickerLabel: String
+    package let soundUnavailable: String
 }
 
 extension FeatureStrings {
-    static func snippets(_ language: AppLanguage) -> SnippetFeatureStrings {
+    package static func snippets(_ language: AppLanguage) -> SnippetFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -97,7 +97,7 @@ extension FeatureStrings {
 }
 
 extension SnippetFeatureStrings {
-    static let ko = SnippetFeatureStrings(
+    package static let ko = SnippetFeatureStrings(
         pageTitle: "텍스트 스니펫",
         hubDescription: "짧은 트리거를 전체 텍스트로 확장합니다",
         enable: "입력 중 스니펫 확장",
@@ -164,7 +164,7 @@ extension SnippetFeatureStrings {
         soundPickerLabel: "소리",
         soundUnavailable: "사용할 수 없는 소리"
     )
-    static let uk = SnippetFeatureStrings(
+    package static let uk = SnippetFeatureStrings(
         pageTitle: "Текстові сніпети",
         hubDescription: "Короткі тригери розгортаються в повний текст",
         enable: "Розгортати сніпети під час набору",
@@ -234,7 +234,7 @@ extension SnippetFeatureStrings {
 }
 
 extension SnippetFeatureStrings {
-    static let enUS = SnippetFeatureStrings(
+    package static let enUS = SnippetFeatureStrings(
         pageTitle: "Text snippets",
         hubDescription: "Short triggers expand into full text",
         enable: "Expand snippets while typing",
@@ -302,7 +302,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Sound unavailable"
     )
 
-    static let ptBR = SnippetFeatureStrings(
+    package static let ptBR = SnippetFeatureStrings(
         pageTitle: "Snippets de texto",
         hubDescription: "Gatilhos curtos viram textos completos",
         enable: "Expandir snippets enquanto digita",
@@ -370,7 +370,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Som indisponível"
     )
 
-    static let tr = SnippetFeatureStrings(
+    package static let tr = SnippetFeatureStrings(
         pageTitle: "Metin parçacıkları",
         hubDescription: "Kısa tetikleyiciler tam metne dönüşür",
         enable: "Yazarken parçacıkları genişlet",
@@ -438,7 +438,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Ses kullanılamıyor"
     )
 
-    static let ru = SnippetFeatureStrings(
+    package static let ru = SnippetFeatureStrings(
         pageTitle: "Текстовые сниппеты",
         hubDescription: "Короткие триггеры превращаются в готовый текст",
         enable: "Разворачивать сниппеты при вводе",
@@ -506,7 +506,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Звук недоступен"
     )
 
-    static let es = SnippetFeatureStrings(
+    package static let es = SnippetFeatureStrings(
         pageTitle: "Fragmentos de texto",
         hubDescription: "Disparadores cortos se convierten en texto completo",
         enable: "Expandir fragmentos al escribir",
@@ -574,7 +574,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Sonido no disponible"
     )
 
-    static let sk = SnippetFeatureStrings(
+    package static let sk = SnippetFeatureStrings(
         pageTitle: "Textové fragmenty",
         hubDescription: "Krátke spúšťače sa rozbalia na celý text",
         enable: "Rozbaľovať fragmenty počas písania",
@@ -642,7 +642,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Zvuk nie je k dispozícii"
     )
 
-    static let de = SnippetFeatureStrings(
+    package static let de = SnippetFeatureStrings(
         pageTitle: "Textbausteine",
         hubDescription: "Kurze Kürzel werden zu ganzem Text",
         enable: "Bausteine beim Tippen ausschreiben",
@@ -710,7 +710,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Ton nicht verfügbar"
     )
 
-    static let fr = SnippetFeatureStrings(
+    package static let fr = SnippetFeatureStrings(
         pageTitle: "Extraits de texte",
         hubDescription: "Des déclencheurs courts deviennent du texte complet",
         enable: "Développer les extraits pendant la frappe",
@@ -778,7 +778,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Son indisponible"
     )
 
-    static let it = SnippetFeatureStrings(
+    package static let it = SnippetFeatureStrings(
         pageTitle: "Frammenti di testo",
         hubDescription: "Trigger brevi diventano testo completo",
         enable: "Espandi i frammenti mentre scrivi",
@@ -846,7 +846,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "Suono non disponibile"
     )
 
-    static let ja = SnippetFeatureStrings(
+    package static let ja = SnippetFeatureStrings(
         pageTitle: "テキストスニペット",
         hubDescription: "短いトリガーが文章に展開されます",
         enable: "入力中にスニペットを展開",
@@ -914,7 +914,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "利用できないサウンド"
     )
 
-    static let zhHans = SnippetFeatureStrings(
+    package static let zhHans = SnippetFeatureStrings(
         pageTitle: "文本片段",
         hubDescription: "短触发词展开为完整文本",
         enable: "输入时展开片段",
@@ -982,7 +982,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "声音不可用"
     )
 
-    static let zhTW = SnippetFeatureStrings(
+    package static let zhTW = SnippetFeatureStrings(
         pageTitle: "文字片段",
         hubDescription: "簡短觸發詞展開為完整文字",
         enable: "輸入時展開片段",
@@ -1050,7 +1050,7 @@ extension SnippetFeatureStrings {
         soundUnavailable: "聲音無法使用"
     )
 
-    static let zhHK = SnippetFeatureStrings(
+    package static let zhHK = SnippetFeatureStrings(
         pageTitle: "文字片段",
         hubDescription: "簡短觸發詞展開為完整文字",
         enable: "輸入時展開片段",

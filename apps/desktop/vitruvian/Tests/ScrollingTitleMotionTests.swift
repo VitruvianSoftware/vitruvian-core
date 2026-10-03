@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Uses the view's actual scroll decision with controlled environment inputs.
 enum ScrollingTitleMotionTests {

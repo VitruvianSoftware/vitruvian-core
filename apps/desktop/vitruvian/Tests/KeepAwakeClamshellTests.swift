@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 extension KeepAwakeLidSleepContract {
     enum EndReason { case manual, timer, battery, quit }

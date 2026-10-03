@@ -4,6 +4,7 @@
 import AVFoundation
 import AppKit
 import ScreenCaptureKit
+import VitruvianCore
 
 /// Why a recording could not start, or why one ended on its own. Kept
 /// separate from the system error so the surfaces have one small thing to

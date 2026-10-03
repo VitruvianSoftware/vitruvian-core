@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// AppKit describes a non-activating panel as a system dialog, which tiling
 /// window managers track and list on whichever space is current. The shared

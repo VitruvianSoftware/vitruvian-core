@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.usb
+import VitruvianCore
 
 /// An external USB device plugged into the Mac.
 struct ConnectedUSBDevice: Identifiable, Equatable, Hashable {

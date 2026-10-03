@@ -115,6 +115,16 @@ is that notice. Add an entry for every change to upstream files.
   - `applicationWillTerminate` documents the calls that must stay
     unconditional;
   - `DockAutohideHoldTests` extended.
+- **2026-10-03**: Refactor step 3, first module (`REFACTOR.md`):
+  - `Core/` builds as the `VitruvianCore` module, and its declarations are
+    `package`;
+  - `DefaultsKey` moved out of `Core/Defaults.swift`;
+  - `KeepAwakeAutomationSupport.swift` and `ScratchpadSupport.swift` moved to
+    `Core/`;
+  - app and test files import `VitruvianCore`;
+  - `build.sh` lists the moved files;
+  - `Tests/generate_sources.py` tolerates `package`;
+  - `RepositoryFeatureTests` French check hardened.
 
 ## Syncing from upstream
 

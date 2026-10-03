@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 struct NotchView: View {
     @ObservedObject var service: NotchService

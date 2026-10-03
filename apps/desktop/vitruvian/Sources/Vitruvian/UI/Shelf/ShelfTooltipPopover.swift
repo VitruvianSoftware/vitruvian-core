@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// A hand-rolled stand-in for `NSView.toolTip`, used only for Shelf tiles.
 ///

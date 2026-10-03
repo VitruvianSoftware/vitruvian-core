@@ -3,6 +3,7 @@
 
 import AVFoundation
 import CoreMedia
+import VitruvianCore
 
 /// Writes the master file a recording produces: the pixels exactly as they
 /// were on screen, plus one track per sound source. Nothing is composited

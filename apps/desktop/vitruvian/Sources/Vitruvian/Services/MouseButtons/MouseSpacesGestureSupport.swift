@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// The pure half of the Spaces and Mission Control drag (issue #1012): how far
 /// a held button has to travel before the gesture means something, which

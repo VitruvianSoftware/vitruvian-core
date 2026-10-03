@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// An in-place destination gallery. It only observes navigation, never the
 /// contents or services of the sections represented by its buttons.

@@ -3,50 +3,50 @@
 
 import Foundation
 
-struct NotchMusicExtrasStrings {
-    let lyrics: String
-    let lyricsDescription: String
-    let enableLyrics: String
-    let online: String
-    let onlineHint: String
-    let importLyrics: String
-    let importHint: String
-    let loading: String
-    let unavailable: String
-    let failed: String
-    let retry: String
-    let instrumental: String
-    let waiting: String
-    let noPosition: String
-    let offset: String
-    let earlier: String
-    let later: String
-    let reset: String
-    let actionFailed: String
-    let playbackFailed: String
-    let allowPlayback: String
-    let automationPermission: String
-    let automationExplanation: String
-    let queue: String
-    let queueDescription: String
-    let enableQueue: String
-    let queueUnavailable: String
-    let queueEmpty: String
-    let playNow: String
-    let refresh: String
-    let openPlayer: String
-    let playbackSource: String
-    let automaticSource: String
-    let includeOtherPlayers: String
-    let liveEqualizer: String
+package struct NotchMusicExtrasStrings {
+    package let lyrics: String
+    package let lyricsDescription: String
+    package let enableLyrics: String
+    package let online: String
+    package let onlineHint: String
+    package let importLyrics: String
+    package let importHint: String
+    package let loading: String
+    package let unavailable: String
+    package let failed: String
+    package let retry: String
+    package let instrumental: String
+    package let waiting: String
+    package let noPosition: String
+    package let offset: String
+    package let earlier: String
+    package let later: String
+    package let reset: String
+    package let actionFailed: String
+    package let playbackFailed: String
+    package let allowPlayback: String
+    package let automationPermission: String
+    package let automationExplanation: String
+    package let queue: String
+    package let queueDescription: String
+    package let enableQueue: String
+    package let queueUnavailable: String
+    package let queueEmpty: String
+    package let playNow: String
+    package let refresh: String
+    package let openPlayer: String
+    package let playbackSource: String
+    package let automaticSource: String
+    package let includeOtherPlayers: String
+    package let liveEqualizer: String
     /// One line for the features hub, where the hint below would not fit.
-    let liveEqualizerDescription: String
-    let liveEqualizerHint: String
-    let liveEqualizerUnavailable: String
+    package let liveEqualizerDescription: String
+    package let liveEqualizerHint: String
+    package let liveEqualizerUnavailable: String
 }
 
 extension FeatureStrings {
-    static func notchMusicExtras(_ language: AppLanguage) -> NotchMusicExtrasStrings {
+    package static func notchMusicExtras(_ language: AppLanguage) -> NotchMusicExtrasStrings {
         switch language {
         case .enUS: return NotchMusicExtrasStrings(
             lyrics: "Lyrics",

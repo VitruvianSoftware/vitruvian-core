@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// App-wide startup and appearance settings.
 struct GeneralSettings: View {

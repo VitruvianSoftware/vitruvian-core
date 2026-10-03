@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum WindowFocusHistoryTests {
     static func run(expect: (Bool, String) -> Void) {

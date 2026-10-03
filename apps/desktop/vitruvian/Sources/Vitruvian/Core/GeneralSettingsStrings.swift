@@ -5,37 +5,37 @@ import Foundation
 
 /// Plain-language copy for the General page: one short line per control and
 /// one per panel section, so the page explains itself without paragraphs.
-struct GeneralSettingsStrings {
-    let pageDescription: String
-    let appearanceCaption: String
-    let launchAtLoginCaption: String
-    let liquidGlassCaption: String
-    let liquidGlassOtherWindows: String
-    let panelIntro: String
-    let panelReorderHint: String
-    let menuBarIconTitle: String
-    let menuBarIconCaption: String
-    let menuBarIconOther: String
-    let menuBarIconOtherCaption: String
-    let menuBarIconUnknown: String
-    let menuBarIconReset: String
-    let iconMissingTitle: String
-    let iconMissingCaption: String
-    let sectionKeepAwake: String
-    let sectionDisplays: String
-    let sectionMixer: String
-    let sectionSystem: String
-    let sectionNetwork: String
-    let sectionDisks: String
-    let sectionPower: String
-    let sectionFanControl: String
-    let sectionUtilities: String
-    let sectionControls: String
-    let sectionToggles: String
+package struct GeneralSettingsStrings {
+    package let pageDescription: String
+    package let appearanceCaption: String
+    package let launchAtLoginCaption: String
+    package let liquidGlassCaption: String
+    package let liquidGlassOtherWindows: String
+    package let panelIntro: String
+    package let panelReorderHint: String
+    package let menuBarIconTitle: String
+    package let menuBarIconCaption: String
+    package let menuBarIconOther: String
+    package let menuBarIconOtherCaption: String
+    package let menuBarIconUnknown: String
+    package let menuBarIconReset: String
+    package let iconMissingTitle: String
+    package let iconMissingCaption: String
+    package let sectionKeepAwake: String
+    package let sectionDisplays: String
+    package let sectionMixer: String
+    package let sectionSystem: String
+    package let sectionNetwork: String
+    package let sectionDisks: String
+    package let sectionPower: String
+    package let sectionFanControl: String
+    package let sectionUtilities: String
+    package let sectionControls: String
+    package let sectionToggles: String
 }
 
 extension FeatureStrings {
-    static func generalSettings(_ language: AppLanguage) -> GeneralSettingsStrings {
+    package static func generalSettings(_ language: AppLanguage) -> GeneralSettingsStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -57,7 +57,7 @@ extension FeatureStrings {
 }
 
 extension GeneralSettingsStrings {
-    static let uk = GeneralSettingsStrings(
+    package static let uk = GeneralSettingsStrings(
         pageDescription: "Як запускається Vitruvian, який має вигляд і що показує панель на смузі меню.",
         appearanceCaption: "Стосується лише вікон і панелей Vitruvian, а не всього Mac.",
         launchAtLoginCaption: "Автоматично відкривається щоразу після запуску Mac.",
@@ -86,7 +86,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Дії одним натисканням, як-от темний режим і вимкнення мікрофона."
     )
 
-    static let enUS = GeneralSettingsStrings(
+    package static let enUS = GeneralSettingsStrings(
         pageDescription: "How Vitruvian starts, how it looks and what its menu bar panel shows.",
         appearanceCaption: "Applies to Vitruvian’s own windows and panels, not to the whole Mac.",
         launchAtLoginCaption: "Opens by itself every time you turn on your Mac.",
@@ -115,7 +115,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "One-click actions like dark mode and muting the mic."
     )
 
-    static let ptBR = GeneralSettingsStrings(
+    package static let ptBR = GeneralSettingsStrings(
         pageDescription: "Como o Vitruvian inicia, como ele aparece e o que o painel da barra de menus mostra.",
         appearanceCaption: "Vale para as janelas e painéis do Vitruvian, não para o Mac inteiro.",
         launchAtLoginCaption: "Abre sozinho toda vez que você liga o Mac.",
@@ -144,7 +144,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Ações de um clique, como modo escuro e silenciar o microfone."
     )
 
-    static let tr = GeneralSettingsStrings(
+    package static let tr = GeneralSettingsStrings(
         pageDescription: "Vitruvian’in nasıl başladığı, nasıl göründüğü ve menü çubuğu panelinin neler gösterdiği.",
         appearanceCaption: "Yalnızca Vitruvian’in kendi pencereleri ve panelleri için geçerlidir, tüm Mac için değil.",
         launchAtLoginCaption: "Mac’i her açtığınızda kendiliğinden açılır.",
@@ -173,7 +173,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Karanlık mod ve mikrofonu sessize alma gibi tek tıklık eylemler."
     )
 
-    static let ru = GeneralSettingsStrings(
+    package static let ru = GeneralSettingsStrings(
         pageDescription: "Как Vitruvian запускается, как выглядит и что показывает панель в строке меню.",
         appearanceCaption: "Действует только на окна и панели Vitruvian, а не на весь Mac.",
         launchAtLoginCaption: "Открывается сам при каждом включении Mac.",
@@ -202,7 +202,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Действия в одно нажатие, например тёмный режим и отключение микрофона."
     )
 
-    static let es = GeneralSettingsStrings(
+    package static let es = GeneralSettingsStrings(
         pageDescription: "Cómo se inicia Vitruvian, cómo se ve y qué muestra el panel de la barra de menús.",
         appearanceCaption: "Solo afecta a las ventanas y paneles de Vitruvian, no a todo el Mac.",
         launchAtLoginCaption: "Se abre solo cada vez que enciendes el Mac.",
@@ -231,7 +231,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Acciones de un clic, como el modo oscuro y silenciar el micrófono."
     )
 
-    static let sk = GeneralSettingsStrings(
+    package static let sk = GeneralSettingsStrings(
         pageDescription: "Ako sa Vitruvian spúšťa, ako vyzerá a čo zobrazuje jeho panel v lište.",
         appearanceCaption: "Platí len pre vlastné okná a panely Vitruvian, nie pre celý Mac.",
         launchAtLoginCaption: "Otvorí sa sám vždy, keď zapnete Mac.",
@@ -260,7 +260,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Akcie na jedno kliknutie, napríklad tmavý režim a stlmenie mikrofónu."
     )
 
-    static let de = GeneralSettingsStrings(
+    package static let de = GeneralSettingsStrings(
         pageDescription: "Wie Vitruvian startet, wie es aussieht und was das Panel in der Menüleiste zeigt.",
         appearanceCaption: "Gilt nur für die Fenster und Panels von Vitruvian, nicht für den ganzen Mac.",
         launchAtLoginCaption: "Öffnet sich von selbst, sobald du den Mac einschaltest.",
@@ -289,7 +289,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Aktionen mit einem Klick, etwa Dunkelmodus und Mikrofon stummschalten."
     )
 
-    static let fr = GeneralSettingsStrings(
+    package static let fr = GeneralSettingsStrings(
         pageDescription: "Comment Vitruvian démarre, à quoi il ressemble et ce que montre le panneau de la barre des menus.",
         appearanceCaption: "Ne concerne que les fenêtres et panneaux de Vitruvian, pas tout le Mac.",
         launchAtLoginCaption: "S’ouvre tout seul à chaque démarrage du Mac.",
@@ -318,7 +318,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Actions en un clic, comme le mode sombre et la coupure du micro."
     )
 
-    static let it = GeneralSettingsStrings(
+    package static let it = GeneralSettingsStrings(
         pageDescription: "Come si avvia Vitruvian, che aspetto ha e cosa mostra il pannello nella barra dei menu.",
         appearanceCaption: "Vale solo per le finestre e i pannelli di Vitruvian, non per tutto il Mac.",
         launchAtLoginCaption: "Si apre da solo ogni volta che accendi il Mac.",
@@ -347,7 +347,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "Azioni con un clic, come la modalità scura e il silenziamento del microfono."
     )
 
-    static let ja = GeneralSettingsStrings(
+    package static let ja = GeneralSettingsStrings(
         pageDescription: "Vitruvian の起動方法、外観、メニューバーのパネルに表示する内容。",
         appearanceCaption: "Vitruvian のウインドウとパネルにだけ適用され、Mac 全体には影響しません。",
         launchAtLoginCaption: "Mac の電源を入れるたびに自動で開きます。",
@@ -376,7 +376,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "ダークモードやマイクのミュートなど、ワンクリックの操作。"
     )
 
-    static let ko = GeneralSettingsStrings(
+    package static let ko = GeneralSettingsStrings(
         pageDescription: "Vitruvian가 시작되는 방식, 모습, 그리고 메뉴 막대 패널에 표시되는 내용.",
         appearanceCaption: "Vitruvian의 윈도우와 패널에만 적용되며 Mac 전체에는 영향을 주지 않습니다.",
         launchAtLoginCaption: "Mac을 켤 때마다 자동으로 열립니다.",
@@ -405,7 +405,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "다크 모드, 마이크 음소거 같은 원클릭 동작."
     )
 
-    static let zhHans = GeneralSettingsStrings(
+    package static let zhHans = GeneralSettingsStrings(
         pageDescription: "Vitruvian 的启动方式、外观，以及菜单栏面板显示的内容。",
         appearanceCaption: "仅影响 Vitruvian 自己的窗口和面板，不影响整台 Mac。",
         launchAtLoginCaption: "每次开机时自动打开。",
@@ -434,7 +434,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "深色模式、静音麦克风等一键操作。"
     )
 
-    static let zhTW = GeneralSettingsStrings(
+    package static let zhTW = GeneralSettingsStrings(
         pageDescription: "Vitruvian 的啟動方式、外觀，以及選單列面板顯示的內容。",
         appearanceCaption: "僅影響 Vitruvian 自己的視窗和面板，不影響整台 Mac。",
         launchAtLoginCaption: "每次開機時自動開啟。",
@@ -463,7 +463,7 @@ extension GeneralSettingsStrings {
         sectionToggles: "深色模式、將麥克風靜音等一鍵操作。"
     )
 
-    static let zhHK = GeneralSettingsStrings(
+    package static let zhHK = GeneralSettingsStrings(
         pageDescription: "Vitruvian 的啟動方式、外觀，以及選單列面板顯示的內容。",
         appearanceCaption: "只影響 Vitruvian 自己的視窗和面板，不影響整部 Mac。",
         launchAtLoginCaption: "每次開機時自動開啟。",

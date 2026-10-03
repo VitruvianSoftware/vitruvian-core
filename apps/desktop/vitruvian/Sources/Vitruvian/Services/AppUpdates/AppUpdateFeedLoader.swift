@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A short-lived metadata request. The session retains its delegate until
 /// completion, then invalidates; no session or observer survives the check.

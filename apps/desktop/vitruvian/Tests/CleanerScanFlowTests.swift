@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Production scan and reset run against recorded category scans and a
 /// manual queue. No file system locations are read.

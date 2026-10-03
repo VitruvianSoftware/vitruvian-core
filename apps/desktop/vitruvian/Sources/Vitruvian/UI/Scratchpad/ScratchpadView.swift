@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// The scratchpad card: a slim header, named tabs, the plain-text editor and a
 /// quiet footer with an on-demand formatted preview and file actions.

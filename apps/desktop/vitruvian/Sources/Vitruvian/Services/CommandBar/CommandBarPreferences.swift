@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A kind of result the bar can offer. Raw values are storage ids for the
 /// list of sources the person switched off, so they never change.

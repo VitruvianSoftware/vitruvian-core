@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import QuartzCore
+import VitruvianCore
 
 struct NotchFileDropActions {
     let canAccept: (NSPasteboard) -> Bool

@@ -4,6 +4,7 @@
 import Foundation
 import os.log
 import UserNotifications
+import VitruvianCore
 
 enum Notifier {
     static let whatsAppOrganizerUndoActionIdentifier =

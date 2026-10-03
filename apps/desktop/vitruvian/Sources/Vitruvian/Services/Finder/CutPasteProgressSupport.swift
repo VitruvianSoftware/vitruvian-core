@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Pure decisions behind the move-progress HUD (issue #168). Progress only
 /// appears for moves that actually take time: same-volume moves are renames

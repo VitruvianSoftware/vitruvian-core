@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A colour taken from the cover art, deepened so it reads as a halo over the
 /// notch's black base. Artwork with no real colour of its own returns nothing,

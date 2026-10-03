@@ -5,7 +5,7 @@ import Foundation
 
 // 繁體中文（香港）— translated and hand-checked, not machine output.
 extension Strings {
-    static let zhHK = Strings(
+    package static let zhHK = Strings(
         statusIdleTooltip: "Vitruvian：正常睡眠",
         statusActiveUntil: "Vitruvian：保持喚醒至",
         statusActiveIndefinite: "Vitruvian：持續保持喚醒",

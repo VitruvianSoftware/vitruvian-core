@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import VitruvianCore
 
 /// Quits an app when its last window closes. Each regular app gets an
 /// Accessibility observer that

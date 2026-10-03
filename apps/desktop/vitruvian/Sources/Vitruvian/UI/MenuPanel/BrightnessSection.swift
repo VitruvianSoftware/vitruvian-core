@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Panel section with one brightness slider per adjustable display. Values
 /// refresh whenever the section appears, so changes made with the keyboard,

@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import Darwin
+import VitruvianCore
 
 final class NotchDownloadService: ObservableObject {
     static let shared = NotchDownloadService()

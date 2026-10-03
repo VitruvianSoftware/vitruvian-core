@@ -4,6 +4,7 @@
 import AppKit
 import AVKit
 import SwiftUI
+import VitruvianCore
 
 /// Pre-install preview window content: shows the next version's full changelog —
 /// the same notes that ship with the release — so the user can decide before any

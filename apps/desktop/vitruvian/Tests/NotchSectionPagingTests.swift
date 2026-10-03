@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 enum NotchSectionPagingTests {
     static func run(_ suite: TestSuite) {

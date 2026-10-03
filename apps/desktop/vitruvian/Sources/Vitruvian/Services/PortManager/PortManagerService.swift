@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 final class PortManagerService: ObservableObject {
     static let shared = PortManagerService()

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Keeps synchronous window-server calls off Swift's cooperative executor.
 /// Cancellation releases the caller, but an in-flight system call keeps its

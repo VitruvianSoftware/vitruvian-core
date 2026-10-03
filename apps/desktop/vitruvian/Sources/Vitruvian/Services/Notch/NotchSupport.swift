@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import Foundation
 import CoreGraphics
+import VitruvianCore
 
 enum NotchModule: String, CaseIterable, Identifiable {
     case controls, mixer, music, clipboard, captures, files, system, tools, calendar, notifications, timer, camera, downloads, scratchpad, agents, watch

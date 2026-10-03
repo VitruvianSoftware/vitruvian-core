@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import CoreGraphics
+import VitruvianCore
 
 /// Rewrites mouse wheel events only, leaving the trackpad on macOS natural
 /// scrolling: a modifying tap at the HID level (before the window server

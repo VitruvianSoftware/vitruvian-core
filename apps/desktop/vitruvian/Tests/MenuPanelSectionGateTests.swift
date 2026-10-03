@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A tab leaves the panel and the Dynamic Island once none of its gate
 /// features is installed, so a row whose feature the gate leaves out is

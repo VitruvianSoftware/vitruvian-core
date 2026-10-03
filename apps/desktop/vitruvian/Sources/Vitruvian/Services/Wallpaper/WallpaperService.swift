@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import ImageIO
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// Apple stills + bookmarked own images. Apply-all hits WallpaperAgent's store.
 final class WallpaperService: ObservableObject {

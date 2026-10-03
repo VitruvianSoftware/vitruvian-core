@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import HIDEventSystem
+import VitruvianCore
 
 /// Applies macOS's per-device linear pointer mode to ordinary mouse devices.
 /// Trackpads are deliberately excluded.

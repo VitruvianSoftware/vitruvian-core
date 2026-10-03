@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Cumulative interface byte counters (since boot), read from the kernel.
 /// 64-bit so they never wrap on fast links — the reason totals stay accurate.

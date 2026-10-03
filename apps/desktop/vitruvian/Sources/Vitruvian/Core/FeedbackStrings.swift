@@ -3,40 +3,40 @@
 
 import Foundation
 
-struct FeedbackStrings {
-    let sectionTitle: String
-    let sectionCaption: String
-    let openButton: String
-    let windowTitle: String
-    let bugTitle: String
-    let featureTitle: String
-    let messageLabel: String
-    let bugPlaceholder: String
-    let featurePlaceholder: String
-    let charactersFormat: String
-    let includeDiagnostics: String
-    let includeDiagnosticsCaption: String
-    let whatSentTitle: String
-    let whatSentBasic: String
-    let whatSentDiagnostics: String
-    let privacyNote: String
-    let retentionNote: String
-    let sendButton: String
-    let sending: String
-    let sentTitle: String
-    let sentCaption: String
-    let unavailableError: String
-    let rateLimitError: String
-    let genericError: String
-    let done: String
-    let commandBug: String
-    let commandFeature: String
-    let commandSubtitle: String
-    let diagnosticsChannelLabel: String
+package struct FeedbackStrings {
+    package let sectionTitle: String
+    package let sectionCaption: String
+    package let openButton: String
+    package let windowTitle: String
+    package let bugTitle: String
+    package let featureTitle: String
+    package let messageLabel: String
+    package let bugPlaceholder: String
+    package let featurePlaceholder: String
+    package let charactersFormat: String
+    package let includeDiagnostics: String
+    package let includeDiagnosticsCaption: String
+    package let whatSentTitle: String
+    package let whatSentBasic: String
+    package let whatSentDiagnostics: String
+    package let privacyNote: String
+    package let retentionNote: String
+    package let sendButton: String
+    package let sending: String
+    package let sentTitle: String
+    package let sentCaption: String
+    package let unavailableError: String
+    package let rateLimitError: String
+    package let genericError: String
+    package let done: String
+    package let commandBug: String
+    package let commandFeature: String
+    package let commandSubtitle: String
+    package let diagnosticsChannelLabel: String
 }
 
 extension FeatureStrings {
-    static func feedback(_ language: AppLanguage) -> FeedbackStrings {
+    package static func feedback(_ language: AppLanguage) -> FeedbackStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -58,7 +58,7 @@ extension FeatureStrings {
 }
 
 extension FeedbackStrings {
-    static let enUS = FeedbackStrings(
+    package static let enUS = FeedbackStrings(
         sectionTitle: "Feedback",
         sectionCaption: "Send a bug report or feature idea directly to the person who maintains Vitruvian.",
         openButton: "Send feedback",
@@ -90,7 +90,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Update channel"
     )
 
-    static let ptBR = FeedbackStrings(
+    package static let ptBR = FeedbackStrings(
         sectionTitle: "Feedback",
         sectionCaption: "Envie um relato de bug ou uma ideia de recurso diretamente para quem mantém o Vitruvian.",
         openButton: "Enviar feedback",
@@ -122,7 +122,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Canal de atualização"
     )
 
-    static let tr = FeedbackStrings(
+    package static let tr = FeedbackStrings(
         sectionTitle: "Geri bildirim",
         sectionCaption: "Bir hata bildirimini veya özellik fikrini doğrudan Vitruvian bakımcısına gönderin.",
         openButton: "Geri bildirim gönder",
@@ -154,7 +154,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Güncelleme kanalı"
     )
 
-    static let ru = FeedbackStrings(
+    package static let ru = FeedbackStrings(
         sectionTitle: "Обратная связь",
         sectionCaption: "Отправьте сообщение об ошибке или идею функции напрямую разработчику Vitruvian.",
         openButton: "Отправить отзыв",
@@ -186,7 +186,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Канал обновлений"
     )
 
-    static let es = FeedbackStrings(
+    package static let es = FeedbackStrings(
         sectionTitle: "Comentarios",
         sectionCaption: "Envía un informe de error o una idea directamente a quien mantiene Vitruvian.",
         openButton: "Enviar comentarios",
@@ -218,7 +218,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Canal de actualización"
     )
 
-    static let sk = FeedbackStrings(
+    package static let sk = FeedbackStrings(
         sectionTitle: "Spätná väzba",
         sectionCaption: "Pošlite hlásenie o chybe alebo nápad na funkciu priamo osobe, ktorá udržiava Vitruvian.",
         openButton: "Poslať spätnú väzbu",
@@ -250,7 +250,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Kanál aktualizácií"
     )
 
-    static let de = FeedbackStrings(
+    package static let de = FeedbackStrings(
         sectionTitle: "Feedback",
         sectionCaption: "Sende einen Fehlerbericht oder eine Funktionsidee direkt an den Vitruvian-Entwickler.",
         openButton: "Feedback senden",
@@ -282,7 +282,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Update-Kanal"
     )
 
-    static let fr = FeedbackStrings(
+    package static let fr = FeedbackStrings(
         sectionTitle: "Avis",
         sectionCaption: "Envoyez un rapport de bug ou une idée directement à la personne qui maintient Vitruvian.",
         openButton: "Envoyer un avis",
@@ -314,7 +314,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Canal de mise à jour"
     )
 
-    static let it = FeedbackStrings(
+    package static let it = FeedbackStrings(
         sectionTitle: "Feedback",
         sectionCaption: "Invia una segnalazione o un’idea direttamente a chi mantiene Vitruvian.",
         openButton: "Invia feedback",
@@ -346,7 +346,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "Canale di aggiornamento"
     )
 
-    static let ja = FeedbackStrings(
+    package static let ja = FeedbackStrings(
         sectionTitle: "フィードバック",
         sectionCaption: "不具合の報告や機能のアイデアを Vitruvian の開発者へ直接送信します。",
         openButton: "フィードバックを送信",
@@ -378,7 +378,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "アップデートチャンネル"
     )
 
-    static let ko = FeedbackStrings(
+    package static let ko = FeedbackStrings(
         sectionTitle: "피드백",
         sectionCaption: "버그 신고나 기능 아이디어를 Vitruvian 관리자에게 직접 보냅니다.",
         openButton: "피드백 보내기",
@@ -410,7 +410,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "업데이트 채널"
     )
 
-    static let zhHans = FeedbackStrings(
+    package static let zhHans = FeedbackStrings(
         sectionTitle: "反馈",
         sectionCaption: "将错误报告或功能建议直接发送给 Vitruvian 的维护者。",
         openButton: "发送反馈",
@@ -442,7 +442,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "更新渠道"
     )
 
-    static let zhTW = FeedbackStrings(
+    package static let zhTW = FeedbackStrings(
         sectionTitle: "意見回饋",
         sectionCaption: "將錯誤回報或功能建議直接傳送給 Vitruvian 的維護者。",
         openButton: "傳送意見",
@@ -474,7 +474,7 @@ extension FeedbackStrings {
         diagnosticsChannelLabel: "更新頻道"
     )
 
-    static let zhHK = FeedbackStrings(
+    package static let zhHK = FeedbackStrings(
         sectionTitle: "意見回饋",
         sectionCaption: "將錯誤報告或功能建議直接傳送給 Vitruvian 的維護者。",
         openButton: "傳送意見",
@@ -505,7 +505,7 @@ extension FeedbackStrings {
         commandSubtitle: "傳送意見",
         diagnosticsChannelLabel: "更新頻道"
     )
-    static let uk = FeedbackStrings(
+    package static let uk = FeedbackStrings(
         sectionTitle: "Відгук",
         sectionCaption: "Надішліть звіт про помилку або ідею функції безпосередньо розробнику Vitruvian.",
         openButton: "Надіслати відгук",

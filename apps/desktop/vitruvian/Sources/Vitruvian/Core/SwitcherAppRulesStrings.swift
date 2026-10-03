@@ -3,19 +3,19 @@
 
 import Foundation
 
-struct SwitcherAppRulesStrings {
-    let listTitle: String
-    let addButton: String
-    let removeButton: String
-    let behaviorLabel: String
-    let showWithoutWindows: String
-    let windowsOnly: String
-    let hidden: String
-    let caption: String
+package struct SwitcherAppRulesStrings {
+    package let listTitle: String
+    package let addButton: String
+    package let removeButton: String
+    package let behaviorLabel: String
+    package let showWithoutWindows: String
+    package let windowsOnly: String
+    package let hidden: String
+    package let caption: String
 }
 
 extension FeatureStrings {
-    static func switcherAppRules(_ language: AppLanguage) -> SwitcherAppRulesStrings {
+    package static func switcherAppRules(_ language: AppLanguage) -> SwitcherAppRulesStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -37,7 +37,7 @@ extension FeatureStrings {
 }
 
 extension SwitcherAppRulesStrings {
-    static let enUS = SwitcherAppRulesStrings(
+    package static let enUS = SwitcherAppRulesStrings(
         listTitle: "Rules by app",
         addButton: "Add an app…",
         removeButton: "Remove",
@@ -48,7 +48,7 @@ extension SwitcherAppRulesStrings {
         caption: "Choose how each app appears. Apps without a rule use the choice above."
     )
 
-    static let ptBR = SwitcherAppRulesStrings(
+    package static let ptBR = SwitcherAppRulesStrings(
         listTitle: "Regras por app",
         addButton: "Adicionar app…",
         removeButton: "Remover",
@@ -59,7 +59,7 @@ extension SwitcherAppRulesStrings {
         caption: "Escolha como cada app aparece. Apps sem regra usam a opção acima."
     )
 
-    static let tr = SwitcherAppRulesStrings(
+    package static let tr = SwitcherAppRulesStrings(
         listTitle: "Uygulamaya göre kurallar",
         addButton: "Uygulama ekle…",
         removeButton: "Kaldır",
@@ -70,7 +70,7 @@ extension SwitcherAppRulesStrings {
         caption: "Her uygulamanın nasıl görüneceğini seçin. Kuralı olmayanlar yukarıdaki seçimi kullanır."
     )
 
-    static let ru = SwitcherAppRulesStrings(
+    package static let ru = SwitcherAppRulesStrings(
         listTitle: "Правила для приложений",
         addButton: "Добавить приложение…",
         removeButton: "Удалить",
@@ -81,7 +81,7 @@ extension SwitcherAppRulesStrings {
         caption: "Выберите, как показывать каждое приложение. Без правила действует настройка выше."
     )
 
-    static let es = SwitcherAppRulesStrings(
+    package static let es = SwitcherAppRulesStrings(
         listTitle: "Reglas por app",
         addButton: "Añadir app…",
         removeButton: "Quitar",
@@ -92,7 +92,7 @@ extension SwitcherAppRulesStrings {
         caption: "Elige cómo aparece cada app. Las apps sin regla usan la opción anterior."
     )
 
-    static let sk = SwitcherAppRulesStrings(
+    package static let sk = SwitcherAppRulesStrings(
         listTitle: "Pravidlá podľa aplikácie",
         addButton: "Pridať aplikáciu…",
         removeButton: "Odstrániť",
@@ -103,7 +103,7 @@ extension SwitcherAppRulesStrings {
         caption: "Vyberte, ako sa má zobraziť každá aplikácia. Apky bez pravidla použijú voľbu vyššie."
     )
 
-    static let de = SwitcherAppRulesStrings(
+    package static let de = SwitcherAppRulesStrings(
         listTitle: "Regeln pro App",
         addButton: "App hinzufügen…",
         removeButton: "Entfernen",
@@ -114,7 +114,7 @@ extension SwitcherAppRulesStrings {
         caption: "Lege fest, wie jede App erscheint. Apps ohne Regel verwenden die Auswahl darüber."
     )
 
-    static let fr = SwitcherAppRulesStrings(
+    package static let fr = SwitcherAppRulesStrings(
         listTitle: "Règles par app",
         addButton: "Ajouter une app…",
         removeButton: "Retirer",
@@ -125,7 +125,7 @@ extension SwitcherAppRulesStrings {
         caption: "Choisissez comment chaque app apparaît. Sans règle, l’app utilise le choix ci-dessus."
     )
 
-    static let it = SwitcherAppRulesStrings(
+    package static let it = SwitcherAppRulesStrings(
         listTitle: "Regole per app",
         addButton: "Aggiungi app…",
         removeButton: "Rimuovi",
@@ -136,7 +136,7 @@ extension SwitcherAppRulesStrings {
         caption: "Scegli come appare ogni app. Le app senza regola usano l’opzione qui sopra."
     )
 
-    static let ja = SwitcherAppRulesStrings(
+    package static let ja = SwitcherAppRulesStrings(
         listTitle: "Appごとのルール",
         addButton: "Appを追加…",
         removeButton: "削除",
@@ -147,7 +147,7 @@ extension SwitcherAppRulesStrings {
         caption: "Appごとの表示方法を選びます。ルールのないAppには上の設定が使われます。"
     )
 
-    static let ko = SwitcherAppRulesStrings(
+    package static let ko = SwitcherAppRulesStrings(
         listTitle: "앱별 규칙",
         addButton: "앱 추가…",
         removeButton: "제거",
@@ -158,7 +158,7 @@ extension SwitcherAppRulesStrings {
         caption: "각 앱의 표시 방식을 선택합니다. 규칙이 없는 앱은 위의 설정을 사용합니다."
     )
 
-    static let zhHans = SwitcherAppRulesStrings(
+    package static let zhHans = SwitcherAppRulesStrings(
         listTitle: "按 App 设置规则",
         addButton: "添加 App…",
         removeButton: "移除",
@@ -169,7 +169,7 @@ extension SwitcherAppRulesStrings {
         caption: "选择每个 App 的显示方式。未设置规则的 App 使用上方选项。"
     )
 
-    static let zhTW = SwitcherAppRulesStrings(
+    package static let zhTW = SwitcherAppRulesStrings(
         listTitle: "各 App 規則",
         addButton: "加入 App…",
         removeButton: "移除",
@@ -180,7 +180,7 @@ extension SwitcherAppRulesStrings {
         caption: "選擇每個 App 的顯示方式。沒有規則的 App 使用上方選項。"
     )
 
-    static let zhHK = SwitcherAppRulesStrings(
+    package static let zhHK = SwitcherAppRulesStrings(
         listTitle: "各 App 規則",
         addButton: "加入 App…",
         removeButton: "移除",
@@ -190,7 +190,7 @@ extension SwitcherAppRulesStrings {
         hidden: "一律不顯示",
         caption: "選擇每個 App 的顯示方式。沒有規則的 App 使用上方選項。"
     )
-    static let uk = SwitcherAppRulesStrings(
+    package static let uk = SwitcherAppRulesStrings(
         listTitle: "Правила за програмами",
         addButton: "Додати програму…",
         removeButton: "Видалити",

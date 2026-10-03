@@ -3,49 +3,49 @@
 
 import Foundation
 
-struct WhatsAppDownloadStrings {
-    let title: String
-    let hubDescription: String
-    let intro: String
-    let automatic: String
-    let automaticCaption: String
-    let folder: String
-    let accessReady: String
-    let accessDenied: String
-    let fileTypes: String
-    let allTypes: String
-    let image: String
-    let video: String
-    let audio: String
-    let document: String
-    let archive: String
-    let other: String
-    let retention: String
-    let retentionCaption: String
-    let daysFormat: String
-    let manualIntro: String
-    let noFiles: String
-    let resultsFormat: String
-    let selectRules: String
-    let cleanSelectedFormat: String
-    let keep: String
-    let manageAgain: String
-    let activity: String
-    let neverRun: String
-    let lastRunFormat: String
-    let nextRunFormat: String
-    let firstTitle: String
-    let firstMessageFormat: String
-    let futureOnly: String
-    let includeExisting: String
-    let trashNote: String
-    let localNote: String
-    let notificationTitle: String
-    let notificationFormat: String
-    let scanFailed: String
-    let manageButton: String
+package struct WhatsAppDownloadStrings {
+    package let title: String
+    package let hubDescription: String
+    package let intro: String
+    package let automatic: String
+    package let automaticCaption: String
+    package let folder: String
+    package let accessReady: String
+    package let accessDenied: String
+    package let fileTypes: String
+    package let allTypes: String
+    package let image: String
+    package let video: String
+    package let audio: String
+    package let document: String
+    package let archive: String
+    package let other: String
+    package let retention: String
+    package let retentionCaption: String
+    package let daysFormat: String
+    package let manualIntro: String
+    package let noFiles: String
+    package let resultsFormat: String
+    package let selectRules: String
+    package let cleanSelectedFormat: String
+    package let keep: String
+    package let manageAgain: String
+    package let activity: String
+    package let neverRun: String
+    package let lastRunFormat: String
+    package let nextRunFormat: String
+    package let firstTitle: String
+    package let firstMessageFormat: String
+    package let futureOnly: String
+    package let includeExisting: String
+    package let trashNote: String
+    package let localNote: String
+    package let notificationTitle: String
+    package let notificationFormat: String
+    package let scanFailed: String
+    package let manageButton: String
 
-    static func localized(_ language: AppLanguage) -> WhatsAppDownloadStrings {
+    package static func localized(_ language: AppLanguage) -> WhatsAppDownloadStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -67,7 +67,7 @@ struct WhatsAppDownloadStrings {
 }
 
 extension WhatsAppDownloadStrings {
-    static let enUS = WhatsAppDownloadStrings(
+    package static let enUS = WhatsAppDownloadStrings(
         title: "WhatsApp downloads",
         hubDescription: "Keeps WhatsApp files in Downloads under control",
         intro: "Finds files that macOS confirms came from WhatsApp. File contents and chats are never read.",
@@ -110,7 +110,7 @@ extension WhatsAppDownloadStrings {
         manageButton: "Manage…"
     )
 
-    static let es = WhatsAppDownloadStrings(
+    package static let es = WhatsAppDownloadStrings(
         title: "Descargas de WhatsApp",
         hubDescription: "Mantiene bajo control los archivos de WhatsApp en Descargas",
         intro: "Encuentra los archivos que macOS confirma que proceden de WhatsApp. Nunca lee su contenido ni tus chats.",
@@ -153,7 +153,7 @@ extension WhatsAppDownloadStrings {
         manageButton: "Gestionar…"
     )
 
-    static let sk = WhatsAppDownloadStrings(
+    package static let sk = WhatsAppDownloadStrings(
         title: "Sťahovania z WhatsAppu",
         hubDescription: "Udržiava súbory z WhatsAppu v Stiahnutých pod kontrolou",
         intro: "Nájde súbory, ktoré macOS potvrdí, že pochádzajú z WhatsAppu. Obsah súborov ani konverzácie sa nikdy nečítajú.",
@@ -196,7 +196,7 @@ extension WhatsAppDownloadStrings {
         manageButton: "Spravovať…"
     )
 
-    static let ptBR = WhatsAppDownloadStrings(
+    package static let ptBR = WhatsAppDownloadStrings(
         title: "Downloads do WhatsApp",
         hubDescription: "Mantém sob controle os arquivos do WhatsApp em Downloads",
         intro: "Encontra arquivos que o macOS confirma que vieram do WhatsApp. Nunca lê o conteúdo nem suas conversas.",
@@ -239,7 +239,7 @@ extension WhatsAppDownloadStrings {
         manageButton: "Gerenciar…"
     )
 
-    static let de = translated(language: .de,
+    package static let de = translated(language: .de,
         title: "WhatsApp-Downloads", hub: "Hält WhatsApp-Dateien in Downloads unter Kontrolle",
         intro: "Findet Dateien, deren Herkunft von macOS als WhatsApp bestätigt wird. Inhalte und Chats werden nie gelesen.",
         automatic: "Automatisch aufräumen", folder: "Überwachter Ordner", accessReady: "Downloads ist zugänglich",
@@ -252,7 +252,7 @@ extension WhatsAppDownloadStrings {
         trash: "Dateien werden in den Papierkorb verschoben und bleiben bis zu dessen Leerung wiederherstellbar.",
         notificationTitle: "WhatsApp-Bereinigung")
 
-    static let fr = translated(language: .fr,
+    package static let fr = translated(language: .fr,
         title: "Téléchargements WhatsApp", hub: "Garde les fichiers WhatsApp de Téléchargements sous contrôle",
         intro: "Repère les fichiers dont macOS confirme la provenance WhatsApp. Le contenu et les discussions ne sont jamais lus.",
         automatic: "Nettoyer automatiquement", folder: "Dossier surveillé", accessReady: "Téléchargements est accessible",
@@ -265,7 +265,7 @@ extension WhatsAppDownloadStrings {
         trash: "Les fichiers sont placés dans la Corbeille et restent récupérables jusqu’à ce qu’elle soit vidée.",
         notificationTitle: "Nettoyage WhatsApp")
 
-    static let it = translated(language: .it,
+    package static let it = translated(language: .it,
         title: "Download di WhatsApp", hub: "Tiene sotto controllo i file WhatsApp in Download",
         intro: "Trova i file che macOS conferma provenire da WhatsApp. Non legge mai contenuti o chat.",
         automatic: "Pulisci automaticamente", folder: "Cartella monitorata", accessReady: "Download è accessibile",
@@ -278,7 +278,7 @@ extension WhatsAppDownloadStrings {
         trash: "I file vengono spostati nel Cestino e restano recuperabili finché non viene svuotato.",
         notificationTitle: "Pulizia WhatsApp")
 
-    static let tr = translated(language: .tr,
+    package static let tr = translated(language: .tr,
         title: "WhatsApp indirmeleri", hub: "İndirilenler’deki WhatsApp dosyalarını kontrol altında tutar",
         intro: "macOS’in WhatsApp’tan geldiğini doğruladığı dosyaları bulur. İçerikler ve sohbetler asla okunmaz.",
         automatic: "Otomatik temizle", folder: "İzlenen klasör", accessReady: "İndirilenler erişilebilir",
@@ -291,7 +291,7 @@ extension WhatsAppDownloadStrings {
         trash: "Dosyalar Çöp Sepeti’ne taşınır ve boşaltılana kadar kurtarılabilir.",
         notificationTitle: "WhatsApp temizliği")
 
-    static let ru = translated(language: .ru,
+    package static let ru = translated(language: .ru,
         title: "Загрузки WhatsApp", hub: "Наводит порядок среди файлов WhatsApp в Загрузках",
         intro: "Находит файлы, происхождение из WhatsApp которых подтверждает macOS. Содержимое и чаты не читаются.",
         automatic: "Очищать автоматически", folder: "Отслеживаемая папка", accessReady: "Папка «Загрузки» доступна",
@@ -304,7 +304,7 @@ extension WhatsAppDownloadStrings {
         trash: "Файлы перемещаются в Корзину и доступны для восстановления до её очистки.",
         notificationTitle: "Очистка WhatsApp")
 
-    static let ja = translated(language: .ja,
+    package static let ja = translated(language: .ja,
         title: "WhatsAppのダウンロード", hub: "ダウンロード内のWhatsAppファイルを整理します",
         intro: "macOSがWhatsApp由来と確認したファイルを検出します。内容やチャットは一切読みません。",
         automatic: "自動的に整理", folder: "監視フォルダ", accessReady: "ダウンロードにアクセスできます",
@@ -316,7 +316,7 @@ extension WhatsAppDownloadStrings {
         existing: "既存ファイルを含める", firstTitle: "既存ファイルの扱い",
         trash: "ファイルはゴミ箱へ移動し、空にするまでは復元できます。", notificationTitle: "WhatsAppの整理")
 
-    static let ko = translated(language: .ko,
+    package static let ko = translated(language: .ko,
         title: "WhatsApp 다운로드", hub: "다운로드 폴더의 WhatsApp 파일을 정리합니다",
         intro: "macOS가 WhatsApp에서 왔다고 확인한 파일을 찾습니다. 내용과 채팅은 읽지 않습니다.",
         automatic: "자동으로 정리", folder: "감시 폴더", accessReady: "다운로드 폴더에 접근할 수 있음",
@@ -328,7 +328,7 @@ extension WhatsAppDownloadStrings {
         existing: "기존 파일 포함", firstTitle: "기존 파일은 어떻게 할까요?",
         trash: "파일은 휴지통으로 이동하며 휴지통을 비우기 전까지 복구할 수 있습니다.", notificationTitle: "WhatsApp 정리")
 
-    static let zhHans = translated(language: .zhHans,
+    package static let zhHans = translated(language: .zhHans,
         title: "WhatsApp 下载", hub: "管理下载文件夹中的 WhatsApp 文件",
         intro: "查找经 macOS 确认为来自 WhatsApp 的文件。绝不读取文件内容或聊天。",
         automatic: "自动清理", folder: "监控的文件夹", accessReady: "可以访问下载文件夹",
@@ -340,7 +340,7 @@ extension WhatsAppDownloadStrings {
         existing: "包括现有文件", firstTitle: "如何处理现有文件？",
         trash: "文件会移到废纸篓，在清倒前仍可恢复。", notificationTitle: "WhatsApp 清理")
 
-    static let zhTW = translated(language: .zhTW,
+    package static let zhTW = translated(language: .zhTW,
         title: "WhatsApp 下載項目", hub: "管理下載項目中的 WhatsApp 檔案",
         intro: "尋找經 macOS 確認來自 WhatsApp 的檔案。絕不讀取檔案內容或對話。",
         automatic: "自動清理", folder: "監察的資料夾", accessReady: "可以取用下載項目",
@@ -352,7 +352,7 @@ extension WhatsAppDownloadStrings {
         existing: "包括現有檔案", firstTitle: "如何處理現有檔案？",
         trash: "檔案會移至垃圾桶，清空前仍可復原。", notificationTitle: "WhatsApp 清理")
 
-    static let zhHK = translated(language: .zhHK,
+    package static let zhHK = translated(language: .zhHK,
         title: "WhatsApp 下載項目", hub: "管理下載項目中的 WhatsApp 檔案",
         intro: "尋找經 macOS 確認來自 WhatsApp 的檔案。絕不讀取檔案內容或對話。",
         automatic: "自動清理", folder: "監察的資料夾", accessReady: "可以取用下載項目",
@@ -561,7 +561,7 @@ extension WhatsAppDownloadStrings {
             localNote: value.localNote, notificationTitle: notificationTitle,
             notificationFormat: value.notificationFormat, scanFailed: value.scanFailed, manageButton: value.manageButton)
     }
-    static let uk = WhatsAppDownloadStrings(
+    package static let uk = WhatsAppDownloadStrings(
         title: "Завантаження WhatsApp",
         hubDescription: "Тримає під контролем файли WhatsApp у папці «Викачане»",
         intro: "Знаходить файли, які macOS підтверджує як такі, що прийшли з WhatsApp. Вміст файлів та чати ніколи не читаються.",

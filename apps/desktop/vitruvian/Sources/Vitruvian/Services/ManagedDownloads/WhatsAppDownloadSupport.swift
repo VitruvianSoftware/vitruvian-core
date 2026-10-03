@@ -3,6 +3,7 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// User-facing buckets for confirmed WhatsApp downloads. The raw values are
 /// persisted, so cases may be appended but never renamed.

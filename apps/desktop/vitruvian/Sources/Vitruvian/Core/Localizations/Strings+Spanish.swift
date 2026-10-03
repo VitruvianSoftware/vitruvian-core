@@ -5,7 +5,7 @@ import Foundation
 
 // Español — translated and hand-checked, not machine output.
 extension Strings {
-    static let es = Strings(
+    package static let es = Strings(
         statusIdleTooltip: "Vitruvian: reposo normal",
         statusActiveUntil: "Vitruvian: activo hasta",
         statusActiveIndefinite: "Vitruvian: activo indefinidamente",

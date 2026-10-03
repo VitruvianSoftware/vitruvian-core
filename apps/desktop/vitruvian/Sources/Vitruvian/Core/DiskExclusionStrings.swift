@@ -3,17 +3,17 @@
 
 import Foundation
 
-struct DiskExclusionStrings {
-    let listTitle: String
-    let addButton: String
-    let otherDrive: String
-    let removeButton: String
-    let customPlaceholder: String
-    let caption: String
+package struct DiskExclusionStrings {
+    package let listTitle: String
+    package let addButton: String
+    package let otherDrive: String
+    package let removeButton: String
+    package let customPlaceholder: String
+    package let caption: String
 }
 
 extension FeatureStrings {
-    static func diskExclusions(_ language: AppLanguage) -> DiskExclusionStrings {
+    package static func diskExclusions(_ language: AppLanguage) -> DiskExclusionStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -35,7 +35,7 @@ extension FeatureStrings {
 }
 
 extension DiskExclusionStrings {
-    static let enUS = DiskExclusionStrings(
+    package static let enUS = DiskExclusionStrings(
         listTitle: "Excluded drives",
         addButton: "Add drive…",
         otherDrive: "Other drive name…",
@@ -44,7 +44,7 @@ extension DiskExclusionStrings {
         caption: "Drives in this list are never unmounted when using Eject all disks."
     )
 
-    static let ptBR = DiskExclusionStrings(
+    package static let ptBR = DiskExclusionStrings(
         listTitle: "Discos excluídos",
         addButton: "Adicionar disco…",
         otherDrive: "Outro nome de disco…",
@@ -53,7 +53,7 @@ extension DiskExclusionStrings {
         caption: "Os discos nesta lista nunca são desmontados ao ejetar todos os discos."
     )
 
-    static let tr = DiskExclusionStrings(
+    package static let tr = DiskExclusionStrings(
         listTitle: "Hariç tutulan sürücüler",
         addButton: "Sürücü ekle…",
         otherDrive: "Diğer sürücü adı…",
@@ -62,7 +62,7 @@ extension DiskExclusionStrings {
         caption: "Bu listedeki sürücüler Tüm diskleri çıkar kullanılırken hiçbir zaman çıkarılmaz."
     )
 
-    static let ru = DiskExclusionStrings(
+    package static let ru = DiskExclusionStrings(
         listTitle: "Исключённые диски",
         addButton: "Добавить диск…",
         otherDrive: "Другое имя диска…",
@@ -71,7 +71,7 @@ extension DiskExclusionStrings {
         caption: "Диски из этого списка никогда не извлекаются при действии «Извлечь все диски»."
     )
 
-    static let es = DiskExclusionStrings(
+    package static let es = DiskExclusionStrings(
         listTitle: "Discos excluidos",
         addButton: "Añadir disco…",
         otherDrive: "Otro nombre de disco…",
@@ -80,7 +80,7 @@ extension DiskExclusionStrings {
         caption: "Los discos de esta lista nunca se expulsan al expulsar todos los discos."
     )
 
-    static let sk = DiskExclusionStrings(
+    package static let sk = DiskExclusionStrings(
         listTitle: "Vylúčené disky",
         addButton: "Pridať disk…",
         otherDrive: "Iný názov disku…",
@@ -89,7 +89,7 @@ extension DiskExclusionStrings {
         caption: "Disky v tomto zozname sa nikdy neodpoja pri použití Vysunúť všetky disky."
     )
 
-    static let de = DiskExclusionStrings(
+    package static let de = DiskExclusionStrings(
         listTitle: "Ausgenommene Laufwerke",
         addButton: "Laufwerk hinzufügen…",
         otherDrive: "Anderer Laufwerksname…",
@@ -98,7 +98,7 @@ extension DiskExclusionStrings {
         caption: "Laufwerke in dieser Liste werden beim Auswerfen aller Festplatten niemals ausgeworfen."
     )
 
-    static let fr = DiskExclusionStrings(
+    package static let fr = DiskExclusionStrings(
         listTitle: "Disques exclus",
         addButton: "Ajouter un disque…",
         otherDrive: "Autre nom de disque…",
@@ -107,7 +107,7 @@ extension DiskExclusionStrings {
         caption: "Les disques de cette liste ne sont jamais éjectés lors de l’éjection de tous les disques."
     )
 
-    static let it = DiskExclusionStrings(
+    package static let it = DiskExclusionStrings(
         listTitle: "Dischi esclusi",
         addButton: "Aggiungi disco…",
         otherDrive: "Altro nome del disco…",
@@ -116,7 +116,7 @@ extension DiskExclusionStrings {
         caption: "I dischi in questo elenco non vengono mai espulsi quando si espellono tutti i dischi."
     )
 
-    static let ja = DiskExclusionStrings(
+    package static let ja = DiskExclusionStrings(
         listTitle: "除外するドライブ",
         addButton: "ドライブを追加…",
         otherDrive: "その他のドライブ名…",
@@ -125,7 +125,7 @@ extension DiskExclusionStrings {
         caption: "このリストにあるドライブは「すべてのディスクを取り出す」を実行しても取り出されません。"
     )
 
-    static let ko = DiskExclusionStrings(
+    package static let ko = DiskExclusionStrings(
         listTitle: "제외된 드라이브",
         addButton: "드라이브 추가…",
         otherDrive: "다른 드라이브 이름…",
@@ -134,7 +134,7 @@ extension DiskExclusionStrings {
         caption: "이 목록에 있는 드라이브는 모든 디스크 추출 시 추출되지 않습니다."
     )
 
-    static let zhHans = DiskExclusionStrings(
+    package static let zhHans = DiskExclusionStrings(
         listTitle: "排除的驱动器",
         addButton: "添加驱动器…",
         otherDrive: "其他驱动器名称…",
@@ -143,7 +143,7 @@ extension DiskExclusionStrings {
         caption: "使用“推出所有磁盘”时，此列表中的驱动器绝不会被推出。"
     )
 
-    static let zhTW = DiskExclusionStrings(
+    package static let zhTW = DiskExclusionStrings(
         listTitle: "排除的磁碟機",
         addButton: "加入磁碟機…",
         otherDrive: "其他磁碟機名稱…",
@@ -152,7 +152,7 @@ extension DiskExclusionStrings {
         caption: "使用「退出所有磁碟」時，此列表中的磁碟機絕不會被退出。"
     )
 
-    static let zhHK = DiskExclusionStrings(
+    package static let zhHK = DiskExclusionStrings(
         listTitle: "排除的磁碟機",
         addButton: "加入磁碟機…",
         otherDrive: "其他磁碟機名稱…",
@@ -160,7 +160,7 @@ extension DiskExclusionStrings {
         customPlaceholder: "磁碟機或宗卷名稱",
         caption: "使用「推出所有磁碟」時，此清單中的磁碟機絕不會被推出。"
     )
-    static let uk = DiskExclusionStrings(
+    package static let uk = DiskExclusionStrings(
         listTitle: "Виключені диски",
         addButton: "Додати диск…",
         otherDrive: "Інша назва диска…",

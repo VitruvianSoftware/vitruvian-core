@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Every feature the Features hub can switch off entirely. The raw value is
 /// the stable identity persisted inside the availability key, so cases can be

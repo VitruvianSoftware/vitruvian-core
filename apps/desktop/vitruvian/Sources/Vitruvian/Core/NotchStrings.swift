@@ -3,97 +3,97 @@
 
 import Foundation
 
-struct NotchStrings {
-    let title: String
-    let combineActivities: String
-    let enable: String
-    let description: String
-    let menuBarAccessHint: String
-    let display: String
-    let automatic: String
-    let builtIn: String
-    let mainDisplay: String
-    let followPointer: String
-    let allDisplays: String
-    let hover: String
-    let modules: String
-    let events: String
-    let clipboardActivity: String
-    let captureActivity: String
-    let privacy: String
-    let open: String
-    let collapse: String
-    let pin: String
-    let unpin: String
-    let panel: String
-    let dropHint: String
-    let empty: String
-    let volume: String
-    let brightness: String
-    let battery: String
-    let onBattery: String
-    let charging: String
-    let charged: String
-    let lowBattery: String
-    let controls: String
-    let system: String
-    let disabled: String
-    let files: String
-    let hideInFullscreen: String
-    let showInCaptures: String
-    let clipboardWindow: String
-    let tools: String
-    let size: String
-    let showOutline: String
-    let compact: String
-    let spacious: String
-    let hoverExpand: String
-    let shelfWindow: String
-    let dragReveal: String
-    let captureControls: String
-    let quickPanel: String
-    let appPanel: String
-    let idleContent: String
-    let idleNone: String
-    let coverMenus: String
-    let coverMenusHint: String
-    let controlShortcuts: String
-    let activity: String
-    let playingMusic: String
-    let custom: String
-    let width: String
-    let maximumHeight: String
-    let sizeHint: String
-    let cameraFit: String
-    let height: String
-    let cameraFitHint: String
-    let withoutNotch: String
-    let capsuleShape: String
-    let notchShape: String
-    let capsuleFit: String
-    let fromTop: String
-    let capsuleFitHint: String
-    let hapticFeedback: String
-    let hapticHint: String
-    let playbackPosition: String
-    let musicHint: String
-    let music: String
-    let captures: String
-    let newTrack: String
-    let customizeTools: String
-    let switchSection: String
-    let sectionsTitle: String
-    let searchSections: String
-    let sectionKeyboardHint: String
-    let quickAccessLeft: String
-    let quickAccessRight: String
-    let translucentBackground: String
-    let translucentBackgroundHint: String
-    let translucentBackgroundGlassHint: String
+package struct NotchStrings {
+    package let title: String
+    package let combineActivities: String
+    package let enable: String
+    package let description: String
+    package let menuBarAccessHint: String
+    package let display: String
+    package let automatic: String
+    package let builtIn: String
+    package let mainDisplay: String
+    package let followPointer: String
+    package let allDisplays: String
+    package let hover: String
+    package let modules: String
+    package let events: String
+    package let clipboardActivity: String
+    package let captureActivity: String
+    package let privacy: String
+    package let open: String
+    package let collapse: String
+    package let pin: String
+    package let unpin: String
+    package let panel: String
+    package let dropHint: String
+    package let empty: String
+    package let volume: String
+    package let brightness: String
+    package let battery: String
+    package let onBattery: String
+    package let charging: String
+    package let charged: String
+    package let lowBattery: String
+    package let controls: String
+    package let system: String
+    package let disabled: String
+    package let files: String
+    package let hideInFullscreen: String
+    package let showInCaptures: String
+    package let clipboardWindow: String
+    package let tools: String
+    package let size: String
+    package let showOutline: String
+    package let compact: String
+    package let spacious: String
+    package let hoverExpand: String
+    package let shelfWindow: String
+    package let dragReveal: String
+    package let captureControls: String
+    package let quickPanel: String
+    package let appPanel: String
+    package let idleContent: String
+    package let idleNone: String
+    package let coverMenus: String
+    package let coverMenusHint: String
+    package let controlShortcuts: String
+    package let activity: String
+    package let playingMusic: String
+    package let custom: String
+    package let width: String
+    package let maximumHeight: String
+    package let sizeHint: String
+    package let cameraFit: String
+    package let height: String
+    package let cameraFitHint: String
+    package let withoutNotch: String
+    package let capsuleShape: String
+    package let notchShape: String
+    package let capsuleFit: String
+    package let fromTop: String
+    package let capsuleFitHint: String
+    package let hapticFeedback: String
+    package let hapticHint: String
+    package let playbackPosition: String
+    package let musicHint: String
+    package let music: String
+    package let captures: String
+    package let newTrack: String
+    package let customizeTools: String
+    package let switchSection: String
+    package let sectionsTitle: String
+    package let searchSections: String
+    package let sectionKeyboardHint: String
+    package let quickAccessLeft: String
+    package let quickAccessRight: String
+    package let translucentBackground: String
+    package let translucentBackgroundHint: String
+    package let translucentBackgroundGlassHint: String
 }
 
 extension FeatureStrings {
-    static func notch(_ language: AppLanguage) -> NotchStrings {
+    package static func notch(_ language: AppLanguage) -> NotchStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -115,7 +115,7 @@ extension FeatureStrings {
 }
 
 extension NotchStrings {
-    static let enUS = NotchStrings(
+    package static let enUS = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Combine",
         enable: "Enable Dynamic Island",
@@ -204,7 +204,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass is on, so Dynamic Island uses it instead."
     )
 
-    static let ptBR = NotchStrings(
+    package static let ptBR = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Combinar",
         enable: "Ativar Dynamic Island",
@@ -293,7 +293,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "O Liquid Glass está ativado, então a Dynamic Island o usa no lugar."
     )
 
-    static let es = NotchStrings(
+    package static let es = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Combinar",
         enable: "Activar Dynamic Island",
@@ -382,7 +382,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass está activado, así que Dynamic Island lo usa en su lugar."
     )
 
-    static let sk = NotchStrings(
+    package static let sk = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Kombinovať",
         enable: "Zapnúť Dynamic Island",
@@ -471,7 +471,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass je zapnuté, preto ho Dynamic Island používa namiesto systémového materiálu."
     )
 
-    static let de = NotchStrings(
+    package static let de = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Kombinieren",
         enable: "Dynamic Island aktivieren",
@@ -560,7 +560,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass ist aktiv, daher verwendet Dynamic Island stattdessen Liquid Glass."
     )
 
-    static let fr = NotchStrings(
+    package static let fr = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Combiner",
         enable: "Activer Dynamic Island",
@@ -649,7 +649,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass est activé, Dynamic Island l’utilise donc à la place."
     )
 
-    static let it = NotchStrings(
+    package static let it = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Combina",
         enable: "Attiva Dynamic Island",
@@ -738,7 +738,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass è attivo, quindi Dynamic Island usa quello."
     )
 
-    static let ru = NotchStrings(
+    package static let ru = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Объединить",
         enable: "Включить Dynamic Island",
@@ -827,7 +827,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Включено Liquid Glass, поэтому Dynamic Island использует его."
     )
 
-    static let tr = NotchStrings(
+    package static let tr = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Birleştir",
         enable: "Dynamic Island’u etkinleştir",
@@ -916,7 +916,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass açık olduğundan Dynamic Island onu kullanır."
     )
 
-    static let ja = NotchStrings(
+    package static let ja = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "組み合わせる",
         enable: "Dynamic Islandを有効にする",
@@ -1005,7 +1005,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass がオンのため、Dynamic Island はそちらを使います。"
     )
 
-    static let ko = NotchStrings(
+    package static let ko = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "함께 표시",
         enable: "Dynamic Island 활성화",
@@ -1094,7 +1094,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass가 켜져 있어 Dynamic Island가 대신 사용합니다."
     )
 
-    static let zhHans = NotchStrings(
+    package static let zhHans = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "组合显示",
         enable: "启用Dynamic Island",
@@ -1183,7 +1183,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass 已开启，Dynamic Island 将改用 Liquid Glass。"
     )
 
-    static let zhTW = NotchStrings(
+    package static let zhTW = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "組合顯示",
         enable: "啟用Dynamic Island",
@@ -1272,7 +1272,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass 已開啟，Dynamic Island 會改用 Liquid Glass。"
     )
 
-    static let zhHK = NotchStrings(
+    package static let zhHK = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "組合顯示",
         enable: "啟用Dynamic Island",
@@ -1361,7 +1361,7 @@ extension NotchStrings {
         translucentBackgroundGlassHint: "Liquid Glass 已開啟，Dynamic Island 會改用 Liquid Glass。"
     )
 
-    static let uk = NotchStrings(
+    package static let uk = NotchStrings(
         title: "Dynamic Island",
         combineActivities: "Поєднати",
         enable: "Увімкнути Dynamic Island",

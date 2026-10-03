@@ -3,6 +3,7 @@
 
 import AppKit
 import QuartzCore
+import VitruvianCore
 
 /// The small pill that shows recording time and keeps pause and stop reachable.
 ///

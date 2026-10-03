@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Progress saved by one launch and picked up by the next must leave the
 /// store exactly as reading every log from its start would.

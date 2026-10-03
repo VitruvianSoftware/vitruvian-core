@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Pure decision logic for the junk cleaner, kept free of AppKit and the file
 /// system so the unit tests can pin every safety rule.

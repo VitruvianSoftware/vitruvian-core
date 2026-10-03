@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// The "Monitor" settings page: pick what shows next to the menu bar icon, how
 /// it looks and how often it refreshes, which blocks appear in the panel, when

@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import Combine
 import IOKit
+import VitruvianCore
 
 /// Watches macOS Secure Event Input and reports who holds it.
 ///

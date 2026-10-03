@@ -7,6 +7,7 @@ import Darwin
 import ImageIO
 import UniformTypeIdentifiers
 import Vision
+import VitruvianCore
 
 struct MediaVideoOptions: Equatable {
     var start: Double

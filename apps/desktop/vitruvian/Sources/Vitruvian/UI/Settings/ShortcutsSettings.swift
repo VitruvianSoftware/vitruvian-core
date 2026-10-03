@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The central editor for every global shortcut belonging to an installed
 /// feature. It writes the same preferences as each feature page, so there is

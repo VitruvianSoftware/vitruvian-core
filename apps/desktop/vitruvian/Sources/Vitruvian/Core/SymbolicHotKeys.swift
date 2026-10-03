@@ -4,6 +4,7 @@
 import CoreGraphics
 import Darwin
 import Foundation
+import VitruvianCore
 
 /// One row of the WindowServer's symbolic hotkey table as it stands right now.
 struct LiveSystemShortcut: Equatable {

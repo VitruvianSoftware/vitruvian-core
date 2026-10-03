@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import VitruvianCore
 
 enum RecordingShareError: Error {
     case invalidArtifact

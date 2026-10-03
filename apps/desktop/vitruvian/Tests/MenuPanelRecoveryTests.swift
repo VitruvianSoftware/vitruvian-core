@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import VitruvianCore
 
 private typealias PanelRecoveryPolicy = StatusItemAnchorSupport
 

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The "apps this feature treats differently" block four Settings pages carry:
 /// a disclosure row with a count, one line per app with its icon and a minus

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Production rule mutations and scan completion, with isolated preferences and
 /// counters in place of scanning, scheduling and notifications.

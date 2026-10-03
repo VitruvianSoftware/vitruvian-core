@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The handoff a timed session makes when it runs out is extracted from
 /// production. It is the one place that decides whether a session the user

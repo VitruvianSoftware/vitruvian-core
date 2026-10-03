@@ -4,6 +4,7 @@
 import Combine
 import Darwin
 import Foundation
+import VitruvianCore
 
 final class HomebrewManager: ObservableObject {
     static let shared = HomebrewManager()

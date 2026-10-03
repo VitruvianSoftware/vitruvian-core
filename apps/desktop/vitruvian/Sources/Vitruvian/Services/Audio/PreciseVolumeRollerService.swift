@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+import VitruvianCore
 
 /// Turns coarse hardware volume wheel bursts into macOS' fine volume step.
 /// Active only while enabled and Accessibility is granted.

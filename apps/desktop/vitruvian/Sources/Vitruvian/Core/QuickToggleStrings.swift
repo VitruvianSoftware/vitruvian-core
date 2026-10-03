@@ -6,36 +6,36 @@ import Foundation
 /// Strings for the quick toggles tab. Same contract as the other
 /// FeatureStrings structs: memberwise init in declaration order, one static
 /// per language, all in this file.
-struct QuickToggleFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let panelCaption: String
-    let darkModeToDark: String
-    let darkModeToLight: String
-    let darkModeCaption: String
-    let emptyTrashTitle: String
-    let emptyTrashCaption: String
-    let emptyTrashConfirmTitle: String
-    let emptyTrashConfirmMessage: String
-    let emptyTrashConfirmButton: String
-    let ejectTitle: String
-    let ejectCaption: String
-    let hiddenFilesShow: String
-    let hiddenFilesHide: String
-    let desktopIconsHide: String
-    let desktopIconsShow: String
-    let finderRestartCaption: String
-    let lockScreenTitle: String
-    let lockScreenCaption: String
-    let displayOffTitle: String
-    let displayOffCaption: String
-    let screenSaverTitle: String
-    let screenSaverCaption: String
-    let actionFailed: String
+package struct QuickToggleFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let panelCaption: String
+    package let darkModeToDark: String
+    package let darkModeToLight: String
+    package let darkModeCaption: String
+    package let emptyTrashTitle: String
+    package let emptyTrashCaption: String
+    package let emptyTrashConfirmTitle: String
+    package let emptyTrashConfirmMessage: String
+    package let emptyTrashConfirmButton: String
+    package let ejectTitle: String
+    package let ejectCaption: String
+    package let hiddenFilesShow: String
+    package let hiddenFilesHide: String
+    package let desktopIconsHide: String
+    package let desktopIconsShow: String
+    package let finderRestartCaption: String
+    package let lockScreenTitle: String
+    package let lockScreenCaption: String
+    package let displayOffTitle: String
+    package let displayOffCaption: String
+    package let screenSaverTitle: String
+    package let screenSaverCaption: String
+    package let actionFailed: String
 }
 
 extension FeatureStrings {
-    static func quickToggles(_ language: AppLanguage) -> QuickToggleFeatureStrings {
+    package static func quickToggles(_ language: AppLanguage) -> QuickToggleFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -57,7 +57,7 @@ extension FeatureStrings {
 }
 
 extension QuickToggleFeatureStrings {
-    static let enUS = QuickToggleFeatureStrings(
+    package static let enUS = QuickToggleFeatureStrings(
         pageTitle: "Quick toggles",
         hubDescription: "One-click actions like dark mode and Trash",
         panelCaption: "One-click system actions in the menu bar panel and in the quick panel.",
@@ -85,7 +85,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Could not complete."
     )
 
-    static let ptBR = QuickToggleFeatureStrings(
+    package static let ptBR = QuickToggleFeatureStrings(
         pageTitle: "Ações rápidas",
         hubDescription: "Ações de um clique como modo escuro e Lixeira",
         panelCaption: "Ações do sistema com um clique no painel da barra de menus e no quick panel.",
@@ -113,7 +113,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Não foi possível concluir."
     )
 
-    static let tr = QuickToggleFeatureStrings(
+    package static let tr = QuickToggleFeatureStrings(
         pageTitle: "Hızlı eylemler",
         hubDescription: "Karanlık mod ve Çöp Sepeti gibi tek tıklık eylemler",
         panelCaption: "Menü çubuğu panelinde ve hızlı panelde tek tıkla sistem eylemleri.",
@@ -141,7 +141,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Tamamlanamadı."
     )
 
-    static let ru = QuickToggleFeatureStrings(
+    package static let ru = QuickToggleFeatureStrings(
         pageTitle: "Быстрые действия",
         hubDescription: "Действия в один клик: тёмный режим, Корзина и другие",
         panelCaption: "Системные действия в один клик в панели строки меню и в быстрой панели.",
@@ -169,7 +169,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Не удалось выполнить."
     )
 
-    static let es = QuickToggleFeatureStrings(
+    package static let es = QuickToggleFeatureStrings(
         pageTitle: "Acciones rápidas",
         hubDescription: "Acciones de un clic como modo oscuro y Papelera",
         panelCaption: "Acciones del sistema con un clic en el panel de la barra de menús y en el panel rápido.",
@@ -197,7 +197,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "No se pudo completar."
     )
 
-    static let sk = QuickToggleFeatureStrings(
+    package static let sk = QuickToggleFeatureStrings(
         pageTitle: "Rýchle prepínače",
         hubDescription: "Akcie na jeden klik, ako tmavý režim a Kôš",
         panelCaption: "Systémové akcie na jeden klik v paneli v lište a v rýchlom paneli.",
@@ -225,7 +225,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Nepodarilo sa dokončiť."
     )
 
-    static let de = QuickToggleFeatureStrings(
+    package static let de = QuickToggleFeatureStrings(
         pageTitle: "Schnellaktionen",
         hubDescription: "Aktionen mit einem Klick wie Dunkelmodus und Papierkorb",
         panelCaption: "Systemaktionen mit einem Klick im Menüleistenpanel und im Schnellpanel.",
@@ -253,7 +253,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Konnte nicht abgeschlossen werden."
     )
 
-    static let fr = QuickToggleFeatureStrings(
+    package static let fr = QuickToggleFeatureStrings(
         pageTitle: "Actions rapides",
         hubDescription: "Actions en un clic comme le mode sombre et la Corbeille",
         panelCaption: "Actions système en un clic dans le panneau de la barre des menus et dans le panneau rapide.",
@@ -281,7 +281,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Impossible de terminer."
     )
 
-    static let it = QuickToggleFeatureStrings(
+    package static let it = QuickToggleFeatureStrings(
         pageTitle: "Azioni rapide",
         hubDescription: "Azioni con un clic come modalità scura e Cestino",
         panelCaption: "Azioni di sistema con un clic nel pannello della barra dei menu e nel pannello rapido.",
@@ -309,7 +309,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "Impossibile completare."
     )
 
-    static let ja = QuickToggleFeatureStrings(
+    package static let ja = QuickToggleFeatureStrings(
         pageTitle: "クイックアクション",
         hubDescription: "ダークモードやゴミ箱などのワンクリック操作",
         panelCaption: "メニューバーパネルとクイックパネルで使えるワンクリックのシステム操作です。",
@@ -337,7 +337,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "完了できませんでした。"
     )
 
-    static let ko = QuickToggleFeatureStrings(
+    package static let ko = QuickToggleFeatureStrings(
         pageTitle: "빠른 동작",
         hubDescription: "다크 모드, 휴지통 등 클릭 한 번의 동작",
         panelCaption: "메뉴 막대 패널과 퀵 패널에서 클릭 한 번으로 실행하는 시스템 동작입니다.",
@@ -365,7 +365,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "완료할 수 없습니다."
     )
 
-    static let zhHans = QuickToggleFeatureStrings(
+    package static let zhHans = QuickToggleFeatureStrings(
         pageTitle: "快捷操作",
         hubDescription: "深色模式、废纸篓等一键操作",
         panelCaption: "在菜单栏面板和快捷面板中一键执行的系统操作。",
@@ -393,7 +393,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "无法完成。"
     )
 
-    static let zhTW = QuickToggleFeatureStrings(
+    package static let zhTW = QuickToggleFeatureStrings(
         pageTitle: "快速動作",
         hubDescription: "深色模式、垃圾桶等一鍵動作",
         panelCaption: "在選單列面板和快速面板中一鍵執行的系統動作。",
@@ -421,7 +421,7 @@ extension QuickToggleFeatureStrings {
         actionFailed: "無法完成。"
     )
 
-    static let zhHK = QuickToggleFeatureStrings(
+    package static let zhHK = QuickToggleFeatureStrings(
         pageTitle: "快速動作",
         hubDescription: "深色模式、垃圾桶等一鍵動作",
         panelCaption: "在選單列面板和快速面板中一鍵執行的系統動作。",
@@ -448,7 +448,7 @@ extension QuickToggleFeatureStrings {
         screenSaverCaption: "在所有顯示器上立即啟動。",
         actionFailed: "無法完成。"
     )
-    static let uk = QuickToggleFeatureStrings(
+    package static let uk = QuickToggleFeatureStrings(
         pageTitle: "Швидкі перемикачі",
         hubDescription: "Дії в один клік, як-от темний режим і Смітник",
         panelCaption: "Системні дії в один клік у панелі на смузі меню та в швидкій панелі.",

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The coding agents whose session logs the island reads. Their names are
 /// product names and stay untranslated.

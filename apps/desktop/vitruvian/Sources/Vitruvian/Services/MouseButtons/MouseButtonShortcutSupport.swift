@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The pure half of the mouse button shortcuts feature: which buttons can
 /// carry a shortcut, how the mappings persist and who owns a button when two

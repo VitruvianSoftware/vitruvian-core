@@ -4,6 +4,7 @@
 import AVFoundation
 import AppKit
 import CoreMedia
+import VitruvianCore
 
 /// The two choices shown while the area is being picked. They write through to
 /// preferences immediately, so the selection and Settings always start alike.

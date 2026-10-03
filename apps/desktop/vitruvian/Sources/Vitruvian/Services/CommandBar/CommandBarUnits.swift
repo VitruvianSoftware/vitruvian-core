@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Unit conversion for the command bar: "100 km to mi", "20c to f",
 /// "5 gb to mb". Foundation does the arithmetic and writes the result in the

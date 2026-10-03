@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The portable part of the app's settings: what a backup file carries and
 /// how an incoming file is validated. Pure logic so the harness can pin down

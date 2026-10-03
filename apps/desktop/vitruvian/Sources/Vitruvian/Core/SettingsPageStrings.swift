@@ -5,21 +5,21 @@ import Foundation
 
 /// The one-line description under a redesigned Settings page's title, for
 /// pages whose own string catalog has no room for it.
-struct SettingsPageStrings {
-    let energyDescription: String
-    let monitorDescription: String
-    let mouseDescription: String
-    let switcherDescription: String
-    let dockTitle: String
-    let dockDescription: String
-    let switcherLayoutWindows: String
-    let switcherLayoutWindowsCaption: String
-    let switcherLayoutIcons: String
-    let switcherLayoutSimple: String
+package struct SettingsPageStrings {
+    package let energyDescription: String
+    package let monitorDescription: String
+    package let mouseDescription: String
+    package let switcherDescription: String
+    package let dockTitle: String
+    package let dockDescription: String
+    package let switcherLayoutWindows: String
+    package let switcherLayoutWindowsCaption: String
+    package let switcherLayoutIcons: String
+    package let switcherLayoutSimple: String
 }
 
 extension FeatureStrings {
-    static func settingsPages(_ language: AppLanguage) -> SettingsPageStrings {
+    package static func settingsPages(_ language: AppLanguage) -> SettingsPageStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -41,7 +41,7 @@ extension FeatureStrings {
 }
 
 extension SettingsPageStrings {
-    static let uk = SettingsPageStrings(
+    package static let uk = SettingsPageStrings(
         energyDescription: "Не давайте Mac заснути, керуйте екранами та заощаджуйте заряд акумулятора.",
         monitorDescription: "Що смуга меню й панель показують про Mac та коли попереджати вас.",
         mouseDescription: "Дайте колесу, боковим кнопкам і трекпеду нові функції.",
@@ -54,7 +54,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Простий список"
     )
 
-    static let enUS = SettingsPageStrings(
+    package static let enUS = SettingsPageStrings(
         energyDescription: "Keep the Mac awake, control your displays and save battery.",
         monitorDescription: "What the menu bar and the panel show about your Mac, and when to warn you.",
         mouseDescription: "Give the wheel, the side buttons and the trackpad new jobs.",
@@ -67,7 +67,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Simple list"
     )
 
-    static let ptBR = SettingsPageStrings(
+    package static let ptBR = SettingsPageStrings(
         energyDescription: "Mantenha o Mac acordado, controle suas telas e economize bateria.",
         monitorDescription: "O que a barra de menus e o painel mostram sobre o Mac, e quando avisar você.",
         mouseDescription: "Dê novas funções à rodinha, aos botões laterais e ao trackpad.",
@@ -80,7 +80,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Lista simples"
     )
 
-    static let tr = SettingsPageStrings(
+    package static let tr = SettingsPageStrings(
         energyDescription: "Mac’i uyanık tutun, ekranlarınızı yönetin ve pil tasarrufu yapın.",
         monitorDescription: "Menü çubuğu ve panelin Mac hakkında neler gösterdiği ve sizi ne zaman uyaracağı.",
         mouseDescription: "Tekerleğe, yan tuşlara ve izleme dörtgenine yeni görevler verin.",
@@ -93,7 +93,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Basit liste"
     )
 
-    static let ru = SettingsPageStrings(
+    package static let ru = SettingsPageStrings(
         energyDescription: "Не давайте Mac уснуть, управляйте экранами и берегите батарею.",
         monitorDescription: "Что строка меню и панель показывают о Mac и когда вас предупреждать.",
         mouseDescription: "Дайте колёсику, боковым кнопкам и трекпаду новые задачи.",
@@ -106,7 +106,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Простой список"
     )
 
-    static let es = SettingsPageStrings(
+    package static let es = SettingsPageStrings(
         energyDescription: "Mantén el Mac despierto, controla tus pantallas y ahorra batería.",
         monitorDescription: "Qué muestran la barra de menús y el panel sobre el Mac, y cuándo avisarte.",
         mouseDescription: "Dale nuevas funciones a la rueda, a los botones laterales y al trackpad.",
@@ -119,7 +119,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Lista simple"
     )
 
-    static let sk = SettingsPageStrings(
+    package static let sk = SettingsPageStrings(
         energyDescription: "Udržujte Mac v bdelom stave, ovládajte svoje displeje a šetrite batériu.",
         monitorDescription: "Čo lišta a panel zobrazujú o vašom Macu a kedy vás upozorniť.",
         mouseDescription: "Priraďte koliesku, bočným tlačidlám a trackpadu nové úlohy.",
@@ -132,7 +132,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Jednoduchý zoznam"
     )
 
-    static let de = SettingsPageStrings(
+    package static let de = SettingsPageStrings(
         energyDescription: "Halte den Mac wach, steuere deine Bildschirme und spare Batterie.",
         monitorDescription: "Was Menüleiste und Panel über den Mac zeigen und wann du gewarnt wirst.",
         mouseDescription: "Gib dem Scrollrad, den Seitentasten und dem Trackpad neue Aufgaben.",
@@ -145,7 +145,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Einfache Liste"
     )
 
-    static let fr = SettingsPageStrings(
+    package static let fr = SettingsPageStrings(
         energyDescription: "Gardez le Mac éveillé, réglez vos écrans et économisez la batterie.",
         monitorDescription: "Ce que la barre des menus et le panneau montrent du Mac, et quand vous prévenir.",
         mouseDescription: "Donnez de nouveaux rôles à la molette, aux boutons latéraux et au trackpad.",
@@ -158,7 +158,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Liste simple"
     )
 
-    static let it = SettingsPageStrings(
+    package static let it = SettingsPageStrings(
         energyDescription: "Tieni il Mac sveglio, controlla i tuoi schermi e risparmia batteria.",
         monitorDescription: "Cosa mostrano la barra dei menu e il pannello sul Mac, e quando avvisarti.",
         mouseDescription: "Assegna nuovi compiti alla rotellina, ai tasti laterali e al trackpad.",
@@ -171,7 +171,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "Elenco semplice"
     )
 
-    static let ja = SettingsPageStrings(
+    package static let ja = SettingsPageStrings(
         energyDescription: "Mac をスリープさせず、ディスプレイを調整し、バッテリーを節約します。",
         monitorDescription: "メニューバーとパネルに Mac の何を表示するか、いつ知らせるか。",
         mouseDescription: "ホイール、サイドボタン、トラックパッドに新しい役割を。",
@@ -184,7 +184,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "シンプルなリスト"
     )
 
-    static let ko = SettingsPageStrings(
+    package static let ko = SettingsPageStrings(
         energyDescription: "Mac을 깨어 있게 하고, 화면을 조절하고, 배터리를 아끼세요.",
         monitorDescription: "메뉴 막대와 패널에 Mac의 무엇을 표시할지, 언제 알릴지.",
         mouseDescription: "휠, 사이드 버튼, 트랙패드에 새 역할을 맡기세요.",
@@ -197,7 +197,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "간단한 목록"
     )
 
-    static let zhHans = SettingsPageStrings(
+    package static let zhHans = SettingsPageStrings(
         energyDescription: "让 Mac 保持唤醒、调节显示器并节省电量。",
         monitorDescription: "菜单栏和面板显示 Mac 的哪些信息，以及何时提醒你。",
         mouseDescription: "让滚轮、侧键和触控板承担新的任务。",
@@ -210,7 +210,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "简单列表"
     )
 
-    static let zhTW = SettingsPageStrings(
+    package static let zhTW = SettingsPageStrings(
         energyDescription: "讓 Mac 保持喚醒、調整顯示器並節省電量。",
         monitorDescription: "選單列和面板顯示 Mac 的哪些資訊，以及何時提醒你。",
         mouseDescription: "讓滾輪、側鍵和觸控板承擔新的任務。",
@@ -223,7 +223,7 @@ extension SettingsPageStrings {
         switcherLayoutSimple: "簡單列表"
     )
 
-    static let zhHK = SettingsPageStrings(
+    package static let zhHK = SettingsPageStrings(
         energyDescription: "讓 Mac 保持喚醒、調整顯示器並節省電量。",
         monitorDescription: "選單列和面板顯示 Mac 的哪些資訊，以及何時提醒你。",
         mouseDescription: "讓滾輪、側鍵和觸控板承擔新的任務。",

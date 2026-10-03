@@ -4,147 +4,147 @@
 import Foundation
 
 /// Localized strings for the screen recorder.
-struct RecorderFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let panelCaption: String
-    let startButton: String
-    let stopButton: String
-    let fileNamePrefix: String
-    let selectionPurpose: String
-    let indicatorTooltip: String
-    let countdownLabel: String
-    let countdownOff: String
-    let countdownSecondsFormat: String
-    let qualityLabel: String
-    let qualitySmall: String
-    let qualityBalanced: String
-    let qualityHigh: String
-    let qualityCaption: String
-    let frameRateLabel: String
-    let frameRateFormat: String
-    let systemAudioToggle: String
-    let systemAudioCaption: String
-    let folderLabel: String
-    let folderChoose: String
-    let moreOptions: String
-    let copyButton: String
-    let copyGIFButton: String
-    let saveButton: String
-    let discardButton: String
-    let copiedHUD: String
-    let savedHUDFormat: String
-    let recordFailed: String
-    let noSpaceTitle: String
-    let noSpaceMessage: String
-    let stoppedNoSpaceHUD: String
-    let shortcutLabel: String
-    let editorTitle: String
-    let saveVideoButton: String
-    let saveGIFButton: String
-    let exportingLabel: String
-    let cancelButton: String
-    let exportFailed: String
-    let gifTooLongFormat: String
-    let gifSizeLabel: String
-    let gifSizeSmall: String
-    let gifSizeMedium: String
-    let gifSizeLarge: String
-    let gifFrameRateLabel: String
-    let discardTitle: String
-    let discardMessage: String
-    let openEditorToggle: String
-    let openEditorCaption: String
-    let lookLabel: String
-    let lookRaw: String
-    let lookClean: String
-    let lookStudio: String
-    let lookCaption: String
-    let pointerSectionLabel: String
-    let pointerShowToggle: String
-    let pointerSmoothingLabel: String
-    let pointerSmoothingOff: String
-    let pointerSmoothingLight: String
-    let pointerSmoothingSmooth: String
-    let pointerSmoothingCinematic: String
-    let pointerSizeLabel: String
-    let clickRingToggle: String
-    let zoomSectionLabel: String
-    let zoomToggle: String
-    let zoomAmountLabel: String
-    let backgroundSectionLabel: String
-    let shapeLabel: String
-    let shapeOriginal: String
-    let shapeWide: String
-    let shapeSquare: String
-    let shapeVertical: String
-    let noPointerNote: String
-    let zoomLaneEmptyHint: String
-    let addZoomButton: String
-    let removeZoom: String
-    let thisZoomLabel: String
-    let zoomWhereLabel: String
-    let zoomFollowsPointer: String
-    let zoomPickSpot: String
-    let zoomPickSpotHint: String
-    let regenerateZooms: String
-    let backToOptions: String
-    let cutOutButton: String
-    let cutHint: String
-    let addTextButton: String
-    let textLaneEmptyHint: String
-    let thisTextLabel: String
-    let textPlaceholder: String
-    let textContentLabel: String
-    let textSizeLabel: String
-    let textPositionLabel: String
-    let textColorLabel: String
-    let removeText: String
-    let copyAndDeleteButton: String
-    let saveAsButton: String
-    let discardSavedMessage: String
-    let presetsButton: String
-    let savePreset: String
-    let presetNamePlaceholder: String
-    let removePreset: String
-    let zoomEmptyTitle: String
-    let zoomEmptyCaption: String
-    let createAutomaticZooms: String
-    let typingZoomToggle: String
-    let typingZoomCaption: String
-    let microphoneToggle: String
-    let microphoneCaption: String
-    let systemAudioTrackLabel: String
-    let microphoneTrackLabel: String
-    let audioVolumeLabel: String
-    let removeAudio: String
-    let restoreAudio: String
-    let microphoneUnavailableHUD: String
-    let microphonePermissionName: String
-    let microphonePermissionExplain: String
-    let automaticZoomToggle: String
-    let automaticZoomCaption: String
-    let pauseButton: String
-    let resumeButton: String
-    let blurLaneLabel: String
-    let addBlurButton: String
-    let blurLaneEmptyHint: String
-    let thisBlurLabel: String
-    let blurPickArea: String
-    let blurPickAreaHint: String
-    let blurCaption: String
-    let addImageButton: String
-    let imageLaneLabel: String
-    let imageLaneEmptyHint: String
-    let thisImageLabel: String
-    let imageSizeLabel: String
-    let imageOpacityLabel: String
-    let imagePositionLabel: String
-    let imageImportFailed: String
+package struct RecorderFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let panelCaption: String
+    package let startButton: String
+    package let stopButton: String
+    package let fileNamePrefix: String
+    package let selectionPurpose: String
+    package let indicatorTooltip: String
+    package let countdownLabel: String
+    package let countdownOff: String
+    package let countdownSecondsFormat: String
+    package let qualityLabel: String
+    package let qualitySmall: String
+    package let qualityBalanced: String
+    package let qualityHigh: String
+    package let qualityCaption: String
+    package let frameRateLabel: String
+    package let frameRateFormat: String
+    package let systemAudioToggle: String
+    package let systemAudioCaption: String
+    package let folderLabel: String
+    package let folderChoose: String
+    package let moreOptions: String
+    package let copyButton: String
+    package let copyGIFButton: String
+    package let saveButton: String
+    package let discardButton: String
+    package let copiedHUD: String
+    package let savedHUDFormat: String
+    package let recordFailed: String
+    package let noSpaceTitle: String
+    package let noSpaceMessage: String
+    package let stoppedNoSpaceHUD: String
+    package let shortcutLabel: String
+    package let editorTitle: String
+    package let saveVideoButton: String
+    package let saveGIFButton: String
+    package let exportingLabel: String
+    package let cancelButton: String
+    package let exportFailed: String
+    package let gifTooLongFormat: String
+    package let gifSizeLabel: String
+    package let gifSizeSmall: String
+    package let gifSizeMedium: String
+    package let gifSizeLarge: String
+    package let gifFrameRateLabel: String
+    package let discardTitle: String
+    package let discardMessage: String
+    package let openEditorToggle: String
+    package let openEditorCaption: String
+    package let lookLabel: String
+    package let lookRaw: String
+    package let lookClean: String
+    package let lookStudio: String
+    package let lookCaption: String
+    package let pointerSectionLabel: String
+    package let pointerShowToggle: String
+    package let pointerSmoothingLabel: String
+    package let pointerSmoothingOff: String
+    package let pointerSmoothingLight: String
+    package let pointerSmoothingSmooth: String
+    package let pointerSmoothingCinematic: String
+    package let pointerSizeLabel: String
+    package let clickRingToggle: String
+    package let zoomSectionLabel: String
+    package let zoomToggle: String
+    package let zoomAmountLabel: String
+    package let backgroundSectionLabel: String
+    package let shapeLabel: String
+    package let shapeOriginal: String
+    package let shapeWide: String
+    package let shapeSquare: String
+    package let shapeVertical: String
+    package let noPointerNote: String
+    package let zoomLaneEmptyHint: String
+    package let addZoomButton: String
+    package let removeZoom: String
+    package let thisZoomLabel: String
+    package let zoomWhereLabel: String
+    package let zoomFollowsPointer: String
+    package let zoomPickSpot: String
+    package let zoomPickSpotHint: String
+    package let regenerateZooms: String
+    package let backToOptions: String
+    package let cutOutButton: String
+    package let cutHint: String
+    package let addTextButton: String
+    package let textLaneEmptyHint: String
+    package let thisTextLabel: String
+    package let textPlaceholder: String
+    package let textContentLabel: String
+    package let textSizeLabel: String
+    package let textPositionLabel: String
+    package let textColorLabel: String
+    package let removeText: String
+    package let copyAndDeleteButton: String
+    package let saveAsButton: String
+    package let discardSavedMessage: String
+    package let presetsButton: String
+    package let savePreset: String
+    package let presetNamePlaceholder: String
+    package let removePreset: String
+    package let zoomEmptyTitle: String
+    package let zoomEmptyCaption: String
+    package let createAutomaticZooms: String
+    package let typingZoomToggle: String
+    package let typingZoomCaption: String
+    package let microphoneToggle: String
+    package let microphoneCaption: String
+    package let systemAudioTrackLabel: String
+    package let microphoneTrackLabel: String
+    package let audioVolumeLabel: String
+    package let removeAudio: String
+    package let restoreAudio: String
+    package let microphoneUnavailableHUD: String
+    package let microphonePermissionName: String
+    package let microphonePermissionExplain: String
+    package let automaticZoomToggle: String
+    package let automaticZoomCaption: String
+    package let pauseButton: String
+    package let resumeButton: String
+    package let blurLaneLabel: String
+    package let addBlurButton: String
+    package let blurLaneEmptyHint: String
+    package let thisBlurLabel: String
+    package let blurPickArea: String
+    package let blurPickAreaHint: String
+    package let blurCaption: String
+    package let addImageButton: String
+    package let imageLaneLabel: String
+    package let imageLaneEmptyHint: String
+    package let thisImageLabel: String
+    package let imageSizeLabel: String
+    package let imageOpacityLabel: String
+    package let imagePositionLabel: String
+    package let imageImportFailed: String
 }
 
 extension FeatureStrings {
-    static func recorder(_ language: AppLanguage) -> RecorderFeatureStrings {
+    package static func recorder(_ language: AppLanguage) -> RecorderFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -166,7 +166,7 @@ extension FeatureStrings {
 }
 
 extension RecorderFeatureStrings {
-    static let enUS = RecorderFeatureStrings(
+    package static let enUS = RecorderFeatureStrings(
         pageTitle: "Screen recording",
         hubDescription: "Records an area, window or screen and edits it afterwards",
         panelCaption: "Record an area, window or the whole screen",
@@ -305,7 +305,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Couldn’t add this image."
     )
 
-    static let ptBR = RecorderFeatureStrings(
+    package static let ptBR = RecorderFeatureStrings(
         pageTitle: "Gravação de tela",
         hubDescription: "Grava uma área, janela ou tela e edita depois",
         panelCaption: "Grave uma área, uma janela ou a tela inteira",
@@ -444,7 +444,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Não foi possível adicionar esta imagem."
     )
 
-    static let tr = RecorderFeatureStrings(
+    package static let tr = RecorderFeatureStrings(
         pageTitle: "Ekran Kaydı",
         hubDescription: "Bir alanı, pencereyi ya da ekranı kaydedip sonradan düzenlemenizi sağlar",
         panelCaption: "Bir alanı, pencereyi ya da tüm ekranı kaydedin",
@@ -583,7 +583,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Bu görsel eklenemedi."
     )
 
-    static let ru = RecorderFeatureStrings(
+    package static let ru = RecorderFeatureStrings(
         pageTitle: "Запись экрана",
         hubDescription: "Записывает область, окно или экран, а потом даёт отредактировать запись",
         panelCaption: "Запишите область, окно или весь экран",
@@ -722,7 +722,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Не удалось добавить это изображение."
     )
 
-    static let es = RecorderFeatureStrings(
+    package static let es = RecorderFeatureStrings(
         pageTitle: "Grabación de pantalla",
         hubDescription: "Graba un área, una ventana o la pantalla, y luego te deja editarla",
         panelCaption: "Graba un área, una ventana o toda la pantalla",
@@ -861,7 +861,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "No se pudo añadir esta imagen."
     )
 
-    static let sk = RecorderFeatureStrings(
+    package static let sk = RecorderFeatureStrings(
         pageTitle: "Nahrávanie obrazovky",
         hubDescription: "Nahráva oblasť, okno alebo obrazovku a potom ju môžete upraviť",
         panelCaption: "Nahrajte oblasť, okno alebo celú obrazovku",
@@ -1000,7 +1000,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Tento obrázok sa nepodarilo pridať."
     )
 
-    static let de = RecorderFeatureStrings(
+    package static let de = RecorderFeatureStrings(
         pageTitle: "Bildschirmaufnahme",
         hubDescription: "Nimmt einen Bereich, ein Fenster oder den Bildschirm auf und bearbeitet die Aufnahme danach",
         panelCaption: "Bereich, Fenster oder den ganzen Bildschirm aufnehmen",
@@ -1139,7 +1139,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Dieses Bild konnte nicht hinzugefügt werden."
     )
 
-    static let fr = RecorderFeatureStrings(
+    package static let fr = RecorderFeatureStrings(
         pageTitle: "Enregistrement de l’écran",
         hubDescription: "Enregistre une zone, une fenêtre ou l’écran, puis permet de retoucher la vidéo",
         panelCaption: "Enregistrez une zone, une fenêtre ou tout l’écran",
@@ -1278,7 +1278,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Impossible d’ajouter cette image."
     )
 
-    static let it = RecorderFeatureStrings(
+    package static let it = RecorderFeatureStrings(
         pageTitle: "Registrazione schermo",
         hubDescription: "Registra un’area, una finestra o lo schermo, e dopo puoi modificare il video",
         panelCaption: "Registra un’area, una finestra o tutto lo schermo",
@@ -1417,7 +1417,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "Impossibile aggiungere questa immagine."
     )
 
-    static let ja = RecorderFeatureStrings(
+    package static let ja = RecorderFeatureStrings(
         pageTitle: "画面収録",
         hubDescription: "範囲やウインドウ、画面を収録して、あとから編集できます",
         panelCaption: "範囲やウインドウ、画面全体を収録します",
@@ -1556,7 +1556,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "この画像を追加できませんでした。"
     )
 
-    static let ko = RecorderFeatureStrings(
+    package static let ko = RecorderFeatureStrings(
         pageTitle: "화면 기록",
         hubDescription: "영역, 윈도우 또는 화면을 기록하고 나중에 편집합니다",
         panelCaption: "영역, 윈도우 또는 전체 화면을 기록합니다",
@@ -1695,7 +1695,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "이 이미지를 추가할 수 없습니다."
     )
 
-    static let zhHans = RecorderFeatureStrings(
+    package static let zhHans = RecorderFeatureStrings(
         pageTitle: "屏幕录制",
         hubDescription: "录制区域、窗口或屏幕，录完还能编辑",
         panelCaption: "录制一块区域、某个窗口或整个屏幕",
@@ -1834,7 +1834,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "无法添加此图片。"
     )
 
-    static let zhTW = RecorderFeatureStrings(
+    package static let zhTW = RecorderFeatureStrings(
         pageTitle: "螢幕錄製",
         hubDescription: "錄製區域、視窗或螢幕，錄完還能編輯",
         panelCaption: "錄製區域、視窗或整個螢幕",
@@ -1973,7 +1973,7 @@ extension RecorderFeatureStrings {
         imageImportFailed: "無法加入這張圖片。"
     )
 
-    static let zhHK = RecorderFeatureStrings(
+    package static let zhHK = RecorderFeatureStrings(
         pageTitle: "螢幕錄製",
         hubDescription: "錄製選取範圍、視窗或螢幕，完成後可再編輯",
         panelCaption: "錄製選取範圍、視窗或整個螢幕",
@@ -2111,7 +2111,7 @@ extension RecorderFeatureStrings {
         imagePositionLabel: "位置",
         imageImportFailed: "無法加入這張圖片。"
     )
-    static let uk = RecorderFeatureStrings(
+    package static let uk = RecorderFeatureStrings(
         pageTitle: "Запис екрана",
         hubDescription: "Записує область, вікно або екран та редагує після",
         panelCaption: "Запишіть область, вікно або весь екран",

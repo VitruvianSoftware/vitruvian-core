@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import ServiceManagement
+import VitruvianCore
 
 final class FanControlService: ObservableObject {
     enum AccessState: Equatable {

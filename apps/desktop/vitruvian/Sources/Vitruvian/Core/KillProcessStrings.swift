@@ -6,41 +6,41 @@ import Foundation
 /// Strings for the Kill Process feature. Same contract as the other
 /// FeatureStrings structs: memberwise init in declaration order, one static
 /// per language, all in this file.
-struct KillProcessFeatureStrings {
-    let pageTitle: String
-    let browseSubtitle: String
-    let hubDescription: String
-    let searchPlaceholder: String
-    let columnProcess: String
-    let columnCPU: String
-    let columnMemory: String
-    let columnPID: String
-    let groupToggle: String
-    let groupCaption: String
-    let commandBarToggle: String
-    let commandBarCaption: String
-    let refreshTooltip: String
-    let pidLabelFormat: String
-    let processCountFormat: String
-    let killButton: String
-    let forceKillButton: String
-    let killAllFormat: String
-    let killTreeButton: String
-    let restartButton: String
-    let copyPID: String
-    let copyPath: String
-    let emptyStateTitle: String
-    let confirmKillFormat: String
-    let confirmForceKillFormat: String
-    let confirmKillAllFormat: String
-    let confirmKillTreeFormat: String
-    let killFailedTitle: String
-    let killFailedMessage: String
-    let adminPromptFormat: String
+package struct KillProcessFeatureStrings {
+    package let pageTitle: String
+    package let browseSubtitle: String
+    package let hubDescription: String
+    package let searchPlaceholder: String
+    package let columnProcess: String
+    package let columnCPU: String
+    package let columnMemory: String
+    package let columnPID: String
+    package let groupToggle: String
+    package let groupCaption: String
+    package let commandBarToggle: String
+    package let commandBarCaption: String
+    package let refreshTooltip: String
+    package let pidLabelFormat: String
+    package let processCountFormat: String
+    package let killButton: String
+    package let forceKillButton: String
+    package let killAllFormat: String
+    package let killTreeButton: String
+    package let restartButton: String
+    package let copyPID: String
+    package let copyPath: String
+    package let emptyStateTitle: String
+    package let confirmKillFormat: String
+    package let confirmForceKillFormat: String
+    package let confirmKillAllFormat: String
+    package let confirmKillTreeFormat: String
+    package let killFailedTitle: String
+    package let killFailedMessage: String
+    package let adminPromptFormat: String
 }
 
 extension FeatureStrings {
-    static func killProcess(_ language: AppLanguage) -> KillProcessFeatureStrings {
+    package static func killProcess(_ language: AppLanguage) -> KillProcessFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -62,7 +62,7 @@ extension FeatureStrings {
 }
 
 extension KillProcessFeatureStrings {
-    static let enUS = KillProcessFeatureStrings(
+    package static let enUS = KillProcessFeatureStrings(
         pageTitle: "Kill Process",
         browseSubtitle: "Browse & Kill",
         hubDescription: "Search running processes and force quit, restart, or kill process trees",
@@ -95,7 +95,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian needs administrator access to end “%@”."
     )
 
-    static let ptBR = KillProcessFeatureStrings(
+    package static let ptBR = KillProcessFeatureStrings(
         pageTitle: "Encerrar Processo",
         browseSubtitle: "Ver e Encerrar",
         hubDescription: "Pesquise processos em execução e force o encerramento, reinicie ou encerre árvores de processos",
@@ -128,7 +128,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "O Vitruvian precisa de acesso de administrador para encerrar “%@”."
     )
 
-    static let tr = KillProcessFeatureStrings(
+    package static let tr = KillProcessFeatureStrings(
         pageTitle: "İşlemi Sonlandır",
         browseSubtitle: "Görüntüle ve Sonlandır",
         hubDescription: "Çalışan işlemleri arayın; zorla kapatın, yeniden başlatın veya işlem ağaçlarını sonlandırın",
@@ -161,7 +161,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian’in “%@” işlemini sonlandırması için yönetici erişimi gerekiyor."
     )
 
-    static let ru = KillProcessFeatureStrings(
+    package static let ru = KillProcessFeatureStrings(
         pageTitle: "Завершить процесс",
         browseSubtitle: "Просмотр и завершение",
         hubDescription: "Поиск запущенных процессов, принудительное завершение, перезапуск или завершение дерева процессов",
@@ -194,7 +194,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian нужны права администратора, чтобы завершить «%@»."
     )
 
-    static let es = KillProcessFeatureStrings(
+    package static let es = KillProcessFeatureStrings(
         pageTitle: "Finalizar Proceso",
         browseSubtitle: "Ver y Finalizar",
         hubDescription: "Busca procesos en ejecución y fuerza su cierre, reinícialos o finaliza árboles de procesos",
@@ -227,7 +227,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian necesita acceso de administrador para finalizar “%@”."
     )
 
-    static let sk = KillProcessFeatureStrings(
+    package static let sk = KillProcessFeatureStrings(
         pageTitle: "Ukončiť proces",
         browseSubtitle: "Prehľadávať a ukončiť",
         hubDescription: "Hľadajte bežiace procesy a vynútene ich ukončite, reštartujte alebo ukončite celé stromy procesov",
@@ -260,7 +260,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian potrebuje prístup správcu na ukončenie „%@“."
     )
 
-    static let de = KillProcessFeatureStrings(
+    package static let de = KillProcessFeatureStrings(
         pageTitle: "Prozess beenden",
         browseSubtitle: "Anzeigen & Beenden",
         hubDescription: "Laufende Prozesse durchsuchen, erzwungen beenden, neu starten oder Prozessbäume beenden",
@@ -293,7 +293,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian benötigt Administratorrechte, um „%@“ zu beenden."
     )
 
-    static let fr = KillProcessFeatureStrings(
+    package static let fr = KillProcessFeatureStrings(
         pageTitle: "Forcer à quitter",
         browseSubtitle: "Parcourir et arrêter",
         hubDescription: "Recherchez les processus en cours et forcez-les à quitter, redémarrez-les ou arrêtez leurs arborescences",
@@ -326,7 +326,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian a besoin d’un accès administrateur pour arrêter «\u{00A0}%@\u{00A0}»."
     )
 
-    static let it = KillProcessFeatureStrings(
+    package static let it = KillProcessFeatureStrings(
         pageTitle: "Termina Processo",
         browseSubtitle: "Sfoglia e Termina",
         hubDescription: "Cerca i processi in esecuzione e forzane l’uscita, riavviali o termina intere alberature di processi",
@@ -359,7 +359,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian richiede l’accesso da amministratore per terminare “%@”."
     )
 
-    static let ja = KillProcessFeatureStrings(
+    package static let ja = KillProcessFeatureStrings(
         pageTitle: "プロセスを強制終了",
         browseSubtitle: "表示して終了",
         hubDescription: "実行中のプロセスを検索し、強制終了、再起動、プロセスツリーの終了ができます",
@@ -392,7 +392,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "「%@」を終了するには管理者アクセスが必要です。"
     )
 
-    static let ko = KillProcessFeatureStrings(
+    package static let ko = KillProcessFeatureStrings(
         pageTitle: "프로세스 종료",
         browseSubtitle: "보기 및 종료",
         hubDescription: "실행 중인 프로세스를 검색하고 강제 종료, 재시작 또는 프로세스 트리 종료를 수행합니다",
@@ -425,7 +425,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "“%@”을(를) 종료하려면 관리자 권한이 필요합니다."
     )
 
-    static let zhHans = KillProcessFeatureStrings(
+    package static let zhHans = KillProcessFeatureStrings(
         pageTitle: "结束进程",
         browseSubtitle: "浏览并结束",
         hubDescription: "搜索正在运行的进程，强制退出、重新启动或结束整个进程树",
@@ -458,7 +458,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian 需要您的管理员密码才能结束“%@”。"
     )
 
-    static let zhTW = KillProcessFeatureStrings(
+    package static let zhTW = KillProcessFeatureStrings(
         pageTitle: "結束處理程序",
         browseSubtitle: "瀏覽並結束",
         hubDescription: "搜尋正在執行的處理程序，強制結束、重新啟動或結束整個處理程序樹",
@@ -491,7 +491,7 @@ extension KillProcessFeatureStrings {
         adminPromptFormat: "Vitruvian 需要管理員權限才能結束「%@」。"
     )
 
-    static let zhHK = KillProcessFeatureStrings(
+    package static let zhHK = KillProcessFeatureStrings(
         pageTitle: "結束處理程序",
         browseSubtitle: "瀏覽並結束",
         hubDescription: "搜尋正在執行的處理程序，強制結束、重新啟動或結束整個處理程序樹",
@@ -523,7 +523,7 @@ extension KillProcessFeatureStrings {
         killFailedMessage: "該處理程序可能已經結束，或需要額外的權限。",
         adminPromptFormat: "Vitruvian 需要管理員權限才能結束「%@」。"
     )
-    static let uk = KillProcessFeatureStrings(
+    package static let uk = KillProcessFeatureStrings(
         pageTitle: "Завершити процес",
         browseSubtitle: "Огляд та завершення",
         hubDescription: "Шукайте запущені процеси та примусово завершуйте, перезапускайте або вбивайте дерева процесів",

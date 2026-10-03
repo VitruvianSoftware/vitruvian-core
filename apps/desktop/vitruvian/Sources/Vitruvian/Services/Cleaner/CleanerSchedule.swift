@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// When the automatic cleanup runs. Pure calendar math, kept away from the
 /// timer so the tests can pin every boundary.

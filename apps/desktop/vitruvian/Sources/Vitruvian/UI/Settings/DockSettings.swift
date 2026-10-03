@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The Dock page: Dock Preview, Dock clicks and the window previews Dock
 /// Preview shares with the switcher.

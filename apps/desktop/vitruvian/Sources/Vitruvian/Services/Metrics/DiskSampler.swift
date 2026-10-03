@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import IOKit
+import VitruvianCore
 
 final class DiskSampler {
     private struct DiskMetadata {

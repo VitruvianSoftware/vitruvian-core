@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// First-run experience, also reachable later through Settings › About.
 /// The person chooses what they want first; only then does the app explain and

@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 /// Runs the production CPU reader against scripted host tick counters.
 enum SystemMonitorCPUTests {

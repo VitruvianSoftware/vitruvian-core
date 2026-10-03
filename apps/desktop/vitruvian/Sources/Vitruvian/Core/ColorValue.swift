@@ -9,24 +9,24 @@ import Foundation
 /// SwiftUI's `Color(red:green:blue:opacity:)`. The value must be the whole
 /// entry; a color inside a longer text is not one, and a bare `RRGGBB` would
 /// also match plain numbers and hashes.
-struct ColorValue: Equatable {
-    let red: Double
-    let green: Double
-    let blue: Double
-    let alpha: Double
+package struct ColorValue: Equatable {
+    package let red: Double
+    package let green: Double
+    package let blue: Double
+    package let alpha: Double
 
     /// Longer than any accepted form with generous spacing; the cap keeps a
     /// render from trimming or scanning a large entry.
-    static let maxLength = 96
+    package static let maxLength = 96
 
-    init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
+    package init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
         self.red = red
         self.green = green
         self.blue = blue
         self.alpha = alpha
     }
 
-    init?(text: String) {
+    package init?(text: String) {
         guard text.utf8.count <= Self.maxLength else { return nil }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if value.hasPrefix("#") {
@@ -149,16 +149,16 @@ struct ColorValue: Equatable {
 }
 
 /// How a color is written out.
-enum ColorCopyFormat: String, CaseIterable, Identifiable {
+package enum ColorCopyFormat: String, CaseIterable, Identifiable {
     case hex
     case rgb
     case hsl
     case swiftui
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
     /// Short technical label; intentionally not localized.
-    var label: String {
+    package var label: String {
         switch self {
         case .hex: return "HEX"
         case .rgb: return "RGB"
@@ -167,7 +167,7 @@ enum ColorCopyFormat: String, CaseIterable, Identifiable {
         }
     }
 
-    static func sanitized(_ raw: String) -> ColorCopyFormat {
+    package static func sanitized(_ raw: String) -> ColorCopyFormat {
         ColorCopyFormat(rawValue: raw) ?? .hex
     }
 }
@@ -178,7 +178,7 @@ extension ColorValue {
     /// invalid strings. `bareHex` drops the leading # (issue #168: some design
     /// tools reject pasted values that carry it); it only affects `.hex`.
     /// A non-nil `alpha` writes the alpha form.
-    static func string(red: Double,
+    package static func string(red: Double,
                        green: Double,
                        blue: Double,
                        alpha: Double? = nil,
@@ -221,7 +221,7 @@ extension ColorValue {
         }
     }
 
-    static func hsl(red: Double, green: Double, blue: Double) -> (hue: Double, saturation: Double, lightness: Double) {
+    package static func hsl(red: Double, green: Double, blue: Double) -> (hue: Double, saturation: Double, lightness: Double) {
         let maxComponent = max(red, green, blue)
         let minComponent = min(red, green, blue)
         let delta = maxComponent - minComponent

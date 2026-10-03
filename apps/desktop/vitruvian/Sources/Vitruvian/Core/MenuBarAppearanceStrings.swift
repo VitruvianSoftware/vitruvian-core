@@ -3,21 +3,21 @@
 
 import Foundation
 
-struct MenuBarAppearanceStrings {
-    let label: String
-    let values: String
-    let bars: String
-    let caption: String
-    let customize: String
-    let normalColor: String
-    let mediumColor: String
-    let highColor: String
-    let mediumFrom: String
-    let highFrom: String
+package struct MenuBarAppearanceStrings {
+    package let label: String
+    package let values: String
+    package let bars: String
+    package let caption: String
+    package let customize: String
+    package let normalColor: String
+    package let mediumColor: String
+    package let highColor: String
+    package let mediumFrom: String
+    package let highFrom: String
 }
 
 extension FeatureStrings {
-    static func menuBarAppearance(_ language: AppLanguage) -> MenuBarAppearanceStrings {
+    package static func menuBarAppearance(_ language: AppLanguage) -> MenuBarAppearanceStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -39,7 +39,7 @@ extension FeatureStrings {
 }
 
 extension MenuBarAppearanceStrings {
-    static let enUS = MenuBarAppearanceStrings(
+    package static let enUS = MenuBarAppearanceStrings(
         label: "Usage display",
         values: "Values",
         bars: "Bars",
@@ -52,7 +52,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "High from"
     )
 
-    static let ptBR = MenuBarAppearanceStrings(
+    package static let ptBR = MenuBarAppearanceStrings(
         label: "Exibição de uso",
         values: "Valores",
         bars: "Barras",
@@ -65,7 +65,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Alto a partir de"
     )
 
-    static let tr = MenuBarAppearanceStrings(
+    package static let tr = MenuBarAppearanceStrings(
         label: "Kullanım görünümü",
         values: "Değerler",
         bars: "Çubuklar",
@@ -78,7 +78,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Yüksek başlangıcı"
     )
 
-    static let ru = MenuBarAppearanceStrings(
+    package static let ru = MenuBarAppearanceStrings(
         label: "Отображение нагрузки",
         values: "Значения",
         bars: "Шкалы",
@@ -91,7 +91,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Высокий от"
     )
 
-    static let es = MenuBarAppearanceStrings(
+    package static let es = MenuBarAppearanceStrings(
         label: "Vista de uso",
         values: "Valores",
         bars: "Barras",
@@ -104,7 +104,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Alto desde"
     )
 
-    static let sk = MenuBarAppearanceStrings(
+    package static let sk = MenuBarAppearanceStrings(
         label: "Zobrazenie vyťaženia",
         values: "Hodnoty",
         bars: "Pruhy",
@@ -117,7 +117,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Vysoká od"
     )
 
-    static let de = MenuBarAppearanceStrings(
+    package static let de = MenuBarAppearanceStrings(
         label: "Auslastungsanzeige",
         values: "Werte",
         bars: "Balken",
@@ -130,7 +130,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Hoch ab"
     )
 
-    static let fr = MenuBarAppearanceStrings(
+    package static let fr = MenuBarAppearanceStrings(
         label: "Affichage de l’utilisation",
         values: "Valeurs",
         bars: "Barres",
@@ -143,7 +143,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Élevé à partir de"
     )
 
-    static let it = MenuBarAppearanceStrings(
+    package static let it = MenuBarAppearanceStrings(
         label: "Visualizzazione utilizzo",
         values: "Valori",
         bars: "Barre",
@@ -156,7 +156,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "Alto da"
     )
 
-    static let ja = MenuBarAppearanceStrings(
+    package static let ja = MenuBarAppearanceStrings(
         label: "使用率の表示",
         values: "数値",
         bars: "バー",
@@ -169,7 +169,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "高負荷の開始"
     )
 
-    static let ko = MenuBarAppearanceStrings(
+    package static let ko = MenuBarAppearanceStrings(
         label: "사용량 표시",
         values: "값",
         bars: "막대",
@@ -182,7 +182,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "높음 시작"
     )
 
-    static let zhHans = MenuBarAppearanceStrings(
+    package static let zhHans = MenuBarAppearanceStrings(
         label: "使用率显示",
         values: "数值",
         bars: "条形",
@@ -195,7 +195,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "高负载起点"
     )
 
-    static let zhTW = MenuBarAppearanceStrings(
+    package static let zhTW = MenuBarAppearanceStrings(
         label: "使用率顯示",
         values: "數值",
         bars: "長條",
@@ -208,7 +208,7 @@ extension MenuBarAppearanceStrings {
         highFrom: "高負載起點"
     )
 
-    static let zhHK = MenuBarAppearanceStrings(
+    package static let zhHK = MenuBarAppearanceStrings(
         label: "使用率顯示",
         values: "數值",
         bars: "長條",
@@ -220,7 +220,7 @@ extension MenuBarAppearanceStrings {
         mediumFrom: "中等起點",
         highFrom: "高負載起點"
     )
-    static let uk = MenuBarAppearanceStrings(
+    package static let uk = MenuBarAppearanceStrings(
         label: "Відображення використання",
         values: "Значення",
         bars: "Смуги",

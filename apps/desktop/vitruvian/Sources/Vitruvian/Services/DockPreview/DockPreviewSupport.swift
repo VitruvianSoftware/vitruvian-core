@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum DockPreviewFrameSupport {
     /// Accept only the two ways a work-area reduction constrains a window:

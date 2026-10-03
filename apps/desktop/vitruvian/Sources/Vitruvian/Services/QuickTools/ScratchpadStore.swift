@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A failed read must never authorize a later autosave or migration cleanup.
 struct ScratchpadStore {

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Runs the production capture loop and pixel stitching with an isolated image
 /// source. No screen permissions, global input or application windows are used.

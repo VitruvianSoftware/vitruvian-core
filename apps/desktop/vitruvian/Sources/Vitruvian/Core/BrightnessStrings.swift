@@ -6,47 +6,47 @@ import Foundation
 /// Strings for the display brightness feature. Same contract as the other
 /// FeatureStrings structs: memberwise init in declaration order, one static
 /// per language, all in this file.
-struct BrightnessFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let enable: String
-    let enableCaption: String
-    let externalCaption: String
-    let noDisplays: String
-    let displayOff: String
-    let turnOffDisplay: String
-    let turnOnDisplay: String
-    let lastDisplayCaption: String
-    let switchUnavailable: String
-    let switchFailed: String
-    let openLidToEnable: String
-    let keysToggle: String
-    let keysCaption: String
-    let keyStep: String
-    let keyStepCaption: String
-    let keyStepStandard: String
-    let keyStepHalf: String
-    let keyStepQuarter: String
-    let osdToggle: String
-    let osdCaption: String
-    let displayBrightnessShortcuts: String
-    let displayBrightnessShortcutCaption: String
-    let displayBrightnessDecrease: String
-    let displayBrightnessIncrease: String
-    let keyboardLight: String
-    let keyboardLightCaption: String
-    let keyboardBrightnessShortcuts: String
-    let keyboardBrightnessDecrease: String
-    let keyboardBrightnessIncrease: String
-    let softwareDimming: String
-    let extendedDimming: String
-    let islandPromptTitle: String
-    let islandPromptMessage: String
-    let islandPromptKeepOff: String
+package struct BrightnessFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let enable: String
+    package let enableCaption: String
+    package let externalCaption: String
+    package let noDisplays: String
+    package let displayOff: String
+    package let turnOffDisplay: String
+    package let turnOnDisplay: String
+    package let lastDisplayCaption: String
+    package let switchUnavailable: String
+    package let switchFailed: String
+    package let openLidToEnable: String
+    package let keysToggle: String
+    package let keysCaption: String
+    package let keyStep: String
+    package let keyStepCaption: String
+    package let keyStepStandard: String
+    package let keyStepHalf: String
+    package let keyStepQuarter: String
+    package let osdToggle: String
+    package let osdCaption: String
+    package let displayBrightnessShortcuts: String
+    package let displayBrightnessShortcutCaption: String
+    package let displayBrightnessDecrease: String
+    package let displayBrightnessIncrease: String
+    package let keyboardLight: String
+    package let keyboardLightCaption: String
+    package let keyboardBrightnessShortcuts: String
+    package let keyboardBrightnessDecrease: String
+    package let keyboardBrightnessIncrease: String
+    package let softwareDimming: String
+    package let extendedDimming: String
+    package let islandPromptTitle: String
+    package let islandPromptMessage: String
+    package let islandPromptKeepOff: String
 }
 
 extension FeatureStrings {
-    static func brightness(_ language: AppLanguage) -> BrightnessFeatureStrings {
+    package static func brightness(_ language: AppLanguage) -> BrightnessFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -68,7 +68,7 @@ extension FeatureStrings {
 }
 
 extension BrightnessFeatureStrings {
-    static let enUS = BrightnessFeatureStrings(
+    package static let enUS = BrightnessFeatureStrings(
         pageTitle: "Displays",
         hubDescription: "Brightness and power controls for every display",
         enable: "Control displays",
@@ -107,7 +107,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Keep Off"
     )
 
-    static let ptBR = BrightnessFeatureStrings(
+    package static let ptBR = BrightnessFeatureStrings(
         pageTitle: "Telas",
         hubDescription: "Brilho e controles para ligar ou desligar cada tela",
         enable: "Controlar telas",
@@ -146,7 +146,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Manter desativado"
     )
 
-    static let tr = BrightnessFeatureStrings(
+    package static let tr = BrightnessFeatureStrings(
         pageTitle: "Ekranlar",
         hubDescription: "Tüm ekranlar için parlaklık ve güç denetimleri",
         enable: "Ekranları denetle",
@@ -185,7 +185,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Kapalı kalsın"
     )
 
-    static let ru = BrightnessFeatureStrings(
+    package static let ru = BrightnessFeatureStrings(
         pageTitle: "Экраны",
         hubDescription: "Яркость и включение всех экранов",
         enable: "Управлять экранами",
@@ -224,7 +224,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Оставить выключенным"
     )
 
-    static let es = BrightnessFeatureStrings(
+    package static let es = BrightnessFeatureStrings(
         pageTitle: "Pantallas",
         hubDescription: "Brillo y encendido para todas las pantallas",
         enable: "Controlar las pantallas",
@@ -263,7 +263,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Mantener desactivado"
     )
 
-    static let sk = BrightnessFeatureStrings(
+    package static let sk = BrightnessFeatureStrings(
         pageTitle: "Displeje",
         hubDescription: "Jas a zapínanie pre všetky displeje",
         enable: "Ovládať displeje",
@@ -302,7 +302,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Nechať vypnuté"
     )
 
-    static let de = BrightnessFeatureStrings(
+    package static let de = BrightnessFeatureStrings(
         pageTitle: "Displays",
         hubDescription: "Helligkeit und Ein oder Aus für alle Displays",
         enable: "Displays steuern",
@@ -341,7 +341,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Aus lassen"
     )
 
-    static let fr = BrightnessFeatureStrings(
+    package static let fr = BrightnessFeatureStrings(
         pageTitle: "Écrans",
         hubDescription: "Luminosité et alimentation de tous les écrans",
         enable: "Contrôler les écrans",
@@ -380,7 +380,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Laisser désactivé"
     )
 
-    static let it = BrightnessFeatureStrings(
+    package static let it = BrightnessFeatureStrings(
         pageTitle: "Schermi",
         hubDescription: "Luminosità e accensione per tutti gli schermi",
         enable: "Controlla gli schermi",
@@ -419,7 +419,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "Lascia disattivato"
     )
 
-    static let ja = BrightnessFeatureStrings(
+    package static let ja = BrightnessFeatureStrings(
         pageTitle: "ディスプレイ",
         hubDescription: "すべてのディスプレイの明るさと電源を操作",
         enable: "ディスプレイを操作",
@@ -458,7 +458,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "オフのままにする"
     )
 
-    static let ko = BrightnessFeatureStrings(
+    package static let ko = BrightnessFeatureStrings(
         pageTitle: "디스플레이",
         hubDescription: "모든 디스플레이의 밝기와 전원 제어",
         enable: "디스플레이 제어",
@@ -497,7 +497,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "끈 상태로 유지"
     )
 
-    static let zhHans = BrightnessFeatureStrings(
+    package static let zhHans = BrightnessFeatureStrings(
         pageTitle: "显示器",
         hubDescription: "控制所有显示器的亮度和开关",
         enable: "控制显示器",
@@ -536,7 +536,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "保持关闭"
     )
 
-    static let zhTW = BrightnessFeatureStrings(
+    package static let zhTW = BrightnessFeatureStrings(
         pageTitle: "顯示器",
         hubDescription: "控制所有顯示器的亮度和開關",
         enable: "控制顯示器",
@@ -575,7 +575,7 @@ extension BrightnessFeatureStrings {
         islandPromptKeepOff: "保持關閉"
     )
 
-    static let zhHK = BrightnessFeatureStrings(
+    package static let zhHK = BrightnessFeatureStrings(
         pageTitle: "顯示器",
         hubDescription: "控制所有顯示器的亮度和開關",
         enable: "控制顯示器",
@@ -613,7 +613,7 @@ extension BrightnessFeatureStrings {
         islandPromptMessage: "只有在「顯示器」設定中開啟「控制顯示器」時，Dynamic Island才會顯示亮度變化。",
         islandPromptKeepOff: "保持關閉"
     )
-    static let uk = BrightnessFeatureStrings(
+    package static let uk = BrightnessFeatureStrings(
         pageTitle: "Дисплеї",
         hubDescription: "Керування яскравістю та живленням для кожного дисплея",
         enable: "Керування дисплеями",

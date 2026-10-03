@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The apps the clipboard history never saves from (issue #423). It sits with
 /// the other choices about what gets saved, and stays a single quiet row until

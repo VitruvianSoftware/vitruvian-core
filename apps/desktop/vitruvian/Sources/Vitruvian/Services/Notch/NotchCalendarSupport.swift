@@ -3,6 +3,7 @@
 
 import Foundation
 import EventKit
+import VitruvianCore
 
 struct NotchCalendarColor: Equatable, Sendable {
     let red: Double

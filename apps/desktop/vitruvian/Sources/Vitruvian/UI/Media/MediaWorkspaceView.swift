@@ -5,6 +5,7 @@ import AppKit
 import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
+import VitruvianCore
 
 struct MediaSettings: View {
     var body: some View {

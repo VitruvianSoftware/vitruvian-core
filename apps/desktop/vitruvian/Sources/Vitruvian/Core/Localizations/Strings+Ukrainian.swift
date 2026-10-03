@@ -5,7 +5,7 @@ import Foundation
 
 // Українська — повний переклад інтерфейсу.
 extension Strings {
-    static let uk = Strings(
+    package static let uk = Strings(
         statusIdleTooltip: "Vitruvian: Mac може засинати",
         statusActiveUntil: "Vitruvian: Mac не засинатиме до",
         statusActiveIndefinite: "Vitruvian: Mac не засинатиме, доки не вимкнете",

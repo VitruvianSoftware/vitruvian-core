@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 enum QuickToolsSupport {
     static func sampledColor(in image: CGImage, x: Int, y: Int) -> NSColor? {

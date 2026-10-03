@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+import VitruvianCore
 
 /// Shared state for the chooser. Every overlay panel observes the same value,
 /// so changing a mode on one display updates the controls on all displays.

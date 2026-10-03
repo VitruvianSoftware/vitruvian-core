@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// Settings > Radial menu: profiles, colors, shortcuts, the master switch,
 /// opening behavior, placement and list of actions per profile.

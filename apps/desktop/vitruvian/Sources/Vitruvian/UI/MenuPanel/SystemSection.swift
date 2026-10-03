@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Which per-app breakdown is expanded in the System section.
 enum BreakdownKind {

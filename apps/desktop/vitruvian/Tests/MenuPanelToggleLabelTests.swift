@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A switch with a hidden label still gives VoiceOver its title, so an empty
 /// one is read as an unnamed switch.

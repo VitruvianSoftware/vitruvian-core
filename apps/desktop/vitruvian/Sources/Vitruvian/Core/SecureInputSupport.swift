@@ -11,8 +11,8 @@ import Foundation
 /// Pure by design: the test harness compiles this file without IOKit, so
 /// every rule here is pinned by `MetricsTests`. The reads themselves live in
 /// `SecureInputMonitor`.
-enum SecureInputSupport {
-    enum Holder: Equatable {
+package enum SecureInputSupport {
+    package enum Holder: Equatable {
         /// Not on. Snippets and Command Bar typing work normally.
         case off
         /// A running app holds it. Giving up its password field releases it,
@@ -31,7 +31,7 @@ enum SecureInputSupport {
     /// What the session's registry entry reports. `unavailable` and
     /// `noHolder` stay apart so a read that stopped working cannot be
     /// reported as a session with no holder, whose advice is to log out.
-    enum RegistryRead: Equatable {
+    package enum RegistryRead: Equatable {
         case holder(pid_t)
         case noHolder
         case unavailable
@@ -43,7 +43,7 @@ enum SecureInputSupport {
     ///   - runningApp: the regular app owning a PID and that app's own PID, or
     ///     nil when the PID belongs to no regular application.
     ///   - isProcessAlive: whether a PID still belongs to a running process.
-    static func holder(isEnabled: Bool,
+    package static func holder(isEnabled: Bool,
                        read: RegistryRead,
                        runningApp: (pid_t) -> (name: String, pid: pid_t)?,
                        isProcessAlive: (pid_t) -> Bool) -> Holder {
@@ -75,7 +75,7 @@ enum SecureInputSupport {
     /// enough: a page's onAppear/onDisappear pair does not always run
     /// around the window closing and reopening, so the window's own state
     /// is a second, independent gate rather than something demand implies.
-    static func shouldPoll(observingSurfaceCount: Int, windowIsOpen: Bool) -> Bool {
+    package static func shouldPoll(observingSurfaceCount: Int, windowIsOpen: Bool) -> Bool {
         observingSurfaceCount > 0 && windowIsOpen
     }
 }

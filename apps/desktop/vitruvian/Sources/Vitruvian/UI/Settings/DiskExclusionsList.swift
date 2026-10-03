@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The list of drives excluded from "Eject all disks".
 /// Sits quietly as a single row when empty, shows a count badge,

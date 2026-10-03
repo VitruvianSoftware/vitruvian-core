@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
+import VitruvianCore
 
 enum LocalizationFeatureContractTests {
     static func run(_ suite: TestSuite) {

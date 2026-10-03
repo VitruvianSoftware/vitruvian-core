@@ -7,6 +7,7 @@ import CoreImage
 import Darwin
 import Foundation
 import ScreenCaptureKit
+import VitruvianCore
 
 /// Captures window thumbnails for the switcher with ScreenCaptureKit.
 ///

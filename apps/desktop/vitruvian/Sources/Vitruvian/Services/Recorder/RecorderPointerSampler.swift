@@ -3,6 +3,7 @@
 
 import AppKit
 import QuartzCore
+import VitruvianCore
 
 /// Records where the pointer went while a recording runs.
 ///

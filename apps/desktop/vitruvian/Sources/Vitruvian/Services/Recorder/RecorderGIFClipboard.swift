@@ -4,6 +4,7 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// Publishes an exported recording as animated GIF data. The file is read and
 /// recognized as a GIF before the general pasteboard is cleared, so an export

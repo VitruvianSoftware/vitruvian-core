@@ -3,8 +3,8 @@
 
 import Foundation
 
-enum FeatureStrings {
-    static func settingsCategories(_ language: AppLanguage) -> SettingsCategoryStrings {
+package enum FeatureStrings {
+    package static func settingsCategories(_ language: AppLanguage) -> SettingsCategoryStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -24,7 +24,7 @@ enum FeatureStrings {
         }
     }
 
-    static func clipboard(_ language: AppLanguage) -> ClipboardFeatureStrings {
+    package static func clipboard(_ language: AppLanguage) -> ClipboardFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -44,7 +44,7 @@ enum FeatureStrings {
         }
     }
 
-    static func windowLayout(_ language: AppLanguage) -> WindowLayoutFeatureStrings {
+    package static func windowLayout(_ language: AppLanguage) -> WindowLayoutFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -64,7 +64,7 @@ enum FeatureStrings {
         }
     }
 
-    static func monitorAlerts(_ language: AppLanguage) -> MonitorAlertFeatureStrings {
+    package static func monitorAlerts(_ language: AppLanguage) -> MonitorAlertFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -84,7 +84,7 @@ enum FeatureStrings {
         }
     }
 
-    static func mixer(_ language: AppLanguage) -> MixerFeatureStrings {
+    package static func mixer(_ language: AppLanguage) -> MixerFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -104,42 +104,42 @@ enum FeatureStrings {
         }
     }
 
-    static func whatsAppDownloads(_ language: AppLanguage) -> WhatsAppDownloadStrings {
+    package static func whatsAppDownloads(_ language: AppLanguage) -> WhatsAppDownloadStrings {
         WhatsAppDownloadStrings.localized(language)
     }
 }
 
-struct MixerFeatureStrings {
-    let hideInactiveApps: String
-    let pin: String
-    let unpin: String
-    let moveUp: String
-    let moveDown: String
+package struct MixerFeatureStrings {
+    package let hideInactiveApps: String
+    package let pin: String
+    package let unpin: String
+    package let moveUp: String
+    package let moveDown: String
     /// The island runs the rows sideways, pinned ones first.
-    let pinFirst: String
-    let moveLeft: String
-    let moveRight: String
-    let arrange: String
-    let actions: String
+    package let pinFirst: String
+    package let moveLeft: String
+    package let moveRight: String
+    package let arrange: String
+    package let actions: String
 
-    static let enUS = MixerFeatureStrings(hideInactiveApps: "Hide inactive apps", pin: "Pin to Top", unpin: "Unpin", moveUp: "Move Up", moveDown: "Move Down", pinFirst: "Pin to Front", moveLeft: "Move Left", moveRight: "Move Right", arrange: "Hold Command and drag to reorder", actions: "Actions")
-    static let ptBR = MixerFeatureStrings(hideInactiveApps: "Ocultar apps inativos", pin: "Fixar no topo", unpin: "Desafixar", moveUp: "Mover para cima", moveDown: "Mover para baixo", pinFirst: "Fixar no início", moveLeft: "Mover para a esquerda", moveRight: "Mover para a direita", arrange: "Segure Command e arraste para reorganizar", actions: "Ações")
-    static let tr = MixerFeatureStrings(hideInactiveApps: "Etkin olmayan uygulamaları gizle", pin: "En üste sabitle", unpin: "Sabitlemeyi kaldır", moveUp: "Yukarı taşı", moveDown: "Aşağı taşı", pinFirst: "Başa sabitle", moveLeft: "Sola taşı", moveRight: "Sağa taşı", arrange: "Sıralamak için Command tuşunu basılı tutup sürükleyin", actions: "Eylemler")
-    static let ru = MixerFeatureStrings(hideInactiveApps: "Скрывать неактивные приложения", pin: "Закрепить сверху", unpin: "Открепить", moveUp: "Переместить вверх", moveDown: "Переместить вниз", pinFirst: "Закрепить в начале", moveLeft: "Переместить влево", moveRight: "Переместить вправо", arrange: "Удерживайте Command и перетащите для изменения порядка", actions: "Действия")
-    static let es = MixerFeatureStrings(hideInactiveApps: "Ocultar apps inactivas", pin: "Fijar arriba", unpin: "Desfijar", moveUp: "Mover hacia arriba", moveDown: "Mover hacia abajo", pinFirst: "Fijar al principio", moveLeft: "Mover a la izquierda", moveRight: "Mover a la derecha", arrange: "Mantén pulsado Command y arrastra para reordenar", actions: "Acciones")
-    static let sk = MixerFeatureStrings(hideInactiveApps: "Skryť neaktívne aplikácie", pin: "Pripnúť navrch", unpin: "Odopnúť", moveUp: "Presunúť nahor", moveDown: "Presunúť nadol", pinFirst: "Pripnúť dopredu", moveLeft: "Presunúť doľava", moveRight: "Presunúť doprava", arrange: "Podržte Command a presuňte myšou pre zmenu poradia", actions: "Akcie")
-    static let de = MixerFeatureStrings(hideInactiveApps: "Inaktive Apps ausblenden", pin: "Oben anheften", unpin: "Loslösen", moveUp: "Nach oben bewegen", moveDown: "Nach unten bewegen", pinFirst: "Vorne anheften", moveLeft: "Nach links bewegen", moveRight: "Nach rechts bewegen", arrange: "Zum Anordnen Command gedrückt halten und ziehen", actions: "Aktionen")
-    static let fr = MixerFeatureStrings(hideInactiveApps: "Masquer les apps inactives", pin: "Épingler en haut", unpin: "Désépingler", moveUp: "Déplacer vers le haut", moveDown: "Déplacer vers le bas", pinFirst: "Épingler au début", moveLeft: "Déplacer vers la gauche", moveRight: "Déplacer vers la droite", arrange: "Maintenez Command et faites glisser pour réorganiser", actions: "Actions")
-    static let it = MixerFeatureStrings(hideInactiveApps: "Nascondi le app inattive", pin: "Fissa in alto", unpin: "Rimuovi fissaggio", moveUp: "Sposta su", moveDown: "Sposta giù", pinFirst: "Fissa all’inizio", moveLeft: "Sposta a sinistra", moveRight: "Sposta a destra", arrange: "Tieni premuto Command e trascina per riordinare", actions: "Azioni")
-    static let ja = MixerFeatureStrings(hideInactiveApps: "非アクティブなアプリを隠す", pin: "一番上に固定", unpin: "固定を解除", moveUp: "上に移動", moveDown: "下に移動", pinFirst: "先頭に固定", moveLeft: "左に移動", moveRight: "右に移動", arrange: "Commandキーを押しながらドラッグして並べ替え", actions: "アクション")
-    static let ko = MixerFeatureStrings(hideInactiveApps: "비활성 앱 숨기기", pin: "맨 위에 고정", unpin: "고정 해제", moveUp: "위로 이동", moveDown: "아래로 이동", pinFirst: "맨 앞에 고정", moveLeft: "왼쪽으로 이동", moveRight: "오른쪽으로 이동", arrange: "Command 키를 누른 채 드래그하여 순서 변경", actions: "동작")
-    static let zhHans = MixerFeatureStrings(hideInactiveApps: "隐藏不活跃的 App", pin: "置顶", unpin: "取消置顶", moveUp: "上移", moveDown: "下移", pinFirst: "置于最前", moveLeft: "左移", moveRight: "右移", arrange: "按住 Command 并拖移以重新排列", actions: "操作")
-    static let zhTW = MixerFeatureStrings(hideInactiveApps: "隱藏非活躍的 App", pin: "置頂", unpin: "取消置頂", moveUp: "上移", moveDown: "下移", pinFirst: "置於最前", moveLeft: "左移", moveRight: "右移", arrange: "按住 Command 並拖移以重新排列", actions: "動作")
-    static let zhHK = MixerFeatureStrings(hideInactiveApps: "隱藏非活躍的 App", pin: "置頂", unpin: "取消置頂", moveUp: "上移", moveDown: "下移", pinFirst: "置於最前", moveLeft: "左移", moveRight: "右移", arrange: "按住 Command 並拖移以重新排列", actions: "動作")
+    package static let enUS = MixerFeatureStrings(hideInactiveApps: "Hide inactive apps", pin: "Pin to Top", unpin: "Unpin", moveUp: "Move Up", moveDown: "Move Down", pinFirst: "Pin to Front", moveLeft: "Move Left", moveRight: "Move Right", arrange: "Hold Command and drag to reorder", actions: "Actions")
+    package static let ptBR = MixerFeatureStrings(hideInactiveApps: "Ocultar apps inativos", pin: "Fixar no topo", unpin: "Desafixar", moveUp: "Mover para cima", moveDown: "Mover para baixo", pinFirst: "Fixar no início", moveLeft: "Mover para a esquerda", moveRight: "Mover para a direita", arrange: "Segure Command e arraste para reorganizar", actions: "Ações")
+    package static let tr = MixerFeatureStrings(hideInactiveApps: "Etkin olmayan uygulamaları gizle", pin: "En üste sabitle", unpin: "Sabitlemeyi kaldır", moveUp: "Yukarı taşı", moveDown: "Aşağı taşı", pinFirst: "Başa sabitle", moveLeft: "Sola taşı", moveRight: "Sağa taşı", arrange: "Sıralamak için Command tuşunu basılı tutup sürükleyin", actions: "Eylemler")
+    package static let ru = MixerFeatureStrings(hideInactiveApps: "Скрывать неактивные приложения", pin: "Закрепить сверху", unpin: "Открепить", moveUp: "Переместить вверх", moveDown: "Переместить вниз", pinFirst: "Закрепить в начале", moveLeft: "Переместить влево", moveRight: "Переместить вправо", arrange: "Удерживайте Command и перетащите для изменения порядка", actions: "Действия")
+    package static let es = MixerFeatureStrings(hideInactiveApps: "Ocultar apps inactivas", pin: "Fijar arriba", unpin: "Desfijar", moveUp: "Mover hacia arriba", moveDown: "Mover hacia abajo", pinFirst: "Fijar al principio", moveLeft: "Mover a la izquierda", moveRight: "Mover a la derecha", arrange: "Mantén pulsado Command y arrastra para reordenar", actions: "Acciones")
+    package static let sk = MixerFeatureStrings(hideInactiveApps: "Skryť neaktívne aplikácie", pin: "Pripnúť navrch", unpin: "Odopnúť", moveUp: "Presunúť nahor", moveDown: "Presunúť nadol", pinFirst: "Pripnúť dopredu", moveLeft: "Presunúť doľava", moveRight: "Presunúť doprava", arrange: "Podržte Command a presuňte myšou pre zmenu poradia", actions: "Akcie")
+    package static let de = MixerFeatureStrings(hideInactiveApps: "Inaktive Apps ausblenden", pin: "Oben anheften", unpin: "Loslösen", moveUp: "Nach oben bewegen", moveDown: "Nach unten bewegen", pinFirst: "Vorne anheften", moveLeft: "Nach links bewegen", moveRight: "Nach rechts bewegen", arrange: "Zum Anordnen Command gedrückt halten und ziehen", actions: "Aktionen")
+    package static let fr = MixerFeatureStrings(hideInactiveApps: "Masquer les apps inactives", pin: "Épingler en haut", unpin: "Désépingler", moveUp: "Déplacer vers le haut", moveDown: "Déplacer vers le bas", pinFirst: "Épingler au début", moveLeft: "Déplacer vers la gauche", moveRight: "Déplacer vers la droite", arrange: "Maintenez Command et faites glisser pour réorganiser", actions: "Actions")
+    package static let it = MixerFeatureStrings(hideInactiveApps: "Nascondi le app inattive", pin: "Fissa in alto", unpin: "Rimuovi fissaggio", moveUp: "Sposta su", moveDown: "Sposta giù", pinFirst: "Fissa all’inizio", moveLeft: "Sposta a sinistra", moveRight: "Sposta a destra", arrange: "Tieni premuto Command e trascina per riordinare", actions: "Azioni")
+    package static let ja = MixerFeatureStrings(hideInactiveApps: "非アクティブなアプリを隠す", pin: "一番上に固定", unpin: "固定を解除", moveUp: "上に移動", moveDown: "下に移動", pinFirst: "先頭に固定", moveLeft: "左に移動", moveRight: "右に移動", arrange: "Commandキーを押しながらドラッグして並べ替え", actions: "アクション")
+    package static let ko = MixerFeatureStrings(hideInactiveApps: "비활성 앱 숨기기", pin: "맨 위에 고정", unpin: "고정 해제", moveUp: "위로 이동", moveDown: "아래로 이동", pinFirst: "맨 앞에 고정", moveLeft: "왼쪽으로 이동", moveRight: "오른쪽으로 이동", arrange: "Command 키를 누른 채 드래그하여 순서 변경", actions: "동작")
+    package static let zhHans = MixerFeatureStrings(hideInactiveApps: "隐藏不活跃的 App", pin: "置顶", unpin: "取消置顶", moveUp: "上移", moveDown: "下移", pinFirst: "置于最前", moveLeft: "左移", moveRight: "右移", arrange: "按住 Command 并拖移以重新排列", actions: "操作")
+    package static let zhTW = MixerFeatureStrings(hideInactiveApps: "隱藏非活躍的 App", pin: "置頂", unpin: "取消置頂", moveUp: "上移", moveDown: "下移", pinFirst: "置於最前", moveLeft: "左移", moveRight: "右移", arrange: "按住 Command 並拖移以重新排列", actions: "動作")
+    package static let zhHK = MixerFeatureStrings(hideInactiveApps: "隱藏非活躍的 App", pin: "置頂", unpin: "取消置頂", moveUp: "上移", moveDown: "下移", pinFirst: "置於最前", moveLeft: "左移", moveRight: "右移", arrange: "按住 Command 並拖移以重新排列", actions: "動作")
 }
 
 extension SettingsCategoryStrings {
-    static let ko = SettingsCategoryStrings(
+    package static let ko = SettingsCategoryStrings(
         essentials: "기본 기능",
         windowsControls: "윈도우 및 제어",
         files: "파일",
@@ -150,7 +150,7 @@ extension SettingsCategoryStrings {
 }
 
 extension ClipboardFeatureStrings {
-    static let ko = ClipboardFeatureStrings(
+    package static let ko = ClipboardFeatureStrings(
         title: "클립보드",
         enable: "클립보드 기록 저장",
         caption: "복사한 텍스트를 저장하여 나중에 다시 사용할 수 있습니다. 모든 항목은 로컬에 보관되며 언제든 지울 수 있습니다.",
@@ -213,7 +213,7 @@ extension ClipboardFeatureStrings {
 }
 
 extension WindowLayoutFeatureStrings {
-    static let ko = WindowLayoutFeatureStrings(
+    package static let ko = WindowLayoutFeatureStrings(
         title: "윈도우 정렬",
         caption: "윈도우를 화면 구역에 배치하거나 트랙패드 또는 마우스로 이동하고 크기를 조절합니다.",
         showInPanel: "패널에 표시",
@@ -304,7 +304,7 @@ extension WindowLayoutFeatureStrings {
 }
 
 extension MonitorAlertFeatureStrings {
-    static let ko = MonitorAlertFeatureStrings(
+    package static let ko = MonitorAlertFeatureStrings(
         section: "알림",
         caption: "선택한 기준에 도달하면 알림이 표시됩니다. CPU 사용량과 온도 알림은 기준을 약 12초 동안 계속 넘어야 하므로 짧은 급증은 무시됩니다. 반복 설정은 같은 알림의 반복만 제한합니다.",
         notificationsDenied: "시스템 설정에서 Vitruvian 알림이 꺼져 있어 경고를 표시할 수 없습니다.",
@@ -340,15 +340,15 @@ extension MonitorAlertFeatureStrings {
     )
 }
 
-struct SettingsCategoryStrings {
-    let essentials: String
-    let windowsControls: String
-    let files: String
-    let utilities: String
-    let app: String
-    let appManagement: String
+package struct SettingsCategoryStrings {
+    package let essentials: String
+    package let windowsControls: String
+    package let files: String
+    package let utilities: String
+    package let app: String
+    package let appManagement: String
 
-    static let enUS = SettingsCategoryStrings(
+    package static let enUS = SettingsCategoryStrings(
         essentials: "Essentials",
         windowsControls: "Window controls",
         files: "Files",
@@ -357,7 +357,7 @@ struct SettingsCategoryStrings {
         appManagement: "App management"
     )
 
-    static let ptBR = SettingsCategoryStrings(
+    package static let ptBR = SettingsCategoryStrings(
         essentials: "Essenciais",
         windowsControls: "Janelas e controles",
         files: "Arquivos",
@@ -366,7 +366,7 @@ struct SettingsCategoryStrings {
         appManagement: "Gestão de apps"
     )
 
-    static let tr = SettingsCategoryStrings(
+    package static let tr = SettingsCategoryStrings(
         essentials: "Temel",
         windowsControls: "Pencereler ve denetimler",
         files: "Dosyalar",
@@ -375,7 +375,7 @@ struct SettingsCategoryStrings {
         appManagement: "Uygulama yönetimi"
     )
 
-    static let ru = SettingsCategoryStrings(
+    package static let ru = SettingsCategoryStrings(
         essentials: "Основное",
         windowsControls: "Окна и управление",
         files: "Файлы",
@@ -384,7 +384,7 @@ struct SettingsCategoryStrings {
         appManagement: "Управление приложениями"
     )
 
-    static let es = SettingsCategoryStrings(
+    package static let es = SettingsCategoryStrings(
         essentials: "Esenciales",
         windowsControls: "Ventanas y controles",
         files: "Archivos",
@@ -393,7 +393,7 @@ struct SettingsCategoryStrings {
         appManagement: "Gestión de apps"
     )
 
-    static let sk = SettingsCategoryStrings(
+    package static let sk = SettingsCategoryStrings(
         essentials: "Základné",
         windowsControls: "Okná a ovládanie",
         files: "Súbory",
@@ -402,7 +402,7 @@ struct SettingsCategoryStrings {
         appManagement: "Správa aplikácií"
     )
 
-    static let de = SettingsCategoryStrings(
+    package static let de = SettingsCategoryStrings(
         essentials: "Grundlagen",
         windowsControls: "Fenster und Steuerung",
         files: "Dateien",
@@ -411,7 +411,7 @@ struct SettingsCategoryStrings {
         appManagement: "App-Verwaltung"
     )
 
-    static let fr = SettingsCategoryStrings(
+    package static let fr = SettingsCategoryStrings(
         essentials: "Essentiel",
         windowsControls: "Fenêtres et contrôles",
         files: "Fichiers",
@@ -420,7 +420,7 @@ struct SettingsCategoryStrings {
         appManagement: "Gestion des apps"
     )
 
-    static let it = SettingsCategoryStrings(
+    package static let it = SettingsCategoryStrings(
         essentials: "Essenziali",
         windowsControls: "Finestre e controlli",
         files: "File",
@@ -429,7 +429,7 @@ struct SettingsCategoryStrings {
         appManagement: "Gestione delle app"
     )
 
-    static let ja = SettingsCategoryStrings(
+    package static let ja = SettingsCategoryStrings(
         essentials: "基本機能",
         windowsControls: "ウインドウと操作",
         files: "ファイル",
@@ -438,7 +438,7 @@ struct SettingsCategoryStrings {
         appManagement: "Appの管理"
     )
 
-    static let zhHans = SettingsCategoryStrings(
+    package static let zhHans = SettingsCategoryStrings(
         essentials: "基础功能",
         windowsControls: "窗口与控制",
         files: "文件",
@@ -447,7 +447,7 @@ struct SettingsCategoryStrings {
         appManagement: "App 管理"
     )
 
-    static let zhTW = SettingsCategoryStrings(
+    package static let zhTW = SettingsCategoryStrings(
         essentials: "基本功能",
         windowsControls: "視窗與控制",
         files: "檔案",
@@ -456,7 +456,7 @@ struct SettingsCategoryStrings {
         appManagement: "App 管理"
     )
 
-    static let zhHK = SettingsCategoryStrings(
+    package static let zhHK = SettingsCategoryStrings(
         essentials: "基本功能",
         windowsControls: "視窗及控制",
         files: "檔案",
@@ -466,67 +466,67 @@ struct SettingsCategoryStrings {
     )
 }
 
-struct ClipboardFeatureStrings {
-    let title: String
-    let enable: String
-    let caption: String
-    let localNote: String
-    let skipSensitive: String
-    let skipSensitiveCaption: String
-    let limit: String
-    let limitUnlimited: String
-    let showInPanel: String
-    let shortcut: String
-    let shortcutCaption: String
-    let shortcutHint: String
-    let clickRowShortcut: String
-    let commandClickShortcut: String
-    let pinned: String
-    let recent: String
-    let pin: String
-    let unpin: String
-    let clearRecent: String
-    let clearAll: String
-    let empty: String
-    let disabled: String
-    let search: String
-    let copy: String
-    let copied: String
-    let delete: String
-    let selectMultiple: String
-    let unselectMultiple: String
-    let selectShortcutAction: String
-    let pasteSelectedFormat: String
-    let copySelectedFormat: String
-    let clearSelection: String
-    let moveUp: String
-    let moveDown: String
-    let noResults: String
-    let newestFirst: String
-    let active: String
-    let includeImagesFiles: String
-    let includeImagesFilesCaption: String
-    let imageEntryLabel: String
-    let fileCountFormat: String
-    let pasteImageAsFile: String
-    let pasteImageAsFileCaption: String
-    let previewLabel: String
-    let edit: String
-    let cancel: String
-    let save: String
-    let autoClearEnable: String
-    let autoClearSecondsSuffix: String
-    let autoClearOnSleep: String
-    let autoClearOnDisplaySleep: String
-    let autoClearOnScreenLock: String
-    let autoClearCaption: String
-    let deleteSelectedFormat: String
-    let menuBarPreview: String
-    let menuBarPreviewCaption: String
-    let menuBarPreviewLength: String
-    let menuBarPreviewLengthSuffix: String
+package struct ClipboardFeatureStrings {
+    package let title: String
+    package let enable: String
+    package let caption: String
+    package let localNote: String
+    package let skipSensitive: String
+    package let skipSensitiveCaption: String
+    package let limit: String
+    package let limitUnlimited: String
+    package let showInPanel: String
+    package let shortcut: String
+    package let shortcutCaption: String
+    package let shortcutHint: String
+    package let clickRowShortcut: String
+    package let commandClickShortcut: String
+    package let pinned: String
+    package let recent: String
+    package let pin: String
+    package let unpin: String
+    package let clearRecent: String
+    package let clearAll: String
+    package let empty: String
+    package let disabled: String
+    package let search: String
+    package let copy: String
+    package let copied: String
+    package let delete: String
+    package let selectMultiple: String
+    package let unselectMultiple: String
+    package let selectShortcutAction: String
+    package let pasteSelectedFormat: String
+    package let copySelectedFormat: String
+    package let clearSelection: String
+    package let moveUp: String
+    package let moveDown: String
+    package let noResults: String
+    package let newestFirst: String
+    package let active: String
+    package let includeImagesFiles: String
+    package let includeImagesFilesCaption: String
+    package let imageEntryLabel: String
+    package let fileCountFormat: String
+    package let pasteImageAsFile: String
+    package let pasteImageAsFileCaption: String
+    package let previewLabel: String
+    package let edit: String
+    package let cancel: String
+    package let save: String
+    package let autoClearEnable: String
+    package let autoClearSecondsSuffix: String
+    package let autoClearOnSleep: String
+    package let autoClearOnDisplaySleep: String
+    package let autoClearOnScreenLock: String
+    package let autoClearCaption: String
+    package let deleteSelectedFormat: String
+    package let menuBarPreview: String
+    package let menuBarPreviewCaption: String
+    package let menuBarPreviewLength: String
+    package let menuBarPreviewLengthSuffix: String
 
-    static let enUS = ClipboardFeatureStrings(
+    package static let enUS = ClipboardFeatureStrings(
         title: "Clipboard",
         enable: "Save clipboard history",
         caption: "Stores copied text so you can reuse it later. Everything stays local and can be cleared anytime.",
@@ -587,7 +587,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "characters"
     )
 
-    static let ptBR = ClipboardFeatureStrings(
+    package static let ptBR = ClipboardFeatureStrings(
         title: "Clipboard",
         enable: "Guardar histórico de clipboard",
         caption: "Guarda textos copiados para reutilizar depois. Tudo fica local e pode ser apagado a qualquer momento.",
@@ -648,7 +648,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "caracteres"
     )
 
-    static let tr = ClipboardFeatureStrings(
+    package static let tr = ClipboardFeatureStrings(
         title: "Pano",
         enable: "Pano geçmişini kaydet",
         caption: "Kopyalanan metinleri daha sonra yeniden kullanabilmen için saklar. Her şey yerel kalır ve istediğin zaman temizlenebilir.",
@@ -709,7 +709,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "karakter"
     )
 
-    static let ru = ClipboardFeatureStrings(
+    package static let ru = ClipboardFeatureStrings(
         title: "Буфер обмена",
         enable: "Сохранять историю буфера обмена",
         caption: "Сохраняет скопированный текст, чтобы вы могли использовать его позже. Всё остаётся локально и может быть очищено в любой момент.",
@@ -770,7 +770,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "символов"
     )
 
-    static let es = ClipboardFeatureStrings(
+    package static let es = ClipboardFeatureStrings(
         title: "Portapapeles",
         enable: "Guardar historial del portapapeles",
         caption: "Guarda el texto copiado para reutilizarlo después. Todo queda local y se puede borrar cuando quieras.",
@@ -831,7 +831,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "caracteres"
     )
 
-    static let sk = ClipboardFeatureStrings(
+    package static let sk = ClipboardFeatureStrings(
         title: "Schránka",
         enable: "Ukladať históriu schránky",
         caption: "Ukladá skopírovaný text, aby ste ho mohli neskôr znova použiť. Všetko zostáva lokálne a môžete to kedykoľvek vymazať.",
@@ -892,7 +892,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "znakov"
     )
 
-    static let de = ClipboardFeatureStrings(
+    package static let de = ClipboardFeatureStrings(
         title: "Zwischenablage",
         enable: "Zwischenablageverlauf speichern",
         caption: "Speichert kopierten Text, damit du ihn später wiederverwenden kannst. Alles bleibt lokal und kann jederzeit gelöscht werden.",
@@ -953,7 +953,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "Zeichen"
     )
 
-    static let fr = ClipboardFeatureStrings(
+    package static let fr = ClipboardFeatureStrings(
         title: "Presse-papiers",
         enable: "Enregistrer l’historique du presse-papiers",
         caption: "Enregistre le texte copié pour le réutiliser plus tard. Tout reste local et peut être effacé à tout moment.",
@@ -1014,7 +1014,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "caractères"
     )
 
-    static let it = ClipboardFeatureStrings(
+    package static let it = ClipboardFeatureStrings(
         title: "Appunti",
         enable: "Salva cronologia degli appunti",
         caption: "Salva il testo copiato per riutilizzarlo in seguito. Tutto resta locale e può essere cancellato in qualsiasi momento.",
@@ -1075,7 +1075,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "caratteri"
     )
 
-    static let ja = ClipboardFeatureStrings(
+    package static let ja = ClipboardFeatureStrings(
         title: "クリップボード",
         enable: "クリップボード履歴を保存",
         caption: "コピーしたテキストを保存して、あとで再利用できます。すべてローカルに保存され、いつでも削除できます。",
@@ -1136,7 +1136,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "文字"
     )
 
-    static let zhHans = ClipboardFeatureStrings(
+    package static let zhHans = ClipboardFeatureStrings(
         title: "剪贴板",
         enable: "保存剪贴板历史",
         caption: "保存拷贝过的文本，方便之后再次使用。所有内容都保存在本机，可随时清除。",
@@ -1197,7 +1197,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "个字符"
     )
 
-    static let zhTW = ClipboardFeatureStrings(
+    package static let zhTW = ClipboardFeatureStrings(
         title: "剪貼簿",
         enable: "儲存剪貼簿紀錄",
         caption: "儲存複製過的文字，方便之後再次使用。所有內容都會儲存在這台裝置上，並可隨時清除。",
@@ -1258,7 +1258,7 @@ struct ClipboardFeatureStrings {
         menuBarPreviewLengthSuffix: "個字元"
     )
 
-    static let zhHK = ClipboardFeatureStrings(
+    package static let zhHK = ClipboardFeatureStrings(
         title: "剪貼簿",
         enable: "儲存剪貼簿記錄",
         caption: "儲存複製過的文字，方便之後再次使用。所有內容都會儲存在此裝置上，並可隨時清除。",
@@ -1320,95 +1320,95 @@ struct ClipboardFeatureStrings {
     )
 }
 
-struct WindowLayoutFeatureStrings {
-    let title: String
-    let caption: String
-    let showInPanel: String
-    let gestureSection: String
-    let gestureEnable: String
-    let gestureCaption: String
-    let gestureModifiers: String
-    let gestureMove: String
-    let gestureResize: String
-    let gestureResizeHint: String
-    let gestureRaiseWindow: String
-    let shortcuts: String
-    let shortcutsCaption: String
-    let permissionCaption: String
-    let noWindow: String
-    let missingPermission: String
-    let failed: String
-    let done: String
-    let restored: String
-    let noRestore: String
-    let target: String
-    let halves: String
-    let thirds: String
-    let quarterRows: String
-    let quarterColumns: String
-    let sixths: String
-    let corners: String
-    let other: String
-    let leftHalf: String
-    let rightHalf: String
-    let topHalf: String
-    let bottomHalf: String
-    let centerHalf: String
-    let leftThird: String
-    let centerThird: String
-    let rightThird: String
-    let leftTwoThirds: String
-    let rightTwoThirds: String
-    let centerTwoThirds: String
-    let topThird: String
-    let middleThird: String
-    let bottomThird: String
-    let topTwoThirds: String
-    let bottomTwoThirds: String
-    let topQuarter: String
-    let upperMiddleQuarter: String
-    let lowerMiddleQuarter: String
-    let bottomQuarter: String
-    let leftQuarter: String
-    let leftMiddleQuarter: String
-    let rightMiddleQuarter: String
-    let rightQuarter: String
-    let topLeftSixth: String
-    let topCenterSixth: String
-    let topRightSixth: String
-    let bottomLeftSixth: String
-    let bottomCenterSixth: String
-    let bottomRightSixth: String
-    let topLeft: String
-    let topRight: String
-    let bottomLeft: String
-    let bottomRight: String
-    let maximize: String
-    let center: String
-    let nextDisplay: String
-    let restore: String
-    let fullScreen: String
-    let previousDisplay: String
-    let edgeSnapEnable: String
-    let edgeSnapCaption: String
-    let edgeSnapSystemConflict: String
-    let edgeSnapOpenSystemSettings: String
-    let edgeSnapWaitingForSystem: String
-    let marginMaximize: String
-    let gapsSection: String
-    let gapsCaption: String
-    let windowGap: String
-    let screenGap: String
-    let sideRepeatCycle: String
-    let sideRepeatCycleCaption: String
-    let gapNone: String
-    let gapTiny: String
-    let gapSmall: String
-    let gapMedium: String
-    let gapLarge: String
-    let gapExtraLarge: String
+package struct WindowLayoutFeatureStrings {
+    package let title: String
+    package let caption: String
+    package let showInPanel: String
+    package let gestureSection: String
+    package let gestureEnable: String
+    package let gestureCaption: String
+    package let gestureModifiers: String
+    package let gestureMove: String
+    package let gestureResize: String
+    package let gestureResizeHint: String
+    package let gestureRaiseWindow: String
+    package let shortcuts: String
+    package let shortcutsCaption: String
+    package let permissionCaption: String
+    package let noWindow: String
+    package let missingPermission: String
+    package let failed: String
+    package let done: String
+    package let restored: String
+    package let noRestore: String
+    package let target: String
+    package let halves: String
+    package let thirds: String
+    package let quarterRows: String
+    package let quarterColumns: String
+    package let sixths: String
+    package let corners: String
+    package let other: String
+    package let leftHalf: String
+    package let rightHalf: String
+    package let topHalf: String
+    package let bottomHalf: String
+    package let centerHalf: String
+    package let leftThird: String
+    package let centerThird: String
+    package let rightThird: String
+    package let leftTwoThirds: String
+    package let rightTwoThirds: String
+    package let centerTwoThirds: String
+    package let topThird: String
+    package let middleThird: String
+    package let bottomThird: String
+    package let topTwoThirds: String
+    package let bottomTwoThirds: String
+    package let topQuarter: String
+    package let upperMiddleQuarter: String
+    package let lowerMiddleQuarter: String
+    package let bottomQuarter: String
+    package let leftQuarter: String
+    package let leftMiddleQuarter: String
+    package let rightMiddleQuarter: String
+    package let rightQuarter: String
+    package let topLeftSixth: String
+    package let topCenterSixth: String
+    package let topRightSixth: String
+    package let bottomLeftSixth: String
+    package let bottomCenterSixth: String
+    package let bottomRightSixth: String
+    package let topLeft: String
+    package let topRight: String
+    package let bottomLeft: String
+    package let bottomRight: String
+    package let maximize: String
+    package let center: String
+    package let nextDisplay: String
+    package let restore: String
+    package let fullScreen: String
+    package let previousDisplay: String
+    package let edgeSnapEnable: String
+    package let edgeSnapCaption: String
+    package let edgeSnapSystemConflict: String
+    package let edgeSnapOpenSystemSettings: String
+    package let edgeSnapWaitingForSystem: String
+    package let marginMaximize: String
+    package let gapsSection: String
+    package let gapsCaption: String
+    package let windowGap: String
+    package let screenGap: String
+    package let sideRepeatCycle: String
+    package let sideRepeatCycleCaption: String
+    package let gapNone: String
+    package let gapTiny: String
+    package let gapSmall: String
+    package let gapMedium: String
+    package let gapLarge: String
+    package let gapExtraLarge: String
 
-    static let enUS = WindowLayoutFeatureStrings(
+    package static let enUS = WindowLayoutFeatureStrings(
         title: "Window layout",
         caption: "Arrange windows into screen sections or move and resize them with a trackpad or mouse.",
         showInPanel: "Show in panel",
@@ -1497,7 +1497,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Extra large"
     )
 
-    static let ptBR = WindowLayoutFeatureStrings(
+    package static let ptBR = WindowLayoutFeatureStrings(
         title: "Layout de janelas",
         caption: "Organize janelas em áreas da tela ou mova e redimensione com o trackpad ou mouse.",
         showInPanel: "Mostrar no painel",
@@ -1586,7 +1586,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Extragrande"
     )
 
-    static let tr = WindowLayoutFeatureStrings(
+    package static let tr = WindowLayoutFeatureStrings(
         title: "Pencere yerleşimi",
         caption: "Pencereleri ekran bölümlerine yerleştirin veya izleme dörtgeni ya da fareyle taşıyıp yeniden boyutlandırın.",
         showInPanel: "Panelde göster",
@@ -1675,7 +1675,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Çok büyük"
     )
 
-    static let ru = WindowLayoutFeatureStrings(
+    package static let ru = WindowLayoutFeatureStrings(
         title: "Раскладка окон",
         caption: "Размещайте окна по областям экрана или перемещайте и меняйте их размер трекпадом или мышью.",
         showInPanel: "Показывать в панели",
@@ -1764,7 +1764,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Очень большой"
     )
 
-    static let es = WindowLayoutFeatureStrings(
+    package static let es = WindowLayoutFeatureStrings(
         title: "Diseño de ventanas",
         caption: "Organiza ventanas en zonas de la pantalla o muévelas y cambia su tamaño con el trackpad o el ratón.",
         showInPanel: "Mostrar en el panel",
@@ -1853,7 +1853,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Extragrande"
     )
 
-    static let sk = WindowLayoutFeatureStrings(
+    package static let sk = WindowLayoutFeatureStrings(
         title: "Rozloženie okien",
         caption: "Usporiadajte okná do oblastí obrazovky alebo ich presúvajte a meňte im veľkosť trackpadom či myšou.",
         showInPanel: "Zobraziť v paneli",
@@ -1942,7 +1942,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Extra veľká"
     )
 
-    static let de = WindowLayoutFeatureStrings(
+    package static let de = WindowLayoutFeatureStrings(
         title: "Fensterlayout",
         caption: "Ordne Fenster in Bildschirmbereiche ein oder verschiebe und skaliere sie mit Trackpad oder Maus.",
         showInPanel: "Im Panel anzeigen",
@@ -2031,7 +2031,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Sehr groß"
     )
 
-    static let fr = WindowLayoutFeatureStrings(
+    package static let fr = WindowLayoutFeatureStrings(
         title: "Disposition des fenêtres",
         caption: "Organisez les fenêtres dans des zones de l’écran ou déplacez-les et redimensionnez-les au trackpad ou à la souris.",
         showInPanel: "Afficher dans le panneau",
@@ -2120,7 +2120,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Très grand"
     )
 
-    static let it = WindowLayoutFeatureStrings(
+    package static let it = WindowLayoutFeatureStrings(
         title: "Layout finestre",
         caption: "Disponi le finestre nelle aree dello schermo oppure spostale e ridimensionale con trackpad o mouse.",
         showInPanel: "Mostra nel pannello",
@@ -2209,7 +2209,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "Molto grande"
     )
 
-    static let ja = WindowLayoutFeatureStrings(
+    package static let ja = WindowLayoutFeatureStrings(
         title: "ウインドウ配置",
         caption: "ウインドウを画面の領域に配置したり、トラックパッドやマウスで移動やサイズ変更ができます。",
         showInPanel: "パネルに表示",
@@ -2298,7 +2298,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "特大"
     )
 
-    static let zhHans = WindowLayoutFeatureStrings(
+    package static let zhHans = WindowLayoutFeatureStrings(
         title: "窗口布局",
         caption: "将窗口排列到屏幕区域，或用触控板或鼠标移动和调整大小。",
         showInPanel: "在面板中显示",
@@ -2387,7 +2387,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "特大"
     )
 
-    static let zhTW = WindowLayoutFeatureStrings(
+    package static let zhTW = WindowLayoutFeatureStrings(
         title: "視窗排列",
         caption: "將視窗排列到螢幕區域，或用觸控板或滑鼠移動及調整大小。",
         showInPanel: "在面板中顯示",
@@ -2476,7 +2476,7 @@ struct WindowLayoutFeatureStrings {
         gapExtraLarge: "特大"
     )
 
-    static let zhHK = WindowLayoutFeatureStrings(
+    package static let zhHK = WindowLayoutFeatureStrings(
         title: "視窗排列",
         caption: "將視窗排列到螢幕區域，或用觸控板或滑鼠移動及調整大小。",
         showInPanel: "在面板中顯示",
@@ -2566,41 +2566,41 @@ struct WindowLayoutFeatureStrings {
     )
 }
 
-struct MonitorAlertFeatureStrings {
-    let section: String
-    let caption: String
-    let notificationsDenied: String
-    let cpu: String
-    let cpuTemperature: String
-    let memory: String
-    let disk: String
-    let battery: String
-    let cpuThreshold: String
-    let cpuTemperatureThreshold: String
-    let diskThreshold: String
-    let batteryThreshold: String
-    let cooldown: String
-    let cooldown2: String
-    let cooldown5: String
-    let cooldown15: String
-    let cooldown30: String
-    let cooldown60: String
-    let cpuTitle: String
-    let cpuBodyFormat: String
-    let cpuTemperatureTitle: String
-    let cpuTemperatureBodyFormat: String
-    let memoryTitle: String
-    let memoryBody: String
-    let diskTitle: String
-    let diskBodyFormat: String
-    let batteryTitle: String
-    let batteryBodyFormat: String
-    let batteryTemperature: String
-    let batteryTemperatureThreshold: String
-    let batteryTemperatureTitle: String
-    let batteryTemperatureBodyFormat: String
+package struct MonitorAlertFeatureStrings {
+    package let section: String
+    package let caption: String
+    package let notificationsDenied: String
+    package let cpu: String
+    package let cpuTemperature: String
+    package let memory: String
+    package let disk: String
+    package let battery: String
+    package let cpuThreshold: String
+    package let cpuTemperatureThreshold: String
+    package let diskThreshold: String
+    package let batteryThreshold: String
+    package let cooldown: String
+    package let cooldown2: String
+    package let cooldown5: String
+    package let cooldown15: String
+    package let cooldown30: String
+    package let cooldown60: String
+    package let cpuTitle: String
+    package let cpuBodyFormat: String
+    package let cpuTemperatureTitle: String
+    package let cpuTemperatureBodyFormat: String
+    package let memoryTitle: String
+    package let memoryBody: String
+    package let diskTitle: String
+    package let diskBodyFormat: String
+    package let batteryTitle: String
+    package let batteryBodyFormat: String
+    package let batteryTemperature: String
+    package let batteryTemperatureThreshold: String
+    package let batteryTemperatureTitle: String
+    package let batteryTemperatureBodyFormat: String
 
-    static let enUS = MonitorAlertFeatureStrings(
+    package static let enUS = MonitorAlertFeatureStrings(
         section: "Alerts",
         caption: "Alerts fire when their selected limits are reached. CPU use and temperature alerts ignore spikes shorter than about 12 seconds. The repeat setting only limits repeats of the same alert.",
         notificationsDenied: "Notifications for Vitruvian are off in System Settings, so alerts cannot appear.",
@@ -2635,7 +2635,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "Battery reached %@."
     )
 
-    static let ptBR = MonitorAlertFeatureStrings(
+    package static let ptBR = MonitorAlertFeatureStrings(
         section: "Alertas",
         caption: "Os alertas disparam quando os limites escolhidos são atingidos. O uso da CPU e os alertas de temperatura ignoram picos com menos de 12 segundos. A opção de repetição só limita o mesmo alerta.",
         notificationsDenied: "As notificações do Vitruvian estão desativadas nos Ajustes do Sistema, então os alertas não aparecem.",
@@ -2670,7 +2670,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "A bateria chegou a %@."
     )
 
-    static let tr = MonitorAlertFeatureStrings(
+    package static let tr = MonitorAlertFeatureStrings(
         section: "Uyarılar",
         caption: "Uyarılar seçilen eşiklere ulaşıldığında gönderilir. CPU kullanımı ve sıcaklık uyarıları yaklaşık 12 saniyeden kısa sıçramaları yok sayar. Tekrarlama ayarı yalnızca aynı uyarının tekrarlanmasını sınırlar.",
         notificationsDenied: "Sistem Ayarları’nda Vitruvian bildirimleri kapalı, bu yüzden uyarılar görünemez.",
@@ -2705,7 +2705,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "Pil %@ değerine ulaştı."
     )
 
-    static let ru = MonitorAlertFeatureStrings(
+    package static let ru = MonitorAlertFeatureStrings(
         section: "Оповещения",
         caption: "Оповещения появляются при достижении выбранных порогов. Загрузка CPU и температурные оповещения игнорируют скачки короче примерно 12 секунд. Настройка повтора ограничивает только повтор одного и того же оповещения.",
         notificationsDenied: "Уведомления Vitruvian выключены в Системных настройках, поэтому оповещения не появятся.",
@@ -2740,7 +2740,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "Батарея достигла %@."
     )
 
-    static let es = MonitorAlertFeatureStrings(
+    package static let es = MonitorAlertFeatureStrings(
         section: "Alertas",
         caption: "Las alertas aparecen cuando se alcanzan los límites elegidos. El uso de CPU y las alertas de temperatura ignoran los picos de menos de unos 12 segundos. El ajuste de repetición solo limita la repetición de la misma alerta.",
         notificationsDenied: "Las notificaciones de Vitruvian están desactivadas en Ajustes del Sistema, así que las alertas no aparecen.",
@@ -2775,7 +2775,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "La batería llegó a %@."
     )
 
-    static let sk = MonitorAlertFeatureStrings(
+    package static let sk = MonitorAlertFeatureStrings(
         section: "Hlásenia",
         caption: "Hlásenia sa spustia po dosiahnutí vybraných limitov. Hlásenia o vyťažení a teplote CPU ignorujú výkyvy kratšie ako približne 12 sekúnd. Nastavenie opakovania obmedzuje iba opakovanie toho istého hlásenia.",
         notificationsDenied: "Hlásenia pre Vitruvian sú vypnuté v Systémových nastaveniach, takže sa nemôžu zobraziť.",
@@ -2810,7 +2810,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "Batéria dosiahla %@."
     )
 
-    static let de = MonitorAlertFeatureStrings(
+    package static let de = MonitorAlertFeatureStrings(
         section: "Warnungen",
         caption: "Warnungen erscheinen, wenn die gewählten Grenzwerte erreicht werden. CPU-Auslastung und Temperaturwarnungen ignorieren Spitzen, die kürzer als etwa 12 Sekunden dauern. Die Wiederholungseinstellung begrenzt nur die Wiederholung derselben Warnung.",
         notificationsDenied: "Mitteilungen für Vitruvian sind in den Systemeinstellungen aus, daher können keine Warnungen erscheinen.",
@@ -2845,7 +2845,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "Der Akku hat %@ erreicht."
     )
 
-    static let fr = MonitorAlertFeatureStrings(
+    package static let fr = MonitorAlertFeatureStrings(
         section: "Alertes",
         caption: "Les alertes apparaissent lorsque les seuils choisis sont atteints. L’utilisation du processeur et les alertes de température ignorent les pics de moins de 12 secondes environ. Le réglage de répétition limite uniquement la répétition de la même alerte.",
         notificationsDenied: "Les notifications de Vitruvian sont désactivées dans Réglages Système, les alertes ne peuvent donc pas apparaître.",
@@ -2880,7 +2880,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "La batterie a atteint %@."
     )
 
-    static let it = MonitorAlertFeatureStrings(
+    package static let it = MonitorAlertFeatureStrings(
         section: "Avvisi",
         caption: "Gli avvisi compaiono quando vengono raggiunte le soglie scelte. L’uso della CPU e gli avvisi di temperatura ignorano i picchi più brevi di circa 12 secondi. L’impostazione di ripetizione limita solo la ripetizione dello stesso avviso.",
         notificationsDenied: "Le notifiche di Vitruvian sono disattivate in Impostazioni di Sistema, quindi gli avvisi non compaiono.",
@@ -2915,7 +2915,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "La batteria ha raggiunto %@."
     )
 
-    static let ja = MonitorAlertFeatureStrings(
+    package static let ja = MonitorAlertFeatureStrings(
         section: "アラート",
         caption: "選択したしきい値に達すると通知します。CPU 使用率と温度の通知は約 12 秒未満の短い急上昇を無視します。繰り返し設定は同じ通知の繰り返しだけを制限します。",
         notificationsDenied: "システム設定でVitruvianの通知がオフのため、アラートは表示されません。",
@@ -2950,7 +2950,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "バッテリーが %@ に達しました。"
     )
 
-    static let zhHans = MonitorAlertFeatureStrings(
+    package static let zhHans = MonitorAlertFeatureStrings(
         section: "提醒",
         caption: "达到所选阈值时会发出提醒。CPU 使用率和温度提醒会忽略短于约 12 秒的短暂峰值。重复设置仅限制同一提醒的重复频率。",
         notificationsDenied: "Vitruvian 的通知已在系统设置中关闭，警报无法显示。",
@@ -2985,7 +2985,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "电池已达到 %@。"
     )
 
-    static let zhTW = MonitorAlertFeatureStrings(
+    package static let zhTW = MonitorAlertFeatureStrings(
         section: "提醒",
         caption: "達到所選門檻時會發出提醒。CPU 使用率和溫度提醒會忽略短於約 12 秒的短暫尖峰。重複設定只限制相同提醒的重複頻率。",
         notificationsDenied: "Vitruvian 的通知已在系統設定中關閉，警示無法顯示。",
@@ -3020,7 +3020,7 @@ struct MonitorAlertFeatureStrings {
         batteryTemperatureBodyFormat: "電池已達到 %@。"
     )
 
-    static let zhHK = MonitorAlertFeatureStrings(
+    package static let zhHK = MonitorAlertFeatureStrings(
         section: "提示",
         caption: "達到所選門檻時會發出提示。CPU 使用率和溫度提示會忽略短於約 12 秒的短暫尖峰。重複設定只限制相同提示的重複頻率。",
         notificationsDenied: "Vitruvian 的通知已在系統設定中關閉，警示無法顯示。",
@@ -3057,7 +3057,7 @@ struct MonitorAlertFeatureStrings {
 }
 
 extension SettingsCategoryStrings {
-    static let uk = SettingsCategoryStrings(
+    package static let uk = SettingsCategoryStrings(
         essentials: "Основне",
         windowsControls: "Керування вікнами",
         files: "Файли",
@@ -3068,7 +3068,7 @@ extension SettingsCategoryStrings {
 }
 
 extension ClipboardFeatureStrings {
-    static let uk = ClipboardFeatureStrings(
+    package static let uk = ClipboardFeatureStrings(
         title: "Буфер обміну",
         enable: "Зберігати історію буфера обміну",
         caption: "Зберігає скопійований текст, щоб ви могли використати його пізніше. Все залишається локальним і може бути очищене будь-коли.",
@@ -3131,7 +3131,7 @@ extension ClipboardFeatureStrings {
 }
 
 extension WindowLayoutFeatureStrings {
-    static let uk = WindowLayoutFeatureStrings(
+    package static let uk = WindowLayoutFeatureStrings(
         title: "Розкладка вікон",
         caption: "Розставляйте вікна у розділи екрана або переміщуйте та змінюйте їхній розмір трекпедом або мишею.",
         showInPanel: "Показати в панелі",
@@ -3222,7 +3222,7 @@ extension WindowLayoutFeatureStrings {
 }
 
 extension MonitorAlertFeatureStrings {
-    static let uk = MonitorAlertFeatureStrings(
+    package static let uk = MonitorAlertFeatureStrings(
         section: "Сповіщення",
         caption: "Сповіщення спрацьовують, коли досягаються вибрані межі. Сповіщення про використання й температуру CPU ігнорують сплески коротші за 12 секунд. Налаштування повтору обмежує лише повтори того самого сповіщення.",
         notificationsDenied: "Сповіщення Vitruvian вимкнено в Системних параметрах, тому вони не можуть з’являтися.",
@@ -3259,7 +3259,7 @@ extension MonitorAlertFeatureStrings {
 }
 
 extension MixerFeatureStrings {
-    static let uk = MixerFeatureStrings(
+    package static let uk = MixerFeatureStrings(
         hideInactiveApps: "Приховувати неактивні програми",
         pin: "Закріпити вгорі",
         unpin: "Відкріпити",

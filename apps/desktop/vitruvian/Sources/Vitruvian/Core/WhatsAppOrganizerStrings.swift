@@ -3,39 +3,39 @@
 
 import Foundation
 
-struct WhatsAppOrganizerStrings {
-    let title: String
-    let experimental: String
-    let description: String
-    let enabled: String
-    let enabledCaption: String
-    let destination: String
-    let chooseFolder: String
-    let useDefault: String
-    let invalidDestination: String
-    let organization: String
-    let flat: String
-    let byType: String
-    let byMonth: String
-    let delay: String
-    let minutesFormat: String
-    let duplicateAction: String
-    let trashDuplicate: String
-    let keepBoth: String
-    let replaceExisting: String
-    let duplicateCaption: String
-    let organizeNow: String
-    let undo: String
-    let waiting: String
-    let working: String
-    let resultFormat: String
-    let lastRunFormat: String
-    let neverRun: String
-    let notificationTitle: String
-    let notificationFormat: String
-    let privacyNote: String
+package struct WhatsAppOrganizerStrings {
+    package let title: String
+    package let experimental: String
+    package let description: String
+    package let enabled: String
+    package let enabledCaption: String
+    package let destination: String
+    package let chooseFolder: String
+    package let useDefault: String
+    package let invalidDestination: String
+    package let organization: String
+    package let flat: String
+    package let byType: String
+    package let byMonth: String
+    package let delay: String
+    package let minutesFormat: String
+    package let duplicateAction: String
+    package let trashDuplicate: String
+    package let keepBoth: String
+    package let replaceExisting: String
+    package let duplicateCaption: String
+    package let organizeNow: String
+    package let undo: String
+    package let waiting: String
+    package let working: String
+    package let resultFormat: String
+    package let lastRunFormat: String
+    package let neverRun: String
+    package let notificationTitle: String
+    package let notificationFormat: String
+    package let privacyNote: String
 
-    static func localized(_ language: AppLanguage) -> WhatsAppOrganizerStrings {
+    package static func localized(_ language: AppLanguage) -> WhatsAppOrganizerStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -57,7 +57,7 @@ struct WhatsAppOrganizerStrings {
 }
 
 extension WhatsAppOrganizerStrings {
-    static let enUS = WhatsAppOrganizerStrings(
+    package static let enUS = WhatsAppOrganizerStrings(
         title: "Automatic organization",
         experimental: "Experimental",
         description: "Moves stable WhatsApp downloads to a dedicated folder and detects exact repeat downloads.",
@@ -90,7 +90,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "To identify exact duplicates, file bytes are read locally only while calculating a cryptographic digest. Contents and chats are never stored or uploaded."
     )
 
-    static let es = WhatsAppOrganizerStrings(
+    package static let es = WhatsAppOrganizerStrings(
         title: "Organización automática",
         experimental: "Experimental",
         description: "Mueve las descargas estables de WhatsApp a una carpeta específica y detecta las descargas repetidas exactas.",
@@ -123,7 +123,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Para reconocer duplicados exactos, los bytes del archivo solo se leen localmente mientras se calcula una huella criptográfica. El contenido y los chats nunca se guardan ni se envían."
     )
 
-    static let sk = WhatsAppOrganizerStrings(
+    package static let sk = WhatsAppOrganizerStrings(
         title: "Automatická organizácia",
         experimental: "Experimentálne",
         description: "Presúva stabilné stiahnuté súbory z WhatsAppu do vyhradeného priečinka a rozpoznáva presne opakované sťahovania.",
@@ -156,7 +156,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Na rozpoznanie presných duplikátov sa bajty súboru čítajú iba lokálne počas výpočtu kryptografického odtlačku. Obsah a konverzácie sa nikdy neukladajú ani neodosielajú."
     )
 
-    static let ptBR = WhatsAppOrganizerStrings(
+    package static let ptBR = WhatsAppOrganizerStrings(
         title: "Organização automática",
         experimental: "Experimental",
         description: "Move downloads estáveis do WhatsApp para uma pasta dedicada e detecta downloads repetidos idênticos.",
@@ -189,7 +189,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Para identificar duplicados exatos, os bytes do arquivo são lidos localmente apenas durante o cálculo do resumo criptográfico. Conteúdos e conversas nunca são salvos nem enviados."
     )
 
-    static let de = WhatsAppOrganizerStrings(
+    package static let de = WhatsAppOrganizerStrings(
         title: "Automatische Organisation",
         experimental: "Experimentell",
         description: "Verschiebt stabile WhatsApp-Downloads in einen eigenen Ordner und erkennt exakte Wiederholungs-Downloads.",
@@ -222,7 +222,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Zum Erkennen exakter Duplikate werden Dateibytes nur lokal gelesen, während eine kryptografische Prüfsumme berechnet wird. Inhalte und Chats werden nie gespeichert oder hochgeladen."
     )
 
-    static let fr = WhatsAppOrganizerStrings(
+    package static let fr = WhatsAppOrganizerStrings(
         title: "Organisation automatique",
         experimental: "Expérimental",
         description: "Déplace les téléchargements WhatsApp stables vers un dossier dédié et détecte les téléchargements répétés identiques.",
@@ -255,7 +255,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Pour identifier les doublons exacts, les octets des fichiers sont lus localement uniquement pendant le calcul d’une empreinte cryptographique. Les contenus et les discussions ne sont jamais stockés ni envoyés."
     )
 
-    static let it = WhatsAppOrganizerStrings(
+    package static let it = WhatsAppOrganizerStrings(
         title: "Organizzazione automatica",
         experimental: "Sperimentale",
         description: "Sposta i download WhatsApp stabili in una cartella dedicata e rileva i download ripetuti identici.",
@@ -288,7 +288,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Per individuare i duplicati esatti, i byte dei file vengono letti solo localmente durante il calcolo di un’impronta crittografica. Contenuti e chat non vengono mai salvati né inviati."
     )
 
-    static let tr = WhatsAppOrganizerStrings(
+    package static let tr = WhatsAppOrganizerStrings(
         title: "Otomatik düzenleme",
         experimental: "Deneysel",
         description: "Kararlı WhatsApp indirmelerini özel bir klasöre taşır ve birebir tekrar indirmeleri saptar.",
@@ -321,7 +321,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Birebir kopyaları saptamak için dosya baytları yalnızca yerel olarak, kriptografik özet hesaplanırken okunur. İçerikler ve sohbetler asla saklanmaz veya gönderilmez."
     )
 
-    static let ru = WhatsAppOrganizerStrings(
+    package static let ru = WhatsAppOrganizerStrings(
         title: "Автоматическая организация",
         experimental: "Экспериментально",
         description: "Перемещает устоявшиеся загрузки WhatsApp в отдельную папку и распознаёт точные повторные загрузки.",
@@ -354,7 +354,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "Для поиска точных дубликатов байты файлов читаются только локально, во время расчёта криптографического хеша. Содержимое и переписка никогда не сохраняются и не отправляются."
     )
 
-    static let ja = WhatsAppOrganizerStrings(
+    package static let ja = WhatsAppOrganizerStrings(
         title: "自動整理",
         experimental: "実験的",
         description: "安定した WhatsApp のダウンロードを専用フォルダへ移動し、完全に同一の再ダウンロードを検出します。",
@@ -387,7 +387,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "完全な重複を見つけるため、ファイルの内容は暗号学的ハッシュの計算中にローカルでのみ読み取られます。内容やチャットが保存・送信されることはありません。"
     )
 
-    static let ko = WhatsAppOrganizerStrings(
+    package static let ko = WhatsAppOrganizerStrings(
         title: "자동 정리",
         experimental: "실험적",
         description: "안정된 WhatsApp 다운로드를 전용 폴더로 옮기고 완전히 동일한 재다운로드를 감지합니다.",
@@ -420,7 +420,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "완전한 중복을 찾기 위해 파일 내용은 암호학적 해시를 계산하는 동안에만 로컬에서 읽힙니다. 내용과 대화는 절대 저장되거나 전송되지 않습니다."
     )
 
-    static let zhHans = WhatsAppOrganizerStrings(
+    package static let zhHans = WhatsAppOrganizerStrings(
         title: "自动整理",
         experimental: "实验性",
         description: "将稳定的 WhatsApp 下载移动到专用文件夹，并识别完全相同的重复下载。",
@@ -453,7 +453,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "为识别完全相同的重复文件，文件内容仅在本地计算加密摘要时被读取。内容和聊天绝不会被保存或上传。"
     )
 
-    static let zhTW = WhatsAppOrganizerStrings(
+    package static let zhTW = WhatsAppOrganizerStrings(
         title: "自動整理",
         experimental: "實驗性",
         description: "將穩定的 WhatsApp 下載移到專用資料夾，並辨識完全相同的重複下載。",
@@ -486,7 +486,7 @@ extension WhatsAppOrganizerStrings {
         privacyNote: "為辨識完全相同的重複檔案，檔案內容僅在本機計算加密摘要時被讀取。內容與聊天絕不會被儲存或上傳。"
     )
 
-    static let zhHK = WhatsAppOrganizerStrings(
+    package static let zhHK = WhatsAppOrganizerStrings(
         title: "自動整理",
         experimental: "實驗性",
         description: "將穩定的 WhatsApp 下載移到專用資料夾，並辨識完全相同的重複下載。",
@@ -518,7 +518,7 @@ extension WhatsAppOrganizerStrings {
         notificationFormat: "已整理 %1$d 個檔案。處理了 %2$d 個重複下載。%3$d 個失敗。",
         privacyNote: "為辨識完全相同的重複檔案，檔案內容僅在本機計算加密摘要時被讀取。內容與聊天絕不會被儲存或上傳。"
     )
-    static let uk = WhatsAppOrganizerStrings(
+    package static let uk = WhatsAppOrganizerStrings(
         title: "Автоматичне впорядкування",
         experimental: "Експериментальне",
         description: "Переміщує повністю завантажені файли WhatsApp у спеціальну папку та виявляє точні дублікати повторно завантажених файлів.",

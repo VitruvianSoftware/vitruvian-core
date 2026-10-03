@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Runs the updater's administrator install body with the authorization, the
 /// Extra Brightness overlay, the main queue and quitting replaced by doubles

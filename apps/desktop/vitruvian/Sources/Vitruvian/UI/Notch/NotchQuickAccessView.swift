@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// Only the transition owns animation state. No timer or display link survives
 /// the reveal, and a reversed transition cannot enable a departing button.

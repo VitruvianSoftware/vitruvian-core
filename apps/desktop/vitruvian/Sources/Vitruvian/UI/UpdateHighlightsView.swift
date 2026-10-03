@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The release's Dynamic Island demonstration, stored inside the app bundle.
 struct UpdateHighlightsView: View {

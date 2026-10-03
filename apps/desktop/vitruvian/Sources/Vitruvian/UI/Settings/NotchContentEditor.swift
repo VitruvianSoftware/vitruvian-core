@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The open island for one section, hanging from a slice of menu bar: the
 /// island's own pages at their real size, scaled into Settings, so every

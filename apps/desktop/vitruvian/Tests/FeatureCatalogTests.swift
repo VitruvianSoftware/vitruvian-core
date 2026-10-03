@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
+import VitruvianCore
 
 enum FeatureCatalogTests {
     private final class InstallerFileManager: FileManager, @unchecked Sendable {

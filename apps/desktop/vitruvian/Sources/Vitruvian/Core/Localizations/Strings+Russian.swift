@@ -5,7 +5,7 @@ import Foundation
 
 // Русский — полный перевод интерфейса.
 extension Strings {
-    static let ru = Strings(
+    package static let ru = Strings(
         statusIdleTooltip: "Vitruvian: обычный сон",
         statusActiveUntil: "Vitruvian: активно до",
         statusActiveIndefinite: "Vitruvian: активно без срока",

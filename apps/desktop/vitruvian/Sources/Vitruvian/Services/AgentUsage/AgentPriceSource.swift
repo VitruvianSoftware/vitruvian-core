@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Where the price list comes from: the copy inside the app, the last one
 /// downloaded, and the one published with the project, fetched at most once a

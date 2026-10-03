@@ -3,6 +3,7 @@
 
 import Carbon.HIToolbox
 import Foundation
+import VitruvianCore
 
 enum SuperKeySource: String, CaseIterable, Identifiable {
     case capsLock, rightCommand, rightOption, rightControl, rightShift

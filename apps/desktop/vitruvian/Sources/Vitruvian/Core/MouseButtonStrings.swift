@@ -3,47 +3,47 @@
 
 import Foundation
 
-struct MouseButtonFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let enableLabel: String
-    let enableCaption: String
-    let addButton: String
-    let captureWaiting: String
-    let captureCancel: String
-    let captureBlind: String
-    let captureUnsupported: String
-    let captureWheel: String
-    let captureExists: String
-    let captureHint: String
-    let backButtonName: String
-    let forwardButtonName: String
-    let otherButtonFormat: String      // "Button %d"
-    let setShortcutButton: String
-    let removeButton: String
-    let emptyCaption: String
-    let rowWheelNote: String
-    let manageButton: String
-    let panelCaption: String
-    let sideWheelLeftName: String
-    let sideWheelRightName: String
-    let spacesEnableLabel: String
-    let spacesEnableCaption: String
-    let spacesPickButton: String
-    let spacesShortcutsOffNote: String
+package struct MouseButtonFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let enableLabel: String
+    package let enableCaption: String
+    package let addButton: String
+    package let captureWaiting: String
+    package let captureCancel: String
+    package let captureBlind: String
+    package let captureUnsupported: String
+    package let captureWheel: String
+    package let captureExists: String
+    package let captureHint: String
+    package let backButtonName: String
+    package let forwardButtonName: String
+    package let otherButtonFormat: String      // "Button %d"
+    package let setShortcutButton: String
+    package let removeButton: String
+    package let emptyCaption: String
+    package let rowWheelNote: String
+    package let manageButton: String
+    package let panelCaption: String
+    package let sideWheelLeftName: String
+    package let sideWheelRightName: String
+    package let spacesEnableLabel: String
+    package let spacesEnableCaption: String
+    package let spacesPickButton: String
+    package let spacesShortcutsOffNote: String
     // The drag capture cannot borrow the shortcut capture's strings: it
     // refuses the side wheel by design, and its refusals must not point at a
     // list that is off screen with the shortcut switch off. New fields, so the
     // memberwise initializer makes a missing language a compile error.
-    let spacesCaptureWaiting: String
-    let spacesCaptureUnsupported: String
-    let spacesCaptureExists: String
-    let spacesFollowsDragLabel: String
-    let spacesFollowsDragCaption: String
+    package let spacesCaptureWaiting: String
+    package let spacesCaptureUnsupported: String
+    package let spacesCaptureExists: String
+    package let spacesFollowsDragLabel: String
+    package let spacesFollowsDragCaption: String
 }
 
 extension FeatureStrings {
-    static func mouseButtons(_ language: AppLanguage) -> MouseButtonFeatureStrings {
+    package static func mouseButtons(_ language: AppLanguage) -> MouseButtonFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -65,7 +65,7 @@ extension FeatureStrings {
 }
 
 extension MouseButtonFeatureStrings {
-    static let enUS = MouseButtonFeatureStrings(
+    package static let enUS = MouseButtonFeatureStrings(
         pageTitle: "Mouse button shortcuts",
         hubDescription: "Extra buttons and side-wheel directions press a key combination you choose.",
         enableLabel: "Use extra buttons as shortcuts",
@@ -100,7 +100,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Dragging right brings the Space on the left, the way a trackpad swipe carries it along with your fingers."
     )
 
-    static let ptBR = MouseButtonFeatureStrings(
+    package static let ptBR = MouseButtonFeatureStrings(
         pageTitle: "Atalhos nos botões do mouse",
         hubDescription: "Botões extras e os sentidos da roda lateral apertam uma combinação de teclas que você escolher.",
         enableLabel: "Usar botões extras como atalhos",
@@ -135,7 +135,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Arrastar para a direita traz o Espaço da esquerda, como um deslize no trackpad leva o Espaço junto com os dedos."
     )
 
-    static let tr = MouseButtonFeatureStrings(
+    package static let tr = MouseButtonFeatureStrings(
         pageTitle: "Fare düğmesi kısayolları",
         hubDescription: "Ekstra fare düğmeleri ve yan teker yönleri seçtiğiniz bir tuş birleşimine basar.",
         enableLabel: "Ekstra düğmeleri kısayol olarak kullan",
@@ -170,7 +170,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Sağa sürüklemek soldaki Alanı getirir; izleme dörtgeninde kaydırmanın Alanı parmaklarınızla birlikte taşıması gibi."
     )
 
-    static let ru = MouseButtonFeatureStrings(
+    package static let ru = MouseButtonFeatureStrings(
         pageTitle: "Сочетания на кнопках мыши",
         hubDescription: "Дополнительные кнопки и направления бокового колёсика нажимают выбранное вами сочетание клавиш.",
         enableLabel: "Использовать дополнительные кнопки как сочетания",
@@ -205,7 +205,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Перетаскивание вправо открывает рабочий стол слева, как жест на трекпаде уводит его вместе с пальцами."
     )
 
-    static let es = MouseButtonFeatureStrings(
+    package static let es = MouseButtonFeatureStrings(
         pageTitle: "Atajos en los botones del ratón",
         hubDescription: "Los botones extra y las direcciones de la rueda lateral pulsan una combinación de teclas que tú eliges.",
         enableLabel: "Usar botones extra como atajos",
@@ -240,7 +240,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Arrastrar a la derecha trae el Espacio de la izquierda, igual que un deslizamiento en el trackpad lo lleva con tus dedos."
     )
 
-    static let sk = MouseButtonFeatureStrings(
+    package static let sk = MouseButtonFeatureStrings(
         pageTitle: "Skratky tlačidiel myši",
         hubDescription: "Extra tlačidlá a smery bočného kolieska stláčajú kombináciu klávesov, ktorú si vyberiete.",
         enableLabel: "Používať extra tlačidlá ako skratky",
@@ -275,7 +275,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Presunutie doprava privedie plochu vľavo, rovnako ako ju ťah po trackpade unáša spolu s vašimi prstami."
     )
 
-    static let de = MouseButtonFeatureStrings(
+    package static let de = MouseButtonFeatureStrings(
         pageTitle: "Kurzbefehle auf Maustasten",
         hubDescription: "Zusätzliche Maustasten und Richtungen des seitlichen Rads drücken einen Tastaturkurzbefehl deiner Wahl.",
         enableLabel: "Zusatztasten als Kurzbefehle verwenden",
@@ -310,7 +310,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Nach rechts ziehen holt den Space links daneben, so wie eine Streichbewegung auf dem Trackpad ihn mit den Fingern mitnimmt."
     )
 
-    static let fr = MouseButtonFeatureStrings(
+    package static let fr = MouseButtonFeatureStrings(
         pageTitle: "Raccourcis sur les boutons de la souris",
         hubDescription: "Les boutons supplémentaires et les directions de la molette latérale appuient sur une combinaison de touches de votre choix.",
         enableLabel: "Utiliser les boutons supplémentaires comme raccourcis",
@@ -345,7 +345,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Glisser vers la droite amène l’espace de gauche, comme un balayage sur le trackpad qui l’emporte avec les doigts."
     )
 
-    static let it = MouseButtonFeatureStrings(
+    package static let it = MouseButtonFeatureStrings(
         pageTitle: "Abbreviazioni sui pulsanti del mouse",
         hubDescription: "I pulsanti extra e le direzioni della rotella laterale premono una combinazione di tasti a tua scelta.",
         enableLabel: "Usa i pulsanti extra come abbreviazioni",
@@ -380,7 +380,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "Trascinare a destra porta lo Spazio di sinistra, come uno scorrimento sul trackpad che lo trascina con le dita."
     )
 
-    static let ja = MouseButtonFeatureStrings(
+    package static let ja = MouseButtonFeatureStrings(
         pageTitle: "マウスボタンのショートカット",
         hubDescription: "マウスの拡張ボタンとサイドホイールの左右に、選んだキーの組み合わせを割り当てられます。",
         enableLabel: "拡張ボタンをショートカットとして使う",
@@ -415,7 +415,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "右にドラッグすると左のスペースが現れます。トラックパッドのスワイプが指と一緒にスペースを動かすのと同じ向きです。"
     )
 
-    static let ko = MouseButtonFeatureStrings(
+    package static let ko = MouseButtonFeatureStrings(
         pageTitle: "마우스 버튼 단축키",
         hubDescription: "마우스의 추가 버튼과 측면 휠 방향이 선택한 키 조합을 눌러 줍니다.",
         enableLabel: "추가 버튼을 단축키로 사용",
@@ -450,7 +450,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "오른쪽으로 드래그하면 왼쪽 스페이스가 나타납니다. 트랙패드 쓸어넘기기가 손가락과 함께 스페이스를 옮기는 방향과 같습니다."
     )
 
-    static let zhHans = MouseButtonFeatureStrings(
+    package static let zhHans = MouseButtonFeatureStrings(
         pageTitle: "鼠标按键快捷键",
         hubDescription: "鼠标的额外按键和侧滚轮方向会按下你选择的按键组合。",
         enableLabel: "将额外按键用作快捷键",
@@ -485,7 +485,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "向右拖动会带来左边的桌面，就像在触控板上滑动时桌面跟着手指移动一样。"
     )
 
-    static let zhTW = MouseButtonFeatureStrings(
+    package static let zhTW = MouseButtonFeatureStrings(
         pageTitle: "滑鼠按鍵快速鍵",
         hubDescription: "滑鼠的額外按鍵和側滾輪方向會按下你選擇的按鍵組合。",
         enableLabel: "將額外按鍵用作快速鍵",
@@ -520,7 +520,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragCaption: "向右拖曳會帶來左邊的桌面，就像在觸控式軌跡板上滑動時桌面跟著手指移動一樣。"
     )
 
-    static let zhHK = MouseButtonFeatureStrings(
+    package static let zhHK = MouseButtonFeatureStrings(
         pageTitle: "滑鼠按鍵快捷鍵",
         hubDescription: "滑鼠的額外按鍵和側滾輪方向會按下你選擇的按鍵組合。",
         enableLabel: "將額外按鍵用作快捷鍵",
@@ -554,7 +554,7 @@ extension MouseButtonFeatureStrings {
         spacesFollowsDragLabel: "桌面跟著拖曳走",
         spacesFollowsDragCaption: "向右拖曳會帶來左邊的桌面，就像在觸控式軌跡板上滑動時桌面跟著手指移動一樣。"
     )
-    static let uk = MouseButtonFeatureStrings(
+    package static let uk = MouseButtonFeatureStrings(
         pageTitle: "Клавіатурні скорочення кнопок миші",
         hubDescription: "Додаткові кнопки та напрямки бокового колеса натискають обране вами клавіатурне скорочення.",
         enableLabel: "Використовувати додаткові кнопки як клавіатурні скорочення",

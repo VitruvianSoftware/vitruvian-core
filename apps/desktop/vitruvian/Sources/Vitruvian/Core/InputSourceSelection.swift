@@ -8,15 +8,22 @@ import Foundation
 /// Input Sources services. Shared by the paths that switch a source while
 /// their own surface is up: the Super key tap cycles to the next source, and
 /// the Command Bar borrows a Latin layout for the length of a presentation.
-enum InputSourceSelection {
+package enum InputSourceSelection {
     /// What one enabled source looks like once read out of TIS. Plain values,
     /// so decisions over them stay pure and testable.
-    struct Snapshot: Equatable {
-        let id: String
+    package struct Snapshot: Equatable {
+        package let id: String
         /// A layout rather than an input method: a layout types what is
         /// printed on the keys, a method types whatever it is set to produce.
-        let isLayout: Bool
-        let isASCIICapable: Bool
+        package let isLayout: Bool
+        package let isASCIICapable: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, isLayout: Bool, isASCIICapable: Bool) {
+            self.id = id
+            self.isLayout = isLayout
+            self.isASCIICapable = isASCIICapable
+        }
     }
 
     // MARK: - Decisions (pure)
@@ -26,7 +33,7 @@ enum InputSourceSelection {
     /// ASCII layout, or none is enabled (a Mac set to Cyrillic and Greek
     /// alone has no Latin layout to borrow). First enabled wins, because that
     /// is the order the Input menu shows.
-    static func asciiLayoutID(currentID: String?, snapshots: [Snapshot]) -> String? {
+    package static func asciiLayoutID(currentID: String?, snapshots: [Snapshot]) -> String? {
         if let currentID,
            let current = snapshots.first(where: { $0.id == currentID }),
            current.isASCIICapable, current.isLayout {
@@ -37,7 +44,7 @@ enum InputSourceSelection {
 
     // MARK: - TIS access
 
-    static func currentSourceID() -> String? {
+    package static func currentSourceID() -> String? {
         guard let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return nil }
         return inputSourceString(current, property: kTISPropertyInputSourceID)
     }
@@ -47,7 +54,7 @@ enum InputSourceSelection {
     /// against a switch that never lands restores a source the caller never
     /// left — a no-op — while failing to record one that lands strands the
     /// typist on the borrowed layout, so the caller records on acceptance.
-    static func select(sourceID: String) -> Bool {
+    package static func select(sourceID: String) -> Bool {
         guard let source = selectableInputSources().first(where: {
             inputSourceString($0, property: kTISPropertyInputSourceID) == sourceID
         }) else { return false }
@@ -58,7 +65,7 @@ enum InputSourceSelection {
 
     /// The enabled, selectable keyboard sources, in the order the system
     /// keeps them. TIS talks to the text-input server from the main thread.
-    static func selectableInputSources() -> [TISInputSource] {
+    package static func selectableInputSources() -> [TISInputSource] {
         guard let list = TISCreateInputSourceList(nil, false) else { return [] }
         let values = list.takeRetainedValue() as NSArray
         return (values as! [TISInputSource]).filter {
@@ -68,7 +75,7 @@ enum InputSourceSelection {
         }
     }
 
-    static func snapshots() -> [Snapshot] {
+    package static func snapshots() -> [Snapshot] {
         selectableInputSources().map {
             Snapshot(id: inputSourceString($0, property: kTISPropertyInputSourceID) ?? "",
                      isLayout: inputSourceString($0, property: kTISPropertyInputSourceType)
@@ -77,13 +84,13 @@ enum InputSourceSelection {
         }
     }
 
-    static func inputSourceString(_ source: TISInputSource,
+    package static func inputSourceString(_ source: TISInputSource,
                                   property: CFString) -> String? {
         guard let pointer = TISGetInputSourceProperty(source, property) else { return nil }
         return Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
     }
 
-    static func inputSourceBool(_ source: TISInputSource,
+    package static func inputSourceBool(_ source: TISInputSource,
                                 property: CFString) -> Bool {
         guard let pointer = TISGetInputSourceProperty(source, property) else { return false }
         return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(pointer).takeUnretainedValue())

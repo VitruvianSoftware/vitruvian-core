@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// The scratchpad's document inside the island: its tabs in a row, the
 /// editor or its formatted reading filling the rest, and the pad's actions

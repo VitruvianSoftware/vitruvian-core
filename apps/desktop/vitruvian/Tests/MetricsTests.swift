@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 // The runner lists every independently selectable suite. A filtered run says
 // exactly which suites ran; an unknown or empty selection is an error.

@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 struct SwitcherScrollNavigation {
     static let gestureStep: Double = 30

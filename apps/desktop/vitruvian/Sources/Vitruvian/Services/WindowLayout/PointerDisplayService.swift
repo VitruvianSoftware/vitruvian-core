@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Sends the pointer to the centre of the next display on a shortcut, in the
 /// same order Next display cycles through. Warping the pointer needs no

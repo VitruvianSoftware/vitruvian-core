@@ -7,24 +7,24 @@ import Foundation
 /// person through System Settings and notices the grant by itself. Same
 /// contract as the other FeatureStrings structs: memberwise init in
 /// declaration order, one static per language, all in this file.
-struct PermissionGuideStrings {
-    let title: String
-    let stepOpen: String
-    let stepToggle: String
-    let stepReturn: String
-    let waiting: String
-    let granted: String
-    let closeHelp: String
+package struct PermissionGuideStrings {
+    package let title: String
+    package let stepOpen: String
+    package let stepToggle: String
+    package let stepReturn: String
+    package let waiting: String
+    package let granted: String
+    package let closeHelp: String
     /// Shown once the wait has gone on a while: the usual cause is an entry
     /// left by an earlier copy of the app, which macOS shows as on but no
     /// longer honours.
-    let staleHint: String
-    let startOver: String
-    let relaunch: String
+    package let staleHint: String
+    package let startOver: String
+    package let relaunch: String
 }
 
 extension FeatureStrings {
-    static func permissionGuide(_ language: AppLanguage) -> PermissionGuideStrings {
+    package static func permissionGuide(_ language: AppLanguage) -> PermissionGuideStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -46,7 +46,7 @@ extension FeatureStrings {
 }
 
 extension PermissionGuideStrings {
-    static let ko = PermissionGuideStrings(
+    package static let ko = PermissionGuideStrings(
         title: "한 단계만 남았습니다",
         stepOpen: "macOS가 시스템 설정의 올바른 목록을 열었습니다.",
         stepToggle: "그 목록에서 Vitruvian를 켜세요.",
@@ -58,7 +58,7 @@ extension PermissionGuideStrings {
         startOver: "다시 시작",
         relaunch: "적용하려면 다시 실행"
     )
-    static let uk = PermissionGuideStrings(
+    package static let uk = PermissionGuideStrings(
         title: "Залишився один крок",
         stepOpen: "macOS відкрила Системні параметри на потрібному списку.",
         stepToggle: "Увімкніть Vitruvian у тому списку.",
@@ -73,7 +73,7 @@ extension PermissionGuideStrings {
 }
 
 extension PermissionGuideStrings {
-    static let enUS = PermissionGuideStrings(
+    package static let enUS = PermissionGuideStrings(
         title: "One step left",
         stepOpen: "macOS opened System Settings on the right list.",
         stepToggle: "Turn Vitruvian on in that list.",
@@ -86,7 +86,7 @@ extension PermissionGuideStrings {
         relaunch: "Relaunch to apply"
     )
 
-    static let ptBR = PermissionGuideStrings(
+    package static let ptBR = PermissionGuideStrings(
         title: "Falta um passo",
         stepOpen: "O macOS abriu os Ajustes do Sistema na lista certa.",
         stepToggle: "Ligue o Vitruvian nessa lista.",
@@ -99,7 +99,7 @@ extension PermissionGuideStrings {
         relaunch: "Reabrir para aplicar"
     )
 
-    static let tr = PermissionGuideStrings(
+    package static let tr = PermissionGuideStrings(
         title: "Bir adım kaldı",
         stepOpen: "macOS, Sistem Ayarları’nı doğru listede açtı.",
         stepToggle: "O listede Vitruvian’i açın.",
@@ -112,7 +112,7 @@ extension PermissionGuideStrings {
         relaunch: "Uygulamak için yeniden başlat"
     )
 
-    static let ru = PermissionGuideStrings(
+    package static let ru = PermissionGuideStrings(
         title: "Остался один шаг",
         stepOpen: "macOS открыл Системные настройки на нужном списке.",
         stepToggle: "Включите Vitruvian в этом списке.",
@@ -125,7 +125,7 @@ extension PermissionGuideStrings {
         relaunch: "Перезапустить для применения"
     )
 
-    static let es = PermissionGuideStrings(
+    package static let es = PermissionGuideStrings(
         title: "Falta un paso",
         stepOpen: "macOS abrió los Ajustes del Sistema en la lista correcta.",
         stepToggle: "Activa Vitruvian en esa lista.",
@@ -138,7 +138,7 @@ extension PermissionGuideStrings {
         relaunch: "Reabrir para aplicar"
     )
 
-    static let sk = PermissionGuideStrings(
+    package static let sk = PermissionGuideStrings(
         title: "Ostáva jeden krok",
         stepOpen: "macOS otvoril Systémové nastavenia na správnom zozname.",
         stepToggle: "V tomto zozname zapnite Vitruvian.",
@@ -151,7 +151,7 @@ extension PermissionGuideStrings {
         relaunch: "Reštartovať na použitie"
     )
 
-    static let de = PermissionGuideStrings(
+    package static let de = PermissionGuideStrings(
         title: "Ein Schritt fehlt",
         stepOpen: "macOS hat die Systemeinstellungen mit der richtigen Liste geöffnet.",
         stepToggle: "Schalte Vitruvian in dieser Liste ein.",
@@ -164,7 +164,7 @@ extension PermissionGuideStrings {
         relaunch: "Zum Übernehmen neu starten"
     )
 
-    static let fr = PermissionGuideStrings(
+    package static let fr = PermissionGuideStrings(
         title: "Plus qu’une étape",
         stepOpen: "macOS a ouvert les Réglages Système sur la bonne liste.",
         stepToggle: "Activez Vitruvian dans cette liste.",
@@ -177,7 +177,7 @@ extension PermissionGuideStrings {
         relaunch: "Relancer pour appliquer"
     )
 
-    static let it = PermissionGuideStrings(
+    package static let it = PermissionGuideStrings(
         title: "Manca un passo",
         stepOpen: "macOS ha aperto le Impostazioni di Sistema sull’elenco giusto.",
         stepToggle: "Attiva Vitruvian in quell’elenco.",
@@ -190,7 +190,7 @@ extension PermissionGuideStrings {
         relaunch: "Riavvia per applicare"
     )
 
-    static let ja = PermissionGuideStrings(
+    package static let ja = PermissionGuideStrings(
         title: "あと一歩",
         stepOpen: "macOSがシステム設定の該当リストを開きました。",
         stepToggle: "そのリストでVitruvianをオンにしてください。",
@@ -203,7 +203,7 @@ extension PermissionGuideStrings {
         relaunch: "再起動して適用"
     )
 
-    static let zhHans = PermissionGuideStrings(
+    package static let zhHans = PermissionGuideStrings(
         title: "还差一步",
         stepOpen: "macOS 已打开系统设置的对应列表。",
         stepToggle: "在列表中开启 Vitruvian。",
@@ -216,7 +216,7 @@ extension PermissionGuideStrings {
         relaunch: "重新启动以生效"
     )
 
-    static let zhTW = PermissionGuideStrings(
+    package static let zhTW = PermissionGuideStrings(
         title: "只差一步",
         stepOpen: "macOS 已開啟系統設定的對應清單。",
         stepToggle: "在清單中開啟 Vitruvian。",
@@ -229,7 +229,7 @@ extension PermissionGuideStrings {
         relaunch: "重新啟動以套用"
     )
 
-    static let zhHK = PermissionGuideStrings(
+    package static let zhHK = PermissionGuideStrings(
         title: "只差一步",
         stepOpen: "macOS 已開啟系統設定的對應清單。",
         stepToggle: "在清單中開啟 Vitruvian。",

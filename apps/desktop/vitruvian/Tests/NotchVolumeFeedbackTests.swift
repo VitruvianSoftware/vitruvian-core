@@ -3,6 +3,7 @@
 
 import Combine
 import Foundation
+import VitruvianCore
 
 /// Runs the production subscription and notice selection with real Combine
 /// delivery and a controlled audio source, without changing hardware volume.

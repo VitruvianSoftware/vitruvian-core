@@ -3,54 +3,54 @@
 
 import Foundation
 
-struct FanControlFeatureStrings {
-    let title: String
-    let hubDescription: String
-    let showInPanel: String
-    let settingsCaption: String
-    let fanNameFormat: String
-    let rpmFormat: String
-    let allowControl: String
-    let approvalCaption: String
-    let openSettings: String
-    let noFans: String
-    let unsupported: String
-    let alreadyControlled: String
-    let failed: String
-    let safetyCaption: String
-    let safetyStopped: String
-    let menuBarTitle: String
-    let systemControl: String
-    let manualControl: String
-    let customCurve: String
-    let mode: String
-    let coolingIntensity: String
-    let currentRPMFormat: String
-    let targetRPMFormat: String
-    let applyManual: String
-    let applyCurve: String
-    let returnToSystem: String
-    let temperatureUnavailable: String
-    let curveUnavailable: String
-    let sensor: String
-    let temperature: String
-    let fanSpeed: String
-    let addPoint: String
-    let addSensor: String
-    let removePoint: String
-    let removeSensor: String
-    let curveGraph: String
-    let averageSoC: String
-    let hottestSoC: String
-    let averageCPU: String
-    let hottestCPU: String
-    let hottestGPU: String
-    let helperUnavailable: String
-    let resumeAfterRestart: String
+package struct FanControlFeatureStrings {
+    package let title: String
+    package let hubDescription: String
+    package let showInPanel: String
+    package let settingsCaption: String
+    package let fanNameFormat: String
+    package let rpmFormat: String
+    package let allowControl: String
+    package let approvalCaption: String
+    package let openSettings: String
+    package let noFans: String
+    package let unsupported: String
+    package let alreadyControlled: String
+    package let failed: String
+    package let safetyCaption: String
+    package let safetyStopped: String
+    package let menuBarTitle: String
+    package let systemControl: String
+    package let manualControl: String
+    package let customCurve: String
+    package let mode: String
+    package let coolingIntensity: String
+    package let currentRPMFormat: String
+    package let targetRPMFormat: String
+    package let applyManual: String
+    package let applyCurve: String
+    package let returnToSystem: String
+    package let temperatureUnavailable: String
+    package let curveUnavailable: String
+    package let sensor: String
+    package let temperature: String
+    package let fanSpeed: String
+    package let addPoint: String
+    package let addSensor: String
+    package let removePoint: String
+    package let removeSensor: String
+    package let curveGraph: String
+    package let averageSoC: String
+    package let hottestSoC: String
+    package let averageCPU: String
+    package let hottestCPU: String
+    package let hottestGPU: String
+    package let helperUnavailable: String
+    package let resumeAfterRestart: String
 }
 
 extension FeatureStrings {
-    static func fanControl(_ language: AppLanguage) -> FanControlFeatureStrings {
+    package static func fanControl(_ language: AppLanguage) -> FanControlFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -72,7 +72,7 @@ extension FeatureStrings {
 }
 
 extension FanControlFeatureStrings {
-    static let enUS = FanControlFeatureStrings(
+    package static let enUS = FanControlFeatureStrings(
         title: "Fan Control",
         hubDescription: "Control fans manually or with temperature curves while seeing live and target RPM",
         showInPanel: "Show Fan Control in the panel",
@@ -118,7 +118,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Resume after restart or sleep"
     )
 
-    static let ptBR = FanControlFeatureStrings(
+    package static let ptBR = FanControlFeatureStrings(
         title: "Controle das ventoinhas",
         hubDescription: "Controle manual ou por curvas de temperatura, com RPM atual e RPM-alvo",
         showInPanel: "Mostrar controle das ventoinhas no painel",
@@ -164,7 +164,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Retomar depois de reiniciar ou repousar"
     )
 
-    static let tr = FanControlFeatureStrings(
+    package static let tr = FanControlFeatureStrings(
         title: "Fan denetimi",
         hubDescription: "Canlı ve hedef RPM ile fanları elle veya sıcaklık eğrileriyle denetleyin",
         showInPanel: "Fan denetimini panelde göster",
@@ -210,7 +210,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Yeniden başlatma veya uykudan sonra sürdür"
     )
 
-    static let ru = FanControlFeatureStrings(
+    package static let ru = FanControlFeatureStrings(
         title: "Управление вентиляторами",
         hubDescription: "Ручное управление и температурные кривые с текущими и целевыми оборотами",
         showInPanel: "Показывать управление вентиляторами на панели",
@@ -256,7 +256,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Возобновлять после перезагрузки или сна"
     )
 
-    static let es = FanControlFeatureStrings(
+    package static let es = FanControlFeatureStrings(
         title: "Control de ventiladores",
         hubDescription: "Control manual o por curvas de temperatura con RPM actuales y objetivo",
         showInPanel: "Mostrar el control de ventiladores en el panel",
@@ -302,7 +302,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Reanudar tras reiniciar o salir del reposo"
     )
 
-    static let sk = FanControlFeatureStrings(
+    package static let sk = FanControlFeatureStrings(
         title: "Ovládanie ventilátorov",
         hubDescription: "Ovládajte ventilátory ručne alebo pomocou teplotných kriviek a sledujte aktuálne a cieľové otáčky",
         showInPanel: "Zobraziť ovládanie ventilátorov v paneli",
@@ -348,7 +348,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Pokračovať po reštarte alebo spánku"
     )
 
-    static let de = FanControlFeatureStrings(
+    package static let de = FanControlFeatureStrings(
         title: "Lüftersteuerung",
         hubDescription: "Lüfter manuell oder per Temperaturkurve mit Ist- und Ziel-Drehzahl steuern",
         showInPanel: "Lüftersteuerung im Panel anzeigen",
@@ -394,7 +394,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Nach Neustart oder Ruhezustand fortsetzen"
     )
 
-    static let fr = FanControlFeatureStrings(
+    package static let fr = FanControlFeatureStrings(
         title: "Contrôle des ventilateurs",
         hubDescription: "Contrôle manuel ou par courbes de température avec vitesses réelle et cible",
         showInPanel: "Afficher le contrôle des ventilateurs dans le panneau",
@@ -440,7 +440,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Reprendre après un redémarrage ou la veille"
     )
 
-    static let it = FanControlFeatureStrings(
+    package static let it = FanControlFeatureStrings(
         title: "Controllo ventole",
         hubDescription: "Controllo manuale o con curve termiche e RPM attuali e obiettivo",
         showInPanel: "Mostra il controllo ventole nel pannello",
@@ -486,7 +486,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "Riprendi dopo il riavvio o lo stop"
     )
 
-    static let ja = FanControlFeatureStrings(
+    package static let ja = FanControlFeatureStrings(
         title: "ファン制御",
         hubDescription: "現在と目標の回転数を確認しながら手動または温度曲線でファンを制御",
         showInPanel: "ファン制御をパネルに表示",
@@ -532,7 +532,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "再起動やスリープのあとに再開"
     )
 
-    static let ko = FanControlFeatureStrings(
+    package static let ko = FanControlFeatureStrings(
         title: "팬 제어",
         hubDescription: "현재 및 목표 RPM을 보며 수동 또는 온도 곡선으로 팬 제어",
         showInPanel: "패널에 팬 제어 표시",
@@ -578,7 +578,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "재시작 또는 잠자기 후 다시 적용"
     )
 
-    static let zhHans = FanControlFeatureStrings(
+    package static let zhHans = FanControlFeatureStrings(
         title: "风扇控制",
         hubDescription: "查看当前和目标转速，并手动或按温度曲线控制风扇",
         showInPanel: "在面板中显示风扇控制",
@@ -624,7 +624,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "重新启动或睡眠后恢复"
     )
 
-    static let zhTW = FanControlFeatureStrings(
+    package static let zhTW = FanControlFeatureStrings(
         title: "風扇控制",
         hubDescription: "查看目前與目標轉速，並手動或依溫度曲線控制風扇",
         showInPanel: "在面板中顯示風扇控制",
@@ -670,7 +670,7 @@ extension FanControlFeatureStrings {
         resumeAfterRestart: "重新開機或睡眠後恢復"
     )
 
-    static let zhHK = FanControlFeatureStrings(
+    package static let zhHK = FanControlFeatureStrings(
         title: "風扇控制",
         hubDescription: "查看目前與目標轉速，並手動或依溫度曲線控制風扇",
         showInPanel: "在面板中顯示風扇控制",
@@ -715,7 +715,7 @@ extension FanControlFeatureStrings {
         helperUnavailable: "受保護的風扇控制器無法使用。請在登入項目允許 Vitruvian，然後再試一次。",
         resumeAfterRestart: "重新啟動或睡眠後恢復"
     )
-    static let uk = FanControlFeatureStrings(
+    package static let uk = FanControlFeatureStrings(
         title: "Керування вентиляторами",
         hubDescription: "Керуйте вентиляторами вручну або за температурними кривими, бачачи поточні та цільові об/хв",
         showInPanel: "Показувати керування вентиляторами в панелі",

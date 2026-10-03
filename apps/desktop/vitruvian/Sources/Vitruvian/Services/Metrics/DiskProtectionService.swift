@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import DiskArbitration
 import Foundation
+import VitruvianCore
 
 enum DiskEjectState: Equatable {
     case ejecting

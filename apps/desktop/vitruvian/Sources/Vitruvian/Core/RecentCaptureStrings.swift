@@ -3,19 +3,19 @@
 
 import Foundation
 
-struct RecentCaptureStrings {
-    let title: String
-    let empty: String
-    let screenshot: String
-    let recording: String
-    let restore: String
-    let open: String
-    let remove: String
-    let clear: String
+package struct RecentCaptureStrings {
+    package let title: String
+    package let empty: String
+    package let screenshot: String
+    package let recording: String
+    package let restore: String
+    package let open: String
+    package let remove: String
+    package let clear: String
 }
 
 extension FeatureStrings {
-    static func recentCaptures(_ language: AppLanguage) -> RecentCaptureStrings {
+    package static func recentCaptures(_ language: AppLanguage) -> RecentCaptureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -37,7 +37,7 @@ extension FeatureStrings {
 }
 
 extension RecentCaptureStrings {
-    static let enUS = RecentCaptureStrings(
+    package static let enUS = RecentCaptureStrings(
         title: "Recent captures",
         empty: "Take a screenshot or save a recording to find it here.",
         screenshot: "Screenshot",
@@ -48,7 +48,7 @@ extension RecentCaptureStrings {
         clear: "Clear history"
     )
 
-    static let ptBR = RecentCaptureStrings(
+    package static let ptBR = RecentCaptureStrings(
         title: "Capturas recentes",
         empty: "Faça uma captura de tela ou salve uma gravação para encontrá-la aqui.",
         screenshot: "Captura de tela",
@@ -59,7 +59,7 @@ extension RecentCaptureStrings {
         clear: "Limpar histórico"
     )
 
-    static let tr = RecentCaptureStrings(
+    package static let tr = RecentCaptureStrings(
         title: "Son yakalamalar",
         empty: "Burada görmek için ekran görüntüsü alın veya bir kayıt kaydedin.",
         screenshot: "Ekran görüntüsü",
@@ -70,7 +70,7 @@ extension RecentCaptureStrings {
         clear: "Geçmişi temizle"
     )
 
-    static let ru = RecentCaptureStrings(
+    package static let ru = RecentCaptureStrings(
         title: "Недавние снимки",
         empty: "Сделайте снимок экрана или сохраните запись, чтобы увидеть её здесь.",
         screenshot: "Снимок экрана",
@@ -81,7 +81,7 @@ extension RecentCaptureStrings {
         clear: "Очистить историю"
     )
 
-    static let es = RecentCaptureStrings(
+    package static let es = RecentCaptureStrings(
         title: "Capturas recientes",
         empty: "Haz una captura o guarda una grabación para verla aquí.",
         screenshot: "Captura de pantalla",
@@ -92,7 +92,7 @@ extension RecentCaptureStrings {
         clear: "Borrar historial"
     )
 
-    static let sk = RecentCaptureStrings(
+    package static let sk = RecentCaptureStrings(
         title: "Nedávne zábery",
         empty: "Vytvorte snímku obrazovky alebo uložte nahrávku a nájdete ju tu.",
         screenshot: "Snímka obrazovky",
@@ -103,7 +103,7 @@ extension RecentCaptureStrings {
         clear: "Vymazať históriu"
     )
 
-    static let de = RecentCaptureStrings(
+    package static let de = RecentCaptureStrings(
         title: "Letzte Aufnahmen",
         empty: "Erstelle ein Bildschirmfoto oder speichere eine Aufnahme, um sie hier zu sehen.",
         screenshot: "Bildschirmfoto",
@@ -114,7 +114,7 @@ extension RecentCaptureStrings {
         clear: "Verlauf löschen"
     )
 
-    static let fr = RecentCaptureStrings(
+    package static let fr = RecentCaptureStrings(
         title: "Captures récentes",
         empty: "Prenez une capture ou enregistrez une vidéo pour la retrouver ici.",
         screenshot: "Capture d’écran",
@@ -125,7 +125,7 @@ extension RecentCaptureStrings {
         clear: "Effacer l’historique"
     )
 
-    static let it = RecentCaptureStrings(
+    package static let it = RecentCaptureStrings(
         title: "Catture recenti",
         empty: "Cattura una schermata o salva una registrazione per trovarla qui.",
         screenshot: "Schermata",
@@ -136,7 +136,7 @@ extension RecentCaptureStrings {
         clear: "Cancella cronologia"
     )
 
-    static let ja = RecentCaptureStrings(
+    package static let ja = RecentCaptureStrings(
         title: "最近のキャプチャ",
         empty: "スクリーンショットを撮るか録画を保存すると、ここに表示されます。",
         screenshot: "スクリーンショット",
@@ -147,7 +147,7 @@ extension RecentCaptureStrings {
         clear: "履歴を消去"
     )
 
-    static let ko = RecentCaptureStrings(
+    package static let ko = RecentCaptureStrings(
         title: "최근 캡처",
         empty: "스크린샷을 찍거나 녹화를 저장하면 여기에 표시됩니다.",
         screenshot: "스크린샷",
@@ -158,7 +158,7 @@ extension RecentCaptureStrings {
         clear: "기록 지우기"
     )
 
-    static let zhHans = RecentCaptureStrings(
+    package static let zhHans = RecentCaptureStrings(
         title: "最近捕捉",
         empty: "截取屏幕或存储录屏后，就会显示在这里。",
         screenshot: "截图",
@@ -169,7 +169,7 @@ extension RecentCaptureStrings {
         clear: "清除历史记录"
     )
 
-    static let zhTW = RecentCaptureStrings(
+    package static let zhTW = RecentCaptureStrings(
         title: "最近擷取",
         empty: "截取畫面或儲存螢幕錄影後，就會顯示在這裡。",
         screenshot: "截圖",
@@ -180,7 +180,7 @@ extension RecentCaptureStrings {
         clear: "清除記錄"
     )
 
-    static let zhHK = RecentCaptureStrings(
+    package static let zhHK = RecentCaptureStrings(
         title: "最近擷取",
         empty: "截取畫面或儲存螢幕錄影後，就會顯示喺呢度。",
         screenshot: "截圖",
@@ -190,7 +190,7 @@ extension RecentCaptureStrings {
         remove: "從記錄移除",
         clear: "清除記錄"
     )
-    static let uk = RecentCaptureStrings(
+    package static let uk = RecentCaptureStrings(
         title: "Недавні знімки",
         empty: "Зробіть знімок екрана або збережіть запис, щоб знайти його тут.",
         screenshot: "Знімок екрана",

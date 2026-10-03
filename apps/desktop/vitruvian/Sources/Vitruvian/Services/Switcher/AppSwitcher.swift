@@ -7,6 +7,7 @@ import Carbon.HIToolbox
 import Combine
 import CoreGraphics
 import SwiftUI
+import VitruvianCore
 
 private struct SwitcherSourceContext {
     let itemID: String?

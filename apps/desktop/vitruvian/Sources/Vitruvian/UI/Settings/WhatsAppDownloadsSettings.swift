@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 struct WhatsAppDownloadsSettings: View {
     @ObservedObject private var l10n = L10n.shared

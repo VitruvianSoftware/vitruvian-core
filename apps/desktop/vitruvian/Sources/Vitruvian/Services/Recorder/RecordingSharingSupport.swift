@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum RecordingShareDuration: Int, CaseIterable, Codable, Identifiable {
     case oneHour = 3_600

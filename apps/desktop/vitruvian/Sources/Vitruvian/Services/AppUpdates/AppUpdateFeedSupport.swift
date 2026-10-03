@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Reads update metadata only. Installation stays with the app that owns
 /// the feed, including its signature, license and rollout checks.

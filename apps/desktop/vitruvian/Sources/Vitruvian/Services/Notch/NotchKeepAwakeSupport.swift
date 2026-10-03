@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// A running Keep Awake session as a live activity of the closed island, for
 /// those who turn it on. With the island standing in for the menu bar glyph,

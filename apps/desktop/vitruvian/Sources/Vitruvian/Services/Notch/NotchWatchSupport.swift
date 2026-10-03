@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import VitruvianCore
 
 /// What a watched area has to do before the island speaks up.
 enum NotchWatchCondition: String, CaseIterable, Identifiable {

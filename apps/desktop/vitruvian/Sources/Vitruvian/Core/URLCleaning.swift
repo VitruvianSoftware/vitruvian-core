@@ -4,7 +4,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-enum URLCleaning {
+package enum URLCleaning {
     private static let trackedParameters: Set<String> = [
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
         "utm_id", "utm_name", "utm_reader", "utm_viz_id", "utm_pubreferrer",
@@ -56,9 +56,9 @@ enum URLCleaning {
 
     /// A cleaned link and the names taken out of it, so every surface that
     /// cleans can say what it removed instead of only that something changed.
-    struct Result: Equatable {
-        let url: String
-        let removed: [String]
+    package struct Result: Equatable {
+        package let url: String
+        package let removed: [String]
     }
 
     /// What the user changed about the tables above: names they added, and
@@ -68,56 +68,56 @@ enum URLCleaning {
     ///
     /// Both maps are keyed the way `hostParameters` is, with `allSites` for
     /// the rules that apply everywhere.
-    struct Rules: Equatable {
-        var added: [String: Set<String>] = [:]
-        var disabled: [String: Set<String>] = [:]
+    package struct Rules: Equatable {
+        package var added: [String: Set<String>] = [:]
+        package var disabled: [String: Set<String>] = [:]
 
-        static let none = Rules()
+        package static let none = Rules()
     }
 
     /// One row of a site's rules, as Settings shows it.
-    struct RuleGroup: Identifiable, Equatable {
-        let site: String
-        let entries: [Entry]
+    package struct RuleGroup: Identifiable, Equatable {
+        package let site: String
+        package let entries: [Entry]
 
-        var id: String { site }
-        var enabledCount: Int { entries.filter(\.isEnabled).count }
+        package var id: String { site }
+        package var enabledCount: Int { entries.filter(\.isEnabled).count }
 
-        struct Entry: Identifiable, Equatable {
-            let name: String
-            let isBuiltIn: Bool
-            let isEnabled: Bool
+        package struct Entry: Identifiable, Equatable {
+            package let name: String
+            package let isBuiltIn: Bool
+            package let isEnabled: Bool
 
-            var id: String { name }
+            package var id: String { name }
         }
     }
 
     /// The key the global rules live under. Empty so a stored token reads as
     /// `|ref` for a global name and `youtube.com|si` for a site one.
-    static let allSites = ""
+    package static let allSites = ""
 
     /// The single row standing for every `utm_` name. The cleaner matches the
     /// prefix, so listing `utm_source` and its siblings separately would show
     /// rows that cannot be switched off on their own.
-    static let utmWildcard = "utm_*"
+    package static let utmWildcard = "utm_*"
 
     /// The global list as Settings shows it: the wildcard row, then the names
     /// the prefix does not already cover.
-    static var globalBuiltInNames: [String] {
+    package static var globalBuiltInNames: [String] {
         [utmWildcard] + trackedParameters.filter { !$0.hasPrefix("utm_") }.sorted()
     }
 
     /// What a surface says after cleaning. The choice lives here so the
     /// Settings page, the menu panel and the Command Bar action cannot drift
     /// apart, and so it can be pinned without a view.
-    enum Outcome: Equatable {
+    package enum Outcome: Equatable {
         case notAURL
         case unchanged
         case rewritten
         case removed([String])
     }
 
-    static func outcome(for result: Result?, input: String) -> Outcome {
+    package static func outcome(for result: Result?, input: String) -> Outcome {
         guard let result else { return .notAURL }
         guard result.removed.isEmpty else { return .removed(result.removed) }
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,14 +127,14 @@ enum URLCleaning {
     /// Reads the three stored strings into one value. The global additions
     /// keep the plain comma-separated key they have always used, so nothing
     /// has to be migrated when site rules arrive.
-    static func rules(globalNames: String?, siteNames: String?, disabledNames: String?) -> Rules {
+    package static func rules(globalNames: String?, siteNames: String?, disabledNames: String?) -> Rules {
         var added = tokens(from: siteNames)
         added[allSites] = customParameters(from: globalNames)
         added = added.filter { !$0.value.isEmpty }
         return Rules(added: added, disabled: tokens(from: disabledNames).filter { !$0.value.isEmpty })
     }
 
-    static func clean(_ text: String, rules: Rules = .none) -> Result? {
+    package static func clean(_ text: String, rules: Rules = .none) -> Result? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: trimmed),
               let scheme = components.scheme?.lowercased(),
@@ -158,7 +158,7 @@ enum URLCleaning {
         return Result(url: url, removed: removed)
     }
 
-    static func ruleGroups(rules: Rules) -> [RuleGroup] {
+    package static func ruleGroups(rules: Rules) -> [RuleGroup] {
         let sites = Set(hostParameters.keys)
             .union(rules.added.keys)
             .union(rules.disabled.keys)
@@ -172,17 +172,17 @@ enum URLCleaning {
 
     /// Comma-separated names, the format the global custom list has always
     /// been stored in.
-    static func customParameters(from storedValue: String?) -> Set<String> {
+    package static func customParameters(from storedValue: String?) -> Set<String> {
         Set(split(storedValue).map { $0.lowercased() })
     }
 
-    static func storageValue(forNames names: Set<String>) -> String {
+    package static func storageValue(forNames names: Set<String>) -> String {
         names.sorted().joined(separator: ", ")
     }
 
     /// `host|name` tokens, used by both the site additions and the switched
     /// off built-ins.
-    static func tokens(from storedValue: String?) -> [String: Set<String>] {
+    package static func tokens(from storedValue: String?) -> [String: Set<String>] {
         var map: [String: Set<String>] = [:]
         for token in split(storedValue) {
             let parts = token.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
@@ -194,7 +194,7 @@ enum URLCleaning {
         return map
     }
 
-    static func storageValue(forTokens map: [String: Set<String>]) -> String {
+    package static func storageValue(forTokens map: [String: Set<String>]) -> String {
         map.keys.sorted()
             .flatMap { site in (map[site] ?? []).sorted().map { "\(site)|\($0)" } }
             .joined(separator: ",")
@@ -203,7 +203,7 @@ enum URLCleaning {
     /// Accepts what someone is likely to paste into the site field — a bare
     /// host, a `www.` host or a whole link — and answers with the host key the
     /// rules are stored under, or nil when it is not a host at all.
-    static func siteKey(from text: String) -> String? {
+    package static func siteKey(from text: String) -> String? {
         var value = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let scheme = value.range(of: "://") {
             value = String(value[scheme.upperBound...])
@@ -223,7 +223,7 @@ enum URLCleaning {
 
     /// A name is a single query parameter, so anything a query cannot carry as
     /// one name is rejected rather than silently stored.
-    static func parameterName(from text: String) -> String? {
+    package static func parameterName(from text: String) -> String? {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !value.isEmpty,
               value.allSatisfy({ !$0.isWhitespace && $0 != "|" && $0 != "," && $0 != "&" && $0 != "=" }) else {
@@ -294,7 +294,7 @@ enum URLCleaning {
     /// its textual fallback (a browser's "Copy Image" also carries the image
     /// URL as text). A copy an app marked concealed or transient is not an
     /// ordinary copy either, and is left alone.
-    static func canRewritePasteboard(types: [String]) -> Bool {
+    package static func canRewritePasteboard(types: [String]) -> Bool {
         guard !types.isEmpty else { return false }
         return types.allSatisfy(typeSurvivesRewrite)
     }

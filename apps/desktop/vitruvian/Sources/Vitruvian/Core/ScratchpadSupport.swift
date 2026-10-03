@@ -6,14 +6,14 @@ import Foundation
 /// How long each scratchpad keeps text that nobody edits. The check runs only
 /// when the panel opens, against the stored edit dates, so the feature needs
 /// no timer at all.
-enum ScratchpadRetention: String, CaseIterable {
+package enum ScratchpadRetention: String, CaseIterable {
     case never
     case day
     case week
     case month
 
     /// Seconds the text may sit unedited before it clears; nil keeps forever.
-    var maxIdleInterval: TimeInterval? {
+    package var maxIdleInterval: TimeInterval? {
         switch self {
         case .never: return nil
         case .day: return 86_400
@@ -23,7 +23,7 @@ enum ScratchpadRetention: String, CaseIterable {
     }
 
     /// Corrupt or unknown stored values fall back to keeping the text.
-    static func sanitized(_ rawValue: String?) -> ScratchpadRetention {
+    package static func sanitized(_ rawValue: String?) -> ScratchpadRetention {
         guard let rawValue,
               let retention = ScratchpadRetention(rawValue: rawValue) else {
             return .never
@@ -32,8 +32,8 @@ enum ScratchpadRetention: String, CaseIterable {
     }
 }
 
-struct ScratchpadMarkdownBlock {
-    enum Kind: Equatable {
+package struct ScratchpadMarkdownBlock {
+    package enum Kind: Equatable {
         case paragraph
         case heading(Int)
         case unorderedListItem(depth: Int)
@@ -43,30 +43,30 @@ struct ScratchpadMarkdownBlock {
         case thematicBreak
     }
 
-    let kind: Kind
-    let containerID: Int?
-    let text: AttributedString
+    package let kind: Kind
+    package let containerID: Int?
+    package let text: AttributedString
 }
 
-struct ScratchpadPad: Codable, Equatable, Identifiable {
-    let id: UUID
-    var name: String
-    var text: String
-    var modifiedAt: Date?
+package struct ScratchpadPad: Codable, Equatable, Identifiable {
+    package let id: UUID
+    package var name: String
+    package var text: String
+    package var modifiedAt: Date?
 }
 
 /// The whole scratchpad state travels as one small document. Stable ids keep
 /// selection independent from names, while array order is the tab order.
-struct ScratchpadDocument: Codable, Equatable {
+package struct ScratchpadDocument: Codable, Equatable {
     /// Keeps the tab strip and Settings backup deliberately small without
     /// imposing a limit on the text inside any pad.
-    static let maximumPadCount = 12
-    static let maximumNameLength = 40
+    package static let maximumPadCount = 12
+    package static let maximumNameLength = 40
 
-    var pads: [ScratchpadPad]
-    var selectedID: UUID
+    package var pads: [ScratchpadPad]
+    package var selectedID: UUID
 
-    static func initial(defaultName: String,
+    package static func initial(defaultName: String,
                         id: UUID = UUID(),
                         text: String = "",
                         modifiedAt: Date? = nil) -> ScratchpadDocument {
@@ -78,18 +78,18 @@ struct ScratchpadDocument: Codable, Equatable {
         return ScratchpadDocument(pads: [pad], selectedID: pad.id)
     }
 
-    static func decoded(_ data: Data?, defaultName: String) -> ScratchpadDocument? {
+    package static func decoded(_ data: Data?, defaultName: String) -> ScratchpadDocument? {
         guard let data,
               let decoded = try? JSONDecoder().decode(ScratchpadDocument.self, from: data)
         else { return nil }
         return decoded.sanitized(defaultName: defaultName)
     }
 
-    func encoded() -> Data? {
+    package func encoded() -> Data? {
         try? JSONEncoder().encode(self)
     }
 
-    func sanitized(defaultName: String) -> ScratchpadDocument {
+    package func sanitized(defaultName: String) -> ScratchpadDocument {
         var seen = Set<UUID>()
         var cleanPads: [ScratchpadPad] = []
         for pad in pads.prefix(Self.maximumPadCount) where seen.insert(pad.id).inserted {
@@ -107,7 +107,7 @@ struct ScratchpadDocument: Codable, Equatable {
         return ScratchpadDocument(pads: cleanPads, selectedID: selection)
     }
 
-    func addingPad(defaultName: String, id: UUID = UUID()) -> ScratchpadDocument? {
+    package func addingPad(defaultName: String, id: UUID = UUID()) -> ScratchpadDocument? {
         guard pads.count < Self.maximumPadCount else { return nil }
         var next = self
         let name = ScratchpadSupport.nextPadName(defaultName: defaultName,
@@ -117,14 +117,14 @@ struct ScratchpadDocument: Codable, Equatable {
         return next
     }
 
-    func selecting(_ id: UUID) -> ScratchpadDocument? {
+    package func selecting(_ id: UUID) -> ScratchpadDocument? {
         guard pads.contains(where: { $0.id == id }) else { return nil }
         var next = self
         next.selectedID = id
         return next
     }
 
-    func renaming(_ id: UUID, to proposedName: String) -> ScratchpadDocument? {
+    package func renaming(_ id: UUID, to proposedName: String) -> ScratchpadDocument? {
         let name = ScratchpadSupport.sanitizedPadName(proposedName)
         guard !name.isEmpty, let index = pads.firstIndex(where: { $0.id == id }) else { return nil }
         var next = self
@@ -132,7 +132,7 @@ struct ScratchpadDocument: Codable, Equatable {
         return next
     }
 
-    func removing(_ id: UUID) -> ScratchpadDocument? {
+    package func removing(_ id: UUID) -> ScratchpadDocument? {
         guard pads.count > 1, let index = pads.firstIndex(where: { $0.id == id }) else { return nil }
         var next = self
         next.pads.remove(at: index)
@@ -142,14 +142,14 @@ struct ScratchpadDocument: Codable, Equatable {
         return next
     }
 
-    mutating func updateSelectedText(_ text: String, modifiedAt: Date) {
+    package mutating func updateSelectedText(_ text: String, modifiedAt: Date) {
         guard let index = pads.firstIndex(where: { $0.id == selectedID }),
               pads[index].text != text else { return }
         pads[index].text = text
         pads[index].modifiedAt = text.isEmpty ? nil : modifiedAt
     }
 
-    mutating func applyRetention(_ retention: ScratchpadRetention, now: Date) {
+    package mutating func applyRetention(_ retention: ScratchpadRetention, now: Date) {
         for index in pads.indices where ScratchpadSupport.shouldClear(
             lastEdited: pads[index].modifiedAt, now: now, retention: retention
         ) {
@@ -166,8 +166,8 @@ struct ScratchpadDocument: Codable, Equatable {
 /// its matches, since no menu in the app carries them. One table, so both
 /// pads answer the same keys. `commandOnly` is Command without Control or
 /// Option; Shift is its own flag because only G takes it.
-enum ScratchpadFocusedShortcut {
-    enum Action: Equatable {
+package enum ScratchpadFocusedShortcut {
+    package enum Action: Equatable {
         case createPad
         case closeSelectedPad
         case hidePad
@@ -176,7 +176,7 @@ enum ScratchpadFocusedShortcut {
         case findPrevious
     }
 
-    static func action(charactersIgnoringModifiers: String?,
+    package static func action(charactersIgnoringModifiers: String?,
                        commandOnly: Bool,
                        shift: Bool = false,
                        canCreatePad: Bool,
@@ -199,10 +199,10 @@ enum ScratchpadFocusedShortcut {
     }
 }
 
-enum ScratchpadSupport {
+package enum ScratchpadSupport {
     /// The fill sits over the existing material: zero preserves the familiar
     /// frosted pad, while one fully covers what is behind the window.
-    static let backgroundOpacityRange: ClosedRange<Double> = 0...1
+    package static let backgroundOpacityRange: ClosedRange<Double> = 0...1
 
     /// The size the whole pad draws at, for anyone who finds the editor's own
     /// 13 small to live in. It is a preference rather than a mark: plain text cannot carry a
@@ -210,27 +210,27 @@ enum ScratchpadSupport {
     /// levels are the format's own way of making words bigger. They step up
     /// from whatever this is set to. Untouched, the pad keeps the 13 it drew
     /// at before there was a choice.
-    static let defaultTextSize: Double = 13
-    static let textSizeRange: ClosedRange<Double> = 10...22
+    package static let defaultTextSize: Double = 13
+    package static let textSizeRange: ClosedRange<Double> = 10...22
 
-    static func sanitizedTextSize(_ value: Double) -> Double {
+    package static func sanitizedTextSize(_ value: Double) -> Double {
         guard value.isFinite else { return defaultTextSize }
         return min(max(value.rounded(), textSizeRange.lowerBound), textSizeRange.upperBound)
     }
 
-    static func sanitizedBackgroundOpacity(_ value: Double) -> Double {
+    package static func sanitizedBackgroundOpacity(_ value: Double) -> Double {
         guard value.isFinite else { return backgroundOpacityRange.upperBound }
         return min(max(value, backgroundOpacityRange.lowerBound), backgroundOpacityRange.upperBound)
     }
 
-    static func dismissesOnOutsideClick(isPinned: Bool, exportModalActive: Bool) -> Bool {
+    package static func dismissesOnOutsideClick(isPinned: Bool, exportModalActive: Bool) -> Bool {
         !isPinned && !exportModalActive
     }
 
     /// Rendering is on demand and never changes the stored plain text. Native
     /// presentation intents keep headings, lists and quotes semantic without a
     /// second Markdown parser or any work while the preview is closed.
-    static func markdownPreview(_ text: String) -> [ScratchpadMarkdownBlock] {
+    package static func markdownPreview(_ text: String) -> [ScratchpadMarkdownBlock] {
         guard !text.isEmpty else { return [] }
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .full,
@@ -328,12 +328,12 @@ enum ScratchpadSupport {
         return (.paragraph, nil)
     }
 
-    static func sanitizedPadName(_ name: String) -> String {
+    package static func sanitizedPadName(_ name: String) -> String {
         let words = name.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
         return String(words.joined(separator: " ").prefix(ScratchpadDocument.maximumNameLength))
     }
 
-    static func nextPadName(defaultName: String, existingNames: [String]) -> String {
+    package static func nextPadName(defaultName: String, existingNames: [String]) -> String {
         let base = sanitizedPadName(defaultName)
         let safeBase = base.isEmpty ? "Scratchpad" : base
         let used = Set(existingNames)
@@ -345,21 +345,21 @@ enum ScratchpadSupport {
         return "\(safeBase) \(existingNames.count + 1)"
     }
 
-    static func requiresCloseConfirmation(_ pad: ScratchpadPad) -> Bool {
+    package static func requiresCloseConfirmation(_ pad: ScratchpadPad) -> Bool {
         !pad.text.isEmpty
     }
 
     /// Whether the saved text expired: it only clears when a retention period
     /// is chosen and the last edit is older than that period. No saved text
     /// (or a clock that moved backwards) never clears.
-    static func shouldClear(lastEdited: Date?, now: Date, retention: ScratchpadRetention) -> Bool {
+    package static func shouldClear(lastEdited: Date?, now: Date, retention: ScratchpadRetention) -> Bool {
         guard let limit = retention.maxIdleInterval, let lastEdited else { return false }
         let idle = now.timeIntervalSince(lastEdited)
         return idle > limit
     }
 
     /// Suggested name for the exported file, like "Scratchpad 2026-07-17.txt".
-    static func exportFileName(title: String, date: Date) -> String {
+    package static func exportFileName(title: String, date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
@@ -373,12 +373,12 @@ enum ScratchpadSupport {
 /// A mark the formatting toolbar can apply. Each one is written as the
 /// Markdown a user would have typed by hand, so the pad stays plain text and
 /// the preview parser needs nothing new to understand it.
-enum ScratchpadMark: String, CaseIterable {
+package enum ScratchpadMark: String, CaseIterable {
     case bold, italic, strikethrough, heading, bullet
     case numbered, quote, code, link
 
     /// Inline marks wrap the selection.
-    var wrap: String? {
+    package var wrap: String? {
         switch self {
         case .bold: return "**"
         case .italic: return "*"
@@ -392,7 +392,7 @@ enum ScratchpadMark: String, CaseIterable {
     /// along this list before coming back off. A bullet is only on or off, but
     /// a heading has levels, and the preview draws each at its own size, so the
     /// button walks down them rather than stranding everyone on the largest.
-    var lineCycle: [String] {
+    package var lineCycle: [String] {
         switch self {
         case .heading: return ["# ", "## ", "### "]
         case .bullet: return ["- "]
@@ -404,12 +404,12 @@ enum ScratchpadMark: String, CaseIterable {
 
     /// Ordered items are numbered as they are written, so the prefix a line
     /// ends up with is not the prefix the line after it gets.
-    var isNumbered: Bool { self == .numbered }
+    package var isNumbered: Bool { self == .numbered }
 
     /// A letter drawn in place of the symbol, where one says the thing better.
-    var glyph: String? { self == .heading ? "H" : nil }
+    package var glyph: String? { self == .heading ? "H" : nil }
 
-    var symbol: String {
+    package var symbol: String {
         switch self {
         case .bold: return "bold"
         case .italic: return "italic"
@@ -429,18 +429,18 @@ enum ScratchpadMark: String, CaseIterable {
 
 /// One replacement, ready for the text view: what to swap out, what to put
 /// there, and where the selection belongs afterwards.
-struct ScratchpadMarkEdit: Equatable {
+package struct ScratchpadMarkEdit: Equatable {
     /// Both ranges are in UTF-16 units, the same units NSTextView selections
     /// use, so nothing has to be converted on the way in or out.
-    let range: NSRange
-    let replacement: String
-    let selection: NSRange
+    package let range: NSRange
+    package let replacement: String
+    package let selection: NSRange
 }
 
 extension ScratchpadSupport {
     /// Every mark toggles: applying one to text that already carries it takes
     /// it back off, so a second click on the same button undoes the first.
-    static func edit(applying mark: ScratchpadMark,
+    package static func edit(applying mark: ScratchpadMark,
                      to text: String,
                      selection: NSRange) -> ScratchpadMarkEdit {
         let ns = text as NSString
@@ -480,7 +480,7 @@ extension ScratchpadSupport {
     /// that arrives selected: the first keystroke after the click replaces it.
     /// Asking for the address up front would need a dialog the pad has no room
     /// for, and would stop anyone pasting a link they have not copied yet.
-    static let linkPlaceholder = "url"
+    package static let linkPlaceholder = "url"
 
     private static func linkEdit(in ns: NSString, selection: NSRange) -> ScratchpadMarkEdit {
         // A second click means here what it means for every other mark: take it

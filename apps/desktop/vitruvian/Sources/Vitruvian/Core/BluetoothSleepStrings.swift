@@ -6,18 +6,18 @@ import Foundation
 /// Strings for the Bluetooth on sleep feature. Same contract as the other
 /// FeatureStrings structs: memberwise init with labeled arguments in
 /// declaration order, one static per language, all in this file.
-struct BluetoothSleepStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let enable: String
-    let enableCaption: String
-    let restoreToggle: String
-    let restoreCaption: String
-    let unsupported: String
+package struct BluetoothSleepStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let enable: String
+    package let enableCaption: String
+    package let restoreToggle: String
+    package let restoreCaption: String
+    package let unsupported: String
 }
 
 extension FeatureStrings {
-    static func bluetoothSleep(_ language: AppLanguage) -> BluetoothSleepStrings {
+    package static func bluetoothSleep(_ language: AppLanguage) -> BluetoothSleepStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -39,7 +39,7 @@ extension FeatureStrings {
 }
 
 extension BluetoothSleepStrings {
-    static let enUS = BluetoothSleepStrings(
+    package static let enUS = BluetoothSleepStrings(
         pageTitle: "Bluetooth on sleep",
         hubDescription: "Switches Bluetooth off while the Mac sleeps, so headphones in a bag stop connecting to it.",
         enable: "Turn Bluetooth off when the Mac sleeps",
@@ -49,7 +49,7 @@ extension BluetoothSleepStrings {
         unsupported: "This Mac has no Bluetooth controller."
     )
 
-    static let ptBR = BluetoothSleepStrings(
+    package static let ptBR = BluetoothSleepStrings(
         pageTitle: "Bluetooth ao dormir",
         hubDescription: "Desliga o Bluetooth enquanto o Mac dorme, para que os fones na mochila parem de se conectar.",
         enable: "Desligar o Bluetooth quando o Mac dormir",
@@ -59,7 +59,7 @@ extension BluetoothSleepStrings {
         unsupported: "Este Mac não tem controlador Bluetooth."
     )
 
-    static let tr = BluetoothSleepStrings(
+    package static let tr = BluetoothSleepStrings(
         pageTitle: "Uykuda Bluetooth",
         hubDescription: "Mac uyurken Bluetooth’u kapatır, böylece çantadaki kulaklıklar bağlanmayı bırakır.",
         enable: "Mac uyuduğunda Bluetooth’u kapat",
@@ -69,7 +69,7 @@ extension BluetoothSleepStrings {
         unsupported: "Bu Mac’te Bluetooth denetleyicisi yok."
     )
 
-    static let ru = BluetoothSleepStrings(
+    package static let ru = BluetoothSleepStrings(
         pageTitle: "Bluetooth при сне",
         hubDescription: "Выключает Bluetooth на время сна Mac, чтобы наушники в сумке перестали к нему подключаться.",
         enable: "Выключать Bluetooth, когда Mac засыпает",
@@ -79,7 +79,7 @@ extension BluetoothSleepStrings {
         unsupported: "На этом Mac нет контроллера Bluetooth."
     )
 
-    static let es = BluetoothSleepStrings(
+    package static let es = BluetoothSleepStrings(
         pageTitle: "Bluetooth al reposo",
         hubDescription: "Apaga el Bluetooth mientras el Mac duerme, para que los auriculares en la mochila dejen de conectarse.",
         enable: "Apagar el Bluetooth cuando el Mac entre en reposo",
@@ -89,7 +89,7 @@ extension BluetoothSleepStrings {
         unsupported: "Este Mac no tiene controlador Bluetooth."
     )
 
-    static let sk = BluetoothSleepStrings(
+    package static let sk = BluetoothSleepStrings(
         pageTitle: "Bluetooth v spánku",
         hubDescription: "Vypne Bluetooth, kým Mac spí, aby sa slúchadlá v taške prestali k nemu pripájať.",
         enable: "Vypnúť Bluetooth, keď Mac zaspí",
@@ -99,7 +99,7 @@ extension BluetoothSleepStrings {
         unsupported: "Tento Mac nemá Bluetooth radič."
     )
 
-    static let de = BluetoothSleepStrings(
+    package static let de = BluetoothSleepStrings(
         pageTitle: "Bluetooth im Ruhezustand",
         hubDescription: "Schaltet Bluetooth aus, während der Mac schläft, damit Kopfhörer in der Tasche sich nicht mehr verbinden.",
         enable: "Bluetooth ausschalten, wenn der Mac in den Ruhezustand geht",
@@ -109,7 +109,7 @@ extension BluetoothSleepStrings {
         unsupported: "Dieser Mac hat keinen Bluetooth-Controller."
     )
 
-    static let fr = BluetoothSleepStrings(
+    package static let fr = BluetoothSleepStrings(
         pageTitle: "Bluetooth en veille",
         hubDescription: "Coupe le Bluetooth pendant que le Mac dort, pour que les écouteurs rangés dans un sac cessent de s’y connecter.",
         enable: "Couper le Bluetooth quand le Mac se met en veille",
@@ -119,7 +119,7 @@ extension BluetoothSleepStrings {
         unsupported: "Ce Mac n’a pas de contrôleur Bluetooth."
     )
 
-    static let it = BluetoothSleepStrings(
+    package static let it = BluetoothSleepStrings(
         pageTitle: "Bluetooth in stop",
         hubDescription: "Spegne il Bluetooth mentre il Mac dorme, così le cuffie nello zaino smettono di collegarsi.",
         enable: "Spegni il Bluetooth quando il Mac va in stop",
@@ -129,7 +129,7 @@ extension BluetoothSleepStrings {
         unsupported: "Questo Mac non ha un controller Bluetooth."
     )
 
-    static let ja = BluetoothSleepStrings(
+    package static let ja = BluetoothSleepStrings(
         pageTitle: "スリープ時のBluetooth",
         hubDescription: "Macのスリープ中にBluetoothを切り、カバンの中のヘッドホンが勝手につながらないようにします。",
         enable: "Macがスリープしたら Bluetooth を切る",
@@ -139,7 +139,7 @@ extension BluetoothSleepStrings {
         unsupported: "このMacにはBluetoothコントローラがありません。"
     )
 
-    static let ko = BluetoothSleepStrings(
+    package static let ko = BluetoothSleepStrings(
         pageTitle: "잠자기 시 Bluetooth",
         hubDescription: "Mac이 잠자는 동안 Bluetooth를 꺼서 가방 속 헤드폰이 계속 연결되지 않도록 합니다.",
         enable: "Mac이 잠자기에 들어가면 Bluetooth 끄기",
@@ -149,7 +149,7 @@ extension BluetoothSleepStrings {
         unsupported: "이 Mac에는 Bluetooth 컨트롤러가 없습니다."
     )
 
-    static let zhHans = BluetoothSleepStrings(
+    package static let zhHans = BluetoothSleepStrings(
         pageTitle: "睡眠时的蓝牙",
         hubDescription: "Mac 睡眠期间关闭蓝牙，包里的耳机不再自动连上来。",
         enable: "Mac 进入睡眠时关闭蓝牙",
@@ -159,7 +159,7 @@ extension BluetoothSleepStrings {
         unsupported: "这台 Mac 没有蓝牙控制器。"
     )
 
-    static let zhTW = BluetoothSleepStrings(
+    package static let zhTW = BluetoothSleepStrings(
         pageTitle: "睡眠時的藍牙",
         hubDescription: "Mac 睡眠期間關閉藍牙，包包裡的耳機不會再自動連上來。",
         enable: "Mac 進入睡眠時關閉藍牙",
@@ -169,7 +169,7 @@ extension BluetoothSleepStrings {
         unsupported: "這台 Mac 沒有藍牙控制器。"
     )
 
-    static let zhHK = BluetoothSleepStrings(
+    package static let zhHK = BluetoothSleepStrings(
         pageTitle: "睡眠時的藍牙",
         hubDescription: "Mac 睡眠期間關閉藍牙，袋裡的耳機不會再自動連上來。",
         enable: "Mac 進入睡眠時關閉藍牙",
@@ -178,7 +178,7 @@ extension BluetoothSleepStrings {
         restoreCaption: "只在藍牙是由 Vitruvian 關閉時。",
         unsupported: "這部 Mac 沒有藍牙控制器。"
     )
-    static let uk = BluetoothSleepStrings(
+    package static let uk = BluetoothSleepStrings(
         pageTitle: "Bluetooth під час сну",
         hubDescription: "Вимикає Bluetooth, поки Mac спить, щоб навушники в сумці перестали з’єднуватися з ним.",
         enable: "Вимикати Bluetooth, коли Mac засинає",

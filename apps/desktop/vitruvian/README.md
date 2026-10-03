@@ -60,15 +60,16 @@ bazel run //apps/desktop/vitruvian:sync_sources
 `//apps/desktop/vitruvian:sources_in_sync_test` fails if you forget. It runs on
 Linux too.
 
-`build.sh` is kept unchanged because upstream's tests read it as text. It still
-works as a non-hermetic local build (`./build.sh --dev`), but CI uses only
-Bazel.
+`build.sh` is kept because upstream's tests read it as text and its lists feed
+`bazel/sources.bzl`. It no longer builds the app: it compiles everything as one
+module, and the app is now split into modules (see below). Use Bazel.
 
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `Sources/Vitruvian/` | The app: `App/` lifecycle, `Core/` catalogs and preferences, `Services/` behavior, `UI/` views, `Support/` diagnostics |
+| `Sources/Vitruvian/Core/` | The `VitruvianCore` module: preferences keys, localization, strings and pure helpers. A few files listed in `BUILD` still compile into the app |
+| `Sources/Vitruvian/` (rest) | The app: `App/` lifecycle, `Services/` behavior, `UI/` views, `Support/` diagnostics |
 | `Sources/FanControlHelper/` | Privileged launchd helper for fan control |
 | `Sources/NowPlayingAdapter/` | Dylib that `/usr/bin/perl` loads to read Now Playing |
 | `Sources/HIDEventSystem/`, `Sources/VMStatisticsCompat/` | C module maps for private or compat headers |

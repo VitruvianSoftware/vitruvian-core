@@ -3,6 +3,7 @@
 
 import AppKit
 import Darwin
+import VitruvianCore
 
 /// Tells a reopen the person asked for from one the system sent on its own.
 ///

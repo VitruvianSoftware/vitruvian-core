@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum DockPreviewFrameRestorationTests {
     struct SwitcherItem {

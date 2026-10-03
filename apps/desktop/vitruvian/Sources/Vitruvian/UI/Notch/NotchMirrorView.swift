@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// What the island shows closed, drawn for another display. It takes no
 /// clicks itself: a click on its window brings the island there, open.

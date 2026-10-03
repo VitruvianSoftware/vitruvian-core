@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 enum HomebrewPackageKind: String, CaseIterable, Identifiable {
     case cask

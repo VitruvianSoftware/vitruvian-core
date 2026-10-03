@@ -5,7 +5,7 @@ import Foundation
 
 // 日本語 — translated and hand-checked, not machine output.
 extension Strings {
-    static let ja = Strings(
+    package static let ja = Strings(
         statusIdleTooltip: "Vitruvian：通常のスリープ",
         statusActiveUntil: "Vitruvian：次の時刻までスリープしない",
         statusActiveIndefinite: "Vitruvian：解除するまでスリープしない",

@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 struct WindowGestureResizeEdges: OptionSet, Equatable {
     let rawValue: Int

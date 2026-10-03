@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import IOBluetooth
+import VitruvianCore
 
 /// The system monitor remains the only battery sampler. Native connection
 /// notifications report an actual connection, independently of missing readings.

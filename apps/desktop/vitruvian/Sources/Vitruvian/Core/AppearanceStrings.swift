@@ -3,16 +3,16 @@
 
 import Foundation
 
-struct AppearanceStrings {
-    let label: String
-    let system: String
-    let light: String
-    let dark: String
-    let liquidGlass: String
+package struct AppearanceStrings {
+    package let label: String
+    package let system: String
+    package let light: String
+    package let dark: String
+    package let liquidGlass: String
 }
 
 extension FeatureStrings {
-    static func appearance(_ language: AppLanguage) -> AppearanceStrings {
+    package static func appearance(_ language: AppLanguage) -> AppearanceStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -34,7 +34,7 @@ extension FeatureStrings {
 }
 
 extension AppearanceStrings {
-    static let enUS = AppearanceStrings(
+    package static let enUS = AppearanceStrings(
         label: "Appearance",
         system: "System",
         light: "Light",
@@ -42,7 +42,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let ptBR = AppearanceStrings(
+    package static let ptBR = AppearanceStrings(
         label: "Aparência",
         system: "Sistema",
         light: "Clara",
@@ -50,7 +50,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let tr = AppearanceStrings(
+    package static let tr = AppearanceStrings(
         label: "Görünüm",
         system: "Sistem",
         light: "Açık",
@@ -58,7 +58,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let ru = AppearanceStrings(
+    package static let ru = AppearanceStrings(
         label: "Оформление",
         system: "Системное",
         light: "Светлое",
@@ -66,7 +66,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let es = AppearanceStrings(
+    package static let es = AppearanceStrings(
         label: "Apariencia",
         system: "Sistema",
         light: "Clara",
@@ -74,7 +74,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let sk = AppearanceStrings(
+    package static let sk = AppearanceStrings(
         label: "Vzhľad",
         system: "Systémový",
         light: "Svetlý",
@@ -82,7 +82,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let de = AppearanceStrings(
+    package static let de = AppearanceStrings(
         label: "Erscheinungsbild",
         system: "System",
         light: "Hell",
@@ -90,7 +90,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let fr = AppearanceStrings(
+    package static let fr = AppearanceStrings(
         label: "Apparence",
         system: "Système",
         light: "Clair",
@@ -98,7 +98,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let it = AppearanceStrings(
+    package static let it = AppearanceStrings(
         label: "Aspetto",
         system: "Sistema",
         light: "Chiaro",
@@ -106,7 +106,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let ja = AppearanceStrings(
+    package static let ja = AppearanceStrings(
         label: "外観",
         system: "システム",
         light: "ライト",
@@ -114,7 +114,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let ko = AppearanceStrings(
+    package static let ko = AppearanceStrings(
         label: "외관",
         system: "시스템",
         light: "밝게",
@@ -122,7 +122,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let zhHans = AppearanceStrings(
+    package static let zhHans = AppearanceStrings(
         label: "外观",
         system: "跟随系统",
         light: "浅色",
@@ -130,7 +130,7 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let zhTW = AppearanceStrings(
+    package static let zhTW = AppearanceStrings(
         label: "外觀",
         system: "跟隨系統",
         light: "淺色",
@@ -138,14 +138,14 @@ extension AppearanceStrings {
         liquidGlass: "Liquid Glass"
     )
 
-    static let zhHK = AppearanceStrings(
+    package static let zhHK = AppearanceStrings(
         label: "外觀",
         system: "跟隨系統",
         light: "淺色",
         dark: "深色",
         liquidGlass: "Liquid Glass"
     )
-    static let uk = AppearanceStrings(
+    package static let uk = AppearanceStrings(
         label: "Вигляд",
         system: "Система",
         light: "Світлий",

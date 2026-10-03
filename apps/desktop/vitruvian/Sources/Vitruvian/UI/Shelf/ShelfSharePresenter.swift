@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Opens the system share sheet for shelf files, from the tile menu and from
 /// the panel's own button. It holds the picker while the sheet is up, brings

@@ -3,12 +3,12 @@
 
 import Foundation
 
-struct ReleaseNotes {
-    let version: String
-    let date: String?
-    let sections: [ReleaseNoteSection]
+package struct ReleaseNotes {
+    package let version: String
+    package let date: String?
+    package let sections: [ReleaseNoteSection]
 
-    static var current: ReleaseNotes {
+    package static var current: ReleaseNotes {
         let direct = notes(for: AppInfo.version)
         if !direct.sections.isEmpty { return direct }
         let unreleased = notes(for: "Unreleased")
@@ -16,7 +16,7 @@ struct ReleaseNotes {
         return direct
     }
 
-    static func notes(for version: String, changelog: String? = bundledChangelog()) -> ReleaseNotes {
+    package static func notes(for version: String, changelog: String? = bundledChangelog()) -> ReleaseNotes {
         guard let changelog,
               let parsed = parse(version: version, changelog: changelog) else {
             return ReleaseNotes(version: version, date: nil, sections: [])
@@ -26,7 +26,7 @@ struct ReleaseNotes {
 
     /// Every version listed in the changelog, in document order (newest first).
     /// Used to surface the releases a user skipped between updates.
-    static func allVersions(changelog: String? = bundledChangelog()) -> [String] {
+    package static func allVersions(changelog: String? = bundledChangelog()) -> [String] {
         guard let changelog else { return [] }
         return changelog
             .components(separatedBy: .newlines)
@@ -37,7 +37,7 @@ struct ReleaseNotes {
     /// Raw markdown body of a version's changelog section (everything between its
     /// `## [version]` header and the next one), so the Developer build can feed
     /// the update preview real notes. Empty when the version is absent.
-    static func rawNotes(for version: String, changelog: String? = bundledChangelog()) -> String {
+    package static func rawNotes(for version: String, changelog: String? = bundledChangelog()) -> String {
         guard let changelog else { return "" }
         let lines = changelog.components(separatedBy: .newlines)
         var targetIndex = lines.firstIndex(where: { header(in: $0)?.version == version })
@@ -53,7 +53,7 @@ struct ReleaseNotes {
         return body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func inAppUpdateNotes(from releaseBody: String?) -> String? {
+    package static func inAppUpdateNotes(from releaseBody: String?) -> String? {
         guard let releaseBody else { return nil }
         let lines = releaseBody
             .components(separatedBy: .newlines)
@@ -181,18 +181,18 @@ struct ReleaseNotes {
     }
 }
 
-struct ReleaseNoteSection {
-    let title: String
-    let items: [ReleaseNoteItem]
+package struct ReleaseNoteSection {
+    package let title: String
+    package let items: [ReleaseNoteItem]
 
-    var bulletItems: [String] {
+    package var bulletItems: [String] {
         items.compactMap {
             if case let .bullet(text) = $0 { return text }
             return nil
         }
     }
 
-    var paragraphItems: [String] {
+    package var paragraphItems: [String] {
         items.compactMap {
             if case let .paragraph(text) = $0 { return text }
             return nil
@@ -200,13 +200,19 @@ struct ReleaseNoteSection {
     }
 }
 
-enum ReleaseNoteItem: Equatable {
+package enum ReleaseNoteItem: Equatable {
     case paragraph(String)
     case bullet(String)
     case image(ReleaseNoteImage)
 }
 
-struct ReleaseNoteImage: Equatable {
-    let alt: String
-    let path: String
+package struct ReleaseNoteImage: Equatable {
+    package let alt: String
+    package let path: String
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(alt: String, path: String) {
+        self.alt = alt
+        self.path = path
+    }
 }

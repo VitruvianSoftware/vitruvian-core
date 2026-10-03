@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// US dollars per million tokens, from each provider's published API list.
 struct AgentPrice: Equatable {

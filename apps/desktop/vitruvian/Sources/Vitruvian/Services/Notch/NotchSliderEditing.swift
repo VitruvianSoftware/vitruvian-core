@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import VitruvianCore
+
 /// Keyboard and accessibility actions have no mouse-tracking callbacks. They
 /// form a complete edit around the value write; dragging keeps its one shared
 /// edit open until the native cell finishes tracking.

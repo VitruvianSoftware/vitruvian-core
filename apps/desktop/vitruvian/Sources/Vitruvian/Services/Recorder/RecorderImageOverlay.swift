@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// A picture laid over the recording for a while: a logo, a badge, a mark of
 /// your own.

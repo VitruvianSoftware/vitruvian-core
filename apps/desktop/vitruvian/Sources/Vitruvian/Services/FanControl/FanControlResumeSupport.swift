@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 // Kept apart from FanControlSupport.swift, which the protected helper also
 // compiles: resuming is the app's own business, and code the helper never

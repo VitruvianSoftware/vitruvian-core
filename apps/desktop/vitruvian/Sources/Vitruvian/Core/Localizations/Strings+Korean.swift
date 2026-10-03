@@ -5,7 +5,7 @@ import Foundation
 
 // 한국어
 extension Strings {
-    static let ko = Strings(
+    package static let ko = Strings(
         statusIdleTooltip: "Vitruvian: 일반 절전",
         statusActiveUntil: "Vitruvian: 다음 시간까지 절전 방지",
         statusActiveIndefinite: "Vitruvian: 끌 때까지 절전 방지",

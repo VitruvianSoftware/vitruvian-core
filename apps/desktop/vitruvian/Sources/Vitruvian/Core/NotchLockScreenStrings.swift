@@ -3,19 +3,19 @@
 
 import Foundation
 
-struct NotchLockScreenStrings {
+package struct NotchLockScreenStrings {
     /// The name System Settings gives its own Lock Screen pane.
-    let title: String
-    let show: String
-    let showHint: String
-    let sounds: String
-    let soundsHint: String
+    package let title: String
+    package let show: String
+    package let showHint: String
+    package let sounds: String
+    package let soundsHint: String
     /// Beside the names of the agents working while the Mac is locked.
-    let working: String
+    package let working: String
 }
 
 extension FeatureStrings {
-    static func notchLockScreen(_ language: AppLanguage) -> NotchLockScreenStrings {
+    package static func notchLockScreen(_ language: AppLanguage) -> NotchLockScreenStrings {
         switch language {
         case .enUS: return NotchLockScreenStrings(
             title: "Lock Screen",

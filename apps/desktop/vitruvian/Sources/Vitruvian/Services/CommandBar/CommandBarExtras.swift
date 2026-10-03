@@ -4,6 +4,7 @@
 import AppKit
 import Carbon.HIToolbox
 import CoreWLAN
+import VitruvianCore
 
 /// Typing into whatever app has the caret. The bar never activates, so the
 /// target still has focus; the only thing to wait for is the summoning chord

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 struct SystemShortcutTransition: Equatable {
     let suppress: Set<Int32>

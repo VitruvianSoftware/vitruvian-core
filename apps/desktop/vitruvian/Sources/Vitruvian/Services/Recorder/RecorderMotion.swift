@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// The maths behind the two effects that make a recording read as produced:
 /// a pointer that glides instead of jittering, and a picture that leans in

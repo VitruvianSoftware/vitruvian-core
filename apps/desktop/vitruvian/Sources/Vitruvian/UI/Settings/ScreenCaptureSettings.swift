@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// One Settings destination for every tool that starts from the screen. The
 /// tool picker at the top changes the feature-specific options shown

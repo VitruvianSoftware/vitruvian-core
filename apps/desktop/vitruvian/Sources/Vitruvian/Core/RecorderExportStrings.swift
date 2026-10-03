@@ -3,15 +3,15 @@
 
 import Foundation
 
-struct RecorderExportStrings {
-    let speed: String
-    let custom: String
-    let duration: String
-    let previewNote: String
+package struct RecorderExportStrings {
+    package let speed: String
+    package let custom: String
+    package let duration: String
+    package let previewNote: String
 }
 
 extension FeatureStrings {
-    static func recorderExport(_ language: AppLanguage) -> RecorderExportStrings {
+    package static func recorderExport(_ language: AppLanguage) -> RecorderExportStrings {
         switch language {
         case .enUS:
             return RecorderExportStrings(

@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import CoreServices
+import VitruvianCore
 
 /// Finds which of the installed apps have a newer version waiting, in one
 /// list, and updates the ones the person picks.

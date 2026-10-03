@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The emoji the command bar can type at the cursor, and the words that find
 /// them. Pure Foundation, so the set and its names are pinned by the tests.

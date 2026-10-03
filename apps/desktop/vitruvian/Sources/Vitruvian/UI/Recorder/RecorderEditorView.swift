@@ -4,6 +4,7 @@
 import AVFoundation
 import AVKit
 import SwiftUI
+import VitruvianCore
 
 /// The recording editor. Real bands, not floating chrome: the picture lives
 /// in its own region and nothing ever slides underneath the controls.

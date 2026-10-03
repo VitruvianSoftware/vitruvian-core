@@ -5,6 +5,7 @@ import AppKit
 import CoreGraphics
 import Darwin
 import Foundation
+import VitruvianCore
 
 struct NotchDownloadItem: Identifiable, Equatable {
     let id: String

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// On-demand inspector for the selected clipboard entry. It keeps the full
 /// content selectable and editable without permanently taking space from the

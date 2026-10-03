@@ -3,110 +3,110 @@
 
 import Foundation
 
-struct RadialMenuFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let enableLabel: String
-    let enableCaption: String
-    let positionLabel: String
-    let positionPointer: String
-    let positionCenter: String
-    let tryButton: String
-    let actionsHeader: String
-    let addButton: String
-    let limitCaption: String
-    let emptyCaption: String
-    let backButton: String
-    let editActionsButton: String
-    let nameLabel: String
-    let automaticLabel: String
-    let iconLabel: String
-    let actionLabel: String
-    let kindApp: String
-    let kindFile: String
-    let kindURL: String
-    let kindShortcut: String
-    let kindTool: String
-    let kindMedia: String
-    let kindSubmenu: String
-    let chooseButton: String
-    let urlPlaceholder: String
-    let urlInvalid: String
-    let toolLabel: String
-    let mediaLabel: String
-    let mediaPlayPause: String
-    let mediaPrevious: String
-    let mediaNext: String
-    let mediaNowPlaying: String
-    let mediaNothingPlaying: String
-    let mediaOpenAppFormat: String
-    let submenuCaption: String
-    let saveButton: String
-    let deleteButton: String
-    let permissionCaption: String
-    let manageButton: String
-    let panelCaption: String
-    let mouseTriggerLabel: String
-    let mouseTriggerOff: String
-    let mouseTriggerBack: String
-    let mouseTriggerForward: String
-    let mouseTriggerWarning: String
-    let buttonTestLabel: String
-    let buttonTestWaiting: String
-    let buttonTestSeen: String
-    let buttonTestOther: String
-    let buttonTestBlind: String
-    let buttonTestHint: String
-    let activationModeLabel: String
-    let activationModePressOrHold: String
-    let activationModePress: String
-    let activationModeHold: String
-    let activationModeCaption: String
-    let profilesHeader: String
-    let profilePickerLabel: String
-    let addProfileButton: String
-    let duplicateProfileButton: String
-    let deleteProfileButton: String
-    let profileNameLabel: String
-    let profileColorLabel: String
-    let profileShortcutLabel: String
-    let profileMouseTriggerLabel: String
-    let presetGeneral: String
-    let presetMedia: String
-    let presetTools: String
-    let presetWindowLayout: String
-    let presetQuickToggles: String
-    let presetBlank: String
-    let colorAccent: String
-    let colorBlue: String
-    let colorPurple: String
-    let colorPink: String
-    let colorRed: String
-    let colorOrange: String
-    let colorYellow: String
-    let colorGreen: String
-    let colorMint: String
-    let colorCyan: String
-    let colorIndigo: String
-    let colorGraphite: String
-    let fetchFaviconButton: String
-    let fetchFaviconDisclaimer: String
-    let fetchFaviconLoading: String
-    let fetchFaviconSuccess: String
-    let fetchFaviconError: String
-    let mouseTriggerRequirement: String
-    let canvasHint: String
-    let resetActionsButton: String
-    let resetActionsConfirm: String
-    let resetActionsConfirmMessage: String
-    let showListButton: String
-    let hideListButton: String
-    let trackpadTapLabel: String
-    let trackpadTapConflict: String
+package struct RadialMenuFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let enableLabel: String
+    package let enableCaption: String
+    package let positionLabel: String
+    package let positionPointer: String
+    package let positionCenter: String
+    package let tryButton: String
+    package let actionsHeader: String
+    package let addButton: String
+    package let limitCaption: String
+    package let emptyCaption: String
+    package let backButton: String
+    package let editActionsButton: String
+    package let nameLabel: String
+    package let automaticLabel: String
+    package let iconLabel: String
+    package let actionLabel: String
+    package let kindApp: String
+    package let kindFile: String
+    package let kindURL: String
+    package let kindShortcut: String
+    package let kindTool: String
+    package let kindMedia: String
+    package let kindSubmenu: String
+    package let chooseButton: String
+    package let urlPlaceholder: String
+    package let urlInvalid: String
+    package let toolLabel: String
+    package let mediaLabel: String
+    package let mediaPlayPause: String
+    package let mediaPrevious: String
+    package let mediaNext: String
+    package let mediaNowPlaying: String
+    package let mediaNothingPlaying: String
+    package let mediaOpenAppFormat: String
+    package let submenuCaption: String
+    package let saveButton: String
+    package let deleteButton: String
+    package let permissionCaption: String
+    package let manageButton: String
+    package let panelCaption: String
+    package let mouseTriggerLabel: String
+    package let mouseTriggerOff: String
+    package let mouseTriggerBack: String
+    package let mouseTriggerForward: String
+    package let mouseTriggerWarning: String
+    package let buttonTestLabel: String
+    package let buttonTestWaiting: String
+    package let buttonTestSeen: String
+    package let buttonTestOther: String
+    package let buttonTestBlind: String
+    package let buttonTestHint: String
+    package let activationModeLabel: String
+    package let activationModePressOrHold: String
+    package let activationModePress: String
+    package let activationModeHold: String
+    package let activationModeCaption: String
+    package let profilesHeader: String
+    package let profilePickerLabel: String
+    package let addProfileButton: String
+    package let duplicateProfileButton: String
+    package let deleteProfileButton: String
+    package let profileNameLabel: String
+    package let profileColorLabel: String
+    package let profileShortcutLabel: String
+    package let profileMouseTriggerLabel: String
+    package let presetGeneral: String
+    package let presetMedia: String
+    package let presetTools: String
+    package let presetWindowLayout: String
+    package let presetQuickToggles: String
+    package let presetBlank: String
+    package let colorAccent: String
+    package let colorBlue: String
+    package let colorPurple: String
+    package let colorPink: String
+    package let colorRed: String
+    package let colorOrange: String
+    package let colorYellow: String
+    package let colorGreen: String
+    package let colorMint: String
+    package let colorCyan: String
+    package let colorIndigo: String
+    package let colorGraphite: String
+    package let fetchFaviconButton: String
+    package let fetchFaviconDisclaimer: String
+    package let fetchFaviconLoading: String
+    package let fetchFaviconSuccess: String
+    package let fetchFaviconError: String
+    package let mouseTriggerRequirement: String
+    package let canvasHint: String
+    package let resetActionsButton: String
+    package let resetActionsConfirm: String
+    package let resetActionsConfirmMessage: String
+    package let showListButton: String
+    package let hideListButton: String
+    package let trackpadTapLabel: String
+    package let trackpadTapConflict: String
 }
 
 extension FeatureStrings {
-    static func radialMenu(_ language: AppLanguage) -> RadialMenuFeatureStrings {
+    package static func radialMenu(_ language: AppLanguage) -> RadialMenuFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -128,7 +128,7 @@ extension FeatureStrings {
 }
 
 extension RadialMenuFeatureStrings {
-    static let enUS = RadialMenuFeatureStrings(
+    package static let enUS = RadialMenuFeatureStrings(
         pageTitle: "Radial menu",
         hubDescription: "Opens a wheel of your favorite actions around the pointer",
         enableLabel: "Use the radial menu",
@@ -230,7 +230,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Middle click already uses the four-finger tap, so the tap does not open this wheel."
     )
 
-    static let ptBR = RadialMenuFeatureStrings(
+    package static let ptBR = RadialMenuFeatureStrings(
         pageTitle: "Menu radial",
         hubDescription: "Abre uma roda com as suas ações favoritas ao redor do ponteiro",
         enableLabel: "Usar o menu radial",
@@ -332,7 +332,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "O botão do meio já usa o toque de quatro dedos, então o toque não abre esta roda."
     )
 
-    static let tr = RadialMenuFeatureStrings(
+    package static let tr = RadialMenuFeatureStrings(
         pageTitle: "Dairesel menü",
         hubDescription: "İşaretçinin çevresinde en sevdiğiniz eylemlerden oluşan bir çark açar",
         enableLabel: "Dairesel menüyü kullan",
@@ -434,7 +434,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Dört parmakla dokunma zaten orta tıklamaya ayrılmış, bu yüzden dokunma bu çarkı açmaz."
     )
 
-    static let ru = RadialMenuFeatureStrings(
+    package static let ru = RadialMenuFeatureStrings(
         pageTitle: "Радиальное меню",
         hubDescription: "Открывает колесо с любимыми действиями вокруг указателя",
         enableLabel: "Использовать радиальное меню",
@@ -536,7 +536,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Касание четырьмя пальцами уже занято средней кнопкой, поэтому оно не открывает это колесо."
     )
 
-    static let es = RadialMenuFeatureStrings(
+    package static let es = RadialMenuFeatureStrings(
         pageTitle: "Menú radial",
         hubDescription: "Abre una rueda con tus acciones favoritas alrededor del puntero",
         enableLabel: "Usar el menú radial",
@@ -638,7 +638,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "El clic central ya usa el toque de cuatro dedos, así que el toque no abre esta rueda."
     )
 
-    static let sk = RadialMenuFeatureStrings(
+    package static let sk = RadialMenuFeatureStrings(
         pageTitle: "Radiálne menu",
         hubDescription: "Otvorí koleso obľúbených akcií okolo kurzora",
         enableLabel: "Používať radiálne menu",
@@ -740,7 +740,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Stredné kliknutie už používa ťuknutie štyrmi prstami, takže toto ťuknutie koleso neotvorí."
     )
 
-    static let de = RadialMenuFeatureStrings(
+    package static let de = RadialMenuFeatureStrings(
         pageTitle: "Radialmenü",
         hubDescription: "Öffnet ein Rad mit deinen Lieblingsaktionen rund um den Zeiger",
         enableLabel: "Radialmenü verwenden",
@@ -842,7 +842,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Der Mittelklick nutzt bereits das Vier-Finger-Tippen, daher öffnet das Tippen dieses Rad nicht."
     )
 
-    static let fr = RadialMenuFeatureStrings(
+    package static let fr = RadialMenuFeatureStrings(
         pageTitle: "Menu radial",
         hubDescription: "Ouvre une roue avec vos actions préférées autour du pointeur",
         enableLabel: "Utiliser le menu radial",
@@ -944,7 +944,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Le clic du milieu utilise déjà le toucher à quatre doigts, donc ce toucher n’ouvre pas cette roue."
     )
 
-    static let it = RadialMenuFeatureStrings(
+    package static let it = RadialMenuFeatureStrings(
         pageTitle: "Menu radiale",
         hubDescription: "Apre una ruota con le tue azioni preferite attorno al puntatore",
         enableLabel: "Usa il menu radiale",
@@ -1046,7 +1046,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "Il clic centrale usa già il tocco a quattro dita, quindi il tocco non apre questa ruota."
     )
 
-    static let ja = RadialMenuFeatureStrings(
+    package static let ja = RadialMenuFeatureStrings(
         pageTitle: "ラジアルメニュー",
         hubDescription: "ポインタの周りにお気に入りのアクションのホイールを開きます",
         enableLabel: "ラジアルメニューを使用",
@@ -1148,7 +1148,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "4本指のタップは中クリックで使用中のため、このホイールは開きません。"
     )
 
-    static let ko = RadialMenuFeatureStrings(
+    package static let ko = RadialMenuFeatureStrings(
         pageTitle: "방사형 메뉴",
         hubDescription: "포인터 주위에 즐겨 쓰는 동작의 휠을 엽니다",
         enableLabel: "방사형 메뉴 사용",
@@ -1250,7 +1250,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "네 손가락 탭은 이미 가운데 클릭에 사용 중이므로 이 휠을 열지 않습니다."
     )
 
-    static let zhHans = RadialMenuFeatureStrings(
+    package static let zhHans = RadialMenuFeatureStrings(
         pageTitle: "径向菜单",
         hubDescription: "在指针周围打开一个由常用操作组成的转盘",
         enableLabel: "使用径向菜单",
@@ -1352,7 +1352,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "四指轻点已用于中键点按，因此不会打开这个转盘。"
     )
 
-    static let zhTW = RadialMenuFeatureStrings(
+    package static let zhTW = RadialMenuFeatureStrings(
         pageTitle: "放射狀選單",
         hubDescription: "在指標周圍打開一個由常用動作組成的轉盤",
         enableLabel: "使用放射狀選單",
@@ -1454,7 +1454,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapConflict: "四指輕點已用於中鍵點按，因此不會打開這個轉盤。"
     )
 
-    static let zhHK = RadialMenuFeatureStrings(
+    package static let zhHK = RadialMenuFeatureStrings(
         pageTitle: "放射狀選單",
         hubDescription: "在指標周圍打開一個由常用動作組成的轉盤",
         enableLabel: "使用放射狀選單",
@@ -1555,7 +1555,7 @@ extension RadialMenuFeatureStrings {
         trackpadTapLabel: "用四指輕點打開",
         trackpadTapConflict: "四指輕點已用於中鍵點按，因此不會打開這個轉盤。"
     )
-    static let uk = RadialMenuFeatureStrings(
+    package static let uk = RadialMenuFeatureStrings(
         pageTitle: "Радіальне меню",
         hubDescription: "Відкриває колесо ваших улюблених дій навколо вказівника",
         enableLabel: "Використовувати радіальне меню",

@@ -11,6 +11,7 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VMStatisticsCompat
+import VitruvianCore
 
 enum ScreenshotFeatureTests {
     static func run(_ suite: TestSuite) {

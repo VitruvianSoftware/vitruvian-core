@@ -4,6 +4,7 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import VitruvianCore
 
 /// The capture surface: one borderless panel per screen, above everything,
 /// where the user drags a region, clicks a window or confirms a full screen.

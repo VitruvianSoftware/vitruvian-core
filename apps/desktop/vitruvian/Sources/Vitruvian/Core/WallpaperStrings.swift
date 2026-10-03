@@ -4,35 +4,35 @@
 import Foundation
 
 /// Wallpaper panel strings.
-struct WallpaperFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
+package struct WallpaperFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
     /// Sentence form for the panel layout list, whose descriptions end in a stop.
-    let panelDescription: String
-    let filterAll: String
-    let filterOwn: String
-    let filterApple: String
-    let applyAllDisplays: String
-    let addImage: String
-    let addFolder: String
-    let removeAdded: String
-    let doneRemoving: String
-    let sourceUnavailable: String
-    let addImagePrompt: String
-    let addFolderPrompt: String
-    let openSystemSettings: String
-    let emptyAll: String
-    let emptyOwn: String
-    let emptyApple: String
-    let downloading: String
-    let downloadFailed: String
-    let applyFailed: String
-    let previousPage: String
-    let nextPage: String
+    package let panelDescription: String
+    package let filterAll: String
+    package let filterOwn: String
+    package let filterApple: String
+    package let applyAllDisplays: String
+    package let addImage: String
+    package let addFolder: String
+    package let removeAdded: String
+    package let doneRemoving: String
+    package let sourceUnavailable: String
+    package let addImagePrompt: String
+    package let addFolderPrompt: String
+    package let openSystemSettings: String
+    package let emptyAll: String
+    package let emptyOwn: String
+    package let emptyApple: String
+    package let downloading: String
+    package let downloadFailed: String
+    package let applyFailed: String
+    package let previousPage: String
+    package let nextPage: String
 }
 
 extension FeatureStrings {
-    static func wallpaper(_ language: AppLanguage) -> WallpaperFeatureStrings {
+    package static func wallpaper(_ language: AppLanguage) -> WallpaperFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -54,7 +54,7 @@ extension FeatureStrings {
 }
 
 extension WallpaperFeatureStrings {
-    static let enUS = WallpaperFeatureStrings(
+    package static let enUS = WallpaperFeatureStrings(
         pageTitle: "Wallpaper",
         hubDescription: "Pick a still wallpaper without opening System Settings",
         panelDescription: "Pick a still wallpaper without opening System Settings.",
@@ -80,7 +80,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Next"
     )
 
-    static let ptBR = WallpaperFeatureStrings(
+    package static let ptBR = WallpaperFeatureStrings(
         pageTitle: "Papel de parede",
         hubDescription: "Escolha um papel de parede sem abrir os Ajustes do Sistema",
         panelDescription: "Escolha um papel de parede sem abrir os Ajustes do Sistema.",
@@ -106,7 +106,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Próximo"
     )
 
-    static let tr = WallpaperFeatureStrings(
+    package static let tr = WallpaperFeatureStrings(
         pageTitle: "Duvar kağıdı",
         hubDescription: "Sistem Ayarları’nı açmadan sabit bir duvar kağıdı seçin",
         panelDescription: "Sistem Ayarları’nı açmadan sabit bir duvar kağıdı seçin.",
@@ -132,7 +132,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Sonraki"
     )
 
-    static let ru = WallpaperFeatureStrings(
+    package static let ru = WallpaperFeatureStrings(
         pageTitle: "Обои",
         hubDescription: "Выберите статичные обои без открытия Системных настроек",
         panelDescription: "Выберите статичные обои без открытия Системных настроек.",
@@ -158,7 +158,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Далее"
     )
 
-    static let es = WallpaperFeatureStrings(
+    package static let es = WallpaperFeatureStrings(
         pageTitle: "Fondo de pantalla",
         hubDescription: "Elige un fondo fijo sin abrir Ajustes del Sistema",
         panelDescription: "Elige un fondo fijo sin abrir Ajustes del Sistema.",
@@ -183,7 +183,7 @@ extension WallpaperFeatureStrings {
         previousPage: "Anterior",
         nextPage: "Siguiente"
     )
-    static let sk = WallpaperFeatureStrings(
+    package static let sk = WallpaperFeatureStrings(
         pageTitle: "Pozadie",
         hubDescription: "Vyberte statické pozadie bez otvárania Systémových nastavení",
         panelDescription: "Vyberte statické pozadie bez otvárania Systémových nastavení.",
@@ -209,7 +209,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Ďalšia"
     )
 
-    static let de = WallpaperFeatureStrings(
+    package static let de = WallpaperFeatureStrings(
         pageTitle: "Hintergrundbild",
         hubDescription: "Wähle ein Standbild ohne die Systemeinstellungen zu öffnen",
         panelDescription: "Wähle ein Standbild ohne die Systemeinstellungen zu öffnen.",
@@ -235,7 +235,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Weiter"
     )
 
-    static let fr = WallpaperFeatureStrings(
+    package static let fr = WallpaperFeatureStrings(
         pageTitle: "Fond d’écran",
         hubDescription: "Choisissez une image fixe sans ouvrir Réglages Système",
         panelDescription: "Choisissez une image fixe sans ouvrir Réglages Système.",
@@ -261,7 +261,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Suivant"
     )
 
-    static let it = WallpaperFeatureStrings(
+    package static let it = WallpaperFeatureStrings(
         pageTitle: "Sfondo",
         hubDescription: "Scegli uno sfondo fisso senza aprire Impostazioni di Sistema",
         panelDescription: "Scegli uno sfondo fisso senza aprire Impostazioni di Sistema.",
@@ -287,7 +287,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Successiva"
     )
 
-    static let ja = WallpaperFeatureStrings(
+    package static let ja = WallpaperFeatureStrings(
         pageTitle: "壁紙",
         hubDescription: "システム設定を開かずに静止壁紙を選べます",
         panelDescription: "システム設定を開かずに静止壁紙を選べます。",
@@ -313,7 +313,7 @@ extension WallpaperFeatureStrings {
         nextPage: "次へ"
     )
 
-    static let ko = WallpaperFeatureStrings(
+    package static let ko = WallpaperFeatureStrings(
         pageTitle: "배경화면",
         hubDescription: "시스템 설정을 열지 않고 고정 배경을 고릅니다",
         panelDescription: "시스템 설정을 열지 않고 고정 배경을 고릅니다.",
@@ -338,7 +338,7 @@ extension WallpaperFeatureStrings {
         previousPage: "이전",
         nextPage: "다음"
     )
-    static let uk = WallpaperFeatureStrings(
+    package static let uk = WallpaperFeatureStrings(
         pageTitle: "Шпалера",
         hubDescription: "Вибирайте статичну шпалеру, не відкриваючи Системні параметри",
         panelDescription: "Вибирайте статичну шпалеру, не відкриваючи Системні параметри.",
@@ -364,7 +364,7 @@ extension WallpaperFeatureStrings {
         nextPage: "Далі"
     )
 
-    static let zhHans = WallpaperFeatureStrings(
+    package static let zhHans = WallpaperFeatureStrings(
         pageTitle: "壁纸",
         hubDescription: "无需打开系统设置即可选择静态壁纸",
         panelDescription: "无需打开系统设置即可选择静态壁纸。",
@@ -390,7 +390,7 @@ extension WallpaperFeatureStrings {
         nextPage: "下一页"
     )
 
-    static let zhTW = WallpaperFeatureStrings(
+    package static let zhTW = WallpaperFeatureStrings(
         pageTitle: "桌布",
         hubDescription: "不必打開系統設定即可選擇靜態桌布",
         panelDescription: "不必打開系統設定即可選擇靜態桌布。",
@@ -416,7 +416,7 @@ extension WallpaperFeatureStrings {
         nextPage: "下一頁"
     )
 
-    static let zhHK = WallpaperFeatureStrings(
+    package static let zhHK = WallpaperFeatureStrings(
         pageTitle: "桌布",
         hubDescription: "唔使開系統設定都可以揀靜態桌布",
         panelDescription: "唔使開系統設定都可以揀靜態桌布。",

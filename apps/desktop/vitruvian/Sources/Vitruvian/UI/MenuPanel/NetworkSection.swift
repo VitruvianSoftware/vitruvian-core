@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The "Network" card: live download/upload speed, a history graph and the
 /// totals moved this session.
