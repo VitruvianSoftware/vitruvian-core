@@ -58,7 +58,8 @@ MUTATIONS = [
      ".sink { [weak self, weak mixer] _ in",
      "switching output never replaces its connection notice with stored volume or mute"),
     ("device alerts return to the fixed level width", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
-     "return min(maximum, max(88, ceil(max(leading + 18 + 8, trailing)) + 16 + cameraGap))", "return 112",
+     "return min(maximum, max(88, ceil(max(leading + symbol, trailing)) + NotchNoticeLayout.inset + cameraGap))",
+     "return 112",
      "power labels and connection status fit beside their icon"),
     ("device alert window ignores its content width", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
      "guard noticeExpanded else { return geometry.noticeSize(wingWidth: notice.preferredWingWidth) }",
@@ -322,6 +323,10 @@ MUTATIONS = [
      "    private func removeCaptureControlsClickThrough() {\n        captureControlsWatch.stop()\n",
      "    private func removeCaptureControlsClickThrough() {\n",
      "capture teardown leaves no scheduled work or capture monitors"),
+    ("the header's halves overlap the camera", "notch", "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+     "        headerCameraGap > 0 ? (contentWidth - headerCameraGap) / 2 : nil\n",
+     "        headerCameraGap > 0 ? contentWidth / 2 : nil\n",
+     "the header's halves leave exactly the camera between them, or one row spans the top"),
 ]
 
 

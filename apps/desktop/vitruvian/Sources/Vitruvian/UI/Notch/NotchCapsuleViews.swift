@@ -233,7 +233,9 @@ package struct NotchCapsuleMusicStrip: View {
                     if named { Text(title).capsuleTitle().truncationMode(.tail).transition(.opacity) }
                     else { Color.clear }
                 }
-                .padding(.horizontal, CapsuleLayout.endPadding)
+                // Untitled, one padding between the cover and the bars, as
+                // `CapsuleLayout.musicSurface` reserves.
+                .padding(.horizontal, named ? CapsuleLayout.endPadding : CapsuleLayout.endPadding / 2)
                 .frame(maxWidth: .infinity)
                 NotchLiveEqualizerBars(isPlaying: playback?.isPlaying == true,
                                        bars: NotchLayout.compactMusicBarCount,

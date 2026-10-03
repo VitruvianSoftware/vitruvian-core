@@ -127,7 +127,7 @@ package struct NotchIslandPreview: View {
     /// The island's title row: the section's name, the camera between the
     /// halves, and the actions that wait for the pointer.
     private func header(geometry: NotchGeometry, width: CGFloat) -> some View {
-        let half = geometry.headerCameraGap > 0 ? (width - geometry.headerCameraGap) / 2 : nil
+        let half = geometry.headerSideWidth(contentWidth: width)
         return HStack(spacing: 0) {
             HStack(spacing: 6) {
                 if !NotchQuickAccessConfiguration.current().actions.contains(.explore) {

@@ -718,10 +718,8 @@ for layout.
 - **Tested:** `NotchAgentTests` checks the sizes on tall, short and tiny
   strips, and the width of a row of marks. A new mutation guards the
   shrinking.
-- **Still duplicated:** the other copies the survey found (the companion
-  mark beside a timer, the text notice's inset, the capsule's music strip
-  without a title, and the calendar, download, capture-control and header
-  measurements) move in later slices.
+- **Still duplicated:** the other copies the survey found move in later
+  slices (5j below took the notice, the header and the capsule).
 
 Landed (5h, file-drop routing): `NotchFileDrop`
 (`Services/Notch/NotchFileDrop.swift`) takes files dragged onto the island.
@@ -752,6 +750,29 @@ array of its own left except the open island's clicks and keys
 - **Tested:** the capture-controls checks start and stop the module's own
   watch through a stand-in monitor, and the teardown check now also asks the
   watch. A new mutation guards the teardown.
+
+Landed (5j, the notice, the header and the capsule's music strip): more of
+the layout has one source.
+
+- **The text notice:** `NotchNoticeLayout` (new, in Core) holds its symbol
+  column, spacing, inset and font. `NotchNotice.preferredWingWidth` sizes the
+  wings with them and `NotchNoticeView` draws with them.
+- **The open header:** `NotchGeometry` gains `headerBottom`, `pageTop` and
+  `headerSideWidth(contentWidth:)`. The page clip, the media drop area, the
+  section scroll's header test, the header halves in `NotchView` and the
+  content editor, and the capture controls' header no longer spell out the
+  sums.
+- **The capsule's music strip without a title:** the view kept two paddings
+  between the cover and the bars, while `CapsuleLayout.musicSurface` reserves
+  one. The view now keeps one. Before, the capsule's resting width hid the
+  difference.
+- **Tested:** the spacing contract checks `pageTop` and the header halves on
+  every layout and camera height. A new mutation guards the halves.
+- **Left as they are:** the companion mark beside a timer is drawn at most
+  13 points but reserved at the strip's icon size (up to 20). Over-reserving
+  is safe, and the timer and download strips size it differently on
+  purpose, so it stays until a design decision. Also left: the calendar,
+  download and capture-control fonts and insets, which agree today.
 
 ## Step 6: typed preferences and explicit concurrency (in progress)
 

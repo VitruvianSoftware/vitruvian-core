@@ -24,7 +24,7 @@ package struct NotchNotice: Equatable {
 
     package var preferredWingWidth: CGFloat {
         if let notification { return max(minimumWingWidth, NotchNotificationBannerLayout.wing(for: notification)) }
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        let font = NotchNoticeLayout.font
         let leading = ((level == nil ? title : detail) as NSString).size(withAttributes: [.font: font]).width
         let trailing = level == nil ? (detail as NSString).size(withAttributes: [.font: font]).width : 0
         // Reserve enough for the widest percentage without giving the short
@@ -32,7 +32,8 @@ package struct NotchNotice: Equatable {
         if level != nil, event != .accessory { return 80 }
         // Long accessory names still use bounded truncation.
         let maximum: CGFloat = event == .accessory && level == nil ? 160 : 240
-        return min(maximum, max(88, ceil(max(leading + 18 + 8, trailing)) + 16 + cameraGap))
+        let symbol = NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing
+        return min(maximum, max(88, ceil(max(leading + symbol, trailing)) + NotchNoticeLayout.inset + cameraGap))
     }
 
     /// Two lines of text sit at the island's two ends, each as far from its
@@ -2831,7 +2832,7 @@ package final class NotchService: ObservableObject {
         let screenPoint = panel.convertPoint(toScreen: event.locationInWindow)
         // The header keeps its own gesture; the tiles and the rest of the body step rows.
         guard windowHost?.containsSurface(screenPoint) == true,
-              panel.frame.maxY - screenPoint.y > expandedGeometry.headerTopInset + expandedGeometry.headerRowHeight else {
+              panel.frame.maxY - screenPoint.y > expandedGeometry.headerBottom else {
             sectionScroll = NotchSectionScroll()
             return false
         }

@@ -133,8 +133,14 @@ enum NotchTests {
             for cameraHeight: CGFloat in [24, 32, 40, 64] {
                 let geometry = NotchGeometry(screen: screen, safeAreaTop: cameraHeight, cameraWidth: 210,
                                              layout: .custom, customWidth: width, customHeight: 400)
-                let top = geometry.headerTopInset + geometry.headerRowHeight + NotchLayout.spacing
-                suite.expect(top >= cameraHeight, "the page always begins below the physical camera")
+                suite.expect(geometry.pageTop >= cameraHeight
+                                && geometry.pageTop == geometry.headerBottom + NotchLayout.spacing,
+                             "the page always begins below the physical camera")
+                let halves = geometry.headerSideWidth(contentWidth: geometry.contentWidth)
+                suite.expect(geometry.headerCameraGap > 0
+                                ? halves.map { $0 * 2 + geometry.headerCameraGap == geometry.contentWidth } == true
+                                : halves == nil,
+                             "the header's halves leave exactly the camera between them, or one row spans the top")
                 let area = geometry.activationArea(in: geometry.expanded, hasHeader: true,
                                                    compactActivity: false, expandedHeader: true)
                 if width >= 480 {
