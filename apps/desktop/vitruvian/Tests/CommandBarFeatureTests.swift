@@ -80,7 +80,7 @@ enum CommandBarFeatureTests {
             !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
         }
         let commandBarCatalogLines = ((try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarCatalog.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
             encoding: .utf8)) ?? "").components(separatedBy: "\n")
         func pageVisible(_ page: SettingsPage, available: Set<AppFeature>) -> Bool {
             FeatureVisibilitySupport.isPageVisible(page) { available.contains($0) }
@@ -536,7 +536,7 @@ enum CommandBarFeatureTests {
                "an ASCII-capable input method still moves to a plain layout")
 
         let commandBarServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarService.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift",
             encoding: .utf8)) ?? ""
         suite.expect(commandBarServiceSource.contains("InputSourceSelection.asciiLayoutID"),
                "the bar borrows the ASCII layout through the shared TIS selection")
@@ -552,13 +552,13 @@ enum CommandBarFeatureTests {
                 && commandBarServiceSource.contains("uninstallable: uninstallableAppIDs"),
                "the uninstall browse lists only the apps the background scan saw the uninstaller accept")
         let uninstallCatalogSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarCatalog.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
             encoding: .utf8)) ?? ""
         suite.expect(uninstallCatalogSource.contains("uninstallable.contains($0.id)")
                 && uninstallCatalogSource.contains("UninstallerSupport.selection(for: url) != nil"),
                "the uninstall browse and the Finder selection row offer only apps the uninstaller will take")
         let asciiSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/CommandBarSettings.swift",
+            contentsOfFile: "Sources/Vitruvian/UI/Settings/CommandBarSettings.swift",
             encoding: .utf8)) ?? ""
         suite.expect(asciiSettingsSource.contains("DefaultsKey.commandBarASCIILayoutEnabled"),
                "the ASCII layout switch has its own settings row")
@@ -570,7 +570,7 @@ enum CommandBarFeatureTests {
                 && !SettingsBackupSupport.valueLooksRight(DefaultsKey.commandBarASCIILayoutEnabled, "yes"),
                "a restored ASCII layout switch has to be a switch, not text that looks like one")
         let superKeySource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/SuperKey/SuperKeyService.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift",
             encoding: .utf8)) ?? ""
         suite.expect(superKeySource.contains("InputSourceSelection.selectableInputSources()"),
                "the Super key cycle shares the TIS plumbing instead of its own copy")
@@ -977,7 +977,7 @@ enum CommandBarFeatureTests {
                 && CommandBarPreferences.emojiIdentity(fromRowID: "emoji.") == nil,
                "a row of another kind, and an id with no emoji left in it, answer with nothing")
         let catalogSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarCatalog.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
             encoding: .utf8)) ?? ""
         suite.expect(catalogSource.contains(
             "CommandBarPreferences.emojiRowID(identity: emoji.identity)"),
@@ -1336,7 +1336,7 @@ enum CommandBarFeatureTests {
                     GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [.command])),
                "Command Q is a real combination; the card has to be able to store it")
         let commandBarSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarService.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift",
             encoding: .utf8)) ?? ""
         let commandBarCode = commandBarSource
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -1434,10 +1434,10 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarLinks.expand("https://x.com/{clipboard}", kind: .link,
                                       clipboard: "a+b") == "https://x.com/a%2Bb",
                "a plus sign inside a search is escaped, not read as a space")
-        suite.expect(CommandBarLinks.trailingArgument(query: "gh vorssaint utils", name: "gh")
-                == "vorssaint utils",
+        suite.expect(CommandBarLinks.trailingArgument(query: "gh vitruvian utils", name: "gh")
+                == "vitruvian utils",
                "what comes after the name is what the saved search opens with")
-        suite.expect(CommandBarLinks.trailingArgument(query: "GH Vorssaint", name: "gh") == "Vorssaint",
+        suite.expect(CommandBarLinks.trailingArgument(query: "GH Vitruvian", name: "gh") == "Vitruvian",
                "the name is matched without case; the argument keeps its own")
         suite.expect(CommandBarLinks.trailingArgument(query: "ghost writer", name: "gh") == nil
                 && CommandBarLinks.trailingArgument(query: "gh", name: "gh") == nil,
@@ -1486,8 +1486,8 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "day", kind: .place,
                                                               destination: "~/Notes/{date}.md")) == nil,
                "a place still holding a placeholder is a different file every time it runs")
-        suite.expect(CommandBarLinks.rankingTitle(name: "gh", query: "gh vorssaint utils")
-                == "gh vorssaint utils",
+        suite.expect(CommandBarLinks.rankingTitle(name: "gh", query: "gh vitruvian utils")
+                == "gh vitruvian utils",
                "once an argument follows the name, the row is scored against the whole query")
         suite.expect(CommandBarLinks.rankingTitle(name: "gh", query: "gh") == "gh",
                "the name alone still scores against its own name")
@@ -1497,10 +1497,10 @@ enum CommandBarFeatureTests {
         // the list on the first word of the argument, which is the moment it
         // was about to run.
         suite.expect(CommandBarSearch.score(title: "gh", keywords: "Link",
-                                      query: "gh vorssaint utils") == nil
+                                      query: "gh vitruvian utils") == nil
                 && CommandBarSearch.score(
-                    title: CommandBarLinks.rankingTitle(name: "gh", query: "gh vorssaint utils"),
-                    keywords: "Link", query: "gh vorssaint utils") != nil,
+                    title: CommandBarLinks.rankingTitle(name: "gh", query: "gh vitruvian utils"),
+                    keywords: "Link", query: "gh vitruvian utils") != nil,
                "a saved search stays in the list while what to look for is typed")
 
         suite.expect(CommandBarLink.Kind.script.symbolName == "terminal",
@@ -1866,7 +1866,7 @@ enum CommandBarFeatureTests {
                 && editedCompletion == nil,
                "Tab remembers the fuzzy search unless the completed field is edited")
 
-        let learningDefaultsName = "com.vorssaint.tests.command-bar-learning"
+        let learningDefaultsName = "com.vitruviansoftware.vitruvian.tests.command-bar-learning"
         let learningDefaults = UserDefaults(suiteName: learningDefaultsName)!
         learningDefaults.set("usage", forKey: DefaultsKey.commandBarUsage)
         learningDefaults.set("habits", forKey: DefaultsKey.commandBarQueryHabits)

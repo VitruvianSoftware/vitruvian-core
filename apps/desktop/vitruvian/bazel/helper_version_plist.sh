@@ -28,7 +28,7 @@ cat >"$out" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>VorssaintFanControlHelperVersion</key>
+	<key>VitruvianFanControlHelperVersion</key>
 	<string>${version}</string>
 </dict>
 </plist>

@@ -5,12 +5,12 @@ window snapping, Dock previews, clipboard history, a Dynamic Island-style notch,
 screen capture and recording, AI agent usage tracking and more, all behind one
 menu-bar icon.
 
-> **Status: imported, not yet renamed.** This is a GPL-3.0-or-later fork of
-> [vorssaint-utils](https://github.com/vorssaint/vorssaint-utils). The code still
-> carries upstream's name, icon, bundle ID and update feed, which upstream's
-> trademark policy reserves. **Do not distribute any build** until the rename to
-> Vitruvian lands. See [`UPSTREAM.md`](UPSTREAM.md) for provenance, the licensing
-> rules and what the rename must replace.
+> **Status: renamed, not yet released.** Vitruvian is a GPL-3.0-or-later fork of
+> [vorssaint-utils](https://github.com/vorssaint/vorssaint-utils), renamed with its
+> own bundle ID and placeholder icon. **Do not distribute any build yet**: the
+> public source mirror, signing and a release feed don't exist yet, and the
+> onboarding GIFs still show upstream's mark. See [`UPSTREAM.md`](UPSTREAM.md) for
+> provenance, the licensing rules and the remaining release blockers.
 
 Requirements: macOS 14 or newer on Apple Silicon, and the Xcode pinned in the
 repository's `.xcode-version`.
@@ -21,8 +21,8 @@ Everything goes through Bazel with the `macos-app` config, which provides
 Apple's CC toolchain for linking:
 
 ```sh
-# The .app bundle (bazel-bin/apps/desktop/vitruvian/Vorssaint.zip)
-bazel build --config=macos-app //apps/desktop/vitruvian:Vorssaint
+# The .app bundle (bazel-bin/apps/desktop/vitruvian/Vitruvian.zip)
+bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian
 
 # Upstream's unit tests, the app's --selftest, and the fan helper's --selftest
 bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests \
@@ -35,8 +35,8 @@ bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests --test_arg=--s
 To run the app, unzip the bundle and open it:
 
 ```sh
-ditto -x -k bazel-bin/apps/desktop/vitruvian/Vorssaint.zip /tmp/vitruvian
-open /tmp/vitruvian/Vorssaint.app
+ditto -x -k bazel-bin/apps/desktop/vitruvian/Vitruvian.zip /tmp/vitruvian
+open /tmp/vitruvian/Vitruvian.app
 ```
 
 The bundle is signed ad hoc. macOS ties Accessibility and Screen Recording
@@ -68,7 +68,7 @@ Bazel.
 
 | Path | What |
 | --- | --- |
-| `Sources/Vorssaint/` | The app: `App/` lifecycle, `Core/` catalogs and preferences, `Services/` behavior, `UI/` views, `Support/` diagnostics |
+| `Sources/Vitruvian/` | The app: `App/` lifecycle, `Core/` catalogs and preferences, `Services/` behavior, `UI/` views, `Support/` diagnostics |
 | `Sources/FanControlHelper/` | Privileged launchd helper for fan control |
 | `Sources/NowPlayingAdapter/` | Dylib that `/usr/bin/perl` loads to read Now Playing |
 | `Sources/HIDEventSystem/`, `Sources/VMStatisticsCompat/` | C module maps for private or compat headers |

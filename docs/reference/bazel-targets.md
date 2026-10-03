@@ -173,7 +173,7 @@ stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling)
 `//apps/suites/tabula/cli:tabcli` · `//apps/suites/tabula/api:api_bin` · `//apps/cli/devx:devx` ·
 `//apps/cli/homelab/cmd/homelab` · `//apps/desktop/nexus-agent:bot` · macOS apps:
 `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`,
-`bazel build --config=macos-app //apps/desktop/vitruvian:Vorssaint` (tests:
+`bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian` (tests:
 `bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests //apps/desktop/vitruvian:selftest`;
 after changing its `build.sh` source lists: `bazel run //apps/desktop/vitruvian:sync_sources`).
 

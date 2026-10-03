@@ -12,9 +12,11 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   header. Never copy code from here into Apache-licensed parts of the repo.
 - **Log every change to an upstream file** with a dated entry under
   "Modifications" in `UPSTREAM.md` (GPL-3.0 §5(a)).
-- **Publish nothing under the upstream brand.** No release, artifact upload or
-  signed build until the Vitruvian rename has replaced the name, icon, bundle ID
-  and update feed. See `TRADEMARKS.md`.
+- **Never use upstream's brand or services.** No Vorssaint name, icon, bundle ID,
+  update feed, upload/feedback server or community link in what the app shows or
+  calls (see `TRADEMARKS.md`). Keep upstream's copyright lines, which are legal
+  notices, not branding. Publish nothing until the release blockers in
+  `UPSTREAM.md` are cleared.
 
 ## Building
 
@@ -28,7 +30,7 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 
 ## Conventions (from upstream)
 
-- App lifecycle lives in `Sources/Vorssaint/App`, shared catalogs and preferences
+- App lifecycle lives in `Sources/Vitruvian/App`, shared catalogs and preferences
   in `Core`, behavior in `Services`, views in `UI`, diagnostics in `Support`.
   Keep decisions outside views where tests can reach them. Pure logic goes in a
   `*Support.swift` file with injectable `UserDefaults`.
