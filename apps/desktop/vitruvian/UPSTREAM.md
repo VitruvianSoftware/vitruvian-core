@@ -134,10 +134,11 @@ is that notice. Add an entry for every change to upstream files.
     `TemperatureSensorSelector.swift` to `FanControlKit/`;
   - `AirPlayRouteManager.airPlaySentinelUID` now aliases
     `MixerRoutingSupport.airPlaySentinelUID`;
-  - explicit `package` initializers added to structs used outside the module;
+  - explicit `package` initializers added to the structs and classes the
+    module exports;
   - `import FanControlKit` added to `Sources/FanControlHelper/main.swift`
     and the three files the helper shares with the app;
-  - `build.sh`, `Tests/mutation_checks.py` and three test files point at the
+  - `build.sh`, `Tests/mutation_checks.py` and four test files point at the
     new paths.
 
 ## Syncing from upstream
