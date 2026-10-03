@@ -128,6 +128,9 @@ swift_library(
     name = "VitruvianServices",
     package_name = SWIFT_PACKAGE,
     srcs = SERVICES_SRCS,
+    # REFACTOR.md step 6c, measuring only: complete concurrency checking
+    # warns where Swift 6 would reject. A later push replaces it.
+    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianServices",
     target_compatible_with = MACOS_ONLY,
     deps = [
@@ -148,6 +151,9 @@ swift_library(
     name = "VitruvianUI",
     package_name = SWIFT_PACKAGE,
     srcs = UI_SRCS,
+    # REFACTOR.md step 6c, measuring only: complete concurrency checking
+    # warns where Swift 6 would reject. A later push replaces it.
+    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianUI",
     target_compatible_with = MACOS_ONLY,
     deps = [
