@@ -358,7 +358,7 @@ package struct PowerSection: View {
 private struct EnergyAppsBreakdown: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
-    @AppStorage(DefaultsKey.monitorInterval) private var monitorInterval = 2
+    @AppStorage(Preferences.monitorInterval) private var monitorInterval
     @State private var expanded = false
     @State private var rows: [ProcessUsage] = []
     @State private var loading = false

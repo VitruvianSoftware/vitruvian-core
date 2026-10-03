@@ -12,7 +12,7 @@ import VitruvianServices
 package struct ScratchpadView: View {
     @ObservedObject private var service = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.scratchpadBackgroundOpacity) private var backgroundOpacity = 0.0
+    @AppStorage(Preferences.scratchpadBackgroundOpacity) private var backgroundOpacity
     @AppStorage(DefaultsKey.scratchpadTextSize) private var storedTextSize = ScratchpadSupport.defaultTextSize
     @State private var copied = false
     @State private var dialog: ScratchpadDialog?

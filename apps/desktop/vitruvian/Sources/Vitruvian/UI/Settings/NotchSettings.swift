@@ -49,7 +49,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchBattery) private var battery
     @AppStorage(Preferences.notchClipboard) private var clipboard
     @AppStorage(Preferences.notchClipboardWindow) private var clipboardWindow
-    @AppStorage(DefaultsKey.screenshotDefaultAction) private var captureAction = ""
+    @AppStorage(Preferences.screenshotDefaultAction) private var captureAction
     @AppStorage(Preferences.notchCapture) private var capture
     @AppStorage(Preferences.notchTrackChange) private var trackChange
     @AppStorage(Preferences.notchShowPlayingMusic) private var showPlayingMusic
@@ -64,11 +64,11 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchOutlineEnabled) private var outlineEnabled
     @AppStorage(DefaultsKey.notchCustomWidth) private var customWidth = NotchSize.defaultWidth
     @AppStorage(DefaultsKey.notchCustomHeight) private var customHeight = NotchSize.defaultHeight
-    @AppStorage(DefaultsKey.notchCameraFitWidth) private var cameraFitWidth = 0.0
-    @AppStorage(DefaultsKey.notchCameraFitHeight) private var cameraFitHeight = 0.0
-    @AppStorage(DefaultsKey.notchCapsuleFitWidth) private var capsuleFitWidth = 0.0
-    @AppStorage(DefaultsKey.notchCapsuleFitHeight) private var capsuleFitHeight = 0.0
-    @AppStorage(DefaultsKey.notchCapsuleFitDrop) private var capsuleFitDrop = 0.0
+    @AppStorage(Preferences.notchCameraFitWidth) private var cameraFitWidth
+    @AppStorage(Preferences.notchCameraFitHeight) private var cameraFitHeight
+    @AppStorage(Preferences.notchCapsuleFitWidth) private var capsuleFitWidth
+    @AppStorage(Preferences.notchCapsuleFitHeight) private var capsuleFitHeight
+    @AppStorage(Preferences.notchCapsuleFitDrop) private var capsuleFitDrop
     @AppStorage(Preferences.notchHapticFeedback) private var hapticFeedback
     @AppStorage(Preferences.notchTranslucentBackground) private var translucentBackground
     @AppStorage(Preferences.notchLiquidGlassEnabled) private var liquidGlass

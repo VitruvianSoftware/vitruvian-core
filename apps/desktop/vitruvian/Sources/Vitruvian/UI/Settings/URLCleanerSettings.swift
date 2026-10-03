@@ -11,9 +11,9 @@ package struct URLCleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = URLCleanerService.shared
     @AppStorage(Preferences.urlCleanerEnabled) private var enabled
-    @AppStorage(DefaultsKey.urlCleanerCustomParameters) private var globalNames = ""
-    @AppStorage(DefaultsKey.urlCleanerSiteParameters) private var siteNames = ""
-    @AppStorage(DefaultsKey.urlCleanerDisabledParameters) private var disabledNames = ""
+    @AppStorage(Preferences.urlCleanerCustomParameters) private var globalNames
+    @AppStorage(Preferences.urlCleanerSiteParameters) private var siteNames
+    @AppStorage(Preferences.urlCleanerDisabledParameters) private var disabledNames
     @State private var parameterDrafts: [String: String] = [:]
     @State private var siteDraft = ""
     @State private var siteParameterDraft = ""

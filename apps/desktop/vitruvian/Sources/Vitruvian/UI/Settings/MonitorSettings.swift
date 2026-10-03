@@ -19,11 +19,11 @@ package struct MonitorSettings: View {
     @AppStorage(Preferences.menuBarCombineTemperatures) private var combineTemperatures
     @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
-    @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
+    @AppStorage(Preferences.menuBarMetricAppearance) private var metricAppearance
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
-    @AppStorage(DefaultsKey.monitorInterval) private var interval = 2
+    @AppStorage(Preferences.monitorInterval) private var interval
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-    @AppStorage(DefaultsKey.monitorMemoryMetric) private var memoryMetric = "used"
+    @AppStorage(Preferences.monitorMemoryMetric) private var memoryMetric
     @AppStorage(Preferences.panelShowFanControl) private var showFanControl
 
     @AppStorage(Preferences.monitorGraphCPU) private var graphCPU
@@ -432,7 +432,7 @@ private struct MetricRowOption: View {
 private struct MemoryMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.menuBarMemory) private var menuBarMemory = false
-    @AppStorage(DefaultsKey.menuBarMemoryStyle) private var memoryStyle = "percent"
+    @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle
 
     var body: some View {
         if menuBarMemory {

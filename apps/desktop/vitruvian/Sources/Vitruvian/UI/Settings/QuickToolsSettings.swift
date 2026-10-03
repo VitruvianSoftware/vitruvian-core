@@ -22,7 +22,7 @@ package struct QuickToolsSettings: View {
     @AppStorage(Preferences.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled
     @AppStorage(DefaultsKey.scratchpadRetention) private var scratchpadRetention = ScratchpadRetention.never.rawValue
     @AppStorage(Preferences.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside
-    @AppStorage(DefaultsKey.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity = 0.0
+    @AppStorage(Preferences.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity
     @AppStorage(DefaultsKey.scratchpadTextSize) private var scratchpadTextSize = ScratchpadSupport.defaultTextSize
     @AppStorage(Preferences.micMuteMenuBarIndicator) private var micMenuBarIndicator
     @AppStorage(Preferences.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible

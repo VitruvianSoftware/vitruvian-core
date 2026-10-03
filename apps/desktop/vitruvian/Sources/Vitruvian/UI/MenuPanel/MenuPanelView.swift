@@ -2602,7 +2602,7 @@ package struct KeepAwakeCard: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var awake = KeepAwakeManager.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(DefaultsKey.defaultDuration) private var defaultDuration: Int = 0
+    @AppStorage(Preferences.defaultDuration) private var defaultDuration
     @AppStorage(Preferences.keepAwakeAutoStart) private var keepAwakeAutoStart
     @AppStorage(Preferences.keepAwakeAllowDisplaySleep) private var keepAwakeAllowDisplaySleep
     @AppStorage(Preferences.keepAwakeExternalDisplay) private var keepAwakeExternalDisplay
@@ -2612,11 +2612,11 @@ package struct KeepAwakeCard: View {
     @AppStorage(DefaultsKey.keepAwakeIconTint) private var keepAwakeIconTint = KeepAwakeIconTint.orange.rawValue
     @AppStorage(DefaultsKey.keepAwakeActiveIcon) private var keepAwakeActiveIcon = KeepAwakeActiveIcon.vitruvian.rawValue
     @AppStorage(Preferences.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle
-    @AppStorage(DefaultsKey.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval = 5
+    @AppStorage(Preferences.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval
     @State private var optionsExpanded = false
     @State private var automationExpanded = false
     /// The last started end time, which the popover opens on.
-    @AppStorage(DefaultsKey.keepAwakeUntilTime) private var savedUntilTime = 0.0
+    @AppStorage(Preferences.keepAwakeUntilTime) private var savedUntilTime
     /// An edit not started yet; only starting saves it, so the switch keeps
     /// restarting the session that actually ran.
     @State private var untilDraft: Date?

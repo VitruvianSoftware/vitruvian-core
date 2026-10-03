@@ -24,8 +24,8 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
     @AppStorage(DefaultsKey.windowGestureModifiers) private var gestureModifiers = WindowGestureSupport.defaultModifierStorageValue
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow
-    @AppStorage(DefaultsKey.windowLayoutWindowGap) private var windowGap = 0
-    @AppStorage(DefaultsKey.windowLayoutScreenGap) private var screenGap = 0
+    @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap
+    @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap
     @AppStorage(DefaultsKey.windowLayoutSideRepeatCyclesThirds) private var sideRepeatCyclesThirds = false
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
     // Same preference the Switcher page exposes next to Dock Preview; it is

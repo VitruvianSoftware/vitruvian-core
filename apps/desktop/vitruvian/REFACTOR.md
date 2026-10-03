@@ -662,8 +662,15 @@ registers each from there, a view writes `@AppStorage(Preferences.x) var x`
   - A Linux type-check with an `AppStorage` stand-in carrying SwiftUI's
     initializers shows no new error. It does catch a property whose
     declared type disagrees with its preference.
+- **Third slice, numbers and text:** 141 preferences with a literal whole
+  number, fraction or text default moved the same way, and 130 `@AppStorage`
+  properties take them. Each was moved only where every view repeated the
+  same default with the same kind of literal, so no stored type changes.
+  The script skipped seven whose views name their default through a
+  constant, such as the usage bar colors.
 - **Left for later slices:**
-  - the other 340 registered keys: numbers, text and computed defaults;
+  - the other 200 registered keys, whose defaults are computed (shortcuts,
+    raw values, constants) or are those seven;
   - 26 `@AppStorage` keys that are not registered at all, such as the menu
     bar metric switches and the panel orders. Registering them would change
     what code that checks `object(forKey:) == nil` sees, so each needs a

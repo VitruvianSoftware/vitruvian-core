@@ -20,7 +20,7 @@ package struct SystemSection: View {
     @State private var breakdownIsLoading = false
     @State private var lastBreakdownRefresh = Date.distantPast
     private let breakdownLimit = 15
-    @AppStorage(DefaultsKey.monitorInterval) private var monitorInterval = 2
+    @AppStorage(Preferences.monitorInterval) private var monitorInterval
     @AppStorage(Preferences.monitorGraphCPU) private var graphCPU
     @AppStorage(Preferences.monitorGraphGPU) private var graphGPU
     @AppStorage(Preferences.monitorGraphMemory) private var graphMemory

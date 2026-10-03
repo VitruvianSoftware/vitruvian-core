@@ -19,7 +19,7 @@ package struct RadialMenuSettings: View {
     @AppStorage(DefaultsKey.radialMenuActivationMode) private var activationModeRaw =
         RadialMenuActivationMode.pressOrHold.rawValue
     @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled
-    @AppStorage(DefaultsKey.middleClickTapFingers) private var middleClickTapFingers = 0
+    @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers
 
     @State private var profiles: [RadialMenuProfile] = RadialMenuSupport.decodeProfiles(
         UserDefaults.standard.data(forKey: DefaultsKey.radialMenuProfiles))

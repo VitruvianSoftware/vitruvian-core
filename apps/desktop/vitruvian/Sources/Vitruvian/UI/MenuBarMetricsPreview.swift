@@ -29,15 +29,15 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(Preferences.menuBarConnectedDevices) private var connectedDevices
     @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder
     @AppStorage(Preferences.menuBarCombineTemperatures) private var combineTemperatures
-    @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
+    @AppStorage(Preferences.menuBarMetricAppearance) private var metricAppearance
     @AppStorage(DefaultsKey.menuBarUsageBarNormalColor) private var usageBarNormalColor = "#64D2FF"
     @AppStorage(DefaultsKey.menuBarUsageBarElevatedColor) private var usageBarElevatedColor = "#FFD60A"
     @AppStorage(DefaultsKey.menuBarUsageBarCriticalColor) private var usageBarCriticalColor = "#FF453A"
     @AppStorage(DefaultsKey.menuBarUsageBarMediumThreshold) private var usageBarMediumThreshold = 70
     @AppStorage(DefaultsKey.menuBarUsageBarHighThreshold) private var usageBarHighThreshold = 90
-    @AppStorage(DefaultsKey.menuBarLabelStyle) private var labelStyle = "compact"
+    @AppStorage(Preferences.menuBarLabelStyle) private var labelStyle
     @AppStorage(Preferences.menuBarNetworkUploadFirst) private var networkUploadFirst
-    @AppStorage(DefaultsKey.menuBarMemoryStyle) private var memoryStyle = "percent"
+    @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false

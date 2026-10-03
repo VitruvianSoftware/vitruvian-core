@@ -20,21 +20,21 @@ package struct ScreenshotCaptureSettings: View {
     private var clipboardShortcutEnabled
     @AppStorage(Preferences.screenshotFreeze) private var freeze
     @AppStorage(Preferences.screenshotHideVitruvianWindows) private var hideVitruvianWindows
-    @AppStorage(DefaultsKey.screenshotSaveFolder) private var saveFolder = ""
-    @AppStorage(DefaultsKey.screenshotSaveSubfolder) private var saveSubfolder = ""
-    @AppStorage(DefaultsKey.screenshotFileNamePattern) private var fileNamePattern = ""
-    @AppStorage(DefaultsKey.screenshotFileNumberStart) private var numberStart = 1
-    @AppStorage(DefaultsKey.screenshotFileNumberNext) private var nextNumber = 1
+    @AppStorage(Preferences.screenshotSaveFolder) private var saveFolder
+    @AppStorage(Preferences.screenshotSaveSubfolder) private var saveSubfolder
+    @AppStorage(Preferences.screenshotFileNamePattern) private var fileNamePattern
+    @AppStorage(Preferences.screenshotFileNumberStart) private var numberStart
+    @AppStorage(Preferences.screenshotFileNumberNext) private var nextNumber
     @AppStorage(Preferences.screenshotIncludePointer) private var includePointer
     @AppStorage(Preferences.screenshotShowLastRegion) private var showLastRegion
     @AppStorage(Preferences.screenshotLoupeStartsOn) private var loupeStartsOn
     @AppStorage(Preferences.screenshotLoupeRememberZoom) private var rememberLoupeZoom
-    @AppStorage(DefaultsKey.screenshotLoupeDefaultZoom) private var loupeDefaultZoom = 1.0
+    @AppStorage(Preferences.screenshotLoupeDefaultZoom) private var loupeDefaultZoom
     @AppStorage(Preferences.screenshotLoupeSteppedZoomByDefault)
     private var steppedLoupeZoomByDefault
     @AppStorage(Preferences.screenshotDownscale) private var downscale
-    @AppStorage(DefaultsKey.screenshotDelay) private var delay = 0
-    @AppStorage(DefaultsKey.screenshotDefaultAction) private var defaultActionRaw = ""
+    @AppStorage(Preferences.screenshotDelay) private var delay
+    @AppStorage(Preferences.screenshotDefaultAction) private var defaultActionRaw
     @AppStorage(DefaultsKey.screenshotToolOrder) private var toolOrderRaw =
         ScreenshotSupport.Tool.defaultOrderStorage
     @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled

@@ -21,11 +21,11 @@ package struct QuickLauncherView: View {
     /// close the card before leaving edit mode.
     private var optionsItem: QuickLauncherItem? { launcher.editingOptionsItem }
     @AppStorage(Preferences.micMuteMenuBarIndicator) private var micBadgeInMenuBar
-    @AppStorage(DefaultsKey.colorPickerFormat) private var colorFormat = "hex"
+    @AppStorage(Preferences.colorPickerFormat) private var colorFormat
     @AppStorage(Preferences.colorPickerBareHex) private var colorBareHex
-    @AppStorage(DefaultsKey.defaultDuration) private var defaultDuration = 0
+    @AppStorage(Preferences.defaultDuration) private var defaultDuration
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
-    @AppStorage(DefaultsKey.clipboardHistoryLimit) private var clipboardLimit = 50
+    @AppStorage(Preferences.clipboardHistoryLimit) private var clipboardLimit
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: notchSize == nil ? 10 : 6), count: notchSize == nil ? QuickLauncherService.columns : NotchSupport.toolColumns)

@@ -39,7 +39,7 @@ package struct MetricDetailView: View {
     @ObservedObject private var speed = SpeedTest.shared
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-    @AppStorage(DefaultsKey.monitorInterval) private var monitorInterval = 2
+    @AppStorage(Preferences.monitorInterval) private var monitorInterval
     package let kind: MetricDetailKind
     @State private var processRows: [ProcessUsage] = []
     @State private var processRowsLoading = false

@@ -213,7 +213,7 @@ private struct ScreenTextCaptureSettings: View {
 
 private struct ColorCaptureSettings: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.colorPickerFormat) private var format = "hex"
+    @AppStorage(Preferences.colorPickerFormat) private var format
     @AppStorage(Preferences.colorPickerBareHex) private var usesBareHex
 
     var body: some View {

@@ -14,18 +14,18 @@ package struct ScreenRecordingCaptureSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = ScreenRecorderService.shared
     @ObservedObject private var sharing = RecordingShareService.shared
-    @AppStorage(DefaultsKey.recorderCountdown) private var countdown = 3
+    @AppStorage(Preferences.recorderCountdown) private var countdown
     @AppStorage(DefaultsKey.recorderQuality) private var qualityRaw =
         RecorderSupport.Quality.balanced.rawValue
-    @AppStorage(DefaultsKey.recorderFrameRate) private var frameRate = 60
+    @AppStorage(Preferences.recorderFrameRate) private var frameRate
     @AppStorage(Preferences.recorderSystemAudio) private var systemAudio
     @AppStorage(Preferences.recorderMicrophone) private var microphone
-    @AppStorage(DefaultsKey.recorderSaveFolder) private var saveFolder = ""
+    @AppStorage(Preferences.recorderSaveFolder) private var saveFolder
     @AppStorage(Preferences.recorderOpenEditor) private var opensEditor
     @AppStorage(Preferences.recorderAutomaticZoom) private var automaticZoom
     @AppStorage(DefaultsKey.recorderGIFSize) private var gifSizeRaw =
         RecorderSupport.GIFSize.medium.rawValue
-    @AppStorage(DefaultsKey.recorderGIFFrameRate) private var gifFrameRate = 12
+    @AppStorage(Preferences.recorderGIFFrameRate) private var gifFrameRate
     @AppStorage(Preferences.recorderSharingEnabled) private var sharingEnabled
     @State private var showsMoreOptions = false
     @State private var showingSharedLinks = false

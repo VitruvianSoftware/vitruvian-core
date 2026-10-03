@@ -17,7 +17,7 @@ package struct NotchMixerView: View {
     package let size: CGSize
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.mixerAppArrangement) private var arrangementValue = ""
+    @AppStorage(Preferences.mixerAppArrangement) private var arrangementValue
     @AppStorage(Preferences.mixerHideInactiveApps) private var hideInactiveApps
     @State private var showingOptions = false
     @State private var editingVolumeID: String?

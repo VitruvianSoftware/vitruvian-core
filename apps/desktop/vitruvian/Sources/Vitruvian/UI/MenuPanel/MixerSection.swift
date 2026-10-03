@@ -20,8 +20,8 @@ package struct MixerSection: View {
     @ObservedObject private var micMute = MicMuteService.shared
     @AppStorage(Preferences.liquidGlassEnabled) private var windowsGlass
     @AppStorage(Preferences.notchLiquidGlassEnabled) private var islandGlass
-    @AppStorage(DefaultsKey.mixerAppArrangement)
-    private var arrangementValue = ""
+    @AppStorage(Preferences.mixerAppArrangement)
+    private var arrangementValue
     @AppStorage(Preferences.mixerHideInactiveApps)
     private var hideInactiveApps
     @State private var optionsExpanded = false

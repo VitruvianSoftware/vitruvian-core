@@ -17,12 +17,12 @@ package struct MonitorAlertsControls: View {
     @AppStorage(Preferences.monitorAlertMemory) private var alertMemory
     @AppStorage(Preferences.monitorAlertDisk) private var alertDisk
     @AppStorage(Preferences.monitorAlertBattery) private var alertBattery
-    @AppStorage(DefaultsKey.monitorAlertCPUThreshold) private var alertCPUThreshold = 90
-    @AppStorage(DefaultsKey.monitorAlertCPUTemperatureThreshold) private var alertCPUTemperatureThreshold = 90
-    @AppStorage(DefaultsKey.monitorAlertBatteryTemperatureThreshold) private var alertBatteryTemperatureThreshold = 40
-    @AppStorage(DefaultsKey.monitorAlertDiskFreePercent) private var alertDiskFreePercent = 10
-    @AppStorage(DefaultsKey.monitorAlertBatteryPercent) private var alertBatteryPercent = 15
-    @AppStorage(DefaultsKey.monitorAlertCooldownMinutes) private var alertCooldown = 15
+    @AppStorage(Preferences.monitorAlertCPUThreshold) private var alertCPUThreshold
+    @AppStorage(Preferences.monitorAlertCPUTemperatureThreshold) private var alertCPUTemperatureThreshold
+    @AppStorage(Preferences.monitorAlertBatteryTemperatureThreshold) private var alertBatteryTemperatureThreshold
+    @AppStorage(Preferences.monitorAlertDiskFreePercent) private var alertDiskFreePercent
+    @AppStorage(Preferences.monitorAlertBatteryPercent) private var alertBatteryPercent
+    @AppStorage(Preferences.monitorAlertCooldownMinutes) private var alertCooldown
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
 
     private var text: MonitorAlertFeatureStrings {

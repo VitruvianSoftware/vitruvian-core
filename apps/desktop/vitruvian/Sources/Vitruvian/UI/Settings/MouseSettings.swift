@@ -39,7 +39,7 @@ package struct MouseSettings: View {
     @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled = false
     @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
     @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled
-    @AppStorage(DefaultsKey.middleClickTapFingers) private var middleClickTapFingers = 0
+    @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers
     @AppStorage(Preferences.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled
     @AppStorage(DefaultsKey.mouseClickDebounceWindowMs) private var mouseClickDebounceWindow =
         Defaults.defaultMouseClickDebounceWindowMs

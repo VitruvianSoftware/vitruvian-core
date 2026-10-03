@@ -24,7 +24,7 @@ package struct NotchAgentsSettingsControls: View {
     @AppStorage(DefaultsKey.notchAgentsFinishMinimum) private var finishMinimum = NotchAgentSupport.defaultFinishMinimum
     @AppStorage(Preferences.notchAgentsLimitAlert) private var limitAlert
     @AppStorage(DefaultsKey.notchAgentsLimitThreshold) private var limitThreshold = NotchAgentSupport.defaultLimitThreshold
-    @AppStorage(DefaultsKey.notchAgentsDailyBudget) private var dailyBudget = 0.0
+    @AppStorage(Preferences.notchAgentsDailyBudget) private var dailyBudget
     @AppStorage(Preferences.notchAgentsPriceUpdates) private var priceUpdates
     @State private var dragging: NotchAgentCard?
     @State private var roots: [AgentProvider: Bool] = [:]

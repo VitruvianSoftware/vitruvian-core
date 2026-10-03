@@ -69,7 +69,7 @@ package struct GeneralToolSettings: View {
 /// by name, and shows that symbol while it is the one in use.
 private struct MenuBarIconSymbolRow: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.menuBarIconSymbol) private var savedName = ""
+    @AppStorage(Preferences.menuBarIconSymbol) private var savedName
     @State private var typingName = false
 
     /// Filtered like the radial menu's icons, so a name a future macOS
@@ -166,7 +166,7 @@ private struct MenuBarIconSymbolRow: View {
 private struct MenuBarIconNameField: View {
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(DefaultsKey.menuBarIconSymbol) private var savedName = ""
+    @AppStorage(Preferences.menuBarIconSymbol) private var savedName
     @State private var draft = ""
     @State private var openingName = ""
     @FocusState private var focused: Bool
@@ -234,7 +234,7 @@ private struct MusicBlockingSettings: View {
     @ObservedObject private var musicBlocker = MusicLaunchBlocker.shared
     @State private var replacementRejected = false
     @AppStorage(Preferences.musicBlockEnabled) private var enabled
-    @AppStorage(DefaultsKey.musicBlockReplacementPath) private var replacementPath = ""
+    @AppStorage(Preferences.musicBlockReplacementPath) private var replacementPath
     @AppStorage(Preferences.musicBlockPlayReplacement) private var playReplacement
 
     var body: some View {

@@ -283,7 +283,7 @@ private struct DiagonalHalf: Shape {
 /// The idle menu bar glyph, tinted white for dark surfaces.
 package struct MenuBarGlyph: View {
     /// Observed so the previews follow a newly chosen symbol right away.
-    @AppStorage(DefaultsKey.menuBarIconSymbol) private var symbolName = ""
+    @AppStorage(Preferences.menuBarIconSymbol) private var symbolName
 
     package var body: some View {
         Group {

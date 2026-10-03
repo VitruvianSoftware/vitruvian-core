@@ -89,7 +89,7 @@ private struct DockPreviewPanelContent: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var draggingWindowID: CGWindowID?
     @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews
-    @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity) private var backgroundOpacity = 1.0
+    @AppStorage(Preferences.dockPreviewBackgroundOpacity) private var backgroundOpacity
     @AppStorage(Preferences.dockPreviewQuitAppOnClose) private var quitAppOnClose
 
     private var closeActionTitle: String {

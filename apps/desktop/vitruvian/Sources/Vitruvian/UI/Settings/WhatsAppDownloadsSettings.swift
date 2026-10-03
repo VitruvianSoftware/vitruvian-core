@@ -16,23 +16,23 @@ package struct WhatsAppDownloadsSettings: View {
 
     @AppStorage(Preferences.whatsAppDownloadsEnabled) private var enabled
     @AppStorage(Preferences.whatsAppDownloadsAutomaticEnabled) private var automatic
-    @AppStorage(DefaultsKey.whatsAppDownloadsCategories) private var categoriesRaw = "image,video,audio"
-    @AppStorage(DefaultsKey.whatsAppDownloadsRetentionDays) private var retentionDays = 7
+    @AppStorage(Preferences.whatsAppDownloadsCategories) private var categoriesRaw
+    @AppStorage(Preferences.whatsAppDownloadsRetentionDays) private var retentionDays
     @AppStorage(Preferences.whatsAppDownloadsNotify) private var notify
-    @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanup) private var lastCleanup = 0.0
-    @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupCount) private var lastCount = 0
-    @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupBytes) private var lastBytes = 0
-    @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupFailed) private var lastFailed = 0
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanup) private var lastCleanup
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanupCount) private var lastCount
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanupBytes) private var lastBytes
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanupFailed) private var lastFailed
     @AppStorage(Preferences.whatsAppOrganizerEnabled) private var organizerEnabled
-    @AppStorage(DefaultsKey.whatsAppOrganizerDestinationPath) private var organizerDestination = ""
-    @AppStorage(DefaultsKey.whatsAppOrganizerDelayMinutes) private var organizerDelay = 5
-    @AppStorage(DefaultsKey.whatsAppOrganizerCategories) private var organizerCategoriesRaw = "image,video,audio,document,archive,other"
-    @AppStorage(DefaultsKey.whatsAppOrganizerLayout) private var organizerLayout = "flat"
-    @AppStorage(DefaultsKey.whatsAppOrganizerDuplicateAction) private var duplicateAction = "trashNew"
-    @AppStorage(DefaultsKey.whatsAppOrganizerLastRun) private var organizerLastRun = 0.0
-    @AppStorage(DefaultsKey.whatsAppOrganizerLastMoved) private var organizerLastMoved = 0
-    @AppStorage(DefaultsKey.whatsAppOrganizerLastDuplicates) private var organizerLastDuplicates = 0
-    @AppStorage(DefaultsKey.whatsAppOrganizerLastFailed) private var organizerLastFailed = 0
+    @AppStorage(Preferences.whatsAppOrganizerDestinationPath) private var organizerDestination
+    @AppStorage(Preferences.whatsAppOrganizerDelayMinutes) private var organizerDelay
+    @AppStorage(Preferences.whatsAppOrganizerCategories) private var organizerCategoriesRaw
+    @AppStorage(Preferences.whatsAppOrganizerLayout) private var organizerLayout
+    @AppStorage(Preferences.whatsAppOrganizerDuplicateAction) private var duplicateAction
+    @AppStorage(Preferences.whatsAppOrganizerLastRun) private var organizerLastRun
+    @AppStorage(Preferences.whatsAppOrganizerLastMoved) private var organizerLastMoved
+    @AppStorage(Preferences.whatsAppOrganizerLastDuplicates) private var organizerLastDuplicates
+    @AppStorage(Preferences.whatsAppOrganizerLastFailed) private var organizerLastFailed
 
     @State private var waitingToEnable = false
     @State private var showingExistingChoice = false
