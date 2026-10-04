@@ -1172,6 +1172,13 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Audio/MusicLaunchBlocker.swift`,
     `Services/DockPreview/DockPreviewService.swift`,
     `Services/Shelf/ShelfService.swift` and `Services/WindowMaximizer.swift`.
+- **2026-10-04**: Refactor step 6zzc (`REFACTOR.md`):
+  - Properties a main-actor `deinit` reads are `nonisolated(unsafe)` in
+    `Services/Audio/AirPlayRouteManager.swift`,
+    `Services/DockPreview/DockPreviewService.swift`,
+    `Services/FanControl/FanControlService.swift`,
+    `Services/Notch/NotchWindowHost.swift`, `Services/Permissions.swift` and
+    `Services/Recorder/RecorderEditorController.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

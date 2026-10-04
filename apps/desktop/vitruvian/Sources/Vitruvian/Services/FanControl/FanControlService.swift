@@ -27,8 +27,9 @@ package final class FanControlService: ObservableObject {
                                            qos: .utility)
     // Only probeQueue touches it.
     nonisolated(unsafe) private var probeHardware: FanControlHardware?
-    private var connection: NSXPCConnection?
-    private var timer: Timer?
+    // `nonisolated(unsafe)`: `deinit` reads them too, once nothing else holds the object.
+    nonisolated(unsafe) private var connection: NSXPCConnection?
+    nonisolated(unsafe) private var timer: Timer?
     private var panelIsVisible = false
     private var requestInFlight = false
     private var requestGeneration = 0

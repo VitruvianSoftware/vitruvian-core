@@ -1605,7 +1605,8 @@ package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     private let appPID: pid_t
     private let onClose: (UUID) -> Void
     private let previewProvider = WindowPreviewProvider()
-    private var refreshTimer: Timer?
+    // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+    nonisolated(unsafe) private var refreshTimer: Timer?
     private var pendingMinimizeConfirmations: [CGWindowID: UUID] = [:]
 
     package init(appPID: pid_t,
