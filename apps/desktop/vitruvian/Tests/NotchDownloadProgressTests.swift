@@ -10,7 +10,8 @@ import VitruvianUI
 /// Exercise the real native observer and filesystem reader against disposable
 /// files, including callback bursts, renames and cancellation behind a busy lane.
 enum NotchDownloadProgressTests {
-    private final class Results: @unchecked Sendable {
+    /// The lock guards the updates, which the observer delivers on its worker.
+    private nonisolated final class Results: @unchecked Sendable {
         private let lock = NSLock()
         private var updates: [([NotchDownloadItem], [NotchDownloadItem])] = []
         private var onlyWorker = true

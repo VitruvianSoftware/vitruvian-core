@@ -55,6 +55,7 @@ enum RecorderZoomAimingTests {
         func rebuildComposition() {}
         func applyAudioMix() {}
         func seek(to seconds: Double) {}
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

@@ -13,6 +13,7 @@ enum ScrollingTitleMotionTests {
         var scrolls = false
         var reduceMotion = false
         var overflows = false
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

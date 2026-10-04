@@ -43,6 +43,7 @@ enum AppUpdateRulesContract {
             notifications += freshCount
             return freshCount > 0
         }
+        init() {}
     }
 
     typealias Support = AppUpdatesSupport

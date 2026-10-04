@@ -398,6 +398,14 @@ swift_binary(
         allow_empty = True,
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
+    # Swift 6 language mode since REFACTOR.md step 6zzm. The runner runs every
+    # suite on the main thread, so the module defaults to the main actor; what
+    # runs on a queue or thread says `nonisolated`.
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
     module_name = "VitruvianTests",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,

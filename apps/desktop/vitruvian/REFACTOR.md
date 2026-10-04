@@ -2431,6 +2431,47 @@ Landed (6zzl, the Now Playing helper in Swift 6 mode): it builds in the Swift
 - **Still in Swift 5 mode:** the tests, and `make_icon`, the build tool that
   draws the app icon. The lists in earlier steps left `make_icon` out.
 
+Landed (6zzm, the tests in Swift 6 mode): `unit_tests_bin` builds in the Swift
+6 language mode, with the main actor as the module's default isolation.
+
+- **Measured:** a first probe found 457 errors. 420 were statics in stand-ins
+  and test types that did not say what guards them; the rest were callbacks
+  the runner runs on the main thread.
+- **Why the main actor by default:** the runner runs every suite on the main
+  thread, and the production services the stand-ins copy are main-actor.
+  `-default-isolation MainActor` states both, in place of 420
+  `nonisolated(unsafe)` annotations.
+- **What runs elsewhere says `nonisolated`:**
+  - `TestSuite`, whose lock guards the counts;
+  - the URL protocols, a file manager and a file-promise receiver, which the
+    system calls on its own threads;
+  - the stand-ins for Dispatch, the HAL and defaults, which production reaches
+    from nonisolated helpers, as it reaches the real APIs;
+  - lock-guarded clocks, collectors and schedulers that production calls on
+    its own queues;
+  - the writer, export and window-capture tests, whose work runs in detached
+    tasks while the main thread waits.
+- **Compiler rules it hit,** each checked with the Linux toolchain:
+  - a base class's implicit `init()` is nonisolated while its subclass's is
+    main-actor, so 28 stand-in base classes declare `init() {}`;
+  - members of an `extension` do not take `nonisolated` from the type;
+  - a type named `DispatchQueue` gets Dispatch's `@Sendable` inference for
+    `async`.
+- **The run-time check:** four suites failed the main-thread check on another
+  thread. Each fix makes the compiler catch the case instead:
+  - `GeneralPasteboardAccess` and `MouseAppExceptions` held an injected clock
+    as a plain or `nonisolated(unsafe)` closure but call it on their own
+    queues. It is `@Sendable` now, and so are `SpeedTest`'s clock and time-box
+    scheduler, the same case before it ran;
+  - the repository source reader is nonisolated, and so, before they ran, are
+    the download-progress results and the archive outcome;
+  - `generate_sources.py` dropped a `nonisolated` written on the line above a
+    copied declaration, so the app-updates batch loop became main-actor and
+    its queue closures failed. A copy keeps it with `keep_nonisolated=True`.
+    The copies the tests run on the main thread leave it off, as their
+    stand-ins keep main-actor state.
+- **Still in Swift 5 mode:** only `make_icon`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

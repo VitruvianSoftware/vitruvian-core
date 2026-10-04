@@ -1268,6 +1268,17 @@ is that notice. Add an entry for every change to upstream files.
   `NowPlayingQueue.swift` and `NowPlayingSelection.swift` mark their shared
   state `nonisolated(unsafe)`, each with the lock, queue or rule that guards
   it, and the watch's `refresh()` is `@Sendable`.
+- **2026-10-04**: Refactor step 6zzm (`REFACTOR.md`): the tests build in
+  Swift 6 mode, with the main actor as their default isolation (`BUILD`).
+  - `Services/GeneralPasteboardAccess.swift`,
+    `Services/MouseExceptions/MouseAppExceptions.swift` and
+    `Services/Metrics/SpeedTest.swift` take `@Sendable` clocks, and
+    `SpeedTest` a `@Sendable` time-box scheduler: each calls them on its own
+    queue.
+  - `Tests/`: what runs off the main thread says `nonisolated`, stand-in base
+    classes declare `init() {}`, and `TestSuite` is `Sendable`.
+  - `Tests/generate_sources.py` can keep a `nonisolated` written above a
+    copied declaration, and the app-updates copies do.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

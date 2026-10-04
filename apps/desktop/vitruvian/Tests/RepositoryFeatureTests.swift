@@ -16,14 +16,15 @@ import VitruvianServices
 import VitruvianUI
 
 enum RepositoryFeatureTests {
-    private struct SourceRead: Sendable {
+    private nonisolated struct SourceRead: Sendable {
         let path: String
         let source: String?
         let lines: [String]
         let error: String?
     }
 
-    private final class SourceReadCollector: @unchecked Sendable {
+    /// The lock guards the reads, which the snapshot's workers append.
+    private nonisolated final class SourceReadCollector: @unchecked Sendable {
         private let lock = NSLock()
         private var reads: [SourceRead] = []
 
@@ -36,7 +37,8 @@ enum RepositoryFeatureTests {
         }
     }
 
-    private struct RepositorySnapshot {
+    /// Nonisolated: it reads the sources on worker threads.
+    private nonisolated struct RepositorySnapshot {
         let swiftPaths: [String]
         let swiftSources: [String: String]
         let swiftLines: [String: [String]]

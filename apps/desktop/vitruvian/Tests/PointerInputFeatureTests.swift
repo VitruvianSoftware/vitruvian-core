@@ -3561,7 +3561,8 @@ enum PointerInputFeatureTests {
     }
 }
 
-private final class PointerInputTestClock {
+/// The lock guards the time, so the pointer thread may read it.
+private nonisolated final class PointerInputTestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: TimeInterval = 0
 

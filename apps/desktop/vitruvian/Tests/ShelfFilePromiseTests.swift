@@ -11,7 +11,8 @@ import VitruvianUI
 /// This receiver supplies those callbacks on the requested queue; the transfer,
 /// coordinated-reader copy boundary, filesystem and cancellation code are real.
 enum ShelfFilePromiseTests {
-    final class Receiver: NSFilePromiseReceiver {
+    /// Its callbacks run on the operation queue the transfer asks for.
+    nonisolated final class Receiver: NSFilePromiseReceiver {
         let names: [String]
         private(set) var destination: URL?
         private var reader: ((URL, Error?) -> Void)?

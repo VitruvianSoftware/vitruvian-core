@@ -9,17 +9,24 @@ import VitruvianUI
 
 /// Shared assertions for both the full run and selected suites. Recording a
 /// failure never stops the remaining assertions; the runner owns the exit code.
-final class TestSuite {
+///
+/// The module defaults to the main actor, where the runner runs every suite.
+/// The suite is nonisolated, and its lock guards the counts, so a check may
+/// also run on another thread.
+nonisolated final class TestSuite: @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var checks = 0
-    private(set) var failures: [String] = []
+    private var recordedChecks = 0
+    private var recordedFailures: [String] = []
+
+    var checks: Int { lock.withLock { recordedChecks } }
+    var failures: [String] { lock.withLock { recordedFailures } }
 
     func expect(_ condition: Bool, _ message: @autoclosure () -> String,
                 file: StaticString = #filePath, line: UInt = #line) {
         let failure = condition ? nil : "\(file):\(line): \(message())"
         lock.withLock {
-            checks += 1
-            if let failure { failures.append(failure) }
+            recordedChecks += 1
+            if let failure { recordedFailures.append(failure) }
         }
     }
 

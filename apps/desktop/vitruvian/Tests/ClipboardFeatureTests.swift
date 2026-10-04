@@ -788,8 +788,9 @@ enum ClipboardFeatureTests {
         let pasteboardAccess = GeneralPasteboardAccess(label: "Vitruvian.Tests.PasteboardAccess")
         let pasteboardGroup = DispatchGroup()
         let pasteboardStateLock = NSLock()
-        var activePasteboardOperations = 0
-        var maximumPasteboardOperations = 0
+        // pasteboardStateLock guards both counts.
+        nonisolated(unsafe) var activePasteboardOperations = 0
+        nonisolated(unsafe) var maximumPasteboardOperations = 0
         for _ in 0..<16 {
             pasteboardGroup.enter()
             DispatchQueue.global(qos: .userInitiated).async {

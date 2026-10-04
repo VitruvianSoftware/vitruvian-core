@@ -28,7 +28,7 @@ def _source(path):
     return _PACKAGE_MODIFIER.sub(r"\1", (ROOT / path).read_text())
 
 
-def declaration(path, prefix, scope=None):
+def declaration(path, prefix, scope=None, keep_nonisolated=False):
     lines = _source(path).splitlines(keepends=True)
     lower, upper = 0, len(lines)
     if scope is not None:
@@ -44,6 +44,12 @@ def declaration(path, prefix, scope=None):
     start = starts[0]
     indent = prefix[:len(prefix) - len(prefix.lstrip())]
     end = next(i for i in range(start + 1, len(lines)) if lines[i].rstrip() == indent + "}")
+    # The tests default to the main actor, and a copy runs there unless it
+    # keeps the `nonisolated` written on the line above it. A copy whose
+    # closures the tests run on a queue must keep it, or they fail the
+    # main-thread check.
+    while keep_nonisolated and start > lower and lines[start - 1].strip() == "nonisolated":
+        start -= 1
     body = "".join(lines[start:end + 1])
     return f'#sourceLocation(file: {json.dumps(path)}, line: {start + 1})\n{body}\n#sourceLocation()\n'
 
@@ -60,8 +66,11 @@ def availability_declaration(path, prefix):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    # The tests default to the main actor; the Design module, and so
+    # the shape's conformance, is nonisolated.
     write("NotchActivityPicker.swift", "import SwiftUI\n"
           + declaration("Sources/Vitruvian/Design/NotchShape.swift", "struct NotchShape: Shape {")
+            .replace("struct NotchShape:", "nonisolated struct NotchShape:", 1)
           + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "struct NotchActivityPicker: View {"))
     write("ScrollingCaptureLoop.swift", "import AppKit\nimport CoreGraphics\n"
           + "extension ScreenshotScrollingCaptureTests {\n"
@@ -152,7 +161,7 @@ def main():
                         "    static func open(", scope="enum RadialNowPlayingApplication {")
           + "}\n")
     write("WindowServerCapture.swift", "import CoreGraphics\nimport Foundation\n"
-          + "extension WindowServerCaptureContract.Provider {\n"
+          + "nonisolated extension WindowServerCaptureContract.Provider {\n"
           + declaration("Sources/Vitruvian/Services/Switcher/WindowPreviewProvider.swift",
                         "    static func captureViaWindowServer(")
           + "}\n")
@@ -423,14 +432,14 @@ def main():
     write("AppUpdates.swift", "import Foundation\nimport Darwin\nextension AppUpdatesContract {\n"
           + declaration(loader, "final class AppUpdateFeedLoader:")
           + "final class Service {\nlet workQueue = DispatchQueue(label: \"app-updates.contract\")\n"
-          + "let clock = Clock()\nstatic let ownPackageTokens: Set<String> = [\"vitruvian\", \"vitruvian@beta\", \"vitruvian-beta\"]\n"
-          + "static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60\n"
-          + "var onlineCatalogCache: (loadedAt: Foundation.Date, entries: [AppUpdatesSupport.CatalogEntry])?\n"
-          + "lazy var catalogSession = URLSession(configuration: URLSessionConfiguration.ephemeral)\n"
-          + declaration(updates, "    private struct SourceResult {").replace("private struct", "struct", 1)
-          + declaration(updates, "    private func publisherFindings(").replace("private func", "func", 1).replace("Date()", "self.clock.now()")
-          + declaration(updates, "    private func onlineCatalogFindings(").replace("private func", "func", 1).replace("Date()", "self.clock.now()")
-          + declaration(updates, "    private func onlineResult(").replace("private func", "func", 1)
+          + "let clock = Clock()\nnonisolated static let ownPackageTokens: Set<String> = [\"vitruvian\", \"vitruvian@beta\", \"vitruvian-beta\"]\n"
+          + "nonisolated static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60\n"
+          + "nonisolated(unsafe) var onlineCatalogCache: (loadedAt: Foundation.Date, entries: [AppUpdatesSupport.CatalogEntry])?\n"
+          + "let catalogSession = URLSession(configuration: URLSessionConfiguration.ephemeral)\n"
+          + declaration(updates, "    private struct SourceResult {").replace("private struct", "nonisolated struct", 1)
+          + declaration(updates, "    private func publisherFindings(", keep_nonisolated=True).replace("private func", "func", 1).replace("Date()", "self.clock.now()")
+          + declaration(updates, "    private func onlineCatalogFindings(", keep_nonisolated=True).replace("private func", "func", 1).replace("Date()", "self.clock.now()")
+          + declaration(updates, "    private func onlineResult(", keep_nonisolated=True).replace("private func", "func", 1)
           + "}\n}\n")
     # Rule mutations and completion stay verbatim; only declaration visibility changes.
     write("AppUpdateRules.swift", "import Foundation\nextension AppUpdateRulesContract {\n"

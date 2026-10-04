@@ -10,7 +10,8 @@ import VitruvianUI
 /// Generated production methods run with URLSession, controlled responses and a
 /// clock. No installed app is scanned, opened or changed by these contracts.
 enum AppUpdatesContract {
-    final class Clock {
+    /// The test sets it before a check starts; the check's queue then reads it.
+    nonisolated final class Clock: @unchecked Sendable {
         var value = Date(timeIntervalSince1970: 1_800_000_000)
         var reads = 0
         var expireAfterReads = Int.max
@@ -20,7 +21,7 @@ enum AppUpdatesContract {
         }
     }
 
-    enum URLSessionConfiguration {
+    nonisolated enum URLSessionConfiguration {
         static var ephemeral: Foundation.URLSessionConfiguration {
             let configuration = Foundation.URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [ResponseProtocol.self]
@@ -28,7 +29,8 @@ enum AppUpdatesContract {
         }
     }
 
-    final class ResponseProtocol: URLProtocol {
+    /// URL loading calls the protocol on its own threads.
+    nonisolated final class ResponseProtocol: URLProtocol {
         struct Response {
             var status = 200
             var body = Data()
@@ -37,8 +39,9 @@ enum AppUpdatesContract {
             var declaredLength: Int?
         }
         static let lock = NSLock()
-        static var responses: [String: Response] = [:]
-        static var requests: [String] = []
+        // The lock guards these.
+        nonisolated(unsafe) static var responses: [String: Response] = [:]
+        nonisolated(unsafe) static var requests: [String] = []
         private var delivery: DispatchWorkItem?
 
         static func reset(_ values: [String: Response]) {

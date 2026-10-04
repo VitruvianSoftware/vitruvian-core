@@ -155,7 +155,8 @@ struct ClipboardHistoryAccessTests {
         }
     }
 
-    private final class Counter {
+    /// The lock guards the count, so the lane may write it from its queue.
+    private nonisolated final class Counter: @unchecked Sendable {
         private let lock = NSLock()
         private var count = 0
 
@@ -172,7 +173,8 @@ struct ClipboardHistoryAccessTests {
         }
     }
 
-    private final class TestClock {
+    /// The lock guards the time, so the lane may read it from its queue.
+    private nonisolated final class TestClock: @unchecked Sendable {
         private let lock = NSLock()
         private var value: TimeInterval = 0
 

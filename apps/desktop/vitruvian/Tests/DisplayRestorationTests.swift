@@ -109,6 +109,7 @@ enum DisplayRestorationTests {
         static func forgetDisplaySwitchedOff(_ id: UInt32) { UserDefaults.standard.stored.removeAll { $0 == Int(id) } }
         func refresh(force: Bool = false) { refreshes += 1 }
 
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

@@ -11,6 +11,7 @@ struct ClipboardHistoryImageEditorTests {
     class Fixture {
         var hidden = false
         func hideHistoryWindow() { hidden = true }
+        init() {}
     }
     enum ClipboardImageStore { static var directory: URL? }
     enum AppFeature {

@@ -81,6 +81,7 @@ enum PostUpdateStatusItemRecoveryTests {
         static func runningMenuBarManagerName() -> String? { manager }
         var logs: [String] = []
         func logStatusItemPlacement(_ stage: String) { logs.append(stage) }
+        init() {}
     }
     static let visibleFrame = CGRect(x: 1135, y: 926, width: 36, height: 30)
 

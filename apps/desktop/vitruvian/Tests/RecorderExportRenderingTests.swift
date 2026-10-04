@@ -11,7 +11,9 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-enum RecorderExportRenderingTests {
+/// Nonisolated: the export probe runs in a detached task while the main
+/// thread waits for it.
+nonisolated enum RecorderExportRenderingTests {
     static func run(_ suite: TestSuite) {
         let done = DispatchSemaphore(value: 0)
         Task.detached {

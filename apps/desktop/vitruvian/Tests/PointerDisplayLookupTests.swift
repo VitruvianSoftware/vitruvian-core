@@ -131,7 +131,7 @@ enum PointerDisplayLookupContract {
         }
         let loupeAcceptsKeyboardActions = true
         var currentPointerLocation: CGPoint?
-        let panels = Screen.screens.map(ScreenshotOverlayPanel.init)
+        let panels = Screen.screens.map { ScreenshotOverlayPanel($0) }
         func CGWarpMouseCursorPosition(_ point: CGPoint) {}
     }
 

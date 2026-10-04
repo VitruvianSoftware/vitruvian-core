@@ -22,7 +22,8 @@ enum NotchMissionControlPollingTests {
     class State {
         final class Panel { var isVisible = true }
         let panel = Panel()
-        var missionControlTimer: Timer?
+        // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+        nonisolated(unsafe) var missionControlTimer: Timer?
         var concealedForMissionControl = false
         var overviewWasVisible = false
         var lastMissionControlCheck: TimeInterval = -.infinity
@@ -31,6 +32,7 @@ enum NotchMissionControlPollingTests {
                                             safeAreaTop: 32, cameraWidth: 210)
         var frameReads = 0
         func sampleMissionControl() { frameReads += 1 }
+        init() {}
         deinit { missionControlTimer?.invalidate() }
     }
 

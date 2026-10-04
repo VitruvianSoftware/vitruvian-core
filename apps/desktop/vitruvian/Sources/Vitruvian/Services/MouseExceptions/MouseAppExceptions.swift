@@ -61,13 +61,13 @@ package final class MouseAppExceptions: ObservableObject {
     nonisolated(unsafe) private var pointerRefreshScheduled = false
 
     nonisolated private static let ownProcessID = Int32(getpid())
-    // Set once, in init; the pointer thread reads the clock.
-    nonisolated(unsafe) private let uptime: () -> TimeInterval
+    // Set once, in init; the pointer thread reads the clock, so it is `@Sendable`.
+    nonisolated private let uptime: @Sendable () -> TimeInterval
 
     /// Built on whichever thread first asks for `shared`. The lookups the taps
     /// read are ready before this returns; the published lists follow on the
     /// main thread.
-    nonisolated package init(uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    nonisolated package init(uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.uptime = uptime
         let lists = loadLookups()
         let publish: @Sendable () -> Void = { [weak self] in

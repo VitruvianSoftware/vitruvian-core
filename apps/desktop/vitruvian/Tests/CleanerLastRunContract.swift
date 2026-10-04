@@ -42,6 +42,7 @@ enum CleanerLastRunContract {
         var lastAutoFailed = 0
         static let nextRunFormatter = DateFormatter()
         static func byteString(_ bytes: Int64) -> String { "\(bytes) bytes" }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

@@ -13,9 +13,12 @@ import VitruvianUI
 /// Production input and mute services use controlled HAL data, queues and
 /// preferences. No microphone, hotkey or real user preference is changed.
 enum MixerInputVolumeContract {
-    final class DispatchQueue {
+    // The queue, defaults and HAL stand-ins are nonisolated like the system
+    // APIs they replace: production reaches them from its nonisolated helpers.
+    // The tests drain every queue on the main thread.
+    nonisolated final class DispatchQueue: @unchecked Sendable {
         static let main = DispatchQueue(label: "main", qos: .default)
-        static var queues: [DispatchQueue] = []
+        nonisolated(unsafe) static var queues: [DispatchQueue] = []
         var work: [() -> Void] = []
         init(label: String, qos: DispatchQoS) { Self.queues.append(self) }
         func async(execute: @escaping () -> Void) { work.append(execute) }
@@ -37,7 +40,7 @@ enum MixerInputVolumeContract {
         case mixer, audioPriority, micMute
         var isAvailable: Bool { true }
     }
-    enum DefaultsKey {
+    nonisolated enum DefaultsKey {
         static let preferredInputDevice = "preferred"
         static let audioPriorityInputEnabled = "audioPriorityInputEnabled"
         static let micMuteActive = "mute"
@@ -49,8 +52,8 @@ enum MixerInputVolumeContract {
         static let micMuteShortcut = "shortcut"
     }
     enum Defaults { static func sanitizedPreferredInputDeviceUID(_ s: String?) -> String? { s } }
-    enum UserDefaults {
-        static let standard = Store()
+    nonisolated enum UserDefaults {
+        nonisolated(unsafe) static let standard = Store()
         final class Store {
             var values: [String: Any] = [:]
             func string(forKey k: String) -> String? { values[k] as? String }
@@ -98,7 +101,7 @@ enum MixerInputVolumeContract {
             let micUnmutePartialHUD = "unmute partial"
         }
     }
-    struct Key: Hashable {
+    nonisolated struct Key: Hashable {
         let d: UInt32
         let s: UInt32
         let e: UInt32
@@ -108,25 +111,25 @@ enum MixerInputVolumeContract {
             e = a.mElement
         }
     }
-    enum HAL {
-        static var levels: [Key: Float] = [:]
-        static var readOnly: Set<Key> = []
-        static var readFails: Set<Key> = []
-        static var writeFails: Set<Key> = []
-        static var mute: [UInt32: UInt32] = [:]
-        static var writes: [Key] = []
-        static var listeners: Set<Key> = []
-        static var listenerFails = false
-        static var ignoreWrites = false
-        static var devices: [UInt32] = [10]
-        static var streamChannels: [UInt32: [UInt32]] = [:]
-        static var streamReadFails = false
-        static var afterWrite: (() -> Void)?
-        static var afterUIDRead: (() -> Void)?
-        static var current: UInt32 = 10
-        static var uids: [UInt32: String] = [:]
-        static var aggregates: Set<UInt32> = []
-        static var running: Set<UInt32> = []
+    nonisolated enum HAL {
+        nonisolated(unsafe) static var levels: [Key: Float] = [:]
+        nonisolated(unsafe) static var readOnly: Set<Key> = []
+        nonisolated(unsafe) static var readFails: Set<Key> = []
+        nonisolated(unsafe) static var writeFails: Set<Key> = []
+        nonisolated(unsafe) static var mute: [UInt32: UInt32] = [:]
+        nonisolated(unsafe) static var writes: [Key] = []
+        nonisolated(unsafe) static var listeners: Set<Key> = []
+        nonisolated(unsafe) static var listenerFails = false
+        nonisolated(unsafe) static var ignoreWrites = false
+        nonisolated(unsafe) static var devices: [UInt32] = [10]
+        nonisolated(unsafe) static var streamChannels: [UInt32: [UInt32]] = [:]
+        nonisolated(unsafe) static var streamReadFails = false
+        nonisolated(unsafe) static var afterWrite: (() -> Void)?
+        nonisolated(unsafe) static var afterUIDRead: (() -> Void)?
+        nonisolated(unsafe) static var current: UInt32 = 10
+        nonisolated(unsafe) static var uids: [UInt32: String] = [:]
+        nonisolated(unsafe) static var aggregates: Set<UInt32> = []
+        nonisolated(unsafe) static var running: Set<UInt32> = []
         static func key(_ d: UInt32, _ e: UInt32 = 0, _ s: UInt32 = kAudioDevicePropertyVolumeScalar)
             -> Key
         {
@@ -135,7 +138,7 @@ enum MixerInputVolumeContract {
                 AudioObjectPropertyAddress(
                     mSelector: s, mScope: kAudioDevicePropertyScopeInput, mElement: e))
         }
-        static func reset() {
+        @MainActor static func reset() {
             levels = [:]
             readOnly = []
             readFails = []

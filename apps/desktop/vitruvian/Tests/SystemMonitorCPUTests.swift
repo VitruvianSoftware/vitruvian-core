@@ -22,6 +22,7 @@ enum SystemMonitorCPUTests {
             }
             return KERN_SUCCESS
         }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

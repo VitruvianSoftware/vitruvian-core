@@ -55,8 +55,9 @@ extension KeepAwakeLidSleepContract {
         static var disabled = false
         static var configured = true
         static var installCompletions: [(Bool) -> Void] = []
-        static let sleepStateQueue = DispatchQueue.native
-        static var sleepStateProbeSuspensions = 0
+        nonisolated static let sleepStateQueue = DispatchQueue.native
+        // Only the fake sleep-state queue, flushed on the main thread, changes it.
+        nonisolated(unsafe) static var sleepStateProbeSuspensions = 0
         static var probeWrites: [Bool] = []
         static func pmsetDisableSleepOnQueue(_ on: Bool) -> Bool {
             probeWrites.append(on)
@@ -412,7 +413,8 @@ enum KeepAwakeClamshellTests {
                "denying repair does not ask for another password when the failed enable left sleep enabled")
 
         _ = C.reset()
-        var alreadyRestored = false
+        // The stand-in queues run the completion on the main thread in drain().
+        nonisolated(unsafe) var alreadyRestored = false
         C.Sudoers.restoreSleepWithAuthorization(prompt: "restore", shouldProceed: { true }) { alreadyRestored = $0 }
         C.drain()
         expect(alreadyRestored && C.AdminShell.prompts == 0 && C.Sudoers.sleepStateProbeSuspensions == 0,
