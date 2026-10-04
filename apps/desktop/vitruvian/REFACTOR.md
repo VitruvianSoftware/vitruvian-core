@@ -595,6 +595,25 @@ more tests call the module instead of a generated copy, which leaves 97.
   stays in the system lookups the app passes, which the test no longer
   imitates.
 
+Landed (4b, CPU ticks, copied answers and quick paste): three more tests call
+the module instead of a generated copy, which leaves 94.
+
+- **Injected:**
+  - `SystemMonitor.cpuUsage(ticks:now:previous:held:heldReadAt:)` is the tick
+    math `readCPUUsage` runs on the host's counters, with the monitor's state
+    passed in and out;
+  - `CommandBarCatalog.copyAnswer(_:copy:show:)` takes the pasteboard write
+    and the HUD;
+  - `ClipboardHistoryService.pasteIntoPreviousApp` has an overload that takes
+    the target app, the Accessibility grant, the beep, the prompt and the
+    paste shortcut.
+- **Tested directly:** the three tests keep their checks, now with plain
+  values and recorders in place of stand-in `host_statistics`, pasteboard,
+  pasteboard lane, HUD, `NSRunningApplication`, `NSSound`, `Permissions` and
+  main-queue types. The CPU test also checks that ticks which have not
+  advanced report nothing and that niced ticks count as busy. The system
+  calls stay in the app's wrappers, which the tests no longer imitate.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

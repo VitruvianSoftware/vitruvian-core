@@ -1154,11 +1154,22 @@ package final class SystemMonitor: ObservableObject {
             }
         }
         guard kr == KERN_SUCCESS else { return nil }
+        return Self.cpuUsage(ticks: info.cpu_ticks, now: now, previous: &previousCPUTicks,
+                             held: &lastCPUUsage, heldReadAt: &lastCPUUsageReadAt)
+    }
 
-        let user = UInt64(info.cpu_ticks.0)
-        let system = UInt64(info.cpu_ticks.1)
-        let idle = UInt64(info.cpu_ticks.2)
-        let nice = UInt64(info.cpu_ticks.3)
+    /// The busy share of `ticks` (user, system, idle, nice) since `previous`,
+    /// which they then replace. `readCPUUsage` hands it the host's counters
+    /// and its own state; the tests hand it scripted ones (REFACTOR.md step 4b).
+    nonisolated
+    package static func cpuUsage(ticks: (UInt32, UInt32, UInt32, UInt32), now: TimeInterval,
+                                 previous previousCPUTicks: inout (busy: UInt64, total: UInt64, time: TimeInterval)?,
+                                 held lastCPUUsage: inout Double?,
+                                 heldReadAt lastCPUUsageReadAt: inout TimeInterval?) -> Double? {
+        let user = UInt64(ticks.0)
+        let system = UInt64(ticks.1)
+        let idle = UInt64(ticks.2)
+        let nice = UInt64(ticks.3)
         let busy = user + system + nice
         let total = busy + idle
 

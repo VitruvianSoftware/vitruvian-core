@@ -1219,24 +1219,47 @@ package final class ClipboardHistoryService: ObservableObject {
     /// No target means the window opened over Vitruvian itself or an app
     /// without a Dock icon, where a pick is only a copy and stays silent.
     private func pasteIntoPreviousApp(_ app: NSRunningApplication?) {
+        Self.pasteIntoPreviousApp(app,
+                                  isTerminated: { $0.isTerminated },
+                                  activate: { $0.activate(options: []) },
+                                  isTrusted: { AXIsProcessTrusted() },
+                                  promptedForAccessibility: &promptedForAccessibility,
+                                  beep: { NSSound.beep() },
+                                  requestAccessibility: { Permissions.shared.requestAccessibility() },
+                                  paste: {
+                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                                          Self.postPasteShortcut()
+                                      }
+                                  })
+    }
+
+    /// The paste above with the system handed in: the service passes the
+    /// running app, the Accessibility grant, the beep and the shortcut; the
+    /// tests pass recorders (REFACTOR.md step 4b).
+    package static func pasteIntoPreviousApp<App>(_ app: App?,
+                                                  isTerminated: (App) -> Bool,
+                                                  activate: (App) -> Void,
+                                                  isTrusted: () -> Bool,
+                                                  promptedForAccessibility: inout Bool,
+                                                  beep: () -> Void,
+                                                  requestAccessibility: () -> Void,
+                                                  paste: () -> Void) {
         guard let app else { return }
-        guard !app.isTerminated else {
-            NSSound.beep()
+        guard !isTerminated(app) else {
+            beep()
             return
         }
-        app.activate(options: [])
-        guard AXIsProcessTrusted() else {
+        activate(app)
+        guard isTrusted() else {
             if promptedForAccessibility {
-                NSSound.beep()
+                beep()
             } else {
                 promptedForAccessibility = true
-                Permissions.shared.requestAccessibility()
+                requestAccessibility()
             }
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            Self.postPasteShortcut()
-        }
+        paste()
     }
 
     private static func postPasteShortcut() {

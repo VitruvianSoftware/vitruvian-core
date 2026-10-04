@@ -234,23 +234,8 @@ def main():
           + declaration(ports, "    nonisolated private static func snapshot(").replace("nonisolated private static", "static", 1)
           + declaration(ports, "    nonisolated private static func startTimes(").replace("nonisolated private static", "static", 1)
           + "}\n}\n")
-    write("SystemMonitorCPU.swift", "import Darwin\nimport Foundation\n"
-          + "extension SystemMonitorCPUTests {\nfinal class Monitor: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/SystemMonitor/SystemMonitor.swift",
-                        "    private func readCPUUsage(").replace("private func", "func", 1)
-          + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
-    write("QuickPaste.swift", "import Foundation\n"
-          + "extension ClipboardFeatureTests.QuickPasteHost {\n"
-          + declaration("Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift",
-                        "    private func pasteIntoPreviousApp(").replace("private func", "func", 1)
-          + "}\n")
-    write("CommandBarCopyAnswer.swift", "import Foundation\n"
-          + "extension CommandBarFeatureTests.CopyAnswerHost {\n"
-          + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-                        "    private static func copyAnswer(").replace("private static", "static", 1)
-          + "}\n")
     write("CommandBarBrightness.swift", "import AppKit\n"
           + "extension CommandBarFeatureTests.BrightnessHost {\n"
           + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",

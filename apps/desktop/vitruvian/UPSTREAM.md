@@ -1300,6 +1300,18 @@ is that notice. Add an entry for every change to upstream files.
   second only after counting the first. Before, the time box could fire
   between the fixture handing over the bytes and the delegate receiving them,
   and measure no download.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`), three more tests through
+  the module:
+  - `Services/SystemMonitor/SystemMonitor.swift`: `readCPUUsage` hands the
+    host's tick counters to `cpuUsage(ticks:now:previous:held:heldReadAt:)`.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `copyAnswer` has an
+    overload that takes the pasteboard write and the HUD.
+  - `Services/Clipboard/ClipboardHistoryService.swift`: `pasteIntoPreviousApp`
+    has an overload that takes the target app's state, the Accessibility
+    grant, the beep, the prompt and the paste.
+  - `Tests/SystemMonitorCPUTests.swift`, `CommandBarFeatureTests.swift` and
+    `ClipboardFeatureTests.swift` call these, and `Tests/generate_sources.py`
+    no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

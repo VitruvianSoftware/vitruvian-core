@@ -19,34 +19,19 @@ import VitruvianUI
 enum ClipboardFeatureTests {
     /// Runs the production `pasteIntoPreviousApp` with a target app, the
     /// Accessibility grant, the beep and the paste all recorded as events.
-    final class QuickPasteHost {
-        final class App {
-            let isTerminated: Bool
-            init(isTerminated: Bool) { self.isTerminated = isTerminated }
-            func activate(options: [Int]) { host?.events.append("activate") }
-        }
-        typealias NSRunningApplication = App
-        enum Sound {
-            static func beep() { host?.events.append("beep") }
-        }
-        typealias NSSound = Sound
-        final class Access {
-            static let shared = Access()
-            func requestAccessibility() { host?.events.append("prompt") }
-        }
-        typealias Permissions = Access
-        final class Queue {
-            static let main = Queue()
-            func asyncAfter(deadline: DispatchTime, execute work: @escaping () -> Void) { work() }
-        }
-        typealias DispatchQueue = Queue
-        static var host: QuickPasteHost?
+    struct QuickPasteTarget { let isTerminated: Bool }
+
+    static func quickPaste(_ app: QuickPasteTarget?, trusted: Bool, prompted: inout Bool) -> [String] {
         var events: [String] = []
-        var trusted = true
-        var promptedForAccessibility = false
-        init() { Self.host = self }
-        func AXIsProcessTrusted() -> Bool { trusted }
-        static func postPasteShortcut() { host?.events.append("paste") }
+        ClipboardHistoryService.pasteIntoPreviousApp(app,
+                                                     isTerminated: \.isTerminated,
+                                                     activate: { _ in events.append("activate") },
+                                                     isTrusted: { trusted },
+                                                     promptedForAccessibility: &prompted,
+                                                     beep: { events.append("beep") },
+                                                     requestAccessibility: { events.append("prompt") },
+                                                     paste: { events.append("paste") })
+        return events
     }
 
     static func run(_ suite: TestSuite) {
@@ -853,20 +838,18 @@ enum ClipboardFeatureTests {
             (false, false, ["activate", "prompt", "activate", "beep"]),
             (false, true, ["activate", "paste"]),
         ] {
-            let host = QuickPasteHost()
-            host.trusted = trusted
-            let app = QuickPasteHost.App(isTerminated: terminated)
-            host.pasteIntoPreviousApp(app)
-            if !trusted { host.pasteIntoPreviousApp(app) }
-            suite.expect(host.events == expected,
-                   "quick paste beeps or asks for Accessibility when it cannot paste, found \(host.events)")
+            var prompted = false
+            let app = QuickPasteTarget(isTerminated: terminated)
+            var events = quickPaste(app, trusted: trusted, prompted: &prompted)
+            if !trusted { events += quickPaste(app, trusted: trusted, prompted: &prompted) }
+            suite.expect(events == expected,
+                   "quick paste beeps or asks for Accessibility when it cannot paste, found \(events)")
         }
         for trusted in [true, false] {
-            let host = QuickPasteHost()
-            host.trusted = trusted
-            host.pasteIntoPreviousApp(nil)
-            suite.expect(host.events.isEmpty,
-                   "quick paste with no target app stays a silent copy, found \(host.events)")
+            var prompted = false
+            let events = quickPaste(nil, trusted: trusted, prompted: &prompted)
+            suite.expect(events.isEmpty,
+                   "quick paste with no target app stays a silent copy, found \(events)")
         }
 
     }

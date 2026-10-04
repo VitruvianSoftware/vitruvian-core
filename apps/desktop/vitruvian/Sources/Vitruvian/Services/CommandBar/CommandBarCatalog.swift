@@ -1316,13 +1316,25 @@ package enum CommandBarCatalog {
     /// held up — the lane can be wedged behind an app that promised pasteboard
     /// content and stopped answering (issue #887).
     private static func copyAnswer(_ value: String) {
-        GeneralPasteboardAccess.shared.async({
-            NSPasteboard.general.clearContents()
-            return NSPasteboard.general.setString(value, forType: .string)
-        }, then: { copied in
-            QuickToolHUD.show(icon: copied ? "doc.on.doc" : "exclamationmark.circle",
-                              message: copied ? value : FeatureStrings.commandBar(L10n.shared.language).copyFailed)
-        })
+        copyAnswer(value, copy: { value, then in
+            GeneralPasteboardAccess.shared.async({
+                NSPasteboard.general.clearContents()
+                return NSPasteboard.general.setString(value, forType: .string)
+            }, then: then)
+        }, show: { QuickToolHUD.show(icon: $0, message: $1) })
+    }
+
+    /// `copy` writes the value and reports whether the pasteboard took it;
+    /// `show` floats the outcome. The bar passes the general pasteboard's
+    /// lane and the HUD; the tests pass a pasteboard that can refuse the
+    /// write and a recorder (REFACTOR.md step 4b).
+    package static func copyAnswer(_ value: String,
+                                   copy: (String, _ then: @escaping @MainActor (Bool) -> Void) -> Void,
+                                   show: @escaping @MainActor (_ icon: String, _ message: String) -> Void) {
+        copy(value) { copied in
+            show(copied ? "doc.on.doc" : "exclamationmark.circle",
+                 copied ? value : FeatureStrings.commandBar(L10n.shared.language).copyFailed)
+        }
     }
 
     // MARK: - Emoji
