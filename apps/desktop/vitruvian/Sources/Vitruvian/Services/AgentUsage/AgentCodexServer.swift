@@ -202,17 +202,11 @@ package enum AgentCodexServer {
 /// that stalls costs the conversation's time at most. Blocks its caller:
 /// run it on a work queue of its own.
 package final class AgentCodexConversation {
-    /// Far above any answer here; a server that writes more is not one.
-    private static let maximumBuffer = 4 << 20
-
     private let process = Process()
     private let input = Pipe()
     private let output = Pipe()
     private let deadline: DispatchTime
-    private let arrived = DispatchSemaphore(value: 0)
-    private let lock = NSLock()
-    private var buffer = Data()
-    private var closed = false
+    private let inbox = AgentCodexInbox()
     private var lastID = 0
 
     package init?(_ executable: URL, environment: [String: String], timeout: TimeInterval) {
@@ -228,10 +222,10 @@ package final class AgentCodexConversation {
         process.standardError = FileHandle.nullDevice
         // A server that exits early fails a write instead of ending the app.
         guard fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) != -1 else { return nil }
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        output.fileHandleForReading.readabilityHandler = { [inbox] handle in
             let chunk = handle.availableData
             if chunk.isEmpty { handle.readabilityHandler = nil }
-            self?.receive(chunk)
+            inbox.receive(chunk)
         }
         do {
             try process.run()
@@ -297,7 +291,28 @@ package final class AgentCodexConversation {
         }
     }
 
-    private func receive(_ chunk: Data) {
+    /// The next message, or nil once the server has ended or time is up.
+    private func next() -> [String: Any]? {
+        while let line = inbox.nextLine(deadline: deadline) {
+            if let message = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { return message }
+        }
+        return nil
+    }
+}
+
+/// What the server has written and the conversation has not read yet. The
+/// pipe's handler fills it on its own thread while the conversation's queue
+/// drains it, all under `lock`, so it is `@unchecked Sendable`.
+private final class AgentCodexInbox: @unchecked Sendable {
+    /// Far above any answer here; a server that writes more is not one.
+    private static let maximumBuffer = 4 << 20
+
+    private let arrived = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var buffer = Data()
+    private var closed = false
+
+    func receive(_ chunk: Data) {
         lock.withLock {
             if chunk.isEmpty || buffer.count + chunk.count > Self.maximumBuffer { closed = true }
             else { buffer.append(chunk) }
@@ -305,8 +320,8 @@ package final class AgentCodexConversation {
         arrived.signal()
     }
 
-    /// The next message, or nil once the server has ended or time is up.
-    private func next() -> [String: Any]? {
+    /// The next line, or nil once the server has ended or `deadline` passed.
+    func nextLine(deadline: DispatchTime) -> Data? {
         while true {
             let (line, ended): (Data?, Bool) = lock.withLock {
                 guard let newline = buffer.firstIndex(of: 0x0A) else { return (nil, closed) }
@@ -314,10 +329,7 @@ package final class AgentCodexConversation {
                 buffer.removeSubrange(buffer.startIndex...newline)
                 return (line, false)
             }
-            if let line {
-                if let message = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { return message }
-                continue
-            }
+            if let line { return line }
             if ended || arrived.wait(timeout: deadline) == .timedOut { return nil }
         }
     }

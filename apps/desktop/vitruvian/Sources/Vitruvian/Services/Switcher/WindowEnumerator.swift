@@ -149,7 +149,7 @@ package enum WindowEnumerator {
                                          displayScope: DisplayScope? = nil,
                                          scopedToFrontmostPID: pid_t? = nil,
                                          resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
-                                         isCancelled: @escaping () -> Bool = { false }) -> WindowList {
+                                         isCancelled: @escaping @Sendable () -> Bool = { false }) -> WindowList {
         listWindows(
             appRules: SwitcherAppRule.rules(
                 storedValue: UserDefaults.standard.dictionary(forKey: DefaultsKey.switcherAppRules)),
@@ -180,7 +180,7 @@ package enum WindowEnumerator {
                                     displayScope: DisplayScope? = nil,
                                     scopedToFrontmostPID: pid_t? = nil,
                                     resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
-                                    isCancelled: @escaping () -> Bool = { false }) -> WindowList {
+                                    isCancelled: @escaping @Sendable () -> Bool = { false }) -> WindowList {
         let windowlessApps = SwitcherWindowlessApps.mode(
             storedValue: UserDefaults.standard.string(forKey: DefaultsKey.switcherWindowlessApps),
             takeOverSystemShortcuts: UserDefaults.standard.bool(
@@ -283,7 +283,7 @@ package enum WindowEnumerator {
                                     scopedToFrontmostPID: pid_t? = nil,
                                     displayScope: DisplayScope? = nil,
                                     resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
-                                    isCancelled: @escaping () -> Bool = { false }) -> WindowList {
+                                    isCancelled: @escaping @Sendable () -> Bool = { false }) -> WindowList {
         guard !isCancelled() else { return WindowList(items: [], sourceItems: []) }
         let historyRevision = WindowUseTracker.shared.historyRevision
         let raw = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -662,20 +662,31 @@ package enum WindowEnumerator {
         let byID: [CGWindowID: AccessibilityWindowSnapshot]
     }
 
+    /// One batch's answers and outstanding query count. The queries write it
+    /// from the worker queue and the caller waits on it, all under `condition`,
+    /// so it is `@unchecked Sendable`.
+    private final class AccessibilityBatch: @unchecked Sendable {
+        let condition = NSCondition()
+        var pendingQueries: Int
+        var result: [pid_t: AccessibilityWindowSnapshotList] = [:]
+
+        init(pendingQueries: Int) {
+            self.pendingQueries = pendingQueries
+        }
+    }
+
     private static func accessibilityWindows(for pids: Set<pid_t>,
                                              bundleIdentifiers: [pid_t: String] = [:],
                                              undescribedSubrolePids: Set<pid_t> = [],
                                              accessibilityGranted: Bool,
                                              normalLevelWindowIDs: Set<CGWindowID>,
                                              screenFrames: [CGRect],
-                                             isCancelled: @escaping () -> Bool = { false }) -> [pid_t: AccessibilityWindowSnapshotList] {
+                                             isCancelled: @escaping @Sendable () -> Bool = { false }) -> [pid_t: AccessibilityWindowSnapshotList] {
         guard accessibilityGranted, !isCancelled() else { return [:] }
 
         let orderedPIDs = pids.sorted()
         guard !orderedPIDs.isEmpty else { return [:] }
-        var result: [pid_t: AccessibilityWindowSnapshotList] = [:]
-        var pendingQueries = orderedPIDs.count
-        let resultLock = NSCondition()
+        let batch = AccessibilityBatch(pendingQueries: orderedPIDs.count)
         // A remote app can consume its whole messaging timeout. The shared
         // worker cap bounds aggregate concurrency across simultaneous callers.
         var operations: [BlockOperation] = []
@@ -684,10 +695,10 @@ package enum WindowEnumerator {
             operation.addExecutionBlock { [weak operation] in
                 guard let operation, !operation.isCancelled else { return }
                 defer {
-                    resultLock.lock()
-                    pendingQueries -= 1
-                    if pendingQueries == 0 { resultLock.broadcast() }
-                    resultLock.unlock()
+                    batch.condition.lock()
+                    batch.pendingQueries -= 1
+                    if batch.pendingQueries == 0 { batch.condition.broadcast() }
+                    batch.condition.unlock()
                 }
                 let windows = accessibilityWindows(
                     for: pid,
@@ -697,9 +708,9 @@ package enum WindowEnumerator {
                     screenFrames: screenFrames,
                     isCancelled: { operation.isCancelled || isCancelled() }
                 )
-                resultLock.lock()
-                if let windows { result[pid] = windows }
-                resultLock.unlock()
+                batch.condition.lock()
+                if let windows { batch.result[pid] = windows }
+                batch.condition.unlock()
             }
             operations.append(operation)
             accessibilityQueryQueue.addOperation(operation)
@@ -710,17 +721,17 @@ package enum WindowEnumerator {
         // app missing from that map reads downstream like an app that could
         // not answer Accessibility, which every caller already handles.
         let deadline = Date(timeIntervalSinceNow: accessibilityBatchBudget)
-        resultLock.lock()
-        while pendingQueries > 0, !isCancelled() {
+        batch.condition.lock()
+        while batch.pendingQueries > 0, !isCancelled() {
             let nextCancellationCheck = min(deadline, Date(timeIntervalSinceNow: 0.01))
-            guard resultLock.wait(until: nextCancellationCheck) else {
+            guard batch.condition.wait(until: nextCancellationCheck) else {
                 if nextCancellationCheck >= deadline { break }
                 continue
             }
         }
-        let incompleteBatch = pendingQueries > 0
-        let collected = result
-        resultLock.unlock()
+        let incompleteBatch = batch.pendingQueries > 0
+        let collected = batch.result
+        batch.condition.unlock()
         if incompleteBatch {
             for operation in operations { operation.cancel() }
         }

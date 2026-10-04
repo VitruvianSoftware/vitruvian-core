@@ -46,6 +46,10 @@ package final class TransientPaste {
 
         // Handed to the pasteboard lane, which alone reads it.
         nonisolated(unsafe) let previous = pendingRestore
+        // Carried through the lane and called back on the main thread only.
+        nonisolated(unsafe) let willPostShortcut = willPostShortcut
+        nonisolated(unsafe) let didPostShortcut = didPostShortcut
+        nonisolated(unsafe) let didFail = didFail
         restoreWork?.cancel()
         restoreWork = nil
 

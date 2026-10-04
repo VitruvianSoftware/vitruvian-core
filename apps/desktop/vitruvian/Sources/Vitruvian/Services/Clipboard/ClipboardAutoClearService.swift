@@ -148,7 +148,7 @@ package final class ClipboardAutoClearService {
     /// Reads the change count on the shared pasteboard lane and answers on the
     /// main thread. Never reads on the main thread: a blocked main thread stalls
     /// every event tap with it, which is what froze typing system wide in #189.
-    private func readChangeCount(_ completion: @escaping (Int) -> Void) {
+    private func readChangeCount(_ completion: @escaping @MainActor @Sendable (Int) -> Void) {
         guard !readInFlight else { return }
         readInFlight = true
         readGeneration &+= 1

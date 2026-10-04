@@ -6,6 +6,7 @@
 
 #include <mach/host_info.h>
 #include <mach/mach.h>
+#include <mach/vm_page_size.h>
 #include <mach/vm_statistics.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -133,6 +134,13 @@ vitruvian_read_vm_statistics64(vitruvian_vm_statistics64_rev3_t *statistics,
         returned_count);
     mach_port_deallocate(mach_task_self(), host);
     return result;
+}
+
+// The page size those statistics count in. Read in C because Swift 6 refuses
+// to read a mutable C global, though this one is set once before main runs.
+static inline uint64_t
+vitruvian_vm_kernel_page_size(void) {
+    return (uint64_t)vm_kernel_page_size;
 }
 
 #endif

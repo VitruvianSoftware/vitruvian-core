@@ -27,7 +27,9 @@ package struct RecorderTypingTrack: Codable, Equatable {
 }
 
 /// The monitor exists only while recording and remembers timing, never keys.
-package final class RecorderTypingSampler {
+/// `start()` and `stop()` run on the main thread, which alone touches the
+/// monitors, and `times` sits under `lock`, so it is `@unchecked Sendable`.
+package final class RecorderTypingSampler: @unchecked Sendable {
     private let pauseClock: RecorderPauseClock
     private var globalMonitor: Any?
     private var localMonitor: Any?

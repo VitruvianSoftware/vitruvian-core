@@ -168,11 +168,13 @@ package final class ClipboardHistoryService: ObservableObject {
     /// admission stays occupied until the underlying operation actually ends.
     private func writeToPasteboard(_ list: [ClipboardHistoryEntry],
                                    completion: @escaping (Bool) -> Void) {
-        guard !copyInFlight, let write = Self.plannedWrite(for: list) else {
+        guard !copyInFlight, let planned = Self.plannedWrite(for: list) else {
             completion(false)
             return
         }
         copyInFlight = true
+        // Handed to the pasteboard lane, which alone reads it.
+        nonisolated(unsafe) let write = planned
         GeneralPasteboardAccess.shared.async(timeout: Self.pasteboardTimeout, { isExpired in
             write.write(to: NSPasteboard.general, isExpired: isExpired)
         }, then: { result in

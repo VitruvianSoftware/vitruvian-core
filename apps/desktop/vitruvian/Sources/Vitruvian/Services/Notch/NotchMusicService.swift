@@ -700,7 +700,9 @@ package final class NotchMusicService: ObservableObject {
 
 /// Pipe callbacks may split a UTF-8 character or join several replies. Parsing
 /// stays serial and bounded before any metadata reaches the main thread.
-private final class NotchMusicPipeReader {
+/// `buffer` and `receive` are touched only on `queue`, so it is
+/// `@unchecked Sendable`.
+private final class NotchMusicPipeReader: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music-reader", qos: .utility)
     private var buffer = Data()
     private let receive: (Data) -> Void

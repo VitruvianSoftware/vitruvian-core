@@ -370,7 +370,11 @@ package final class NotchService: ObservableObject {
             canFollow: { [weak self] in self?.canFollowPointer ?? false },
             isConcealedForMissionControl: { [weak self] in self?.windowHost?.isConcealedForMissionControl != false },
             displayID: { [weak self] in self?.displayID },
-            whenSettled: { [weak self] action in self?.windowHost?.whenSettled(action) },
+            whenSettled: { [weak self] action in
+                // The follower runs on the main thread, so `action` never leaves it.
+                nonisolated(unsafe) let action = action
+                self?.windowHost?.whenSettled { action() }
+            },
             move: { [weak self] id in
                 guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
                 self.move(to: screen)

@@ -444,14 +444,14 @@ package final class CameraPreviewService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            // Read here: the notification itself never crosses to the main actor.
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier,
+                  app.bundleIdentifier != AssistiveKeyboard.bundleID
+            else { return }
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let self,
-                      self.dismissesOnOutsideInteraction,
-                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                      app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                      app.bundleIdentifier != AssistiveKeyboard.bundleID
-                else { return }
+                guard let self, self.dismissesOnOutsideInteraction else { return }
                 if let resolved = self.permissionResolvedAt,
                    Date().timeIntervalSince(resolved) < 1.0 { return }
                 self.hide()

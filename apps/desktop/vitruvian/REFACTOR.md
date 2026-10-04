@@ -2136,6 +2136,34 @@ and the main actor are the same thread.
   `CGEvent` `Sendable` warning in Services.
 - **Next:** the 27 errors in 13 files, then Services in Swift 6 mode.
 
+Landed (6zza, the 27 errors in 13 files): the rest of 6zy's list.
+
+- **Passed through, never called off the main thread:** transient paste's
+  three callbacks, clipboard history's planned write and the island's
+  settle action go through as `nonisolated(unsafe)` lets, the idiom those
+  files already use for a value handed to the pasteboard lane and back.
+- **Callbacks typed for where they run:**
+  - `@MainActor @Sendable`: clipboard auto-clear's change-count reader,
+    kill process's refresh and kill completions, Homebrew's streamed output;
+  - `@Sendable`: Homebrew's command completions, which run on its work
+    queue and hop to the main queue themselves (each caller's inner block
+    now takes `[weak self]` too, as 6zy found clean in both modes), and the
+    switcher's cancellation check.
+- **Shared state given a type:** Homebrew's output buffer, the switcher's
+  Accessibility batch and the Codex server's inbox each move into a small
+  lock-guarded class. The URL cleaner's poll token, the Notch music reader,
+  the screen recorder's session and its two samplers say what guards them
+  and are `@unchecked Sendable`.
+- **One race fixed:** the recorder's capture queue read `writesTapAudio`, a
+  plain `Bool` that `start()` could still lower after the stream began. It
+  is now settled before the stream runs and withdrawn through an atomic flag.
+- **Notifications stay put:** kill process and the camera preview read what
+  they need from the notification before `MainActor.assumeIsolated`, so the
+  notification never crosses to the main actor.
+- **The two SDK globals:** the Accessibility prompt option is spelled as
+  its value, `"AXTrustedCheckOptionPrompt"`, and the kernel page size is
+  read by the VM statistics C shim, which already reads those statistics.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

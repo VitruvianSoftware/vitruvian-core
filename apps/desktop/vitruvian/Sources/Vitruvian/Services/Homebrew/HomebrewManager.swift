@@ -95,7 +95,7 @@ package final class HomebrewManager: ObservableObject {
         clearUntrustedTap()
         let command = HomebrewCommandBuilder.installed(brewPath: brewPath)
         run(command) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.isLoadingInstalled = false
                 guard status == 0 else {
@@ -149,7 +149,7 @@ package final class HomebrewManager: ObservableObject {
         errorMessage = nil
         let command = HomebrewCommandBuilder.search(brewPath: brewPath, kind: kind, query: trimmed)
         run(command) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self, generation == self.searchGeneration else { return }
                 self.isSearching = false
                 if status == 0 {
@@ -179,7 +179,7 @@ package final class HomebrewManager: ObservableObject {
         errorMessage = nil
         let command = HomebrewCommandBuilder.details(brewPath: brewPath, package: package)
         run(command) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self, generation == self.detailsGeneration else { return }
                 self.isLoadingDetails = false
                 guard status == 0 else {
@@ -240,7 +240,7 @@ package final class HomebrewManager: ObservableObject {
         }
         self.brewPath = brewPath
         run(HomebrewCommandBuilder.installed(brewPath: brewPath)) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 let records = status == 0 ? HomebrewParser.parseInstalledCaskRecords(output) : []
                 if status == 0 {
@@ -379,7 +379,7 @@ package final class HomebrewManager: ObservableObject {
                          self?.appendLog(chunk)
                          self?.updateOperationStatus(from: chunk, action: action)
                      }) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.activeProcess = nil
                 self.operation = nil
@@ -567,7 +567,7 @@ package final class HomebrewManager: ObservableObject {
         isLoadingOutdated = true
         let command = HomebrewCommandBuilder.outdated(brewPath: brewPath)
         run(command) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self, generation == self.outdatedGeneration else { return }
                 self.isLoadingOutdated = false
                 guard status == 0,
@@ -652,7 +652,7 @@ package final class HomebrewManager: ObservableObject {
         isTrustingTap = true
         let retry = untrustedTapRetry
         run(HomebrewCommandBuilder.trustTap(brewPath: brewPath, tap: tap)) { [weak self] status, output in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.isTrustingTap = false
                 guard status == 0 else {
@@ -723,15 +723,15 @@ package final class HomebrewManager: ObservableObject {
         return process
     }
 
+    /// `completion` runs on `workQueue`; every caller hops to the main queue itself.
     private func run(_ command: HomebrewCommand,
-                     completion: @escaping (_ status: Int32, _ output: String) -> Void) {
+                     completion: @escaping @Sendable (_ status: Int32, _ output: String) -> Void) {
         workQueue.async {
             let process = Self.makeProcess(command)
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
-            var data = Data()
-            let lock = NSLock()
+            let output = HomebrewProcessOutput()
             let drained = DispatchSemaphore(value: 0)
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let chunk = handle.availableData
@@ -739,9 +739,7 @@ package final class HomebrewManager: ObservableObject {
                     drained.signal()
                     return
                 }
-                lock.lock()
-                data.append(chunk)
-                lock.unlock()
+                output.append(chunk)
             }
             let finished = DispatchSemaphore(value: 0)
             process.terminationHandler = { _ in finished.signal() }
@@ -758,24 +756,20 @@ package final class HomebrewManager: ObservableObject {
             _ = drained.wait(timeout: .now() + 1)
             pipe.fileHandleForReading.readabilityHandler = nil
             try? pipe.fileHandleForReading.close()
-            lock.lock()
-            let output = String(data: data, encoding: .utf8) ?? ""
-            lock.unlock()
-            completion(process.isRunning ? -1 : process.terminationStatus, output)
+            completion(process.isRunning ? -1 : process.terminationStatus, output.text)
         }
     }
 
+    /// `onOutput` runs on the main queue, `completion` on `workQueue`.
     private func runStreaming(_ command: HomebrewCommand,
-                              onOutput: @escaping (String) -> Void,
-                              completion: @escaping (_ status: Int32, _ output: String) -> Void) {
+                              onOutput: @escaping @MainActor @Sendable (String) -> Void,
+                              completion: @escaping @Sendable (_ status: Int32, _ output: String) -> Void) {
         workQueue.async { [weak self] in
             let process = Self.makeProcess(command)
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
-            var output = Data()
-            var lastOutput = Date()
-            let lock = NSLock()
+            let output = HomebrewProcessOutput()
             let drained = DispatchSemaphore(value: 0)
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
@@ -783,10 +777,7 @@ package final class HomebrewManager: ObservableObject {
                     drained.signal()
                     return
                 }
-                lock.lock()
                 output.append(data)
-                lastOutput = Date()
-                lock.unlock()
                 if let chunk = String(data: data, encoding: .utf8) {
                     DispatchQueue.main.async { onOutput(chunk) }
                 }
@@ -806,10 +797,7 @@ package final class HomebrewManager: ObservableObject {
                 if self.cancelRequested { Self.stop(process) }
             }
             while finished.wait(timeout: .now() + Self.brewSilenceTimeout) == .timedOut {
-                lock.lock()
-                let silence = Date().timeIntervalSince(lastOutput)
-                lock.unlock()
-                if silence >= Self.brewSilenceTimeout {
+                if output.silence >= Self.brewSilenceTimeout {
                     Self.stop(process, finished: finished)
                     break
                 }
@@ -817,10 +805,7 @@ package final class HomebrewManager: ObservableObject {
             _ = drained.wait(timeout: .now() + 1)
             pipe.fileHandleForReading.readabilityHandler = nil
             try? pipe.fileHandleForReading.close()
-            lock.lock()
-            let finalOutput = String(data: output, encoding: .utf8) ?? ""
-            lock.unlock()
-            completion(process.isRunning ? -1 : process.terminationStatus, finalOutput)
+            completion(process.isRunning ? -1 : process.terminationStatus, output.text)
         }
     }
 
@@ -833,6 +818,34 @@ package final class HomebrewManager: ObservableObject {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
+    }
+}
+
+/// A brew child's piped output: the readability handler appends on its own
+/// thread while `workQueue` reads, and the lock is the only way in.
+private final class HomebrewProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private var lastOutput = Date()
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        data.append(chunk)
+        lastOutput = Date()
+    }
+
+    /// Time since the last chunk arrived (or since the box was made).
+    var silence: TimeInterval {
+        lock.lock()
+        defer { lock.unlock() }
+        return Date().timeIntervalSince(lastOutput)
+    }
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 

@@ -18,7 +18,8 @@ package final class URLCleanerService: ObservableObject {
     /// silent rewrite did rather than only that it is running.
     @Published package private(set) var lastRemoved: [String] = []
 
-    private final class PollToken {
+    /// `cancelled` sits under `lock`, so it is `@unchecked Sendable`.
+    private final class PollToken: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
 

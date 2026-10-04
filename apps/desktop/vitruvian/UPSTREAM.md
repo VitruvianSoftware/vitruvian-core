@@ -1122,6 +1122,38 @@ is that notice. Add an entry for every change to upstream files.
     `Services/AutoQuit/AutoQuitService.swift`,
     `Services/Display/BrightnessService.swift` and
     `Services/RadialMenu/RadialMenuService.swift`.
+- **2026-10-04**: Refactor step 6zza (`REFACTOR.md`):
+  - `Services/TransientPaste.swift`,
+    `Services/Clipboard/ClipboardHistoryService.swift` and
+    `Services/Notch/NotchService.swift`: callbacks and a planned pasteboard
+    write handed across threads as `nonisolated(unsafe)` lets.
+  - `Services/Clipboard/ClipboardAutoClearService.swift`,
+    `Services/KillProcess/KillProcessService.swift`,
+    `Services/Homebrew/HomebrewManager.swift` and
+    `Services/Switcher/WindowEnumerator.swift`: callback parameters typed
+    `@Sendable` or `@MainActor @Sendable`.
+  - `Services/Homebrew/HomebrewManager.swift`: a lock-guarded output box
+    replaces captured `var`s; completion blocks take `[weak self]` inside.
+  - `Services/Switcher/WindowEnumerator.swift`: a lock-guarded batch type
+    replaces captured `var`s.
+  - `Services/AgentUsage/AgentCodexServer.swift`: the pipe buffer moves into
+    its own lock-guarded inbox.
+  - `@unchecked Sendable` with what guards them:
+    `Services/URLCleanerService.swift` (poll token),
+    `Services/Notch/NotchMusicService.swift` (pipe reader),
+    `Services/Recorder/ScreenRecorderService.swift` (session),
+    `Services/Recorder/RecorderPointerSampler.swift` and
+    `Services/Recorder/RecorderTypingTrack.swift`.
+  - `Services/Recorder/ScreenRecorderService.swift`: the tap audio choice
+    is settled before the stream runs and withdrawn through an atomic flag.
+  - `Services/KillProcess/KillProcessService.swift` and
+    `Services/QuickTools/CameraPreviewService.swift`: notification fields
+    read before `MainActor.assumeIsolated`.
+  - `Services/Permissions.swift`: the Accessibility prompt option spelled as
+    its value.
+  - `Sources/VMStatisticsCompat/include/VMStatisticsCompat.h`,
+    `Services/Metrics/VMStatisticsDecoder.swift` and
+    `Services/SystemInfo.swift`: the kernel page size read in C.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
