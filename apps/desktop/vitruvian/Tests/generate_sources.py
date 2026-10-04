@@ -160,11 +160,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/RadialMenu/RadialNowPlayingService.swift",
                         "    static func open(", scope="enum RadialNowPlayingApplication {")
           + "}\n")
-    write("WindowServerCapture.swift", "import CoreGraphics\nimport Foundation\n"
-          + "nonisolated extension WindowServerCaptureContract.Provider {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/WindowPreviewProvider.swift",
-                        "    static func captureViaWindowServer(")
-          + "}\n")
     write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
           + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
@@ -445,8 +440,6 @@ def main():
           + declaration(adapter_entry, "private func sendPlaybackCommand(").replace("private func", "static func", 1)
           + declaration(adapter_entry, "func encodedReply(").replace("func encodedReply", "static func encodedReply", 1)
           + "}\n")
-    write("NotchPanel.swift", "import AppKit\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchPanel:"))
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     write("ShelfDragCompletion.swift", "import Foundation\n\nextension ShelfDragCompletionContract {\n"
           + "final class Service {\nvar activeInternalDragIDs: [UUID] = []\n"

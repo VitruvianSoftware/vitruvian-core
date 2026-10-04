@@ -627,6 +627,16 @@ generated copies go, which leaves 91.
 - **Copy dropped:** `NotchNotice` already had a `package` initializer, so the
   tests use the shipped type instead of a copy of it.
 
+Landed (4b, window-server capture and the island's panel): two more
+generated copies go, which leaves 89.
+
+- **Injected:** `WindowPreviewProvider.captureViaWindowServer` has an overload
+  that takes the connection, the capture function, its options and the
+  queue. The test passes its fake capture function and its own queue, so
+  every queueing and cancellation check runs the shipped body.
+- **Copy dropped:** `NotchPanel` is already `package`, with AppKit's
+  initializers, so its tests build the shipped class.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

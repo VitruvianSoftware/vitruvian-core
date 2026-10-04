@@ -223,8 +223,8 @@ package final class WindowPreviewProvider: @unchecked Sendable {
 
     // MARK: - Window-server capture
 
-    private typealias CGSConnectionID = UInt32
-    private typealias CGSCaptureFunction =
+    package typealias CGSConnectionID = UInt32
+    package typealias CGSCaptureFunction =
         @convention(c) (CGSConnectionID, UnsafeMutablePointer<UInt32>, UInt32, UInt32) -> Unmanaged<CFArray>?
 
     /// `CGSHWCaptureWindowList` — resolved at runtime so a future macOS that
@@ -256,10 +256,22 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     /// optional work and skips a window rather than queue behind a slow capture.
     package static func captureViaWindowServer(_ windowID: CGWindowID,
                                        waitingForOtherCaptures: Bool = true) async -> CGImage? {
-        guard windowServerConnection != 0, let capture = windowServerCapture else { return nil }
-        return await windowServerCaptures.capture(waitingForOtherCaptures: waitingForOtherCaptures) {
+        await captureViaWindowServer(windowID, waitingForOtherCaptures: waitingForOtherCaptures,
+                                     connection: windowServerConnection, capture: windowServerCapture,
+                                     options: windowServerCaptureOptions, through: windowServerCaptures)
+    }
+
+    /// The capture above with the window server handed in: the app passes
+    /// `CGSHWCaptureWindowList`, its connection and the shared queue; the
+    /// tests pass a fake capture function (REFACTOR.md step 4b).
+    package static func captureViaWindowServer(_ windowID: CGWindowID, waitingForOtherCaptures: Bool,
+                                               connection: CGSConnectionID, capture: CGSCaptureFunction?,
+                                               options: UInt32,
+                                               through captures: WindowServerCaptureQueue) async -> CGImage? {
+        guard connection != 0, let capture else { return nil }
+        return await captures.capture(waitingForOtherCaptures: waitingForOtherCaptures) {
             var id = UInt32(windowID)
-            guard let array = capture(windowServerConnection, &id, 1, windowServerCaptureOptions)?
+            guard let array = capture(connection, &id, 1, options)?
                 .takeRetainedValue(),
                 CFArrayGetCount(array) > 0,
                 let value = CFArrayGetValueAtIndex(array, 0)
