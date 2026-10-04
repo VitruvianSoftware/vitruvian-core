@@ -2235,6 +2235,8 @@ the 99.
     only, their Accessibility observer included.
 - **Not `@MainActor`:** the alarm's unit test drives it from plain code,
   which a main-actor class would refuse.
+- **Measured** (Swift 6 mode, batch mode off): the 14 are gone and nothing
+  new appeared; **56 errors in 27 files** remain.
 
 ## Step 7: test-suite hygiene
 
