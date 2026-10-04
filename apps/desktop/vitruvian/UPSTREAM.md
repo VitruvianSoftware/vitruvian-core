@@ -1312,6 +1312,15 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/SystemMonitorCPUTests.swift`, `CommandBarFeatureTests.swift` and
     `ClipboardFeatureTests.swift` call these, and `Tests/generate_sources.py`
     no longer copies them.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`), three more generated
+  copies dropped:
+  - `Services/Audio/AppVolumeMixer.swift`: `switchToNextSoundOutput(in:)`
+    switches through `switchToNextSoundOutput(in:outputs:currentUID:switchTo:)`.
+  - `UI/Settings/ShortcutsSettings.swift`: `expansionBinding(for:in:)` hands
+    its state to `expansionBinding(for:in:expanded:)`.
+  - `Tests/SoundOutputSwitchTests.swift` and `FeatureCatalogTests.swift` call
+    these, and the tests use the shipped `NotchNotice`.
+    `Tests/generate_sources.py` no longer copies any of the three.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -614,6 +614,19 @@ the module instead of a generated copy, which leaves 94.
   advanced report nothing and that niced ticks count as busy. The system
   calls stay in the app's wrappers, which the tests no longer imitate.
 
+Landed (4b, sound output, shortcut rows and notch notices): three more
+generated copies go, which leaves 91.
+
+- **Injected:**
+  - `AppVolumeMixer.switchToNextSoundOutput(in:outputs:currentUID:switchTo:)`
+    is the switch the output shortcut makes, for any outputs;
+  - `ShortcutsSettings.expansionBinding(for:in:expanded:)` takes the page's
+    open rows as a binding.
+- **Tested directly:** the two tests keep their checks, with plain outputs
+  and a plain binding in place of a stand-in mixer and page.
+- **Copy dropped:** `NotchNotice` already had a `package` initializer, so the
+  tests use the shipped type instead of a copy of it.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

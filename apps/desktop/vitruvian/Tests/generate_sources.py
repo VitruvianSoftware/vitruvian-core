@@ -319,11 +319,6 @@ def main():
     write("MixerInputVolume.swift", "import Foundation\nimport Combine\nimport CoreAudio\nimport AudioToolbox\n"
           + "extension MixerInputVolumeContract {\n" + input_bodies + "}\n")
     mixer = "Sources/Vitruvian/Services/Audio/AppVolumeMixer.swift"
-    write("SoundOutputSwitch.swift", "import Foundation\n"
-          + "extension SoundOutputSwitchContract {\nfinal class Mixer {\n"
-          + "var outputDevices: [Device] = []\nvar currentOutputDeviceUID: String?\nvar switchedTo: [String] = []\n"
-          + "func setUniversalOutputDeviceUID(_ uid: String) -> Bool { switchedTo.append(uid); return true }\n"
-          + declaration(mixer, "    func switchToNextSoundOutput(") + "}\n}\n")
     write("MixerOutputAdjustment.swift", "import CoreAudio\nimport Foundation\n"
           + "extension MixerOutputAdjustmentContract {\nfinal class Mixer {\n"
           + declaration(mixer, "    private struct OutputAdjustment {")
@@ -485,7 +480,6 @@ def main():
           + "static let shared = PreciseVolumeRollerService()\n"
           + declaration("Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift", "    func syncWithPreferences()")
           + "}\n}\n")
-    write("NotchNotice.swift", "import AppKit\n" + declaration(notch, "struct NotchNotice:"))
     recorder = "Sources/Vitruvian/Services/Recorder/RecorderEditorController.swift"
     write("RecorderZoomAiming.swift", "import Foundation\nimport Combine\n"
           + "extension RecorderZoomAimingTests {\nfinal class Model: State {\n"
@@ -743,12 +737,6 @@ def main():
           + declaration(canvas, "    override func draggingUpdated(").replace("override func", "func", 1)
           + declaration(canvas, "    override func draggingExited(").replace("override func", "func", 1)
           + declaration(canvas, "    override func performDragOperation(").replace("override func", "func", 1)
-          + "}\n}\n")
-    write("ShortcutsExpansion.swift", "import SwiftUI\n\nextension FeatureCatalogTests {\n"
-          + "final class Expansion { var features: [FeatureGroup: Set<AppFeature>] = [:] }\n"
-          + "struct ShortcutsPage {\nlet state: Expansion\n"
-          + "var expandedFeatures: [FeatureGroup: Set<AppFeature>] { get { state.features } nonmutating set { state.features = newValue } }\n"
-          + declaration("Sources/Vitruvian/UI/Settings/ShortcutsSettings.swift", "    private func expansionBinding(").replace("private func", "func", 1)
           + "}\n}\n")
     settings_card = "Sources/Vitruvian/UI/Settings/SettingsCard.swift"
     text_inset = next(line for line in _source(settings_card).splitlines()

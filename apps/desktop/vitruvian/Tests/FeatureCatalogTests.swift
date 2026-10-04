@@ -9,6 +9,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
+import SwiftUI
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
@@ -16,6 +17,11 @@ import VitruvianServices
 import VitruvianUI
 
 enum FeatureCatalogTests {
+    /// The Shortcuts page's open rows, where a plain binding can reach them.
+    final class ShortcutsExpansion {
+        var features: [FeatureGroup: Set<AppFeature>] = [:]
+    }
+
     private nonisolated final class InstallerFileManager: FileManager, @unchecked Sendable {
         let localApplications: URL
         var userApplications: URL?
@@ -1524,9 +1530,12 @@ enum FeatureCatalogTests {
                 && GlobalShortcutRole.keyboardBrightnessDecrease.group == .mouseKeyboard
                 && GlobalShortcutRole.keyboardBrightnessIncrease.group == .mouseKeyboard,
                "keyboard brightness stays owned by the brightness service but appears with keyboard controls")
-        let shortcutsPage = ShortcutsPage(state: Expansion())
-        let displayBrightness = shortcutsPage.expansionBinding(for: .brightness, in: .energyDisplay)
-        let keyboardLight = shortcutsPage.expansionBinding(for: .brightness, in: .mouseKeyboard)
+        let shortcutsExpansion = ShortcutsExpansion()
+        let expandedFeatures = Binding { shortcutsExpansion.features } set: { shortcutsExpansion.features = $0 }
+        let displayBrightness = ShortcutsSettings.expansionBinding(for: .brightness, in: .energyDisplay,
+                                                                   expanded: expandedFeatures)
+        let keyboardLight = ShortcutsSettings.expansionBinding(for: .brightness, in: .mouseKeyboard,
+                                                               expanded: expandedFeatures)
         displayBrightness.wrappedValue = true
         suite.expect(displayBrightness.wrappedValue && !keyboardLight.wrappedValue,
                "opening brightness in one shortcut group leaves its row in the other group closed")
