@@ -637,6 +637,18 @@ generated copies go, which leaves 89.
 - **Copy dropped:** `NotchPanel` is already `package`, with AppKit's
   initializers, so its tests build the shipped class.
 
+Landed (4b, the island's outline and the mixer level's Escape): two more
+generated files go, which leaves 87.
+
+- **Copies dropped:** `NotchShape` already had a `package` initializer, so
+  its tests draw the shipped shape. The copied `NotchActivityPicker` beside
+  it was used by no test.
+- **Injected:** `MixerPercentEscape.cancelsLevel(keyCode:isActive:inFieldWindow:composing:)`
+  is the choice the mixer level field's Escape monitor makes. The field's
+  coordinator is private to its view, so the test asks this directly, and
+  now also checks that only Escape cancels, that an idle field ignores it,
+  and that a press outside the field's window never asks the input method.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

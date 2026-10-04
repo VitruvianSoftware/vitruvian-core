@@ -1188,6 +1188,20 @@ package struct EditableVolumePercent<Label: View>: View {
 /// A native field is used because an NSPopover can attach its SwiftUI backing
 /// view after a FocusState request has already fired. The field retries when it
 /// joins the window, then owns Return, Escape and loss-of-focus behavior.
+/// Which Escape presses cancel the level being typed into a mixer row. The
+/// field's monitor sees the whole app, so the tests ask this directly
+/// (REFACTOR.md step 4b).
+package enum MixerPercentEscape {
+    package static func cancelsLevel(keyCode: UInt16, isActive: Bool, inFieldWindow: Bool,
+                                     composing: () -> Bool) -> Bool {
+        // Escape in another window, such as Settings, stays there.
+        guard isActive, keyCode == 53, inFieldWindow else { return false }
+        // While an input method is composing, Esc belongs to it and drops
+        // the candidate; the next one cancels the level.
+        return !composing()
+    }
+}
+
 private struct AutofocusingVolumeTextField: NSViewRepresentable {
     @Binding var text: String
     let isActive: Bool
@@ -1318,13 +1332,11 @@ private struct AutofocusingVolumeTextField: NSViewRepresentable {
         private func startMonitoringEscape() {
             guard escapeMonitor == nil else { return }
             escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                // The monitor sees the whole app; Escape in another window,
-                // such as Settings, stays there.
-                guard let self, self.isActive, event.keyCode == 53,
-                      let window = self.field?.window, event.window === window else { return event }
-                // While an input method is composing, Esc belongs to it and
-                // drops the candidate; the next one cancels the level.
-                if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+                guard let self, let window = self.field?.window,
+                      MixerPercentEscape.cancelsLevel(
+                        keyCode: event.keyCode, isActive: self.isActive, inFieldWindow: event.window === window,
+                        composing: { (window.firstResponder as? NSTextView)?.hasMarkedText() == true })
+                else { return event }
                 self.finish(self.onCancel)
                 return nil
             }
