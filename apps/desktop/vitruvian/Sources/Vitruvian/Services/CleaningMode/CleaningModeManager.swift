@@ -410,8 +410,11 @@ package final class CleaningModeManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard self?.isActive == true else { return }
-            self?.showOverlays()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard self?.isActive == true else { return }
+                self?.showOverlays()
+            }
         }
     }
 

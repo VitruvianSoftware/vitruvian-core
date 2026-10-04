@@ -1410,11 +1410,14 @@ package final class AppSwitcher: ObservableObject {
         terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
-            guard let self, self.sessionActive,
-                  self.routeLock.withLock({ self.sessionStartGeneration == generation }),
-                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            else { return }
-            self.removeTerminatedApp(pid: app.processIdentifier)
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self, self.sessionActive,
+                      self.routeLock.withLock({ self.sessionStartGeneration == generation }),
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                else { return }
+                self.removeTerminatedApp(pid: app.processIdentifier)
+            }
         }
     }
 

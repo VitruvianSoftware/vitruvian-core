@@ -808,6 +808,75 @@ is that notice. Add an entry for every change to upstream files.
     output-volume selector table are `nonisolated`, the output-control
     lifetime its lock guards is `nonisolated(unsafe)`, and
     `isCurrentOutputAdjustment` is `nonisolated` on its own line.
+- **2026-10-03**: Refactor step 6zk (`REFACTOR.md`):
+  - `Services/Audio/AirPlayRouteManager.swift`: the manager is `@MainActor`;
+    the stream registry is a constant made in init instead of a lazy
+    property; the streaming methods, the context binding and the snapshot
+    statics are `nonisolated`, with the renderer, the routing context, the
+    message-send symbol and the snapshot behind their lock or set once;
+    the picker delegate runs its bodies through `MainActor.assumeIsolated`
+    (the second now `didEndPresentingRoutes`); its context observer and
+    timer do too; and the renderer's failure callback is `@MainActor`.
+  - `Services/Audio/AppVolumeMixer.swift`: an AirPlay build takes the
+    manager from the main thread and hands it to its engine.
+  - `Support/SelfTest.swift`: the AirPlay check reads the manager through
+    `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zl (`REFACTOR.md`):
+  - `Services/MiddleClick/MiddleClickService.swift` is `@MainActor`; its
+    shared instance and init are `nonisolated` (the multitouch callback
+    reaches it from its own thread), its tap and contact-frame paths are
+    `nonisolated`, the state its three locks guard is
+    `nonisolated(unsafe)`, and its session, wake and hot-plug callbacks run
+    their bodies through `MainActor.assumeIsolated`.
+  - `Services/ScrollInverter.swift` is `@MainActor`; its tap callback is
+    `nonisolated` on its own line, and the tap-thread state is
+    `nonisolated(unsafe)`.
+- **2026-10-03**: Refactor step 6zm (`REFACTOR.md`):
+  - `Services/Display/BrightnessService.swift` is `@MainActor`; the state
+    behind the key-thread lock, the state lock and the work queue is
+    `nonisolated(unsafe)` with comments naming each guard; the methods
+    that run on the key thread or the work queue, and the static display,
+    system-brightness and IOKit helpers, are `nonisolated`; the media-key
+    tap and the screen-parameters and wake observers run their bodies
+    through `MainActor.assumeIsolated`; and the display-toggle finish
+    publishes through a `@Sendable` closure that enters the main actor on
+    the main thread.
+  - `Services/CommandBar/CommandBarCatalog.swift`: the brightness row's
+    apply is `@MainActor`.
+- **2026-10-03**: Refactor step 6zn (`REFACTOR.md`):
+  - Main-queue notification observers run their bodies through
+    `MainActor.assumeIsolated` in `Services/AppUpdates/AppUpdatesService.swift`,
+    `Services/Audio/AppVolumeMixer.swift`,
+    `Services/Audio/MusicLaunchBlocker.swift`,
+    `Services/AutoQuit/AutoQuitService.swift`,
+    `Services/Cleaner/CleanerScheduler.swift`,
+    `Services/CleaningMode/CleaningModeManager.swift`,
+    `Services/Clipboard/ClipboardHistoryService.swift`,
+    `Services/Clipboard/ClipboardIgnoredApps.swift`,
+    `Services/CommandBar/CommandBarService.swift`,
+    `Services/Display/ExtraBrightnessService.swift`,
+    `Services/DockPreview/DockPreviewService.swift`,
+    `Services/Finder/FinderCutPaste.swift`,
+    `Services/KeepAwakeManager.swift`,
+    `Services/KillProcess/KillProcessService.swift`,
+    `Services/ManagedDownloads/WhatsAppDownloadScheduler.swift`,
+    `Services/MouseNavigation/MouseNavigationService.swift`,
+    `Services/Notch/NotchLockScreenService.swift`,
+    `Services/QuickTools/CameraPreviewService.swift`,
+    `Services/QuickTools/QuickLauncherService.swift`,
+    `Services/QuickTools/RecentCaptureService.swift`,
+    `Services/QuitProtection/QuitProtectionService.swift`,
+    `Services/RadialMenu/RadialMenuService.swift`,
+    `Services/SmoothScrollService.swift`,
+    `Services/Snippets/SnippetLibraryService.swift`,
+    `Services/Switcher/AppSwitcher.swift` and
+    `Services/WindowLayout/WindowLayoutService.swift`.
+  - `Services/WindowLayout/WindowLayoutService.swift`: the edge-snap
+    preview's fade-out completion does the same.
+  - `Services/Audio/MusicLaunchBlocker.swift`: the replacement app's launch
+    callback hops to the main queue before it reads the setting.
+  - `Services/Audio/AudioInputDeviceManager.swift`: the lock-guarded
+    input-volume write lifetime is `nonisolated(unsafe)`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

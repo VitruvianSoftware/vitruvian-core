@@ -371,11 +371,13 @@ package final class KeepAwakeManager: ObservableObject {
             screenLockObservers = [
                 center.addObserver(forName: Self.screenLockNotification,
                                    object: nil, queue: .main) { [weak self] _ in
-                    self?.screenLockStateDidChange(locked: true)
+                    // Delivered on the main queue.
+                    MainActor.assumeIsolated { self?.screenLockStateDidChange(locked: true) }
                 },
                 center.addObserver(forName: Self.screenUnlockNotification,
                                    object: nil, queue: .main) { [weak self] _ in
-                    self?.screenLockStateDidChange(locked: false)
+                    // Delivered on the main queue.
+                    MainActor.assumeIsolated { self?.screenLockStateDidChange(locked: false) }
                 },
             ]
             screenLocked = KeepAwakeAutomationSupport.isScreenLocked(
@@ -440,7 +442,8 @@ package final class KeepAwakeManager: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.scheduleAutomationEvaluation(after: 0.35)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.scheduleAutomationEvaluation(after: 0.35) }
             }
         } else if let screenParametersObserver {
             NotificationCenter.default.removeObserver(screenParametersObserver)

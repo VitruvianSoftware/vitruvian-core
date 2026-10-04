@@ -58,12 +58,16 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
         guard wakeObserver == nil else { return }
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.scheduleNext() }
+        ) { [weak self] _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.scheduleNext() }
+        }
         clockObservers = [NSNotification.Name.NSSystemTimeZoneDidChange,
                           NSNotification.Name.NSSystemClockDidChange].map { name in
             NotificationCenter.default.addObserver(forName: name, object: nil,
                                                    queue: .main) { [weak self] _ in
-                self?.scheduleNext()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.scheduleNext() }
             }
         }
     }

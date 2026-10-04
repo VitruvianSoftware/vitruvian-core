@@ -16,11 +16,12 @@ import VitruvianDesign
 /// Discovers and connects AirPlay devices using the system's trusted routing
 /// stack (`AVOutputContext` / `AVRoutePickerView`), bypassing Core Audio HAL's
 /// inability to enumerate offline AirPlay endpoints.
+@MainActor
 package final class AirPlayRouteManager: NSObject, ObservableObject {
     package static let shared = AirPlayRouteManager()
 
     /// Virtual UID used by Vitruvian to represent an AirPlay output route.
-    package static let airPlaySentinelUID = MixerRoutingSupport.airPlaySentinelUID
+    nonisolated package static let airPlaySentinelUID = MixerRoutingSupport.airPlaySentinelUID
 
     @Published package private(set) var isAvailable: Bool = false
     @Published package private(set) var isConnected: Bool = false
@@ -32,27 +33,27 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
 
     /// What the mixer's device refresh needs, readable from its HAL queue
     /// without creating the manager (which must happen on the main thread).
-    private static let snapshotLock = NSLock()
-    private static var snapshotIsListed = false
-    private static var snapshotSpeakerName: String?
-    private static var snapshotIsConnected = false
+    nonisolated private static let snapshotLock = NSLock()
+    nonisolated(unsafe) private static var snapshotIsListed = false
+    nonisolated(unsafe) private static var snapshotSpeakerName: String?
+    nonisolated(unsafe) private static var snapshotIsConnected = false
 
     /// True while the mixer is running and AirPlay can actually be streamed to.
-    package static var isListed: Bool {
+    nonisolated package static var isListed: Bool {
         snapshotLock.lock()
         defer { snapshotLock.unlock() }
         return snapshotIsListed
     }
 
     /// True while a speaker is picked, so the AirPlay entry can carry audio.
-    package static var isSpeakerConnected: Bool {
+    nonisolated package static var isSpeakerConnected: Bool {
         snapshotLock.lock()
         defer { snapshotLock.unlock() }
         return snapshotIsConnected
     }
 
     /// The speaker chosen in the picker, if any.
-    package static var currentSpeakerName: String? {
+    nonisolated package static var currentSpeakerName: String? {
         snapshotLock.lock()
         defer { snapshotLock.unlock() }
         return snapshotSpeakerName
@@ -61,7 +62,8 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
     private var cachedIsConnected: Bool = false
     private var cachedSpeakerName: String?
 
-    private var routingContext: NSObject?
+    /// Set once, from init; renderers bind to it from the mixer's build queue.
+    nonisolated(unsafe) private var routingContext: NSObject?
     private var routingContextID: String?
     /// The backup check, scheduled only while a stream is live.
     private var pollTimer: Timer?
@@ -73,10 +75,13 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
     private typealias MsgSendObj = @convention(c) (AnyObject, Selector, AnyObject?) -> Void
     private typealias MsgSendObjReturn = @convention(c) (AnyObject, Selector) -> AnyObject?
 
-    private let msgSendSym = dlsym(dlopen(nil, RTLD_NOW), "objc_msgSend")
+    nonisolated(unsafe) private let msgSendSym = dlsym(dlopen(nil, RTLD_NOW), "objc_msgSend")
 
     private override init() {
         dispatchPrecondition(condition: .onQueue(.main))
+        let mixerSource = MixingAudioSource()
+        self.mixerSource = mixerSource
+        streams = AirPlayStreamRegistry(mixer: mixerSource)
         super.init()
         // The private routing objects exist on older systems too, but only on
         // macOS 27 was the shared context seen to stay apart from the Mac's
@@ -119,7 +124,8 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
                                 "AVOutputContextOutputDevicesDidChangeNotification"].map { name in
                 NotificationCenter.default.addObserver(forName: Notification.Name(name), object: context,
                                                        queue: .main) { [weak self] _ in
-                    self?.refreshActiveDevice()
+                    // Delivered on the main queue.
+                    MainActor.assumeIsolated { self?.refreshActiveDevice() }
                 }
             }
         }
@@ -294,7 +300,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Binds an audio object (such as AVSampleBufferAudioRenderer) to the routing context.
-    package func bindOutputContext(to audioObject: AnyObject) -> Bool {
+    nonisolated package func bindOutputContext(to audioObject: AnyObject) -> Bool {
         guard let context = routingContext, let sym = msgSendSym else { return false }
         let setCtxSel = sel_registerName("setOutputContext:")
         guard audioObject.responds(to: setCtxSel) else { return false }
@@ -305,16 +311,18 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
 
     // MARK: - Per-App AirPlay Streaming
 
-    private var airPlayRenderer: AirPlayRenderer?
-    private let mixerSource = MixingAudioSource()
-    private lazy var streams = AirPlayStreamRegistry(mixer: mixerSource)
+    // The renderer is guarded by `streamLock`. The source and the registry
+    // are made with the manager, so the engines' threads can reach them.
+    nonisolated(unsafe) private var airPlayRenderer: AirPlayRenderer?
+    private let mixerSource: MixingAudioSource
+    private let streams: AirPlayStreamRegistry
     private let streamLock = NSLock()
 
     /// Adds one engine's stream to the mix. The engine owns the returned
     /// registration and ends it when it stops; nil when no renderer could be
     /// started. Each app is heard once, through its newest live engine, and
     /// an engine can only ever end its own registration.
-    package func addAudioStream(appID: String, buffer: AudioRingBuffer) -> AirPlayStreamRegistration? {
+    nonisolated package func addAudioStream(appID: String, buffer: AudioRingBuffer) -> AirPlayStreamRegistration? {
         streamLock.lock()
         defer { streamLock.unlock() }
         startRendererIfNeeded()
@@ -337,7 +345,8 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
         let wanted = streaming && onChange != nil && isAvailable
         if wanted, pollTimer == nil {
             pollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-                self?.refreshActiveDevice()
+                // Scheduled from here, on the main run loop.
+                MainActor.assumeIsolated { self?.refreshActiveDevice() }
             }
         } else if !wanted, let timer = pollTimer {
             timer.invalidate()
@@ -369,7 +378,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
 
     /// Makes sure a renderer is running before an engine taps its app, so a
     /// failure here never mutes the app or reads as a missing permission.
-    package func prepareToStream() -> Bool {
+    nonisolated package func prepareToStream() -> Bool {
         streamLock.lock()
         defer { streamLock.unlock() }
         startRendererIfNeeded()
@@ -377,7 +386,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Stops a renderer that a failed build started and nobody uses.
-    package func stopIfIdle() {
+    nonisolated package func stopIfIdle() {
         streamLock.lock()
         defer { streamLock.unlock() }
         if streams.isEmpty {
@@ -385,7 +394,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
         }
     }
 
-    private func endAudioStream(_ token: Int) {
+    nonisolated private func endAudioStream(_ token: Int) {
         streamLock.lock()
         defer { streamLock.unlock() }
         if streams.remove(token) {
@@ -394,7 +403,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
         }
     }
 
-    private func startRendererIfNeeded() {
+    nonisolated private func startRendererIfNeeded() {
         guard airPlayRenderer == nil else { return }
         guard let renderer = AirPlayRenderer(source: mixerSource, manager: self) else { return }
         // A renderer that fails or stops taking audio leaves the tapped apps
@@ -408,7 +417,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
         self.airPlayRenderer = renderer
     }
 
-    private func stopRenderer() {
+    nonisolated private func stopRenderer() {
         airPlayRenderer?.stop()
         airPlayRenderer = nil
     }
@@ -907,7 +916,7 @@ package final class AirPlayRenderer: @unchecked Sendable {
     private let synchronizer = AVSampleBufferRenderSynchronizer()
     private let feed = AirPlayFeedDriver()
     /// Set before `start()`; called on the main thread, once.
-    package var onFailure: (() -> Void)?
+    package var onFailure: (@MainActor () -> Void)?
     /// Feed queue only.
     private var watch = AirPlayRendererWatch()
 
@@ -1027,14 +1036,21 @@ package final class AirPlayRenderer: @unchecked Sendable {
 }
 
 extension AirPlayRouteManager: AVRoutePickerViewDelegate {
-    package func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
-        // Picking again is a fresh try at streaming.
-        streamingFailedFor = nil
-        pickerGeneration += 1
-        Self.isPresentingPicker = true
+    // AppKit calls the picker's delegate on the main thread.
+    nonisolated package func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+        MainActor.assumeIsolated {
+            // Picking again is a fresh try at streaming.
+            streamingFailedFor = nil
+            pickerGeneration += 1
+            Self.isPresentingPicker = true
+        }
     }
 
-    package func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+    nonisolated package func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+        MainActor.assumeIsolated { didEndPresentingRoutes(routePickerView) }
+    }
+
+    private func didEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
         let generation = pickerGeneration
         // A picker already replaced, its window gone, leaves the flag to the
         // one presenting now.

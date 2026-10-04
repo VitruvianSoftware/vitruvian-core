@@ -40,7 +40,8 @@ package final class AudioInputDeviceManager: ObservableObject {
     private var volumeListenerAddresses: [AudioObjectPropertyAddress] = []
     private var volumeRefreshGeneration = 0
     private let volumeWriteLock = NSLock()
-    private var volumeWriteLifetime = UUID()
+    // Guarded by volumeWriteLock.
+    nonisolated(unsafe) private var volumeWriteLifetime = UUID()
     private var applyingPreferred = false
     private var refreshPending = false
     private var lastListenerRefreshAt: CFAbsoluteTime = 0

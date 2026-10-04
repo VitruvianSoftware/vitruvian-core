@@ -55,9 +55,12 @@ package final class CleanerScheduler: ObservableObject {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil, queue: .main) { [weak self] _ in
-            // A fire date that passed during sleep never triggers its timer;
-            // recomputing catches the miss within a couple of minutes.
-            self?.scheduleNext()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                // A fire date that passed during sleep never triggers its timer;
+                // recomputing catches the miss within a couple of minutes.
+                self?.scheduleNext()
+            }
         }
         // The chosen time means the user's wall clock: when the time zone
         // or the system clock changes, the armed fire date is stale and the
@@ -66,7 +69,8 @@ package final class CleanerScheduler: ObservableObject {
                           NSNotification.Name.NSSystemClockDidChange].map { name in
             NotificationCenter.default.addObserver(forName: name, object: nil,
                                                    queue: .main) { [weak self] _ in
-                self?.scheduleNext()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.scheduleNext() }
             }
         }
     }

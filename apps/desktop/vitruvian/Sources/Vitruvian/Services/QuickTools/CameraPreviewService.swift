@@ -205,9 +205,12 @@ package final class CameraPreviewService: ObservableObject {
         for name in [AVCaptureSession.runtimeErrorNotification, AVCaptureSession.wasInterruptedNotification] {
             sessionObservers.append(NotificationCenter.default.addObserver(forName: name, object: session,
                 queue: .main) { [weak self] _ in
-                    guard let self, self.isPresented, self.session === session else { return }
-                    self.stopSession()
-                    self.state = .unavailable
+                    // Delivered on the main queue.
+                    MainActor.assumeIsolated {
+                        guard let self, self.isPresented, self.session === session else { return }
+                        self.stopSession()
+                        self.state = .unavailable
+                    }
                 })
         }
         sessionQueue.async { [weak self] in
@@ -316,7 +319,8 @@ package final class CameraPreviewService: ObservableObject {
                      NSNotification.Name.AVCaptureDeviceWasDisconnected] {
             deviceObservers.append(center.addObserver(forName: name, object: nil,
                                                       queue: .main) { [weak self] _ in
-                self?.handleDevicesChanged()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.handleDevicesChanged() }
             })
         }
     }
@@ -440,15 +444,18 @@ package final class CameraPreviewService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self,
-                  self.dismissesOnOutsideInteraction,
-                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                  app.bundleIdentifier != AssistiveKeyboard.bundleID
-            else { return }
-            if let resolved = self.permissionResolvedAt,
-               Date().timeIntervalSince(resolved) < 1.0 { return }
-            self.hide()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.dismissesOnOutsideInteraction,
+                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.bundleIdentifier != Bundle.main.bundleIdentifier,
+                      app.bundleIdentifier != AssistiveKeyboard.bundleID
+                else { return }
+                if let resolved = self.permissionResolvedAt,
+                   Date().timeIntervalSince(resolved) < 1.0 { return }
+                self.hide()
+            }
         }
     }
 

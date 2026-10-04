@@ -96,14 +96,17 @@ package final class QuitProtectionService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] note in
-            guard let self,
-                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            else { return }
-            if let pending = self.pending, pending.targetProcessIdentifier != app.processIdentifier {
-                self.cancelPending()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                else { return }
+                if let pending = self.pending, pending.targetProcessIdentifier != app.processIdentifier {
+                    self.cancelPending()
+                }
+                self.frontmostBundleIdentifier = app.bundleIdentifier
+                self.frontmostProcessIdentifier = app.processIdentifier
             }
-            self.frontmostBundleIdentifier = app.bundleIdentifier
-            self.frontmostProcessIdentifier = app.processIdentifier
         }
     }
 

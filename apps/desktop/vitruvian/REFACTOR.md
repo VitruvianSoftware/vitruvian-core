@@ -1684,6 +1684,94 @@ Landed (6zj, the volume mixer): `AppVolumeMixer` is `@MainActor`.
   for a renderer from the build queue, so it moves when it no longer has
   to be reached through `.shared` from there.
 
+Landed (6zk, AirPlay routing): `AirPlayRouteManager` is `@MainActor`.
+
+- **Handed over, not looked up:** an AirPlay build now takes the manager
+  on the main thread and hands it to the build queue and its engine, which
+  used to reach it through `.shared` there.
+- **What the engines reach:** adding, preparing and ending a stream, and
+  binding a renderer to the routing context, run on the engines' threads
+  under the stream lock. They are `nonisolated`; the renderer is
+  `nonisolated(unsafe)` behind that lock, and the routing context and the
+  message-send symbol, set once in init, are too. The stream registry was
+  a lazy property, which no isolation can describe, so it is made in init.
+- **The mixer's snapshot:** the listed, connected and speaker statics the
+  HAL queue reads stay behind their lock and are `nonisolated`, and so is
+  the AirPlay sentinel.
+- **Back on the main thread:** the renderer reports a failure through a
+  `@MainActor` callback it already called from the main queue. The picker's
+  delegate, the context's observer and the backup timer reach the manager
+  through `MainActor.assumeIsolated`.
+- **The self-test** reads whether AirPlay is available from top-level code,
+  through `MainActor.assumeIsolated`, as `main.swift` does.
+
+Landed (6zl, middle click and the scroll inverter): `MiddleClickService`
+and `ScrollInverter` are `@MainActor`.
+
+- **The pointer thread:** both serve their taps from `PointerTapRunLoop`.
+  The callbacks and what they call are `nonisolated`, and the state their
+  locks guard, or that only the tap touches, is `nonisolated(unsafe)`. The
+  scroll inverter's callback takes `nonisolated` on its own line, since the
+  test generator copies it by its declaration line.
+- **Multitouch:** middle click's contact frames arrive on the multitouch
+  framework's thread through a C callback that only has `.shared`. That
+  instance and its init are `nonisolated`; the init's session handler,
+  called on the main queue, enters the main actor through
+  `MainActor.assumeIsolated`, as do the wake observer and the hot-plug
+  port, which delivers on the main queue.
+- **Not yet, each for its own reason:**
+  - `MouseAppExceptions` answers both taps from the pointer thread.
+  - `Permissions` is read from plain code in about twenty places, the
+    window activator and the preview provider among them.
+  - `MicMuteService` is read from the input manager's audio queue.
+  - `BrightnessService` keeps a key thread, a work queue and two locks of
+    its own, and needs a slice to itself.
+
+Landed (6zm, brightness): `BrightnessService` is `@MainActor`.
+
+- **Four kinds of state:** what the views publish stays on the main actor.
+  The function-key thread's tap and its flags sit behind `keyThreadLock`;
+  the routes, pending levels and topology behind `stateLock`; the DDC
+  pacing, gamma baselines and dimmed set are touched only on the work
+  queue. Those three groups are `nonisolated(unsafe)`, each with a comment
+  naming its guard, and the methods that run there are `nonisolated`.
+- **Static helpers:** the display queries, the system-brightness write and
+  the IOKit lookups are `nonisolated`; the work queue and the key thread
+  call them.
+- **The main run loop:** the media-key tap's source is on the main run
+  loop, so its callback enters the main actor through
+  `MainActor.assumeIsolated`, as do the screen-parameters and wake
+  observers, which deliver on the main queue.
+- **Toggling a display:** `finishDisplayToggle` is reached from the main
+  thread and from queued lid recovery. It stays `nonisolated` and publishes
+  through a `@Sendable` closure that runs on the main thread, directly or
+  queued, and enters the main actor there.
+- **Generated tests:** four methods the test generator copies by their
+  declaration line take `nonisolated` on its own line.
+- **Callers:** the command bar's brightness row is `@MainActor`.
+
+Landed (6zn, main-queue callbacks): the macOS build of #2686 listed 62
+isolation warnings in 24 files the earlier slices had made `@MainActor`.
+Swift 5 mode lets these through as warnings; Swift 6 mode would not.
+
+- **Main-queue observers:** almost all of them are notification observers
+  registered with `queue: .main`, whose closures the SDK types as
+  `@Sendable`. Their bodies now run through `MainActor.assumeIsolated`,
+  with a comment saying the main queue delivers them. That covers 22
+  files, from app updates and Auto Quit to the camera preview and the
+  window layout, plus four the later slices of this stack made
+  `@MainActor` (Finder cut and paste, recent captures, the switcher and
+  the volume mixer), found by scanning for the same shape.
+- **Animation completion:** the edge-snap preview's fade-out completion,
+  which AppKit calls on the main thread, does the same.
+- **Off the main thread:** Music launch blocking's replacement callback
+  comes back on a background queue and read the setting there. It now hops
+  to the main queue before it reads it.
+- **Under a lock:** the input-volume write lifetime the input device
+  manager's audio queue reads under its lock is `nonisolated(unsafe)`.
+- **Already fixed:** the command bar's Shelf row (`keepOnShelf`) was made
+  `@MainActor` on #2686 itself.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

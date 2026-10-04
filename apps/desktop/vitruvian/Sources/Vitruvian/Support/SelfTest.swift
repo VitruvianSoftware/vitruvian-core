@@ -69,7 +69,8 @@ enum SelfTest {
         // default shared output context and the picker and renderer bindings).
         // When an update removes one, the mixer quietly stops offering AirPlay
         // on the systems it is offered on.
-        if #available(macOS 27, *), !AirPlayRouteManager.shared.isAvailable {
+        // The self-test runs from top-level code, on the main thread.
+        if #available(macOS 27, *), !MainActor.assumeIsolated({ AirPlayRouteManager.shared.isAvailable }) {
             warnings.append("AirPlay routing unavailable; the mixer does not offer AirPlay")
         }
 

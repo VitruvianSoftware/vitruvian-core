@@ -180,12 +180,15 @@ package final class RecentCaptureService: ObservableObject {
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main) { [weak self] notification in
-                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication,
-                      app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                      app.bundleIdentifier != AssistiveKeyboard.bundleID
-                else { return }
-                self?.hideHistoryWindow()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication,
+                          app.bundleIdentifier != Bundle.main.bundleIdentifier,
+                          app.bundleIdentifier != AssistiveKeyboard.bundleID
+                    else { return }
+                    self?.hideHistoryWindow()
+                }
             }
     }
 

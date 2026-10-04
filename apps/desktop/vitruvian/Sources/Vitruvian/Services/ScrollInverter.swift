@@ -25,6 +25,7 @@ import VitruvianDesign
 /// scrolling tap and honors this same list. Linear scrolling keeps a list of
 /// its own, honored the same way in both taps, so a game or a 3D tool that
 /// counts the notches itself can be left out of the cap alone.
+@MainActor
 package final class ScrollInverter: ObservableObject {
     package static let shared = ScrollInverter()
 
@@ -32,21 +33,21 @@ package final class ScrollInverter: ObservableObject {
     @Published package private(set) var isRunning = false
 
     /// This process's own id, compared against the one every event carries.
-    private static let ownProcessID = Int64(getpid())
+    nonisolated private static let ownProcessID = Int64(getpid())
 
-    private var tap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var tap: CFMachPort?
+    nonisolated(unsafe) private var runLoopSource: CFRunLoopSource?
     /// Guards the two above: the callback runs on the pointer thread while the
     /// main thread arms and tears the tap down.
     private let tapStateLock = NSLock()
     /// Timestamp (ns, event clock) of the last event carrying a gesture phase —
     /// only touch devices emit those. Read/written solely on the tap callback,
     /// which is the pointer thread and nothing else.
-    private var lastGesturePhaseTimestamp: UInt64?
+    nonisolated(unsafe) private var lastGesturePhaseTimestamp: UInt64?
     /// Fractions of a line linear scrolling has yet to deliver, one per axis.
     /// Tap callback only, like the timestamp above.
-    private var linearCarryVertical: Double = 0
-    private var linearCarryHorizontal: Double = 0
+    nonisolated(unsafe) private var linearCarryVertical: Double = 0
+    nonisolated(unsafe) private var linearCarryHorizontal: Double = 0
     private var tapCreationRetryUsed = false
     private var tapCreationRetryWork: DispatchWorkItem?
 
@@ -168,6 +169,7 @@ package final class ScrollInverter: ObservableObject {
         isRunning = false
     }
 
+    nonisolated
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // macOS disables taps that stall or when the session locks; re-arm,
         // unless this session is the one that was switched away from, where

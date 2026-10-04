@@ -144,11 +144,14 @@ package final class DockPreviewService: ObservableObject {
         spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self, self.isRunning, self.currentSpaceOnly,
-                  !self.isDraggingWindow else { return }
-            // Invalidate both the open list and a hover prefetched on the old
-            // desktop. Pinned panels keep their existing refresh cycle.
-            self.endSession()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self, self.isRunning, self.currentSpaceOnly,
+                      !self.isDraggingWindow else { return }
+                // Invalidate both the open list and a hover prefetched on the old
+                // desktop. Pinned panels keep their existing refresh cycle.
+                self.endSession()
+            }
         }
     }
 
@@ -1037,7 +1040,8 @@ package final class DockPreviewService: ObservableObject {
                       NSWorkspace.sessionDidResignActiveNotification]
         dockHoldObservers = events.map { name in
             workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.endSession()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.endSession() }
             }
         }
     }

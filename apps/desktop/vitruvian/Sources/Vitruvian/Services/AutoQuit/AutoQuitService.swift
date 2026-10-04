@@ -100,13 +100,19 @@ package final class AutoQuitService: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         launchToken = center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
                                          object: nil, queue: .main) { [weak self] note in
-            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            self?.attach(app)
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                self?.attach(app)
+            }
         }
         terminateToken = center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                                             object: nil, queue: .main) { [weak self] note in
-            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            self?.detach(pid: app.processIdentifier)
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                self?.detach(pid: app.processIdentifier)
+            }
         }
         // Some apps start as background helpers and only take a Dock icon later,
         // when they finally show a window. They are not "regular" at launch, so
@@ -115,15 +121,19 @@ package final class AutoQuitService: ObservableObject {
         // normal app, and attaching again costs a dictionary lookup.
         activateToken = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                            object: nil, queue: .main) { [weak self] note in
-            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            self?.handleAppActivated(app)
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                self?.handleAppActivated(app)
+            }
         }
         // AX cannot describe a window parked on another Space. Keep such apps
         // dormant after the bounded retry round, then try them again when the
         // visible Space changes instead of polling them for their lifetime.
         spaceChangeToken = center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
                                               object: nil, queue: .main) { [weak self] _ in
-            self?.rearmWindowWatchRetries()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.rearmWindowWatchRetries() }
         }
 
         for app in NSWorkspace.shared.runningApplications {

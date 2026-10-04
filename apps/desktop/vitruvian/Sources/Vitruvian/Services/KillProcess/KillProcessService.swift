@@ -366,9 +366,12 @@ package final class KillProcessService: ObservableObject {
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil, queue: .main
         ) { [weak self] note in
-            guard let terminated = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  terminated.processIdentifier == self?.pendingRestartPID else { return }
-            self?.completeRestart()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let terminated = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      terminated.processIdentifier == self?.pendingRestartPID else { return }
+                self?.completeRestart()
+            }
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Self.attemptDirectKill(target: target, force: false)

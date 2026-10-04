@@ -18,8 +18,11 @@ import VitruvianDesign
 /// degrades to the feature simply staying off. Requires Accessibility for
 /// the event tap. The same tap recognizer also opens the radial menu from a
 /// four-finger tap, so the service runs for either feature.
+@MainActor
 package final class MiddleClickService: ObservableObject {
-    package static let shared = MiddleClickService()
+    /// The multitouch callback reaches the service through this, from its own
+    /// thread.
+    nonisolated package static let shared = MiddleClickService()
 
     @Published package private(set) var isRunning = false
     /// The system's own three-finger drag gesture (Accessibility) is enabled:
@@ -27,8 +30,8 @@ package final class MiddleClickService: ObservableObject {
     /// contact, so the middle click stands down and Settings shows why.
     @Published package private(set) var systemDragGestureConflict = false
 
-    private var tap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var tap: CFMachPort?
+    nonisolated(unsafe) private var runLoopSource: CFRunLoopSource?
     /// Guards the tap port above and the press state below: the callback runs
     /// on the pointer thread while the main thread arms and tears the feature
     /// down.
@@ -36,7 +39,7 @@ package final class MiddleClickService: ObservableObject {
     /// Guards the cached system gesture setting, read on the tap callback and
     /// written on the main thread.
     private let dragLock = NSLock()
-    private var dragGestureRefreshScheduled = false
+    nonisolated(unsafe) private var dragGestureRefreshScheduled = false
     /// Retains the MTDeviceRefs while listening; the framework hands out
     /// CF objects owned by this array.
     private var deviceList: CFArray?
@@ -45,57 +48,58 @@ package final class MiddleClickService: ObservableObject {
     private var hotplugIterator: io_iterator_t = 0
     /// Whether presses are turned into middle clicks. Off while the service
     /// runs only for the radial menu's tap. Guarded by `tapStateLock`.
-    private var middleClickOn = false
+    nonisolated(unsafe) private var middleClickOn = false
     /// A physical primary or secondary press is currently being relayed as a
     /// middle button, so its drag and release must transform too.
-    private var middleButtonHeld = false
+    nonisolated(unsafe) private var middleButtonHeld = false
     /// A duplicate native down was dropped; its drag and up must be dropped as
     /// well instead of leaking an orphan event or ending the real held click.
-    private var suppressedButtonSequence = false
+    nonisolated(unsafe) private var suppressedButtonSequence = false
     /// The process that received the transformed down. A recovery up targets
     /// the same process even while this app is terminating.
-    private var middleButtonTargetPID: pid_t?
+    nonisolated(unsafe) private var middleButtonTargetPID: pid_t?
     /// When the hold began; a hold without its release for far too long means
     /// the up was lost (tap briefly disabled), and the flag must not keep
     /// swallowing clicks forever.
-    private var middleButtonHeldSince: TimeInterval = 0
+    nonisolated(unsafe) private var middleButtonHeldSince: TimeInterval = 0
     /// When the last transformed click finished, for the bounce guard.
-    private var lastTransformEnd: TimeInterval?
+    nonisolated(unsafe) private var lastTransformEnd: TimeInterval?
     /// Cached three-finger drag system setting; re-read at most every 2 s,
     /// always on the main thread, never from the event path.
-    private var dragGestureCache: (enabled: Bool, readAt: TimeInterval) = (false, -10)
+    nonisolated(unsafe) private var dragGestureCache: (enabled: Bool, readAt: TimeInterval) = (false, -10)
 
     /// Contact state shared between the multitouch callback thread and the
     /// main thread; every access goes through `stateLock`.
     private let stateLock = NSLock()
-    private var fingerCount = 0
-    private var lastFrameUptime: TimeInterval = 0
+    nonisolated(unsafe) private var fingerCount = 0
+    nonisolated(unsafe) private var lastFrameUptime: TimeInterval = 0
     /// When the contact count last became exactly three.
-    private var threeFingersSince: TimeInterval?
+    nonisolated(unsafe) private var threeFingersSince: TimeInterval?
 
     // Tap-to-middle-click (issue #161), all under `stateLock`. A candidate
     // starts when the chosen finger count lands, collects movement, and is
     // judged when every finger lifts.
-    private var tapFingers = 0
-    private var radialMenuTapFingers = 0
+    nonisolated(unsafe) private var tapFingers = 0
+    nonisolated(unsafe) private var radialMenuTapFingers = 0
     /// The finger count the current candidate started with: the larger count
     /// takes over when both taps are on and a fourth finger lands.
-    private var tapCandidateFingers = 0
-    private var tapDragConflict = false
-    private var tapStartUptime: TimeInterval?
-    private var tapStartPosition: (x: Float, y: Float)?
-    private var tapStartSpread: Float?
-    private var tapMaxMovement: Float = 0
-    private var tapMaxSpreadChange: Float = 0
-    private var tapExceededCount = false
-    private var tapSawButton = false
-    private var tapPositionUnavailable = false
+    nonisolated(unsafe) private var tapCandidateFingers = 0
+    nonisolated(unsafe) private var tapDragConflict = false
+    nonisolated(unsafe) private var tapStartUptime: TimeInterval?
+    nonisolated(unsafe) private var tapStartPosition: (x: Float, y: Float)?
+    nonisolated(unsafe) private var tapStartSpread: Float?
+    nonisolated(unsafe) private var tapMaxMovement: Float = 0
+    nonisolated(unsafe) private var tapMaxSpreadChange: Float = 0
+    nonisolated(unsafe) private var tapExceededCount = false
+    nonisolated(unsafe) private var tapSawButton = false
+    nonisolated(unsafe) private var tapPositionUnavailable = false
 
-    private init() {
+    nonisolated private init() {
         // Multitouch callbacks and the filter tap belong only to the login
         // session on screen. A switched-away process must own neither.
         SessionActivity.shared.onChange { [weak self] _ in
-            self?.syncWithPreferences()
+            // Session changes are delivered on the main queue.
+            MainActor.assumeIsolated { self?.syncWithPreferences() }
         }
     }
 
@@ -148,7 +152,7 @@ package final class MiddleClickService: ObservableObject {
     /// Answers from the cache: reading a system preference and publishing the
     /// conflict belong on the main thread, never in the path of a click. A
     /// stale answer refreshes behind the press and applies to the next one.
-    private func dragGestureEnabled(now: TimeInterval) -> Bool {
+    nonisolated private func dragGestureEnabled(now: TimeInterval) -> Bool {
         dragLock.lock()
         let cache = dragGestureCache
         let needsRefresh = now - cache.readAt > 2 && !dragGestureRefreshScheduled
@@ -282,7 +286,8 @@ package final class MiddleClickService: ObservableObject {
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification,
                                             object: nil,
                                             queue: .main) { [weak self] _ in
-            self?.restartMultitouch()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.restartMultitouch() }
         })
         installHotplugObserver()
     }
@@ -306,7 +311,8 @@ package final class MiddleClickService: ObservableObject {
                     IOObjectRelease(entry)
                 }
                 let service = Unmanaged<MiddleClickService>.fromOpaque(context).takeUnretainedValue()
-                service.restartMultitouch()
+                // The port delivers on the main queue (set above).
+                MainActor.assumeIsolated { service.restartMultitouch() }
             },
             context,
             &iterator
@@ -341,7 +347,7 @@ package final class MiddleClickService: ObservableObject {
 
     // MARK: - Contact frames (multitouch callback thread)
 
-    fileprivate func contactFrame(fingerCount count: Int,
+    nonisolated fileprivate func contactFrame(fingerCount count: Int,
                                   touches: UnsafeMutableRawPointer?) {
         let now = ProcessInfo.processInfo.systemUptime
         var firedFingers: Int?
@@ -374,7 +380,7 @@ package final class MiddleClickService: ObservableObject {
     /// finger count lands, cancelled by extra fingers, movement (a swipe), a
     /// physical click or unreadable positions, judged when the pad empties.
     /// Returns the finger count of a finished touch that should fire.
-    private func trackTapLocked(count: Int,
+    nonisolated private func trackTapLocked(count: Int,
                                 geometry: (center: (x: Float, y: Float), spread: Float)?,
                                 now: TimeInterval) -> Int? {
         if count == 0 {
@@ -429,7 +435,7 @@ package final class MiddleClickService: ObservableObject {
         return nil
     }
 
-    private func resetTapCandidateLocked() {
+    nonisolated private func resetTapCandidateLocked() {
         tapCandidateFingers = 0
         tapStartUptime = nil
         tapStartPosition = nil
@@ -445,7 +451,7 @@ package final class MiddleClickService: ObservableObject {
     /// on the main thread, away from the tap callback; also arms the bounce
     /// guard so a system-synthesized click right behind the tap is not
     /// transformed into a second one.
-    private func postMiddleTap() {
+    nonisolated private func postMiddleTap() {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.tapStateLock.withLock({ self.tap }) != nil else { return }
             let position = CGEvent(source: nil)?.location ?? .zero
@@ -472,7 +478,7 @@ package final class MiddleClickService: ObservableObject {
 
     // MARK: - Event tap (pointer thread)
 
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    nonisolated private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             releaseHeldMiddleButton()
             let enabled = AppFeature.middleClick.isAvailable
@@ -594,7 +600,7 @@ package final class MiddleClickService: ObservableObject {
 
     /// A transformed down must always get its matching middle-button up, even
     /// when the native release was lost or the event tap is being torn down.
-    private func releaseHeldMiddleButton() {
+    nonisolated private func releaseHeldMiddleButton() {
         tapStateLock.lock()
         suppressedButtonSequence = false
         guard middleButtonHeld else {
@@ -623,7 +629,7 @@ package final class MiddleClickService: ObservableObject {
 
     /// Rewrites the event in place: same position, timestamp and modifiers,
     /// but a middle-button event instead of its native button.
-    private func asMiddle(_ event: CGEvent, type: CGEventType) -> CGEvent {
+    nonisolated private func asMiddle(_ event: CGEvent, type: CGEventType) -> CGEvent {
         event.type = type
         event.setIntegerValueField(.mouseEventButtonNumber, value: 2)
         return event

@@ -254,23 +254,26 @@ package final class AppVolumeMixer: ObservableObject {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification,
                 object: nil, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                // A wake can wedge an engine while leaving the HAL snapshot
-                // byte-identical, and apply() skips reconciliation when
-                // nothing changed. Dropping the stored render observations
-                // and reconciling directly arms the note-then-recheck
-                // sequence deterministically, so a frozen engine is caught
-                // even on a quiet wake.
-                self.engineRenderProgress.removeAll()
-                self.engineRecovery.clearAll()
-                // An output that drops away during sleep can come back under
-                // the same object ID without the volume and mute listeners
-                // registered on it, and the level it reports then goes stale.
-                // Forgetting the registration makes this refresh subscribe again.
-                self.removeOutputControlListeners()
-                self.refreshApps()
-                self.reconcileEngines(with: self.apps)
-                self.scheduleEngineReconcile(after: 2)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // A wake can wedge an engine while leaving the HAL snapshot
+                    // byte-identical, and apply() skips reconciliation when
+                    // nothing changed. Dropping the stored render observations
+                    // and reconciling directly arms the note-then-recheck
+                    // sequence deterministically, so a frozen engine is caught
+                    // even on a quiet wake.
+                    self.engineRenderProgress.removeAll()
+                    self.engineRecovery.clearAll()
+                    // An output that drops away during sleep can come back under
+                    // the same object ID without the volume and mute listeners
+                    // registered on it, and the level it reports then goes stale.
+                    // Forgetting the registration makes this refresh subscribe again.
+                    self.removeOutputControlListeners()
+                    self.refreshApps()
+                    self.reconcileEngines(with: self.apps)
+                    self.scheduleEngineReconcile(after: 2)
+                }
             }
         }
         refreshApps()
@@ -981,11 +984,12 @@ package final class AppVolumeMixer: ObservableObject {
                 builds.finish(app.id, token: token)
                 return
             }
+            let airPlay = AirPlayRouteManager.shared
             buildQueue.async { [weak self] in
                 // No renderer, no stream: the app stays on its current path
                 // instead of being tapped into silence, and this is not a
                 // missing permission, so the permission hint stays hidden.
-                guard AirPlayRouteManager.shared.prepareToStream() else {
+                guard airPlay.prepareToStream() else {
                     DispatchQueue.main.async {
                         self?.finishUnavailableAirPlayBuild(for: app.id, token: token)
                     }
@@ -994,9 +998,10 @@ package final class AppVolumeMixer: ObservableObject {
                 let engine = AirPlayGainEngine(appID: app.id,
                                                objects: app.audioObjects,
                                                gain: Float(app.volume),
-                                               clockDeviceUID: clockUID)
+                                               clockDeviceUID: clockUID,
+                                               routes: airPlay)
                 if engine == nil {
-                    AirPlayRouteManager.shared.stopIfIdle()
+                    airPlay.stopIfIdle()
                 }
                 DispatchQueue.main.async {
                     guard let self else {
@@ -2578,7 +2583,8 @@ private final class AirPlayGainEngine: GainEngine {
     /// The ring, retained for the sample-rate listener while it is installed.
     private var rateListenerClient: UnsafeMutableRawPointer?
 
-    init?(appID: String, objects: [AudioObjectID], gain: Float, clockDeviceUID: String) {
+    init?(appID: String, objects: [AudioObjectID], gain: Float, clockDeviceUID: String,
+          routes: AirPlayRouteManager) {
         self.appID = appID
         self.tappedObjects = objects
         self.outputDeviceUID = AirPlayRouteManager.airPlaySentinelUID
@@ -2656,7 +2662,7 @@ private final class AirPlayGainEngine: GainEngine {
         startWatchingSampleRate()
 
         guard AudioDeviceStart(aggregateID, ioProc) == noErr,
-              let registration = AirPlayRouteManager.shared.addAudioStream(appID: appID, buffer: ringBuffer) else {
+              let registration = routes.addAudioStream(appID: appID, buffer: ringBuffer) else {
             stop()
             return nil
         }

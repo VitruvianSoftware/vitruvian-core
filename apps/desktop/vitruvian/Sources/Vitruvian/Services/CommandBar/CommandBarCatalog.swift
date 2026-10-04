@@ -1809,6 +1809,7 @@ package enum CommandBarCatalog {
     /// the bar was just used, and never on another one. The routes may need
     /// one refresh when the panel or Settings never opened this session, and
     /// the retry looks for that same display wherever the pointer went since.
+    @MainActor
     private static func applyBrightness(percent: Int, display: CGDirectDisplayID? = nil) {
         let service = BrightnessService.shared
         let value = Double(percent) / 100

@@ -148,15 +148,18 @@ package final class MouseNavigationService: ObservableObject {
         ]
         webHandlerObservers = names.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
-                let activatedPID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication)?.processIdentifier
-                guard MouseNavigationSupport.shouldRefreshWebHandlers(
-                    isApplicationActivation: notification.name
-                        == NSWorkspace.didActivateApplicationNotification,
-                    activatedPID: activatedPID,
-                    ownPID: ProcessInfo.processInfo.processIdentifier
-                ) else { return }
-                self?.scheduleWebHandlerRefresh()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    let activatedPID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication)?.processIdentifier
+                    guard MouseNavigationSupport.shouldRefreshWebHandlers(
+                        isApplicationActivation: notification.name
+                            == NSWorkspace.didActivateApplicationNotification,
+                        activatedPID: activatedPID,
+                        ownPID: ProcessInfo.processInfo.processIdentifier
+                    ) else { return }
+                    self?.scheduleWebHandlerRefresh()
+                }
             }
         }
     }

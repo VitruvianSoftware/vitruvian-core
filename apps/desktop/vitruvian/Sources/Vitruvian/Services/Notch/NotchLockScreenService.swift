@@ -153,9 +153,12 @@ package final class NotchLockScreenService {
         // login controls and the camera; the scene and the padlock follow.
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-                guard let self, self.space != nil, Self.frames() != self.shownFrames else { return }
-                self.hide(unlocking: false, stopsSources: false)
-                self.show(closingPadlock: false)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let self, self.space != nil, Self.frames() != self.shownFrames else { return }
+                    self.hide(unlocking: false, stopsSources: false)
+                    self.show(closingPadlock: false)
+                }
             }
     }
 
