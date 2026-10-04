@@ -2295,6 +2295,8 @@ Landed (6zzf, values sent across threads): 18 of the 99.
 - **Kept per site, not a conformance:** an `AXUIElement` is an immutable
   reference, but a module-wide `@retroactive @unchecked Sendable` would
   vouch for every use at once; each crossing says what it does instead.
+- **Measured** (Swift 6 mode, batch mode off): the 18 are gone and nothing
+  new appeared; **13 errors in 3 files** remain.
 
 ## Step 7: test-suite hygiene
 
