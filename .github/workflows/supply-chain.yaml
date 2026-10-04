@@ -125,7 +125,7 @@ jobs:
       # separate deps.dev resolution SPOF *inside* the scan itself.
       - name: Install osv-scanner (pinned + checksum-verified)
         env:
-          OSV_SCANNER_VERSION: v2.4.0
+          OSV_SCANNER_VERSION: v2.6.0
         run: |
           bash tools/ci/install-pinned-tool.sh \
             "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}" \

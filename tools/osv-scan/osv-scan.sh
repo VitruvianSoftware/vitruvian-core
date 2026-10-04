@@ -245,7 +245,7 @@ warn() {
 command -v osv-scanner >/dev/null 2>&1 ||
   die "osv-scanner not on PATH.
    CI installs it pinned + checksum-verified (see .github/workflows/supply-chain.yaml).
-   Locally: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.4.0"
+   Locally: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0"
 
 # See "NO CALL ANALYSIS" above. GOWORK=off is the mechanism-level guarantee that
 # nothing this gate spawns can rewrite go.work.sum; -mod=readonly extends the
