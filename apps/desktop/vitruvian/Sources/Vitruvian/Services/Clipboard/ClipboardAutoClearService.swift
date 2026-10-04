@@ -12,6 +12,7 @@ import VitruvianDesign
 /// exactly the person who wants a copied password gone.
 ///
 /// Saved history entries are never touched, only the pasteboard.
+@MainActor
 package final class ClipboardAutoClearService {
     package static let shared = ClipboardAutoClearService()
 
@@ -32,7 +33,8 @@ package final class ClipboardAutoClearService {
     /// can be abandoned without a stale completion ever landing.
     private var readGeneration = 0
     private let configurationLock = NSLock()
-    private var configurationGeneration = 0
+    // Guarded by configurationLock; the pasteboard lane reads it.
+    nonisolated(unsafe) private var configurationGeneration = 0
 
     private var sleepObserver: NSObjectProtocol?
     private var displaySleepObserver: NSObjectProtocol?
@@ -82,7 +84,8 @@ package final class ClipboardAutoClearService {
         if isWanted {
             guard token == nil else { return }
             token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.clearNow(triggerPreferenceKey: preferenceKey)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.clearNow(triggerPreferenceKey: preferenceKey) }
             }
         } else if let existing = token {
             center.removeObserver(existing)
@@ -94,7 +97,8 @@ package final class ClipboardAutoClearService {
         guard timer == nil else { return }
         baseline()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tick()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.tick() }
         }
         timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)

@@ -1919,9 +1919,22 @@ run on another queue. Swift 6 mode rejects most of them.
   imported with `@preconcurrency` (AVFoundation, IOBluetooth,
   ApplicationServices, CoreFoundation, Dispatch), in the five files that
   capture them, as the compiler suggests.
-- **Not yet:** transient paste and the clipboard auto-clear are plain
-  classes whose queue closures capture `self`. They need the main actor,
-  with their timers and observers, in a slice of their own.
+
+Landed (6zt, transient paste and the clipboard auto-clear): both keep
+their state on the main thread and do their pasteboard work on the shared
+pasteboard lane, and their lane closures captured `self`, a plain class.
+They are `@MainActor`.
+
+- **Transient paste:** snippet expansion asks for it from plain code, and
+  it already refused any call off the main thread. `shared`, its init and
+  `paste` are `nonisolated`; `paste` keeps that refusal and runs the rest
+  on the main actor. The pasteboard snapshot it hands to the lane and back
+  goes through `nonisolated(unsafe)` locals that say so, the restore's
+  work item, run by the main queue, enters the main actor, and the
+  snapshot reader is `nonisolated`.
+- **The auto-clear:** its observers and its timer enter the main actor,
+  and the configuration generation the lane reads under its lock is
+  `nonisolated(unsafe)`.
 
 ## Step 7: test-suite hygiene
 

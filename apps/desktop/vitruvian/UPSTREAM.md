@@ -966,6 +966,15 @@ is that notice. Add an entry for every change to upstream files.
     `Services/WindowLayout/WindowLayoutService.swift` and
     `Services/WindowMaximizer.swift` (ApplicationServices), and
     `Services/Notch/NotchMusicService.swift` (Dispatch).
+- **2026-10-04**: Refactor step 6zt (`REFACTOR.md`):
+  - `Services/TransientPaste.swift` is `@MainActor`; `shared`, init and
+    `paste` are `nonisolated`, `paste` keeps its main-thread check and runs
+    the new private `pasteOnMain`, the snapshot crosses to the lane through
+    `nonisolated(unsafe)` locals, the restore enters the main actor, and the
+    snapshot reader is `nonisolated`.
+  - `Services/Clipboard/ClipboardAutoClearService.swift` is `@MainActor`;
+    its observers and timer run through `MainActor.assumeIsolated`, and the
+    lock-guarded configuration generation is `nonisolated(unsafe)`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

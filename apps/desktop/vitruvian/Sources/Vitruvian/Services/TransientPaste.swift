@@ -11,8 +11,12 @@ import VitruvianDesign
 /// restores the previous content if the user did not copy something else.
 /// All pasteboard reads share the app's serial lane because promised data can
 /// block while its owning process renders it.
+@MainActor
 package final class TransientPaste {
-    package static let shared = TransientPaste()
+    // Snippet expansion asks for it from plain code, and is refused off the main thread.
+    nonisolated package static let shared = TransientPaste()
+
+    nonisolated private init() {}
 
     private static let restoreDelay: TimeInterval = 0.5
 
@@ -20,16 +24,28 @@ package final class TransientPaste {
     private var restoreWork: DispatchWorkItem?
     private var isPerforming = false
 
+    /// Main thread only: a call from anywhere else is refused.
     @discardableResult
-    package func paste(_ text: String,
+    nonisolated package func paste(_ text: String,
                willPostShortcut: (() -> Void)? = nil,
                didPostShortcut: (() -> Void)? = nil,
                didFail: (() -> Void)? = nil) -> Bool {
         guard Thread.isMainThread else { return false }
+        // Checked just above.
+        return MainActor.assumeIsolated {
+            pasteOnMain(text, willPostShortcut: willPostShortcut, didPostShortcut: didPostShortcut, didFail: didFail)
+        }
+    }
+
+    private func pasteOnMain(_ text: String,
+                             willPostShortcut: (() -> Void)?,
+                             didPostShortcut: (() -> Void)?,
+                             didFail: (() -> Void)?) -> Bool {
         guard !isPerforming else { return false }
         isPerforming = true
 
-        let previous = pendingRestore
+        // Handed to the pasteboard lane, which alone reads it.
+        nonisolated(unsafe) let previous = pendingRestore
         restoreWork?.cancel()
         restoreWork = nil
 
@@ -67,10 +83,12 @@ package final class TransientPaste {
                 return
             }
             let changeCount = pasteboard.changeCount
+            // Handed back to the main thread, which keeps it for the restore.
+            nonisolated(unsafe) let saved = snapshot
 
             DispatchQueue.main.async {
                 ClipboardHistoryService.shared.ignoreNextChange(upTo: changeCount)
-                self.pendingRestore = (snapshot, changeCount)
+                self.pendingRestore = (saved, changeCount)
                 Self.postPasteWhenModifiersReleased(
                     attempt: 0,
                     willPost: willPostShortcut,
@@ -78,7 +96,7 @@ package final class TransientPaste {
                     didFail: didFail
                 ) {
                     self.isPerforming = false
-                    self.scheduleRestore(snapshot: snapshot, changeCount: changeCount)
+                    self.scheduleRestore(snapshot: saved, changeCount: changeCount)
                 }
             }
         }
@@ -86,18 +104,23 @@ package final class TransientPaste {
     }
 
     private func scheduleRestore(snapshot: [NSPasteboardItem], changeCount: Int) {
+        // Handed to the pasteboard lane, which alone reads it.
+        nonisolated(unsafe) let snapshot = snapshot
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.restoreWork = nil
-            self.pendingRestore = nil
-            GeneralPasteboardAccess.shared.async {
-                let pasteboard = NSPasteboard.general
-                guard pasteboard.changeCount == changeCount else { return }
-                pasteboard.clearContents()
-                if !snapshot.isEmpty { pasteboard.writeObjects(snapshot) }
-                let restoredCount = pasteboard.changeCount
-                DispatchQueue.main.async {
-                    ClipboardHistoryService.shared.ignoreNextChange(upTo: restoredCount)
+            // Run by the main queue below.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.restoreWork = nil
+                self.pendingRestore = nil
+                GeneralPasteboardAccess.shared.async {
+                    let pasteboard = NSPasteboard.general
+                    guard pasteboard.changeCount == changeCount else { return }
+                    pasteboard.clearContents()
+                    if !snapshot.isEmpty { pasteboard.writeObjects(snapshot) }
+                    let restoredCount = pasteboard.changeCount
+                    DispatchQueue.main.async {
+                        ClipboardHistoryService.shared.ignoreNextChange(upTo: restoredCount)
+                    }
                 }
             }
         }
@@ -107,7 +130,7 @@ package final class TransientPaste {
 
     /// Nil means at least one advertised flavor could not be preserved, so the
     /// transient paste fails open instead of clearing incomplete user data.
-    private static func snapshot(of pasteboard: NSPasteboard) -> [NSPasteboardItem]? {
+    nonisolated private static func snapshot(of pasteboard: NSPasteboard) -> [NSPasteboardItem]? {
         guard let items = pasteboard.pasteboardItems else {
             return pasteboard.types?.isEmpty == false ? nil : []
         }
