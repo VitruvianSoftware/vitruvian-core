@@ -190,6 +190,9 @@ swift_library(
         ["Sources/Vitruvian/**/*.swift"],
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ),
+    # Swift 6 language mode since REFACTOR.md step 6zzj. Each of its closures
+    # that checks for the main thread at run time runs there.
+    features = ["swift.enable_v6"],
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
     deps = [

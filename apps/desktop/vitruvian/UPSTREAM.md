@@ -1252,6 +1252,12 @@ is that notice. Add an entry for every change to upstream files.
     in `Services/FanControl/FanControlService.swift`.
 - **2026-10-04**: Refactor step 6zzi (`REFACTOR.md`): `Services/` builds in
   Swift 6 mode (`BUILD`).
+- **2026-10-04**: Refactor step 6zzj (`REFACTOR.md`): the app target builds
+  in Swift 6 mode (`BUILD`).
+  - `App/AppDelegate.swift` reads what it needs from two notifications before
+    entering the main actor.
+  - `App/StatusItemController.swift` marks the four properties its `deinit`
+    reads `nonisolated(unsafe)`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

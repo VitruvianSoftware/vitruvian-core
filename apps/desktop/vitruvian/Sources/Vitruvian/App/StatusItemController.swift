@@ -24,12 +24,15 @@ final class StatusItemController {
     /// independent, opt-in and separately clickable — but not itself a
     /// MenuBarMetric, since its content comes from ClipboardHistoryService
     /// rather than a SystemSnapshot reading.
-    private var clipboardPreviewStatusItem: NSStatusItem?
-    private var metricStatusItems: [String: NSStatusItem] = [:]
+    // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+    nonisolated(unsafe) private var clipboardPreviewStatusItem: NSStatusItem?
+    // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+    nonisolated(unsafe) private var metricStatusItems: [String: NSStatusItem] = [:]
     private var metricStatusItemFocus: [String: MenuBarMetric] = [:]
     private var cancellables = Set<AnyCancellable>()
-    private var titleTimer: Timer?
-    private var defaultsObserver: NSObjectProtocol?
+    // `nonisolated(unsafe)`: `deinit` reads them too, once nothing else holds the object.
+    nonisolated(unsafe) private var titleTimer: Timer?
+    nonisolated(unsafe) private var defaultsObserver: NSObjectProtocol?
     /// Last combination applied by updateIconAppearance, so refresh ticks
     /// don't re-render an unchanged icon every 2 seconds.
     private var lastIconStateKey = ""

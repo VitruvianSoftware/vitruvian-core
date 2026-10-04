@@ -778,6 +778,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             popoverDriftObservers.append(NotificationCenter.default.addObserver(
                 forName: name, object: window, queue: .main
             ) { [weak self, weak window] notification in
+                // Read here: the notification itself never crosses to the main actor.
+                let contentResized = notification.name == NSWindow.didResizeNotification
                 // Delivered on the main queue.
                 MainActor.assumeIsolated {
                     guard let self, let window else { return }
@@ -790,7 +792,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                         self.useStablePopoverPositioningViewIfNeeded(window)
                         return
                     }
-                    let contentResized = notification.name == NSWindow.didResizeNotification
                     if contentResized, self.useStablePopoverPositioningViewIfNeeded(window) { return }
                     self.applyPopoverDriftFrame(window)
                     guard contentResized else { return }
@@ -1267,10 +1268,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             },
             center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                object: nil, queue: .main) { [weak self] note in
+                // Read here: the notification itself never crosses to the main actor.
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 // Delivered on the main queue.
                 MainActor.assumeIsolated {
-                    guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
-                            as? NSRunningApplication else { return }
+                    guard let app else { return }
                     self?.updatePanelActivationSource(.appActivated(app))
                 }
             },
