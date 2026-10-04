@@ -344,7 +344,6 @@ GENERATED_TEST_SOURCES = [
     "NotchMusicAutomationRefresh.swift",
     "NotchMusicControls.swift",
     "NotchMusicVisibility.swift",
-    "NotchPanel.swift",
     "NotchPlaybackRouting.swift",
     "NotchPresentationRefresh.swift",
     "NotchQueueHold.swift",
@@ -383,7 +382,6 @@ GENERATED_TEST_SOURCES = [
     "UpdateAdminInstall.swift",
     "UpdateHighlights.swift",
     "UpdateIntroFlow.swift",
-    "WindowServerCapture.swift",
 ]
 
 # Sources of the privileged fan-control helper.

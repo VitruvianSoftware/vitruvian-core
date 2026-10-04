@@ -1321,6 +1321,14 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/SoundOutputSwitchTests.swift` and `FeatureCatalogTests.swift` call
     these, and the tests use the shipped `NotchNotice`.
     `Tests/generate_sources.py` no longer copies any of the three.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`), two more generated
+  copies dropped:
+  - `Services/Switcher/WindowPreviewProvider.swift`: `captureViaWindowServer`
+    captures through an overload that takes the connection, capture
+    function, options and queue; its two typealiases are `package`.
+  - `Tests/WindowServerCaptureTests.swift` calls it with its fake, and
+    `Tests/NotchPanelTests.swift` builds the shipped `NotchPanel`.
+    `Tests/generate_sources.py` no longer copies either.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

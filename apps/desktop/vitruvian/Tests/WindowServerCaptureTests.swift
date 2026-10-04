@@ -24,6 +24,14 @@ nonisolated enum WindowServerCaptureContract {
         nonisolated(unsafe) static var windowServerCapture: CGSCaptureFunction? = { connection, id, count, options in
             Fake.capture(connection: connection, id: id.pointee, count: count, options: options)
         }
+
+        /// The production capture, against the fake window server above.
+        static func captureViaWindowServer(_ windowID: CGWindowID,
+                                           waitingForOtherCaptures: Bool = true) async -> CGImage? {
+            await WindowPreviewProvider.captureViaWindowServer(
+                windowID, waitingForOtherCaptures: waitingForOtherCaptures, connection: windowServerConnection,
+                capture: windowServerCapture, options: windowServerCaptureOptions, through: windowServerCaptures)
+        }
     }
 
     enum Fake {

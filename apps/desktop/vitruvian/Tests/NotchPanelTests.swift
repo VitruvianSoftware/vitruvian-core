@@ -8,7 +8,7 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The production panel class is compiled here. Creating it deferred neither
+/// The shipped panel class runs here. Creating it deferred neither
 /// shows a window nor needs a running application; the sheet check orders a
 /// fully transparent panel in off screen, since a sheet brings its parent in.
 enum NotchPanelTests {
