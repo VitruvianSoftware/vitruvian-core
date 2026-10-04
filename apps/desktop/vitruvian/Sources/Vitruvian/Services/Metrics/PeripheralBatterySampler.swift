@@ -254,8 +254,9 @@ package final class PeripheralBatterySampler {
 }
 
 private final class BluetoothBatteryRead: NSObject, PeripheralBluetoothReading, CBCentralManagerDelegate, CBPeripheralDelegate {
-    private static let batteryService = CBUUID(string: "180F")
-    private static let batteryLevel = CBUUID(string: "2A19")
+    // Constant UUIDs.
+    nonisolated(unsafe) private static let batteryService = CBUUID(string: "180F")
+    nonisolated(unsafe) private static let batteryLevel = CBUUID(string: "2A19")
 
     private let queue: DispatchQueue
     private let completion: ([BluetoothBatteryReading]) -> Void

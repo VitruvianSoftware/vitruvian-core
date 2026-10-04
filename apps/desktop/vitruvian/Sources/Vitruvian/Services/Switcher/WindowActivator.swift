@@ -315,13 +315,16 @@ package enum WindowActivator {
     @discardableResult
     package static func setWindowMinimized(_ minimized: Bool, windowID: CGWindowID, pid: pid_t) -> Bool {
         if pid == ProcessInfo.processInfo.processIdentifier {
-            guard let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return false }
-            if minimized {
-                window.miniaturize(nil)
-            } else {
-                window.deminiaturize(nil)
+            // This app's own windows come from the Dock preview, on the main thread.
+            return MainActor.assumeIsolated {
+                guard let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return false }
+                if minimized {
+                    window.miniaturize(nil)
+                } else {
+                    window.deminiaturize(nil)
+                }
+                return true
             }
-            return true
         }
 
         guard Permissions.accessibilityGranted else { return false }
@@ -353,9 +356,12 @@ package enum WindowActivator {
                             appPID: pid_t,
                             windowOwnerPID: pid_t) -> Bool {
         if appPID == ProcessInfo.processInfo.processIdentifier {
-            guard let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return false }
-            window.close()
-            return true
+            // A close runs on the main thread.
+            return MainActor.assumeIsolated {
+                guard let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return false }
+                window.close()
+                return true
+            }
         }
 
         guard Permissions.accessibilityGranted else { return false }
@@ -366,7 +372,7 @@ package enum WindowActivator {
               boolAttribute(closeButton, kAXEnabledAttribute as String, default: true)
         else { return false }
 
-        // A close runs on the main thread, like the window lookup above.
+        // A close runs on the main thread.
         MainActor.assumeIsolated { AutoQuitService.shared.recordProgrammaticCloseRequest(pid: appPID) }
         return AXUIElementPerformAction(closeButton, kAXPressAction as CFString) == .success
     }
@@ -412,15 +418,18 @@ package enum WindowActivator {
         pending.finish(success: success)
     }
 
+    /// An activation starts on the main thread, like the pending restore it cancels.
     private static func activateOwnWindow(_ item: SwitcherItem) {
-        guard let windowID = item.windowID,
-              let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return }
-        if window.isMiniaturized {
-            window.deminiaturize(nil)
+        MainActor.assumeIsolated {
+            guard let windowID = item.windowID,
+                  let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return }
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
         }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
     }
 
     /// Prefer the selected window, but retain cooperative activation when the

@@ -23,6 +23,7 @@ package struct NotchGestureSupport {
     private var fired = false
     private var lastTimestamp: TimeInterval?
 
+    @MainActor
     package static func nativeInteraction(at view: NSView?) -> (control: Bool, scroll: Bool) {
         var control = false
         var scroll = false

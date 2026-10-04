@@ -1775,9 +1775,12 @@ package enum CommandBarCatalog {
     private static func openSettings(at destination: FeatureSettingsDestination,
                                      targetFeature: AppFeature? = nil,
                                      sidebarFeature: AppFeature? = nil) {
-        SettingsRouter.shared.request(destination, targetFeature: targetFeature,
-                                      sidebarFeature: sidebarFeature)
-        MainActor.assumeIsolated { appShell()?.openSettingsWindow() }
+        // Commands run on the main queue.
+        MainActor.assumeIsolated {
+            SettingsRouter.shared.request(destination, targetFeature: targetFeature,
+                                          sidebarFeature: sidebarFeature)
+            appShell()?.openSettingsWindow()
+        }
     }
 
     /// Reads through the shared lane like every other clipboard row: a direct

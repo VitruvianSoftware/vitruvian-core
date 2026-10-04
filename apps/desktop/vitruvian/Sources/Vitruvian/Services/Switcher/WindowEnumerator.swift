@@ -110,6 +110,7 @@ package enum WindowEnumerator {
 
     /// Copies all AppKit-owned enumeration inputs into values that can safely
     /// cross to the serial enumeration queue.
+    @MainActor
     package static func snapshot() -> Snapshot {
         dispatchPrecondition(condition: .onQueue(.main))
         let runningApps = NSWorkspace.shared.runningApplications.compactMap { app -> AppSnapshot? in
@@ -211,6 +212,7 @@ package enum WindowEnumerator {
 
     /// Dock Preview has its own scope; Dock click actions keep the default
     /// all-desktop list and never inherit either preview or switcher settings.
+    @MainActor
     package static func listWindowsForDockPreview(for pid: pid_t, maximumCount: Int = 12) -> [SwitcherItem] {
         listWindows(for: pid, maximumCount: maximumCount,
                     currentSpaceOnly: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
@@ -232,6 +234,8 @@ package enum WindowEnumerator {
         return !isParkedOnHiddenSpace(windowID)
     }
 
+    /// Takes its snapshot here, so it runs on the main thread like its callers.
+    @MainActor
     package static func listWindows(for pid: pid_t, maximumCount: Int = 12,
                             currentSpaceOnly: Bool = false,
                             marksHiddenSpaces: Bool = false) -> [SwitcherItem] {

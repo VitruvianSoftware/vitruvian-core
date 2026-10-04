@@ -69,8 +69,9 @@ package final class NotchMenuSpaceReader {
                     // frontmost application while an accessory app such as a launcher has
                     // focus; that app's own menu geometry was never laid out. When our own
                     // Settings has focus, the menu owner can briefly be nil.
+                    // The reader asks on the main thread, from its ticks and its answers.
                     NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
-                        ?? (NSApp.isActive ? getpid() : nil)
+                        ?? (MainActor.assumeIsolated { NSApp.isActive } ? getpid() : nil)
                 },
                 measure: { pid, subject in
                     NotchMenuBarSpace.measure(pid: pid, geometry: subject.geometry,

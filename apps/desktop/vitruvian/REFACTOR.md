@@ -1959,8 +1959,9 @@ Swift 6 type-check of Services on Linux listed 80 statics that did not.
   already is. `main.swift` installs the view factory inside
   `MainActor.assumeIsolated`.
 - **Left as they are:** two `ISO8601DateFormatter`s and a list of
-  `CGEventType`s, which the macOS SDK marks `Sendable` but the Linux stand-ins
-  do not.
+  `CGEventType`s, which the Linux stand-ins do not mark `Sendable`. The macOS
+  SDK does mark the event types, but not the formatters; 6zw says the
+  formatters are read behind their lock.
 - **Next:** 20 singletons are `static let shared` of a class that is not
   `Sendable`. Each one is a choice between the main actor and a lock, so
   they are a slice of their own.
@@ -2000,6 +2001,55 @@ that only hold constants or a locked flag say why any thread may use them.
   event taps or caches from their own threads (Finder rename, click
   debounce, snippets, the window use tracker, process usage, the battery
   capacity probe). They are the next slice.
+
+Landed (6zw, main-actor code reached from plain code): with 6zv printing
+Services' full warning list, the macOS build reported 752 concurrency
+warnings. 249 of them say the same thing: main-actor AppKit is reached
+from code Swift does not know is on the main thread. Almost all of that code
+is on the main thread already, so it now says so.
+
+- **Main actor:** the recorder's indicator, the quit protection HUD, the
+  brightness overlay, sideways wheel scrolling, the island's frame probe,
+  the radial menu's arrival and departure, and the disk image installer's
+  destination prompt. So are the functions that read `NSApp` for the main
+  thread: `appShell()`, the settings import panel, the uninstaller's final
+  quit, the switcher's snapshot of this app's windows and the two window
+  lists that take one, the island's overlay Space join and its gesture
+  check.
+- **Hopping in:** the brightness overlay's `show`, `teardown` and `dismiss`
+  stay callable from any thread and hop to the main thread first, as they
+  did; its state is now plain main-actor statics instead of
+  `nonisolated(unsafe)`. Wheel scrolling's state is the same.
+- **Main thread, said at the call:** `MainActor.assumeIsolated` with a
+  comment where code that is already on the main thread touches AppKit:
+  - the window activator's paths for this app's own windows;
+  - the activation handoff's `NSApp` calls;
+  - the shell helper's direct branch of bringing the app forward;
+  - the island's menu-space reader asking whether this app is active;
+  - the mouse navigation keys reading the main menu, with the hidden-menu
+    probe moved to a main-actor `refreshOnMain`;
+  - the command bar opening Settings;
+  - the island's display-link tick (the link is on the main run loop);
+  - animation completions, which AppKit calls on the main thread, in the
+    brightness overlay, the recorder's indicator, the radial menu and the
+    lock screen fade. The radial menu and lock screen completions are
+    typed `@MainActor () -> Void`, so they can cross into those handlers.
+- **Off the main thread, said so:** the Dock click service's `activate(pid:)`
+  and `restore(_:)` run on whatever queue the restore walk is on, as their
+  comments already said, so they are `nonisolated`. The walk's `[weak self]`
+  moves to the main-queue block that uses it.
+- **Statics:** the agent log's two formatters are read behind its lock;
+  two constant strings, two constant Bluetooth UUIDs, the pointer
+  follower's system environment and the pointer tap's run loop never change.
+  All are `nonisolated(unsafe)` with that comment.
+- **Not yet:**
+  - the seven singletons 6zv left (6zx);
+  - two SDK globals the code reads, `kAXTrustedCheckOptionPrompt` and
+    `vm_kernel_page_size`;
+  - about 490 warnings about values that are not `Sendable` crossing to
+    another thread, among them a capture engine handing back
+    ScreenCaptureKit windows and the recorder editor's waveform task;
+  - about 60 deprecations, which are not concurrency.
 
 ## Step 7: test-suite hygiene
 

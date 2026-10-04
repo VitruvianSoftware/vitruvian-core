@@ -8,22 +8,28 @@ import VitruvianDesign
 
 /// A brief percentage overlay for every brightness route. The disabled
 /// feature owns no window, observer or timer.
+///
+/// Main actor: `show`, `teardown` and `dismiss` take any thread and hop to
+/// the main thread first.
+@MainActor
 package enum BrightnessOSD {
-    // Main thread only: show and teardown hop there first.
-    nonisolated(unsafe) private static var panel: NSPanel?
-    nonisolated(unsafe) private static var host: NSHostingController<BrightnessOSDView>?
-    nonisolated(unsafe) private static var dismissWork: DispatchWorkItem?
-    nonisolated(unsafe) private static var generation = 0
+    private static var panel: NSPanel?
+    private static var host: NSHostingController<BrightnessOSDView>?
+    private static var dismissWork: DispatchWorkItem?
+    private static var generation = 0
 
-    package static func show(displayID: CGDirectDisplayID, brightness: Double) {
+    nonisolated package static func show(displayID: CGDirectDisplayID, brightness: Double) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async {
                 show(displayID: displayID, brightness: brightness)
             }
             return
         }
-        if NotchSupport.routes(.brightness),
-           MainActor.assumeIsolated({ NotchService.shared.showBrightness(brightness) }) {
+        MainActor.assumeIsolated { showOnMain(displayID: displayID, brightness: brightness) }
+    }
+
+    private static func showOnMain(displayID: CGDirectDisplayID, brightness: Double) {
+        if NotchSupport.routes(.brightness), NotchService.shared.showBrightness(brightness) {
             return
         }
         guard let screen = NSScreen.screens.first(where: {
@@ -77,11 +83,15 @@ package enum BrightnessOSD {
     }
 
     /// Releases the window entirely; the disabled feature owns no panel.
-    package static func teardown() {
+    nonisolated package static func teardown() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { teardown() }
             return
         }
+        MainActor.assumeIsolated { teardownOnMain() }
+    }
+
+    private static func teardownOnMain() {
         dismissWork?.cancel()
         dismissWork = nil
         panel?.orderOut(nil)
@@ -89,11 +99,15 @@ package enum BrightnessOSD {
         host = nil
     }
 
-    package static func dismiss() {
+    nonisolated package static func dismiss() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { dismiss() }
             return
         }
+        MainActor.assumeIsolated { dismissOnMain() }
+    }
+
+    private static func dismissOnMain() {
         dismissWork?.cancel()
         dismissWork = nil
         guard let panel, panel.isVisible else { return }
@@ -102,8 +116,11 @@ package enum BrightnessOSD {
             context.duration = 0.20
             panel.animator().alphaValue = 0
         }, completionHandler: {
-            guard generation == dismissedGeneration else { return }
-            panel.orderOut(nil)
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated {
+                guard generation == dismissedGeneration else { return }
+                panel.orderOut(nil)
+            }
         })
     }
 

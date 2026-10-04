@@ -206,14 +206,18 @@ package final class NotchLockScreenService {
         }
     }
 
-    private static func fadeOut(_ panel: NSPanel, after delay: TimeInterval, completion: @escaping () -> Void) {
+    private static func fadeOut(_ panel: NSPanel, after delay: TimeInterval,
+                                completion: @escaping @MainActor () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.2
                 panel.animator().alphaValue = 0
             }, completionHandler: {
-                panel.orderOut(nil)
-                completion()
+                // AppKit calls the completion handler on the main thread.
+                MainActor.assumeIsolated {
+                    panel.orderOut(nil)
+                    completion()
+                }
             })
         }
     }

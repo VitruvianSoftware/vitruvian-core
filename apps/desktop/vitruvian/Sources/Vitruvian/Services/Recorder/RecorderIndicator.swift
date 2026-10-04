@@ -13,6 +13,7 @@ import VitruvianDesign
 /// recording can never be the one that disappears. It is one of this app's own
 /// windows, so the capture filter excludes it and it never shows up inside the
 /// video.
+@MainActor
 package final class RecorderIndicator {
 
     private var panel: NSPanel?
@@ -134,7 +135,8 @@ package final class RecorderIndicator {
             context.duration = 0.16
             panel.animator().alphaValue = 0
         }, completionHandler: {
-            panel.orderOut(nil)
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated { panel.orderOut(nil) }
         })
     }
 

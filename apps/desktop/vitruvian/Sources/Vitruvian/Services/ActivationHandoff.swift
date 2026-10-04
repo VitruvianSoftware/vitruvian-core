@@ -28,7 +28,10 @@ package enum ActivationHandoff {
 
     package static func yield(to app: NSRunningApplication) {
         lastSelfActivation = CFAbsoluteTimeGetCurrent()
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.yieldActivation(to: app)
+        // Every caller hands off from the main thread.
+        MainActor.assumeIsolated {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.yieldActivation(to: app)
+        }
     }
 }

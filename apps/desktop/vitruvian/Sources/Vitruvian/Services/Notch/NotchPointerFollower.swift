@@ -36,7 +36,8 @@ package final class NotchPointerFollower {
             self.schedule = schedule
         }
 
-        package static let system = Environment(
+        // Its closures capture nothing, so it never changes.
+        nonisolated(unsafe) package static let system = Environment(
             addMonitors: { moved in
                 // A drag moves the pointer without mouse-moved events.
                 let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]

@@ -271,6 +271,7 @@ package enum SelfUninstall {
     /// path is the running app's own location, checked to be an `.app`, so this
     /// can only ever remove this app. A detached helper does the move so the
     /// bundle is not mutated while it is running.
+    @MainActor
     private static func trashOwnBundleAndQuit() {
         let app = Bundle.main.bundlePath
         guard app.hasSuffix(".app"), app != "/" else { NSApp.terminate(nil); return }

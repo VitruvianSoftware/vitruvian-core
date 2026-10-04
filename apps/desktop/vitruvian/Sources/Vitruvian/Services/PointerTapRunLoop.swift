@@ -43,7 +43,8 @@ package enum PointerTapRunLoop {
     }
 
     /// Built on first use: a feature that never runs never starts the thread.
-    private static let runLoop: CFRunLoop = {
+    /// Set once, and the run loop calls made on it are safe from any thread.
+    nonisolated(unsafe) private static let runLoop: CFRunLoop = {
         var started: CFRunLoop?
         let ready = DispatchSemaphore(value: 0)
         let thread = Thread {

@@ -8,10 +8,12 @@ import VitruvianDesign
 /// Lets a mouse wheel move the strips that only scroll sideways: the island's
 /// mixer and rails, the switcher, wallpaper and chip rows. Without it their
 /// hidden items could only be reached with a trackpad or Shift.
+///
+/// Main actor, like the local monitor and the views that forward wheel events.
+@MainActor
 package enum HorizontalWheelScrolling {
-    // Main thread only, like the local monitor and the views that forward wheel events.
-    nonisolated(unsafe) private static var monitor: Any?
-    nonisolated(unsafe) private static var lastGesturePhaseTimestamp: TimeInterval?
+    private static var monitor: Any?
+    private static var lastGesturePhaseTimestamp: TimeInterval?
 
     package static func install() {
         guard monitor == nil else { return }

@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// Small, non-activating feedback panel. It is intentionally independent from
 /// Settings so showing a confirmation never changes the target application.
+@MainActor
 package final class QuitProtectionHUD {
     private static let minimumSize = CGSize(width: 300, height: 48)
     private static let textInset: CGFloat = 12
