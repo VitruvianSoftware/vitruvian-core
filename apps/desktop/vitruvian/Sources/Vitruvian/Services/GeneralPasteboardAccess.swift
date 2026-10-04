@@ -22,11 +22,12 @@ package final class GeneralPasteboardAccess: @unchecked Sendable {
                                    _ action: @escaping () -> Void) -> (() -> Void)
 
     private let queue: DispatchQueue
-    private let now: () -> TimeInterval
+    /// Read on the lane, so `@Sendable`.
+    private let now: @Sendable () -> TimeInterval
     private let scheduleDeadline: DeadlineScheduler
 
     package init(label: String = "Vitruvian.Pasteboard.general",
-         now: @escaping () -> TimeInterval = {
+         now: @escaping @Sendable () -> TimeInterval = {
              TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
          },
          scheduleDeadline: DeadlineScheduler? = nil) {

@@ -173,7 +173,8 @@ struct ClipboardHistoryAccessTests {
         }
     }
 
-    private final class TestClock {
+    /// The lock guards the time, so the lane may read it from its queue.
+    private nonisolated final class TestClock: @unchecked Sendable {
         private let lock = NSLock()
         private var value: TimeInterval = 0
 

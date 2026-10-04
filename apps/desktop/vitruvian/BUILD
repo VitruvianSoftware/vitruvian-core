@@ -422,7 +422,8 @@ swift_binary(
 )
 
 # PROBE (reverted before merge): lists the closures Swift 6 mode guards with a
-# run-time main-thread check, each a call to swift_task_reportUnexpectedExecutor.
+# run-time main-thread check: calls to swift_task_reportUnexpectedExecutor or
+# swift_task_isCurrentExecutor.
 genrule(
     name = "tests_executor_checks",
     srcs = [":unit_tests_bin"],
@@ -432,7 +433,7 @@ for f in $(SRCS); do
   case "$$f" in
     *unit_tests_bin) xcrun objdump -dr --no-show-raw-insn "$$f" ;;
   esac
-done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_reportUnexpectedExecutor/ { print fn }' \\
+done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_(reportUnexpectedExecutor|isCurrentExecutor)/ { print fn }' \\
   | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle \\
   | grep -E '(^| )VitruvianTests[.]' > $@ || true
 echo "PROBE executor checks: $$(wc -l < $@)" >&2
