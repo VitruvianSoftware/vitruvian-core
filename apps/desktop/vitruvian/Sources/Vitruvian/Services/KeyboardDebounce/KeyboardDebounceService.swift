@@ -122,10 +122,7 @@ package final class KeyboardDebounceService: ObservableObject {
             CFMachPortInvalidate(tap)
         }
         if let runLoop = snapshot.runLoop {
-            CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
-                CFRunLoopStop(runLoop)
-            }
-            CFRunLoopWakeUp(runLoop)
+            TapThreadRunLoop.stop(runLoop)
         } else if !snapshot.threadExists {
             lifecycleLock.withLock {
                 shouldStopTapThread = false

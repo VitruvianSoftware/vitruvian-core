@@ -71,6 +71,12 @@ package final class NotchLockScreenService {
         var interface: UInt32 = 0
         AudioServicesSetProperty(kAudioServicesPropertyIsUISound, UInt32(MemoryLayout<SystemSoundID>.size), &sound,
                                  UInt32(MemoryLayout<UInt32>.size), &interface)
+        Self.play(sound)
+    }
+
+    /// The completion arrives on a thread of the system's choosing, so it is
+    /// written here, outside the main actor.
+    nonisolated private static func play(_ sound: SystemSoundID) {
         AudioServicesPlaySystemSoundWithCompletion(sound) { AudioServicesDisposeSystemSoundID(sound) }
     }
 

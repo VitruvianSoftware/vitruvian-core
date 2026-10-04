@@ -233,10 +233,7 @@ package final class SuperKeyService: ObservableObject {
         if let tap = snapshot.tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let mouseTap = snapshot.mouseTap { CGEvent.tapEnable(tap: mouseTap, enable: false) }
         if let runLoop = snapshot.runLoop {
-            CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
-                CFRunLoopStop(runLoop)
-            }
-            CFRunLoopWakeUp(runLoop)
+            TapThreadRunLoop.stop(runLoop)
         } else if !snapshot.threadExists {
             lifecycleLock.withLock {
                 shouldStopTapThread = false

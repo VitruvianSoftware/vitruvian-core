@@ -198,11 +198,7 @@ package final class MiddleClickService: ObservableObject {
                 | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
                 | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
                 | CGEventMask(1 << CGEventType.rightMouseDragged.rawValue),
-            callback: { _, type, event, userInfo in
-                guard let userInfo else { return Unmanaged.passUnretained(event) }
-                let service = Unmanaged<MiddleClickService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
-            },
+            callback: Self.eventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return }
 
@@ -477,6 +473,15 @@ package final class MiddleClickService: ObservableObject {
     }
 
     // MARK: - Event tap (pointer thread)
+
+    /// Runs on the pointer thread, so it is written here, outside the main
+    /// actor: a closure written in `start()` would check for the main thread
+    /// first in Swift 6 mode, and stop the app on the first click.
+    nonisolated private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else { return Unmanaged.passUnretained(event) }
+        let service = Unmanaged<MiddleClickService>.fromOpaque(userInfo).takeUnretainedValue()
+        return service.handle(type: type, event: event)
+    }
 
     nonisolated private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
