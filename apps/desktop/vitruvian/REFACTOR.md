@@ -2210,6 +2210,8 @@ down on the way out.
   that `deinit` reads it once nothing else holds the object.
 - **Not `isolated deinit`:** Swift 6.2's isolated `deinit` needs the macOS
   15.4 runtime, and the app supports macOS 14.
+- **Measured** (Swift 6 mode, batch mode off): the 9 are gone and nothing
+  new appeared; **70 errors in 35 files** remain.
 
 ## Step 7: test-suite hygiene
 
