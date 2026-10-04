@@ -66,7 +66,8 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
     nonisolated(unsafe) private var routingContext: NSObject?
     private var routingContextID: String?
     /// The backup check, scheduled only while a stream is live.
-    private var pollTimer: Timer?
+    // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+    nonisolated(unsafe) private var pollTimer: Timer?
     private var contextObservers: [NSObjectProtocol] = []
     /// Called on the main thread when the connection or speaker changes.
     private var onChange: (() -> Void)?

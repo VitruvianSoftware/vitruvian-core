@@ -76,9 +76,10 @@ package final class Permissions: ObservableObject {
         case granted, denied, undetermined, unknown
     }
 
-    private var activePermissionTimer: Timer?
-    private var activationObserver: NSObjectProtocol?
-    private var defaultsObserver: NSObjectProtocol?
+    // `nonisolated(unsafe)`: `deinit` reads them too, once nothing else holds the object.
+    nonisolated(unsafe) private var activePermissionTimer: Timer?
+    nonisolated(unsafe) private var activationObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var defaultsObserver: NSObjectProtocol?
     private var permissionSurfaceDemands: Set<UUID> = []
     private var currentPollInterval: TimeInterval?
 

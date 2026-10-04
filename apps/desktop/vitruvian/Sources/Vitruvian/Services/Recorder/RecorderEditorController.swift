@@ -56,7 +56,8 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     package var canUndo: Bool { !undoStack.isEmpty }
     package var canRedo: Bool { !redoStack.isEmpty }
 
-    private var timeObserver: Any?
+    // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+    nonisolated(unsafe) private var timeObserver: Any?
     private var thumbnailTask: Task<Void, Never>?
     private var waveformTask: Task<Void, Never>?
     private var previewTask: Task<Void, Never>?

@@ -985,7 +985,8 @@ private final class NotchCanvas: NSView {
     /// the material stayed a frame at its old place when the window grew to
     /// open, cutting the island in half.
     private var stage = CGSize.zero
-    private(set) var backdropDisplayLink: CADisplayLink?
+    // `nonisolated(unsafe)`: `deinit` reads it too, once nothing else holds the object.
+    nonisolated(unsafe) private(set) var backdropDisplayLink: CADisplayLink?
     private lazy var backdropTick = NotchBackdropTick(canvas: self)
     private(set) var backdropTicks = 0
     private let activationButton = NotchActivationButton()

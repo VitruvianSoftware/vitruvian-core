@@ -2201,6 +2201,18 @@ reads as a send.
 - **Measured** (Swift 6 mode, batch mode off): the 20 are gone and nothing
   new appeared; **79 errors in 39 files** remain.
 
+Landed (6zzc, main-actor `deinit`s): 9 of the 99. A main-actor class's
+`deinit` is nonisolated, so it cannot read a non-`Sendable` property: the
+timers, observers, XPC connection and display link these six classes tear
+down on the way out.
+
+- **The fix:** each such property is `nonisolated(unsafe)`, with a comment
+  that `deinit` reads it once nothing else holds the object.
+- **Not `isolated deinit`:** Swift 6.2's isolated `deinit` needs the macOS
+  15.4 runtime, and the app supports macOS 14.
+- **Measured** (Swift 6 mode, batch mode off): the 9 are gone and nothing
+  new appeared; **70 errors in 35 files** remain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
