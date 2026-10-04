@@ -917,7 +917,8 @@ is that notice. Add an entry for every change to upstream files.
     and `automationStatus(for:)` are `nonisolated`; and the two observers
     and the polling timer run through `MainActor.assumeIsolated`.
   - `Services/Switcher/WindowActivator.swift`,
-    `Services/Switcher/WindowPreviewProvider.swift` and
+    `Services/Switcher/WindowPreviewProvider.swift`,
+    `Services/Switcher/WindowEnumerator.swift` and
     `Services/QuickTools/ScreenshotCaptureEngine.swift` read the mirrored
     grants.
   - `Services/CommandBar/CommandBarCatalog.swift`: five builders that read

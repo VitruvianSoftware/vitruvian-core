@@ -133,7 +133,7 @@ package enum WindowEnumerator {
             guard ownWindowTitles[windowID] == nil else { continue }
             ownWindowTitles[windowID] = window.title.isEmpty ? AppInfo.name : window.title
         }
-        return Snapshot(accessibilityGranted: Permissions.shared.accessibility,
+        return Snapshot(accessibilityGranted: Permissions.accessibilityGranted,
                         runningApps: runningApps,
                         ownWindowTitles: ownWindowTitles,
                         screenFrames: NSScreen.screens.map(\.frame),
