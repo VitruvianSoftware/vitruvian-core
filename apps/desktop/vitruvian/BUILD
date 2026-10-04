@@ -232,6 +232,26 @@ macos_command_line_application(
     deps = [":FanControlHelperLib"],
 )
 
+# PROBE (reverted before merge): lists the closures Swift 6 mode guards with a
+# run-time main-thread check, each a call to swift_task_reportUnexpectedExecutor.
+genrule(
+    name = "now_playing_executor_checks",
+    srcs = [":VitruvianNowPlayingLib"],
+    outs = ["now_playing_executor_checks.txt"],
+    cmd = """
+for f in $(SRCS); do
+  case "$$f" in
+    *.a) xcrun objdump -dr --no-show-raw-insn "$$f" ;;
+  esac
+done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_reportUnexpectedExecutor/ { print fn }' \\
+  | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle > $@
+echo "PROBE executor checks: $$(wc -l < $@)" >&2
+cat $@ >&2
+""",
+    local = True,
+    target_compatible_with = MACOS_ONLY,
+)
+
 # Now Playing is read by /usr/bin/perl (Resources/now-playing.pl) loading this
 # library from Contents/Frameworks. Two of its files are VitruvianServices
 # sources too, whose `package` declarations need the package name.
@@ -239,6 +259,12 @@ swift_library(
     name = "VitruvianNowPlayingLib",
     package_name = SWIFT_PACKAGE,
     srcs = NOW_PLAYING_SOURCES,
+    # PROBE (reverted before merge): Swift 6 mode, one frontend per file.
+    copts = ["-continue-building-after-errors"],
+    features = [
+        "swift.enable_v6",
+        "-swift.enable_batch_mode",
+    ],
     module_name = "VitruvianNowPlaying",
     target_compatible_with = MACOS_ONLY,
 )
@@ -444,7 +470,11 @@ sh_test(
         "Vitruvian",
         "$(rootpaths :Vitruvian)",
     ],
-    data = [":Vitruvian"],
+    data = [
+        ":Vitruvian",
+        # PROBE (reverted before merge): builds the list above.
+        ":now_playing_executor_checks",
+    ],
     tags = [
         "manual",
         "no-remote",
