@@ -1292,6 +1292,14 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/ProcessNameTests.swift`, `PointerScreenTests.swift` and
     `ScrollingTitleMotionTests.swift` call these, and
     `Tests/generate_sources.py` no longer copies them.
+  - `Tests/PointerDisplayLookupTests.swift`: the stand-in screen, which still
+    takes a copy of `withMouse`, chooses through the module's helper.
+- **2026-10-04**: `Tests/SpeedTestTests.swift` fires the download time box
+  only once the speed test has counted a chunk's bytes. The fixture finishes
+  the first chunk and leaves the second unanswered: the delegate asks for the
+  second only after counting the first. Before, the time box could fire
+  between the fixture handing over the bytes and the delegate receiving them,
+  and measure no download.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
