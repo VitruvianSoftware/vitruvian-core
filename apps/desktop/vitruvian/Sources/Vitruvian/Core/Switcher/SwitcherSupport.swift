@@ -105,7 +105,8 @@ package enum SwitcherAppActivationRoute: Equatable {
 
 /// Shared by the bounded focus passes on the main thread. Once a pass sees
 /// a newer user action, the remaining passes cannot reclaim the old target.
-package final class SwitcherWindowFocusRetryState {
+/// Every pass runs on the main thread, so it is `@unchecked Sendable`.
+package final class SwitcherWindowFocusRetryState: @unchecked Sendable {
     package let targetStartedMinimized: Bool
     package let knownWindowIDs: Set<CGWindowID>
     package private(set) var targetWasObservedRestored: Bool

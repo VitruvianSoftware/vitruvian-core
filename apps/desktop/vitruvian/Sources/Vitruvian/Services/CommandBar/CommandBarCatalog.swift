@@ -1019,6 +1019,9 @@ package enum CommandBarCatalog {
         // is the one offered.
         var seen = Set<String>()
         return items.enumerated().compactMap { index, item in
+            // The menu item's element is an immutable reference to the app's
+            // menu, pressed on the main thread when the row runs.
+            nonisolated(unsafe) let item = item
             let path = item.path.joined(separator: " › ")
             guard seen.insert(path + "\u{1}" + item.title).inserted else { return nil }
             return CommandBarEntry(

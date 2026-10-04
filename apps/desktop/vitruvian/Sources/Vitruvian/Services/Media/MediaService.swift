@@ -1136,8 +1136,9 @@ package final class MediaService: ObservableObject {
         return try result.get()
     }
 
+    /// `operation` is handed to the task that runs it, so it is `sending`.
     nonisolated private func runAsync<T>(token: MediaCancellationToken,
-                             _ operation: @escaping () async throws -> T) throws -> T {
+                             _ operation: sending @escaping () async throws -> T) throws -> T {
         let semaphore = DispatchSemaphore(value: 0)
         let resultBox = AsyncResultBox<T>()
 

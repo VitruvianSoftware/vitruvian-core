@@ -1001,9 +1001,13 @@ private func autoQuitAXCallback(_ observer: AXObserver,
                                 _ refcon: UnsafeMutableRawPointer?) {
     guard let refcon else { return }
     let service = Unmanaged<AutoQuitService>.fromOpaque(refcon).takeUnretainedValue()
-    // Each observer's source is on the main run loop.
+    // Each observer's source is on the main run loop, so the callback's
+    // arguments never leave the main thread.
+    nonisolated(unsafe) let observer = observer
+    nonisolated(unsafe) let element = element
+    let notification = notification as String
     MainActor.assumeIsolated {
-        service.handleAX(observer: observer, element: element, notification: notification as String)
+        service.handleAX(observer: observer, element: element, notification: notification)
     }
 }
 

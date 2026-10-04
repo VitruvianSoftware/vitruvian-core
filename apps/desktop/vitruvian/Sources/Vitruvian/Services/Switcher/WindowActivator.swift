@@ -978,7 +978,9 @@ fileprivate final class SwitcherPendingWindowClose: @unchecked Sendable {
     }
 }
 
-private final class SwitcherAppActivationRetryState {
+/// Made and read by the activation passes, all on the main thread, where its
+/// workspace observer is delivered too, so it is `@unchecked Sendable`.
+private final class SwitcherAppActivationRetryState: @unchecked Sendable {
     private let targetPID: pid_t
     private var workspaceObserver: Any?
     private(set) var targetWasObservedFrontmost: Bool

@@ -28,7 +28,7 @@ package struct DockPreviewFrameRestoration {
         }
     }
 
-    package func restoration(for item: SwitcherItem, isCurrent: @escaping () -> Bool) -> (() -> Void)? {
+    package func restoration(for item: SwitcherItem, isCurrent: @escaping @MainActor @Sendable () -> Bool) -> (() -> Void)? {
         guard let windowID = item.windowID, !item.isFullscreen, !item.isMinimized,
               !item.isOnHiddenSpace,
               let window = windows.first(where: {
@@ -53,7 +53,7 @@ package struct DockPreviewFrameRestoration {
     }
 
     private static func restore(_ item: SwitcherItem, original: CGRect, screen: Screen,
-                                heldVisibleFrame: CGRect, isCurrent: @escaping () -> Bool, attempt: Int) {
+                                heldVisibleFrame: CGRect, isCurrent: @escaping @MainActor @Sendable () -> Bool, attempt: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.15 : 0.05)) {
             guard isCurrent(), let currentScreen = Self.screen(screen.id),
                   axFrame(currentScreen.frame) == screen.frame,

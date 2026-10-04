@@ -152,10 +152,8 @@ package final class MouseAccelerationService {
     // The manager is scheduled on the main run loop, so this runs on the main thread.
     nonisolated private static let deviceChanged: IOHIDDeviceCallback = { context, _, _, _ in
         guard let context else { return }
-        MainActor.assumeIsolated {
-            let service = Unmanaged<MouseAccelerationService>.fromOpaque(context).takeUnretainedValue()
-            service.scheduleDeviceReapplication()
-        }
+        let service = Unmanaged<MouseAccelerationService>.fromOpaque(context).takeUnretainedValue()
+        MainActor.assumeIsolated { service.scheduleDeviceReapplication() }
     }
 
     private func scheduleDeviceReapplication() {

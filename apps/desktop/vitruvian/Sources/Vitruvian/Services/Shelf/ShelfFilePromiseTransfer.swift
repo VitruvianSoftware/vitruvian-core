@@ -8,7 +8,9 @@ import VitruvianDesign
 /// Copies each file inside AppKit's coordinated reader, before exposing it to
 /// the shelf. Cancellation stops our copies, not the sending application's
 /// write; its eventual completion still cleans the private incoming directory.
-package final class ShelfFilePromiseTransfer {
+/// The counts and copies sit under `lock`, and `completion` runs once, on the
+/// main thread, so it is `@unchecked Sendable`.
+package final class ShelfFilePromiseTransfer: @unchecked Sendable {
     package struct Result {
         package let urls: [URL]
         /// The receiver each URL came from, in the same order.
