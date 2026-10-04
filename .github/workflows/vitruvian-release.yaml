@@ -1,0 +1,76 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please for the Vitruvian macOS app:
+# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-vX.Y.Z).
+name: vitruvian-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/vitruvian/**"
+      - ".github/workflows/vitruvian-release.yaml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package and upload (e.g. vitruvian-v3.4.1). Empty runs release-please."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # Never cancel a release run; serialize them on the branch so rapid merges
+    # to main cannot race the release PR / tag creation (issue #461).
+    concurrency:
+      group: vitruvian-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/desktop/vitruvian--version'] }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: ${{ inputs.tag == '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: apps/desktop/vitruvian/release-please-config.json
+          manifest-file: apps/desktop/vitruvian/.release-please-manifest.json
+          target-branch: main
