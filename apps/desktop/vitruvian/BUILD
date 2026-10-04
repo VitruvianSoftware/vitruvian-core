@@ -398,6 +398,12 @@ swift_binary(
         allow_empty = True,
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
+    # PROBE (reverted before merge): Swift 6 mode, one frontend per file.
+    copts = ["-continue-building-after-errors"],
+    features = [
+        "swift.enable_v6",
+        "-swift.enable_batch_mode",
+    ],
     module_name = "VitruvianTests",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
@@ -411,6 +417,28 @@ swift_binary(
     ],
 )
 
+# PROBE (reverted before merge): lists the closures Swift 6 mode guards with a
+# run-time main-thread check, each a call to swift_task_reportUnexpectedExecutor.
+genrule(
+    name = "tests_executor_checks",
+    srcs = [":unit_tests_bin"],
+    outs = ["tests_executor_checks.txt"],
+    cmd = """
+for f in $(SRCS); do
+  case "$$f" in
+    *unit_tests_bin) xcrun objdump -dr --no-show-raw-insn "$$f" ;;
+  esac
+done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_reportUnexpectedExecutor/ { print fn }' \\
+  | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle \\
+  | grep -E '(^| )VitruvianTests[.]' > $@ || true
+echo "PROBE executor checks: $$(wc -l < $@)" >&2
+cat $@ >&2
+""",
+    local = True,
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+)
+
 sh_test(
     name = "unit_tests",
     size = "large",
@@ -422,6 +450,8 @@ sh_test(
     data = [
         "build.sh",
         ":unit_tests_bin",
+        # PROBE (reverted before merge): builds the list above.
+        ":tests_executor_checks",
     ] + glob([
         "Resources/**",
         "Sources/**",
