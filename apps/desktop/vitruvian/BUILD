@@ -190,6 +190,13 @@ swift_library(
         ["Sources/Vitruvian/**/*.swift"],
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ),
+    # PROBE (reverted before merge): Swift 6 mode, one frontend per file
+    # so no file's errors hide another's region checks.
+    copts = ["-continue-building-after-errors"],
+    features = [
+        "swift.enable_v6",
+        "-swift.enable_batch_mode",
+    ],
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
     deps = [
@@ -201,6 +208,26 @@ swift_library(
         ":VitruvianServices",
         ":VitruvianUI",
     ],
+)
+
+# PROBE (reverted before merge): lists the closures Swift 6 mode guards with a
+# run-time main-thread check, each a call to swift_task_reportUnexpectedExecutor.
+genrule(
+    name = "lib_executor_checks",
+    srcs = [":VitruvianLib"],
+    outs = ["lib_executor_checks.txt"],
+    cmd = """
+for f in $(locations :VitruvianLib); do
+  case "$$f" in
+    *.a) xcrun objdump -dr --no-show-raw-insn "$$f" ;;
+  esac
+done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_reportUnexpectedExecutor/ { print fn }' \\
+  | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle > $@
+echo "PROBE executor checks: $$(wc -l < $@)" >&2
+cat $@ >&2
+""",
+    local = True,
+    target_compatible_with = MACOS_ONLY,
 )
 
 # The privileged fan-control helper, registered as a launchd daemon from
@@ -436,7 +463,11 @@ sh_test(
         "Vitruvian",
         "$(rootpaths :Vitruvian)",
     ],
-    data = [":Vitruvian"],
+    data = [
+        ":Vitruvian",
+        # PROBE (reverted before merge): builds the list above.
+        ":lib_executor_checks",
+    ],
     tags = [
         "manual",
         "no-remote",
