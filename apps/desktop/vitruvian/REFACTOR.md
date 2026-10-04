@@ -2409,6 +2409,28 @@ in 6zzi and 6zzj had left it out.
     in its three adapter files. Each is global or static state that does not say
     what guards it: a lock, a serial queue, or the watch process alone.
 
+Landed (6zzl, the Now Playing helper in Swift 6 mode): it builds in the Swift
+6 language mode, so the app, its modules and both helpers all do now.
+
+- **The 20 errors:** each property is `nonisolated(unsafe)`, grouped with
+  the guard it already had:
+  - `lock` for the six that track the chosen player;
+  - the serial `work` queue for the four that track a queue request;
+  - `lifetimeLock` for the four that more than one queue reads;
+  - the watch process for three: it sets `watching` and `readAt` before its
+    first read, and its reads, which keep `previousArtwork`, run one at a
+    time;
+  - set once, then only read, for the two MediaRemote handles and
+    `includeOtherPlayers`.
+- **Two more errors** showed once those were gone: `pending` and
+  `commandFramer`, locals of the watch that only the main queue touches. They
+  are `nonisolated(unsafe)` too, and `refresh()`, which uses `pending`, is
+  `@Sendable`.
+- **The run-time check:** two closures check for the main thread when they
+  start. Both are blocks the watch queues on the main queue.
+- **Still in Swift 5 mode:** the tests, and `make_icon`, the build tool that
+  draws the app icon. The lists in earlier steps left `make_icon` out.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

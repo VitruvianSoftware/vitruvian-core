@@ -246,7 +246,7 @@ public func vitruvianNowPlayingWatch() {
                  "kMRMediaRemotePlayerNowPlayingInfoDidChangeNotification",
                  "kMRMediaRemoteNowPlayingPlayerStateDidChange",
                  "kMRMediaRemoteNowPlayingApplicationClientStateDidChange"]
-    func refresh() {
+    @Sendable func refresh() {
         pending?.cancel()
         let work = DispatchWorkItem { vitruvianNowPlayingGet() }
         pending = work
