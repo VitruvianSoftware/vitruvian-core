@@ -2351,6 +2351,10 @@ that runs it.
   AppKit's event monitors, animations and sheets, and dispatch sources and
   IOKit ports set to the main queue. The CoreAudio and HID callbacks were
   listed only for the main-queue blocks inside them.
+- **Measured** (Swift 6 mode): no errors, and 1,736 checked functions,
+  exactly the nine fewer. The other differences are only renumbering: the
+  closures after a removed tap callback in the same `start()` count from one
+  lower. The unit tests and self test pass.
 
 ## Step 7: test-suite hygiene
 
