@@ -60,7 +60,7 @@ package enum SystemInfo {
     package static func memoryUsage() -> (used: UInt64, appUsed: UInt64, total: UInt64, compressed: UInt64, cached: UInt64, swapUsed: UInt64?)? {
         guard let stats = VMStatisticsDecoder.read() else { return nil }
         let total = ProcessInfo.processInfo.physicalMemory
-        let pageSize = UInt64(vm_kernel_page_size)
+        let pageSize = VMStatisticsDecoder.kernelPageSize
         let tagStoragePages = VMStatisticsDecoder.validatedTagStoragePages(
             stats.tagStoragePages,
             totalBytes: total,

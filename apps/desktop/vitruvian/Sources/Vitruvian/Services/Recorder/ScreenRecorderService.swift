@@ -27,7 +27,13 @@ package final class RecorderSelectionAudioOptions: ObservableObject {
 /// One recording, from the first frame to the closed file. Everything that
 /// only exists while recording lives here and dies with it, so the service
 /// itself keeps nothing running between recordings.
-private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
+///
+/// The main actor owns it; `start()` and `stop()` run on the cooperative pool
+/// and the samples arrive on the capture and audio queues. `startGate` orders
+/// start against stop, the callbacks are set before `start()` and never after,
+/// what the capture side reads is immutable or a flag, and the writer is fed
+/// on `writerQueue`, so it is `@unchecked Sendable`.
+private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate, @unchecked Sendable {
     let take: RecorderTakeStore.Take
     let region: RecorderSupport.Region
     private let engine = RecorderCaptureEngine()
@@ -38,7 +44,11 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
     /// one. Both it and the stream's audio run whenever the Mac's sound is
     /// wanted; which of the two the file receives is settled in `start()`.
     private var systemAudioTap: RecorderSystemAudioTap?
-    private var writesTapAudio = false
+    /// Settled in `start()` before the stream runs. The capture side reads
+    /// it, so a tap that then fails to start is withdrawn through a flag.
+    private var prefersTapAudio = false
+    private let tapAudioWithdrawn = RecorderAudioFlag()
+    private var writesTapAudio: Bool { prefersTapAudio && !tapAudioWithdrawn.value }
     /// Raised when an output device change costs the tap its reader mid
     /// recording. One way, and read from the audio threads, so it is the flag
     /// type rather than a plain Bool.
@@ -99,7 +109,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         // A tap that has not yet heard sound on this Mac may be waiting on a
         // permission, and it answers that with silence, not an error. The
         // stream's sound is written until the tap has proven itself.
-        writesTapAudio = tap != nil
+        prefersTapAudio = tap != nil
             && UserDefaults.standard.bool(forKey: DefaultsKey.recorderSystemAudioTapVerified)
         tap?.onSample = { [weak self] sampleBuffer in
             self?.appendTapSample(sampleBuffer)
@@ -132,7 +142,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
             // A trusted tap that could not build a reader this time (no output
             // device, or a permission just revoked) would otherwise leave the
             // file's sound silent, since the stream's copy is being dropped.
-            if writesTapAudio, !started { writesTapAudio = false }
+            if writesTapAudio, !started { tapAudioWithdrawn.raise() }
         }
         guard startGate.isAuthorized else {
             await tap?.stop()
@@ -154,6 +164,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         // cooperative pool however main-actor the caller was (SE-0338). The
         // two samplers install AppKit event monitors, which belong to the
         // main thread's dispatch, so they are started and stopped there.
+        let pointer = pointer, typing = typing
         await MainActor.run {
             pointer.start()
             typing.start()
@@ -201,6 +212,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
                                                      streamHeardSound: streamHeard.value),
                 forKey: DefaultsKey.recorderSystemAudioTapVerified)
         }
+        let pointer = pointer, typing = typing
         let (track, typingTrack) = await MainActor.run { (pointer.stop(), typing.stop()) }
         writerQueue.sync {}
         let written = await writer.finish(at: end)

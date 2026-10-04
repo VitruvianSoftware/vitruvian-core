@@ -30,6 +30,9 @@ package enum VMStatisticsDecoder {
     package static let rev2Count = mach_msg_type_number_t(VITRUVIAN_HOST_VM_INFO64_REV2_COUNT)
     package static let rev3Count = mach_msg_type_number_t(VITRUVIAN_HOST_VM_INFO64_REV3_COUNT)
 
+    /// The page size `read()` counts in.
+    package static var kernelPageSize: UInt64 { vitruvian_vm_kernel_page_size() }
+
     package static func read() -> VMStatisticsSnapshot? {
         var raw = vitruvian_vm_statistics64_rev3_t()
         var returnedCount = mach_msg_type_number_t()

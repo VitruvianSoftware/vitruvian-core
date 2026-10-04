@@ -152,7 +152,7 @@ package final class KillProcessService: ObservableObject {
     /// even when the cache was already fresh, so a caller that needs the
     /// current snapshot (the Command Bar's lazy load) can sequence off it
     /// instead of guessing at a delay.
-    nonisolated package func refresh(force: Bool = false, completion: (() -> Void)? = nil) {
+    nonisolated package func refresh(force: Bool = false, completion: (@MainActor @Sendable () -> Void)? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { self.refresh(force: force, completion: completion) }
             return
@@ -161,7 +161,7 @@ package final class KillProcessService: ObservableObject {
         MainActor.assumeIsolated { refreshOnMain(force: force, completion: completion) }
     }
 
-    private func refreshOnMain(force: Bool, completion: (() -> Void)?) {
+    private func refreshOnMain(force: Bool, completion: (@MainActor @Sendable () -> Void)?) {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         let fresh = !force && now - lastRefresh < cacheFreshSeconds
@@ -212,7 +212,7 @@ package final class KillProcessService: ObservableObject {
               name: String,
               startedAt: UInt64,
               force: Bool,
-              completion: (() -> Void)? = nil) {
+              completion: (@MainActor @Sendable () -> Void)? = nil) {
         guard !Self.isProtected(pid: pid, name: name) else {
             completion?()
             return
@@ -312,7 +312,7 @@ package final class KillProcessService: ObservableObject {
     /// reconciles with a real `ps` snapshot shortly after - long enough for
     /// the kernel to have reaped the process, short enough nobody notices
     /// the wait.
-    nonisolated private func finishKill(removed: Set<pid_t>, completion: (() -> Void)? = nil) {
+    nonisolated private func finishKill(removed: Set<pid_t>, completion: (@MainActor @Sendable () -> Void)? = nil) {
         DispatchQueue.main.async {
             if !removed.isEmpty {
                 self.entries.removeAll { removed.contains($0.pid) }
@@ -366,10 +366,12 @@ package final class KillProcessService: ObservableObject {
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil, queue: .main
         ) { [weak self] note in
+            // Read here: the notification itself never crosses to the main actor.
+            let terminated = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                .processIdentifier
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let terminated = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                      terminated.processIdentifier == self?.pendingRestartPID else { return }
+                guard let terminated, terminated == self?.pendingRestartPID else { return }
                 self?.completeRestart()
             }
         }

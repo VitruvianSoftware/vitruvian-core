@@ -16,7 +16,11 @@ import VitruvianDesign
 ///
 /// Nothing here exists between recordings: the thread, the monitor and the
 /// buffer are all created in `start()` and gone after `stop()`.
-package final class RecorderPointerSampler {
+///
+/// `start()` and `stop()` run on the main thread, which alone touches the
+/// thread and the monitor; everything the sampling thread and the monitor
+/// share sits under `lock`, so it is `@unchecked Sendable`.
+package final class RecorderPointerSampler: @unchecked Sendable {
 
     private let region: RecorderSupport.Region
     private let displayBounds: CGRect

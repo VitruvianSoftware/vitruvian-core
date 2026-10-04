@@ -280,7 +280,9 @@ package final class Permissions: ObservableObject {
     /// Shows the system Accessibility prompt (once per TCC reset) and floats
     /// the little guide card for the System Settings round trip.
     package func requestAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        // `kAXTrustedCheckOptionPrompt`'s value: Swift 6 refuses to read the
+        // imported constant, which comes in as a mutable C global.
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         AXIsProcessTrustedWithOptions(options)
         refreshActivePermissions()
         if !accessibility {
