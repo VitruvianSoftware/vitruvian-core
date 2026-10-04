@@ -1228,6 +1228,15 @@ is that notice. Add an entry for every change to upstream files.
     `Services/AutoQuit/AutoQuitService.swift`,
     `Services/Audio/AppVolumeMixer.swift` and
     `Services/Snippets/TextSnippetService.swift`.
+- **2026-10-04**: Refactor step 6zzg (`REFACTOR.md`):
+  - `Services/QuickTools/ScreenshotCaptureEngine.swift`: only window IDs
+    cross to the main actor when finding the windows to exclude.
+  - `Services/Recorder/RecorderExporter.swift`: `Sendable`, with a
+    `@Sendable` progress callback, and `nonisolated(unsafe)` hand-offs into
+    the task group.
+  - `Services/Recorder/RecorderEditorController.swift`: the waveform tracks
+    and asset are handed over as `nonisolated(unsafe)` lets, and the
+    progress closures take their own `[weak self]`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

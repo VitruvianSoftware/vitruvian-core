@@ -179,7 +179,11 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     private func loadAudioWaveforms(_ tracks: [RecorderAudioSource: AVAssetTrack]) {
         waveformTask?.cancel()
         let duration = duration
-        let asset = sourceAsset
+        // Read only by the detached task below. The editor keeps just the
+        // tracks' keys, and AVFoundation loads assets and tracks from any
+        // thread.
+        nonisolated(unsafe) let tracks = tracks
+        nonisolated(unsafe) let asset = sourceAsset
         waveformTask = Task.detached(priority: .utility) { [weak self] in
             var waveforms: [RecorderAudioSource: [Float]] = [:]
             for source in RecorderAudioSource.allCases {
@@ -1333,7 +1337,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
             let failure = await exporter.export(take: take,
                                                 document: document,
                                                 output: output,
-                                                to: destination) { value in
+                                                to: destination) { [weak self] value in
                 DispatchQueue.main.async { [weak self] in
                     self?.exportProgress = value
                 }
@@ -1360,7 +1364,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
         shareTask = Task { @MainActor [weak self] in
             let result = await exporter.exportForSharing(
                 take: take,
-                document: document) { value in
+                document: document) { [weak self] value in
                     DispatchQueue.main.async { [weak self] in
                         self?.exportProgress = value
                     }

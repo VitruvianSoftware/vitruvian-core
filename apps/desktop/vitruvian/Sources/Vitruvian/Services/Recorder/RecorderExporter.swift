@@ -14,7 +14,10 @@ import VitruvianDesign
 /// session: it is the only route that gives real control over the encoder
 /// settings and the output size, and it keeps peak memory flat, because the
 /// pixel buffer pool recycles instead of growing with the length of the clip.
-package final class RecorderExporter {
+///
+/// Shared by the editor, which cancels it, and the export it runs; its only
+/// state is the lock-guarded cancel flag.
+package final class RecorderExporter: Sendable {
 
     package final class ShareArtifact {
         package let fileURL: URL
@@ -57,7 +60,7 @@ package final class RecorderExporter {
                 document: RecorderEditDocument,
                 output: Output,
                 to destination: URL,
-                progress: @escaping (Double) -> Void) async -> Failure? {
+                progress: @escaping @Sendable (Double) -> Void) async -> Failure? {
         let asset = AVURLAsset(url: take.videoURL)
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first,
               let durationTime = try? await asset.load(.duration)
@@ -116,7 +119,7 @@ package final class RecorderExporter {
     /// take owned by the recorder and the current edit document.
     package func exportForSharing(take: RecorderTakeStore.Take,
                           document: RecorderEditDocument,
-                          progress: @escaping (Double) -> Void) async
+                          progress: @escaping @Sendable (Double) -> Void) async
         -> (artifact: ShareArtifact?, failure: Failure?) {
         guard RecorderTakeStore.shared.owns(take) else {
             return (nil, .invalidShareArtifact)
@@ -191,7 +194,7 @@ package final class RecorderExporter {
                              frameRate: Int,
                              sharingBitRateScale: Double? = nil,
                              to destination: URL,
-                             progress: @escaping (Double) -> Void) async -> Failure? {
+                             progress: @escaping @Sendable (Double) -> Void) async -> Failure? {
         let duration = CMTimeGetSeconds((try? await asset.load(.duration)) ?? .zero)
         let track = RecorderPointerTrack.decoded(try? Data(contentsOf: pointerURL))
         // The trim and the cuts become one continuous asset first, so the
@@ -346,6 +349,11 @@ package final class RecorderExporter {
         let counter = FrameCounter()
 
         await withTaskGroup(of: Void.self) { group in
+            // Each input and its output are drained by one child task alone,
+            // and the reader and writer are touched again only once the group
+            // has finished.
+            nonisolated(unsafe) let videoInput = videoInput
+            nonisolated(unsafe) let videoOutput = videoOutput
             group.addTask { [cancelled] in
                 await Self.pump(input: videoInput,
                                 label: "recorder.export.video",
@@ -360,6 +368,8 @@ package final class RecorderExporter {
                 }
             }
             if let audioInput, let audioOutput {
+                nonisolated(unsafe) let audioInput = audioInput
+                nonisolated(unsafe) let audioOutput = audioOutput
                 group.addTask { [cancelled] in
                     await Self.pump(input: audioInput,
                                     label: "recorder.export.audio",
@@ -557,7 +567,7 @@ package final class RecorderExporter {
                            document: RecorderEditDocument,
                            sourceSize: CGSize,
                            to destination: URL,
-                           progress: @escaping (Double) -> Void) async -> Failure? {
+                           progress: @escaping @Sendable (Double) -> Void) async -> Failure? {
         let fps = document.resolvedGIFFrameRate
         let duration = CMTimeGetSeconds((try? await asset.load(.duration)) ?? .zero)
         // The GIF is the same finished video, sampled: the trim and the cuts

@@ -2298,6 +2298,27 @@ Landed (6zzf, values sent across threads): 18 of the 99.
 - **Measured** (Swift 6 mode, batch mode off): the 18 are gone and nothing
   new appeared; **13 errors in 3 files** remain.
 
+Landed (6zzg, screen capture and recorder export): the last 13 of the 99.
+
+- **Screenshot exclusions:** finding the app's own windows to leave out ran
+  on the main actor, so the shareable-content snapshot was sent there and
+  its windows sent back. Now only window IDs cross. The main-actor part
+  returns the IDs to exclude, and the snapshot is filtered where the
+  capture runs.
+- **Recorder export:**
+  - the exporter is `Sendable`, since its only state is the lock-guarded
+    cancel flag the editor flips;
+  - its progress callback is `@Sendable`, and each of the editor's two
+    progress closures takes its own `[weak self]`;
+  - the writer inputs and reader outputs cross into the task group as
+    `nonisolated(unsafe)` lets. Each is drained by one child task alone,
+    and the reader and writer are used again only after the group ends.
+- **Audio waveforms:** the loaded tracks and the source asset cross into
+  the detached task that reads them as `nonisolated(unsafe)` lets. The
+  editor keeps only the tracks' keys.
+- **Not `sending`:** Xcode 27 treats an `AVAsset` as non-`Sendable`; 6zzf's
+  probe rejected a `sending` closure that captured one.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
