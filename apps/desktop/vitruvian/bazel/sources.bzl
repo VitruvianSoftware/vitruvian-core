@@ -363,7 +363,6 @@ GENERATED_TEST_SOURCES = [
     "PointerScreen.swift",
     "PortManagerRefresh.swift",
     "PostUpdateStatusItemRecovery.swift",
-    "PreviewCapturePause.swift",
     "ProcessName.swift",
     "QuickLauncherBodies.swift",
     "QuickPaste.swift",

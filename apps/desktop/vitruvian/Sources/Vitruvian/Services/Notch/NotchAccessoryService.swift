@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import IOBluetooth
+@preconcurrency import IOBluetooth
 import VitruvianCore
 import VitruvianDesign
 

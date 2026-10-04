@@ -290,14 +290,6 @@ def main():
           + "".join(declaration(dock, prefix).replace("private func", "func", 1)
                     for prefix in ["    private func syncSpaceObservation()",
                                    "    private func stopSpaceObservation()"])
-          + "}\nextension DockPreviewScopeTests.WindowEnumerator {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/WindowEnumerator.swift",
-                        "    static func dockPreviewMayActivate(")
-          + "}\n")
-    write("PreviewCapturePause.swift", "import Foundation\n"
-          + "extension SwitcherModelFeatureTests.PreviewProvider {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/WindowPreviewProvider.swift",
-                        "    private static func captureIsPaused(").replace("private static", "static", 1)
           + "}\n")
     write("DockAutohideInput.swift", "import CoreGraphics\nimport Foundation\nextension DockAutohideHoldTests.Service {\n"
           + "".join(declaration(dock, prefix, scope="final class DockPreviewService:")

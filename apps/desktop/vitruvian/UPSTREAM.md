@@ -831,6 +831,25 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/ScrollInverter.swift` is `@MainActor`; its tap callback is
     `nonisolated` on its own line, and the tap-thread state is
     `nonisolated(unsafe)`.
+- **2026-10-03**: Refactor step 5k (`REFACTOR.md`):
+  - `NotchService.bindEvents` keeps the volume and battery bindings; the
+    other subscriptions moved to the new
+    `Services/Notch/NotchEventBindings.swift`, and their reactions moved to
+    the `eventBindings` wiring in `NotchService`, which also unbinds it on
+    teardown.
+  - `Tests/NotchTests.swift` runs the new `NotchEventBindingsTests`.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`):
+  - `Services/Switcher/WindowPreviewProvider.swift`: `captureIsPaused`
+    gains a `package` overload that takes the preferences and the frontmost
+    app's bundle identifier; the private one passes the system's.
+  - `Services/Switcher/WindowEnumerator.swift`: `dockPreviewMayActivate`
+    gains a `package` overload that takes the window, the preference and the
+    desktop query; the one the app calls passes the system's.
+  - `Tests/SwitcherModelFeatureTests.swift` and
+    `Tests/DockPreviewScopeTests.swift` check those overloads directly and
+    drop their stand-ins.
+  - `Tests/generate_sources.py` no longer copies `captureIsPaused` or
+    `dockPreviewMayActivate`.
 - **2026-10-03**: Refactor step 6zm (`REFACTOR.md`):
   - `Services/Display/BrightnessService.swift` is `@MainActor`; the state
     behind the key-thread lock, the state lock and the work queue is
@@ -925,6 +944,37 @@ is that notice. Add an entry for every change to upstream files.
     a grant are `@MainActor`.
   - `Tests/ScreenshotFeatureTests.swift`: the window capture's permission
     gate is looked for as `Permissions.accessibilityGranted`.
+- **2026-10-04**: Refactor step 6zs (`REFACTOR.md`):
+  - `@unchecked Sendable` lock-guarded cancellations in
+    `Services/AgentUsage/AgentUsageService.swift`,
+    `Core/Cleaner/CleanerSupport.swift`,
+    `Services/Uninstall/UninstallerSupport.swift` and
+    `Services/Media/MediaService.swift`, which also keeps the conversion
+    log in a new locked type.
+  - `Services/Metrics/SpeedTest.swift`: the time box's action is `@Sendable`.
+  - `Services/SuperKey/SuperKeyService.swift`: the mapping work is
+    `@Sendable`; CoreFoundation is a `@preconcurrency` import.
+  - `Services/Notch/NotchNotificationService.swift`: the reader reaches its
+    queue through a `nonisolated(unsafe)` local.
+  - `Services/Clipboard/ClipboardHistoryService.swift`: the resize observer
+    reads the panel from the notification.
+  - `Services/QuickTools/RecentCaptureService.swift`: the file manager is
+    `nonisolated(unsafe)`.
+  - `@preconcurrency` imports in
+    `Services/QuickTools/CameraPreviewService.swift` (AVFoundation),
+    `Services/Notch/NotchAccessoryService.swift` (IOBluetooth),
+    `Services/WindowLayout/WindowLayoutService.swift` and
+    `Services/WindowMaximizer.swift` (ApplicationServices), and
+    `Services/Notch/NotchMusicService.swift` (Dispatch).
+- **2026-10-04**: Refactor step 6zt (`REFACTOR.md`):
+  - `Services/TransientPaste.swift` is `@MainActor`; `shared`, init and
+    `paste` are `nonisolated`, `paste` keeps its main-thread check and runs
+    the new private `pasteOnMain`, the snapshot crosses to the lane through
+    `nonisolated(unsafe)` locals, the restore enters the main actor, and the
+    snapshot reader is `nonisolated`.
+  - `Services/Clipboard/ClipboardAutoClearService.swift` is `@MainActor`;
+    its observers and timer run through `MainActor.assumeIsolated`, and the
+    lock-guarded configuration generation is `nonisolated(unsafe)`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

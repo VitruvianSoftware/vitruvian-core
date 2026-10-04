@@ -152,7 +152,24 @@ package enum MediaServiceState: Equatable {
     case cancelled
 }
 
-private final class MediaCancellationToken {
+/// The last 8,000 characters a tool wrote, appended from its pipe's queue and
+/// read once it exits. Its text is behind the lock.
+private final class MediaToolLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var tail = ""
+
+    var text: String { lock.withLock { tail } }
+
+    func append(_ chunk: String) {
+        lock.withLock {
+            tail.append(chunk)
+            if tail.count > 8_000 { tail.removeFirst(tail.count - 8_000) }
+        }
+    }
+}
+
+// Its flag is behind the lock.
+private final class MediaCancellationToken: @unchecked Sendable {
     private let lock = NSLock()
     private var _isCancelled = false
 
@@ -392,15 +409,11 @@ package final class MediaService: ObservableObject {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        var log = ""
-        let logLock = NSLock()
+        let log = MediaToolLog()
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            logLock.lock()
             log.append(chunk)
-            if log.count > 8_000 { log.removeFirst(log.count - 8_000) }
-            logLock.unlock()
         }
         defer {
             pipe.fileHandleForReading.readabilityHandler = nil
@@ -418,9 +431,7 @@ package final class MediaService: ObservableObject {
             throw MediaFailureBox(.cancelled)
         }
         guard process.terminationStatus == 0 else {
-            logLock.lock()
-            let message = log.trimmingCharacters(in: .whitespacesAndNewlines)
-            logLock.unlock()
+            let message = log.text.trimmingCharacters(in: .whitespacesAndNewlines)
             throw MediaFailureBox(.failed(message.isEmpty ? "avconvert failed." : message))
         }
     }

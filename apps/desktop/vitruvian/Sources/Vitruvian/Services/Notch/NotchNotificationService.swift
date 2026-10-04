@@ -112,9 +112,11 @@ package final class NotchNotificationService: ObservableObject {
         guard monitoring, !reading, let reader else { return }
         reading = true
         let requested = generation
+        // Confined to `queue`, which reads it below.
+        nonisolated(unsafe) let queueReader = reader
         queue.async { [weak self] in
             NotchNotificationSources.refreshIfStale()
-            let snapshot = reader.read()
+            let snapshot = queueReader.read()
             DispatchQueue.main.async {
                 guard let self, self.generation == requested else { return }
                 self.reading = false
@@ -223,8 +225,10 @@ package final class NotchNotificationService: ObservableObject {
         openingID = id
         unavailableID = nil
         let requested = generation
+        // Confined to `queue`, which opens it below.
+        nonisolated(unsafe) let queueReader = reader
         queue.async { [weak self] in
-            let result = reader.open(id)
+            let result = queueReader.open(id)
             DispatchQueue.main.async {
                 guard let self, self.generation == requested else { completion(.unavailable); return }
                 if result == .unavailable, let identifier = self.sourceApplications[id],

@@ -3426,17 +3426,24 @@ enum SwitcherModelFeatureTests {
                    "an app paused in Dock Preview after the first launch leaves the switcher list alone")
             excludedAppsDefaults.removePersistentDomain(forName: excludedAppsSuite)
         }
-        let previewDefaults = PreviewProvider.UserDefaults.standard
-        previewDefaults.lists = [DefaultsKey.windowPreviewExcludedApps: ["com.example.vault"],
-                                 DefaultsKey.switcherPreviewExcludedApps: ["com.example.game"]]
-        PreviewProvider.NSWorkspace.shared.frontmostApplication = .init(bundleIdentifier: "com.example.vault")
-        suite.expect(PreviewProvider.captureIsPaused(excludedAppsKey: DefaultsKey.windowPreviewExcludedApps)
-                && !PreviewProvider.captureIsPaused(excludedAppsKey: DefaultsKey.switcherPreviewExcludedApps),
+        // The module's own check, with preferences of its own and the app in
+        // front passed in.
+        let previewSuite = "com.vitruviansoftware.vitruvian.tests.preview-pause"
+        let previewDefaults = UserDefaults(suiteName: previewSuite)!
+        previewDefaults.removePersistentDomain(forName: previewSuite)
+        previewDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
+        previewDefaults.set(["com.example.game"], forKey: DefaultsKey.switcherPreviewExcludedApps)
+        func previewPaused(_ key: String, front: String) -> Bool {
+            WindowPreviewProvider.captureIsPaused(excludedAppsKey: key, defaults: previewDefaults,
+                                                  frontmostBundleIdentifier: front)
+        }
+        suite.expect(previewPaused(DefaultsKey.windowPreviewExcludedApps, front: "com.example.vault")
+                && !previewPaused(DefaultsKey.switcherPreviewExcludedApps, front: "com.example.vault"),
                "an app on Dock Preview's list pauses only Dock Preview captures")
-        PreviewProvider.NSWorkspace.shared.frontmostApplication = .init(bundleIdentifier: "com.example.game")
-        suite.expect(!PreviewProvider.captureIsPaused(excludedAppsKey: DefaultsKey.windowPreviewExcludedApps)
-                && PreviewProvider.captureIsPaused(excludedAppsKey: DefaultsKey.switcherPreviewExcludedApps),
+        suite.expect(!previewPaused(DefaultsKey.windowPreviewExcludedApps, front: "com.example.game")
+                && previewPaused(DefaultsKey.switcherPreviewExcludedApps, front: "com.example.game"),
                "an app on the switcher's list pauses only switcher captures")
+        previewDefaults.removePersistentDomain(forName: previewSuite)
         let defaultSwitcherHints = SwitcherSupport.shortcutHints(for: .switcherDefault,
                                                                  windowShortcut: .switcherWindowDefault)
         // Grave and J print the cap the active keyboard layout carries, not the
@@ -6155,19 +6162,3 @@ enum SwitcherModelFeatureTests {
     }
 }
 
-extension SwitcherModelFeatureTests {
-    /// Hosts the production pause check with in-memory preferences and a
-    /// scripted frontmost app.
-    enum PreviewProvider {
-        final class UserDefaults {
-            static let standard = UserDefaults()
-            var lists: [String: [String]] = [:]
-            func stringArray(forKey key: String) -> [String]? { lists[key] }
-        }
-        final class NSWorkspace {
-            struct App { let bundleIdentifier: String? }
-            static let shared = NSWorkspace()
-            var frontmostApplication: App?
-        }
-    }
-}

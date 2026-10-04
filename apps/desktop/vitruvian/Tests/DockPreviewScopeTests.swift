@@ -7,31 +7,10 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production observation methods, with an isolated notification center. No
+/// The module's own selection check with its desktop query passed in, and
+/// production observation methods with an isolated notification center. No
 /// windows, system notifications, desktop changes or synthetic input are used.
 enum DockPreviewScopeTests {
-    struct SwitcherItem { let windowID: UInt32? }
-    enum WindowEnumerator {
-        typealias SwitcherItem = DockPreviewScopeTests.SwitcherItem
-        typealias UserDefaults = DockPreviewScopeTests.UserDefaults
-        typealias DefaultsKey = DockPreviewScopeTests.DefaultsKey
-        typealias SpaceWindowBridge = DockPreviewScopeTests.SpaceWindowBridge
-    }
-    enum DefaultsKey { static let dockPreviewCurrentSpaceOnly = "scope" }
-    final class UserDefaults {
-        static let standard = UserDefaults()
-        var scope = false
-        func bool(forKey key: String) -> Bool { scope }
-    }
-    enum SpaceWindowBridge {
-        static var hidden = false
-        static var queries = 0
-        static func isParkedOnHiddenSpace(_ id: UInt32) -> Bool {
-            queries += 1
-            return hidden
-        }
-    }
-
     enum NSWorkspace {
         static let shared = Workspace()
         static let activeSpaceDidChangeNotification = Notification.Name("test.desktop.changed")
@@ -59,21 +38,29 @@ enum DockPreviewScopeTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let item = SwitcherItem(windowID: 1)
-        UserDefaults.standard.scope = true
-        SpaceWindowBridge.hidden = false
-        suite.expect(WindowEnumerator.dockPreviewMayActivate(item), "a current-desktop window can be selected")
-        SpaceWindowBridge.hidden = true
-        suite.expect(!WindowEnumerator.dockPreviewMayActivate(item),
+        var hidden = false, queries = 0
+        func mayActivate(currentSpaceOnly: Bool) -> Bool {
+            WindowEnumerator.dockPreviewMayActivate(windowID: 1, currentSpaceOnly: currentSpaceOnly) { _ in
+                queries += 1
+                return hidden
+            }
+        }
+        suite.expect(mayActivate(currentSpaceOnly: true), "a current-desktop window can be selected")
+        hidden = true
+        suite.expect(!mayActivate(currentSpaceOnly: true),
                "a window moved off desktop cannot be selected before the panel refreshes")
-        UserDefaults.standard.scope = false
-        SpaceWindowBridge.queries = 0
-        suite.expect(WindowEnumerator.dockPreviewMayActivate(item) && SpaceWindowBridge.queries == 0,
+        queries = 0
+        suite.expect(mayActivate(currentSpaceOnly: false) && queries == 0,
                "all-desktop mode allows travel without an extra scope query")
-        UserDefaults.standard.scope = true
-        SpaceWindowBridge.hidden = false
-        suite.expect(WindowEnumerator.dockPreviewMayActivate(item),
+        hidden = false
+        suite.expect(mayActivate(currentSpaceOnly: true),
                "returning to the window's desktop restores selection without stale history")
+        queries = 0
+        let windowless = WindowEnumerator.dockPreviewMayActivate(windowID: nil, currentSpaceOnly: true) { _ in
+            queries += 1
+            return true
+        }
+        suite.expect(windowless && queries == 0, "an item with no window is never asked about")
 
         let service = Service()
         let center = NSWorkspace.shared.notificationCenter

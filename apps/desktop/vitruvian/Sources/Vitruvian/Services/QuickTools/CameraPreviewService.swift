@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore

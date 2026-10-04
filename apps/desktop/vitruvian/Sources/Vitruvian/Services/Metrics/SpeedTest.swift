@@ -18,7 +18,7 @@ package final class SpeedTest: NSObject, ObservableObject {
     package static let shared = SpeedTest()
 
     package typealias Clock = () -> TimeInterval
-    package typealias TimeBoxScheduler = (OperationQueue, TimeInterval, @escaping () -> Void) -> () -> Void
+    package typealias TimeBoxScheduler = (OperationQueue, TimeInterval, @escaping @Sendable () -> Void) -> () -> Void
 
     package enum Phase: Equatable {
         case idle, latency, download, upload, done

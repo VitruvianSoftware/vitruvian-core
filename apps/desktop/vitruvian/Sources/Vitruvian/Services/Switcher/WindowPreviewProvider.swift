@@ -503,10 +503,18 @@ package final class WindowPreviewProvider {
     }
 
     private static func captureIsPaused(excludedAppsKey: String) -> Bool {
+        captureIsPaused(excludedAppsKey: excludedAppsKey, defaults: .standard,
+                        frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    }
+
+    /// Whether the app in front is on the list `excludedAppsKey` names, read
+    /// from `defaults` the way the list is stored.
+    package static func captureIsPaused(excludedAppsKey: String, defaults: UserDefaults,
+                                        frontmostBundleIdentifier: String?) -> Bool {
         let excluded = Defaults.sanitizedBundleIdentifierList(
-            UserDefaults.standard.stringArray(forKey: excludedAppsKey) ?? [])
+            defaults.stringArray(forKey: excludedAppsKey) ?? [])
         return SwitcherSupport.shouldPausePreviewCapture(
-            frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+            frontmostBundleIdentifier: frontmostBundleIdentifier,
             excludedBundleIdentifiers: excluded)
     }
 

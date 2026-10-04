@@ -559,6 +559,25 @@ Landed (4a, the island's cycles): `NotchService` names none of the three.
 - Still named by the island: `BrightnessService.lidClosed()`, a static query
   with no state, not a cycle.
 
+Landed (4b, two preview checks): the first tests that copied production
+text so they could swap `UserDefaults`, `NSWorkspace` or a desktop query now
+call the module's own code.
+
+- **Injected:** `WindowPreviewProvider.captureIsPaused` takes the
+  preferences and the app in front, and
+  `WindowEnumerator.dockPreviewMayActivate` takes the window, the
+  current-desktop preference and the desktop query. The overloads the app
+  calls pass the system's, so nothing else changed.
+- **Tested directly:** the switcher contract keeps its two checks, now
+  against a preferences suite of its own; the Dock Preview scope test keeps
+  its four, counting the desktop queries through its closure, and adds one
+  for an item with no window. Their stand-in `UserDefaults`, `NSWorkspace`,
+  `SpaceWindowBridge` and `SwitcherItem`, and the generated copies, are gone.
+- **The pattern for the rest:** about 180 type aliases and stand-ins in the
+  tests exist so a copied body reads a fake instead of the system. Each one
+  goes the same way: the production code takes what the test swaps, and the
+  test calls the module.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
@@ -773,6 +792,30 @@ the layout has one source.
   is safe, and the timer and download strips size it differently on
   purpose, so it stays until a design decision. Also left: the calendar,
   download and capture-control fonts and insets, which agree today.
+
+Landed (5k, event bindings): `NotchEventBindings`
+(`Services/Notch/NotchEventBindings.swift`) holds the island's subscriptions
+to the services whose state it shows.
+
+- **What moved:** `bindEvents`' subscriptions to eleven services: the timer,
+  Watch, music, the tools page, the system monitor's fan card, downloads,
+  agent usage (its strip and its events), the calendar, Keep Awake,
+  notifications and the clipboard history. Each source keeps its operators
+  (duplicates dropped, first values skipped, the hop to the main queue)
+  in `Sources.system()`, and each is asked for only when its module or
+  notice is on, so a service the island does not show is still never
+  started for it.
+- **What stayed:** every reaction. `NotchService` passes them in as
+  `Island`: resizing, remembering and naming songs, the tools and fan
+  card refreshes, and the notices, whose text it still builds. Volume and
+  battery stay in `bindEvents`, since a contract copies the volume binding.
+  `NotchService` loses 105 lines and 15 of its `.shared` reads.
+- **Tested directly:** `NotchEventBindingsTests` binds the module's own
+  type to subjects of its own and checks that only the sources of modules
+  that are on are asked for, that each change reaches the island once,
+  that binding again replaces the subscriptions, that a song is kept only
+  while it plays, that the system's banner hides only for a notification
+  the island stands in for, and that unbinding stops everything.
 
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
@@ -1847,6 +1890,51 @@ Landed (6zr, permissions): `Permissions` is `@MainActor`.
   `MainActor.assumeIsolated`.
 - **Callers:** five command bar builders that read a grant (toggles,
   snippets, emoji, typing at the cursor, clipboard rows) are `@MainActor`.
+
+Landed (6zs, `Sendable` captures): what the macOS log of #2688 still
+listed after the isolation fixes were values captured by closures that
+run on another queue. Swift 6 mode rejects most of them.
+
+- **Lock-guarded flags:** the agent reader's cancellation, the cleaner's
+  and the uninstaller's scan cancellations and the media tools' token
+  keep their flag behind a lock, so each is `@unchecked Sendable`, with a
+  comment saying so.
+- **The media tools' log:** the conversion's output was a captured `var`
+  that the pipe's queue appended to under a lock the compiler could not
+  see. It is now a small locked type.
+- **Declared `@Sendable`:** the speed test's time box hands its action to
+  another queue, and the Super key's mapping work runs on the mapping
+  queue; both closure types now say so.
+- **Confined:** the notification reader lives on the notification
+  service's queue. The two closures that take it there capture it through
+  a `nonisolated(unsafe)` local that says so.
+- **Not captured:** the clipboard history panel's resize observer finds
+  the panel in the notification instead of capturing it.
+- **Not `Sendable` after all:** 6zq made recent captures' file manager
+  `nonisolated`, but the SDK does not mark `FileManager` `Sendable`, so the
+  macOS build warned. It is `nonisolated(unsafe)`, since the default
+  manager is safe from any thread.
+- **SDK types not yet marked:** capture sessions and devices, Bluetooth
+  devices, accessibility elements, Mach ports and dispatch work items are
+  imported with `@preconcurrency` (AVFoundation, IOBluetooth,
+  ApplicationServices, CoreFoundation, Dispatch), in the five files that
+  capture them, as the compiler suggests.
+
+Landed (6zt, transient paste and the clipboard auto-clear): both keep
+their state on the main thread and do their pasteboard work on the shared
+pasteboard lane, and their lane closures captured `self`, a plain class.
+They are `@MainActor`.
+
+- **Transient paste:** snippet expansion asks for it from plain code, and
+  it already refused any call off the main thread. `shared`, its init and
+  `paste` are `nonisolated`; `paste` keeps that refusal and runs the rest
+  on the main actor. The pasteboard snapshot it hands to the lane and back
+  goes through `nonisolated(unsafe)` locals that say so, the restore's
+  work item, run by the main queue, enters the main actor, and the
+  snapshot reader is `nonisolated`.
+- **The auto-clear:** its observers and its timer enter the main actor,
+  and the configuration generation the lane reads under its lock is
+  `nonisolated(unsafe)`.
 
 ## Step 7: test-suite hygiene
 

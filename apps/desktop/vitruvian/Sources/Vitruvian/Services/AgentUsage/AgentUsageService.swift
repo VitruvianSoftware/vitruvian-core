@@ -47,7 +47,8 @@ package final class AgentUsageService: ObservableObject {
     private let home = FileManager.default.homeDirectoryForCurrentUser
 
     /// Lets a stop end a first read that is still going on the queue.
-    private final class Cancellation {
+    // Its flag is behind the lock.
+    private final class Cancellation: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
         var isCancelled: Bool { lock.withLock { cancelled } }
