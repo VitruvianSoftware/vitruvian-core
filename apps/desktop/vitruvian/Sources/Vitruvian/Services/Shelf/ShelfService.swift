@@ -2626,7 +2626,9 @@ package final class ShelfService: ObservableObject {
         panel.alphaValue = 1
 
         autoHideFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            // Scheduled from here, on the main run loop.
+            // Scheduled from here, on the main run loop, so the timer never
+            // leaves the main thread.
+            nonisolated(unsafe) let timer = timer
             MainActor.assumeIsolated {
                 guard let self, let panel = self.panel, panel.isVisible else {
                     timer.invalidate()

@@ -1120,7 +1120,9 @@ package final class DockPreviewService: ObservableObject {
         else { return }
 
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] timer in
-            // Added to the main run loop below, so it fires on the main thread.
+            // Added to the main run loop below, so it fires on the main thread
+            // and the timer never leaves it.
+            nonisolated(unsafe) let timer = timer
             MainActor.assumeIsolated {
                 guard let self,
                       self.isVisible,

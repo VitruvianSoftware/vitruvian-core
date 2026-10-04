@@ -96,11 +96,11 @@ package final class QuitProtectionService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] note in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let self,
-                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                else { return }
+                guard let self, let app else { return }
                 if let pending = self.pending, pending.targetProcessIdentifier != app.processIdentifier {
                     self.cancelPending()
                 }

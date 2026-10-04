@@ -223,7 +223,9 @@ package final class WindowMaximizer: ObservableObject {
 
         let startedAt = Date()
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            // Added to the main run loop below, so it fires on the main thread.
+            // Added to the main run loop below, so it fires on the main thread
+            // and the timer never leaves it.
+            nonisolated(unsafe) let timer = timer
             MainActor.assumeIsolated {
                 guard let self else {
                     timer.invalidate()

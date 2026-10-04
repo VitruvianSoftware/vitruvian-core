@@ -2181,6 +2181,26 @@ Landed (6zza, the 27 errors in 13 files): the rest of 6zy's list.
 - **Next:** the 99, a shape at a time, measuring with batch mode off, then
   Services in Swift 6 mode.
 
+Landed (6zzb, notifications and timers): 20 of the 99. Each observer and
+timer block runs on the main thread, but it is typed nonisolated, so handing
+its non-`Sendable` `Notification` or `Timer` into `MainActor.assumeIsolated`
+reads as a send.
+
+- **Sixteen observers** read what they need before the hop: the app (a
+  `Sendable` `NSRunningApplication`), its process ID, the mounted volume's
+  URL, the resized panel or the notification's name. The checks on them stay
+  inside, unchanged. Auto-quit has three such observers.
+- **The music launch blocker** passes the notification itself, which its
+  unit test drives directly, so it crosses as a `nonisolated(unsafe)` let.
+- **The three timers** (Dock preview visibility, the shelf's auto-hide fade
+  and the maximize animation) cross the same way: a timer on the main run
+  loop fires on the main thread and nothing else touches it.
+- **Left for the Accessibility errors:** the eighteenth `notification` in
+  6zza's count is the name auto-quit's Accessibility observer callback
+  passes, which goes with the other values that callback sends.
+- **Measured** (Swift 6 mode, batch mode off): the 20 are gone and nothing
+  new appeared; **79 errors in 39 files** remain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

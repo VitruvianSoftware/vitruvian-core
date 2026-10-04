@@ -101,17 +101,21 @@ package final class AutoQuitService: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         launchToken = center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
                                          object: nil, queue: .main) { [weak self] note in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                guard let app else { return }
                 self?.attach(app)
             }
         }
         terminateToken = center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                                             object: nil, queue: .main) { [weak self] note in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                guard let app else { return }
                 self?.detach(pid: app.processIdentifier)
             }
         }
@@ -122,9 +126,11 @@ package final class AutoQuitService: ObservableObject {
         // normal app, and attaching again costs a dictionary lookup.
         activateToken = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                            object: nil, queue: .main) { [weak self] note in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                guard let app else { return }
                 self?.handleAppActivated(app)
             }
         }

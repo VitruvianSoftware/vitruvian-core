@@ -1288,9 +1288,11 @@ package final class ClipboardHistoryService: ObservableObject {
         panelResizeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didEndLiveResizeNotification, object: panel, queue: .main
         ) { [weak self] notification in
+            // Read here: the notification itself never crosses to the main actor.
+            let panel = notification.object as? NSPanel
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let self, let panel = notification.object as? NSPanel else { return }
+                guard let self, let panel else { return }
                 self.savePanelSize(panel)
             }
         }
@@ -1459,10 +1461,12 @@ package final class ClipboardHistoryService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
                 guard let self,
-                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      let app,
                       app.bundleIdentifier != Bundle.main.bundleIdentifier,
                       app.bundleIdentifier != AssistiveKeyboard.bundleID
                 else { return }

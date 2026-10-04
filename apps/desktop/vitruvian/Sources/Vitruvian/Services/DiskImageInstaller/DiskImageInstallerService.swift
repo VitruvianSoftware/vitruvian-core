@@ -91,11 +91,12 @@ package final class DiskImageInstallerService {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            // Read here: the notification itself never crosses to the main actor.
+            guard let mountURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else {
+                return
+            }
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let mountURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else {
-                    return
-                }
                 self?.inspect(mountURL: mountURL)
             }
         }
