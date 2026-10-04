@@ -122,6 +122,7 @@ package final class KeepAwakeManager: ObservableObject {
         // turn of the run loop rather than one full pass per write.
         defaultsObserver = NotificationCenter.default
             .publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.preferenceSyncScheduled else { return }
                 self.preferenceSyncScheduled = true
