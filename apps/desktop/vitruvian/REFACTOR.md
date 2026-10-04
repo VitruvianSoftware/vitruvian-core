@@ -1772,6 +1772,82 @@ Swift 5 mode lets these through as warnings; Swift 6 mode would not.
 - **Already fixed:** the command bar's Shelf row (`keepOnShelf`) was made
   `@MainActor` on #2686 itself.
 
+Landed (6zo, microphone mute): `MicMuteService` is `@MainActor`.
+
+- **The audio queue:** the sweep and the CoreAudio statics it calls are
+  `nonisolated`, and so are the two entries the input manager uses from
+  its own audio queue: the adjustment lifetime and `withUnmutedInput`.
+  The blocked flag and the lifetime behind their lock are
+  `nonisolated(unsafe)`.
+- **The input manager** takes the service on the main thread before it
+  queues a volume write, instead of reading `.shared` from its audio
+  queue.
+- **Generated tests:** the test generator copies the whole class, and
+  strips `package` only at the start of a line, so the two `nonisolated`
+  entries carry the modifier on its own line.
+- **Reverted:** the two 6o wrappers around the island calls in `finish`.
+
+Landed (6zp, mouse exceptions): `MouseAppExceptions` is `@MainActor`.
+
+- **The pointer thread** asks it from the taps of middle click, the scroll
+  inverter, the button shortcuts, navigation and focus-follows-mouse.
+  What they call is `nonisolated`: the two questions, the pointer lookup,
+  the source-process rebuild and their helpers. The state they read was
+  already behind its lock and is now `nonisolated(unsafe)`.
+- **`shared` and init are `nonisolated`,** since a tap can be the first to
+  ask. Loading splits in two: the sets the taps read are filled before init
+  returns, on whatever thread that is, and the published lists follow on
+  the main thread, directly or queued. `reload()` still does both at once.
+- **Running-app changes** may arrive off the main thread. The rebuild
+  publishes its scopes through its existing hop to the main thread, which
+  now enters the main actor.
+- **Tests:** the pointer contract calls `reload()` from the suite's main
+  thread through `MainActor.assumeIsolated`.
+
+Landed (6zq, the rest of the macOS isolation warnings): the macOS build
+of #2687 listed the isolation warnings 6zn had not reached, in the app
+delegate and four services.
+
+- **The app delegate:** its three main-queue observers and the
+  quit-time input-source restore, which the main run loop performs, enter
+  the main actor through `MainActor.assumeIsolated`. Its notification
+  delegate method is `nonisolated`: it touches nothing of the delegate's,
+  and already hops to the main queue for its one piece of work.
+- **AppKit completions:** the HUD's fade-out and the island's Mission
+  Control fade run their completions through `MainActor.assumeIsolated`,
+  and the island's completion parameter is `@MainActor @Sendable`.
+- **The switcher's wake observer,** a one-line closure the earlier scan
+  missed, enters the main actor the same way.
+- **The island window's animation delegate** is a `@preconcurrency`
+  conformance: Core Animation calls it on the main thread.
+- **Keep Awake's** shared running-apps handler is `@Sendable` and enters
+  the main actor itself.
+- **Recent captures'** file manager is `nonisolated`, since its queue
+  removes files with it.
+- **What is left** in that log are `Sendable` captures: values such as
+  capture sessions, Bluetooth devices, accessibility elements and
+  cancellation tokens captured by queue closures. They are not isolation
+  crossings, and they belong to building Services in Swift 6 mode.
+
+Landed (6zr, permissions): `Permissions` is `@MainActor`.
+
+- **Read from other threads:** the window activator, the preview provider
+  and the window capture asked `Permissions.shared` for Accessibility or
+  Screen Recording from plain code, on whatever thread called them, and
+  the capture from an `async` function, and the window enumerator's
+  snapshot reads Accessibility from a plain function on the main queue.
+  Both grants are now mirrored into two statics behind a lock as they are
+  published, and those 14 reads use `Permissions.accessibilityGranted` and
+  `screenRecordingGranted`, which any thread may call. Everything else
+  still reads the published values.
+- **Off the main thread inside it:** the Full Disk Access probe, its list
+  of protected folders and the Automation status check run on background
+  queues and are `nonisolated`. The activation and defaults observers and
+  the polling timer enter the main actor through
+  `MainActor.assumeIsolated`.
+- **Callers:** five command bar builders that read a grant (toggles,
+  snippets, emoji, typing at the cursor, clipboard rows) are `@MainActor`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

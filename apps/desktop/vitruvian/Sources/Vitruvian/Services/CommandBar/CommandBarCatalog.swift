@@ -220,6 +220,7 @@ package enum CommandBarCatalog {
     /// enough on its own: the app has twenty switches that until now needed
     /// somebody to find the right page in Settings first, and a feature added
     /// tomorrow gets its row for free.
+    @MainActor
     package static func toggleEntries(_ s: Strings,
                               language: AppLanguage,
                               bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
@@ -942,6 +943,7 @@ package enum CommandBarCatalog {
 
     // MARK: - Snippets
 
+    @MainActor
     private static func snippetEntries(_ bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         guard AppFeature.textSnippets.isAvailable,
               let data = UserDefaults.standard.data(forKey: DefaultsKey.textSnippets)
@@ -1324,6 +1326,7 @@ package enum CommandBarCatalog {
     /// The names come from Unicode and never change.
     /// The tone is read here, because the bar has to rebuild this on every
     /// opening and a chosen tone has to arrive with it.
+    @MainActor
     package static func emojiEntries(bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         let tone = CommandBarPreferences.skinTone(
             from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
@@ -1343,6 +1346,7 @@ package enum CommandBarCatalog {
 
     /// Types text into whatever has the caret, through the routine the
     /// snippets already use, after the keyboard comes clean of modifiers.
+    @MainActor
     package static func typeAtCursor(_ text: String) {
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier
                 != ProcessInfo.processInfo.processIdentifier else {
@@ -1709,6 +1713,7 @@ package enum CommandBarCatalog {
             .map { clipboardRow($0, imageLabel: imageLabel, bar: bar, paste: paste) }
     }
 
+    @MainActor
     private static func clipboardRow(_ entry: ClipboardHistoryEntry,
                                      imageLabel: String,
                                      bar: CommandBarFeatureStrings,

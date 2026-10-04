@@ -263,9 +263,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // Terminate-later runs a modal loop, which may be nested inside a
         // main-queue callback. Schedule in both modes before approving quit.
         RunLoop.main.perform(inModes: [.default, .modalPanel]) { [weak self] in
-            CommandBarService.shared.restoreBorrowedInputSource()
-            self?.inputSourceRestorationPending = false
-            sender.reply(toApplicationShouldTerminate: true)
+            // Performed on the main run loop.
+            MainActor.assumeIsolated {
+                CommandBarService.shared.restoreBorrowedInputSource()
+                self?.inputSourceRestorationPending = false
+                sender.reply(toApplicationShouldTerminate: true)
+            }
         }
         return .terminateLater
     }
@@ -775,29 +778,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             popoverDriftObservers.append(NotificationCenter.default.addObserver(
                 forName: name, object: window, queue: .main
             ) { [weak self, weak window] notification in
-                guard let self, let window else { return }
-                self.popoverLastFrame = window.frame
-                // Once the popover hangs from the stable view, that view is the
-                // only authority for placement. Recompute its screen-space
-                // position on both resize and move; applying the old midX frame
-                // as well would fight AppKit's tip-aware edge clamping.
-                if self.popoverPositioningPanel != nil {
-                    self.useStablePopoverPositioningViewIfNeeded(window)
-                    return
-                }
-                let contentResized = notification.name == NSWindow.didResizeNotification
-                if contentResized, self.useStablePopoverPositioningViewIfNeeded(window) { return }
-                self.applyPopoverDriftFrame(window)
-                guard contentResized else { return }
-                // A status-item frame can become untrustworthy after the
-                // popover opens. AppKit may run another placement pass after
-                // publishing the resize, so check once more on the next turn.
-                DispatchQueue.main.async { [weak self, weak window] in
-                    guard let self,
-                          let window,
-                          self.popover.isShown,
-                          window === self.popover.contentViewController?.view.window else { return }
-                    self.useStablePopoverPositioningViewIfNeeded(window)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let self, let window else { return }
+                    self.popoverLastFrame = window.frame
+                    // Once the popover hangs from the stable view, that view is the
+                    // only authority for placement. Recompute its screen-space
+                    // position on both resize and move; applying the old midX frame
+                    // as well would fight AppKit's tip-aware edge clamping.
+                    if self.popoverPositioningPanel != nil {
+                        self.useStablePopoverPositioningViewIfNeeded(window)
+                        return
+                    }
+                    let contentResized = notification.name == NSWindow.didResizeNotification
+                    if contentResized, self.useStablePopoverPositioningViewIfNeeded(window) { return }
+                    self.applyPopoverDriftFrame(window)
+                    guard contentResized else { return }
+                    // A status-item frame can become untrustworthy after the
+                    // popover opens. AppKit may run another placement pass after
+                    // publishing the resize, so check once more on the next turn.
+                    DispatchQueue.main.async { [weak self, weak window] in
+                        guard let self,
+                              let window,
+                              self.popover.isShown,
+                              window === self.popover.contentViewController?.view.window else { return }
+                        self.useStablePopoverPositioningViewIfNeeded(window)
+                    }
                 }
             })
         }
@@ -1256,13 +1262,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         panelActivationObservers = [
             center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.updatePanelActivationSource(.activeSpaceChanged)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.updatePanelActivationSource(.activeSpaceChanged) }
             },
             center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                object: nil, queue: .main) { [weak self] note in
-                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
-                        as? NSRunningApplication else { return }
-                self?.updatePanelActivationSource(.appActivated(app))
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                            as? NSRunningApplication else { return }
+                    self?.updatePanelActivationSource(.appActivated(app))
+                }
             },
         ]
     }
@@ -2391,7 +2401,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
+    // The center picks the thread; the work below hops to the main one itself.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         if let transactionID = Notifier.whatsAppOrganizerTransactionID(from: response) {

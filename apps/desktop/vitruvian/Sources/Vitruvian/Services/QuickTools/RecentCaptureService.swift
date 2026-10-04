@@ -19,7 +19,7 @@ package final class RecentCaptureService: ObservableObject {
     @Published package private(set) var entries: [RecentCaptureEntry] = []
     @Published package private(set) var shortcutRegistrationFailed = false
 
-    private let manager = FileManager.default
+    nonisolated private let manager = FileManager.default
     private let hotkey = QuickToolHotkey(id: 21)
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recent-captures",
                                       qos: .utility)

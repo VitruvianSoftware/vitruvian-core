@@ -3092,7 +3092,8 @@ enum PointerInputFeatureTests {
                    "an app that cannot be told apart from a listed one keeps the feature's hands off")
             for scope in MouseExceptionScope.allCases { arguments[scope.defaultsKey] = [String]() }
             defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
-            exceptions.reload()
+            // The suite runs on the main thread.
+            MainActor.assumeIsolated { exceptions.reload() }
             queryWithoutMain("empty-list")
             suite.expect(!verdictWithoutMain(CGPoint(x: -20_010, y: -20_010)),
                    "an empty list stands nothing down")

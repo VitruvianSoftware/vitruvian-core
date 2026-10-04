@@ -877,6 +877,54 @@ is that notice. Add an entry for every change to upstream files.
     callback hops to the main queue before it reads the setting.
   - `Services/Audio/AudioInputDeviceManager.swift`: the lock-guarded
     input-volume write lifetime is `nonisolated(unsafe)`.
+- **2026-10-03**: Refactor step 6zo (`REFACTOR.md`):
+  - `Services/QuickTools/MicMuteService.swift` is `@MainActor`; the
+    CoreAudio statics, the adjustment lifetime and `withUnmutedInput` are
+    `nonisolated` (the last two on their own line), the lock-guarded flag
+    and lifetime are `nonisolated(unsafe)`, and the 6o change is reverted.
+  - `Services/Audio/AudioInputDeviceManager.swift`: a volume write takes
+    the mute service on the main thread before it is queued.
+- **2026-10-03**: Refactor step 6zp (`REFACTOR.md`):
+  - `Services/MouseExceptions/MouseAppExceptions.swift` is `@MainActor`;
+    its shared instance and init are `nonisolated`, loading is split into
+    the lock-guarded lookups (filled in init) and the published lists
+    (published on the main thread), the tap-facing questions and their
+    helpers are `nonisolated`, the lock-guarded state and the clock are
+    `nonisolated(unsafe)`, and the source rebuild publishes through
+    `MainActor.assumeIsolated` inside its main-thread hop.
+  - `Tests/PointerInputFeatureTests.swift`: the pointer contract's
+    `reload()` runs through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zq (`REFACTOR.md`):
+  - `App/AppDelegate.swift`: three main-queue observers and the quit-time
+    input-source restore run through `MainActor.assumeIsolated`, and the
+    notification delegate method is `nonisolated`.
+  - `Services/QuickTools/QuickToolHUD.swift` and
+    `Services/Notch/NotchWindowHost.swift`: their AppKit animation
+    completions run through `MainActor.assumeIsolated`; the window host's
+    completion parameter is `@MainActor @Sendable` and its
+    `CAAnimationDelegate` conformance is `@preconcurrency`.
+  - `Services/KeepAwakeManager.swift`: the running-apps handler is
+    `@Sendable` and enters the main actor itself.
+  - `Services/QuickTools/RecentCaptureService.swift`: the file manager is
+    `nonisolated`.
+  - `Services/Switcher/AppSwitcher.swift`: the wake observer runs through
+    `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zr (`REFACTOR.md`):
+  - `Services/Permissions.swift` is `@MainActor`; Accessibility and Screen
+    Recording are mirrored into lock-guarded statics as they are published,
+    read through the new `nonisolated` `accessibilityGranted` and
+    `screenRecordingGranted`; the Full Disk Access probe, its folder list
+    and `automationStatus(for:)` are `nonisolated`; and the two observers
+    and the polling timer run through `MainActor.assumeIsolated`.
+  - `Services/Switcher/WindowActivator.swift`,
+    `Services/Switcher/WindowPreviewProvider.swift`,
+    `Services/Switcher/WindowEnumerator.swift` and
+    `Services/QuickTools/ScreenshotCaptureEngine.swift` read the mirrored
+    grants.
+  - `Services/CommandBar/CommandBarCatalog.swift`: five builders that read
+    a grant are `@MainActor`.
+  - `Tests/ScreenshotFeatureTests.swift`: the window capture's permission
+    gate is looked for as `Permissions.accessibilityGranted`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

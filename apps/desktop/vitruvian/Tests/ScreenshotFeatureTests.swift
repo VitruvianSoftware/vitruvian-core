@@ -345,7 +345,7 @@ enum ScreenshotFeatureTests {
         let captureWindowBody = (screenshotCaptureEngineSource
             .components(separatedBy: "static func captureWindow(").last ?? "")
             .components(separatedBy: "\n    /// On-screen windows").first ?? ""
-        let accessibilityGate = captureWindowBody.range(of: "if Permissions.shared.accessibility {")
+        let accessibilityGate = captureWindowBody.range(of: "if Permissions.accessibilityGranted {")
         let attachmentConfirmation = captureWindowBody.range(
             of: "accessibilityAttachedWindowIDs(")
         suite.expect(accessibilityGate != nil && attachmentConfirmation != nil

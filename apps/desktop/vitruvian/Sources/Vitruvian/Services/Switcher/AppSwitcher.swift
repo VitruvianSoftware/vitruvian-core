@@ -308,7 +308,10 @@ package final class AppSwitcher: ObservableObject {
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in self?.recoverTapAfterWake() }
+        ) { [weak self] _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.recoverTapAfterWake() }
+        }
     }
 
     private func stopObservingWake() {
