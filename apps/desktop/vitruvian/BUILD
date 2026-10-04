@@ -398,16 +398,14 @@ swift_binary(
         allow_empty = True,
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
-    # PROBE (reverted before merge): Swift 6 mode, one frontend per file.
+    # Swift 6 language mode since REFACTOR.md step 6zzm. The runner runs every
+    # suite on the main thread, so the module defaults to the main actor; what
+    # runs on a queue or thread says `nonisolated`.
     copts = [
-        "-continue-building-after-errors",
         "-default-isolation",
         "MainActor",
     ],
-    features = [
-        "swift.enable_v6",
-        "-swift.enable_batch_mode",
-    ],
+    features = ["swift.enable_v6"],
     module_name = "VitruvianTests",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
@@ -421,35 +419,6 @@ swift_binary(
     ],
 )
 
-# PROBE (reverted before merge): lists the closures Swift 6 mode guards with a
-# run-time main-thread check: calls to swift_task_reportUnexpectedExecutor or
-# swift_task_isCurrentExecutor.
-genrule(
-    name = "tests_executor_checks",
-    srcs = [":unit_tests_bin"],
-    outs = ["tests_executor_checks.txt"],
-    cmd = """
-echo "PROBE srcs: $(SRCS)" >&2
-dis=$$(mktemp)
-for f in $(SRCS); do
-  case "$$f" in
-    *unit_tests_bin) xcrun otool -tV "$$f" ;;
-  esac
-done > "$$dis"
-echo "PROBE disassembly lines: $$(wc -l < "$$dis")" >&2
-grep -m8 -E 'swift_task_(reportUnexpectedExecutor|isCurrentExecutor)' "$$dis" >&2 || true
-awk '/^[^ \\t].*:$$/ { fn = substr($$0, 1, length($$0) - 1) } /swift_task_(reportUnexpectedExecutor|isCurrentExecutor)/ { print fn }' "$$dis" \\
-  | sort -u | sed 's/^_\\$$/$$/' | xcrun swift-demangle \\
-  | grep -E '(^| )VitruvianTests[.]' > $@ || true
-rm -f "$$dis"
-echo "PROBE executor checks: $$(wc -l < $@)" >&2
-cat $@ >&2
-""",
-    local = True,
-    tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
-)
-
 sh_test(
     name = "unit_tests",
     size = "large",
@@ -461,8 +430,6 @@ sh_test(
     data = [
         "build.sh",
         ":unit_tests_bin",
-        # PROBE (reverted before merge): builds the list above.
-        ":tests_executor_checks",
     ] + glob([
         "Resources/**",
         "Sources/**",

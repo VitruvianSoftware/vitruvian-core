@@ -48,15 +48,6 @@ discard_test_preferences() {
 
 status=0
 "$binary" "$@" || status=$?
-# PROBE (reverted before merge): show where a crash happened.
-if [[ $status -ne 0 ]]; then
-	echo "PROBE lldb:"
-	lldb --batch -o run -k "thread backtrace all" -k quit -- "$binary" "$@" 2>&1 | tail -400 || true
-	sleep 10
-	report="$(ls -t "$real_home"/Library/Logs/DiagnosticReports/metrics-tests* 2>/dev/null | head -1 || true)"
-	echo "PROBE crash report: $report"
-	if [[ -n "$report" ]]; then head -c 40000 "$report"; fi
-fi
 if [[ $# -eq 0 ]]; then
 	/bin/zsh Tests/PreferenceCleanupTests.sh || status=1
 fi
