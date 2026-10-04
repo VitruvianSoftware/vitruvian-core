@@ -128,10 +128,12 @@ swift_library(
     name = "VitruvianServices",
     package_name = SWIFT_PACKAGE,
     srcs = SERVICES_SRCS,
-    # Complete concurrency checking warns where Swift 6 would reject, so each
-    # build lists what still stands between Services and Swift 6 mode
-    # (REFACTOR.md step 6zu).
-    copts = ["-strict-concurrency=complete"],
+    # MEASUREMENT ONLY (REFACTOR.md step 6zy): Swift 6 language mode, so this
+    # build lists every error that stands between Services and the switch.
+    # The driver keeps compiling after the first failing batch so the list is
+    # whole. Reverted before this PR merges.
+    copts = ["-continue-building-after-errors"],
+    features = ["swift.enable_v6"],
     module_name = "VitruvianServices",
     target_compatible_with = MACOS_ONLY,
     deps = [
