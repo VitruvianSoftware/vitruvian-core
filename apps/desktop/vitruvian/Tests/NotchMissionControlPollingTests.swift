@@ -32,6 +32,7 @@ enum NotchMissionControlPollingTests {
                                             safeAreaTop: 32, cameraWidth: 210)
         var frameReads = 0
         func sampleMissionControl() { frameReads += 1 }
+        init() {}
         deinit { missionControlTimer?.invalidate() }
     }
 
