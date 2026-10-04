@@ -559,6 +559,25 @@ Landed (4a, the island's cycles): `NotchService` names none of the three.
 - Still named by the island: `BrightnessService.lidClosed()`, a static query
   with no state, not a cycle.
 
+Landed (4b, two preview checks): the first tests that copied production
+text so they could swap `UserDefaults`, `NSWorkspace` or a desktop query now
+call the module's own code.
+
+- **Injected:** `WindowPreviewProvider.captureIsPaused` takes the
+  preferences and the app in front, and
+  `WindowEnumerator.dockPreviewMayActivate` takes the window, the
+  current-desktop preference and the desktop query. The overloads the app
+  calls pass the system's, so nothing else changed.
+- **Tested directly:** the switcher contract keeps its two checks, now
+  against a preferences suite of its own; the Dock Preview scope test keeps
+  its four, counting the desktop queries through its closure, and adds one
+  for an item with no window. Their stand-in `UserDefaults`, `NSWorkspace`,
+  `SpaceWindowBridge` and `SwitcherItem`, and the generated copies, are gone.
+- **The pattern for the rest:** about 180 type aliases and stand-ins in the
+  tests exist so a copied body reads a fake instead of the system. Each one
+  goes the same way: the production code takes what the test swaps, and the
+  test calls the module.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

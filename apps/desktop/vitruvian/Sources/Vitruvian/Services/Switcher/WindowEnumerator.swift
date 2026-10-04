@@ -219,9 +219,17 @@ package enum WindowEnumerator {
 
     /// A desktop can change after enumeration, including between pinned refreshes.
     package static func dockPreviewMayActivate(_ item: SwitcherItem) -> Bool {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
-              let windowID = item.windowID else { return true }
-        return !SpaceWindowBridge.isParkedOnHiddenSpace(windowID)
+        dockPreviewMayActivate(windowID: item.windowID,
+                               currentSpaceOnly: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
+                               isParkedOnHiddenSpace: { SpaceWindowBridge.isParkedOnHiddenSpace($0) })
+    }
+
+    /// The same decision with the preference and the desktop query passed in.
+    /// The query runs only for a window when previews keep to the current desktop.
+    package static func dockPreviewMayActivate(windowID: CGWindowID?, currentSpaceOnly: Bool,
+                                               isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> Bool {
+        guard currentSpaceOnly, let windowID else { return true }
+        return !isParkedOnHiddenSpace(windowID)
     }
 
     package static func listWindows(for pid: pid_t, maximumCount: Int = 12,

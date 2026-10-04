@@ -838,6 +838,18 @@ is that notice. Add an entry for every change to upstream files.
     the `eventBindings` wiring in `NotchService`, which also unbinds it on
     teardown.
   - `Tests/NotchTests.swift` runs the new `NotchEventBindingsTests`.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`):
+  - `Services/Switcher/WindowPreviewProvider.swift`: `captureIsPaused`
+    gains a `package` overload that takes the preferences and the frontmost
+    app's bundle identifier; the private one passes the system's.
+  - `Services/Switcher/WindowEnumerator.swift`: `dockPreviewMayActivate`
+    gains a `package` overload that takes the window, the preference and the
+    desktop query; the one the app calls passes the system's.
+  - `Tests/SwitcherModelFeatureTests.swift` and
+    `Tests/DockPreviewScopeTests.swift` check those overloads directly and
+    drop their stand-ins.
+  - `Tests/generate_sources.py` no longer copies `captureIsPaused` or
+    `dockPreviewMayActivate`.
 - **2026-10-03**: Refactor step 6zm (`REFACTOR.md`):
   - `Services/Display/BrightnessService.swift` is `@MainActor`; the state
     behind the key-thread lock, the state lock and the work queue is
