@@ -25,19 +25,21 @@ enum NotchNativePlayback {
         }
     }
 
-    private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
+    // `nonisolated(unsafe)`: set once, then only read.
+    nonisolated(unsafe) private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
     private static let callbacks = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-selection-callbacks")
     private static let lock = NSLock()
-    private static var selected: Target?
-    private static var identity: Identity?
-    private static var context: NotchPlaybackContext?
-    private static var sources: [NotchPlaybackSource] = []
-    private static var selection: NotchPlaybackSource.Selection?
+    // `nonisolated(unsafe)`: `lock` guards these six.
+    nonisolated(unsafe) private static var selected: Target?
+    nonisolated(unsafe) private static var identity: Identity?
+    nonisolated(unsafe) private static var context: NotchPlaybackContext?
+    nonisolated(unsafe) private static var sources: [NotchPlaybackSource] = []
+    nonisolated(unsafe) private static var selection: NotchPlaybackSource.Selection?
     /// System uptime at which the chosen source, still without a track, is
     /// released. A monotonic clock, so changing the time cannot stretch it.
-    private static var releaseAt: TimeInterval?
+    nonisolated(unsafe) private static var releaseAt: TimeInterval?
     /// Set before the watch starts; the one-shot reader does not use selection.
-    static var includeOtherPlayers = false
+    nonisolated(unsafe) static var includeOtherPlayers = false
 
     static var sourceReply: [String: Any] {
         lock.lock(); defer { lock.unlock() }

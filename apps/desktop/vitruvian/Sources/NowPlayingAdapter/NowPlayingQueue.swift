@@ -13,16 +13,19 @@ enum NotchNativeQueue {
     private static let covers = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-queue-covers")
     private static let coverPixels = 96
     private static let maximumCoverBytes = 64 * 1_024
-    private static var coverToken: UUID?
-    private static var requestID: UUID?
-    private static var identity: Identity?
-    private static var revision = UUID()
+    // `nonisolated(unsafe)`: only `work` touches these four.
+    nonisolated(unsafe) private static var requestID: UUID?
+    nonisolated(unsafe) private static var identity: Identity?
+    nonisolated(unsafe) private static var revision = UUID()
+    nonisolated(unsafe) private static var observer: NSObjectProtocol?
     private static let lifetimeLock = NSLock()
-    private static var desiredRequest: UUID?
-    private static var refreshPending = false
-    private static var refreshGeneration = UUID()
-    private static var observer: NSObjectProtocol?
-    private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
+    // `nonisolated(unsafe)`: `lifetimeLock` guards these four.
+    nonisolated(unsafe) private static var coverToken: UUID?
+    nonisolated(unsafe) private static var desiredRequest: UUID?
+    nonisolated(unsafe) private static var refreshPending = false
+    nonisolated(unsafe) private static var refreshGeneration = UUID()
+    // `nonisolated(unsafe)`: set once, then only read.
+    nonisolated(unsafe) private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
 
     private struct Identity: Equatable {
         let pid: Int32

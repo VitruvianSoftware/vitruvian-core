@@ -30,11 +30,14 @@ private typealias IsPlayingFunction = @convention(c) (DispatchQueue, @escaping I
 /// the decoded bytes; the bridge's pipe cap is sized from it (base64 is 4/3
 /// of the bytes) and has to move with it.
 let maximumArtworkBytes = 12 * 1_024 * 1_024
-// Only the watch process enables this cache. Its reads run serially.
-private var watching = false
-private var previousArtwork: Data?
-/// Set by the watch process: schedules another read at a system uptime.
-private var readAt: ((TimeInterval) -> Void)?
+// Only the watch process enables this cache, before its first read. Its reads
+// run serially, and each waits for its own callback, so `nonisolated(unsafe)`:
+// one read at a time touches these three.
+nonisolated(unsafe) private var watching = false
+nonisolated(unsafe) private var previousArtwork: Data?
+/// Set by the watch process before its first read: schedules another read at
+/// a system uptime.
+nonisolated(unsafe) private var readAt: ((TimeInterval) -> Void)?
 
 func function<T>(_ handle: UnsafeMutableRawPointer?, _ name: String, as type: T.Type) -> T? {
     guard let handle, let symbol = dlsym(handle, name) else { return nil }
