@@ -1279,6 +1279,9 @@ is that notice. Add an entry for every change to upstream files.
     classes declare `init() {}`, and `TestSuite` is `Sendable`.
   - `Tests/generate_sources.py` can keep a `nonisolated` written above a
     copied declaration, and the app-updates copies do.
+- **2026-10-04**: Refactor step 6zzn (`REFACTOR.md`): `make_icon` builds in
+  Swift 6 mode, with the main actor as its default isolation (`BUILD`).
+  `Tools/MakeIcon.swift` is unchanged.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

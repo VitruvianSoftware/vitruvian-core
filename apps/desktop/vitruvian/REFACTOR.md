@@ -2472,6 +2472,19 @@ Landed (6zzm, the tests in Swift 6 mode): `unit_tests_bin` builds in the Swift
     stand-ins keep main-actor state.
 - **Still in Swift 5 mode:** only `make_icon`.
 
+Landed (6zzn, `make_icon` in Swift 6 mode): the build tool that draws the app
+icon builds in the Swift 6 language mode, so every Swift target in the app does
+now.
+
+- **Why the main actor by default:** `Tools/MakeIcon.swift` is a script of
+  top-level code, which runs on the main thread. In Swift 6 its top-level
+  variables are main-actor and its top-level functions are not, so
+  `drawMark` and the renderers could not read the images they draw.
+  `-default-isolation MainActor` puts the functions with the variables, as in
+  the tests, and the script compiles unchanged. A model of the script, built
+  with the Linux toolchain, shows the error without the default and none with
+  it.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
