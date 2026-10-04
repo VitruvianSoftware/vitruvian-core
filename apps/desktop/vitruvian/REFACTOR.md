@@ -2014,8 +2014,7 @@ is on the main thread already, so it now says so.
   destination prompt. So are the functions that read `NSApp` for the main
   thread: `appShell()`, the settings import panel, the uninstaller's final
   quit, the switcher's snapshot of this app's windows and the two window
-  lists that take one, the island's overlay Space join and its gesture
-  check.
+  lists that take one, and the island's overlay Space join.
 - **Hopping in:** the brightness overlay's `show`, `teardown` and `dismiss`
   stay callable from any thread and hop to the main thread first, as they
   did; its state is now plain main-actor statics instead of
@@ -2026,6 +2025,8 @@ is on the main thread already, so it now says so.
   - the activation handoff's `NSApp` calls;
   - the shell helper's direct branch of bringing the app forward;
   - the island's menu-space reader asking whether this app is active;
+  - the island's gesture check walking up the view tree, which the tests
+    call from plain code;
   - the mouse navigation keys reading the main menu, with the hidden-menu
     probe moved to a main-actor `refreshOnMain`;
   - the command bar opening Settings;

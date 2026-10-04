@@ -23,20 +23,22 @@ package struct NotchGestureSupport {
     private var fired = false
     private var lastTimestamp: TimeInterval?
 
-    @MainActor
     package static func nativeInteraction(at view: NSView?) -> (control: Bool, scroll: Bool) {
-        var control = false
-        var scroll = false
-        var view = view
-        while let current = view {
-            // The transparent opening button is the gesture surface itself.
-            if (current is NSControl && !(current is NotchActivationButton)) || current is NSTextView {
-                control = true
+        // Views answer on the main thread, where hit-testing happens.
+        MainActor.assumeIsolated {
+            var control = false
+            var scroll = false
+            var view = view
+            while let current = view {
+                // The transparent opening button is the gesture surface itself.
+                if (current is NSControl && !(current is NotchActivationButton)) || current is NSTextView {
+                    control = true
+                }
+                if current is NSScrollView { scroll = true }
+                view = current.superview
             }
-            if current is NSScrollView { scroll = true }
-            view = current.superview
+            return (control, scroll)
         }
-        return (control, scroll)
     }
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {

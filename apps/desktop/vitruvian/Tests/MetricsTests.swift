@@ -121,7 +121,8 @@ struct MetricsTests {
                 StorageFeatureTests.run(suite)
                 ScratchpadStoreContractTests.run(suite)
             }),
-            ("quit-protection", { QuitProtectionHUD.progressChecks(suite) }),
+            // The HUD is main-actor, and this runner is on the main thread.
+            ("quit-protection", { MainActor.assumeIsolated { QuitProtectionHUD.progressChecks(suite) } }),
             ("scratchpad", { ScratchpadMarkTests.run { suite.expect($0, $1) } }),
             ("recording", {
                 RecorderSampleTimingTests.run(suite)

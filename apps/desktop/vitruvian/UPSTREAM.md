@@ -1060,13 +1060,14 @@ is that notice. Add an entry for every change to upstream files.
     `runImportPanel` in `Services/SettingsBackup.swift`,
     `trashOwnBundleAndQuit` in `Services/SelfUninstall.swift`, `snapshot`,
     `listWindows(for:maximumCount:currentSpaceOnly:marksHiddenSpaces:)` and
-    `listWindowsForDockPreview` in `Services/Switcher/WindowEnumerator.swift`,
-    `add` in `Services/Notch/NotchOverlaySpace.swift` and
-    `nativeInteraction` in `Services/Notch/NotchGestureSupport.swift`.
+    `listWindowsForDockPreview` in `Services/Switcher/WindowEnumerator.swift`
+    and `add` in `Services/Notch/NotchOverlaySpace.swift`.
   - `MainActor.assumeIsolated` with a comment in
     `Services/Switcher/WindowActivator.swift` (this app's own windows),
     `Services/ActivationHandoff.swift`, `Services/ShellSupport.swift`,
     `Services/Notch/NotchMenuSpaceReader.swift`,
+    `Services/Notch/NotchGestureSupport.swift` (`nativeInteraction`, which the
+    tests call from plain code),
     `Services/CommandBar/CommandBarCatalog.swift`, the display-link tick in
     `Services/Notch/NotchWindowHost.swift`, and the animation completions in
     `BrightnessOSD.swift`, `RecorderIndicator.swift`,
