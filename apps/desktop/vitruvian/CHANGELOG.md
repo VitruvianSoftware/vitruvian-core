@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.4.1...vitruvian-v3.5.0) (2026-10-04)
+
+
+### Features
+
+* **vitruvian:** configure release-please automation ([#2699](https://github.com/VitruvianSoftware/vitruvian-core/issues/2699)) ([3a886c9](https://github.com/VitruvianSoftware/vitruvian-core/commit/3a886c9267235d2e372e80effaad56ecb12ae065))
+* **vitruvian:** import vorssaint-utils as apps/desktop/vitruvian with Bazel + CI ([#2639](https://github.com/VitruvianSoftware/vitruvian-core/issues/2639)) ([05ee8be](https://github.com/VitruvianSoftware/vitruvian-core/commit/05ee8be1f69849d0f219d44f32de932bba1a3454))
+* **vitruvian:** polish menu bar icon size, panel header, and logo assets ([#2648](https://github.com/VitruvianSoftware/vitruvian-core/issues/2648)) ([969800d](https://github.com/VitruvianSoftware/vitruvian-core/commit/969800d17d03e810786ff8483323782528612659))
+* **vitruvian:** rename the app to Vitruvian and cut upstream's brand and services ([#2641](https://github.com/VitruvianSoftware/vitruvian-core/issues/2641)) ([f648316](https://github.com/VitruvianSoftware/vitruvian-core/commit/f648316b0acf040d9e32ede11a2f50f3ab128087))
+* **vitruvian:** set production app icon and menu bar template artwork ([#2643](https://github.com/VitruvianSoftware/vitruvian-core/issues/2643)) ([2fdb910](https://github.com/VitruvianSoftware/vitruvian-core/commit/2fdb9100a7533c2d2e9b23133344aa0962a47aff))
+
+
+### Bug Fixes
+
+* **vitruvian:** unblock UI's Swift 6 checking and measure what is left (refactor step 6c) ([#2659](https://github.com/VitruvianSoftware/vitruvian-core/issues/2659)) ([e1f0c77](https://github.com/VitruvianSoftware/vitruvian-core/commit/e1f0c771c68e26da32d1e6505c6304faa98330a8))
+
 ## [Unreleased]
 
 ### Summary
