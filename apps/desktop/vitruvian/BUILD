@@ -128,10 +128,11 @@ swift_library(
     name = "VitruvianServices",
     package_name = SWIFT_PACKAGE,
     srcs = SERVICES_SRCS,
-    # Complete concurrency checking warns where Swift 6 would reject, so each
-    # build lists what still stands between Services and Swift 6 mode
-    # (REFACTOR.md step 6zu).
-    copts = ["-strict-concurrency=complete"],
+    # Swift 6 language mode since REFACTOR.md step 6zzi: complete concurrency
+    # checking as errors, and main-actor closures checked at run time. Step
+    # 6zzh moved the callbacks that run off the main thread out of the main
+    # actor.
+    features = ["swift.enable_v6"],
     module_name = "VitruvianServices",
     target_compatible_with = MACOS_ONLY,
     deps = [
