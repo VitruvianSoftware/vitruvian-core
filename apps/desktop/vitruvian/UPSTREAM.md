@@ -1263,6 +1263,11 @@ is that notice. Add an entry for every change to upstream files.
   landed later than that.
 - **2026-10-04**: Refactor step 6zzk (`REFACTOR.md`): `FanControlKit/` and
   the fan control helper build in Swift 6 mode (`BUILD`).
+- **2026-10-04**: Refactor step 6zzl (`REFACTOR.md`): the Now Playing helper
+  builds in Swift 6 mode (`BUILD`). `NowPlayingAdapter/NowPlayingAdapter.swift`,
+  `NowPlayingQueue.swift` and `NowPlayingSelection.swift` mark their shared
+  state `nonisolated(unsafe)`, each with the lock, queue or rule that guards
+  it, and the watch's `refresh()` is `@Sendable`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

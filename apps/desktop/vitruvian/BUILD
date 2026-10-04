@@ -239,6 +239,8 @@ swift_library(
     name = "VitruvianNowPlayingLib",
     package_name = SWIFT_PACKAGE,
     srcs = NOW_PLAYING_SOURCES,
+    # Swift 6 language mode since REFACTOR.md step 6zzl.
+    features = ["swift.enable_v6"],
     module_name = "VitruvianNowPlaying",
     target_compatible_with = MACOS_ONLY,
 )

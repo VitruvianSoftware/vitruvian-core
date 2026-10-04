@@ -30,11 +30,14 @@ private typealias IsPlayingFunction = @convention(c) (DispatchQueue, @escaping I
 /// the decoded bytes; the bridge's pipe cap is sized from it (base64 is 4/3
 /// of the bytes) and has to move with it.
 let maximumArtworkBytes = 12 * 1_024 * 1_024
-// Only the watch process enables this cache. Its reads run serially.
-private var watching = false
-private var previousArtwork: Data?
-/// Set by the watch process: schedules another read at a system uptime.
-private var readAt: ((TimeInterval) -> Void)?
+// Only the watch process enables this cache, before its first read. Its reads
+// run serially, and each waits for its own callback, so `nonisolated(unsafe)`:
+// one read at a time touches these three.
+nonisolated(unsafe) private var watching = false
+nonisolated(unsafe) private var previousArtwork: Data?
+/// Set by the watch process before its first read: schedules another read at
+/// a system uptime.
+nonisolated(unsafe) private var readAt: ((TimeInterval) -> Void)?
 
 func function<T>(_ handle: UnsafeMutableRawPointer?, _ name: String, as type: T.Type) -> T? {
     guard let handle, let symbol = dlsym(handle, name) else { return nil }
@@ -234,14 +237,16 @@ public func vitruvianNowPlayingWatch() {
     watching = true
     register(.main)
     let reader = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-watch")
-    var pending: DispatchWorkItem?
+    // `nonisolated(unsafe)`: `refresh()` runs only on the main queue, from the
+    // notification observers and `readAt`, so only the main queue touches it.
+    nonisolated(unsafe) var pending: DispatchWorkItem?
     let names = ["kMRMediaRemoteNowPlayingInfoDidChangeNotification",
                  "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
                  "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
                  "kMRMediaRemotePlayerNowPlayingInfoDidChangeNotification",
                  "kMRMediaRemoteNowPlayingPlayerStateDidChange",
                  "kMRMediaRemoteNowPlayingApplicationClientStateDidChange"]
-    func refresh() {
+    @Sendable func refresh() {
         pending?.cancel()
         let work = DispatchWorkItem { vitruvianNowPlayingGet() }
         pending = work
@@ -256,7 +261,9 @@ public func vitruvianNowPlayingWatch() {
     }
     let termination = NSWorkspace.shared.notificationCenter.addObserver(
         forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { _ in refresh() }
-    var commandFramer = NotchPlaybackCommandFramer()
+    // `nonisolated(unsafe)`: each read hands its bytes to the main queue, the
+    // only place that touches it.
+    nonisolated(unsafe) var commandFramer = NotchPlaybackCommandFramer()
     FileHandle.standardInput.readabilityHandler = { input in
         let data = input.availableData
         if data.isEmpty { exit(0) }
