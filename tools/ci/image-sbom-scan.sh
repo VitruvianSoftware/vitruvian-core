@@ -81,7 +81,7 @@ esac
 for bin in curl jq osv-scanner; do
   command -v "$bin" >/dev/null 2>&1 || {
     echo "::error::${bin} not found on PATH." >&2
-    [ "$bin" = osv-scanner ] && echo "Locally: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.4.0" >&2
+    [ "$bin" = osv-scanner ] && echo "Locally: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0" >&2
     exit 1
   }
 done
