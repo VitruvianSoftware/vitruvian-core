@@ -2263,6 +2263,8 @@ Landed (6zze, callbacks handed to a queue): 25 of the 99.
   probe still reported it as shared.
 - **Kept plain:** keep-awake recovery's completion parameter, because a
   unit-test fixture copies that method into a class off the main actor.
+- **Measured** (Swift 6 mode, batch mode off): the 25 are gone and nothing
+  new appeared; **31 errors in 15 files** remain.
 
 ## Step 7: test-suite hygiene
 
