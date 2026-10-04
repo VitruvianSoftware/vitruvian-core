@@ -237,7 +237,9 @@ public func vitruvianNowPlayingWatch() {
     watching = true
     register(.main)
     let reader = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-watch")
-    var pending: DispatchWorkItem?
+    // `nonisolated(unsafe)`: `refresh()` runs only on the main queue, from the
+    // notification observers and `readAt`, so only the main queue touches it.
+    nonisolated(unsafe) var pending: DispatchWorkItem?
     let names = ["kMRMediaRemoteNowPlayingInfoDidChangeNotification",
                  "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
                  "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
@@ -259,7 +261,9 @@ public func vitruvianNowPlayingWatch() {
     }
     let termination = NSWorkspace.shared.notificationCenter.addObserver(
         forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { _ in refresh() }
-    var commandFramer = NotchPlaybackCommandFramer()
+    // `nonisolated(unsafe)`: each read hands its bytes to the main queue, the
+    // only place that touches it.
+    nonisolated(unsafe) var commandFramer = NotchPlaybackCommandFramer()
     FileHandle.standardInput.readabilityHandler = { input in
         let data = input.availableData
         if data.isEmpty { exit(0) }
