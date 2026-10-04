@@ -2277,7 +2277,9 @@ Landed (6zzf, values sent across threads): 18 of the 99.
 - **Typed or marked:**
   - the Dock preview's frame repair takes a main-actor `isCurrent`;
   - the media loader's async operation is `sending`, handed to the task
-    that runs it;
+    that runs it. The video asset that operation reads crosses as a
+    `nonisolated(unsafe)` let, since the caller waits while the task
+    reads it;
   - the switcher's two focus-retry states (one in Core), and the shelf's
     file-promise transfer, say what keeps them safe and are
     `@unchecked Sendable`.

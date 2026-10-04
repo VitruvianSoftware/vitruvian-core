@@ -1216,7 +1216,8 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Display/BrightnessService.swift` and
     `Services/MouseAcceleration/MouseAccelerationService.swift`.
   - `Services/DockPreview/DockPreviewFrameRestoration.swift`: a main-actor
-    `isCurrent`. `Services/Media/MediaService.swift`: a `sending` operation.
+    `isCurrent`. `Services/Media/MediaService.swift`: a `sending` operation,
+    and the asset it reads handed over as a `nonisolated(unsafe)` let.
   - `@unchecked Sendable` with what keeps them safe:
     `Core/Switcher/SwitcherSupport.swift`,
     `Services/Switcher/WindowActivator.swift` and

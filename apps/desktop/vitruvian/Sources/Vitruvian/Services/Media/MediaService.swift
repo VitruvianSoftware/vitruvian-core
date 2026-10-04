@@ -1083,7 +1083,10 @@ package final class MediaService: ObservableObject {
     nonisolated private func loadVideoMetadata(from asset: AVAsset,
                                    includeGeometry: Bool,
                                    token: MediaCancellationToken) throws -> VideoMetadata {
-        try runAsync(token: token) {
+        // AVAsset loads its properties from any thread, and only the task
+        // below reads it while this call waits.
+        nonisolated(unsafe) let asset = asset
+        return try runAsync(token: token) {
             let tracks = try await asset.loadTracks(withMediaType: .video)
             guard let track = tracks.first else { throw MediaFailureBox(.noVideoTrack) }
 
