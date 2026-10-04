@@ -678,12 +678,13 @@ package enum AgentLogParser {
 /// ISO 8601 times as both agents write them, "2026-09-21T23:42:45.078Z",
 /// read without a formatter; anything else goes through one.
 package enum AgentTimestamp {
-    private static let fractional: ISO8601DateFormatter = {
+    // Both formatters are read only behind `lock`.
+    nonisolated(unsafe) private static let fractional: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
-    private static let whole = ISO8601DateFormatter()
+    nonisolated(unsafe) private static let whole = ISO8601DateFormatter()
     private static let lock = NSLock()
 
     package static func parse(_ text: String) -> Date? {

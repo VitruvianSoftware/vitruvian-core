@@ -16,8 +16,8 @@ import VitruvianDesign
 /// Nothing here runs while the bar is closed, and nothing is written to disk.
 package enum SpotlightNames {
     /// The attribute is real and documented in `MDItem.h`, but no constant is
-    /// exported for it, so it is named directly.
-    private static let attribute = "kMDItemAlternateNames" as CFString
+    /// exported for it, so it is named directly. A constant string.
+    nonisolated(unsafe) private static let attribute = "kMDItemAlternateNames" as CFString
 
     private struct Entry {
         let modified: Date?

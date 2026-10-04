@@ -102,7 +102,7 @@ package enum AdminShell {
     /// from any thread: hops to the main thread when it is not already on it.
     private static func bringAppToFront() {
         if Thread.isMainThread {
-            NSApp.activate(ignoringOtherApps: true)
+            MainActor.assumeIsolated { NSApp.activate(ignoringOtherApps: true) }
         } else {
             DispatchQueue.main.sync {
                 NSApp.activate(ignoringOtherApps: true)

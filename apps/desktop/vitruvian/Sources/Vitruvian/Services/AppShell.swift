@@ -49,6 +49,7 @@ extension AppShell {
 
 /// The running app's shell, nil only when the application delegate is
 /// something else.
+@MainActor
 package func appShell() -> AppShell? {
     NSApp.delegate as? AppShell
 }

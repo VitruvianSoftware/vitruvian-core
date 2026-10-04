@@ -23,7 +23,7 @@ import VitruvianDesign
 /// loop instead. Main thread only, like everything that touches the menu.
 package enum MouseNavigationKeys {
     /// The key a command ended up on, and the modifiers a menu reports for it.
-    package struct Shortcut: Equatable {
+    package struct Shortcut: Equatable, Sendable {
         package var character: String
         package var menuModifiers: UInt32
 
@@ -54,9 +54,13 @@ package enum MouseNavigationKeys {
     /// system has answered, the declared bracket with Command alone stands in,
     /// which is already the right answer on every keyboard that can type it.
     package static func shortcut(for direction: MouseNavigationDirection) -> Shortcut {
-        if let item = NSApp?.mainMenu.flatMap({ settingsItem(for: direction, in: $0) }),
-           let shortcut = shortcut(of: item) {
-            return shortcut
+        // Read on the main thread, like everything that touches the menu.
+        let fromMenu: Shortcut? = MainActor.assumeIsolated {
+            guard let item = NSApp?.mainMenu.flatMap({ settingsItem(for: direction, in: $0) }) else { return nil }
+            return shortcut(of: item)
+        }
+        if let fromMenu {
+            return fromMenu
         }
         return resolved[direction] ?? Shortcut(
             character: MouseNavigationSupport.commandCharacter(for: direction),
@@ -68,6 +72,12 @@ package enum MouseNavigationKeys {
     /// it is asked once when the feature starts and again whenever the keyboard
     /// changes, both far ahead of any click.
     package static func refresh() {
+        // Main thread only, like everything that touches the menu.
+        MainActor.assumeIsolated { refreshOnMain() }
+    }
+
+    @MainActor
+    private static func refreshOnMain() {
         guard let mainMenu = NSApp?.mainMenu else { return }
         // macOS gives a shortcut only to the first item that declares it, so a
         // hidden pair beside the Go menu would come back with no key at all.

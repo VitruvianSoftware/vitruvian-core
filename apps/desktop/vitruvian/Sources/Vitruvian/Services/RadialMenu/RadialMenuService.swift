@@ -935,6 +935,7 @@ package final class RadialMenuService: ObservableObject {
 
 /// The wheel's own arrival and departure. Reduce Motion is the only switch
 /// over it: this is how the menu opens now, not a preference.
+@MainActor
 private enum WheelMotion {
     static var isEnabled: Bool { !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
@@ -967,7 +968,7 @@ private enum WheelMotion {
     /// only fading out must not eat that. Ordering out and straight back in is
     /// what drops key status, and the pair lands in a single commit, so
     /// nothing blinks.
-    static func dismiss(_ panel: NSPanel, completion: @escaping () -> Void) {
+    static func dismiss(_ panel: NSPanel, completion: @escaping @MainActor () -> Void) {
         guard isEnabled, panel.isVisible else {
             completion()
             return
@@ -981,13 +982,17 @@ private enum WheelMotion {
             context.duration = 0.13
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
-        } completionHandler: { completion() }
+        } completionHandler: {
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated { completion() }
+        }
     }
 }
 
 /// The bookkeeping a fading wheel needs: only one closing at a time, and a
 /// closing that a new summon overtook must never order the panel away
 /// underneath it.
+@MainActor
 package final class PanelDismissal {
     /// True while the panel is only a picture: its monitors and its keyboard
     /// are already gone, so the wheel counts as closed from here.
@@ -996,7 +1001,7 @@ package final class PanelDismissal {
 
     /// Fades the panel away and orders it out, then runs `finish` once, unless
     /// a new session claimed the panel first.
-    package func begin(_ panel: NSPanel, finish: @escaping () -> Void) {
+    package func begin(_ panel: NSPanel, finish: @escaping @MainActor () -> Void) {
         isActive = true
         token &+= 1
         let started = token

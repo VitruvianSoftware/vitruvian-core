@@ -739,6 +739,7 @@ package enum NotchStage {
 /// reads back at once, inside it the previous size is still reported while the
 /// server animates. Only a size change is applied synchronously, once the
 /// layer tree is flushed; a move is deferred and would read back stale anywhere.
+@MainActor
 private final class NotchFrameProbe {
     private let window: NotchPanel
     private var grown = false
@@ -968,7 +969,10 @@ private final class NotchBackdropTick: NSObject {
     /// SwiftUI's drawing of what is set now reaches the screen the frame after
     /// the one being prepared, so the material aims one frame further.
     @objc func fire(_ sender: CADisplayLink) {
-        canvas?.advanceBackdrop(to: sender.targetTimestamp + (sender.targetTimestamp - sender.timestamp))
+        let target = sender.targetTimestamp + (sender.targetTimestamp - sender.timestamp)
+        let canvas = canvas
+        // The canvas adds the link to the main run loop.
+        MainActor.assumeIsolated { canvas?.advanceBackdrop(to: target) }
     }
 }
 

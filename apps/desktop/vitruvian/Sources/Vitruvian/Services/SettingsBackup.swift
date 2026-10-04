@@ -41,6 +41,7 @@ package enum SettingsBackup {
     }
 
     /// Shows the open panel; nil = user cancelled.
+    @MainActor
     package static func runImportPanel() -> URL? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.propertyList, .xml]

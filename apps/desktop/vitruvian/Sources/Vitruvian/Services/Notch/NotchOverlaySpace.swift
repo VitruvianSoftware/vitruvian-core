@@ -87,6 +87,7 @@ package final class NotchOverlaySpace {
     /// Joins a window before it is first ordered in: one already on screen
     /// would stay on its desktop as well and still slide with it. Ordering
     /// out and in again keeps the window here.
+    @MainActor
     package func add(_ window: NSWindow) {
         guard !closed, window.windowNumber > 0, windows.insert(window.windowNumber).inserted else { return }
         bridge.add(bridge.connection, [NSNumber(value: window.windowNumber)] as CFArray,

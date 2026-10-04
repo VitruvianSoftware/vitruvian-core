@@ -463,7 +463,7 @@ package final class DockClickService {
     }
 
     private func postMinimizeAll(pid: pid_t, fallbackWindows: [AXUIElement], actionTime: CFAbsoluteTime) {
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+        DispatchQueue.global(qos: .userInteractive).async {
             // Pressing the app's own Minimize All menu item beats synthesizing
             // ⌥⌘M: it targets the right app even if focus shifts, skips every
             // event tap in between, and is layout-independent (kVK_ANSI_M is a
@@ -477,7 +477,7 @@ package final class DockClickService {
                 // current action: firing it blind would re-minimize a batch a
                 // restore click had already brought back, with nothing left
                 // to undo it.
-                DispatchQueue.main.asyncAfter(deadline: .now() + DockClickSupport.minimizeMenuVerifyDelay) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + DockClickSupport.minimizeMenuVerifyDelay) { [weak self] in
                     guard let self, self.lastAction[pid]?.time == actionTime else { return }
                     DispatchQueue.global(qos: .userInteractive).async {
                         for window in fallbackWindows where Self.isMinimized(window) != true {
@@ -661,7 +661,7 @@ package final class DockClickService {
             Self.activate(pid: pid)
             return
         }
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+        DispatchQueue.global(qos: .userInteractive).async {
             let axApp = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(axApp, 0.35)
             let ids = targets.map { AXWindowResolver.windowID(for: $0) }
@@ -703,7 +703,7 @@ package final class DockClickService {
                 AXUIElementSetAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, pinnedFront)
             }
 
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 // Only the click that started this walk may schedule its
                 // sweep: if another action for the app clicked in meanwhile,
                 // its sweep owns the direction now.
@@ -728,6 +728,7 @@ package final class DockClickService {
     /// Options stay empty on purpose: `restoreBackToFront` earns the batch's
     /// stacking one window at a time, and `.activateAllWindows` would re-raise
     /// the whole app over it — the flick issue #357 was about.
+    nonisolated
     private static func activate(pid: pid_t) {
         DispatchQueue.main.async {
             guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
@@ -741,6 +742,7 @@ package final class DockClickService {
     /// Unminimizes one window and confirms it took, retrying once. Blocking on
     /// the read keeps the batch in step: the next window must not start its
     /// animation until this one has actually begun its own.
+    nonisolated
     private static func restore(_ window: AXUIElement) {
         guard isMinimized(window) != false else { return }
         AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)

@@ -12,7 +12,8 @@ import VitruvianDesign
 /// established fix in mature window managers is to switch the flag off around
 /// the frame change and put it back afterwards, which is what this does.
 package struct EnhancedUserInterfaceSuspension {
-    private static let attribute = "AXEnhancedUserInterface" as CFString
+    // A constant string.
+    nonisolated(unsafe) private static let attribute = "AXEnhancedUserInterface" as CFString
     private let application: AXUIElement
 
     package static func suspend(forAppOf window: AXUIElement) -> EnhancedUserInterfaceSuspension? {

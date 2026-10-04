@@ -1043,6 +1043,50 @@ is that notice. Add an entry for every change to upstream files.
     `Services/GeneralPasteboardAccess.swift`.
   - `main.swift` recovers mouse acceleration inside
     `MainActor.assumeIsolated`.
+- **2026-10-04**: Refactor step 6zw (`REFACTOR.md`):
+  - `@MainActor`: `Services/Recorder/RecorderIndicator.swift`,
+    `Services/QuitProtection/QuitProtectionHUD.swift`,
+    `Services/HorizontalWheelScrolling.swift` (its state no longer
+    `nonisolated(unsafe)`), `NotchFrameProbe` in
+    `Services/Notch/NotchWindowHost.swift`, `WheelMotion` and
+    `PanelDismissal` in `Services/RadialMenu/RadialMenuService.swift`, and
+    `DiskImageInstallDestinationPrompt` in
+    `Services/DiskImageInstaller/DiskImageInstallerService.swift`.
+  - `Services/Display/BrightnessOSD.swift` is `@MainActor` with plain
+    statics; `show`, `teardown` and `dismiss` are `nonisolated`, hop to the
+    main thread and run the new private `showOnMain`, `teardownOnMain` and
+    `dismissOnMain`.
+  - `@MainActor` functions: `appShell()` in `Services/AppShell.swift`,
+    `runImportPanel` in `Services/SettingsBackup.swift`,
+    `trashOwnBundleAndQuit` in `Services/SelfUninstall.swift`, `snapshot`,
+    `listWindows(for:maximumCount:currentSpaceOnly:marksHiddenSpaces:)` and
+    `listWindowsForDockPreview` in `Services/Switcher/WindowEnumerator.swift`
+    and `add` in `Services/Notch/NotchOverlaySpace.swift`.
+  - `MainActor.assumeIsolated` with a comment in
+    `Services/Switcher/WindowActivator.swift` (this app's own windows),
+    `Services/ActivationHandoff.swift`, `Services/ShellSupport.swift`,
+    `Services/Notch/NotchMenuSpaceReader.swift`,
+    `Services/Notch/NotchGestureSupport.swift` (`nativeInteraction`, which the
+    tests call from plain code),
+    `Services/CommandBar/CommandBarCatalog.swift`, the display-link tick in
+    `Services/Notch/NotchWindowHost.swift`, and the animation completions in
+    `BrightnessOSD.swift`, `RecorderIndicator.swift`,
+    `RadialMenuService.swift` and `Services/Notch/NotchLockScreenService.swift`,
+    whose completion types are `@MainActor () -> Void` where they cross.
+  - `Services/MouseNavigation/MouseNavigationKeys.swift`: `Shortcut` is
+    `Sendable`, `shortcut(for:)` reads the main menu inside
+    `MainActor.assumeIsolated`, and `refresh` runs the new main-actor
+    `refreshOnMain`.
+  - `Services/DockClick/DockClickService.swift`: `activate(pid:)` and
+    `restore(_:)` are `nonisolated`, and the restore and minimize walks take
+    `[weak self]` in the main-queue block that uses it.
+  - `nonisolated(unsafe)` with a comment: the formatters in
+    `Services/AgentUsage/AgentLogParser.swift`, the attributes in
+    `Services/EnhancedUserInterfaceSuspension.swift` and
+    `Services/SpotlightNames.swift`, the UUIDs in
+    `Services/Metrics/PeripheralBatterySampler.swift`, `Environment.system`
+    in `Services/Notch/NotchPointerFollower.swift` and the run loop in
+    `Services/PointerTapRunLoop.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

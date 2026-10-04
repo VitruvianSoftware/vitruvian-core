@@ -519,6 +519,7 @@ private struct DiskImageInstallProgressView: View {
     }
 }
 
+@MainActor
 private final class DiskImageInstallDestinationPrompt: NSObject {
     let alert: NSAlert
     let strings: DiskImageInstallerStrings
