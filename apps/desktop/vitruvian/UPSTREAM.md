@@ -1179,6 +1179,19 @@ is that notice. Add an entry for every change to upstream files.
     `Services/FanControl/FanControlService.swift`,
     `Services/Notch/NotchWindowHost.swift`, `Services/Permissions.swift` and
     `Services/Recorder/RecorderEditorController.swift`.
+- **2026-10-04**: Refactor step 6zzd (`REFACTOR.md`):
+  - Event-tap verdicts returned from `DispatchQueue.main.sync` in
+    `Services/Switcher/AppSwitcher.swift` and
+    `Services/Finder/FinderCutPaste.swift`.
+  - Main-queue hops take their own `[weak self]` in
+    `Services/Clipboard/ClipboardHistoryService.swift`.
+  - `@unchecked Sendable` with what guards them:
+    `Services/CommandBar/CommandBarFileSearch.swift`,
+    `Services/CommandBar/CommandBarScriptRunner.swift`,
+    `Services/Notch/NotchTimerAlert.swift`,
+    `Services/Recorder/RecorderCaptureEngine.swift`,
+    `Services/Recorder/RecorderCursorCatalog.swift` and two classes in
+    `Services/Switcher/WindowActivator.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

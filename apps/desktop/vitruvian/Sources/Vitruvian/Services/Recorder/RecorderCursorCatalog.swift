@@ -19,7 +19,10 @@ import VitruvianDesign
 /// the gate says the shape changed. And the identity it hands out is NOT
 /// stable: setting the same arrow again produces a different number every
 /// time, so shapes are keyed by what they look like, never by that number.
-package final class RecorderCursorCatalog {
+///
+/// The shapes, their order and the upgrade set sit under `lock`; the rest is
+/// set in `init` and never changes, so it is `@unchecked Sendable`.
+package final class RecorderCursorCatalog: @unchecked Sendable {
 
     package struct Shape {
         package let image: CGImage

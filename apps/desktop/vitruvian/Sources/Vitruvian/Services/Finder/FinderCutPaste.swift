@@ -300,11 +300,9 @@ package final class FinderCutPaste: ObservableObject {
               keyCode == Key.x || keyCode == Key.c || keyCode == Key.v
         else { return Unmanaged.passUnretained(event) }
 
-        var verdict: Unmanaged<CGEvent>?
-        DispatchQueue.main.sync {
-            verdict = MainActor.assumeIsolated { self.handle(event: event) }
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated { self.handle(event: event) }
         }
-        return verdict
     }
 
     /// Runs on the main thread, so reading `marked` and the pasteboard here is

@@ -881,7 +881,9 @@ package enum WindowActivator {
 /// Lives only while one explicit close request is travelling to another Space.
 /// The existing Space hop owns the transition; this object merely waits for
 /// the exact window to become reachable and then uses the normal close path.
-fileprivate final class SwitcherPendingWindowClose {
+/// Created, polled and finished on the main thread, where its observer is
+/// delivered too, so it is `@unchecked Sendable`.
+fileprivate final class SwitcherPendingWindowClose: @unchecked Sendable {
     private static let pollInterval: TimeInterval = 0.1
     private static let timeout: TimeInterval = 4.0
 
@@ -1016,7 +1018,10 @@ private final class SwitcherAppActivationRetryState {
     }
 }
 
-fileprivate final class SwitcherWindowMinimizeRestore {
+/// Lives on the main thread: its Accessibility observer's source is on the main
+/// run loop and its other callbacks arrive on the main queue, so it is
+/// `@unchecked Sendable`.
+fileprivate final class SwitcherWindowMinimizeRestore: @unchecked Sendable {
     let windowID: CGWindowID
     let targetPID: pid_t
     let targetWindowOwnerPID: pid_t

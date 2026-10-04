@@ -565,11 +565,9 @@ package final class AppSwitcher: ObservableObject {
                     return true
                 }
                 if stillInactive { return Unmanaged.passUnretained(event) }
-                var verdict: Unmanaged<CGEvent>?
-                DispatchQueue.main.sync {
-                    verdict = MainActor.assumeIsolated { self.handle(type: type, event: event) }
+                return DispatchQueue.main.sync {
+                    MainActor.assumeIsolated { self.handle(type: type, event: event) }
                 }
-                return verdict
             }
             if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown || type == .otherMouseUp {
                 // A click discards a session that is still enumerating, so that
@@ -592,11 +590,9 @@ package final class AppSwitcher: ObservableObject {
                     return true
                 }
                 if stillInactive { return Unmanaged.passUnretained(event) }
-                var verdict: Unmanaged<CGEvent>?
-                DispatchQueue.main.sync {
-                    verdict = MainActor.assumeIsolated { self.handle(type: type, event: event) }
+                return DispatchQueue.main.sync {
+                    MainActor.assumeIsolated { self.handle(type: type, event: event) }
                 }
-                return verdict
             }
             guard type == .keyDown else { return Unmanaged.passUnretained(event) }
             let matchesApps = shortcut.matches(event: event, allowingExtraShift: true)
@@ -688,11 +684,9 @@ package final class AppSwitcher: ObservableObject {
             }
         }
 
-        var verdict: Unmanaged<CGEvent>?
-        DispatchQueue.main.sync {
-            verdict = MainActor.assumeIsolated { self.handle(type: type, event: event) }
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated { self.handle(type: type, event: event) }
         }
-        return verdict
     }
 
     /// Main-thread side of the tap; reached only for events `route` decided

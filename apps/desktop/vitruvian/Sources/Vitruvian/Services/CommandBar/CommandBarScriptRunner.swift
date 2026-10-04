@@ -13,7 +13,10 @@ import VitruvianDesign
 /// Not part of the pure-function test harness (`./build.sh --test`): the
 /// behavior here is a background process and a timer, not a calculation.
 /// Verified by hand against a real saved script link instead.
-package final class CommandBarScriptRunner {
+///
+/// Everything here runs on the main thread; the background run touches only
+/// the script and hands its output back, so it is `@unchecked Sendable`.
+package final class CommandBarScriptRunner: @unchecked Sendable {
     package struct Result: Equatable {
         package let text: String
 
