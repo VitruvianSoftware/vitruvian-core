@@ -57,7 +57,8 @@ package final class WindowServerCaptureQueue: @unchecked Sendable {
             return installed
         }
 
-        func finish(_ value: Value?) {
+        /// The value is handed to the waiting caller, so it is sent there.
+        func finish(_ value: sending Value?) {
             let continuation = lock.withLock {
                 finished = true
                 defer { self.continuation = nil }

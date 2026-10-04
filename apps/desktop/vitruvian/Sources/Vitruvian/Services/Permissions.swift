@@ -403,7 +403,7 @@ package final class Permissions: ObservableObject {
         }
     }
 
-    package func requestMicrophone(completion: ((Bool) -> Void)? = nil) {
+    package func requestMicrophone(completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             DispatchQueue.main.async {
                 self?.microphone = granted ? .granted : .denied

@@ -219,7 +219,7 @@ package final class NotchNotificationService: ObservableObject {
         item.canOpen || sourceApplications[item.id] != nil
     }
 
-    package func open(_ id: UUID, completion: @escaping (NotchNotificationReader.ActionResult) -> Void) {
+    package func open(_ id: UUID, completion: @escaping @MainActor @Sendable (NotchNotificationReader.ActionResult) -> Void) {
         guard openingID == nil, monitoring, NotchNotificationSupport.isEnabled(),
               items.contains(where: { $0.id == id }), let reader else { completion(.unavailable); return }
         openingID = id

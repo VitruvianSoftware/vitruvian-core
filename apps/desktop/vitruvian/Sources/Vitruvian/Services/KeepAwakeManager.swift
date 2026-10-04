@@ -963,7 +963,10 @@ package final class KeepAwakeManager: ObservableObject {
         clamshellOperationGeneration &+= 1
         let generation = clamshellOperationGeneration
         clamshellRestorePending = true
-        let finish: (Bool) -> Void = { ok in
+        // Recovery finishes on the main thread, so the caller's completion
+        // never leaves it.
+        nonisolated(unsafe) let completion = completion
+        let finish: @MainActor @Sendable (Bool) -> Void = { ok in
             guard !self.isTerminating, self.clamshellOperationGeneration == generation else { return }
             self.clamshellRestorePending = false
             if ok { UserDefaults.standard.set(false, forKey: DefaultsKey.sleepDisabledFlag) }

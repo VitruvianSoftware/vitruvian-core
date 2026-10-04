@@ -21,7 +21,7 @@ package enum SelfUninstall {
     /// optional closed-lid sudoers rule, and leaves the app in place. Calls back
     /// on the main queue with whether the rule and permissions were removed.
     /// Used by "Clear all permissions".
-    package static func clearPermissions(completion: @escaping (Bool) -> Void) {
+    package static func clearPermissions(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         func stop(sleepRestored: Bool = false) {
             DispatchQueue.main.async {
                 if sleepRestored { KeepAwakeManager.shared.resumeAfterSystemTeardown() }
@@ -70,7 +70,7 @@ package enum SelfUninstall {
     /// Clears permissions, removes preferences and saved state, sends the app
     /// bundle to the Trash and quits. Used by "Uninstall Vitruvian completely".
     /// A failure passes the message explaining what stopped it.
-    package static func uninstallCompletely(onFailure: @escaping (String) -> Void) {
+    package static func uninstallCompletely(onFailure: @escaping @MainActor @Sendable (String) -> Void) {
         // A failed reset may have changed some grants. Recheck them before
         // rearming services in the app that remains installed.
         func stop(_ body: String, sleepRestored: Bool = false) {

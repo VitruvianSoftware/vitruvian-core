@@ -29,7 +29,7 @@ package final class HomebrewManager: ObservableObject {
     /// with the interrupted work retried right after the one-click trust.
     @Published package private(set) var untrustedTap: String?
     @Published package private(set) var isTrustingTap = false
-    private var untrustedTapRetry: (() -> Void)?
+    private var untrustedTapRetry: (@MainActor @Sendable () -> Void)?
     @Published package private(set) var didOpenInstaller = false
     @Published package private(set) var isShellConfigured = true
     @Published package private(set) var shellConfigProfilePath: String?
@@ -665,7 +665,7 @@ package final class HomebrewManager: ObservableObject {
         }
     }
 
-    private func presentUntrustedTap(_ tap: String, retry: @escaping () -> Void) {
+    private func presentUntrustedTap(_ tap: String, retry: @escaping @MainActor @Sendable () -> Void) {
         untrustedTap = tap
         untrustedTapRetry = retry
         errorMessage = nil

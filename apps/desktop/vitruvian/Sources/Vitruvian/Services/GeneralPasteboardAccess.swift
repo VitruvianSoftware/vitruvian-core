@@ -49,7 +49,8 @@ package final class GeneralPasteboardAccess: @unchecked Sendable {
     /// Runs `work` on the lane and hands its result to `completion` on the
     /// main queue. The caller returns immediately: a wedged lane delays the
     /// completion, it never blocks whoever asked.
-    package func async<T>(_ work: @escaping @Sendable () -> T, then completion: @escaping (T) -> Void) {
+    package func async<T: Sendable>(_ work: @escaping @Sendable () -> T,
+                                    then completion: @escaping @MainActor (T) -> Void) {
         queue.async {
             let result = work()
             DispatchQueue.main.async { completion(result) }
@@ -61,38 +62,54 @@ package final class GeneralPasteboardAccess: @unchecked Sendable {
     /// `didFinish` runs on main only when the actual queue operation ends,
     /// even if `completion` already received nil at the deadline. Callers use
     /// it to keep admission bounded while a provider is unresponsive.
-    package func async<T>(timeout: TimeInterval,
+    package func async<T: Sendable>(timeout: TimeInterval,
                    _ work: @escaping @Sendable (_ isExpired: () -> Bool) -> T?,
-                   then completion: @escaping (T?) -> Void,
-                   didFinish: @escaping (T?) -> Void = { _ in }) {
+                   then completion: @escaping @MainActor (T?) -> Void,
+                   didFinish: @escaping @MainActor (T?) -> Void = { _ in }) {
         let deadline = now() + timeout
-        let delivery = PasteboardResultDelivery(completion)
-        let cancelDeadline = scheduleDeadline(timeout) { delivery.complete(nil) }
+        let delivery = PasteboardResultDelivery(completion: completion, didFinish: didFinish)
+        delivery.cancelDeadline = scheduleDeadline(timeout) { delivery.complete(nil) }
+        let isExpired: @Sendable () -> Bool = { self.now() >= deadline }
         queue.async {
-            let isExpired = { self.now() >= deadline }
             let value = isExpired() ? nil : work(isExpired)
             DispatchQueue.main.async {
-                cancelDeadline()
-                didFinish(value)
-                delivery.complete(isExpired() ? nil : value)
+                delivery.finish(value, expired: isExpired())
             }
         }
     }
 }
 
 /// Both deadline and queue completion deliver on main. Clearing the callback
-/// before invoking it also makes reentrant callers safe.
-private final class PasteboardResultDelivery<Value> {
-    private var completion: ((Value?) -> Void)?
+/// before invoking it also makes reentrant callers safe. Made, scheduled and
+/// answered on the main thread, which `complete` checks; the lane only carries
+/// it back there. So it is `@unchecked Sendable`.
+private final class PasteboardResultDelivery<Value: Sendable>: @unchecked Sendable {
+    private var completion: (@MainActor (Value?) -> Void)?
+    private let didFinish: @MainActor (Value?) -> Void
+    /// Set right after the deadline is scheduled, before the lane can answer.
+    var cancelDeadline: (() -> Void)?
 
-    init(_ completion: @escaping (Value?) -> Void) {
+    init(completion: @escaping @MainActor (Value?) -> Void,
+         didFinish: @escaping @MainActor (Value?) -> Void) {
         self.completion = completion
+        self.didFinish = didFinish
+    }
+
+    /// The lane's own answer: the operation really ended, whether or not the
+    /// deadline already answered for it.
+    func finish(_ value: Value?, expired: Bool) {
+        precondition(Thread.isMainThread)
+        cancelDeadline?()
+        // Checked just above.
+        MainActor.assumeIsolated { didFinish(value) }
+        complete(expired ? nil : value)
     }
 
     func complete(_ value: Value?) {
         precondition(Thread.isMainThread)
         let callback = completion
         completion = nil
-        callback?(value)
+        // Checked just above.
+        MainActor.assumeIsolated { callback?(value) }
     }
 }

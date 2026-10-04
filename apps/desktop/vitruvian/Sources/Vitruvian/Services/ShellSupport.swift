@@ -207,12 +207,13 @@ package enum Sudoers {
     /// Completes earlier probes before authorization can restore sleep and
     /// suspends later probes until it finishes. The queue remains free for a
     /// silent restore during quit; the main-thread guard cancels stale prompts.
+    /// `shouldProceed` runs on the main thread; `completion` on the state queue.
     package static func restoreSleepWithAuthorization(prompt: String,
-                                              shouldProceed: @escaping () -> Bool,
-                                              completion: @escaping (Bool) -> Void) {
+                                              shouldProceed: @escaping @MainActor @Sendable () -> Bool,
+                                              completion: @escaping @Sendable (Bool) -> Void) {
         sleepStateQueue.async {
             sleepStateProbeSuspensions += 1
-            let finish: (Bool) -> Void = { ok in
+            let finish: @Sendable (Bool) -> Void = { ok in
                 sleepStateQueue.async {
                     sleepStateProbeSuspensions -= 1
                     completion(ok)
