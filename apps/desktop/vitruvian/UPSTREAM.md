@@ -923,6 +923,8 @@ is that notice. Add an entry for every change to upstream files.
     grants.
   - `Services/CommandBar/CommandBarCatalog.swift`: five builders that read
     a grant are `@MainActor`.
+  - `Tests/ScreenshotFeatureTests.swift`: the window capture's permission
+    gate is looked for as `Permissions.accessibilityGranted`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
