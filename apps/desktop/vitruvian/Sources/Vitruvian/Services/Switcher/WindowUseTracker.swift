@@ -28,7 +28,11 @@ import VitruvianDesign
 /// install for 1.5 seconds. All of them run on this object's own thread, never
 /// on the main run loop, and carry a messaging timeout on top — a stalled main
 /// thread here would freeze typing system wide (issues #189 and #275).
-package final class WindowUseTracker {
+///
+/// The history answers under `stateLock`, the watcher's lifecycle under
+/// `lifecycleLock`, `started` lives on the main thread and the observer state
+/// on the watcher thread, so it is `@unchecked Sendable`.
+package final class WindowUseTracker: @unchecked Sendable {
     package static let shared = WindowUseTracker()
 
     /// Ceiling for a single Accessibility round trip to an app that may not be

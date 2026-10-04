@@ -2052,6 +2052,27 @@ is on the main thread already, so it now says so.
     ScreenCaptureKit windows and the recorder editor's waveform task;
   - about 60 deprecations, which are not concurrency.
 
+Landed (6zx, the last singletons): the seven `static let shared` 6zv left
+are reached from more than one thread, so each says what keeps it safe
+there. None of them changes behavior.
+
+- **`@unchecked Sendable`, the locks named:** Finder rename, click debounce,
+  text snippets, the window use tracker, process usage and the battery
+  capacity probe already keep everything their taps, threads and queues
+  touch behind a lock. What is left lives on one thread, and each says
+  which: the debounce's sleep observers, the snippets' activation observer
+  and the tracker's `started` on the main thread, the tracker's observer
+  state on its watcher thread.
+- **The window preview provider** is `@unchecked Sendable` rather than
+  main-actor: its capture and warm tasks do their image work off the main
+  thread and reach the cache only through `MainActor.run`, which a
+  main-actor class would undo by running those tasks on the main thread.
+  Its `onUpdate` is `@MainActor`, since it is only called inside those
+  `MainActor.run` blocks.
+- **The snippets' alert sound** is `Sendable`: it holds one sound ID.
+- **Not yet:** the remaining warnings are values that are not `Sendable`
+  crossing to another thread, two SDK globals, and deprecations (see 6zw).
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

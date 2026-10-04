@@ -14,7 +14,11 @@ import VitruvianDesign
 /// passed through, so lifecycle resets cannot leave a button stuck. This safe
 /// boundary filters complete extra clicks; it does not delay an Up to repair
 /// contact noise in the middle of a click being held.
-package final class MouseClickDebounceService {
+///
+/// The click state answers under `eventLock`, the tap's lifecycle under
+/// `lifecycleLock`, and the sleep observers live on the main thread, so it is
+/// `@unchecked Sendable`.
+package final class MouseClickDebounceService: @unchecked Sendable {
     package static let shared = MouseClickDebounceService()
 
     private static let ownProcessID = Int64(getpid())

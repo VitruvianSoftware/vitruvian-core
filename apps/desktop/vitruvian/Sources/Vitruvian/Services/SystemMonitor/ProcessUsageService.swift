@@ -36,7 +36,11 @@ package struct ProcessUsage: Identifiable, Equatable {
 /// deltas; memory uses `ps` to rank candidates before reading kernel footprint.
 /// Helper processes are consolidated under the app responsible for them, so one
 /// app shows up once instead of as a pile of helper rows.
-package final class ProcessUsageService {
+///
+/// Its caches answer under `cacheLock`, the network sampler under
+/// `networkSamplerLock` and the previous samples under their own locks, so it
+/// is `@unchecked Sendable`.
+package final class ProcessUsageService: @unchecked Sendable {
     package static let shared = ProcessUsageService()
 
     private struct CachedRows {

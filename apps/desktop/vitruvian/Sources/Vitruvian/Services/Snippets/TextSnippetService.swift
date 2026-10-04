@@ -12,7 +12,11 @@ import VitruvianDesign
 /// {{date}}, {{time}}, {{datetime}} and {{clipboard}} filled in. The key tap,
 /// the observers and the snippet cache only exist while the feature is on;
 /// off means nothing lives. Requires Accessibility (the tap).
-package final class TextSnippetService {
+///
+/// What the tap reads answers under `inputLock`, the tap's lifecycle under
+/// `tapLifecycleLock`, and the activation observer lives on the main thread,
+/// so it is `@unchecked Sendable`.
+package final class TextSnippetService: @unchecked Sendable {
     package static let shared = TextSnippetService()
 
     /// Marks our own synthetic events so the tap never re-processes them.
@@ -509,7 +513,7 @@ package final class TextSnippetService {
 /// output device, at the alert volume, with the screen flash Accessibility
 /// can ask for in place of a sound. NSSound would play it on the default
 /// output device at the main volume, ignoring all three.
-private final class AlertSound {
+private final class AlertSound: Sendable {
     private let soundID: SystemSoundID
 
     init?(name: String) {

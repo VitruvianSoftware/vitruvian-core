@@ -12,7 +12,10 @@ import VitruvianDesign
 /// Turns one chosen key combination into Finder's native Rename command.
 /// Unrelated keys stay on the tap thread's fast path, and the tap only lives
 /// while the feature is on and Accessibility is available.
-package final class FinderRenameService {
+///
+/// The shortcut answers under `routeLock` and the tap's lifecycle under
+/// `lifecycleLock`, so it is `@unchecked Sendable`.
+package final class FinderRenameService: @unchecked Sendable {
     package static let shared = FinderRenameService()
 
     private static let finderBundleID = "com.apple.finder"

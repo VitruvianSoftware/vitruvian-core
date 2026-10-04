@@ -16,7 +16,12 @@ import VitruvianDesign
 /// appear instantly on the next invocation while fresh captures stream in.
 /// Without Screen Recording permission the provider stays silent and the
 /// switcher falls back to app icons.
-package final class WindowPreviewProvider {
+///
+/// The cache, its tasks and the warming state live on the main thread: the
+/// capture and warm tasks reach them only through `MainActor.run`, and the
+/// memory pressure handler and the activation observer are delivered on the
+/// main queue. So it is `@unchecked Sendable`, and `onUpdate` is main-actor.
+package final class WindowPreviewProvider: @unchecked Sendable {
     package static let shared = WindowPreviewProvider()
 
     /// Longest thumbnail edge, in pixels (2x for Retina sharpness).
@@ -66,7 +71,7 @@ package final class WindowPreviewProvider {
     package func refreshPreviews(for items: [SwitcherItem],
                          maxPixelSize: CGFloat = defaultMaxPixelSize,
                          excludedAppsKey: String,
-                         onUpdate: @escaping (CGWindowID, CGImage) -> Void) {
+                         onUpdate: @escaping @MainActor (CGWindowID, CGImage) -> Void) {
         guard Permissions.screenRecordingGranted, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else {
             cancel()
             return
