@@ -1096,8 +1096,12 @@ is that notice. Add an entry for every change to upstream files.
     `Services/SystemMonitor/ProcessUsageService.swift`,
     `Services/Metrics/MaxCapacityProbe.swift` and
     `Services/Switcher/WindowPreviewProvider.swift`, whose `onUpdate` is
-    `@MainActor`.
+    `@MainActor @Sendable`.
   - `AlertSound` in `TextSnippetService.swift` is `Sendable`.
+  - `@MainActor @Sendable` callback types: `WheelMotion.dismiss` and
+    `PanelDismissal.begin` in `Services/RadialMenu/RadialMenuService.swift`,
+    and `fadeOut` (with its caller's counter) in
+    `Services/Notch/NotchLockScreenService.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

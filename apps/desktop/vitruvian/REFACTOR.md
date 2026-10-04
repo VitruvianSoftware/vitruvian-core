@@ -2034,7 +2034,9 @@ is on the main thread already, so it now says so.
   - animation completions, which AppKit calls on the main thread, in the
     brightness overlay, the recorder's indicator, the radial menu and the
     lock screen fade. The radial menu and lock screen completions are
-    typed `@MainActor () -> Void`, so they can cross into those handlers.
+    typed `@MainActor @Sendable () -> Void`, so they can cross into those
+    handlers (6zx added `@Sendable`: `@MainActor` alone does not make a
+    function type `Sendable`).
 - **Off the main thread, said so:** the Dock click service's `activate(pid:)`
   and `restore(_:)` run on whatever queue the restore walk is on, as their
   comments already said, so they are `nonisolated`. The walk's `[weak self]`
@@ -2067,8 +2069,13 @@ there. None of them changes behavior.
   main-actor: its capture and warm tasks do their image work off the main
   thread and reach the cache only through `MainActor.run`, which a
   main-actor class would undo by running those tasks on the main thread.
-  Its `onUpdate` is `@MainActor`, since it is only called inside those
-  `MainActor.run` blocks.
+  Its `onUpdate` is `@MainActor @Sendable`, since it is only called inside
+  those `MainActor.run` blocks.
+- **Main-actor callbacks that cross threads** are `@MainActor @Sendable`:
+  6zw typed the radial menu's and the lock screen's animation completions
+  `@MainActor` alone, which does not make a function type `Sendable`, so the
+  capture into AppKit's completion handler still warned. The lock screen's
+  fade counter is declared with that type, which lets it keep its counter.
 - **The snippets' alert sound** is `Sendable`: it holds one sound ID.
 - **Not yet:** the remaining warnings are values that are not `Sendable`
   crossing to another thread, two SDK globals, and deprecations (see 6zw).

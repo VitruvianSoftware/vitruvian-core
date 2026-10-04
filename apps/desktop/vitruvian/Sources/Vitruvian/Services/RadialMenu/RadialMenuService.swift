@@ -968,7 +968,7 @@ private enum WheelMotion {
     /// only fading out must not eat that. Ordering out and straight back in is
     /// what drops key status, and the pair lands in a single commit, so
     /// nothing blinks.
-    static func dismiss(_ panel: NSPanel, completion: @escaping @MainActor () -> Void) {
+    static func dismiss(_ panel: NSPanel, completion: @escaping @MainActor @Sendable () -> Void) {
         guard isEnabled, panel.isVisible else {
             completion()
             return
@@ -1001,7 +1001,7 @@ package final class PanelDismissal {
 
     /// Fades the panel away and orders it out, then runs `finish` once, unless
     /// a new session claimed the panel first.
-    package func begin(_ panel: NSPanel, finish: @escaping @MainActor () -> Void) {
+    package func begin(_ panel: NSPanel, finish: @escaping @MainActor @Sendable () -> Void) {
         isActive = true
         token &+= 1
         let started = token

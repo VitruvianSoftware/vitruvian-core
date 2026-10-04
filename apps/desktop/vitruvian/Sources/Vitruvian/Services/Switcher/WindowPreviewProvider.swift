@@ -71,7 +71,7 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     package func refreshPreviews(for items: [SwitcherItem],
                          maxPixelSize: CGFloat = defaultMaxPixelSize,
                          excludedAppsKey: String,
-                         onUpdate: @escaping @MainActor (CGWindowID, CGImage) -> Void) {
+                         onUpdate: @escaping @MainActor @Sendable (CGWindowID, CGImage) -> Void) {
         guard Permissions.screenRecordingGranted, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else {
             cancel()
             return
