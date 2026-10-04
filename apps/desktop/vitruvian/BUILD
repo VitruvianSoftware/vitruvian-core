@@ -429,13 +429,19 @@ genrule(
     srcs = [":unit_tests_bin"],
     outs = ["tests_executor_checks.txt"],
     cmd = """
+echo "PROBE srcs: $(SRCS)" >&2
+dis=$$(mktemp)
 for f in $(SRCS); do
   case "$$f" in
     *unit_tests_bin) xcrun objdump -dr --no-show-raw-insn "$$f" ;;
   esac
-done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_(reportUnexpectedExecutor|isCurrentExecutor)/ { print fn }' \\
+done > "$$dis"
+echo "PROBE disassembly lines: $$(wc -l < "$$dis")" >&2
+grep -m8 -E 'swift_task_(reportUnexpectedExecutor|isCurrentExecutor)' "$$dis" >&2 || true
+awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_(reportUnexpectedExecutor|isCurrentExecutor)/ { print fn }' "$$dis" \\
   | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle \\
   | grep -E '(^| )VitruvianTests[.]' > $@ || true
+rm -f "$$dis"
 echo "PROBE executor checks: $$(wc -l < $@)" >&2
 cat $@ >&2
 """,

@@ -104,7 +104,8 @@ enum SpeedTestTests {
     }
 }
 
-private final class SpeedTestClock {
+/// The lock guards the time, so the delegate queue may read it.
+private nonisolated final class SpeedTestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: CFAbsoluteTime = 1_000
 
@@ -117,11 +118,12 @@ private final class SpeedTestClock {
     }
 }
 
-private final class SpeedTestTimeBoxScheduler {
+/// The lock guards the callbacks, so the delegate queue may arm them.
+private nonisolated final class SpeedTestTimeBoxScheduler: @unchecked Sendable {
     private struct Callback {
         let queue: OperationQueue
         let delay: TimeInterval
-        let action: () -> Void
+        let action: @Sendable () -> Void
         var cancelled = false
         var hasRun = false
     }
@@ -143,7 +145,7 @@ private final class SpeedTestTimeBoxScheduler {
     }
 
     func schedule(on queue: OperationQueue, after delay: TimeInterval,
-                  action: @escaping () -> Void) -> () -> Void {
+                  action: @escaping @Sendable () -> Void) -> () -> Void {
         let index = lock.withLock {
             callbacks.append(Callback(queue: queue, delay: delay, action: action))
             return callbacks.index(before: callbacks.endIndex)

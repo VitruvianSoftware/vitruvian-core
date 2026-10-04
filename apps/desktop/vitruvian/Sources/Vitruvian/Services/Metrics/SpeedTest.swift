@@ -17,8 +17,9 @@ import VitruvianDesign
 package final class SpeedTest: NSObject, ObservableObject {
     package static let shared = SpeedTest()
 
-    package typealias Clock = () -> TimeInterval
-    package typealias TimeBoxScheduler = (OperationQueue, TimeInterval, @escaping @Sendable () -> Void) -> () -> Void
+    // The delegate queue reads the clock and arms the time box, so both are `@Sendable`.
+    package typealias Clock = @Sendable () -> TimeInterval
+    package typealias TimeBoxScheduler = @Sendable (OperationQueue, TimeInterval, @escaping @Sendable () -> Void) -> () -> Void
 
     package enum Phase: Equatable {
         case idle, latency, download, upload, done
@@ -38,8 +39,8 @@ package final class SpeedTest: NSObject, ObservableObject {
 
     private let host = "https://speed.cloudflare.com"
     private let sampleSeconds: TimeInterval
-    nonisolated(unsafe) private let clock: Clock
-    nonisolated(unsafe) private let scheduleTimeBox: TimeBoxScheduler
+    nonisolated private let clock: Clock
+    nonisolated private let scheduleTimeBox: TimeBoxScheduler
     // Cloudflare's __down caps the size just under 100 MB (100 MB+ returns ~nothing),
     // so request under that and loop chunks back-to-back until the time box — that
     // keeps a fast link's pipe full for a full measurement window.
