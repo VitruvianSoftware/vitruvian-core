@@ -34,7 +34,8 @@ package enum MouseNavigationKeys {
         }
     }
 
-    private static var resolved: [MouseNavigationDirection: Shortcut] = [:]
+    // Main thread only, like everything that touches the menu.
+    nonisolated(unsafe) private static var resolved: [MouseNavigationDirection: Shortcut] = [:]
 
     /// The Settings Go menu's item for a direction, wherever that menu sits in
     /// `mainMenu`.

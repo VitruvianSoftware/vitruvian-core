@@ -229,7 +229,8 @@ package enum MenuBarRenderer {
         "↓8888B", "↑8888B", "R8888B", "W8888B",
         "↓8888M", "↑8888M", "R8888M", "W8888M",
     ]
-    private static let blockImageCache: NSCache<NSString, NSImage> = {
+    // NSCache is thread-safe.
+    nonisolated(unsafe) private static let blockImageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 300
         // The keys embed live metric values, so continuously changing numbers

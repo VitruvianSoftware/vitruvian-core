@@ -9,10 +9,11 @@ import VitruvianDesign
 /// A brief percentage overlay for every brightness route. The disabled
 /// feature owns no window, observer or timer.
 package enum BrightnessOSD {
-    private static var panel: NSPanel?
-    private static var host: NSHostingController<BrightnessOSDView>?
-    private static var dismissWork: DispatchWorkItem?
-    private static var generation = 0
+    // Main thread only: show and teardown hop there first.
+    nonisolated(unsafe) private static var panel: NSPanel?
+    nonisolated(unsafe) private static var host: NSHostingController<BrightnessOSDView>?
+    nonisolated(unsafe) private static var dismissWork: DispatchWorkItem?
+    nonisolated(unsafe) private static var generation = 0
 
     package static func show(displayID: CGDirectDisplayID, brightness: Double) {
         guard Thread.isMainThread else {

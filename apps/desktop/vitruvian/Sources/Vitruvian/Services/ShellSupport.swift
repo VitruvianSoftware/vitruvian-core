@@ -40,7 +40,8 @@ package enum AdminShell {
     // frustrated retry used to do, and what was linked to the instability in
     // issue #63). Every caller already treats false as "permission not granted".
     private static let promptLock = NSLock()
-    private static var prompting = false
+    // Guarded by promptLock.
+    nonisolated(unsafe) private static var prompting = false
 
     private enum RequestOrigin {
         case systemScript
@@ -141,7 +142,8 @@ package enum Sudoers {
     private static let sleepStateQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.pmset-state")
     // Authorization runs outside this queue so quitting never waits for a
     // password prompt. Probes must not reapply a stale state during that off.
-    private static var sleepStateProbeSuspensions = 0
+    // Only sleepStateQueue touches it.
+    nonisolated(unsafe) private static var sleepStateProbeSuspensions = 0
 
     /// Proves the passwordless path by running it: re-applying the current
     /// SleepDisabled state through `sudo -n` changes nothing on the system and

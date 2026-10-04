@@ -13,7 +13,8 @@ import VitruvianDesign
 /// exactly once and composites a texture for the rest of it.
 package enum RecorderTextRenderer {
 
-    private static var cache: [String: CGImage] = [:]
+    // Guarded by lock.
+    nonisolated(unsafe) private static var cache: [String: CGImage] = [:]
     private static let lock = NSLock()
 
     package static func image(for overlay: RecorderTextOverlay, canvasHeight: CGFloat) -> CGImage? {

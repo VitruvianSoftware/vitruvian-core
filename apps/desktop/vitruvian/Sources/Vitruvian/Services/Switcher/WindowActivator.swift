@@ -15,11 +15,13 @@ private let switcherAXPressedNotification = "AXPressed"
 package enum WindowActivator {
     private static let focusRetryDelay: TimeInterval = 0.12
     private static let fullscreenFocusRetryDelays: [TimeInterval] = [0.18, 0.38, 0.68]
-    private static var pendingMinimizeRestore: SwitcherWindowMinimizeRestore?
-    private static var pendingWindowClose: SwitcherPendingWindowClose?
+    // Main thread only, like the activations and closes that set them.
+    nonisolated(unsafe) private static var pendingMinimizeRestore: SwitcherWindowMinimizeRestore?
+    nonisolated(unsafe) private static var pendingWindowClose: SwitcherPendingWindowClose?
     private static let activationLock = NSLock()
-    private static var activationGeneration: UInt64 = 0
-    private static var activationGenerationsByPID: [pid_t: UInt64] = [:]
+    // Both guarded by activationLock.
+    nonisolated(unsafe) private static var activationGeneration: UInt64 = 0
+    nonisolated(unsafe) private static var activationGenerationsByPID: [pid_t: UInt64] = [:]
 
     package static func activate(_ item: SwitcherItem,
                          retry: Bool = true,

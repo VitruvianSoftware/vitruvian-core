@@ -1283,14 +1283,16 @@ package enum CommandBarCatalog {
     }
 
     /// Filled in by the service from a background pass; nil until the first
-    /// one lands, which simply means the row is not offered yet.
-    package static var cachedBootVolumeSpace: (free: UInt64, total: UInt64)?
+    /// one lands, which simply means the row is not offered yet. Main thread
+    /// only: the service stores it there, and the catalog is built there.
+    nonisolated(unsafe) package static var cachedBootVolumeSpace: (free: UInt64, total: UInt64)?
 
     /// The battery and the memory pressure are read the same way and for the
     /// same reason: both cross into the kernel (IOKit power sources, the mach
-    /// VM statistics), and the bar opens on a keystroke.
-    package static var cachedBattery: BatteryInfo?
-    package static var cachedMemory: (used: UInt64, appUsed: UInt64, total: UInt64,
+    /// VM statistics), and the bar opens on a keystroke. Main thread only,
+    /// like the storage above.
+    nonisolated(unsafe) package static var cachedBattery: BatteryInfo?
+    nonisolated(unsafe) package static var cachedMemory: (used: UInt64, appUsed: UInt64, total: UInt64,
                               compressed: UInt64, cached: UInt64, swapUsed: UInt64?)?
 
     package static func readBootVolumeSpace() -> (free: UInt64, total: UInt64)? {

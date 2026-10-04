@@ -36,8 +36,9 @@ extension NotchNotificationReaderCore where Access == NotchNativeNotificationAcc
 package enum NotchNotificationSources {
     package typealias Identity = (name: String, bundleIdentifier: String)
     private static let lock = NSLock()
-    private static var installed: [Identity] = []
-    private static var walkedAt: TimeInterval?
+    // Both guarded by lock.
+    nonisolated(unsafe) private static var installed: [Identity] = []
+    nonisolated(unsafe) private static var walkedAt: TimeInterval?
     private static let maximumAge: TimeInterval = 10 * 60
 
     package static func refreshIfStale() {

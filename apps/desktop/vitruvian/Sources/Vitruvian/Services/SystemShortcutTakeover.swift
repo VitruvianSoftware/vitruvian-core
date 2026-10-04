@@ -13,15 +13,16 @@ import VitruvianDesign
 /// next launch. Callers decide which ids; this decides how.
 package enum SystemShortcutTakeover {
     private static let lock = NSLock()
-    private static var suppressed: Set<Int32> = SystemShortcutTakeoverSupport.migratedMarker(
+    // This state is guarded by lock.
+    nonisolated(unsafe) private static var suppressed: Set<Int32> = SystemShortcutTakeoverSupport.migratedMarker(
         old: UserDefaults.standard.array(forKey: DefaultsKey.switcherNativeHotkeysSuppressed) as? [Int],
         new: UserDefaults.standard.array(forKey: DefaultsKey.systemShortcutsSuppressed) as? [Int])
     package static let switcherSource = "switcher"
-    private static var wanted: [String: Set<Int32>] = [:]
-    private static var claims: [String: GlobalShortcut] = [:]
-    private static var takeOverKeys: Set<String> = Set(
+    nonisolated(unsafe) private static var wanted: [String: Set<Int32>] = [:]
+    nonisolated(unsafe) private static var claims: [String: GlobalShortcut] = [:]
+    nonisolated(unsafe) private static var takeOverKeys: Set<String> = Set(
         UserDefaults.standard.stringArray(forKey: DefaultsKey.systemShortcutTakeOverKeys) ?? [])
-    private static var wakeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private static var wakeObserver: NSObjectProtocol?
 
     /// Raw-id callers (the switcher) say what they want under their own name.
     package static func setWanted(_ ids: Set<Int32>, for source: String) {

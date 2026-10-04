@@ -975,6 +975,46 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Clipboard/ClipboardAutoClearService.swift` is `@MainActor`;
     its observers and timer run through `MainActor.assumeIsolated`, and the
     lock-guarded configuration generation is `nonisolated(unsafe)`.
+- **2026-10-04**: Refactor step 6zu (`REFACTOR.md`):
+  - Static state says what guards it, as `nonisolated(unsafe)` with a
+    comment:
+    - a lock: `Services/CommandBar/CommandBarSystemSettings.swift`,
+      `Services/Notch/NotchAudioLevelService.swift`,
+      `Services/Notch/NotchNotificationReader.swift`,
+      `Services/QuickTools/ScreenshotService.swift`, the caches in
+      `Services/Recorder/RecorderCursorSprite.swift`,
+      `RecorderImageRenderer.swift` and `RecorderTextRenderer.swift`,
+      `Services/SpotlightNames.swift`,
+      `Services/SystemShortcutTakeover.swift`, the activation generations in
+      `Services/Switcher/WindowActivator.swift`, the wallpaper thumbnail
+      generation in `Services/Wallpaper/WallpaperService.swift` and the
+      prompt flag in `Services/ShellSupport.swift`, whose sleep-state count
+      only its queue touches;
+    - the main thread: `Services/ActivationHandoff.swift`,
+      `Services/Display/BrightnessOSD.swift`,
+      `Services/HorizontalWheelScrolling.swift`,
+      `Services/MouseNavigation/MouseNavigationKeys.swift`,
+      `Services/QuickTools/QuickToolHotkey.swift`,
+      `Services/Switcher/SpaceHop.swift`, the pending close and restore in
+      `Services/Switcher/WindowActivator.swift`, the command bar caches in
+      `Services/CommandBar/CommandBarCatalog.swift` and
+      `CommandBarExtras.swift`, the file icon list in
+      `Services/Clipboard/ClipboardHistoryService.swift` and the app icons
+      in `Services/RadialMenu/RadialNowPlayingService.swift`;
+    - `NSCache`, which is thread-safe, in
+      `Services/Clipboard/ClipboardHistoryService.swift`,
+      `Services/MenuBar/MenuBarRenderer.swift`,
+      `Services/ResponsibleProcess.swift` and
+      `Services/Wallpaper/WallpaperService.swift`;
+    - `dlopen` handles that only `dlsym` reads, in
+      `Services/DockPreview/DockAutohideHold.swift`,
+      `Services/Display/BrightnessService.swift` and
+      `Services/MiddleClick/MiddleClickService.swift`, and the constant
+      audio settings in `Services/Recorder/RecorderWriter.swift`.
+  - `@MainActor`: `Services/QuickTools/WindowActivationPolicy.swift`,
+    `Services/ServiceViews.swift` and `MediaPanelModal.panelModalActive`
+    in `Services/Media/MediaPanelModal.swift`. `main.swift` installs the
+    view factory inside `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

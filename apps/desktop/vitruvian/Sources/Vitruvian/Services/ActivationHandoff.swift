@@ -16,7 +16,8 @@ package enum ActivationHandoff {
     /// windows, which is a real use and stays in the switcher's history.
     private static let selfActivationWindow: CFTimeInterval = 1
 
-    private static var lastSelfActivation: CFAbsoluteTime = 0
+    // Main thread only, like the NSApp calls below.
+    nonisolated(unsafe) private static var lastSelfActivation: CFAbsoluteTime = 0
 
     /// Whether the activation of Vitruvian being reported right now is the one
     /// `yield(to:)` asked for on its way out. Main thread, like every `NSApp`

@@ -17,6 +17,7 @@ package enum MediaPanelModal {
     /// click, so a double-click (or clicking both pickers quickly) would queue
     /// a second identical dialog behind the first without this guard.
     /// While it is set, the island keeps its working surface open.
+    @MainActor
     package private(set) static var panelModalActive = false
 
     @MainActor

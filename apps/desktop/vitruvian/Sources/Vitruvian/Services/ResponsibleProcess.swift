@@ -10,7 +10,8 @@ import VitruvianDesign
 /// a human name. Shared by the resource breakdown and the volume mixer, so
 /// helper processes roll up into their app with its proper icon.
 package enum ResponsibleProcess {
-    private static let iconCache: NSCache<NSString, NSImage> = {
+    // NSCache is thread-safe.
+    nonisolated(unsafe) private static let iconCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 80
         cache.totalCostLimit = ImageThumbnailer.estimatedBitmapCost(pointSize: 32) * 80

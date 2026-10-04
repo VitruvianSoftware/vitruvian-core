@@ -65,8 +65,9 @@ package final class DockAutohideHold {
 private enum CoreDock {
     typealias Getter = @convention(c) () -> UInt8
     typealias Setter = @convention(c) (UInt8) -> Void
-    // Retain the handle for the lifetime of the function pointers.
-    static let handle = dlopen(
+    // Retain the handle for the lifetime of the function pointers. Set once,
+    // and only dlsym, which is thread-safe, reads it.
+    nonisolated(unsafe) static let handle = dlopen(
         "/System/Library/Frameworks/ApplicationServices.framework/Frameworks/HIServices.framework/HIServices",
         RTLD_LAZY | RTLD_LOCAL)
     static let get: Getter? = symbol("CoreDockGetAutoHideEnabled", as: Getter.self)
