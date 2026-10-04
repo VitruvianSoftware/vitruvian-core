@@ -2369,6 +2369,26 @@ warning.
 - **Still in Swift 5 mode:** the app target (`VitruvianLib`), the fan
   control helper, the Now Playing helper and the tests.
 
+Landed (6zzj, the app target in Swift 6 mode): `VitruvianLib` builds in the
+Swift 6 language mode too, so every module of the app now does.
+
+- **Measured:** a probe built it in Swift 6 mode and found 6 errors in 2
+  files. Each is fixed the way Services fixed the same error:
+  - two notification handlers in `AppDelegate` read the notification on the
+    main actor, so each now reads what it needs first;
+  - `StatusItemController`'s `deinit` reads four properties, which are now
+    `nonisolated(unsafe)`.
+- **The run-time check:** with the fixes, 70 closures check for the main
+  thread when they start. All 70 run there, so none moved:
+  - 28 blocks on the main queue;
+  - 12 Combine sinks received on the main queue;
+  - 11 `MainActor.assumeIsolated` bodies;
+  - 3 event monitors;
+  - 16 closures that a call runs before it returns, such as `filter` or
+    `first(where:)`.
+- **Still in Swift 5 mode:** the fan control helper, the Now Playing helper
+  and the tests.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
