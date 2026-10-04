@@ -2120,6 +2120,22 @@ checking printed 429 concurrency warnings.
   strong one); weak on both is clean under complete checking and in Swift 6
   mode.
 
+Landed (6zz, the event taps): the 19 errors of one shape from 6zy. An event
+tap's callback hands its `CGEvent` back out of `MainActor.assumeIsolated`,
+which needs a `Sendable` result, and `CGEvent` is not. The event never
+leaves the thread: the tap's source is on the main run loop, so the callback
+and the main actor are the same thread.
+
+- **The fix:** the 15 files with a main-run-loop tap import CoreGraphics as
+  `@preconcurrency`, the compiler's own suggestion and what 6zs did for
+  CoreFoundation. Eleven already imported it; the other four
+  (precise volume, auto-quit, brightness and the radial menu) reached it
+  through AppKit and now import it directly.
+- **Checked by the build:** in Swift 5 mode a `@preconcurrency` import
+  silences these warnings, so the macOS log of this step's build lists no
+  `CGEvent` `Sendable` warning in Services.
+- **Next:** the 27 errors in 13 files, then Services in Swift 6 mode.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

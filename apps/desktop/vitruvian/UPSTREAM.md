@@ -1106,6 +1106,22 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/DockClick/DockClickService.swift`: the restore and minimize
     walks' outer queue blocks take `[weak self]` again, beside the inner
     main-queue blocks that use it.
+- **2026-10-04**: Refactor step 6zz (`REFACTOR.md`):
+  - `@preconcurrency import CoreGraphics` in
+    `Services/DockClick/DockClickService.swift`,
+    `Services/DockPreview/DockPreviewService.swift`,
+    `Services/Finder/FinderCutPaste.swift`,
+    `Services/MouseButtons/MouseButtonShortcutService.swift`,
+    `Services/MouseNavigation/MouseNavigationService.swift`,
+    `Services/QuitProtection/QuitProtectionService.swift`,
+    `Services/ShortcutRecordingTap.swift`, `Services/SmoothScrollService.swift`,
+    `Services/Switcher/AppSwitcher.swift`,
+    `Services/WindowLayout/WindowLayoutService.swift` and
+    `Services/WindowMaximizer.swift`, and added to
+    `Services/Audio/PreciseVolumeRollerService.swift`,
+    `Services/AutoQuit/AutoQuitService.swift`,
+    `Services/Display/BrightnessService.swift` and
+    `Services/RadialMenu/RadialMenuService.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+@preconcurrency import CoreGraphics
 import VitruvianCore
 import VitruvianDesign
 

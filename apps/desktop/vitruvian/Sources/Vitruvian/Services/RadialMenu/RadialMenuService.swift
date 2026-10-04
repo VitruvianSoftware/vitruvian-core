@@ -3,6 +3,7 @@
 
 import AppKit
 import Carbon.HIToolbox
+@preconcurrency import CoreGraphics
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign

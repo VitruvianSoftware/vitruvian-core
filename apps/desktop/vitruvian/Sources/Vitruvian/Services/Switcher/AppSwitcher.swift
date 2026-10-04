@@ -5,7 +5,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import Combine
-import CoreGraphics
+@preconcurrency import CoreGraphics
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
