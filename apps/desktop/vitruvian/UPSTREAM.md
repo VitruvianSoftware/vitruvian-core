@@ -1015,6 +1015,34 @@ is that notice. Add an entry for every change to upstream files.
     `Services/ServiceViews.swift` and `MediaPanelModal.panelModalActive`
     in `Services/Media/MediaPanelModal.swift`. `main.swift` installs the
     view factory inside `MainActor.assumeIsolated`.
+- **2026-10-04**: Refactor step 6zv (`REFACTOR.md`):
+  - `@MainActor`: `Services/DockPreview/DockPreviewDragGhost.swift`,
+    `Services/Shelf/ShelfTooltipPopover.swift`,
+    `Services/QuickTools/QRResultController.swift`,
+    `Services/QuickTools/ScreenshotPinController.swift`,
+    `Services/Bluetooth/BluetoothSleepService.swift`,
+    `Services/RadialMenu/RadialNowPlayingService.swift` (the service, not
+    its bridge), and:
+    - `Services/ScrollWheelTarget.swift`, whose `shared`, init and
+      `contains` are `nonisolated` and whose self-locking cache is
+      `nonisolated(unsafe)`;
+    - `Services/MouseAcceleration/MouseAccelerationService.swift`, whose
+      HID device callback is `nonisolated` and enters the main actor;
+    - `Services/FocusFollowsMouse/FocusFollowsMouseService.swift`, whose
+      window query helpers are `nonisolated` and whose timer enters the
+      main actor;
+    - `Services/DockClick/DockClickService.swift`, whose tap enters the
+      main actor and whose Accessibility helpers are `nonisolated`;
+    - `Services/DiskImageInstaller/DiskImageInstallerService.swift`, whose
+      mount check, install and their static helpers are `nonisolated`.
+
+    Their main-queue observers enter the main actor through
+    `MainActor.assumeIsolated`.
+  - `@unchecked Sendable`, with a comment saying why:
+    `Services/SessionActivity.swift` and
+    `Services/GeneralPasteboardAccess.swift`.
+  - `main.swift` recovers mouse acceleration inside
+    `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

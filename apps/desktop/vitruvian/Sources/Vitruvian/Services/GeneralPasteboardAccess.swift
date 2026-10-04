@@ -12,7 +12,10 @@ import VitruvianDesign
 /// stops answering leaves the reader hanging. Hence one serial lane, off the
 /// main thread, and no way to wait for it — a caller waiting on the main
 /// thread is a frozen app (issue #887).
-package final class GeneralPasteboardAccess {
+///
+/// It holds only constants: the lane, the clock the lane reads, and the
+/// deadline scheduler its callers run. So it is `@unchecked Sendable`.
+package final class GeneralPasteboardAccess: @unchecked Sendable {
     package static let shared = GeneralPasteboardAccess()
 
     package typealias DeadlineScheduler = (_ delay: TimeInterval,

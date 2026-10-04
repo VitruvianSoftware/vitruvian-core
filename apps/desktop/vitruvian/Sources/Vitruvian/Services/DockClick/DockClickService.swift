@@ -11,6 +11,7 @@ import VitruvianDesign
 /// Adds optional actions when the active app's Dock icon is clicked: minimize
 /// its windows, hide the app, or cycle its windows. The Dock's native behavior
 /// remains untouched for every other click. Requires Accessibility.
+@MainActor
 package final class DockClickService {
     package static let shared = DockClickService()
 
@@ -98,7 +99,8 @@ package final class DockClickService {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<DockClickService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return }
@@ -507,8 +509,10 @@ package final class DockClickService {
     /// Menu items one Minimize All walk may read. The other menu walks in
     /// this app stop at 600; an unbounded one here reads every item of every
     /// menu the app has, at two or three cross-process reads each.
+    nonisolated
     private static let minimizeMenuItemBudget = 600
 
+    nonisolated
     private static func handleMinimizeMenu(pid: pid_t) -> MinimizeMenuOutcome {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 1.0)
@@ -603,6 +607,7 @@ package final class DockClickService {
         }
     }
 
+    nonisolated
     private static func setMinimized(_ minimized: Bool, windows: [AXUIElement]) {
         let value: CFBoolean = minimized ? kCFBooleanTrue : kCFBooleanFalse
         for window in windows {
@@ -841,6 +846,7 @@ package final class DockClickService {
         return nil
     }
 
+    nonisolated
     private static func elementArray(_ element: AXUIElement, _ attribute: String) -> [AXUIElement]? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
@@ -849,6 +855,7 @@ package final class DockClickService {
         return array
     }
 
+    nonisolated
     private static func elementAttribute(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
@@ -862,6 +869,7 @@ package final class DockClickService {
         stringAttribute(element, kAXRoleAttribute as String)
     }
 
+    nonisolated
     private static func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
@@ -869,6 +877,7 @@ package final class DockClickService {
         return value as? String
     }
 
+    nonisolated
     private static func intAttribute(_ element: AXUIElement, _ attribute: String) -> Int? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
@@ -876,6 +885,7 @@ package final class DockClickService {
         return (value as? NSNumber)?.intValue
     }
 
+    nonisolated
     private static func boolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
@@ -924,6 +934,7 @@ package final class DockClickService {
 
     // MARK: - Windows
 
+    nonisolated
     private static func isMinimized(_ window: AXUIElement) -> Bool? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &value) == .success

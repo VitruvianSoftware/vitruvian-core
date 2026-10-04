@@ -16,6 +16,7 @@ import VitruvianDesign
 /// back on the next launch instead of staying dark.
 ///
 /// Nothing runs while the feature is off: no observers, no polling, no cost.
+@MainActor
 package final class BluetoothSleepService {
     package static let shared = BluetoothSleepService()
 
@@ -55,11 +56,13 @@ package final class BluetoothSleepService {
         observers = [
             center.addObserver(forName: NSWorkspace.willSleepNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.macWillSleep()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.macWillSleep() }
             },
             center.addObserver(forName: NSWorkspace.didWakeNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.restoreIfOwed()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.restoreIfOwed() }
             },
         ]
     }

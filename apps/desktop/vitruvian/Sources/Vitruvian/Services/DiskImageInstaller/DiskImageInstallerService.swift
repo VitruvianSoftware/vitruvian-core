@@ -8,6 +8,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class DiskImageInstallerService {
     package static let shared = DiskImageInstallerService()
 
@@ -90,10 +91,13 @@ package final class DiskImageInstallerService {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let mountURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else {
-                return
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let mountURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else {
+                    return
+                }
+                self?.inspect(mountURL: mountURL)
             }
-            self?.inspect(mountURL: mountURL)
         }
     }
 
@@ -124,6 +128,7 @@ package final class DiskImageInstallerService {
         }
     }
 
+    nonisolated
     private func candidate(mountedAt mountURL: URL) -> Candidate? {
         let fm = FileManager.default
         let info = Self.run("/usr/bin/hdiutil", arguments: ["info", "-plist"])
@@ -294,6 +299,7 @@ package final class DiskImageInstallerService {
         presentNextCandidate()
     }
 
+    nonisolated
     private func install(_ candidate: Candidate, trashingDownload: Bool,
                          useUserApplications: Bool) -> InstallResult {
         let fm = FileManager.default
@@ -430,6 +436,7 @@ package final class DiskImageInstallerService {
         NonModalAlert.present(alert) { _ in completion() }
     }
 
+    nonisolated
     private static func validBundle(at appURL: URL) -> Bool {
         guard let bundle = Bundle(url: appURL),
               let executableURL = bundle.executableURL,
@@ -440,6 +447,7 @@ package final class DiskImageInstallerService {
         return executable.hasPrefix(root)
     }
 
+    nonisolated
     private static func gatekeeperAccepts(_ appURL: URL) -> Bool {
         let signature = run("/usr/bin/codesign",
                             arguments: ["--verify", "--deep", "--strict", appURL.path])
@@ -451,6 +459,7 @@ package final class DiskImageInstallerService {
         return run("/usr/sbin/spctl", arguments: ["-a", "-t", "exec", appURL.path]).status == 0
     }
 
+    nonisolated
     private static func fileIdentity(at url: URL) -> FileIdentity? {
         var info = stat()
         guard url.path.withCString({ lstat($0, &info) }) == 0,
@@ -459,6 +468,7 @@ package final class DiskImageInstallerService {
         return FileIdentity(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
     }
 
+    nonisolated
     private static func run(_ executable: String, arguments: [String]) -> CommandResult {
         let process = Process()
         let output = Pipe()

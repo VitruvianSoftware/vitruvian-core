@@ -8,13 +8,15 @@ import VitruvianDesign
 
 /// AppKit state is published on main; the pointer tap only reads the cache
 /// and occasionally the WindowServer list. It never waits for main.
+@MainActor
 package final class ScrollWheelTarget {
-    package static let shared = ScrollWheelTarget()
+    nonisolated package static let shared = ScrollWheelTarget()
 
-    private let cache = ScrollWheelTargetCache(ownProcessID: ProcessInfo.processInfo.processIdentifier)
+    // The cache keeps its state behind its own lock, and the taps read it.
+    nonisolated(unsafe) private let cache = ScrollWheelTargetCache(ownProcessID: ProcessInfo.processInfo.processIdentifier)
     private var observers: [NSObjectProtocol] = []
 
-    private init() {}
+    nonisolated private init() {}
 
     package func setEnabled(_ enabled: Bool) {
         precondition(Thread.isMainThread)
@@ -31,7 +33,10 @@ package final class ScrollWheelTarget {
                      NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
             observers.append(NotificationCenter.default.addObserver(
                 forName: name, object: nil, queue: .main
-            ) { [weak self] _ in self?.refresh() })
+            ) { [weak self] _ in
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.refresh() }
+            })
         }
     }
 
@@ -47,7 +52,7 @@ package final class ScrollWheelTarget {
         })
     }
 
-    package func contains(_ point: CGPoint) -> Bool {
+    nonisolated package func contains(_ point: CGPoint) -> Bool {
         cache.contains(point)
     }
 }

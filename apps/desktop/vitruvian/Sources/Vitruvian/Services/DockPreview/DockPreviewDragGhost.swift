@@ -15,6 +15,7 @@ import VitruvianDesign
 ///
 /// Main thread only, like the rest of the panel it belongs to: every entry
 /// point is a SwiftUI gesture callback or the session teardown that follows one.
+@MainActor
 package final class DockPreviewDragGhost {
     package static let shared = DockPreviewDragGhost()
 
