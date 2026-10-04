@@ -1282,6 +1282,16 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-04**: Refactor step 6zzn (`REFACTOR.md`): `make_icon` builds in
   Swift 6 mode, with the main actor as its default isolation (`BUILD`).
   `Tools/MakeIcon.swift` is unchanged.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`), three more tests through
+  the module:
+  - `Services/ResponsibleProcess.swift`: `displayName` has an overload that
+    takes the app name, kernel name and executable path lookups.
+  - `Core/AppKitExtensions.swift`: `NSScreen.withMouse` makes its choice
+    through `screen(containing:among:frame:fallback:)`.
+  - `UI/Switcher/ScrollingTitle.swift`: `shouldScroll(scrolls:reduceMotion:overflows:)`.
+  - `Tests/ProcessNameTests.swift`, `PointerScreenTests.swift` and
+    `ScrollingTitleMotionTests.swift` call these, and
+    `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

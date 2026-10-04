@@ -234,10 +234,6 @@ def main():
           + declaration(ports, "    nonisolated private static func snapshot(").replace("nonisolated private static", "static", 1)
           + declaration(ports, "    nonisolated private static func startTimes(").replace("nonisolated private static", "static", 1)
           + "}\n}\n")
-    write("ProcessName.swift", "import Foundation\n"
-          + "extension ProcessNameContract {\nfinal class Lookup: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/ResponsibleProcess.swift", "    static func displayName(")
-          + "}\n}\n")
     write("SystemMonitorCPU.swift", "import Darwin\nimport Foundation\n"
           + "extension SystemMonitorCPUTests {\nfinal class Monitor: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/SystemMonitor/SystemMonitor.swift",
@@ -259,10 +255,6 @@ def main():
           + "extension CommandBarFeatureTests.BrightnessHost {\n"
           + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
                         "    private static func applyBrightness(").replace("private static", "static", 1)
-          + "}\n")
-    write("PointerScreen.swift", "import AppKit\n"
-          + "extension PointerScreenContract.Screen {\n"
-          + declaration("Sources/Vitruvian/Core/AppKitExtensions.swift", "    static var withMouse:")
           + "}\n")
     write("CommandBarEmojiBodies.swift", "import Foundation\n"
           + "extension CommandBarEmojiContract.Catalog {\n"
@@ -1318,11 +1310,6 @@ def main():
                         "    private func report(").replace("private func", "func", 1)
           + "}\n}\n")
 
-    write("ScrollingTitleMotion.swift", "import Foundation\n"
-          + "extension ScrollingTitleMotionTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/UI/Switcher/ScrollingTitle.swift",
-                        "    private var shouldScroll:").replace("private var", "var", 1)
-          + "}\n}\n")
 
     write("AgentUsageArchiveSave.swift", "import Foundation\n"
           + "extension AgentUsageArchiveSaveTests {\nfinal class Host: Fixture {\n"

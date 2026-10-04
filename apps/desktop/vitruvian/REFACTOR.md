@@ -578,6 +578,23 @@ call the module's own code.
   goes the same way: the production code takes what the test swaps, and the
   test calls the module.
 
+Landed (4b, process names, the pointer's screen and title motion): three
+more tests call the module instead of a generated copy, which leaves 97.
+
+- **Injected:**
+  - `ResponsibleProcess.displayName` takes the app name, kernel name and
+    executable path lookups;
+  - `NSScreen.screen(containing:among:frame:fallback:)` is the choice
+    `withMouse` makes, for any screens and pointer;
+  - `ScrollingTitle.shouldScroll` takes hover, Reduce Motion and overflow.
+    Overflow stays lazy, so a title that cannot scroll is still never
+    measured, and the test now checks that too.
+- **Tested directly:** the three tests keep their checks, now with plain
+  values in place of stand-in `NSRunningApplication`, `proc_name`,
+  `proc_pidpath`, `NSScreen` and `NSEvent` types. The libproc buffer handling
+  stays in the system lookups the app passes, which the test no longer
+  imitates.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
