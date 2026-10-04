@@ -2198,6 +2198,8 @@ reads as a send.
 - **Left for the Accessibility errors:** the eighteenth `notification` in
   6zza's count is the name auto-quit's Accessibility observer callback
   passes, which goes with the other values that callback sends.
+- **Measured** (Swift 6 mode, batch mode off): the 20 are gone and nothing
+  new appeared; **79 errors in 39 files** remain.
 
 ## Step 7: test-suite hygiene
 
