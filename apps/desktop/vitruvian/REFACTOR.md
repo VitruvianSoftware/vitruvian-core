@@ -2080,6 +2080,46 @@ there. None of them changes behavior.
 - **Not yet:** the remaining warnings are values that are not `Sendable`
   crossing to another thread, two SDK globals, and deprecations (see 6zw).
 
+Measured (6zy, what stands between Services and Swift 6 mode): the
+complete-checking warning list overstates it. One build of
+`VitruvianServices` in Swift 6 mode (`swift.enable_v6`, continuing after
+errors) failed with **46 errors**, where the same code under complete
+checking printed 429 concurrency warnings.
+
+- **Why fewer:** most of the 429 are not errors in Swift 6 mode. The
+  weak-`self` relay (an outer `@Sendable` block taking `[weak self]` and a
+  nested main-queue block using it) warns under complete checking and
+  compiles in Swift 6 mode, as a Swift 6.4 type-check confirms; it was 68
+  of the warnings. Swift 6 also only warns about the `Sendable` captures of
+  SDK types it imports without full annotations.
+- **19 errors, one shape:** an event tap's callback returns its `CGEvent`
+  out of `MainActor.assumeIsolated`, and `CGEvent` is not `Sendable`. The
+  15 files with a main-run-loop tap need the same fix, as 6zs did for
+  CoreFoundation with an `@preconcurrency` import.
+- **27 errors in 13 files:**
+  - callbacks captured by queue blocks without being `Sendable`: transient
+    paste, clipboard auto-clear and history, kill process, the URL cleaner,
+    the Codex agent server, the Notch music reader and island actions;
+  - values sent to another thread: the screen recorder's session and
+    service, the camera preview's notification;
+  - captured `var`s mutated across threads: Homebrew's output buffers and
+    the switcher's pending window queries;
+  - the two SDK globals, `kAXTrustedCheckOptionPrompt` and
+    `vm_kernel_page_size`.
+- **A floor, not a ceiling:** the `sending` checks run only on files that
+  type-check, so fixing the errors above can show more of them.
+- **Still warnings in Swift 6 mode (212):** 79 deprecations, `Sendable`
+  captures of SDK types, and 20 suggested `@preconcurrency` imports.
+  None blocks the switch.
+- **Order:** the event taps (6zz), then the 27, then Services in Swift 6
+  mode, measuring again on the way.
+- **Also in this step:** the Dock click service's restore and minimize
+  walks take `[weak self]` on both the outer queue block and the inner
+  main-queue block. 6zw had moved it to the inner block only, which drew a
+  new warning (a weak capture differing from the outer block's implicit
+  strong one); weak on both is clean under complete checking and in Swift 6
+  mode.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

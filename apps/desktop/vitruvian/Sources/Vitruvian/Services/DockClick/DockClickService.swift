@@ -463,7 +463,7 @@ package final class DockClickService {
     }
 
     private func postMinimizeAll(pid: pid_t, fallbackWindows: [AXUIElement], actionTime: CFAbsoluteTime) {
-        DispatchQueue.global(qos: .userInteractive).async {
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             // Pressing the app's own Minimize All menu item beats synthesizing
             // ⌥⌘M: it targets the right app even if focus shifts, skips every
             // event tap in between, and is layout-independent (kVK_ANSI_M is a
@@ -661,7 +661,7 @@ package final class DockClickService {
             Self.activate(pid: pid)
             return
         }
-        DispatchQueue.global(qos: .userInteractive).async {
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             let axApp = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(axApp, 0.35)
             let ids = targets.map { AXWindowResolver.windowID(for: $0) }
