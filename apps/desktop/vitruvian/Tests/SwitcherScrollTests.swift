@@ -106,7 +106,11 @@ enum SwitcherScrollContract {
                     drainGeneration = 1
                     DispatchQueue.main.async { drainGeneration = 2 }
                 }
-                let deadline = Date().addingTimeInterval(0.5)
+                // A check returns once its condition holds, so the deadline only
+                // bounds a failure. On a loaded CI runner an animated reveal has
+                // landed more than half a second late, one step behind, so give
+                // it a few seconds.
+                let deadline = Date().addingTimeInterval(3)
                 repeat {
                     hosting.layoutSubtreeIfNeeded()
                     if drainGeneration == 2 && condition() { return }
