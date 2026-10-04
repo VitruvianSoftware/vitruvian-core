@@ -2163,6 +2163,23 @@ Landed (6zza, the 27 errors in 13 files): the rest of 6zy's list.
 - **The two SDK globals:** the Accessibility prompt option is spelled as
   its value, `"AXTrustedCheckOptionPrompt"`, and the kernel page size is
   read by the VM statistics C shim, which already reads those statistics.
+- **Measured again:** a build of `VitruvianServices` in Swift 6 mode with
+  one compiler process per file (batch mode off) shows none of the 27, and
+  **99 errors in 50 files**.
+- **Why 6zy's 46 was a floor:** batch mode hands each compiler process a
+  share of the module's files, and one file that fails to type-check stops
+  the `sending` checks for its whole batch. With errors spread over 25
+  files, almost no batch got that far.
+- **The 99, by shape:**
+  - 18 notifications and 3 timers handed into `MainActor.assumeIsolated`,
+    the shape fixed here in kill process and the camera preview;
+  - 9 reads of non-`Sendable` properties in a main-actor class's `deinit`;
+  - 10 `self`s of non-`Sendable` helper classes sent off the main actor,
+    and 4 event-tap verdicts;
+  - 55 others, mostly completion blocks and values handed to a queue, plus
+    ScreenCaptureKit window lists and the recorder's export closures.
+- **Next:** the 99, a shape at a time, measuring with batch mode off, then
+  Services in Swift 6 mode.
 
 ## Step 7: test-suite hygiene
 
