@@ -10,7 +10,8 @@ import VitruvianUI
 /// Generated production methods run with URLSession, controlled responses and a
 /// clock. No installed app is scanned, opened or changed by these contracts.
 enum AppUpdatesContract {
-    final class Clock {
+    /// The test sets it before a check starts; the check's queue then reads it.
+    nonisolated final class Clock: @unchecked Sendable {
         var value = Date(timeIntervalSince1970: 1_800_000_000)
         var reads = 0
         var expireAfterReads = Int.max

@@ -44,6 +44,10 @@ def declaration(path, prefix, scope=None):
     start = starts[0]
     indent = prefix[:len(prefix) - len(prefix.lstrip())]
     end = next(i for i in range(start + 1, len(lines)) if lines[i].rstrip() == indent + "}")
+    # The tests default to the main actor, so a `nonisolated` written on the
+    # line above stays with the copy: without it the copy would change actor.
+    while start > lower and lines[start - 1].strip() == "nonisolated":
+        start -= 1
     body = "".join(lines[start:end + 1])
     return f'#sourceLocation(file: {json.dumps(path)}, line: {start + 1})\n{body}\n#sourceLocation()\n'
 
@@ -426,11 +430,11 @@ def main():
     write("AppUpdates.swift", "import Foundation\nimport Darwin\nextension AppUpdatesContract {\n"
           + declaration(loader, "final class AppUpdateFeedLoader:")
           + "final class Service {\nlet workQueue = DispatchQueue(label: \"app-updates.contract\")\n"
-          + "let clock = Clock()\nstatic let ownPackageTokens: Set<String> = [\"vitruvian\", \"vitruvian@beta\", \"vitruvian-beta\"]\n"
-          + "static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60\n"
-          + "var onlineCatalogCache: (loadedAt: Foundation.Date, entries: [AppUpdatesSupport.CatalogEntry])?\n"
-          + "lazy var catalogSession = URLSession(configuration: URLSessionConfiguration.ephemeral)\n"
-          + declaration(updates, "    private struct SourceResult {").replace("private struct", "struct", 1)
+          + "let clock = Clock()\nnonisolated static let ownPackageTokens: Set<String> = [\"vitruvian\", \"vitruvian@beta\", \"vitruvian-beta\"]\n"
+          + "nonisolated static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60\n"
+          + "nonisolated(unsafe) var onlineCatalogCache: (loadedAt: Foundation.Date, entries: [AppUpdatesSupport.CatalogEntry])?\n"
+          + "let catalogSession = URLSession(configuration: URLSessionConfiguration.ephemeral)\n"
+          + declaration(updates, "    private struct SourceResult {").replace("private struct", "nonisolated struct", 1)
           + declaration(updates, "    private func publisherFindings(").replace("private func", "func", 1).replace("Date()", "self.clock.now()")
           + declaration(updates, "    private func onlineCatalogFindings(").replace("private func", "func", 1).replace("Date()", "self.clock.now()")
           + declaration(updates, "    private func onlineResult(").replace("private func", "func", 1)
