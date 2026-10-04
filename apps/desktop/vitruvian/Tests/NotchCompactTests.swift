@@ -13,7 +13,7 @@ import VitruvianUI
 enum NotchCompactTests {
     typealias L10n = NotchUpdateTests.L10n
     final class CameraPreviewService: ObservableObject {
-        static let shared = CameraPreviewService()
+        nonisolated(unsafe) static let shared = CameraPreviewService()
         @Published var isEmbeddedPresented = false
         var stops = 0
         /// What the preview's stop button calls, as the island handed it over.
@@ -47,11 +47,11 @@ enum NotchCompactTests {
         func perform(_ action: () -> Void) { action() }
     }
     final class NotchTimerService {
-        static let shared = NotchTimerService()
+        nonisolated(unsafe) static let shared = NotchTimerService()
         var session = NotchTimerSession()
     }
     final class ScratchpadService: ObservableObject {
-        static let shared = ScratchpadService()
+        nonisolated(unsafe) static let shared = ScratchpadService()
         @Published var text = "original note"
         @Published var isPreviewing = false
         @Published var pads: [ScratchpadPad] = []
@@ -121,7 +121,7 @@ enum NotchCompactTests {
         var controls: [NotchControlItem] = [.music, .volume, .brightness, .timer]
     }
     final class Window {
-        static var key: Window?
+        nonisolated(unsafe) static var key: Window?
         var isVisible = true
         var isKeyWindow: Bool { Self.key === self }
         var responderChanges = 0

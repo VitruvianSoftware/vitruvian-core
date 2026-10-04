@@ -91,7 +91,8 @@ enum NotchPanelTests {
         dialog.isReleasedWhenClosed = false
         dialog.alphaValue = 0
         defer { island.close(); dialog.close() }
-        var response: NSApplication.ModalResponse?
+        // AppKit ends the sheet on the main thread, where this test reads it.
+        nonisolated(unsafe) var response: NSApplication.ModalResponse?
         island.beginSheet(dialog) { response = $0 }
         var deadline = Date().addingTimeInterval(2)
         while island.attachedSheet == nil, Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }

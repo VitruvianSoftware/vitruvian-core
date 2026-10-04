@@ -13,10 +13,10 @@ enum NotchHoverTests {
     typealias DispatchQueue = NotchScreenRefreshContract.DispatchQueue
     final class NSEvent {
         typealias EventTypeMask = AppKit.NSEvent.EventTypeMask
-        static var mouseLocation = CGPoint.zero
-        static var global: [Int: (NSEvent) -> Void] = [:]
-        static var local: [Int: (NSEvent) -> NSEvent?] = [:]
-        static var nextID = 0
+        nonisolated(unsafe) static var mouseLocation = CGPoint.zero
+        nonisolated(unsafe) static var global: [Int: (NSEvent) -> Void] = [:]
+        nonisolated(unsafe) static var local: [Int: (NSEvent) -> NSEvent?] = [:]
+        nonisolated(unsafe) static var nextID = 0
         static func addGlobalMonitorForEvents(matching: EventTypeMask, handler: @escaping (NSEvent) -> Void) -> Any? {
             nextID += 1; global[nextID] = handler; return nextID
         }
@@ -26,7 +26,7 @@ enum NotchHoverTests {
         static func removeMonitor(_ token: Any) { global[token as! Int] = nil; local[token as! Int] = nil }
     }
     enum UserDefaults {
-        static var standard = Preferences()
+        nonisolated(unsafe) static var standard = Preferences()
         struct Preferences {
             var enabled = true, expands = true, hides = false
             var delay = NotchSupport.defaultHoverDelay
@@ -37,11 +37,11 @@ enum NotchHoverTests {
         }
     }
     enum AssistiveKeyboard {
-        static var active = false
+        nonisolated(unsafe) static var active = false
         static func ownsCocoaPoint(_ point: CGPoint) -> Bool { active }
     }
     final class NSWorkspace {
-        static let shared = NSWorkspace()
+        nonisolated(unsafe) static let shared = NSWorkspace()
         var accessibilityDisplayShouldReduceMotion = false
     }
     final class Host {
@@ -64,7 +64,7 @@ enum NotchHoverTests {
     }
     enum NotchContentTransition { case none, reveal, dismiss, depart, replace }
     enum NotchMusicService {
-        static let shared = Reader()
+        nonisolated(unsafe) static let shared = Reader()
         final class Reader { var playback: NotchPlayback? }
     }
     /// The strip's track by title; the real snapshot also holds its cover and geometry.

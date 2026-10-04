@@ -30,7 +30,7 @@ enum NotchScreenRefreshContract {
             }
         }
     }
-    enum DispatchQueue { static var main = Scheduler() }
+    enum DispatchQueue { nonisolated(unsafe) static var main = Scheduler() }
     /// Stands in for `NotchMenuSpaceReader`, whose own suite covers the
     /// reading; this one counts what the island asks of it.
     final class MenuSpace {
@@ -54,14 +54,14 @@ enum NotchScreenRefreshContract {
     }
     struct RunningApplication { let bundleIdentifier: String? }
     enum NSWorkspace {
-        static let shared = Workspace()
+        nonisolated(unsafe) static let shared = Workspace()
         final class Workspace { var frontmostApplication: RunningApplication? }
     }
     enum Bundle {
         static let main = RunningApplication(bundleIdentifier: "com.vitruviansoftware.vitruvian.tests.notch")
     }
     enum ClipboardHistoryService {
-        static let shared = History()
+        nonisolated(unsafe) static let shared = History()
         final class History {
             var remembered = 0
             func rememberPasteTarget() { remembered += 1 }
@@ -72,16 +72,16 @@ enum NotchScreenRefreshContract {
         func resignKey() { resignations += 1 }
     }
     enum NSEvent {
-        static var mouseLocation = CGPoint.zero
+        nonisolated(unsafe) static var mouseLocation = CGPoint.zero
         struct EventTypeMask: OptionSet {
             let rawValue: UInt64
             static let mouseMoved = EventTypeMask(rawValue: 1 << 5)
             static let leftMouseDragged = EventTypeMask(rawValue: 1 << 6)
         }
         final class Event {}
-        static var globalHandlers: [(Event) -> Void] = []
-        static var localHandlers: [(Event) -> Event?] = []
-        static var removed = 0
+        nonisolated(unsafe) static var globalHandlers: [(Event) -> Void] = []
+        nonisolated(unsafe) static var localHandlers: [(Event) -> Event?] = []
+        nonisolated(unsafe) static var removed = 0
         static func addGlobalMonitorForEvents(matching mask: EventTypeMask, handler: @escaping (Event) -> Void) -> Any? {
             globalHandlers.append(handler)
             return globalHandlers.count
@@ -95,7 +95,7 @@ enum NotchScreenRefreshContract {
     }
     /// Displays side by side; the one the pointer is on is found by frame.
     final class NSScreen {
-        static var screens: [NSScreen] = []
+        nonisolated(unsafe) static var screens: [NSScreen] = []
         static var withMouse: NSScreen? { screens.first { $0.frame.contains(NSEvent.mouseLocation) } }
         let notchDisplayID: CGDirectDisplayID
         let frame: CGRect
@@ -447,7 +447,7 @@ enum NotchScreenRefreshContract {
     }
 
     /// The pointer, the displays and the clock behind `NotchPointerFollower`.
-    static let followerEnvironment = NotchPointerFollower.Environment(
+    nonisolated(unsafe) static let followerEnvironment = NotchPointerFollower.Environment(
         addMonitors: { moved in
             let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
             return [NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { _ in moved() }),

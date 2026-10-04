@@ -16,19 +16,19 @@ enum MixerOutputAdjustmentContract {
         func async(execute work: @escaping () -> Void) { jobs.append(work) }
         func runOne() { precondition(!jobs.isEmpty); jobs.removeFirst()() }
     }
-    enum DispatchQueue { static var main = Queue() }
+    enum DispatchQueue { nonisolated(unsafe) static var main = Queue() }
     enum Hardware {
         struct Write: Equatable {
             let device: AudioObjectID
             let volume: Float?
             let muted: Bool?
         }
-        static var device: AudioObjectID = 1
-        static var writes: [Write] = []
-        static var succeeds = true
-        static var afterVolumeWrite: (() -> Void)?
-        static var volume: Float32? = 0.2
-        static var muted: Bool? = false
+        nonisolated(unsafe) static var device: AudioObjectID = 1
+        nonisolated(unsafe) static var writes: [Write] = []
+        nonisolated(unsafe) static var succeeds = true
+        nonisolated(unsafe) static var afterVolumeWrite: (() -> Void)?
+        nonisolated(unsafe) static var volume: Float32? = 0.2
+        nonisolated(unsafe) static var muted: Bool? = false
     }
 
     static func run(_ suite: TestSuite) {

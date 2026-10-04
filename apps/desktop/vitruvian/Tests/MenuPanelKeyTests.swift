@@ -40,11 +40,11 @@ enum MenuPanelKeyTests {
         let contentViewController: Controller? = Controller()
     }
     final class PanelInteractionState {
-        static let shared = PanelInteractionState()
+        nonisolated(unsafe) static let shared = PanelInteractionState()
         var viewKeepsPopoverOpen = false
     }
     struct Application { var keyWindow: NSWindow? }
-    static let NSApp = Application()
+    nonisolated(unsafe) static let NSApp = Application()
 
     class Fixture {
         let popover = Popover()

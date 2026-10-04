@@ -155,7 +155,8 @@ struct ClipboardHistoryAccessTests {
         }
     }
 
-    private final class Counter {
+    /// The lock guards the count, so the lane may write it from its queue.
+    private final class Counter: @unchecked Sendable {
         private let lock = NSLock()
         private var count = 0
 

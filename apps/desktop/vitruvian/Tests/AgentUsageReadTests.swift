@@ -13,7 +13,7 @@ typealias AgentUsageProductionLogReader = AgentLogReader
 /// reader wrapper only observes when a complete line is handed to the service.
 enum AgentUsageReadTests {
     enum AgentLogReader {
-        static var beforeLine: (() -> Void)?
+        nonisolated(unsafe) static var beforeLine: (() -> Void)?
         static func readAppended(_ cursor: AgentLogCursor, since horizon: Date, shouldContinue: () -> Bool,
                                  line: (Data) -> Void) {
             AgentUsageProductionLogReader.readAppended(cursor, since: horizon, shouldContinue: shouldContinue) {

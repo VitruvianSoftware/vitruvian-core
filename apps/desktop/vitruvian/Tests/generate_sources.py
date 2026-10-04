@@ -268,7 +268,7 @@ def main():
           + "extension UninstallerFlowTests {\n"
           + declaration(uninstall, "    enum Phase:")
           + declaration(bar, "    enum Mode:")
-          + "final class Uninstaller: UninstallerState {\nstatic let shared = Uninstaller()\n"
+          + "final class Uninstaller: UninstallerState {\nnonisolated(unsafe) static let shared = Uninstaller()\n"
           + "".join(declaration(uninstall, prefix) for prefix in [
               "    var isRemoving: Bool", "    func select(appURL:",
               "    func reset()", "    func setInclude(", "    struct HomebrewRemovalConfirmation",
@@ -395,7 +395,7 @@ def main():
           + "mayRemove(item, installed: installed)\n}\n}\n")
     write("CleanerScanFlow.swift", "import Foundation\nextension CleanerScanFlowTests {\n"
           + declaration(cleaner, "    enum Phase:")
-          + "final class Scanner: ScannerState {\nstatic let shared = Scanner()\n"
+          + "final class Scanner: ScannerState {\nnonisolated(unsafe) static let shared = Scanner()\n"
           + "".join(declaration(cleaner, prefix) for prefix in ["    func reset()", "    func scan("])
           + "}\n}\n")
 
@@ -490,13 +490,13 @@ def main():
           + "struct Collaborators { var feedbackRoutingDidChange: () -> Void = {\n"
           + "if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }\n"
           + "if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }\n"
-          + "} }\nstatic var collaborators = Collaborators()\n"
+          + "} }\nnonisolated(unsafe) static var collaborators = Collaborators()\n"
           + declaration(notch, "    var acceptsUserInteraction: Bool {")
           + declaration(notch, "    var acceptsSystemFeedback: Bool {")
           + declaration(notch, "    private func updateFullscreenVisibility(").replace("private func", "func", 1)
           + declaration(notch, "    private func fullscreenEnvironmentDidChange()").replace("private func", "func", 1)
           + "}\nfinal class PreciseVolumeRollerService: VolumeState {\n"
-          + "static let shared = PreciseVolumeRollerService()\n"
+          + "nonisolated(unsafe) static let shared = PreciseVolumeRollerService()\n"
           + declaration("Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift", "    func syncWithPreferences()")
           + "}\n}\n")
     write("NotchNotice.swift", "import AppKit\n" + declaration(notch, "struct NotchNotice:"))
@@ -546,10 +546,10 @@ def main():
     update = "Sources/Vitruvian/Services/Update/UpdateService.swift"
     update_view = "Sources/Vitruvian/UI/Notch/NotchUpdateControl.swift"
     write("NotchUpdate.swift", "import AppKit\nimport SwiftUI\nimport Combine\nextension NotchUpdateTests {\n"
-          + "final class UpdateService: ObservableObject {\nstatic let shared = UpdateService()\n"
+          + "final class UpdateService: ObservableObject {\nnonisolated(unsafe) static let shared = UpdateService()\n"
           + declaration(update, "    enum State:")
           + "@Published var state: State = .idle\n}\n"
-          + "final class L10n: ObservableObject {\nstatic let shared = L10n()\n@Published var language = AppLanguage.enUS\n"
+          + "final class L10n: ObservableObject {\nnonisolated(unsafe) static let shared = L10n()\n@Published var language = AppLanguage.enUS\n"
           + declaration("Sources/Vitruvian/Core/Localization.swift", "    var s: Strings")
           + "}\nfinal class Service: State {\n"
           + declaration(notch, "    func showUpdate()")
@@ -694,7 +694,7 @@ def main():
           + "struct Collaborators { var feedbackRoutingDidChange: () -> Void = {\n"
           + "if AppFeature.mixer.isAvailable(in: ReviewDefaults.current) { PreciseVolumeRollerService.shared.syncWithPreferences() }\n"
           + "if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }\n"
-          + "} }\nstatic var collaborators = Collaborators()\n"
+          + "} }\nnonisolated(unsafe) static var collaborators = Collaborators()\n"
           + "func syncWithPreferences() { presentationSyncs += 1; refreshModules(); syncVisibleConsumers(); NotchTimerService.shared.syncWithPreferences() }\n"
           + availability_declaration(notch, "    private func metricIsAvailable(")
           + declaration(notch, "    private func refreshModules(")
@@ -721,12 +721,12 @@ def main():
     write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
           + declaration(canvas, "struct NotchFileDropActions {")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "struct NotchMediaSession:")
-          + "final class ShelfService: ShelfState {\nstatic var shared = ShelfService()\n"
+          + "final class ShelfService: ShelfState {\nnonisolated(unsafe) static var shared = ShelfService()\n"
           + declaration(shelf, "    func acceptDrop(pasteboard:")
           + declaration(shelf, "    func accept(draggingInfo:")
           + declaration(shelf, "    func fileURLs(from")
           + declaration(shelf, "    private func unique(")
-          + "}\nfinal class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
+          + "}\nfinal class NotchFileToolsService: FileToolsState {\nnonisolated(unsafe) static var shared = NotchFileToolsService()\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var offersMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")
@@ -736,7 +736,7 @@ def main():
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
           + "}\nfinal class Notch: NotchState {\n"
           + "struct Collaborators { var shelfAccept: (NSPasteboard) -> Bool = { ShelfService.shared.acceptDrop(pasteboard: $0) } }\n"
-          + "static var collaborators = Collaborators()\n"
+          + "nonisolated(unsafe) static var collaborators = Collaborators()\n"
           + "lazy var fileDrop = ShelfDropRoutingContract.fileDrop(for: self)\n"
           + declaration(notch, "    var choosingFileDropDestination:")
           + declaration(notch, "    var targetsMediaDrop:")
@@ -826,7 +826,7 @@ def main():
           + declaration("Sources/Vitruvian/UI/Notch/NotchFilesView.swift", "    private func mediaHeightChanged(").replace("private func", "func", 1)
           + "}\n}\n")
     write("MediaDialogHost.swift", "import AppKit\n\nextension MediaDialogHostContract {\nenum Dialogs {\n"
-          + "static var panelModalActive = false\n"
+          + "nonisolated(unsafe) static var panelModalActive = false\n"
           + declaration("Sources/Vitruvian/Services/Media/MediaPanelModal.swift", "    static func runPanelModal(")
           + "}\n}\n")
     write("RecorderExportChip.swift", "import AppKit\nimport SwiftUI\n\nextension RecorderExportChipTests {\n"
@@ -962,7 +962,7 @@ def main():
           + declaration(selection, "private final class PassThroughHostingView<")
               .replace("private final class", "final class", 1))
     write("NotchCaptureKeyboard.swift", "import Foundation\nimport Carbon.HIToolbox\n\nextension NotchCaptureKeyboardContract {\n"
-          + "final class NotchService {\nstatic var shared = NotchService()\n"
+          + "final class NotchService {\nnonisolated(unsafe) static var shared = NotchService()\n"
           + "var presentationWindow: NSPanel? = NSPanel()\nvar acceptsSystemFeedback = true\n"
           + "var expanded = true\nvar selected = NotchModule.captures\nvar showingAppPanel = false\n"
           + "var showingSections = false\nvar selectedMetric: Int?\nvar captureControls: Int?\n"
@@ -1039,7 +1039,7 @@ def main():
           + "func beginAutomation(_ command: Command, playback: NotchPlayback) -> Bool { false }\nfunc cancelAutomationAction() {}\n"
           + "var process: Process?\nvar input: Pipe?\nlet queue = Scheduler()\n"
           + "lazy var commandWriter = NotchMusicCommandWriter { [queue = self.queue] in queue.async(execute: $0) }\n"
-          + "enum UserDefaults { static let standard = Preferences()\n"
+          + "enum UserDefaults { nonisolated(unsafe) static let standard = Preferences()\n"
           + "final class Preferences { var includeOtherPlayers = false\n"
           + "func bool(forKey key: String) -> Bool { includeOtherPlayers } } }\n"
           + "var wantsPlayback = false\nvar includeOtherPlayers = false\nvar awaitingPlayback = false\nvar restartCount = 0\nvar restartWork: DispatchWorkItem?\nvar launches = 0\n"
@@ -1119,7 +1119,7 @@ def main():
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
           + "extension SoftwareDimmingRouteContract {\n"
           + "final class Service {\nlet stateLock = NSLock()\nlet workQueue = Queue()\n"
-          + "static let log = Log()\n"
+          + "nonisolated(unsafe) static let log = Log()\n"
           + "var routes: [CGDirectDisplayID: Route] = [:]\n"
           + "var lastApplied: [CGDirectDisplayID: Double] = [:]\n"
           + "var levelKnownAt: [CGDirectDisplayID: Foundation.Date] = [:]\n"
@@ -1274,7 +1274,7 @@ def main():
     if not factories or len(factories) != len(set(factories)):
         raise ValueError("Missing or duplicate localization factories")
     write("LocalizationCatalog.swift", "extension LocalizationTests {\n"
-          + "static let factories: [(String, (AppLanguage) -> Any)] = [\n"
+          + "nonisolated(unsafe) static let factories: [(String, (AppLanguage) -> Any)] = [\n"
           + "".join(f'("{name}", {{ FeatureStrings.{name}($0) }}),\n' for name in factories)
           + "]\n}\n")
 

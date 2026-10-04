@@ -30,7 +30,8 @@ enum WindowVisibilityTests {
         // A fixed 10 ms delay can expire before the main queue runs on a busy
         // CI runner. Drain the work queued by the visibility change instead.
         func flush() {
-            var drained = false
+            // Set by the main queue and read on the main thread.
+            nonisolated(unsafe) var drained = false
             DispatchQueue.main.async { drained = true }
             let deadline = Date().addingTimeInterval(1)
             while !drained && Date() < deadline {

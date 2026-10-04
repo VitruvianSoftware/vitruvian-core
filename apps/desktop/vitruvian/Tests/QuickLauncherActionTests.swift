@@ -11,9 +11,9 @@ import VitruvianUI
 /// The generated members are the real tile model, activation method and icon
 /// methods. Only their environment is replaced: no windows, taps or capture.
 enum QuickLauncherContract {
-    static var events: [String] = []
-    static var cameraInNotch = false
-    enum ReviewDefaults { static var current: UserDefaults! }
+    nonisolated(unsafe) static var events: [String] = []
+    nonisolated(unsafe) static var cameraInNotch = false
+    enum ReviewDefaults { nonisolated(unsafe) static var current: UserDefaults! }
     enum QuickLauncherService { static let columns = 3 }
     struct NSEvent {
         struct ModifierFlags: OptionSet {
@@ -57,7 +57,7 @@ enum QuickLauncherContract {
         }
     }
 
-    enum DispatchQueue { static let main = Queue() }
+    enum DispatchQueue { nonisolated(unsafe) static let main = Queue() }
     struct Spy {
         let name: String
         func toggle() { events.append(name + ".toggle") }

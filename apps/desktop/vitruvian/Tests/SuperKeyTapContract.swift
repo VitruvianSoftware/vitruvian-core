@@ -12,7 +12,7 @@ import VitruvianUI
 /// No tap, key mapping or run loop is created.
 enum SuperKeyTapContract {
     enum Tap {
-        static var requests = 0
+        nonisolated(unsafe) static var requests = 0
         static func create(tap: CGEventTapLocation, place: CGEventTapPlacement, options: CGEventTapOptions,
                            eventsOfInterest: CGEventMask, callback: CGEventTapCallBack,
                            userInfo: UnsafeMutableRawPointer?) -> CFMachPort? {
@@ -21,13 +21,13 @@ enum SuperKeyTapContract {
         }
     }
     enum Queue {
-        static var pending: [() -> Void] = []
+        nonisolated(unsafe) static var pending: [() -> Void] = []
         static var main: Queue.Type { Self.self }
         static func async(execute: @escaping () -> Void) { pending.append(execute) }
     }
     class State {
         typealias DispatchQueue = Queue
-        static var isEngaged = true
+        nonisolated(unsafe) static var isEngaged = true
         static let mouseDownTypes: [CGEventType] = [.leftMouseDown]
         let lifecycleLock = NSLock()
         var tapRunLoop: CFRunLoop?

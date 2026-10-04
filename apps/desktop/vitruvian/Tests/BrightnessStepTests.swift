@@ -17,24 +17,24 @@ enum BrightnessStepTests {
         func async(execute work: @escaping () -> Void) { jobs.append(work) }
         func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
-    enum DispatchQueue { static let main = Queue() }
+    enum DispatchQueue { nonisolated(unsafe) static let main = Queue() }
     /// The system brightness pipeline, with the level it reports and what
     /// its easing call does with a change.
     enum BrightnessBridge {
         enum Easing { case lands, refused, ignored }
-        static var level: Float = 0.5
-        static var easing = Easing.lands
-        static var calls: [String] = []
-        static var getBrightness: ((UInt32, UnsafeMutablePointer<Float>) -> Int32)? = { _, reading in
+        nonisolated(unsafe) static var level: Float = 0.5
+        nonisolated(unsafe) static var easing = Easing.lands
+        nonisolated(unsafe) static var calls: [String] = []
+        nonisolated(unsafe) static var getBrightness: ((UInt32, UnsafeMutablePointer<Float>) -> Int32)? = { _, reading in
             reading.pointee = BrightnessBridge.level
             return 0
         }
-        static var setBrightness: ((UInt32, Float) -> Int32)? = { _, value in
+        nonisolated(unsafe) static var setBrightness: ((UInt32, Float) -> Int32)? = { _, value in
             BrightnessBridge.calls.append("set \(value)")
             BrightnessBridge.level = value
             return 0
         }
-        static var setBrightnessSmooth: ((UInt32, Float) -> Int32)? = { _, change in
+        nonisolated(unsafe) static var setBrightnessSmooth: ((UInt32, Float) -> Int32)? = { _, change in
             BrightnessBridge.calls.append("ease \(change)")
             switch BrightnessBridge.easing {
             case .lands:
@@ -47,7 +47,7 @@ enum BrightnessStepTests {
             }
         }
     }
-    static var displayAsleep = false
+    nonisolated(unsafe) static var displayAsleep = false
     static func CGDisplayIsAsleep(_ id: UInt32) -> UInt32 { displayAsleep ? 1 : 0 }
     struct BrightnessDisplay {
         enum Method: Equatable { case system, ddc, gamma }

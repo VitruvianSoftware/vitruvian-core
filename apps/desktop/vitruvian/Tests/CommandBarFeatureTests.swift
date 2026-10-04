@@ -21,19 +21,19 @@ enum CommandBarFeatureTests {
     enum CopyAnswerHost {
         final class Pasteboard {
             enum Kind { case string }
-            static let general = Pasteboard()
+            nonisolated(unsafe) static let general = Pasteboard()
             var accepts = true
             func clearContents() {}
             func setString(_ value: String, forType: Kind) -> Bool { accepts }
         }
         typealias NSPasteboard = Pasteboard
         final class Access {
-            static let shared = Access()
+            nonisolated(unsafe) static let shared = Access()
             func async<T>(_ work: @escaping () -> T, then completion: @escaping (T) -> Void) { completion(work()) }
         }
         typealias GeneralPasteboardAccess = Access
         enum HUD {
-            static var shown: [(icon: String, message: String)] = []
+            nonisolated(unsafe) static var shown: [(icon: String, message: String)] = []
             static func show(icon: String, message: String) { shown.append((icon, message)) }
         }
         typealias QuickToolHUD = HUD
@@ -44,7 +44,7 @@ enum CommandBarFeatureTests {
     enum BrightnessHost {
         struct Display { let id: CGDirectDisplayID }
         final class Service {
-            static let shared = Service()
+            nonisolated(unsafe) static let shared = Service()
             var displays = [Display(id: 1), Display(id: 2)]
             var set: [CGDirectDisplayID] = []
             var onRefresh: (() -> Void)?
@@ -53,7 +53,7 @@ enum CommandBarFeatureTests {
         }
         typealias BrightnessService = Service
         final class Screen {
-            static let screens = [Screen(id: 2, x: 0), Screen(id: 3, x: 100)]
+            nonisolated(unsafe) static let screens = [Screen(id: 2, x: 0), Screen(id: 3, x: 100)]
             let frame: NSRect
             let deviceDescription: [NSDeviceDescriptionKey: Any]
             init(id: UInt32, x: CGFloat) {
@@ -62,15 +62,15 @@ enum CommandBarFeatureTests {
             }
         }
         typealias NSScreen = Screen
-        enum Event { static var mouseLocation = NSPoint.zero }
+        enum Event { nonisolated(unsafe) static var mouseLocation = NSPoint.zero }
         typealias NSEvent = Event
         enum Sound {
-            static var beeps = 0
+            nonisolated(unsafe) static var beeps = 0
             static func beep() { beeps += 1 }
         }
         typealias NSSound = Sound
         final class Queue {
-            static let main = Queue()
+            nonisolated(unsafe) static let main = Queue()
             func asyncAfter(deadline: DispatchTime, execute work: @escaping () -> Void) { work() }
         }
         typealias DispatchQueue = Queue
@@ -1948,13 +1948,13 @@ typealias ProductionInputSourceSelection = InputSourceSelection
 enum CommandBarInputSourceContract {
     enum Preferences {
         static var standard: Preferences.Type { Self.self }
-        static var enabled = true
+        nonisolated(unsafe) static var enabled = true
         static func bool(forKey: String) -> Bool { enabled }
     }
     enum Sources {
-        static var current = "original"
-        static var acceptsSelection = true
-        static var selected: [String] = []
+        nonisolated(unsafe) static var current = "original"
+        nonisolated(unsafe) static var acceptsSelection = true
+        nonisolated(unsafe) static var selected: [String] = []
         static func currentSourceID() -> String? { current }
         static func snapshots() -> [ProductionInputSourceSelection.Snapshot] {
             [.init(id: "original", isLayout: true, isASCIICapable: false),
@@ -1973,7 +1973,7 @@ enum CommandBarInputSourceContract {
     }
     enum Queue {
         static var main: Queue.Type { Self.self }
-        static var jobs: [() -> Void] = []
+        nonisolated(unsafe) static var jobs: [() -> Void] = []
         static func async(execute action: @escaping () -> Void) { jobs.append(action) }
         static func sync(execute action: () -> Void) { action() }
         static func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
@@ -2075,7 +2075,7 @@ enum CommandBarTerminationContract {
         }
     }
     enum Bar {
-        static var shared = CommandBarInputSourceContract.Service()
+        nonisolated(unsafe) static var shared = CommandBarInputSourceContract.Service()
     }
     class Fixture {
         typealias NSApplication = Application

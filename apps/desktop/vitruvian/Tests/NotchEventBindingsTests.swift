@@ -66,7 +66,8 @@ enum NotchEventBindingsTests {
         }
         /// Lets the song titles, which hop to the main queue, arrive.
         func drainMain() {
-            var drained = false
+            // Set by the main queue and read on the main thread.
+            nonisolated(unsafe) var drained = false
             DispatchQueue.main.async { drained = true }
             let deadline = Date().addingTimeInterval(2)
             while !drained, Date() < deadline { _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }

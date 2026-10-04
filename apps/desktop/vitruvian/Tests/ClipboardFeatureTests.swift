@@ -31,16 +31,16 @@ enum ClipboardFeatureTests {
         }
         typealias NSSound = Sound
         final class Access {
-            static let shared = Access()
+            nonisolated(unsafe) static let shared = Access()
             func requestAccessibility() { host?.events.append("prompt") }
         }
         typealias Permissions = Access
         final class Queue {
-            static let main = Queue()
+            nonisolated(unsafe) static let main = Queue()
             func asyncAfter(deadline: DispatchTime, execute work: @escaping () -> Void) { work() }
         }
         typealias DispatchQueue = Queue
-        static var host: QuickPasteHost?
+        nonisolated(unsafe) static var host: QuickPasteHost?
         var events: [String] = []
         var trusted = true
         var promptedForAccessibility = false
@@ -788,8 +788,9 @@ enum ClipboardFeatureTests {
         let pasteboardAccess = GeneralPasteboardAccess(label: "Vitruvian.Tests.PasteboardAccess")
         let pasteboardGroup = DispatchGroup()
         let pasteboardStateLock = NSLock()
-        var activePasteboardOperations = 0
-        var maximumPasteboardOperations = 0
+        // pasteboardStateLock guards both counts.
+        nonisolated(unsafe) var activePasteboardOperations = 0
+        nonisolated(unsafe) var maximumPasteboardOperations = 0
         for _ in 0..<16 {
             pasteboardGroup.enter()
             DispatchQueue.global(qos: .userInitiated).async {

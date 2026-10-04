@@ -27,7 +27,7 @@ enum NotchKeyMonitorTests {
             static let otherMouseDown = Self(rawValue: 1 << 25)
         }
         static let mouseLocation = CGPoint.zero
-        static var handler: ((Self) -> Self?)?
+        nonisolated(unsafe) static var handler: ((Self) -> Self?)?
         var type = EventType.keyDown
         let window: Panel?
         let keyCode: UInt16
@@ -54,7 +54,7 @@ enum NotchKeyMonitorTests {
     static func appShell() -> AppDelegate? { nil }
     enum AssistiveKeyboard { static func ownsCocoaPoint(_ point: CGPoint) -> Bool { false } }
     /// What each Escape did: the gallery toggled, Tools took it or the island closed.
-    static var actions: [String] = []
+    nonisolated(unsafe) static var actions: [String] = []
     final class Launcher {
         var isEditing = false
         var visibleItems = [0, 1, 2]
@@ -65,7 +65,7 @@ enum NotchKeyMonitorTests {
             return nil
         }
     }
-    enum QuickLauncherService { static let shared = Launcher() }
+    enum QuickLauncherService { nonisolated(unsafe) static let shared = Launcher() }
 
     class State {
         var eventMonitors: [Any] = []

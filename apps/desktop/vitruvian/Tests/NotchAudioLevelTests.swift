@@ -104,7 +104,7 @@ typealias NotchAudioTestSilenceMemory = NotchAudioLevelSupport.SilenceMemory
 
 enum NotchAudioLevelLifecycleContract {
     final class NSWorkspace {
-        static let shared = NSWorkspace()
+        nonisolated(unsafe) static let shared = NSWorkspace()
         var accessibilityDisplayShouldReduceMotion = false
     }
     enum AppFeature {
@@ -115,15 +115,15 @@ enum NotchAudioLevelLifecycleContract {
     enum NotchAudioLevelSupport {
         typealias SilenceMemory = NotchAudioTestSilenceMemory
         static let isSupported = true
-        static var enabled = false
+        nonisolated(unsafe) static var enabled = false
         static func isEnabled() -> Bool { enabled }
     }
     final class NotchMusicService {
-        static let shared = NotchMusicService()
+        nonisolated(unsafe) static let shared = NotchMusicService()
         @Published var playback: NotchPlayback?
     }
     final class NotchAudioLevelReader {
-        static var instances: [NotchAudioLevelReader] = []
+        nonisolated(unsafe) static var instances: [NotchAudioLevelReader] = []
         let onLevels: ([Double]) -> Void
         let onSilence: () -> Void
         let onUnavailable: () -> Void

@@ -14,7 +14,7 @@ import VitruvianUI
 /// letter. SwiftUI can measure a row of segments narrower than Settings draws
 /// it, so the checks read the AppKit controls the row draws.
 enum NotchSettingsChoiceTests {
-    static func run(_ suite: TestSuite) {
+    @MainActor static func run(_ suite: TestSuite) {
         // The Content tab's options column at the Settings window's minimum
         // width: less the sidebar at its widest, the page's margins, and the
         // list of sections with the space after it.
@@ -55,7 +55,7 @@ enum NotchSettingsChoiceTests {
 
     /// How the row, in its card, fails this width: drawn past the card's
     /// content, squeezed, or crowding its title.
-    private static func problems(_ row: AnyView, width: CGFloat, textColumn: CGFloat) -> [String] {
+    @MainActor private static func problems(_ row: AnyView, width: CGFloat, textColumn: CGFloat) -> [String] {
         var found = Set<String>()
         let measured = NSHostingController(rootView: SettingsCard { row })
             .sizeThatFits(in: CGSize(width: width, height: 1000)).width
@@ -88,7 +88,7 @@ enum NotchSettingsChoiceTests {
 
     /// Whether the row draws its choice at the card's trailing edge, beside
     /// the title, when laid out at this width.
-    private static func drawsChoiceBesideTitle(_ row: AnyView, width: CGFloat, segments: Bool) -> Bool {
+    @MainActor private static func drawsChoiceBesideTitle(_ row: AnyView, width: CGFloat, segments: Bool) -> Bool {
         let host = host(row, width: width)
         return controls(in: host).contains { control in
             (control is NSSegmentedControl) == segments
@@ -96,7 +96,7 @@ enum NotchSettingsChoiceTests {
         }
     }
 
-    private static func host(_ row: AnyView, width: CGFloat) -> NSHostingView<SettingsCard<AnyView>> {
+    @MainActor private static func host(_ row: AnyView, width: CGFloat) -> NSHostingView<SettingsCard<AnyView>> {
         let host = NSHostingView(rootView: SettingsCard { row })
         host.frame = NSRect(x: 0, y: 0, width: width, height: 400)
         host.layoutSubtreeIfNeeded()

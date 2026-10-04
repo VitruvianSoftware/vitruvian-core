@@ -11,7 +11,7 @@ import VitruvianUI
 /// Production opening and availability methods run with inert presentation
 /// doubles. Feature choices live only in a disposable test preferences domain.
 enum NotchDestinationContract {
-    enum ReviewDefaults { static var current: UserDefaults! }
+    enum ReviewDefaults { nonisolated(unsafe) static var current: UserDefaults! }
     enum NotchContentTransition { case none, reveal, replace }
     final class Panel {
         var isKeyWindow = true
@@ -26,9 +26,9 @@ enum NotchDestinationContract {
         static let shared = Reader()
         struct Reader { func rememberPasteTarget() {} }
     }
-    enum QuickLauncherService { static var shared = QuickLauncherContract.Launcher() }
+    enum QuickLauncherService { nonisolated(unsafe) static var shared = QuickLauncherContract.Launcher() }
     enum MenuPanelFocus {
-        static let shared = Focus()
+        nonisolated(unsafe) static let shared = Focus()
         final class Focus {
             var normalRequests = 0
             func showNormalPanel() { normalRequests += 1 }
@@ -41,7 +41,7 @@ enum NotchDestinationContract {
         func syncWithPreferences() { running = true; syncs += 1 }
         func suspend() { running = false; suspensions += 1 }
     }
-    enum NotchTimerService { static var shared = Timer() }
+    enum NotchTimerService { nonisolated(unsafe) static var shared = Timer() }
     enum PreciseVolumeRollerService {
         static let shared = Service()
         struct Service { func syncWithPreferences() {} }
@@ -50,7 +50,7 @@ enum NotchDestinationContract {
         var syncs = 0
         func syncWithPreferences() { syncs += 1 }
     }
-    enum BrightnessService { static var shared = Brightness() }
+    enum BrightnessService { nonisolated(unsafe) static var shared = Brightness() }
     final class LockScreen {
         var syncs: [NotchSessionState] = []
         var sounds: [Bool] = []
@@ -58,7 +58,7 @@ enum NotchDestinationContract {
         func sync(_ session: NotchSessionState) { syncs.append(session); onSync?() }
         func playSound(locking: Bool) { sounds.append(locking) }
     }
-    enum NotchLockScreenService { static var shared = LockScreen() }
+    enum NotchLockScreenService { nonisolated(unsafe) static var shared = LockScreen() }
 
     class State {
         var acceptsUserInteraction = true

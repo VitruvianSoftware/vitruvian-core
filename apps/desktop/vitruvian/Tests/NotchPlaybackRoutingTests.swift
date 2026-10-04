@@ -40,44 +40,44 @@ enum NotchPlaybackRoutingContract {
         static let shared = Self()
         var runningApplications: [NSRunningApplication] { NotchPlaybackRoutingContract.applications }
     }
-    static let handle: UnsafeMutableRawPointer? = nil
+    nonisolated(unsafe) static let handle: UnsafeMutableRawPointer? = nil
     static let callbacks = DispatchQueue(label: "notch-routing-test")
-    static var available = true
-    static var destination: AnyObject?
-    static var command: Int32?
-    static var options: CFDictionary?
-    static var requestedArtwork = false
-    static var sendError: UInt32 = 0
-    static var sendResponses: [NSNumber]? = [0]
+    nonisolated(unsafe) static var available = true
+    nonisolated(unsafe) static var destination: AnyObject?
+    nonisolated(unsafe) static var command: Int32?
+    nonisolated(unsafe) static var options: CFDictionary?
+    nonisolated(unsafe) static var requestedArtwork = false
+    nonisolated(unsafe) static var sendError: UInt32 = 0
+    nonisolated(unsafe) static var sendResponses: [NSNumber]? = [0]
     static let lock = NSLock()
-    static var selected: Target?
-    static var identity: Identity?
-    static var context: NotchPlaybackContext?
-    static var metadata: [ObjectIdentifier: [String: Any]] = [:]
-    static var beforeRead: (() -> Void)?
-    static var reply: [String: Any] = [:]
-    static var sources: [NotchPlaybackSource] = []
-    static var selection: NotchPlaybackSource.Selection?
-    static var includeOtherPlayers = false
-    static var releaseAt: TimeInterval?
+    nonisolated(unsafe) static var selected: Target?
+    nonisolated(unsafe) static var identity: Identity?
+    nonisolated(unsafe) static var context: NotchPlaybackContext?
+    nonisolated(unsafe) static var metadata: [ObjectIdentifier: [String: Any]] = [:]
+    nonisolated(unsafe) static var beforeRead: (() -> Void)?
+    nonisolated(unsafe) static var reply: [String: Any] = [:]
+    nonisolated(unsafe) static var sources: [NotchPlaybackSource] = []
+    nonisolated(unsafe) static var selection: NotchPlaybackSource.Selection?
+    nonisolated(unsafe) static var includeOtherPlayers = false
+    nonisolated(unsafe) static var releaseAt: TimeInterval?
     /// Stands in for the system uptime read by the extracted selection.
-    static var uptime: TimeInterval = 0
-    static var refreshes = 0
-    static var discovering = false
-    static var applications: [NSRunningApplication] = []
-    static var registeredPIDs: [Int32] = []
-    static var systemPID: Int32 = 10
-    static var sourceMetadata: [Int32: [String: Any]] = [:]
-    static var silentPIDs: Set<Int32> = []
-    static var lateReads: [() -> Void] = []
+    nonisolated(unsafe) static var uptime: TimeInterval = 0
+    nonisolated(unsafe) static var refreshes = 0
+    nonisolated(unsafe) static var discovering = false
+    nonisolated(unsafe) static var applications: [NSRunningApplication] = []
+    nonisolated(unsafe) static var registeredPIDs: [Int32] = []
+    nonisolated(unsafe) static var systemPID: Int32 = 10
+    nonisolated(unsafe) static var sourceMetadata: [Int32: [String: Any]] = [:]
+    nonisolated(unsafe) static var silentPIDs: Set<Int32> = []
+    nonisolated(unsafe) static var lateReads: [() -> Void] = []
     static func isMusicApp(_ app: NSRunningApplication, parentBundleIdentifier: String? = nil) -> Bool {
         app.processIdentifier == 10
     }
     static func vitruvianNowPlayingGet() { refreshes += 1 }
     typealias NotchNativePlayback = NotchPlaybackRoutingContract
     enum NotchNativeQueue {
-        static var request: UUID?
-        static var selection: NotchQueueSelection?
+        nonisolated(unsafe) static var request: UUID?
+        nonisolated(unsafe) static var selection: NotchQueueSelection?
         static func configure(_ id: UUID?) { request = id }
         static func play(_ item: NotchQueueSelection) { selection = item }
     }

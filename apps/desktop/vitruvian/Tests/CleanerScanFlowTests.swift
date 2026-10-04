@@ -15,7 +15,7 @@ enum CleanerScanFlowTests {
     }
     enum Queue {
         enum QoS { case userInitiated }
-        static var pending: [() -> Void] = []
+        nonisolated(unsafe) static var pending: [() -> Void] = []
         static var main: Queue.Type { Self.self }
         static func global(qos: QoS) -> Queue.Type { Self.self }
         static func async(execute: @escaping () -> Void) { pending.append(execute) }
@@ -30,8 +30,8 @@ enum CleanerScanFlowTests {
         var scanningCategory: CleanerSupport.Category?
         var scanToken = UUID()
         var scanCancellation: CleanerSupport.ScanCancellation?
-        static var scanned: [CleanerSupport.Category] = []
-        static var onScan: ((CleanerSupport.Category) -> Void)?
+        nonisolated(unsafe) static var scanned: [CleanerSupport.Category] = []
+        nonisolated(unsafe) static var onScan: ((CleanerSupport.Category) -> Void)?
         static func record(_ category: CleanerSupport.Category) -> [Item] {
             scanned.append(category)
             onScan?(category)

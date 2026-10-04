@@ -28,34 +28,34 @@ enum PostUpdateStatusItemRecoveryTests {
         }
     }
     final class NSMenu {
-        static var visible = true
+        nonisolated(unsafe) static var visible = true
         static func menuBarVisible() -> Bool { visible }
     }
     struct Screen { var frame: CGRect }
     enum NSScreen {
-        static var screens = [Screen(frame: CGRect(x: 0, y: 0, width: 1470, height: 956))]
+        nonisolated(unsafe) static var screens = [Screen(frame: CGRect(x: 0, y: 0, width: 1470, height: 956))]
     }
     final class Popover { var isShown = false }
-    enum NSEvent { static var pressedMouseButtons = 0 }
+    enum NSEvent { nonisolated(unsafe) static var pressedMouseButtons = 0 }
     final class Application {
         var currentSystemPresentationOptions: NSApplication.PresentationOptions = []
     }
-    static var NSApp = Application()
-    static var session: [String: Any]? = [kCGSessionOnConsoleKey as String: true]
+    nonisolated(unsafe) static var NSApp = Application()
+    nonisolated(unsafe) static var session: [String: Any]? = [kCGSessionOnConsoleKey as String: true]
     static func CGSessionCopyCurrentDictionary() -> CFDictionary? { session as CFDictionary? }
     enum AppInfo {
-        static var version = "3.4.0-beta.3"
-        static var isDeveloperBuild = false
+        nonisolated(unsafe) static var version = "3.4.0-beta.3"
+        nonisolated(unsafe) static var isDeveloperBuild = false
     }
     enum UserDefaults {
-        static var standard = Preferences()
+        nonisolated(unsafe) static var standard = Preferences()
         final class Preferences {
             var hideIcon = false
             func bool(forKey key: String) -> Bool { hideIcon }
         }
     }
     enum DispatchQueue {
-        static var main = Queue()
+        nonisolated(unsafe) static var main = Queue()
         final class Queue {
             var jobs: [() -> Void] = []
             func asyncAfter(deadline: DispatchTime, execute action: @escaping () -> Void) {
@@ -77,7 +77,7 @@ enum PostUpdateStatusItemRecoveryTests {
         var isTerminating = false
         var isReshowingStatusItem = false
         static let reshowVerifyInterval: TimeInterval = 0.8
-        static var manager: String?
+        nonisolated(unsafe) static var manager: String?
         static func runningMenuBarManagerName() -> String? { manager }
         var logs: [String] = []
         func logStatusItemPlacement(_ stage: String) { logs.append(stage) }

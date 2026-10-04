@@ -11,12 +11,12 @@ import VitruvianUI
 /// Production activation and bridge bodies run against transports that never
 /// activate an app or post input. Native window ordering is validated separately.
 enum SwitcherActivationTests {
-    static var events: [String] = []
-    static var records: [[UInt8]] = []
-    static var canRaise = true
+    nonisolated(unsafe) static var events: [String] = []
+    nonisolated(unsafe) static var records: [[UInt8]] = []
+    nonisolated(unsafe) static var canRaise = true
 
     final class App {
-        static let current = App(processIdentifier: 1)!
+        nonisolated(unsafe) static let current = App(processIdentifier: 1)!
         let processIdentifier: pid_t
         var isTerminated = false
         init?(processIdentifier: pid_t) {
@@ -44,9 +44,9 @@ enum SwitcherActivationTests {
         }
     }
     enum Bridge {
-        static var processForPID: ((pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus)?
-        static var setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?
-        static var postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?
+        nonisolated(unsafe) static var processForPID: ((pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus)?
+        nonisolated(unsafe) static var setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?
+        nonisolated(unsafe) static var postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?
     }
     static func reset(raise: Bool = true, front: CGError = .success, down: CGError = .success, up: CGError = .success) {
         events = []; records = []; canRaise = raise

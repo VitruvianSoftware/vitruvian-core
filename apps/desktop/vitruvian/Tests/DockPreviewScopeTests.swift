@@ -12,7 +12,7 @@ import VitruvianUI
 /// windows, system notifications, desktop changes or synthetic input are used.
 enum DockPreviewScopeTests {
     enum NSWorkspace {
-        static let shared = Workspace()
+        nonisolated(unsafe) static let shared = Workspace()
         static let activeSpaceDidChangeNotification = Notification.Name("test.desktop.changed")
     }
 

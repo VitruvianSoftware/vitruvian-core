@@ -15,7 +15,7 @@ enum MixerPercentKeyTests {
             let rawValue: UInt64
             static let keyDown = Self(rawValue: 1 << 10)
         }
-        static var handler: ((Self) -> Self?)?
+        nonisolated(unsafe) static var handler: ((Self) -> Self?)?
         let keyCode: UInt16
         let window: NSWindow?
         static func addLocalMonitorForEvents(matching: EventTypeMask, handler: @escaping (Self) -> Self?) -> Any? {
@@ -29,7 +29,7 @@ enum MixerPercentKeyTests {
     }
     final class NSWindow { var firstResponder: AnyObject? }
     final class MixerPercentNativeTextField { var window: NSWindow? }
-    static var cancels = 0
+    nonisolated(unsafe) static var cancels = 0
 
     class Fixture {
         var isActive = true

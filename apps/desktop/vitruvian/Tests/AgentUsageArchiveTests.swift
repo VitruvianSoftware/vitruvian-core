@@ -392,7 +392,7 @@ enum AgentUsageArchiveTests {
 /// section off and quitting at once must still remove saved progress.
 enum AgentUsageArchiveSettleTests {
     enum AgentUsageArchive {
-        static var removed = 0
+        nonisolated(unsafe) static var removed = 0
         static func remove() { removed += 1 }
     }
 
@@ -427,7 +427,7 @@ typealias AgentUsageProductionArchive = AgentUsageArchive
 enum AgentUsageArchiveSaveTests {
     enum AgentUsageArchive {
         typealias Contents = AgentUsageProductionArchive.Contents
-        static var saved: [Contents] = []
+        nonisolated(unsafe) static var saved: [Contents] = []
         static func save(_ contents: Contents) -> Bool {
             saved.append(contents)
             return true

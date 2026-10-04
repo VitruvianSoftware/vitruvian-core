@@ -20,20 +20,20 @@ enum DockPreviewFrameRestorationTests {
         var visibleFrame: CGRect
     }
     enum NSWorkspace {
-        static let shared = Workspace()
+        nonisolated(unsafe) static let shared = Workspace()
         final class Workspace { var frontmostApplication: App? = App() }
         struct App { var processIdentifier = 10 }
     }
     enum WindowActivator {
-        static var focused: UInt32? = 12
-        static var restores = 0
+        nonisolated(unsafe) static var focused: UInt32? = 12
+        nonisolated(unsafe) static var restores = 0
         static func focusedWindowID(for pid: Int) -> UInt32? { focused }
         static func restoreFrameAfterDockHold(_ item: SwitcherItem, original: CGRect, heldVisibleFrame: CGRect) {
             restores += 1
         }
     }
-    static var currentScreen: Screen?
-    static var checks = 0
+    nonisolated(unsafe) static var currentScreen: Screen?
+    nonisolated(unsafe) static var checks = 0
     static func screen(_ id: UInt32) -> Screen? { currentScreen }
     static func axFrame(_ rect: CGRect) -> CGRect { rect }
 

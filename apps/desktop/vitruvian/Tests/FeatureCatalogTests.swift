@@ -2835,22 +2835,22 @@ enum FeatureCatalogTests {
 /// endpoints; no test observes real input, opens an app or terminates a process.
 enum MusicLaunchBlockerContract {
     enum Environment {
-        static var enabled = true
-        static var playReplacement = true
-        static var available = true
-        static var trusted = true
-        static var createsTap = true
-        static var enablesTap = true
-        static var now: TimeInterval = 10
-        static var gestureAge: TimeInterval = 3
-        static var running: [NSRunningApplication] = []
+        nonisolated(unsafe) static var enabled = true
+        nonisolated(unsafe) static var playReplacement = true
+        nonisolated(unsafe) static var available = true
+        nonisolated(unsafe) static var trusted = true
+        nonisolated(unsafe) static var createsTap = true
+        nonisolated(unsafe) static var enablesTap = true
+        nonisolated(unsafe) static var now: TimeInterval = 10
+        nonisolated(unsafe) static var gestureAge: TimeInterval = 3
+        nonisolated(unsafe) static var running: [NSRunningApplication] = []
     }
     enum AppFeature {
         case musicBlock
         var isAvailable: Bool { Environment.available }
     }
     enum UserDefaults {
-        static let standard = Store()
+        nonisolated(unsafe) static let standard = Store()
         final class Store {
             func bool(forKey key: String) -> Bool {
                 key == DefaultsKey.musicBlockPlayReplacement
@@ -2906,7 +2906,7 @@ enum MusicLaunchBlockerContract {
         func terminate() -> Bool { terminateCalls += 1; return terminateSucceeds }
     }
     enum NSWorkspace {
-        static let shared = Workspace()
+        nonisolated(unsafe) static let shared = Workspace()
         static let willLaunchApplicationNotification = Notification.Name("fixture.willLaunch")
         static let didLaunchApplicationNotification = Notification.Name("fixture.didLaunch")
         static let applicationUserInfoKey = "application"

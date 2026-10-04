@@ -27,11 +27,11 @@ enum SoftwareDimmingRouteContract {
         func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
     enum DispatchQueue {
-        static let main = Queue()
+        nonisolated(unsafe) static let main = Queue()
     }
 
     enum UserDefaults {
-        static var standard = Store()
+        nonisolated(unsafe) static var standard = Store()
         final class Store {
             var values: [String: Any] = [:]
             func stringArray(forKey key: String) -> [String]? { values[key] as? [String] }

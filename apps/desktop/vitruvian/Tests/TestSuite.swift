@@ -9,17 +9,26 @@ import VitruvianUI
 
 /// Shared assertions for both the full run and selected suites. Recording a
 /// failure never stops the remaining assertions; the runner owns the exit code.
-final class TestSuite {
+///
+/// The lock guards the counts, so a check may run on any thread.
+///
+/// The runner runs one suite at a time, on the main thread. So the test
+/// stand-ins keep their state in `nonisolated(unsafe)` statics, and a local
+/// that a main-queue callback sets is `nonisolated(unsafe)` too.
+final class TestSuite: @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var checks = 0
-    private(set) var failures: [String] = []
+    private var recordedChecks = 0
+    private var recordedFailures: [String] = []
+
+    var checks: Int { lock.withLock { recordedChecks } }
+    var failures: [String] { lock.withLock { recordedFailures } }
 
     func expect(_ condition: Bool, _ message: @autoclosure () -> String,
                 file: StaticString = #filePath, line: UInt = #line) {
         let failure = condition ? nil : "\(file):\(line): \(message())"
         lock.withLock {
-            checks += 1
-            if let failure { failures.append(failure) }
+            recordedChecks += 1
+            if let failure { recordedFailures.append(failure) }
         }
     }
 

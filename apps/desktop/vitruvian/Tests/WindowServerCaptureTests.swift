@@ -15,24 +15,24 @@ enum WindowServerCaptureContract {
         typealias CGSConnectionID = UInt32
         typealias CGSCaptureFunction =
             @convention(c) (CGSConnectionID, UnsafeMutablePointer<UInt32>, UInt32, UInt32) -> Unmanaged<CFArray>?
-        static var windowServerConnection: CGSConnectionID = 1
+        nonisolated(unsafe) static var windowServerConnection: CGSConnectionID = 1
         static let windowServerCaptureOptions: UInt32 = (1 << 8) | (1 << 11)
         static let windowServerCaptures = WindowServerCaptureQueue()
-        static var windowServerCapture: CGSCaptureFunction? = { connection, id, count, options in
+        nonisolated(unsafe) static var windowServerCapture: CGSCaptureFunction? = { connection, id, count, options in
             Fake.capture(connection: connection, id: id.pointee, count: count, options: options)
         }
     }
 
     enum Fake {
         static let lock = NSLock()
-        static var inFlight = 0
-        static var maximumInFlight = 0
-        static var calls: [UInt32] = []
-        static var results: [UInt32: Bool] = [:]
-        static var heldIDs: Set<UInt32> = []
-        static var mode = 4
-        static var argumentsValid = true
-        static var usedMainThread = false
+        nonisolated(unsafe) static var inFlight = 0
+        nonisolated(unsafe) static var maximumInFlight = 0
+        nonisolated(unsafe) static var calls: [UInt32] = []
+        nonisolated(unsafe) static var results: [UInt32: Bool] = [:]
+        nonisolated(unsafe) static var heldIDs: Set<UInt32> = []
+        nonisolated(unsafe) static var mode = 4
+        nonisolated(unsafe) static var argumentsValid = true
+        nonisolated(unsafe) static var usedMainThread = false
         static let entered = DispatchSemaphore(value: 0)
         static let release = DispatchSemaphore(value: 0)
 

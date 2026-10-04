@@ -15,8 +15,8 @@ enum PointerDisplayLookupContract {
     final class Screen {
         typealias NSScreen = Screen
         typealias NSEvent = Event
-        static var screens: [Screen] = []
-        static var main: Screen?
+        nonisolated(unsafe) static var screens: [Screen] = []
+        nonisolated(unsafe) static var main: Screen?
         let displayID: CGDirectDisplayID
         let frame: NSRect
         let visibleFrame: NSRect
@@ -31,7 +31,7 @@ enum PointerDisplayLookupContract {
             backingScaleFactor = scale
         }
     }
-    enum Event { static var mouseLocation = NSPoint.zero }
+    enum Event { nonisolated(unsafe) static var mouseLocation = NSPoint.zero }
 
     /// `ScreenshotService` with a capture engine that records the display.
     final class Capturer {
@@ -56,7 +56,7 @@ enum PointerDisplayLookupContract {
         }
         enum QuickToolHUD { static func show(icon: String, message: String) {} }
         enum UserDefaults {
-            static let standard = Preferences()
+            nonisolated(unsafe) static let standard = Preferences()
             final class Preferences { func bool(forKey key: String) -> Bool { false } }
         }
         final class Preview { func close() {} }
@@ -72,7 +72,7 @@ enum PointerDisplayLookupContract {
     /// `SpaceWindowBridge` over a fixed Space topology.
     enum Bridge {
         typealias NSScreen = Screen
-        static var current: Topology?
+        nonisolated(unsafe) static var current: Topology?
         static func topology() -> Topology? { current }
     }
 
@@ -145,11 +145,11 @@ enum PointerDisplayLookupContract {
             let frame: CGRect
         }
         final class DockPreviewDragGhost {
-            static let shared = DockPreviewDragGhost()
+            nonisolated(unsafe) static let shared = DockPreviewDragGhost()
             func end() {}
         }
         enum WindowActivator {
-            static var origins: [CGPoint] = []
+            nonisolated(unsafe) static var origins: [CGPoint] = []
             static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint) -> Bool {
                 origins.append(origin)
                 return false

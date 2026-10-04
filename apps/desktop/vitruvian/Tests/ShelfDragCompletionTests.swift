@@ -13,7 +13,7 @@ enum ShelfDragCompletionContract {
     typealias NSWindow = Window
 
     enum UserDefaults {
-        static var standard = Store()
+        nonisolated(unsafe) static var standard = Store()
         struct Store {
             var closeAfterDrop = true
             var removeAfterDrop = true
@@ -25,7 +25,7 @@ enum ShelfDragCompletionContract {
     }
 
     final class NotchService {
-        static var shared = NotchService()
+        nonisolated(unsafe) static var shared = NotchService()
         var presentationWindow: Window? = Window()
         var expanded = true
         var selected: NotchModule = .files

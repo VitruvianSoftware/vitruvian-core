@@ -79,7 +79,8 @@ enum NotchFileToolsTests {
         archiveCancellationContracts(suite)
         durationLoadingContracts(suite)
         dropGeometryContracts(suite)
-        MediaWorkspaceLayoutTests.run(suite)
+        // The media workspace is main-actor, and this runner is on the main thread.
+        MainActor.assumeIsolated { MediaWorkspaceLayoutTests.run(suite) }
     }
 
     private static func dropGeometryContracts(_ suite: TestSuite) {

@@ -16,9 +16,9 @@ enum NotchScreenEdgeClickTests {
     /// The system's event monitors: each one installed is a handler here.
     enum Monitors {
         typealias Handler = (NSEvent.EventType, () -> CGPoint?, Bool) -> Void
-        static var handlers: [Int: Handler] = [:]
-        static var nextID = 0
-        static let environment = NotchScreenEdgeClicks.Environment(
+        nonisolated(unsafe) static var handlers: [Int: Handler] = [:]
+        nonisolated(unsafe) static var nextID = 0
+        nonisolated(unsafe) static let environment = NotchScreenEdgeClicks.Environment(
             addMonitors: { handler in
                 // A global and a local monitor, as the app installs.
                 (0..<2).map { _ -> Any in

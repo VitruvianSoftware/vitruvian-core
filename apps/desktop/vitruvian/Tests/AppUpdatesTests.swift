@@ -37,8 +37,8 @@ enum AppUpdatesContract {
             var declaredLength: Int?
         }
         static let lock = NSLock()
-        static var responses: [String: Response] = [:]
-        static var requests: [String] = []
+        nonisolated(unsafe) static var responses: [String: Response] = [:]
+        nonisolated(unsafe) static var requests: [String] = []
         private var delivery: DispatchWorkItem?
 
         static func reset(_ values: [String: Response]) {

@@ -33,7 +33,7 @@ enum NotchDownloadFolderChoiceContract {
         }
     }
     final class Panel {
-        static weak var current: Panel?
+        nonisolated(unsafe) static weak var current: Panel?
         var canChooseFiles = true
         var canChooseDirectories = false
         var allowsMultipleSelection = true
@@ -81,9 +81,9 @@ enum NotchDownloadFolderChoiceContract {
             keyWindow = settingsWindow
         }
     }
-    static var NSApp = Application()
+    nonisolated(unsafe) static var NSApp = Application()
     enum DispatchQueue {
-        static var main = Queue()
+        nonisolated(unsafe) static var main = Queue()
         final class Queue {
             var jobs: [() -> Void] = []
             func async(execute action: @escaping () -> Void) { jobs.append(action) }
@@ -91,7 +91,7 @@ enum NotchDownloadFolderChoiceContract {
         }
     }
     final class NotchService {
-        static var shared = NotchService()
+        nonisolated(unsafe) static var shared = NotchService()
         var presentationWindow: Window? = Window()
         var acceptsSystemFeedback = true
         var acceptsUserInteraction = true
@@ -110,24 +110,24 @@ enum NotchDownloadFolderChoiceContract {
         }
     }
     enum NotchSupport {
-        static var enabled = true
-        static var downloadsVisible = true
+        nonisolated(unsafe) static var enabled = true
+        nonisolated(unsafe) static var downloadsVisible = true
         static func isEnabled() -> Bool { enabled }
         static func modules() -> [NotchModule] { downloadsVisible ? [.downloads] : [.music] }
     }
     enum AppFeature {
-        static let notchDownloads = Feature()
+        nonisolated(unsafe) static let notchDownloads = Feature()
         final class Feature { var isAvailable = true }
     }
     enum UserDefaults {
-        static var standard = Store()
+        nonisolated(unsafe) static var standard = Store()
         final class Store {
             var values: [String: Any] = [:]
             func set(_ value: Any, forKey key: String) { values[key] = value }
         }
     }
     enum L10n {
-        static let shared = Localization()
+        nonisolated(unsafe) static let shared = Localization()
         final class Localization { let language: AppLanguage = .enUS }
     }
 

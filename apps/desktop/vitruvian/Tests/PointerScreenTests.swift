@@ -12,9 +12,9 @@ import VitruvianUI
 enum PointerScreenContract {
     final class Screen {
         typealias NSScreen = Screen
-        enum NSEvent { static var mouseLocation = NSPoint.zero }
-        static var screens: [Screen] = []
-        static var main: Screen?
+        enum NSEvent { nonisolated(unsafe) static var mouseLocation = NSPoint.zero }
+        nonisolated(unsafe) static var screens: [Screen] = []
+        nonisolated(unsafe) static var main: Screen?
         let name: String
         let frame: NSRect
         init(_ name: String, _ frame: NSRect) {

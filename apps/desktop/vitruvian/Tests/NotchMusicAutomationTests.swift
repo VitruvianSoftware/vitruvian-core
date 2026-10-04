@@ -13,12 +13,12 @@ import VitruvianUI
 enum NotchMusicAutomationFlowContract {
     typealias Scheduler = NotchMusicCommandContract.Scheduler
     enum DispatchQueue {
-        static var main = Scheduler()
-        static var worker = Scheduler()
+        nonisolated(unsafe) static var main = Scheduler()
+        nonisolated(unsafe) static var worker = Scheduler()
         static func global(qos: DispatchQoS.QoSClass) -> Scheduler { worker }
     }
     enum AppleScriptRunner {
-        static var prompts: [String] = []
+        nonisolated(unsafe) static var prompts: [String] = []
         static func consentToAutomate(bundleID: String) -> Bool { prompts.append(bundleID); return true }
     }
     enum NotchMusicAutomation {
@@ -33,12 +33,12 @@ enum NotchMusicAutomationFlowContract {
             let capabilities: NotchMusicAutomationCapabilities
             let access: Access
         }
-        static var alive = true
-        static var permission = Access.granted
-        static var deliveries: [(NotchPlaybackCommand, Int32)] = []
+        nonisolated(unsafe) static var alive = true
+        nonisolated(unsafe) static var permission = Access.granted
+        nonisolated(unsafe) static var deliveries: [(NotchPlaybackCommand, Int32)] = []
         static func access(to target: Target) -> Access { permission }
-        static var capabilities: NotchMusicAutomationCapabilities?
-        static var inspections = 0
+        nonisolated(unsafe) static var capabilities: NotchMusicAutomationCapabilities?
+        nonisolated(unsafe) static var inspections = 0
         static func inspect(_ target: Target) -> Availability? {
             inspections += 1
             return capabilities.map { Availability(target: target, capabilities: $0, access: permission) }

@@ -12,7 +12,7 @@ enum DockAutohideHoldTests {
     // Session methods are extracted from production on every test build. Only
     // event-tap installation and workspace notifications are replaced here.
     enum Workspace {
-        static let shared = WorkspaceCenter()
+        nonisolated(unsafe) static let shared = WorkspaceCenter()
         static let activeSpaceDidChangeNotification = Notification.Name("hold.space")
         static let willSleepNotification = Notification.Name("hold.sleep")
         static let sessionDidResignActiveNotification = Notification.Name("hold.session")
@@ -22,7 +22,7 @@ enum DockAutohideHoldTests {
         var frontmostApplication: App? = App()
     }
     struct App { var processIdentifier: Int32 = 20 }
-    static var activationEvents: [String] = []
+    nonisolated(unsafe) static var activationEvents: [String] = []
     struct FrameRestoration {
         func restoration(for item: Int, isCurrent: @escaping () -> Bool) -> (() -> Void)? {
             activationEvents.append("capture")
@@ -30,7 +30,7 @@ enum DockAutohideHoldTests {
         }
     }
     enum WindowEnumerator {
-        static var mayActivate = true
+        nonisolated(unsafe) static var mayActivate = true
         static func dockPreviewMayActivate(_ item: Int) -> Bool { mayActivate }
     }
     enum WindowActivator {

@@ -12,8 +12,8 @@ import VitruvianUI
 /// second monitor. Nothing is warped, pressed or shown.
 enum PointerOnDisplayContract {
     final class Screen {
-        static var screens: [Screen] = []
-        static var main: Screen?
+        nonisolated(unsafe) static var screens: [Screen] = []
+        nonisolated(unsafe) static var main: Screen?
         let displayID: CGDirectDisplayID
         let frame: NSRect
         var deviceDescription: [NSDeviceDescriptionKey: Any] {
@@ -32,16 +32,16 @@ enum PointerOnDisplayContract {
             return CGRect(x: frame.minX, y: top - frame.maxY, width: frame.width, height: frame.height)
         }
     }
-    enum Event { static var mouseLocation = NSPoint.zero }
+    enum Event { nonisolated(unsafe) static var mouseLocation = NSPoint.zero }
 
     /// `SpaceWindowBridge` over a fixed Space topology, with a Spaces shortcut
     /// whose presses are only counted.
     enum Bridge {
         enum SpaceDirection { case left, right }
         struct SpaceShortcut {}
-        static var current: Topology?
-        static var windowSpaces: [UInt64] = []
-        static var presses = 0
+        nonisolated(unsafe) static var current: Topology?
+        nonisolated(unsafe) static var windowSpaces: [UInt64] = []
+        nonisolated(unsafe) static var presses = 0
         static func topology() -> Topology? { current }
         static func spaces(of windowID: CGWindowID) -> [UInt64] { windowSpaces }
         static func spaceShortcut(_ direction: SpaceDirection) -> SpaceShortcut? { SpaceShortcut() }

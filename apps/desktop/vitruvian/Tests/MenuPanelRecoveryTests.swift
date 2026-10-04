@@ -18,9 +18,9 @@ enum MenuPanelRecoveryTests {
         func async(execute work: @escaping () -> Void) { jobs.append(work) }
         func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
-    enum DispatchQueue { static var main = Queue() }
+    enum DispatchQueue { nonisolated(unsafe) static var main = Queue() }
     final class NSScreen {
-        static var screens = [NSScreen()]
+        nonisolated(unsafe) static var screens = [NSScreen()]
         static var withMenuBar: NSScreen? { screens.first }
         static var pointerVisibleFrame: CGRect { screens.first?.visibleFrame ?? .zero }
         var frame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
@@ -91,19 +91,19 @@ enum MenuPanelRecoveryTests {
             }
         }
     }
-    enum NotificationCenter { static var `default` = Center() }
+    enum NotificationCenter { nonisolated(unsafe) static var `default` = Center() }
     final class Application {
         var currentEvent: NSEvent?
         func activate(ignoringOtherApps: Bool) {}
     }
-    static var NSApp = Application()
+    nonisolated(unsafe) static var NSApp = Application()
     final class StatusController {
         var held = false
         let button: NSStatusBarButton? = NSStatusBarButton()
         func setMicBadgeHeld(_ value: Bool) { held = value }
     }
     final class MenuPanelFocus {
-        static var shared = MenuPanelFocus()
+        nonisolated(unsafe) static var shared = MenuPanelFocus()
         var activeMetric: String? = "network"
         var switching = false
         var popoverIsVisible = false
@@ -113,19 +113,19 @@ enum MenuPanelRecoveryTests {
     }
     enum Needs { case none, network }
     final class SystemMonitor {
-        static var shared = SystemMonitor()
+        nonisolated(unsafe) static var shared = SystemMonitor()
         var needs: Needs = .network
         func setMenuPanelNeeds(_ value: Needs) { needs = value }
     }
     final class ProcessUsageService {
-        static var shared = ProcessUsageService()
+        nonisolated(unsafe) static var shared = ProcessUsageService()
         var releases = 0
         func stopNetworkMonitoring() { releases += 1 }
         func clearCachedRows() {}
     }
     enum ResponsibleProcess { static func clearIconCache() {} }
     final class PanelInteractionState {
-        static var shared = PanelInteractionState()
+        nonisolated(unsafe) static var shared = PanelInteractionState()
         var viewKeepsPopoverOpen = false
         var isPresentingPopoverModal = false
         var anchorScreen: NSScreen?

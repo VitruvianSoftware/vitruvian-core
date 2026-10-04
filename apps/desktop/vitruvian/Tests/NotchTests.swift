@@ -959,7 +959,8 @@ enum NotchTests {
         NotchMusicVisibilityTests.run(suite)
         NotchEqualizerTests.run { suite.expect($0, $1) }
         WindowVisibilityTests.run { suite.expect($0, $1) }
-        NotchLyricsTimelineTests.run { suite.expect($0, $1) }
+        // The lyrics timeline is main-actor, and this runner is on the main thread.
+        MainActor.assumeIsolated { NotchLyricsTimelineTests.run { suite.expect($0, $1) } }
         NotchUpdateTests.run(suite)
         NotchCaptureKeyboardTests.run(suite)
         NotchKeyMonitorTests.run(suite)

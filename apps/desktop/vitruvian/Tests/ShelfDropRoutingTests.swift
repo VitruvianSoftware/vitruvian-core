@@ -11,19 +11,19 @@ import VitruvianUI
 /// Native transport and payload integrity have separate transfer tests.
 enum ShelfDropRoutingContract {
     enum AppFeature {
-        static var shelf = Feature()
-        static var mediaTools = Feature()
+        nonisolated(unsafe) static var shelf = Feature()
+        nonisolated(unsafe) static var mediaTools = Feature()
         struct Feature { var isAvailable = true }
     }
     enum NotchSupport {
-        static var enabled = true
-        static var visibleModules: [NotchModule] = [.files]
+        nonisolated(unsafe) static var enabled = true
+        nonisolated(unsafe) static var visibleModules: [NotchModule] = [.files]
         static func isEnabled() -> Bool { enabled }
         static func modules() -> [NotchModule] { visibleModules }
         static func showsFiles() -> Bool { isEnabled() && modules().contains(.files) }
     }
     enum UserDefaults {
-        static var standard = Store()
+        nonisolated(unsafe) static var standard = Store()
         struct Store {
             var enabled = true
             func bool(forKey key: String) -> Bool { enabled }

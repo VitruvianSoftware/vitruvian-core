@@ -72,7 +72,7 @@ enum ScreenshotShareCompletionTests {
     }
 
     enum ScreenshotLastCaptureStore {
-        static var stored: Int? = 1
+        nonisolated(unsafe) static var stored: Int? = 1
         static func load() -> Int? { stored }
         static func save(_ capture: Int) { stored = capture }
         static func clear() { stored = nil }
@@ -90,13 +90,13 @@ enum ScreenshotShareCompletionTests {
     }
 
     enum WindowActivationPolicy {
-        static var retained = 0
+        nonisolated(unsafe) static var retained = 0
         static func retain() { retained += 1 }
         static func release() { retained -= 1 }
     }
 
     enum NSSound {
-        static var beeps = 0
+        nonisolated(unsafe) static var beeps = 0
         static func beep() { beeps += 1 }
     }
 
