@@ -30,7 +30,10 @@ package final class WindowServerCaptureQueue: @unchecked Sendable {
                     return
                 }
                 queue.async {
-                    let value = request.isFinished ? nil : autoreleasepool(invoking: operation)
+                    // Made by this call alone and handed to the waiting
+                    // caller, which is the only one to use it from here.
+                    nonisolated(unsafe) let value = request.isFinished
+                        ? nil : autoreleasepool(invoking: operation)
                     self.lock.withLock { self.pendingCount -= 1 }
                     request.finish(value)
                 }
