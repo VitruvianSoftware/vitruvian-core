@@ -1154,6 +1154,24 @@ is that notice. Add an entry for every change to upstream files.
   - `Sources/VMStatisticsCompat/include/VMStatisticsCompat.h`,
     `Services/Metrics/VMStatisticsDecoder.swift` and
     `Services/SystemInfo.swift`: the kernel page size read in C.
+- **2026-10-04**: Refactor step 6zzb (`REFACTOR.md`):
+  - Notification fields read before `MainActor.assumeIsolated` in
+    `Services/AutoQuit/AutoQuitService.swift`,
+    `Services/Clipboard/ClipboardHistoryService.swift`,
+    `Services/Clipboard/ClipboardIgnoredApps.swift`,
+    `Services/CommandBar/CommandBarService.swift`,
+    `Services/DiskImageInstaller/DiskImageInstallerService.swift`,
+    `Services/MouseNavigation/MouseNavigationService.swift`,
+    `Services/QuickTools/QuickLauncherService.swift`,
+    `Services/QuickTools/RecentCaptureService.swift`,
+    `Services/QuitProtection/QuitProtectionService.swift`,
+    `Services/RadialMenu/RadialMenuService.swift`,
+    `Services/Snippets/SnippetLibraryService.swift` and
+    `Services/Switcher/AppSwitcher.swift`.
+  - The notification or timer handed over as a `nonisolated(unsafe)` let in
+    `Services/Audio/MusicLaunchBlocker.swift`,
+    `Services/DockPreview/DockPreviewService.swift`,
+    `Services/Shelf/ShelfService.swift` and `Services/WindowMaximizer.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

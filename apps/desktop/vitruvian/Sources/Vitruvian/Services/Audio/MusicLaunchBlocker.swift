@@ -62,7 +62,8 @@ package final class MusicLaunchBlocker: ObservableObject {
         observers = [NSWorkspace.willLaunchApplicationNotification,
                      NSWorkspace.didLaunchApplicationNotification].map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                // Delivered on the main queue.
+                // Delivered on the main queue, which alone reads it.
+                nonisolated(unsafe) let note = note
                 MainActor.assumeIsolated { self?.handleLaunch(note) }
             }
         }

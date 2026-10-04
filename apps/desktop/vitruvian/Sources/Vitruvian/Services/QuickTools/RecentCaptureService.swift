@@ -181,10 +181,11 @@ package final class RecentCaptureService: ObservableObject {
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main) { [weak self] notification in
+                // Read here: the notification itself never crosses to the main actor.
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 // Delivered on the main queue.
                 MainActor.assumeIsolated {
-                    guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                        as? NSRunningApplication,
+                    guard let app,
                           app.bundleIdentifier != Bundle.main.bundleIdentifier,
                           app.bundleIdentifier != AssistiveKeyboard.bundleID
                     else { return }

@@ -1413,11 +1413,13 @@ package final class AppSwitcher: ObservableObject {
         terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
                 guard let self, self.sessionActive,
                       self.routeLock.withLock({ self.sessionStartGeneration == generation }),
-                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                      let app
                 else { return }
                 self.removeTerminatedApp(pid: app.processIdentifier)
             }

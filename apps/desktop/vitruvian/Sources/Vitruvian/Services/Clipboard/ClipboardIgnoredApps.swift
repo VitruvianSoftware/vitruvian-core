@@ -96,11 +96,11 @@ package final class ClipboardIgnoredApps: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
+                // Read here: the notification itself never crosses to the main actor.
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 // Delivered on the main queue.
                 MainActor.assumeIsolated {
-                    guard let app = notification
-                        .userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                        let bundleID = app.bundleIdentifier else { return }
+                    guard let app, let bundleID = app.bundleIdentifier else { return }
                     self?.candidates.insert(bundleID)
                 }
             }

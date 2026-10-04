@@ -625,10 +625,12 @@ package final class RadialMenuService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            // Read here: the notification itself never crosses to the main actor.
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             // Delivered on the main queue.
             MainActor.assumeIsolated {
                 guard let self,
-                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      let app,
                       app.bundleIdentifier != Bundle.main.bundleIdentifier
                 else { return }
                 self.endSession()
