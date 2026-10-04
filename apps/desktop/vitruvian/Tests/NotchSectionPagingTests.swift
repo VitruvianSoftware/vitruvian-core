@@ -105,6 +105,7 @@ enum NotchSectionPagingTests {
         var movedRows = 0, gestureCalls = 0
         func scrollSections(by rows: Int) { movedRows += rows }
         func handleGesture(_ event: NSEvent) -> Bool { gestureCalls += 1; return false }
+        init() {}
     }
 
     private static func routing(_ suite: TestSuite) {

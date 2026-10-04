@@ -86,7 +86,7 @@ enum MixerNativeDragTests {
 
         init(origin: Any) { draggingSource = origin }
         func slideDraggedImage(to screenPoint: NSPoint) {}
-        override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+        nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
         func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions,
                                     for view: NSView?, classes classArray: [AnyClass],
                                     searchOptions: [NSPasteboard.ReadingOptionKey: Any],

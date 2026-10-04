@@ -170,6 +170,7 @@ enum UninstallerFlowTests {
         func setCategory(_ value: String?) { activeCategory = value }
         func hide() { mode = .search }
         func runSelected() { submissions += 1 }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

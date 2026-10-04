@@ -30,6 +30,7 @@ enum AgentUsageEventDeliveryTests {
         var readerSession = 1
         var providers: [AgentProvider] = [.claude, .codex]
         let events = Events()
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

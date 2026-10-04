@@ -196,7 +196,7 @@ enum NotchPresentationRefreshContract {
         /// The module's own watch, through a monitor that `NSEvent` here removes.
         lazy var captureControlsWatch = NotchMovementWatch(
             environment: NotchMovementWatch.Environment(addMonitors: { _ in [1] },
-                                                        removeMonitor: NSEvent.removeMonitor),
+                                                        removeMonitor: { NSEvent.removeMonitor($0) }),
             moved: {})
         func installCaptureControlsClickThrough() { captureControlsWatch.start() }
         func removeEventMonitors() {}

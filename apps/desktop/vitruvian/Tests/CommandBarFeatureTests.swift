@@ -1984,6 +1984,7 @@ enum CommandBarInputSourceContract {
         typealias DispatchQueue = Queue
         var suspendedInputSourceID: String?
         var presentationID = UUID()
+        init() {}
     }
     static func run(_ suite: TestSuite) {
         defer { Queue.jobs = []; Sources.selected = []; Sources.acceptsSelection = true; Preferences.enabled = true }
@@ -2081,6 +2082,7 @@ enum CommandBarTerminationContract {
         typealias NSApplication = Application
         typealias CommandBarService = Bar
         var inputSourceRestorationPending = false
+        init() {}
     }
     static func run(_ suite: TestSuite) {
         func reset(borrowed: Bool) -> (Host, Application) {

@@ -14,13 +14,15 @@ enum KeepAwakeLidSleepContract {
         static func now() -> Instant { Instant() }
         static func + (lhs: Instant, rhs: Double) -> Instant { lhs }
     }
-    enum DispatchQueue {
+    // Nonisolated like Dispatch: production completions reach these from
+    // Sendable closures. The tests flush every queue on the main thread.
+    nonisolated enum DispatchQueue {
         static let main = Queue()
         static let background = Queue()
         static let native = Queue()
         enum QoS { case utility, userInitiated }
         static func global(qos: QoS) -> Queue { background }
-        final class Queue {
+        final class Queue: @unchecked Sendable {
             var immediate: [() -> Void] = []
             var pending: [() -> Void] = []
             func async(execute: @escaping () -> Void) { immediate.append(execute) }

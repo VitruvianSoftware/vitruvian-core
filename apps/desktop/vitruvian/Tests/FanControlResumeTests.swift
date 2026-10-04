@@ -50,6 +50,7 @@ enum FanControlResumeContract {
         func restoreThenUnregister() { events.append("unregister") }
         func refresh() { events.append("refresh") }
         func stopObservingSystemState() { observing = false }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

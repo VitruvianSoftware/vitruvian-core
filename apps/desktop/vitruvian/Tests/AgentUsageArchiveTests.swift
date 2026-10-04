@@ -400,6 +400,7 @@ enum AgentUsageArchiveSettleTests {
         let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.agent-usage.settle-test")
         var saved = 0
         func saveProgress() { saved += 1 }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

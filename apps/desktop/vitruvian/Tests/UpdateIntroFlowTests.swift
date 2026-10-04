@@ -59,6 +59,7 @@ enum UpdateIntroFlowTests {
             supportIntroWindow = NSWindow()
             shown.append("support")
         }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

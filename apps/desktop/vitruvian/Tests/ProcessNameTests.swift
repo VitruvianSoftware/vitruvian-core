@@ -37,6 +37,7 @@ enum ProcessNameContract {
             bytes.withUnsafeBytes { buffer.copyMemory(from: $0.baseAddress!, byteCount: $0.count) }
             return Int32(bytes.count - 1)
         }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

@@ -20,7 +20,7 @@ enum AppUpdatesContract {
         }
     }
 
-    enum URLSessionConfiguration {
+    nonisolated enum URLSessionConfiguration {
         static var ephemeral: Foundation.URLSessionConfiguration {
             let configuration = Foundation.URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [ResponseProtocol.self]
@@ -28,7 +28,8 @@ enum AppUpdatesContract {
         }
     }
 
-    final class ResponseProtocol: URLProtocol {
+    /// URL loading calls the protocol on its own threads.
+    nonisolated final class ResponseProtocol: URLProtocol {
         struct Response {
             var status = 200
             var body = Data()
@@ -37,8 +38,9 @@ enum AppUpdatesContract {
             var declaredLength: Int?
         }
         static let lock = NSLock()
-        static var responses: [String: Response] = [:]
-        static var requests: [String] = []
+        // The lock guards these.
+        nonisolated(unsafe) static var responses: [String: Response] = [:]
+        nonisolated(unsafe) static var requests: [String] = []
         private var delivery: DispatchWorkItem?
 
         static func reset(_ values: [String: Response]) {

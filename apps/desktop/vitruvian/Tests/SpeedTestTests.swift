@@ -183,10 +183,12 @@ private final class SpeedTestTimeBoxScheduler {
     }
 }
 
-private final class SpeedTestProtocol: URLProtocol {
+/// URL loading calls the protocol on its own threads.
+private nonisolated final class SpeedTestProtocol: URLProtocol {
     private static let lock = NSLock()
-    private static var recordedRequests: [String: [String]] = [:]
-    private static var downloadsWithData: Set<String> = []
+    // The lock guards these.
+    nonisolated(unsafe) private static var recordedRequests: [String: [String]] = [:]
+    nonisolated(unsafe) private static var downloadsWithData: Set<String> = []
 
     static func requests(for scenario: String) -> [String] {
         lock.lock()

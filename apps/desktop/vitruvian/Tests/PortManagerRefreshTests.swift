@@ -53,6 +53,7 @@ enum PortManagerRefreshTests {
             for index in 0..<count { pids[index] = Processes.enumerated[index] }
             return Int32(count)
         }
+        init() {}
     }
     private static let rows = """
         p123

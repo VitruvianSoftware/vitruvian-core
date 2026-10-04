@@ -22,7 +22,10 @@ enum MenuPanelKeyTests {
         let window: NSWindow?
         var modifierFlags: ModifierFlags = []
     }
-    class NSResponder { func keyDown(with event: NSEvent) {} }
+    class NSResponder {
+        init() {}
+        func keyDown(with event: NSEvent) {}
+    }
     final class NSTextView: NSResponder {
         var composing = false
         func hasMarkedText() -> Bool { composing }
@@ -53,6 +56,7 @@ enum MenuPanelKeyTests {
             closeReasons.append(reason)
             popover.isShown = false
         }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

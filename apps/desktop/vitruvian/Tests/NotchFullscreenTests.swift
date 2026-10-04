@@ -48,6 +48,7 @@ enum NotchFullscreenTests {
         var running = false
         func start() { running = true }
         func stop() { running = false }
+        init() {}
     }
     enum NSScreen { static var screensHaveSeparateSpaces = true }
     enum SpaceWindowBridge {

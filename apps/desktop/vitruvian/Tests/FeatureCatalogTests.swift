@@ -16,7 +16,7 @@ import VitruvianServices
 import VitruvianUI
 
 enum FeatureCatalogTests {
-    private final class InstallerFileManager: FileManager, @unchecked Sendable {
+    private nonisolated final class InstallerFileManager: FileManager, @unchecked Sendable {
         let localApplications: URL
         var userApplications: URL?
 

@@ -77,7 +77,7 @@ enum RecorderSampleTimingTests {
         }
     }
 
-    static func offsetClock() -> CMTimebase {
+    nonisolated static func offsetClock() -> CMTimebase {
         var clock: CMTimebase?
         precondition(CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault,
             sourceClock: CMClockGetHostTimeClock(), timebaseOut: &clock) == noErr)
@@ -87,7 +87,7 @@ enum RecorderSampleTimingTests {
         return clock!
     }
 
-    static func audio(count: Int, rate: CMTimeScale = 48_000, time: CMTime) -> CMSampleBuffer {
+    nonisolated static func audio(count: Int, rate: CMTimeScale = 48_000, time: CMTime) -> CMSampleBuffer {
         var format = AudioStreamBasicDescription(mSampleRate: Double(rate), mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
             mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4,

@@ -454,7 +454,7 @@ enum NotchScreenRefreshContract {
                     NSEvent.addLocalMonitorForEvents(matching: moves, handler: { event in moved(); return event })]
                 .compactMap { $0 }
         },
-        removeMonitor: NSEvent.removeMonitor,
+        removeMonitor: { NSEvent.removeMonitor($0) },
         mouseLocation: { NSEvent.mouseLocation },
         displayCount: { NSScreen.screens.count },
         displayWithMouse: { NSScreen.withMouse?.notchDisplayID },

@@ -49,6 +49,7 @@ enum UpdateAdminInstallContract {
     }
     class Fixture {
         func abortInstall(dmgPath: String, offered: String?) { events.append("offer \(offered ?? "")") }
+        init() {}
     }
 
     static func run(_ suite: TestSuite) {

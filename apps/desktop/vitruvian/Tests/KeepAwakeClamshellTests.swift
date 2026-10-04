@@ -56,7 +56,8 @@ extension KeepAwakeLidSleepContract {
         static var configured = true
         static var installCompletions: [(Bool) -> Void] = []
         static let sleepStateQueue = DispatchQueue.native
-        static var sleepStateProbeSuspensions = 0
+        // Only the fake sleep-state queue, flushed on the main thread, changes it.
+        nonisolated(unsafe) static var sleepStateProbeSuspensions = 0
         static var probeWrites: [Bool] = []
         static func pmsetDisableSleepOnQueue(_ on: Bool) -> Bool {
             probeWrites.append(on)

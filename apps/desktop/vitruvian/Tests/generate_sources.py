@@ -60,8 +60,11 @@ def availability_declaration(path, prefix):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    # The tests default to the main actor; the Design module, and so
+    # the shape's conformance, is nonisolated.
     write("NotchActivityPicker.swift", "import SwiftUI\n"
           + declaration("Sources/Vitruvian/Design/NotchShape.swift", "struct NotchShape: Shape {")
+            .replace("struct NotchShape:", "nonisolated struct NotchShape:", 1)
           + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "struct NotchActivityPicker: View {"))
     write("ScrollingCaptureLoop.swift", "import AppKit\nimport CoreGraphics\n"
           + "extension ScreenshotScrollingCaptureTests {\n"
@@ -152,7 +155,7 @@ def main():
                         "    static func open(", scope="enum RadialNowPlayingApplication {")
           + "}\n")
     write("WindowServerCapture.swift", "import CoreGraphics\nimport Foundation\n"
-          + "extension WindowServerCaptureContract.Provider {\n"
+          + "nonisolated extension WindowServerCaptureContract.Provider {\n"
           + declaration("Sources/Vitruvian/Services/Switcher/WindowPreviewProvider.swift",
                         "    static func captureViaWindowServer(")
           + "}\n")

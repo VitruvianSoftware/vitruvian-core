@@ -54,6 +54,7 @@ enum ShelfDropRoutingContract {
             return accepts
         }
         func dockDidAccept() { dockCompletions += 1 }
+        init() {}
     }
     class NotchState {
         var acceptsUserInteraction = true
@@ -73,6 +74,7 @@ enum ShelfDropRoutingContract {
             opened.append(module)
             if pinned { self.pinned = true }
         }
+        init() {}
     }
     /// The module's own `NotchFileDrop`, wired the way `NotchService` wires
     /// it, to this contract's shelf and media tools.
@@ -111,6 +113,7 @@ enum ShelfDropRoutingContract {
             mediaContentHeight = nil
             return true
         }
+        init() {}
     }
 }
 
