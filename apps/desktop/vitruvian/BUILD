@@ -266,6 +266,14 @@ genrule(
 swift_binary(
     name = "make_icon",
     srcs = [":make_icon_main"],
+    # Swift 6 language mode since REFACTOR.md step 6zzn. A script that runs on
+    # the main thread: its top-level functions share the main actor with the
+    # images they draw.
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
 )

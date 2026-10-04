@@ -27,7 +27,14 @@ package struct ScrollingTitle: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var shouldScroll: Bool {
-        scrolls && !reduceMotion && overflows
+        Self.shouldScroll(scrolls: scrolls, reduceMotion: reduceMotion, overflows: overflows)
+    }
+
+    /// The same decision with its inputs passed in. Overflow is measured only
+    /// for a title that may scroll.
+    package static func shouldScroll(scrolls: Bool, reduceMotion: Bool,
+                                     overflows: @autoclosure () -> Bool) -> Bool {
+        scrolls && !reduceMotion && overflows()
     }
 
     private static let size: CGFloat = 13

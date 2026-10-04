@@ -30,6 +30,11 @@ enum PointerDisplayLookupContract {
             visibleFrame = NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height - 25)
             backingScaleFactor = scale
         }
+        /// The copied `withMouse` chooses through the module's own helper.
+        static func screen(containing point: NSPoint, among screens: [Screen],
+                           frame: (Screen) -> NSRect, fallback: Screen?) -> Screen? {
+            AppKit.NSScreen.screen(containing: point, among: screens, frame: frame, fallback: fallback)
+        }
     }
     enum Event { static var mouseLocation = NSPoint.zero }
 

@@ -12,10 +12,15 @@ extension NSScreen {
     /// must treat nil as "there is nothing to show onto" and skip, never force
     /// a screen: reading `screens[0]` in that state traps the whole app.
     package static var withMouse: NSScreen? {
+        screen(containing: NSEvent.mouseLocation, among: screens, frame: { $0.frame }, fallback: main)
+    }
+
+    /// The same choice for any screens, pointer and fallback.
+    package static func screen<Screen>(containing point: NSPoint, among screens: [Screen],
+                                       frame: (Screen) -> NSRect, fallback: Screen?) -> Screen? {
         // The pointer on a screen's top row reports y == frame.maxY, which
         // `contains` excludes and NSMouseInRect keeps.
-        let mouse = NSEvent.mouseLocation
-        return screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? main
+        screens.first { NSMouseInRect(point, frame($0), false) } ?? fallback
     }
 
     /// The CoreGraphics display id behind this screen; 0 when missing, which

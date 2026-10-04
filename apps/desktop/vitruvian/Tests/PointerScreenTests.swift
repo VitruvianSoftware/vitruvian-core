@@ -7,14 +7,10 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The production pointer-screen lookup runs against stand-in screens, so the
-/// edges between displays are checked without a second monitor attached.
+/// The module's own screen choice runs against stand-in screens, so the edges
+/// between displays are checked without a second monitor attached.
 enum PointerScreenContract {
-    final class Screen {
-        typealias NSScreen = Screen
-        enum NSEvent { static var mouseLocation = NSPoint.zero }
-        static var screens: [Screen] = []
-        static var main: Screen?
+    struct Screen {
         let name: String
         let frame: NSRect
         init(_ name: String, _ frame: NSRect) {
@@ -30,8 +26,9 @@ enum PointerScreenContract {
         let primary = Screen("primary", NSRect(x: 0, y: 0, width: 1440, height: 900))
         let right = Screen("right", NSRect(x: 1440, y: 0, width: 1920, height: 1080))
         let above = Screen("above", NSRect(x: 0, y: 900, width: 1440, height: 900))
-        Screen.screens = [primary, right, above]
-        Screen.main = primary
+        func screen(_ pointer: NSPoint, among screens: [Screen], main: Screen?) -> Screen? {
+            NSScreen.screen(containing: pointer, among: screens, frame: { $0.frame }, fallback: main)
+        }
         let cases: [(NSPoint, String, String)] = [
             (NSPoint(x: 2000, y: 1080), "right", "the top row of a secondary display belongs to it, not to the main screen"),
             (NSPoint(x: 700, y: 900), "primary", "the top row of a display with another above it stays on the lower one"),
@@ -43,13 +40,10 @@ enum PointerScreenContract {
             (NSPoint(x: 5000, y: 5000), "primary", "a pointer outside every display falls back to the main screen"),
         ]
         for (pointer, expected, behavior) in cases {
-            Screen.NSEvent.mouseLocation = pointer
-            let found = Screen.withMouse?.name
+            let found = screen(pointer, among: [primary, right, above], main: primary)?.name
             suite.expect(found == expected, "\(behavior), found \(found ?? "nil")")
         }
-        Screen.screens = []
-        Screen.main = nil
-        suite.expect(Screen.withMouse == nil, "with no display at all there is nothing to show onto")
-        Screen.NSEvent.mouseLocation = .zero
+        suite.expect(screen(.zero, among: [], main: nil) == nil,
+                     "with no display at all there is nothing to show onto")
     }
 }

@@ -1279,6 +1279,27 @@ is that notice. Add an entry for every change to upstream files.
     classes declare `init() {}`, and `TestSuite` is `Sendable`.
   - `Tests/generate_sources.py` can keep a `nonisolated` written above a
     copied declaration, and the app-updates copies do.
+- **2026-10-04**: Refactor step 6zzn (`REFACTOR.md`): `make_icon` builds in
+  Swift 6 mode, with the main actor as its default isolation (`BUILD`).
+  `Tools/MakeIcon.swift` is unchanged.
+- **2026-10-04**: Refactor step 4b (`REFACTOR.md`), three more tests through
+  the module:
+  - `Services/ResponsibleProcess.swift`: `displayName` has an overload that
+    takes the app name, kernel name and executable path lookups.
+  - `Core/AppKitExtensions.swift`: `NSScreen.withMouse` makes its choice
+    through `screen(containing:among:frame:fallback:)`.
+  - `UI/Switcher/ScrollingTitle.swift`: `shouldScroll(scrolls:reduceMotion:overflows:)`.
+  - `Tests/ProcessNameTests.swift`, `PointerScreenTests.swift` and
+    `ScrollingTitleMotionTests.swift` call these, and
+    `Tests/generate_sources.py` no longer copies them.
+  - `Tests/PointerDisplayLookupTests.swift`: the stand-in screen, which still
+    takes a copy of `withMouse`, chooses through the module's helper.
+- **2026-10-04**: `Tests/SpeedTestTests.swift` fires the download time box
+  only once the speed test has counted a chunk's bytes. The fixture finishes
+  the first chunk and leaves the second unanswered: the delegate asks for the
+  second only after counting the first. Before, the time box could fire
+  between the fixture handing over the bytes and the delegate receiving them,
+  and measure no download.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

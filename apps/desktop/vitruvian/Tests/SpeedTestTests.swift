@@ -21,8 +21,8 @@ enum SpeedTestTests {
             ("latency-non-http", ["latency"]),
             ("download-404", Array(repeating: "latency", count: 5) + ["download"]),
             ("download-after-data-503", Array(repeating: "latency", count: 5) + ["download", "download"]),
-            ("upload-503", Array(repeating: "latency", count: 5) + ["download", "upload"]),
-            ("success-204", Array(repeating: "latency", count: 5) + ["download", "upload"]),
+            ("upload-503", Array(repeating: "latency", count: 5) + ["download", "download", "upload"]),
+            ("success-204", Array(repeating: "latency", count: 5) + ["download", "download", "upload"]),
         ]
         for testCase in cases {
             let clock = SpeedTestClock()
@@ -40,7 +40,7 @@ enum SpeedTestTests {
                 RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
                 if !firedDownloadTimeBox,
                    testCase.name == "upload-503" || testCase.name == "success-204",
-                   SpeedTestProtocol.deliveredDownloadData(for: testCase.name) {
+                   SpeedTestProtocol.countedDownloadData(for: testCase.name) {
                     firedDownloadTimeBox = scheduler.runNext()
                 }
                 switch test.phase {
@@ -190,7 +190,7 @@ private nonisolated final class SpeedTestProtocol: URLProtocol {
     private static let lock = NSLock()
     // The lock guards these.
     nonisolated(unsafe) private static var recordedRequests: [String: [String]] = [:]
-    nonisolated(unsafe) private static var downloadsWithData: Set<String> = []
+    nonisolated(unsafe) private static var countedDownloads: Set<String> = []
 
     static func requests(for scenario: String) -> [String] {
         lock.lock()
@@ -198,8 +198,12 @@ private nonisolated final class SpeedTestProtocol: URLProtocol {
         return recordedRequests[scenario] ?? []
     }
 
-    static func deliveredDownloadData(for scenario: String) -> Bool {
-        lock.withLock { downloadsWithData.contains(scenario) }
+    /// Whether the speed test has counted a download chunk's bytes, so its
+    /// download time box may fire. Handing the bytes to URL loading is not
+    /// enough: the delegate receives them later, on its own queue, and a time
+    /// box that fires first measures no traffic.
+    static func countedDownloadData(for scenario: String) -> Bool {
+        lock.withLock { countedDownloads.contains(scenario) }
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -214,6 +218,14 @@ private nonisolated final class SpeedTestProtocol: URLProtocol {
         let downloadCount = Self.recordedRequests[scenario, default: []].filter { $0 == "download" }.count
         Self.lock.unlock()
 
+        // The scenarios that reach the upload hold the download open until the
+        // test fires its time box. The delegate asks for the next chunk only
+        // after the first has finished, so its bytes are counted by then; that
+        // request is the signal, and it is never answered.
+        if scenario == "upload-503" || scenario == "success-204", phase == "download", downloadCount > 1 {
+            _ = Self.lock.withLock { Self.countedDownloads.insert(scenario) }
+            return
+        }
         if scenario == "latency-non-http" {
             client?.urlProtocol(self, didReceive: URLResponse(url: url, mimeType: nil,
                                                             expectedContentLength: 0, textEncodingName: nil),
@@ -229,13 +241,8 @@ private nonisolated final class SpeedTestProtocol: URLProtocol {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if rejects || phase == "download" {
             client?.urlProtocol(self, didLoad: Data(repeating: 42, count: 1_024))
-            if phase == "download" {
-                _ = Self.lock.withLock { Self.downloadsWithData.insert(scenario) }
-            }
         }
-        if rejects || phase != "download" || scenario == "download-after-data-503" {
-            client?.urlProtocolDidFinishLoading(self)
-        }
+        client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {}

@@ -64,21 +64,33 @@ package enum ResponsibleProcess {
     /// Prefers the app's localized name; system processes fall back to their
     /// kernel-reported name (e.g. "WindowServer"), then to the caller's hint.
     package static func displayName(pid: pid_t, fallback: String) -> String {
-        if let app = NSRunningApplication(processIdentifier: pid),
-           let name = app.localizedName, !name.isEmpty {
-            return name
-        }
-        var buffer = [CChar](repeating: 0, count: 256)
-        if proc_name(pid, &buffer, UInt32(buffer.count)) > 0 {
-            let name = String(cString: buffer)
-            if !name.isEmpty { return name }
-        }
+        displayName(pid: pid, fallback: fallback,
+                    appName: { NSRunningApplication(processIdentifier: $0)?.localizedName },
+                    kernelName: { pid in
+                        var buffer = [CChar](repeating: 0, count: 256)
+                        guard proc_name(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+                        return String(cString: buffer)
+                    },
+                    executablePath: { pid in
+                        var path = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+                        guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return nil }
+                        return String(cString: path)
+                    })
+    }
+
+    /// The same choice with the three lookups passed in, each nil when the
+    /// system gives no answer.
+    package static func displayName(pid: pid_t, fallback: String,
+                                    appName: (pid_t) -> String?,
+                                    kernelName: (pid_t) -> String?,
+                                    executablePath: (pid_t) -> String?) -> String {
+        if let name = appName(pid), !name.isEmpty { return name }
+        if let name = kernelName(pid), !name.isEmpty { return name }
         // macOS 27 refuses proc_name for another user's process, such as
         // WindowServer or a daemon, and the GPU list showed "pid 100" for
         // them. Their executable path stays readable.
-        var path = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
-        if proc_pidpath(pid, &path, UInt32(path.count)) > 0 {
-            let name = (String(cString: path) as NSString).lastPathComponent
+        if let path = executablePath(pid) {
+            let name = (path as NSString).lastPathComponent
             if !name.isEmpty { return name }
         }
         return fallback.trimmingCharacters(in: .whitespaces)
