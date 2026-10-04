@@ -15,7 +15,9 @@ import VitruvianDesign
 /// it runs off the hot path on a utility queue and is cached. Callers read the
 /// cached value and fall back to the IORegistry ratio when it isn't available
 /// (no battery, or a macOS that doesn't expose the field, e.g. some betas).
-package final class MaxCapacityProbe {
+///
+/// Its cache answers under `lock`, so it is `@unchecked Sendable`.
+package final class MaxCapacityProbe: @unchecked Sendable {
     package static let shared = MaxCapacityProbe()
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.maxcapacity", qos: .utility)

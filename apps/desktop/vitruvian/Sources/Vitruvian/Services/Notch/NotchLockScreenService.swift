@@ -198,7 +198,7 @@ package final class NotchLockScreenService {
         // the player leaves with it rather than lingering over the desktop.
         // The padlock opens first, then the island underneath takes over.
         var remaining = scene.count + (island == nil ? 0 : 1)
-        let finished = { remaining -= 1; if remaining == 0 { space.close() } }
+        let finished: @MainActor @Sendable () -> Void = { remaining -= 1; if remaining == 0 { space.close() } }
         scene.forEach { Self.fadeOut($0, after: 0, completion: finished) }
         if let island {
             model.padlockOpen = true
@@ -207,7 +207,7 @@ package final class NotchLockScreenService {
     }
 
     private static func fadeOut(_ panel: NSPanel, after delay: TimeInterval,
-                                completion: @escaping @MainActor () -> Void) {
+                                completion: @escaping @MainActor @Sendable () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.2
