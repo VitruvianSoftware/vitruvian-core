@@ -78,7 +78,11 @@ package final class NotchMenuSpaceReader {
                                               primaryTop: subject.primaryTop, ownWindow: subject.ownWindow)
                 },
                 background: { work in queue.async { work() } },
-                main: { work in DispatchQueue.main.async { work() } },
+                main: { work in
+                    // Made by a read on the background queue and run only here.
+                    nonisolated(unsafe) let work = work
+                    DispatchQueue.main.async { work() }
+                },
                 ticks: { tick in
                     let timer = Timer(timeInterval: 1, repeats: true) { _ in tick() }
                     timer.tolerance = 0.2

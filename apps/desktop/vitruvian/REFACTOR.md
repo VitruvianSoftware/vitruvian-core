@@ -2238,6 +2238,34 @@ the 99.
 - **Measured** (Swift 6 mode, batch mode off): the 14 are gone and nothing
   new appeared; **56 errors in 27 files** remain.
 
+Landed (6zze, callbacks handed to a queue): 25 of the 99.
+
+- **Typed for where they run:** `@MainActor @Sendable` for the callbacks
+  that only ever run on the main thread:
+  - opening a notification, the microphone request, self-uninstall's two
+    results;
+  - the window maximizer's frame changes, Homebrew's tap retry, the Super
+    Key's physical-key read;
+  - the sleep restore's `shouldProceed`. Its completion is `@Sendable`,
+    since it runs on the restore's own queue.
+- **The pasteboard lane:** results are `Sendable` and completions
+  `@MainActor`. The deadline's canceller and `didFinish` now live in the
+  main-thread delivery object, so only that object, the value and the clock
+  check cross the lane.
+- **Passed through as `nonisolated(unsafe)` lets:**
+  - keep-awake recovery's completion and transient paste's callbacks, both
+    made and run on the main thread;
+  - the menu-space reader's answer, made by a background read and run only
+    on the main thread.
+- **The window-capture queue** hands the captured value to the waiting
+  caller as `sending`. The value is a `nonisolated(unsafe)` let: Xcode 27
+  counts the result as part of the capture operation that made it, so the
+  probe still reported it as shared.
+- **Kept plain:** keep-awake recovery's completion parameter, because a
+  unit-test fixture copies that method into a class off the main actor.
+- **Measured** (Swift 6 mode, batch mode off): the 25 are gone and nothing
+  new appeared; **31 errors in 15 files** remain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

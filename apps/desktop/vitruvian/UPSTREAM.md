@@ -1192,6 +1192,24 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Recorder/RecorderCaptureEngine.swift`,
     `Services/Recorder/RecorderCursorCatalog.swift` and two classes in
     `Services/Switcher/WindowActivator.swift`.
+- **2026-10-04**: Refactor step 6zze (`REFACTOR.md`):
+  - Callbacks typed `@MainActor @Sendable` or `@Sendable` in
+    `Services/Notch/NotchNotificationService.swift`,
+    `Services/Permissions.swift`, `Services/SelfUninstall.swift`,
+    `Services/WindowMaximizer.swift`,
+    `Services/Homebrew/HomebrewManager.swift`,
+    `Services/SuperKey/SuperKeyService.swift` and
+    `Services/ShellSupport.swift`.
+  - `Services/GeneralPasteboardAccess.swift`: `Sendable` results and
+    main-actor completions; the deadline canceller and `didFinish` move into
+    the delivery object.
+  - `Services/CommandBar/CommandBarCatalog.swift`: the clipboard helper is
+    `@MainActor` and takes a main-actor body.
+  - Callbacks passed through as `nonisolated(unsafe)` lets in
+    `Services/KeepAwakeManager.swift`, `Services/TransientPaste.swift` and
+    `Services/Notch/NotchMenuSpaceReader.swift`.
+  - `Services/Switcher/WindowServerCaptureQueue.swift`: the captured value is
+    a `nonisolated(unsafe)` let, handed to the caller as `sending`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

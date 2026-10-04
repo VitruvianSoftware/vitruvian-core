@@ -1440,8 +1440,9 @@ package enum CommandBarCatalog {
     /// without the clipboard placeholder never reads it at all, and one that
     /// does reads it on the shared lane, so a stalled pasteboard provider
     /// delays this one row rather than freezing the app (issue #887).
+    @MainActor
     private static func withClipboard(neededBy destination: String,
-                                      _ body: @escaping (String) -> Void) {
+                                      _ body: @escaping @MainActor (String) -> Void) {
         guard destination.contains(CommandBarLinkPlaceholder.clipboard.token) else {
             body("")
             return

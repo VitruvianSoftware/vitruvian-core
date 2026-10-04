@@ -743,7 +743,7 @@ package final class SuperKeyService: ObservableObject {
     /// itself has to service, so calling it from a main-queue block deadlocks
     /// the app; and only `.hidSystemState` reflects the remapped key — the
     /// combined session state reports it up even while it is held.
-    private func readPhysicalKeyDown(_ handler: @escaping (Bool) -> Void) {
+    private func readPhysicalKeyDown(_ handler: @escaping @MainActor @Sendable (Bool) -> Void) {
         let key = CGKeyCode(SuperKeySupport.triggerKeyCode)
         DispatchQueue.global(qos: .userInitiated).async {
             let physicalKeyDown = CGEventSource.keyState(.hidSystemState, key: key)

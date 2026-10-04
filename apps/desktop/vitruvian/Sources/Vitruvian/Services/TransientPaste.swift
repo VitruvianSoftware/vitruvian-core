@@ -31,7 +31,10 @@ package final class TransientPaste {
                didPostShortcut: (() -> Void)? = nil,
                didFail: (() -> Void)? = nil) -> Bool {
         guard Thread.isMainThread else { return false }
-        // Checked just above.
+        // Checked just above, so the callbacks never leave the main thread.
+        nonisolated(unsafe) let willPostShortcut = willPostShortcut
+        nonisolated(unsafe) let didPostShortcut = didPostShortcut
+        nonisolated(unsafe) let didFail = didFail
         return MainActor.assumeIsolated {
             pasteOnMain(text, willPostShortcut: willPostShortcut, didPostShortcut: didPostShortcut, didFail: didFail)
         }

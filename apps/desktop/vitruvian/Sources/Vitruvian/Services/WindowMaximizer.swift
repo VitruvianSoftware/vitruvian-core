@@ -200,7 +200,7 @@ package final class WindowMaximizer: ObservableObject {
     // cannot leave the app's assistive mode switched off.
     private func changeFrame(to frame: AXFrame,
                              of target: ClickTarget,
-                             completion: @escaping (Bool) -> Void) -> Bool {
+                             completion: @escaping @MainActor @Sendable (Bool) -> Void) -> Bool {
         assistiveModeSuspensions.removeValue(forKey: target.windowID)?.resume()
         assistiveModeSuspensions[target.windowID] = EnhancedUserInterfaceSuspension.suspend(forAppOf: target.window)
         let started = animateFrame(frame, on: target.window, windowID: target.windowID) { [weak self] success in
@@ -216,7 +216,7 @@ package final class WindowMaximizer: ObservableObject {
     private func animateFrame(_ targetFrame: AXFrame,
                               on window: AXUIElement,
                               windowID: CGWindowID,
-                              completion: @escaping (Bool) -> Void) -> Bool {
+                              completion: @escaping @MainActor @Sendable (Bool) -> Void) -> Bool {
         guard let start = frame(of: window),
               canSetFrame(on: window) else { return false }
         frameAnimations[windowID]?.invalidate()
@@ -350,7 +350,7 @@ package final class WindowMaximizer: ObservableObject {
                              windowID: CGWindowID,
                              fallback: AXFrame,
                              attempt: Int,
-                             completion: @escaping (Bool) -> Void) {
+                             completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         guard applyFrame(target, on: window) else {
             restoreFrame(fallback, on: window)
             completion(false)
