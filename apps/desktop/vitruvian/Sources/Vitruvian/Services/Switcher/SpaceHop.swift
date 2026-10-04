@@ -34,7 +34,8 @@ import VitruvianDesign
 /// seconds an activation takes and cancels itself when a newer activation
 /// starts.
 package final class SpaceHop {
-    private static var current: SpaceHop?
+    // Main thread only, like the activations that start and cancel a hop.
+    nonisolated(unsafe) private static var current: SpaceHop?
 
     /// How often the window server is asked whether the Space arrived, and how
     /// long a single switch is given before the hop escalates or gives up. The

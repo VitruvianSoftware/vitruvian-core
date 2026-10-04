@@ -236,8 +236,9 @@ private struct RadialNowPlayingCard: View {
 }
 
 package enum RadialNowPlayingApplication {
-    private static var icons: [String: NSImage] = [:]
-    private static var missingIcons = Set<String>()
+    // Main thread only, like the views that ask for icons.
+    nonisolated(unsafe) private static var icons: [String: NSImage] = [:]
+    nonisolated(unsafe) private static var missingIcons = Set<String>()
 
     package static func runningApplication(for snapshot: RadialNowPlayingSnapshot) -> NSRunningApplication? {
         if let bundleIdentifier = snapshot.appBundleIdentifier,

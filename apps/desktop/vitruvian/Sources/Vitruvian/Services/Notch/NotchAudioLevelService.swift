@@ -174,8 +174,9 @@ package final class NotchAudioLevelService: ObservableObject {
 /// finds nothing.
 private enum NotchAudioLevelListeners {
     private static let lock = NSLock()
-    private static var readers: [UInt: NotchAudioLevelReader] = [:]
-    private static var counter: UInt = 0
+    // Both guarded by lock.
+    nonisolated(unsafe) private static var readers: [UInt: NotchAudioLevelReader] = [:]
+    nonisolated(unsafe) private static var counter: UInt = 0
 
     /// A client pointer no other reader holds. Never dereferenced.
     static func reserve() -> UnsafeMutableRawPointer {

@@ -9,8 +9,9 @@ import VitruvianDesign
 /// mixer and rails, the switcher, wallpaper and chip rows. Without it their
 /// hidden items could only be reached with a trackpad or Shift.
 package enum HorizontalWheelScrolling {
-    private static var monitor: Any?
-    private static var lastGesturePhaseTimestamp: TimeInterval?
+    // Main thread only, like the local monitor and the views that forward wheel events.
+    nonisolated(unsafe) private static var monitor: Any?
+    nonisolated(unsafe) private static var lastGesturePhaseTimestamp: TimeInterval?
 
     package static func install() {
         guard monitor == nil else { return }

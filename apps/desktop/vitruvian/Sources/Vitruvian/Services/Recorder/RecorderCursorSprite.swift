@@ -14,7 +14,8 @@ import VitruvianDesign
 /// stop working. A vector arrow also stays crisp at any zoom.
 package enum RecorderCursorSprite {
 
-    private static var cache: [String: CGImage] = [:]
+    // Guarded by lock.
+    nonisolated(unsafe) private static var cache: [String: CGImage] = [:]
     private static let lock = NSLock()
 
     /// The last-resort pointer, for a recording where the system never gave

@@ -663,7 +663,8 @@ private enum Multitouch {
     private typealias StartFn = @convention(c) (UnsafeMutableRawPointer, Int32) -> Void
     private typealias StopFn = @convention(c) (UnsafeMutableRawPointer) -> Void
 
-    private static let handle: UnsafeMutableRawPointer? = dlopen(
+    // Set once, and only dlsym, which is thread-safe, reads it.
+    nonisolated(unsafe) private static let handle: UnsafeMutableRawPointer? = dlopen(
         "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport",
         RTLD_NOW
     )

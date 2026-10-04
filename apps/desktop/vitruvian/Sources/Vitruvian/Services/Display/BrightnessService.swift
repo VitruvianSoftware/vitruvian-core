@@ -2589,9 +2589,10 @@ package enum BrightnessBridge {
     package typealias ReadI2CFn = @convention(c)
         (CFTypeRef, UInt32, UInt32, UnsafeMutableRawPointer, UInt32) -> IOReturn
 
-    private static let displayServicesHandle = dlopen(
+    // Set once, and only dlsym, which is thread-safe, reads them.
+    nonisolated(unsafe) private static let displayServicesHandle = dlopen(
         "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_LAZY)
-    private static let coreDisplayHandle = dlopen(
+    nonisolated(unsafe) private static let coreDisplayHandle = dlopen(
         "/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY)
 
     package static let getBrightness: GetBrightnessFn? =
@@ -2706,7 +2707,8 @@ private final class KeyboardLightBridge {
 private enum DisplayConfigurationBridge {
     typealias ConfigureEnabledFn = @convention(c) (CGDisplayConfigRef, UInt32, Bool) -> Int32
 
-    private static let coreGraphicsHandle = dlopen(
+    // Set once, and only dlsym, which is thread-safe, reads it.
+    nonisolated(unsafe) private static let coreGraphicsHandle = dlopen(
         "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY)
 
     static let configureEnabled: ConfigureEnabledFn? = {

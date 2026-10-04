@@ -1936,6 +1936,35 @@ They are `@MainActor`.
   and the configuration generation the lane reads under its lock is
   `nonisolated(unsafe)`.
 
+Landed (6zu, static state, and complete checking for Services): in Swift 6
+mode a static that any thread can reach must say what protects it. A
+Swift 6 type-check of Services on Linux listed 80 statics that did not.
+
+- **Complete checking on:** `VitruvianServices` builds with
+  `-strict-concurrency=complete`, as UI did from 6d. Each build now lists,
+  as warnings, what Swift 6 mode would reject. The Linux check cannot see
+  AppKit's own main-actor annotations, so this macOS list is the real one.
+- **Behind a lock:** 22 statics are `nonisolated(unsafe)`, with a comment
+  naming the lock that guards them (or, for the sleep-state count, the one
+  queue that touches it).
+- **Main thread only:** 20 more are `nonisolated(unsafe)` with a comment
+  saying so: the activation handoff, the brightness overlay, wheel
+  scrolling, the mouse navigation keys, the quick tools' hotkeys, the Space
+  hop, the switcher's pending close and restore, the command bar's caches,
+  the clipboard's file icon list and the now-playing app icons.
+- **Thread-safe already:** five `NSCache`s, five `dlopen` handles that only
+  `dlsym` reads, and the recorder's constant audio settings.
+- **Main actor:** the activation policy, the view factory registry and the
+  media panel's modal flag are `@MainActor`, since everything that uses them
+  already is. `main.swift` installs the view factory inside
+  `MainActor.assumeIsolated`.
+- **Left as they are:** two `ISO8601DateFormatter`s and a list of
+  `CGEventType`s, which the macOS SDK marks `Sendable` but the Linux stand-ins
+  do not.
+- **Next:** 20 singletons are `static let shared` of a class that is not
+  `Sendable`. Each one is a choice between the main actor and a lock, so
+  they are a slice of their own.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

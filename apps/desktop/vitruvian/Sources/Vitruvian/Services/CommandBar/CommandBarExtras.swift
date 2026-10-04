@@ -96,8 +96,9 @@ package enum CommandBarExtras {
 
     /// The last known Wi-Fi state, filled in by a background pass. The row
     /// reads this instead of asking CoreWLAN on the main thread: the query
-    /// crosses to the Wi-Fi daemon, and the bar opens on a keystroke.
-    package static var cachedWiFiPower: Bool?
+    /// crosses to the Wi-Fi daemon, and the bar opens on a keystroke. Main
+    /// thread only: the service stores it there, and the catalog is built there.
+    nonisolated(unsafe) package static var cachedWiFiPower: Bool?
 
     /// Whether this Mac has a Wi-Fi interface at all, and whether it is on.
     /// Blocking; callers run it on a background queue.

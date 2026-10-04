@@ -137,7 +137,8 @@ package final class RecorderWriter {
         ]
     }
 
-    private static let audioSettings: [String: Any] = [
+    // Never changes; the SDK does not mark [String: Any] Sendable.
+    nonisolated(unsafe) private static let audioSettings: [String: Any] = [
         AVFormatIDKey: kAudioFormatMPEG4AAC,
         AVSampleRateKey: 48_000,
         AVNumberOfChannelsKey: 2,

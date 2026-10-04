@@ -18,8 +18,9 @@ package enum RecorderImageRenderer {
 
     private static let pixelBudget = 24_000_000
 
-    private static var cache: [String: CGImage] = [:]
-    private static var cachedPixels = 0
+    // Both guarded by lock.
+    nonisolated(unsafe) private static var cache: [String: CGImage] = [:]
+    nonisolated(unsafe) private static var cachedPixels = 0
     private static let lock = NSLock()
 
     package static func image(for overlay: RecorderImageOverlay, canvas: CGSize) -> CGImage? {

@@ -1546,7 +1546,8 @@ package enum ClipboardImageStore {
     /// Explicit limits: NSCache only sheds under system memory pressure, so
     /// without them a history full of screenshots quietly holds every decoded
     /// thumbnail at once.
-    private static let thumbnails: NSCache<NSString, NSImage> = {
+    /// NSCache is thread-safe.
+    nonisolated(unsafe) private static let thumbnails: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 120
         cache.totalCostLimit = 48 * 1024 * 1024
@@ -1673,8 +1674,10 @@ package enum ClipboardImageStore {
         return icon
     }
 
-    private static var fileIconPaths: Set<String> = []
-    private static let fileIcons: NSCache<NSString, NSImage> = {
+    // Main thread only, like the rows that ask for icons and the sweep after a save.
+    nonisolated(unsafe) private static var fileIconPaths: Set<String> = []
+    // NSCache is thread-safe.
+    nonisolated(unsafe) private static let fileIcons: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 120
         return cache

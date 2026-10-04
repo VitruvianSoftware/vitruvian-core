@@ -31,7 +31,8 @@ package enum SpotlightNames {
     }
 
     private static let lock = NSLock()
-    private static var cache: [String: Entry] = [:]
+    // Guarded by lock.
+    nonisolated(unsafe) private static var cache: [String: Entry] = [:]
 
     /// The aliases of every bundle handed in, keyed by path, with the bundles
     /// that have none left out.

@@ -28,6 +28,7 @@ package struct WindowActivationRetention {
 /// The app is normally accessory only, with no Dock icon and no place in
 /// Command Tab. While a user-facing window needs to remain reachable it becomes
 /// a regular app, then returns to its normal policy after the last one closes.
+@MainActor
 package enum WindowActivationPolicy {
     private static var retention = WindowActivationRetention()
     private static var promoted = false

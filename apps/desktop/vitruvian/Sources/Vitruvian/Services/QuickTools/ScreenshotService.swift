@@ -1014,8 +1014,9 @@ package enum ScreenshotLastCaptureStore {
         label: "com.vitruviansoftware.vitruvian.latest-screenshot",
         qos: .utility)
     private static let stateLock = NSLock()
-    private static var generation = 0
-    private static var pendingCapture: ScreenshotSelectionController.Capture?
+    // Both guarded by stateLock.
+    nonisolated(unsafe) private static var generation = 0
+    nonisolated(unsafe) private static var pendingCapture: ScreenshotSelectionController.Capture?
 
     private static var fileURL: URL? {
         guard let base = FileManager.default.urls(for: .cachesDirectory,

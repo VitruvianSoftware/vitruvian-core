@@ -45,6 +45,7 @@ package protocol ServiceViewFactory {
 }
 
 /// Where services find the installed view factory.
+@MainActor
 package enum ServiceViews {
     private static var installed: ServiceViewFactory?
 

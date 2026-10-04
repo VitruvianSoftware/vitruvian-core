@@ -40,7 +40,8 @@ package enum CommandBarSystemSettings {
                                              isDirectory: true)
 
     private static let lock = NSLock()
-    private static var cached: (language: AppLanguage, panes: [Pane])?
+    // Guarded by lock.
+    nonisolated(unsafe) private static var cached: (language: AppLanguage, panes: [Pane])?
 
     /// Every pane, read from disk the first time and reused after. Panes only
     /// change when macOS itself does, so a second scan in one launch would buy

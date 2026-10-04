@@ -615,14 +615,16 @@ package final class WallpaperService: ObservableObject {
 
 // panel thumbs; process lifetime, cleared on uninstall
 package enum WallpaperThumbnailCache {
-    private static let cache: NSCache<NSString, NSImage> = {
+    // NSCache is thread-safe.
+    nonisolated(unsafe) private static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 400
         return cache
     }()
 
     private static let lock = NSLock()
-    private static var generation = UUID()
+    // Guarded by lock.
+    nonisolated(unsafe) private static var generation = UUID()
 
     private static let prefetchQueue = DispatchQueue(
         label: "com.vitruviansoftware.vitruvian.wallpaper-thumbs",

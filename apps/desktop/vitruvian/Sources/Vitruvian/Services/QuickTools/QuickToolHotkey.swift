@@ -10,8 +10,9 @@ import VitruvianDesign
 /// tools share. A single process-wide event handler routes presses to the
 /// owning instance by id, so each tool stays a few lines.
 package final class QuickToolHotkey {
-    private static var instances: [UInt32: QuickToolHotkey] = [:]
-    private static var sharedHandler: EventHandlerRef?
+    // Main thread only: hotkeys register there, and the event dispatcher calls the handler there.
+    nonisolated(unsafe) private static var instances: [UInt32: QuickToolHotkey] = [:]
+    nonisolated(unsafe) private static var sharedHandler: EventHandlerRef?
 
     private let hotKeyID: UInt32
     private var hotKeyRef: EventHotKeyRef?
