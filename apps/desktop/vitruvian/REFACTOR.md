@@ -2366,11 +2366,13 @@ warning.
   main thread when they start. 6zzh traced all 1,745 of them, and moved the
   nine that run elsewhere out of the main actor. A new callback that runs off
   the main thread needs the same: write it outside the main actor.
-- **Still in Swift 5 mode:** the app target (`VitruvianLib`), the fan
-  control helper, the Now Playing helper and the tests.
+- **Still in Swift 5 mode:** the app target (`VitruvianLib`),
+  `FanControlKit`, the fan control helper, the Now Playing helper and the
+  tests.
 
 Landed (6zzj, the app target in Swift 6 mode): `VitruvianLib` builds in the
-Swift 6 language mode too, so every module of the app now does.
+Swift 6 language mode too, so every module of the app but `FanControlKit`
+does (6zzk moves it).
 
 - **Measured:** a probe built it in Swift 6 mode and found 6 errors in 2
   files. Each is fixed the way Services fixed the same error:
@@ -2386,8 +2388,26 @@ Swift 6 language mode too, so every module of the app now does.
   - 3 event monitors;
   - 16 closures that a call runs before it returns, such as `filter` or
     `first(where:)`.
-- **Still in Swift 5 mode:** the fan control helper, the Now Playing helper
-  and the tests.
+- **Still in Swift 5 mode:** `FanControlKit`, the fan control helper, the
+  Now Playing helper and the tests.
+
+Landed (6zzk, `FanControlKit` and the fan helper in Swift 6 mode): both build
+in the Swift 6 language mode. `FanControlKit` holds the fan-control policy
+the app reaches through `VitruvianCore` and the fan helper links. The lists
+in 6zzi and 6zzj had left it out.
+
+- **Measured:** a probe built both in Swift 6 mode and found no errors.
+  - The fan helper has 18 warnings, each a closure it sends to its own serial
+    queue that captures the controller or an XPC reply. The controller's state
+    lives on that queue.
+  - `FanControlKit` has one deprecation warning.
+- **The run-time check:** two closures check for the main thread when they
+  start: the helper's `SIGTERM` and `SIGINT` handlers. Their dispatch sources
+  run on the main queue.
+- **Still in Swift 5 mode:** the Now Playing helper and the tests.
+  - A first probe also built the Now Playing helper and found 20 errors, all
+    in its three adapter files. Each is global or static state that does not say
+    what guards it: a lock, a serial queue, or the watch process alone.
 
 ## Step 7: test-suite hygiene
 

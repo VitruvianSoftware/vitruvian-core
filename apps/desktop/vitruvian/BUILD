@@ -174,6 +174,8 @@ swift_library(
     name = "FanControlKit",
     package_name = SWIFT_PACKAGE,
     srcs = FAN_CONTROL_KIT_SRCS,
+    # Swift 6 language mode since REFACTOR.md step 6zzk.
+    features = ["swift.enable_v6"],
     module_name = "FanControlKit",
     target_compatible_with = MACOS_ONLY,
 )
@@ -214,6 +216,9 @@ swift_library(
     name = "FanControlHelperLib",
     package_name = SWIFT_PACKAGE,
     srcs = [src for src in FAN_HELPER_SOURCES if src not in FAN_CONTROL_KIT_SRCS],
+    # Swift 6 language mode since REFACTOR.md step 6zzk. The closures that check
+    # for the main thread at run time are the signal handlers, which run there.
+    features = ["swift.enable_v6"],
     module_name = "FanControlHelper",
     target_compatible_with = MACOS_ONLY,
     deps = [":FanControlKit"],
