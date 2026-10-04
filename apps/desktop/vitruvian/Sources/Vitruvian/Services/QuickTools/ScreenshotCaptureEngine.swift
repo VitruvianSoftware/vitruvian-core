@@ -124,13 +124,23 @@ package enum ScreenshotCaptureEngine {
 
     /// The app's own windows a display capture must leave out, resolved
     /// against the same shareable-content snapshot the capture will use.
-    @MainActor
     private static func excludedOwnWindows(in content: SCShareableContent,
                                            hideVitruvianWindows: Bool,
-                                           protectedWindowIDs: Set<CGWindowID>) -> [SCWindow] {
+                                           protectedWindowIDs: Set<CGWindowID>) async -> [SCWindow] {
         let ownWindowIDs = Set(content.windows.compactMap { window in
             window.owningApplication?.processID == getpid() ? window.windowID : nil
         })
+        // Only window ids cross to the main actor; the snapshot stays here.
+        let excludedIDs = await excludedWindowIDs(ownWindowIDs: ownWindowIDs,
+                                                  hideVitruvianWindows: hideVitruvianWindows,
+                                                  protectedWindowIDs: protectedWindowIDs)
+        return content.windows.filter { excludedIDs.contains($0.windowID) }
+    }
+
+    @MainActor
+    private static func excludedWindowIDs(ownWindowIDs: Set<CGWindowID>,
+                                          hideVitruvianWindows: Bool,
+                                          protectedWindowIDs: Set<CGWindowID>) -> Set<CGWindowID> {
         var excludedIDs = ScreenshotCapturePolicy.excludedWindowIDs(
             hideVitruvianWindows: hideVitruvianWindows,
             ownWindowIDs: ownWindowIDs,
@@ -142,7 +152,7 @@ package enum ScreenshotCaptureEngine {
         if NotchSupport.isEnabled(), !ScreenshotSelectionController.isSessionOnScreen {
             excludedIDs.subtract(NotchService.shared.captureVisibleWindowIDs)
         }
-        return content.windows.filter { excludedIDs.contains($0.windowID) }
+        return excludedIDs
     }
 
     private static func captureDisplay(_ display: SCDisplay,
