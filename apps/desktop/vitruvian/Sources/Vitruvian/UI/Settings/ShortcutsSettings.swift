@@ -248,13 +248,22 @@ package struct ShortcutsSettings: View {
     }
 
     private func expansionBinding(for feature: AppFeature, in group: FeatureGroup) -> Binding<Bool> {
+        Self.expansionBinding(for: feature, in: group, expanded: $expandedFeatures)
+    }
+
+    /// Whether `feature`'s row is open in `group`. Each group keeps its own
+    /// set, so a feature listed in two groups opens and closes in each on its
+    /// own. The page passes its state; the tests pass a plain binding
+    /// (REFACTOR.md step 4b).
+    package static func expansionBinding(for feature: AppFeature, in group: FeatureGroup,
+                                         expanded expandedFeatures: Binding<[FeatureGroup: Set<AppFeature>]>) -> Binding<Bool> {
         Binding {
-            expandedFeatures[group, default: []].contains(feature)
+            expandedFeatures.wrappedValue[group, default: []].contains(feature)
         } set: { expanded in
             if expanded {
-                expandedFeatures[group, default: []].insert(feature)
+                expandedFeatures.wrappedValue[group, default: []].insert(feature)
             } else {
-                expandedFeatures[group, default: []].remove(feature)
+                expandedFeatures.wrappedValue[group, default: []].remove(feature)
             }
         }
     }

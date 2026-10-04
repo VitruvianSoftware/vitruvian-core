@@ -16,27 +16,11 @@ import VitruvianServices
 import VitruvianUI
 
 enum CommandBarFeatureTests {
-    /// Runs the production `copyAnswer` against a pasteboard that can refuse
-    /// the write and a HUD that records what it shows.
-    enum CopyAnswerHost {
-        final class Pasteboard {
-            enum Kind { case string }
-            static let general = Pasteboard()
-            var accepts = true
-            func clearContents() {}
-            func setString(_ value: String, forType: Kind) -> Bool { accepts }
-        }
-        typealias NSPasteboard = Pasteboard
-        final class Access {
-            static let shared = Access()
-            func async<T>(_ work: @escaping () -> T, then completion: @escaping (T) -> Void) { completion(work()) }
-        }
-        typealias GeneralPasteboardAccess = Access
-        enum HUD {
-            static var shown: [(icon: String, message: String)] = []
-            static func show(icon: String, message: String) { shown.append((icon, message)) }
-        }
-        typealias QuickToolHUD = HUD
+    /// What the production `copyAnswer` floats when the pasteboard takes the
+    /// value or refuses it.
+    final class CopyAnswerHUD {
+        var copied: [String] = []
+        var shown: [(icon: String, message: String)] = []
     }
 
     /// Runs the production `applyBrightness` with two screens, one of which
@@ -263,10 +247,13 @@ enum CommandBarFeatureTests {
                 && clipboardActionsCode.contains("ClipboardHistoryService.shared.clearRecent()"),
                "the Command Bar clears only unpinned clipboard items after confirmation")
         for accepts in [true, false] {
-            CopyAnswerHost.Pasteboard.general.accepts = accepts
-            CopyAnswerHost.HUD.shown = []
-            CopyAnswerHost.copyAnswer("42")
-            let shown = CopyAnswerHost.HUD.shown
+            let hud = CopyAnswerHUD()
+            CommandBarCatalog.copyAnswer("42", copy: { value, then in
+                hud.copied.append(value)
+                then(accepts)
+            }, show: { hud.shown.append(($0, $1)) })
+            let shown = hud.shown
+            suite.expect(hud.copied == ["42"], "a copied answer writes the value, found \(hud.copied)")
             suite.expect(accepts
                     ? shown.map(\.icon) == ["doc.on.doc"] && shown.map(\.message) == ["42"]
                     : shown.map(\.icon) == ["exclamationmark.circle"]

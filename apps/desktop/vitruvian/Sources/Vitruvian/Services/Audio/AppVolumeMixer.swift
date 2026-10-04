@@ -918,9 +918,22 @@ package final class AppVolumeMixer: ObservableObject {
 
     @discardableResult
     package func switchToNextSoundOutput(in selectedUIDs: [String]) -> Bool {
-        let availableUIDs = Set(outputDevices.filter(\.canBeDefaultOutput).map(\.uid))
+        Self.switchToNextSoundOutput(in: selectedUIDs,
+                                     outputs: outputDevices.map { ($0.uid, $0.canBeDefaultOutput) },
+                                     currentUID: currentOutputDeviceUID,
+                                     switchTo: { self.setUniversalOutputDeviceUID($0) })
+    }
+
+    /// The switch above for any outputs: `switchTo` makes the next selected
+    /// output the system's. The mixer passes its devices; the tests pass
+    /// plain ones (REFACTOR.md step 4b).
+    package static func switchToNextSoundOutput(in selectedUIDs: [String],
+                                                outputs: [(uid: String, canBeDefaultOutput: Bool)],
+                                                currentUID: String?,
+                                                switchTo: (String) -> Bool) -> Bool {
+        let availableUIDs = Set(outputs.filter { $0.canBeDefaultOutput }.map { $0.uid })
         guard let nextUID = MixerRoutingSupport.nextSelectedOutputDeviceUID(
-            currentUID: currentOutputDeviceUID,
+            currentUID: currentUID,
             selectedUIDs: selectedUIDs,
             availableUIDs: availableUIDs) else {
             // With an available selection, no next output means the only one is already playing.
@@ -928,7 +941,7 @@ package final class AppVolumeMixer: ObservableObject {
                 MixerRoutingSupport.sanitizedDeviceUID(rawUID).map { availableUIDs.contains($0) } ?? false
             }
         }
-        return setUniversalOutputDeviceUID(nextUID)
+        return switchTo(nextUID)
     }
 
     package func toggleMute(_ app: MixerApp) {
