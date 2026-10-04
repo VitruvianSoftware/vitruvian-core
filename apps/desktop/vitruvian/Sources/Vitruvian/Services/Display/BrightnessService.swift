@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+@preconcurrency import CoreGraphics
 import IOKit.graphics
 import ObjectiveC.runtime
 import os

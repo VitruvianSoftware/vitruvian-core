@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import ApplicationServices
-import CoreGraphics
+@preconcurrency import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign

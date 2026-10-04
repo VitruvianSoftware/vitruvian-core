@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+@preconcurrency import CoreGraphics
 import VitruvianCore
 import VitruvianDesign
 
