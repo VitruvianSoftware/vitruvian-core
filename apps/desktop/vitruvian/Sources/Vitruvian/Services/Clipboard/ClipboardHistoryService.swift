@@ -1050,7 +1050,7 @@ package final class ClipboardHistoryService: ObservableObject {
             // launch sweep heals. The main thread also keeps it from racing
             // a just-stored PNG whose entry has not landed in the list yet.
             func finishPersist() {
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     if self.persistenceGeneration == generation,
                        encoded.entries != snapshot {
@@ -1072,7 +1072,7 @@ package final class ClipboardHistoryService: ObservableObject {
             finishPersist()
             if retireLegacyBlob {
                 UserDefaults.standard.removeObject(forKey: DefaultsKey.clipboardHistoryEntries)
-                DispatchQueue.main.async { self?.migrateLegacyBlob = false }
+                DispatchQueue.main.async { [weak self] in self?.migrateLegacyBlob = false }
             }
         }
     }

@@ -7,7 +7,10 @@ import VitruvianDesign
 
 /// The deadline survives preference changes and suspension, so a completed
 /// alarm cannot be restarted by a redraw, device change or return from sleep.
-package final class NotchTimerAlert {
+///
+/// Started, suspended and stopped on the main thread, and its repeating task
+/// runs on the main actor, so it is `@unchecked Sendable`.
+package final class NotchTimerAlert: @unchecked Sendable {
     package static let maximumDuration: Duration = .seconds(5 * 60)
     private var task: Task<Void, Never>?
     private var deadline: ContinuousClock.Instant?

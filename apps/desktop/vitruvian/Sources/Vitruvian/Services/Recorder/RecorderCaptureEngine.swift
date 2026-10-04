@@ -31,7 +31,10 @@ package protocol RecorderCaptureEngineDelegate: AnyObject {
 /// system audio and maps their timestamps to the host clock. No compositing happens here,
 /// because everything the editor can change has to stay changeable after the
 /// recording ends.
-package final class RecorderCaptureEngine: NSObject {
+///
+/// `stream` and `lifecycle` sit under `lifecycleLock`, and `delegate` is set
+/// before the stream starts, so it is `@unchecked Sendable`.
+package final class RecorderCaptureEngine: NSObject, @unchecked Sendable {
 
     package enum Kind {
         case video

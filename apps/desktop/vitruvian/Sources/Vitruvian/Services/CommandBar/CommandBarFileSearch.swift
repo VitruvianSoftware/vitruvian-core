@@ -21,7 +21,12 @@ import VitruvianDesign
 /// Not part of the pure-function test harness (`./build.sh --test`): the rules
 /// live in `CommandBarFileSearchSupport` and are tested there; what is left is
 /// a timer and a call into Spotlight.
-package final class CommandBarFileSearch {
+///
+/// Its calls and the hop back with results run on the main thread, which
+/// alone touches the cache, the in-flight set and the generations. The search
+/// queue reads only what `activeQueryLock` guards, so it is
+/// `@unchecked Sendable`.
+package final class CommandBarFileSearch: @unchecked Sendable {
     /// How long the field has to sit still before Spotlight is asked. Typing
     /// is faster than this, which is the point: a query per keystroke would
     /// ask for eight searches to answer one.

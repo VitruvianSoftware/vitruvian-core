@@ -2213,6 +2213,29 @@ down on the way out.
 - **Measured** (Swift 6 mode, batch mode off): the 9 are gone and nothing
   new appeared; **70 errors in 35 files** remain.
 
+Landed (6zzd, event-tap verdicts and `self` sent to the main thread): 14 of
+the 99.
+
+- **Four event-tap verdicts** (three in the switcher, one in Finder cut and
+  paste): the tap callback set a captured `var` inside
+  `DispatchQueue.main.sync`. It now returns the verdict from the `sync` call
+  instead, so nothing captured is mutated.
+- **Clipboard history's save:** the persist block's nested `finishPersist()`
+  captured the block's weak `self` by reference, so each main-queue hop sent
+  that shared reference. Both hops now take their own `[weak self]`, which
+  6zy found clean in both modes.
+- **Seven helper classes say how they are shared** and are
+  `@unchecked Sendable`:
+  - Command Bar file search: main-thread state, plus the Spotlight query
+    under its lock;
+  - Command Bar script runner and the Notch timer alarm: main thread only;
+  - the recorder's capture engine and cursor catalog: lock-guarded, with
+    the rest fixed before use;
+  - the switcher's pending window close and minimize restore: main thread
+    only, their Accessibility observer included.
+- **Not `@MainActor`:** the alarm's unit test drives it from plain code,
+  which a main-actor class would refuse.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
