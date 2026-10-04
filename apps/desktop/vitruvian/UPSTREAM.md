@@ -944,6 +944,28 @@ is that notice. Add an entry for every change to upstream files.
     a grant are `@MainActor`.
   - `Tests/ScreenshotFeatureTests.swift`: the window capture's permission
     gate is looked for as `Permissions.accessibilityGranted`.
+- **2026-10-04**: Refactor step 6zs (`REFACTOR.md`):
+  - `@unchecked Sendable` lock-guarded cancellations in
+    `Services/AgentUsage/AgentUsageService.swift`,
+    `Core/Cleaner/CleanerSupport.swift`,
+    `Services/Uninstall/UninstallerSupport.swift` and
+    `Services/Media/MediaService.swift`, which also keeps the conversion
+    log in a new locked type.
+  - `Services/Metrics/SpeedTest.swift`: the time box's action is `@Sendable`.
+  - `Services/SuperKey/SuperKeyService.swift`: the mapping work is
+    `@Sendable`; CoreFoundation is a `@preconcurrency` import.
+  - `Services/Notch/NotchNotificationService.swift`: the reader reaches its
+    queue through a `nonisolated(unsafe)` local.
+  - `Services/Clipboard/ClipboardHistoryService.swift`: the resize observer
+    reads the panel from the notification.
+  - `Services/QuickTools/RecentCaptureService.swift`: the file manager is
+    `nonisolated(unsafe)`.
+  - `@preconcurrency` imports in
+    `Services/QuickTools/CameraPreviewService.swift` (AVFoundation),
+    `Services/Notch/NotchAccessoryService.swift` (IOBluetooth),
+    `Services/WindowLayout/WindowLayoutService.swift` and
+    `Services/WindowMaximizer.swift` (ApplicationServices), and
+    `Services/Notch/NotchMusicService.swift` (Dispatch).
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

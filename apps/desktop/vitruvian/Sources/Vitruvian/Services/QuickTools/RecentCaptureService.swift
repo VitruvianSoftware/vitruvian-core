@@ -19,7 +19,8 @@ package final class RecentCaptureService: ObservableObject {
     @Published package private(set) var entries: [RecentCaptureEntry] = []
     @Published package private(set) var shortcutRegistrationFailed = false
 
-    nonisolated private let manager = FileManager.default
+    // The default manager is safe from any thread; the SDK does not mark it Sendable.
+    nonisolated(unsafe) private let manager = FileManager.default
     private let hotkey = QuickToolHotkey(id: 21)
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recent-captures",
                                       qos: .utility)

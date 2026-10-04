@@ -5,6 +5,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import Combine
+@preconcurrency import CoreFoundation
 import CoreGraphics
 import IOKit
 import IOKit.hidsystem
@@ -430,7 +431,7 @@ package final class SuperKeyService: ObservableObject {
             lastMappingAt = ProcessInfo.processInfo.systemUptime
             if enabled { pendingMappingEnableCount += 1 }
         }
-        let work = { [weak self] in
+        let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             defer {
                 if enabled {

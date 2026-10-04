@@ -22,8 +22,9 @@ package enum CleanerSupport {
 
     /// Cancellation for one scan. The main thread cancels it; the scan's
     /// background loop reads it between categories and stops early instead
-    /// of walking every location for a result nobody is waiting for.
-    package final class ScanCancellation {
+    /// of walking every location for a result nobody is waiting for. Its
+    /// flag is behind the lock, so either side may hold it.
+    package final class ScanCancellation: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
 

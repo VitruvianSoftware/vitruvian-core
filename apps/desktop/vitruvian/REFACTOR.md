@@ -1891,6 +1891,38 @@ Landed (6zr, permissions): `Permissions` is `@MainActor`.
 - **Callers:** five command bar builders that read a grant (toggles,
   snippets, emoji, typing at the cursor, clipboard rows) are `@MainActor`.
 
+Landed (6zs, `Sendable` captures): what the macOS log of #2688 still
+listed after the isolation fixes were values captured by closures that
+run on another queue. Swift 6 mode rejects most of them.
+
+- **Lock-guarded flags:** the agent reader's cancellation, the cleaner's
+  and the uninstaller's scan cancellations and the media tools' token
+  keep their flag behind a lock, so each is `@unchecked Sendable`, with a
+  comment saying so.
+- **The media tools' log:** the conversion's output was a captured `var`
+  that the pipe's queue appended to under a lock the compiler could not
+  see. It is now a small locked type.
+- **Declared `@Sendable`:** the speed test's time box hands its action to
+  another queue, and the Super key's mapping work runs on the mapping
+  queue; both closure types now say so.
+- **Confined:** the notification reader lives on the notification
+  service's queue. The two closures that take it there capture it through
+  a `nonisolated(unsafe)` local that says so.
+- **Not captured:** the clipboard history panel's resize observer finds
+  the panel in the notification instead of capturing it.
+- **Not `Sendable` after all:** 6zq made recent captures' file manager
+  `nonisolated`, but the SDK does not mark `FileManager` `Sendable`, so the
+  macOS build warned. It is `nonisolated(unsafe)`, since the default
+  manager is safe from any thread.
+- **SDK types not yet marked:** capture sessions and devices, Bluetooth
+  devices, accessibility elements, Mach ports and dispatch work items are
+  imported with `@preconcurrency` (AVFoundation, IOBluetooth,
+  ApplicationServices, CoreFoundation, Dispatch), in the five files that
+  capture them, as the compiler suggests.
+- **Not yet:** transient paste and the clipboard auto-clear are plain
+  classes whose queue closures capture `self`. They need the main actor,
+  with their timers and observers, in a slice of their own.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

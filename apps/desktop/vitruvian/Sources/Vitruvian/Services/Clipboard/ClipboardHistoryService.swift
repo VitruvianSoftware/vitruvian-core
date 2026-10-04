@@ -1285,10 +1285,10 @@ package final class ClipboardHistoryService: ObservableObject {
                        display: false)
         panelResizeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didEndLiveResizeNotification, object: panel, queue: .main
-        ) { [weak self, weak panel] _ in
+        ) { [weak self] notification in
             // Delivered on the main queue.
             MainActor.assumeIsolated {
-                guard let self, let panel else { return }
+                guard let self, let panel = notification.object as? NSPanel else { return }
                 self.savePanelSize(panel)
             }
         }

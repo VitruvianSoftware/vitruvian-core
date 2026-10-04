@@ -123,8 +123,9 @@ package enum UninstallerSupport {
 
     /// Cancellation for one leftover scan. The main thread cancels it; the
     /// scan's background work reads it between steps and stops early instead
-    /// of walking every folder for a result nobody is waiting for.
-    package final class ScanCancellation {
+    /// of walking every folder for a result nobody is waiting for. Its flag
+    /// is behind the lock, so either side may hold it.
+    package final class ScanCancellation: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
 
