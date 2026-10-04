@@ -174,12 +174,6 @@ swift_library(
     name = "FanControlKit",
     package_name = SWIFT_PACKAGE,
     srcs = FAN_CONTROL_KIT_SRCS,
-    # PROBE (reverted before merge): Swift 6 mode, one frontend per file.
-    copts = ["-continue-building-after-errors"],
-    features = [
-        "swift.enable_v6",
-        "-swift.enable_batch_mode",
-    ],
     module_name = "FanControlKit",
     target_compatible_with = MACOS_ONLY,
 )
@@ -220,12 +214,6 @@ swift_library(
     name = "FanControlHelperLib",
     package_name = SWIFT_PACKAGE,
     srcs = [src for src in FAN_HELPER_SOURCES if src not in FAN_CONTROL_KIT_SRCS],
-    # PROBE (reverted before merge): Swift 6 mode, one frontend per file.
-    copts = ["-continue-building-after-errors"],
-    features = [
-        "swift.enable_v6",
-        "-swift.enable_batch_mode",
-    ],
     module_name = "FanControlHelper",
     target_compatible_with = MACOS_ONLY,
     deps = [":FanControlKit"],
@@ -237,29 +225,6 @@ macos_command_line_application(
     minimum_os_version = "14.0",
     tags = ["manual"],
     deps = [":FanControlHelperLib"],
-)
-
-# PROBE (reverted before merge): lists the closures Swift 6 mode guards with a
-# run-time main-thread check, each a call to swift_task_reportUnexpectedExecutor.
-genrule(
-    name = "helper_executor_checks",
-    srcs = [
-        ":FanControlKit",
-        ":FanControlHelperLib",
-    ],
-    outs = ["helper_executor_checks.txt"],
-    cmd = """
-for f in $(SRCS); do
-  case "$$f" in
-    *.a) echo "== $$f" >&2; xcrun objdump -dr --no-show-raw-insn "$$f" ;;
-  esac
-done | awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_reportUnexpectedExecutor/ { print fn }' \\
-  | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle > $@
-echo "PROBE executor checks: $$(wc -l < $@)" >&2
-cat $@ >&2
-""",
-    local = True,
-    target_compatible_with = MACOS_ONLY,
 )
 
 # Now Playing is read by /usr/bin/perl (Resources/now-playing.pl) loading this
@@ -474,11 +439,7 @@ sh_test(
         "Vitruvian",
         "$(rootpaths :Vitruvian)",
     ],
-    data = [
-        ":Vitruvian",
-        # PROBE (reverted before merge): builds the list above.
-        ":helper_executor_checks",
-    ],
+    data = [":Vitruvian"],
     tags = [
         "manual",
         "no-remote",
