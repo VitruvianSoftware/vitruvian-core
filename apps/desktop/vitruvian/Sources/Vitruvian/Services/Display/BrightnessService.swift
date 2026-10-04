@@ -1382,6 +1382,8 @@ package final class BrightnessService: ObservableObject {
             return
         }
         ddcPendingSteps[displayID] = 0
+        // What the read is checked against, without the route's IOKit service.
+        let routeKey = route.ddcPathKey, routeDims = route.extendedDimming
         // Reading a monitor takes long enough to be felt, so it happens off
         // the main thread and the step follows the answer.
         workQueue.async { [weak self] in
@@ -1392,18 +1394,18 @@ package final class BrightnessService: ObservableObject {
                 // answer before the step is queued, so an external adjustment
                 // cannot make a necessary write look like a duplicate.
                 self.stateLock.lock()
-                if self.routes[displayID]?.ddcPathKey == route.ddcPathKey,
-                   self.routes[displayID]?.extendedDimming == route.extendedDimming {
+                if self.routes[displayID]?.ddcPathKey == routeKey,
+                   self.routes[displayID]?.extendedDimming == routeDims {
                     self.routes[displayID]?.lastDDCValue = value
                 }
                 self.stateLock.unlock()
-                self.forgetWriteOnlyDDCPath(route.ddcPathKey)
+                self.forgetWriteOnlyDDCPath(routeKey)
             } else {
                 if case .writeOnly = probe {
-                    self.rememberWriteOnlyDDCPath(route.ddcPathKey)
+                    self.rememberWriteOnlyDDCPath(routeKey)
                 }
                 self.stateLock.lock()
-                if self.routes[displayID]?.ddcPathKey == route.ddcPathKey {
+                if self.routes[displayID]?.ddcPathKey == routeKey {
                     self.routes[displayID]?.ddcReadable = false
                     self.routes[displayID]?.lastDDCValue = nil
                 }
@@ -1415,8 +1417,8 @@ package final class BrightnessService: ObservableObject {
                 var current = cached
                 self.stateLock.lock()
                 let superseded = self.levelKnownAt[displayID] != known
-                let routeChanged = self.routes[displayID]?.ddcPathKey != route.ddcPathKey
-                    || self.routes[displayID]?.extendedDimming != route.extendedDimming
+                let routeChanged = self.routes[displayID]?.ddcPathKey != routeKey
+                    || self.routes[displayID]?.extendedDimming != routeDims
                 self.stateLock.unlock()
                 guard !routeChanged else { return }
                 if superseded {
@@ -1425,7 +1427,7 @@ package final class BrightnessService: ObservableObject {
                 } else if case let .replied(value, maximum) = probe {
                     let hardware = BrightnessSupport.normalized(
                         current: value, maximum: BrightnessSupport.sanitizedMaximum(maximum))
-                    let level = route.extendedDimming
+                    let level = routeDims
                         ? BrightnessSupport.extendedDimmingLevel(
                             hardware: hardware, remembered: nil, pictureDimmed: false)
                         : hardware

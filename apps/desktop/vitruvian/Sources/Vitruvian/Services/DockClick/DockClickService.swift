@@ -463,6 +463,9 @@ package final class DockClickService {
     }
 
     private func postMinimizeAll(pid: pid_t, fallbackWindows: [AXUIElement], actionTime: CFAbsoluteTime) {
+        // Immutable references to another app's windows, which the AX calls
+        // below read and set from whichever queue they run on.
+        nonisolated(unsafe) let fallbackWindows = fallbackWindows
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             // Pressing the app's own Minimize All menu item beats synthesizing
             // ⌥⌘M: it targets the right app even if focus shifts, skips every
@@ -703,13 +706,16 @@ package final class DockClickService {
                 AXUIElementSetAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, pinnedFront)
             }
 
+            // Immutable references to the app's windows, handed to the sweep.
+            nonisolated(unsafe) let sweepTargets = ordered
+            nonisolated(unsafe) let sweepFront = pinnedFront
             DispatchQueue.main.async { [weak self] in
                 // Only the click that started this walk may schedule its
                 // sweep: if another action for the app clicked in meanwhile,
                 // its sweep owns the direction now.
                 guard let self, self.lastAction[pid]?.time == actionTime else { return }
-                self.scheduleSweep(pid: pid, targets: ordered, minimized: false,
-                                   delay: DockClickSupport.restoreSweepDelay, refocus: pinnedFront)
+                self.scheduleSweep(pid: pid, targets: sweepTargets, minimized: false,
+                                   delay: DockClickSupport.restoreSweepDelay, refocus: sweepFront)
             }
         }
     }

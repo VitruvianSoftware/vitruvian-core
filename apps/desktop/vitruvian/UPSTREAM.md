@@ -1210,6 +1210,24 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Notch/NotchMenuSpaceReader.swift`.
   - `Services/Switcher/WindowServerCaptureQueue.swift`: the captured value is
     a `nonisolated(unsafe)` let, handed to the caller as `sending`.
+- **2026-10-04**: Refactor step 6zzf (`REFACTOR.md`):
+  - Values read before the hop in
+    `Services/AppUpdates/AppUpdatesService.swift`,
+    `Services/Display/BrightnessService.swift` and
+    `Services/MouseAcceleration/MouseAccelerationService.swift`.
+  - `Services/DockPreview/DockPreviewFrameRestoration.swift`: a main-actor
+    `isCurrent`. `Services/Media/MediaService.swift`: a `sending` operation,
+    and the asset it reads handed over as a `nonisolated(unsafe)` let.
+  - `@unchecked Sendable` with what keeps them safe:
+    `Core/Switcher/SwitcherSupport.swift`,
+    `Services/Switcher/WindowActivator.swift` and
+    `Services/Shelf/ShelfFilePromiseTransfer.swift`.
+  - `nonisolated(unsafe)` hand-offs in
+    `Services/DockClick/DockClickService.swift`,
+    `Services/CommandBar/CommandBarCatalog.swift`,
+    `Services/AutoQuit/AutoQuitService.swift`,
+    `Services/Audio/AppVolumeMixer.swift` and
+    `Services/Snippets/TextSnippetService.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

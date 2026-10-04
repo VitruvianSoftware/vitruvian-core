@@ -219,6 +219,8 @@ package final class AppUpdatesService: ObservableObject {
                 }
             }
             group.notify(queue: self.workQueue) {
+                // Every source has answered; the main queue gets settled copies.
+                let storeResult = storeResult, onlineResult = onlineResult
                 let resolvedFeed = feedResult.resolvingCatalogFallback(
                     checkedPaths: onlineResult.checkedPaths, candidates: onlineCandidates)
                 DispatchQueue.main.async {

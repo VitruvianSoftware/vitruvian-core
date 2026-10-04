@@ -2266,6 +2266,38 @@ Landed (6zze, callbacks handed to a queue): 25 of the 99.
 - **Measured** (Swift 6 mode, batch mode off): the 25 are gone and nothing
   new appeared; **31 errors in 15 files** remain.
 
+Landed (6zzf, values sent across threads): 18 of the 99.
+
+- **Read before the hop, so only `Sendable` values cross:**
+  - app updates' results, copied out of the variables the sources filled;
+  - the brightness route's path key and dimming flag, without its IOKit
+    service;
+  - the mouse-acceleration callback's service, unwrapped from its context
+    pointer.
+- **Typed or marked:**
+  - the Dock preview's frame repair takes a main-actor `isCurrent`;
+  - the media loader's async operation is `sending`, handed to the task
+    that runs it. The video asset that operation reads crosses as a
+    `nonisolated(unsafe)` let, since the caller waits while the task
+    reads it;
+  - the switcher's two focus-retry states (one in Core), and the shelf's
+    file-promise transfer, say what keeps them safe and are
+    `@unchecked Sendable`.
+- **Accessibility references handed across** as `nonisolated(unsafe)` lets,
+  each with a comment saying where it goes:
+  - the Dock click walks' window lists;
+  - the Command Bar's menu item;
+  - auto-quit's observer callback arguments.
+- **Other hand-offs:**
+  - the mixer's pending output write, which its unit-test fixture copies
+    into a class off the main actor;
+  - the snippet tap's started port, which the main thread only compares.
+- **Kept per site, not a conformance:** an `AXUIElement` is an immutable
+  reference, but a module-wide `@retroactive @unchecked Sendable` would
+  vouch for every use at once; each crossing says what it does instead.
+- **Measured** (Swift 6 mode, batch mode off): the 18 are gone and nothing
+  new appeared; **13 errors in 3 files** remain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

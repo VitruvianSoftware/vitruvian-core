@@ -213,7 +213,9 @@ package final class TextSnippetService: @unchecked Sendable {
             tapLifecycleLock.withLock { self.tap = tap }
             CFRunLoopAddSource(runLoop, source, .commonModes)
             CGEvent.tapEnable(tap: tap, enable: true)
-            DispatchQueue.main.async { [weak self] in self?.tapDidStart(tap) }
+            // The main thread only compares it with the tap stored above.
+            nonisolated(unsafe) let startedTap = tap
+            DispatchQueue.main.async { [weak self] in self?.tapDidStart(startedTap) }
 
             if tapLifecycleLock.withLock({ shouldStopTapThread }) {
                 CGEvent.tapEnable(tap: tap, enable: false)

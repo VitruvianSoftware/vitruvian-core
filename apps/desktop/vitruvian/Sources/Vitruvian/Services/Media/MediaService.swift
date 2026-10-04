@@ -1083,7 +1083,10 @@ package final class MediaService: ObservableObject {
     nonisolated private func loadVideoMetadata(from asset: AVAsset,
                                    includeGeometry: Bool,
                                    token: MediaCancellationToken) throws -> VideoMetadata {
-        try runAsync(token: token) {
+        // AVAsset loads its properties from any thread, and only the task
+        // below reads it while this call waits.
+        nonisolated(unsafe) let asset = asset
+        return try runAsync(token: token) {
             let tracks = try await asset.loadTracks(withMediaType: .video)
             guard let track = tracks.first else { throw MediaFailureBox(.noVideoTrack) }
 
@@ -1136,8 +1139,9 @@ package final class MediaService: ObservableObject {
         return try result.get()
     }
 
+    /// `operation` is handed to the task that runs it, so it is `sending`.
     nonisolated private func runAsync<T>(token: MediaCancellationToken,
-                             _ operation: @escaping () async throws -> T) throws -> T {
+                             _ operation: sending @escaping () async throws -> T) throws -> T {
         let semaphore = DispatchSemaphore(value: 0)
         let resultBox = AsyncResultBox<T>()
 

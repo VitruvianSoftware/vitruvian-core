@@ -685,18 +685,20 @@ package final class AppVolumeMixer: ObservableObject {
             return
         }
         outputWriteInFlight = adjustment
+        // Made and finished on the main thread; the HAL queue only reads it.
+        nonisolated(unsafe) let write = adjustment
         halQueue.async { [weak self] in
             guard let self else { return }
-            let device = adjustment.device
-            var success = self.isCurrentOutputAdjustment(adjustment) && Self.defaultOutputDeviceID() == device
-            if success, let volume = adjustment.volume { success = Self.setOutputVolume(Float(volume), for: device) }
-            if success, let muted = adjustment.muted, self.isCurrentOutputAdjustment(adjustment) {
+            let device = write.device
+            var success = self.isCurrentOutputAdjustment(write) && Self.defaultOutputDeviceID() == device
+            if success, let volume = write.volume { success = Self.setOutputVolume(Float(volume), for: device) }
+            if success, let muted = write.muted, self.isCurrentOutputAdjustment(write) {
                 success = Self.setOutputMuted(muted, for: device)
             }
             DispatchQueue.main.async {
                 self.outputWriteInFlight = nil
-                let current = self.isCurrentOutputAdjustment(adjustment)
-                adjustment.completion(!current || success)
+                let current = self.isCurrentOutputAdjustment(write)
+                write.completion(!current || success)
                 if self.pendingOutputAdjustment != nil {
                     self.drainOutputAdjustment()
                 } else if current {
