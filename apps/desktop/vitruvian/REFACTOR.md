@@ -2356,6 +2356,19 @@ that runs it.
   closures after a removed tap callback in the same `start()` count from one
   lower. The unit tests and self test pass.
 
+Landed (6zzi, Services in Swift 6 mode): `VitruvianServices` builds in the
+Swift 6 language mode (`features = ["swift.enable_v6"]`), as Core, Design and
+UI already do. A concurrency mistake in Services is now an error, not a
+warning.
+
+- **No more `-strict-concurrency=complete`:** Swift 6 mode implies it.
+- **The run-time check:** main-actor closures in Services now check for the
+  main thread when they start. 6zzh traced all 1,745 of them, and moved the
+  nine that run elsewhere out of the main actor. A new callback that runs off
+  the main thread needs the same: write it outside the main actor.
+- **Still in Swift 5 mode:** the app target (`VitruvianLib`), the fan
+  control helper, the Now Playing helper and the tests.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
