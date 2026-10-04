@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.5.0...vitruvian-v3.5.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **vitruvian:** receive user defaults notifications on main queue in KeepAwakeManager ([#2714](https://github.com/VitruvianSoftware/vitruvian-core/issues/2714)) ([e75a99f](https://github.com/VitruvianSoftware/vitruvian-core/commit/e75a99f926754e8ba0b0680fb3de7654035e4e81))
+
 ## [3.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.4.1...vitruvian-v3.5.0) (2026-10-04)
 
 
