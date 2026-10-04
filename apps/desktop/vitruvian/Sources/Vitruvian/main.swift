@@ -27,7 +27,8 @@ MainActor.assumeIsolated {
         shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) })
 }
 MouseAccelerationGuard.runIfRequestedAndExit()
-MouseAccelerationService.recoverPendingAtLaunch()
+// Top-level code runs on the main thread.
+MainActor.assumeIsolated { MouseAccelerationService.recoverPendingAtLaunch() }
 
 #if VITRUVIAN_DEVELOPMENT
 if CommandLine.arguments.contains("--notch-presentation-test") {

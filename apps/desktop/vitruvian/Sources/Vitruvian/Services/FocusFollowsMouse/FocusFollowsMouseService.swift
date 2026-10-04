@@ -7,6 +7,7 @@ import CoreGraphics
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class FocusFollowsMouseService {
     package static let shared = FocusFollowsMouseService()
 
@@ -69,15 +70,20 @@ package final class FocusFollowsMouseService {
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
                                                       object: nil, queue: .main) { [weak self] _ in
-            self?.resetMovement()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.resetMovement() }
         })
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification,
                                                       object: nil, queue: .main) { [weak self] _ in
-            self?.resetMovement()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.resetMovement() }
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil, queue: .main) { [weak self] _ in self?.resetMovement() })
+            object: nil, queue: .main) { [weak self] _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.resetMovement() }
+        })
         isRunning = true
     }
 
@@ -91,7 +97,10 @@ package final class FocusFollowsMouseService {
         guard isRunning else { return }
         state.recordMovement(to: point, at: ProcessInfo.processInfo.systemUptime)
         guard timer == nil else { return }
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.evaluateIfSettled() }
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.evaluateIfSettled() }
+        }
         timer.tolerance = 0.01
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -180,6 +189,7 @@ package final class FocusFollowsMouseService {
         return CGWindowID(exactly: number)
     }
 
+    nonisolated
     private func target(at point: CGPoint, processID: pid_t) -> Target? {
         guard processID > 0, processID != ProcessInfo.processInfo.processIdentifier else { return nil }
         // An app-scoped hit test cannot enter our tree if window stacking
@@ -204,6 +214,7 @@ package final class FocusFollowsMouseService {
                       focusedWindowID: WindowActivator.focusedWindowID(for: processID))
     }
 
+    nonisolated
     private func topLevelWindow(from element: AXUIElement) -> AXUIElement? {
         if stringAttribute(element, kAXRoleAttribute as String) == (kAXWindowRole as String) {
             return element
@@ -215,6 +226,7 @@ package final class FocusFollowsMouseService {
         return (value as! AXUIElement)
     }
 
+    nonisolated
     private func stringAttribute(_ element: AXUIElement, _ name: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }

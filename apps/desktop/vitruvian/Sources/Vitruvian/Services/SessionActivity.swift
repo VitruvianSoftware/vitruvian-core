@@ -17,7 +17,10 @@ import VitruvianDesign
 /// rebuilt from the preferences on the way in, which is also why the timeout
 /// re-arm has to ask first — re-enabling a tap that was handed back for this
 /// reason puts the stall straight back.
-package final class SessionActivity {
+///
+/// `active` answers under `lock`, and the handlers are added and run on the
+/// main thread, so it is `@unchecked Sendable`.
+package final class SessionActivity: @unchecked Sendable {
     package static let shared = SessionActivity()
 
     /// True while this session is the one on screen. Written on the main

@@ -11,6 +11,7 @@ import VitruvianDesign
 /// bridge below, out of process; a failed run, a timeout and malformed
 /// metadata all arrive here as an empty playback session.
 /// Nothing here is required for the radial menu itself to work.
+@MainActor
 package final class RadialNowPlayingService {
     package static let shared = RadialNowPlayingService()
 
@@ -127,7 +128,8 @@ package final class RadialNowPlayingService {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.dismissDetails()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.dismissDetails() }
         }
     }
 

@@ -9,6 +9,7 @@ import VitruvianDesign
 
 /// Applies macOS's per-device linear pointer mode to ordinary mouse devices.
 /// Trackpads are deliberately excluded.
+@MainActor
 package final class MouseAccelerationService {
     package static let shared = MouseAccelerationService()
 
@@ -148,10 +149,13 @@ package final class MouseAccelerationService {
 
     // MARK: - Device lifecycle
 
-    private static let deviceChanged: IOHIDDeviceCallback = { context, _, _, _ in
+    // The manager is scheduled on the main run loop, so this runs on the main thread.
+    nonisolated private static let deviceChanged: IOHIDDeviceCallback = { context, _, _, _ in
         guard let context else { return }
-        let service = Unmanaged<MouseAccelerationService>.fromOpaque(context).takeUnretainedValue()
-        service.scheduleDeviceReapplication()
+        MainActor.assumeIsolated {
+            let service = Unmanaged<MouseAccelerationService>.fromOpaque(context).takeUnretainedValue()
+            service.scheduleDeviceReapplication()
+        }
     }
 
     private func scheduleDeviceReapplication() {
@@ -223,23 +227,35 @@ package final class MouseAccelerationService {
         lifecycleObservers = [
             center.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.sessionIsActive = false
-                self?.pauseAndRestore()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    self?.sessionIsActive = false
+                    self?.pauseAndRestore()
+                }
             },
             center.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.sessionIsActive = true
-                self?.startIfAllowed()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    self?.sessionIsActive = true
+                    self?.startIfAllowed()
+                }
             },
             center.addObserver(forName: NSWorkspace.willSleepNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.systemIsAwake = false
-                self?.pauseAndRestore()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    self?.systemIsAwake = false
+                    self?.pauseAndRestore()
+                }
             },
             center.addObserver(forName: NSWorkspace.didWakeNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                self?.systemIsAwake = true
-                self?.startIfAllowed()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    self?.systemIsAwake = true
+                    self?.startIfAllowed()
+                }
             },
         ]
         sessionIsActive = Self.currentSessionIsActive()

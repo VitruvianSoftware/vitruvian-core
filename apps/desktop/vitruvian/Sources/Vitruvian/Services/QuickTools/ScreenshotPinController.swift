@@ -12,6 +12,7 @@ import VitruvianDesign
 /// nudge, double click or Esc closes, right click offers copy, save, opacity
 /// and click-through. A monitor exists only while a click-through pin needs
 /// its Option-click escape hatch.
+@MainActor
 package final class ScreenshotPinController {
     package static let shared = ScreenshotPinController()
 

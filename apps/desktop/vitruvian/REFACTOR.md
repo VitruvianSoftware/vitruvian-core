@@ -1942,7 +1942,7 @@ Swift 6 type-check of Services on Linux listed 80 statics that did not.
 
 - **Complete checking on:** `VitruvianServices` builds with
   `-strict-concurrency=complete`, as UI did from 6d. Each build now lists,
-  as warnings, what Swift 6 mode would reject. The Linux check cannot see
+  as warnings, what Swift 6 mode would reject (in CI in full since 6zv). The Linux check cannot see
   AppKit's own main-actor annotations, so this macOS list is the real one.
 - **Behind a lock:** 22 statics are `nonisolated(unsafe)`, with a comment
   naming the lock that guards them (or, for the sleep-state count, the one
@@ -1964,6 +1964,42 @@ Swift 6 type-check of Services on Linux listed 80 statics that did not.
 - **Next:** 20 singletons are `static let shared` of a class that is not
   `Sendable`. Each one is a choice between the main actor and a lock, so
   they are a slice of their own.
+
+Landed (6zv, the main-thread singletons): of the 20 singletons 6zu left,
+the ones whose state lives on the main thread are `@MainActor`, and two
+that only hold constants or a locked flag say why any thread may use them.
+
+- **Main actor:** the Dock preview's drag ghost, the Shelf tooltip, the QR
+  result panel, screenshot pins, Bluetooth sleep, the scroll wheel target,
+  mouse acceleration, focus follows mouse, Dock clicks, the radial menu's
+  Now Playing card and the disk image installer.
+- **Callbacks on the main thread:** their main-queue observers, the focus
+  timer, the Dock click tap (a source on the main run loop) and the HID
+  device callback (scheduled on the main run loop) enter the main actor
+  through `MainActor.assumeIsolated`.
+- **Off the main thread, said so:** the disk image installer's mount check
+  and install run on its work queue, focus follows mouse asks for the
+  window under the pointer on its query queue, and the Dock click sweeps
+  read the Accessibility tree on a global queue, so those methods and the
+  static helpers they call are `nonisolated`. The scroll wheel target's
+  `shared`, init and `contains` are `nonisolated` too: the pointer taps
+  ask it, and its cache keeps its own lock.
+- **`@unchecked Sendable`:** `SessionActivity` keeps its flag behind a lock
+  and adds and runs its handlers on the main thread, and
+  `GeneralPasteboardAccess` holds only constants. Tests build both off the
+  main actor.
+- **`main.swift`** recovers mouse acceleration inside
+  `MainActor.assumeIsolated`.
+- **The full list in CI:** 6zu's first macOS build wrote about 1.7 MB of
+  warnings per Services compile action, down from 6.3 MB in 6c, but Bazel
+  prints at most 1 MB of an action's output and skipped them. The
+  `vitruvian-desktop-macos` unit now builds with
+  `--experimental_ui_max_stdouterr_bytes=-1`, so its log shows them all.
+- **Not yet:** the window preview provider's captures run in tasks that a
+  main-actor class would move onto the main thread, and six services serve
+  event taps or caches from their own threads (Finder rename, click
+  debounce, snippets, the window use tracker, process usage, the battery
+  capacity probe). They are the next slice.
 
 ## Step 7: test-suite hygiene
 

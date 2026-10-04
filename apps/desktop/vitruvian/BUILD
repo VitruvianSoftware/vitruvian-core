@@ -481,6 +481,11 @@ py_test(
 
 pipeline_unit(
     name = "vitruvian-desktop-macos",
+    # Services builds with complete concurrency checking (REFACTOR.md 6zu),
+    # and each of its compile actions writes more than Bazel's default 1 MB of
+    # warnings, which Bazel then skips printing. Show all of it, so the log
+    # lists what still stands between Services and Swift 6 mode.
+    build_flags = ["--experimental_ui_max_stdouterr_bytes=-1"],
     persona = "frontend",
     runner = "xcode-27",
     test_targets = [

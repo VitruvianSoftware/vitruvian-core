@@ -15,6 +15,7 @@ import VitruvianDesign
 /// panel orders itself front without ever calling `makeKey()` or
 /// activating the app, so it shows on a plain hover with none of that
 /// side effect.
+@MainActor
 package final class ShelfTooltipPopover {
     package static let shared = ShelfTooltipPopover()
 

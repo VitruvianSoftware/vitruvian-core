@@ -11,6 +11,7 @@ import VitruvianDesign
 /// decoded content is spelled out, with a copy action and, for a plain web
 /// link, an open action. Shared by the screen text tool and the screenshot
 /// preview and editor so a code reads the same everywhere.
+@MainActor
 package final class QRResultController {
     package static let shared = QRResultController()
 
