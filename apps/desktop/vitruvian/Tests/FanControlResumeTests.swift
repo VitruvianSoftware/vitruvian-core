@@ -11,14 +11,14 @@ import VitruvianUI
 /// against doubles: nothing here can reach the helper or the fans.
 enum FanControlResumeContract {
     enum Environment {
-        nonisolated(unsafe) static var available = true
+        static var available = true
     }
     enum AppFeature {
         case fanControl
         var isAvailable: Bool { Environment.available }
     }
     enum UserDefaults {
-        nonisolated(unsafe) static let standard = Store()
+        static let standard = Store()
         final class Store {
             var values: [String: Any] = [:]
             func bool(forKey key: String) -> Bool { values[key] as? Bool ?? false }
@@ -33,8 +33,8 @@ enum FanControlResumeContract {
     }
     class Fixture {
         enum AccessState { case notRegistered, requiresApproval, enabled, unavailable }
-        nonisolated(unsafe) static let shared = Service()
-        nonisolated(unsafe) static var helperVersion = "bundled"
+        static let shared = Service()
+        static var helperVersion = "bundled"
         var accessState = AccessState.enabled
         var snapshot = FanControlSnapshot.empty
         var panelIsVisible = false

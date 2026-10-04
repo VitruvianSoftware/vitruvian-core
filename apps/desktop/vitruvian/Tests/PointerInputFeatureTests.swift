@@ -3056,8 +3056,7 @@ enum PointerInputFeatureTests {
                        "\(label) pointer lookups return while the main queue is held")
                 // Drain both the refresh and a failed synchronous lookup so
                 // a regression fails an assertion rather than wedging tests.
-                // Set by the main queue and read on the main thread.
-                nonisolated(unsafe) var drained = false
+                var drained = false
                 DispatchQueue.main.async { drained = true }
                 let deadline = Date().addingTimeInterval(5)
                 while (!drained || finished.wait(timeout: .now()) != .success),

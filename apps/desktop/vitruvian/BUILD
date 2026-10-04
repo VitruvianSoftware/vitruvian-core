@@ -399,7 +399,11 @@ swift_binary(
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
     # PROBE (reverted before merge): Swift 6 mode, one frontend per file.
-    copts = ["-continue-building-after-errors"],
+    copts = [
+        "-continue-building-after-errors",
+        "-default-isolation",
+        "MainActor",
+    ],
     features = [
         "swift.enable_v6",
         "-swift.enable_batch_mode",

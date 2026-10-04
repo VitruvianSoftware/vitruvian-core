@@ -12,16 +12,16 @@ import VitruvianUI
 /// controlled queues. No real process is inspected, signalled or launched.
 enum PortManagerRefreshTests {
     enum Processes {
-        nonisolated(unsafe) static var current: [pid_t: UInt64] = [:]
-        nonisolated(unsafe) static var enumerated: [pid_t] = []
-        nonisolated(unsafe) static var enumerationFails = false
+        static var current: [pid_t: UInt64] = [:]
+        static var enumerated: [pid_t] = []
+        static var enumerationFails = false
         static func startTime(for pid: pid_t) -> UInt64? { current[pid] }
     }
     enum Listing {
-        nonisolated(unsafe) static var status: Int32 = 0
-        nonisolated(unsafe) static var output = ""
-        nonisolated(unsafe) static var during: [pid_t: UInt64] = [:]
-        nonisolated(unsafe) static var calls = 0
+        static var status: Int32 = 0
+        static var output = ""
+        static var during: [pid_t: UInt64] = [:]
+        static var calls = 0
         static func run(_ path: String, _ arguments: [String]) -> (status: Int32, output: String) {
             calls += 1
             Processes.current = during
@@ -30,8 +30,8 @@ enum PortManagerRefreshTests {
     }
     final class Queue {
         enum QoS { case userInitiated }
-        nonisolated(unsafe) static let main = Queue()
-        nonisolated(unsafe) static let worker = Queue()
+        static let main = Queue()
+        static let worker = Queue()
         var jobs: [() -> Void] = []
         static func global(qos: QoS) -> Queue { worker }
         func async(execute action: @escaping () -> Void) { jobs.append(action) }

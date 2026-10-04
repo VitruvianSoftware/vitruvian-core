@@ -10,17 +10,17 @@ import VitruvianUI
 /// Runs the production clear and uninstall bodies with the password request,
 /// tccutil and every removal step replaced by doubles that log what ran.
 enum SelfUninstallContract {
-    nonisolated(unsafe) static var events: [String] = []
-    nonisolated(unsafe) static var suspensionAllowed = true
-    nonisolated(unsafe) static var sleepRestoreAllowed = true
-    nonisolated(unsafe) static var detachAllowed = true
-    nonisolated(unsafe) static var ruleRemovalAllowed = true
-    nonisolated(unsafe) static var tccResetAllowed = true
-    nonisolated(unsafe) static var fanHelperWasRegistered = true
-    nonisolated(unsafe) static var fanRegistrationRestored = true
+    static var events: [String] = []
+    static var suspensionAllowed = true
+    static var sleepRestoreAllowed = true
+    static var detachAllowed = true
+    static var ruleRemovalAllowed = true
+    static var tccResetAllowed = true
+    static var fanHelperWasRegistered = true
+    static var fanRegistrationRestored = true
 
     enum DispatchQueue {
-        nonisolated(unsafe) static let main = Queue()
+        static let main = Queue()
         enum QoS { case userInitiated }
         static func global(qos: QoS) -> Queue { main }
         final class Queue {

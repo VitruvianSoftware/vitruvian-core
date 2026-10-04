@@ -101,11 +101,8 @@ struct MetricsTests {
             }),
             ("settings", {
                 SettingsFeatureTests.run(suite)
-                // Settings is main-actor, and this runner is on the main thread.
-                MainActor.assumeIsolated {
-                    SettingsWindowTests.run { suite.expect($0, $1) }
-                    NotchSettingsChoiceTests.run(suite)
-                }
+                SettingsWindowTests.run { suite.expect($0, $1) }
+                NotchSettingsChoiceTests.run(suite)
             }),
             ("display-restoration", {
                 DisplayRestorationTests.run(suite)
@@ -130,7 +127,7 @@ struct MetricsTests {
             ("recording", {
                 RecorderSampleTimingTests.run(suite)
                 RecorderWriterTests.run(suite)
-                MainActor.assumeIsolated { RecorderExportChipTests.run { suite.expect($0, $1) } }
+                RecorderExportChipTests.run { suite.expect($0, $1) }
             }),
             ("network", {
                 NetworkFeatureTests.run(suite)

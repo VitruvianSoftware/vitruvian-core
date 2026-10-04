@@ -12,13 +12,13 @@ struct ClipboardHistoryImageEditorTests {
         var hidden = false
         func hideHistoryWindow() { hidden = true }
     }
-    enum ClipboardImageStore { nonisolated(unsafe) static var directory: URL? }
+    enum ClipboardImageStore { static var directory: URL? }
     enum AppFeature {
         static let screenshot = Availability()
         struct Availability { let isAvailable = true }
     }
     enum NSSound {
-        nonisolated(unsafe) static var failures = 0
+        static var failures = 0
         static func beep() { failures += 1 }
     }
     final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -26,7 +26,7 @@ struct ClipboardHistoryImageEditorTests {
     }
     static func appShell() -> AppDelegate? { nil }
     final class NotchService {
-        nonisolated(unsafe) static let shared = NotchService()
+        static let shared = NotchService()
         func perform(_ action: @escaping () -> Void) { action() }
     }
     enum ScreenshotSelectionController {
@@ -38,7 +38,7 @@ struct ClipboardHistoryImageEditorTests {
     }
     final class ScreenshotService {
         typealias ScreenshotSelectionController = ClipboardHistoryImageEditorTests.ScreenshotSelectionController
-        nonisolated(unsafe) static let shared = ScreenshotService()
+        static let shared = ScreenshotService()
         var capture: ScreenshotSelectionController.Capture?
         var openedOnMain = false
         func openEditor(with capture: ScreenshotSelectionController.Capture) {

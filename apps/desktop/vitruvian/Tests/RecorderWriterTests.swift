@@ -7,7 +7,9 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-enum RecorderWriterTests {
+/// Nonisolated: the writer checks run in a detached task while the main
+/// thread waits for them.
+nonisolated enum RecorderWriterTests {
     static func run(_ suite: TestSuite) {
         checkClock(suite)
         let finished = DispatchSemaphore(value: 0)

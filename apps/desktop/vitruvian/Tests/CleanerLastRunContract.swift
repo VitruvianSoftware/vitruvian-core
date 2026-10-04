@@ -12,11 +12,11 @@ import VitruvianUI
 /// line. Defaults, the cleaner and notifications are replaced; nothing is cleaned.
 enum CleanerLastRunContract {
     final class Cleaner {
-        nonisolated(unsafe) static let shared = Cleaner()
+        static let shared = Cleaner()
         func reset() {}
     }
     final class Preferences {
-        nonisolated(unsafe) static let standard = Preferences()
+        static let standard = Preferences()
         var values: [String: Any] = [:]
         func set(_ value: Any?, forKey key: String) { values[key] = value }
     }

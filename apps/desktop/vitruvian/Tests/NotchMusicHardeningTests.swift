@@ -15,8 +15,8 @@ private typealias ProductionLyricsParser = NotchLyricsSupport
 enum NotchLyricsContract {
     enum State { case idle, consent, loading, unavailable, failed, ready }
     enum Preferences {
-        nonisolated(unsafe) static var enabled = true
-        nonisolated(unsafe) static var online = false
+        static var enabled = true
+        static var online = false
         static func isEnabled() -> Bool { enabled }
         static func onlineEnabled() -> Bool { enabled && online }
         static let maximumBytes = ProductionLyricsParser.maximumBytes
@@ -40,7 +40,7 @@ enum NotchLyricsContract {
     typealias NSWindow = Window
     enum NSApplication { enum ModalResponse { case OK, cancel } }
     final class Panel {
-        nonisolated(unsafe) static weak var current: Panel?
+        static weak var current: Panel?
         var level = Window.Level(rawValue: 0)
         var hidesOnDeactivate = true
         var cancelled = false
@@ -66,12 +66,12 @@ enum NotchLyricsContract {
     }
     typealias NSOpenPanel = Panel
     enum L10n {
-        nonisolated(unsafe) static let shared = Localization()
+        static let shared = Localization()
         final class Localization { let language: AppLanguage = .enUS }
     }
     enum DispatchQueue {
-        nonisolated(unsafe) static var main = Queue()
-        nonisolated(unsafe) static var worker = Queue()
+        static var main = Queue()
+        static var worker = Queue()
         static func global(qos: DispatchQoS.QoSClass) -> Queue { worker }
         final class Queue {
             var jobs: [() -> Void] = []
@@ -80,7 +80,7 @@ enum NotchLyricsContract {
         }
     }
     final class NotchService {
-        nonisolated(unsafe) static var shared = NotchService()
+        static var shared = NotchService()
         var presentationWindow: Window? = Window()
         var acceptsSystemFeedback = true
         var acceptsUserInteraction = true
@@ -96,7 +96,7 @@ enum NotchLyricsContract {
             presentationWindow?.focusReturns += 1
         }
     }
-    nonisolated(unsafe) static let NSApp = Application()
+    static let NSApp = Application()
     final class Application {
         func activate(ignoringOtherApps: Bool) {
             let notch = NotchService.shared
@@ -122,7 +122,7 @@ enum NotchQueueHoldContract {}
 enum NotchMusicCommandContract {
     enum NotchQueueSupport { static func isEnabled() -> Bool { true } }
     enum NotchLyricsService {
-        nonisolated(unsafe) static let shared = Reader()
+        static let shared = Reader()
         final class Reader { func playbackChanged(_ playback: NotchPlayback?) {} }
     }
     final class Scheduler {
@@ -131,7 +131,7 @@ enum NotchMusicCommandContract {
         func asyncAfter(deadline: DispatchTime, execute work: DispatchWorkItem) { jobs.append { work.perform() } }
         func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
-    enum DispatchQueue { nonisolated(unsafe) static var main = Scheduler() }
+    enum DispatchQueue { static var main = Scheduler() }
     /// Records the song still published each time a new one is announced.
     final class TrackChanges {
         var shown: () -> NotchPlayback? = { nil }

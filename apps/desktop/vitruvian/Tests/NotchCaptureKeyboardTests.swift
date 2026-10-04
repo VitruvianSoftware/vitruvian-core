@@ -19,7 +19,7 @@ enum NotchCaptureKeyboardContract {
     final class NSText {}
     final class ScreenshotOverlayPanel: NSPanel { var overlayView = Overlay() }
     final class Overlay { var isDragging = false }
-    enum ShortcutCapture { nonisolated(unsafe) static var isCapturing = false }
+    enum ShortcutCapture { static var isCapturing = false }
     struct NSEvent {
         struct ModifierFlags: OptionSet {
             let rawValue: Int
@@ -41,7 +41,7 @@ enum NotchCaptureKeyboardContract {
         var modifierFlags: ModifierFlags = []
         var type: EventType = .keyDown
         var charactersIgnoringModifiers: String?
-        nonisolated(unsafe) static var handler: ((Self) -> Self?)?
+        static var handler: ((Self) -> Self?)?
         static func addLocalMonitorForEvents(matching: EventTypeMask, handler: @escaping (Self) -> Self?) -> Any? {
             self.handler = handler
             return 1

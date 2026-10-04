@@ -12,7 +12,7 @@ import VitruvianUI
 /// delivery and a controlled audio source, without changing hardware volume.
 enum NotchVolumeFeedbackTests {
     final class AppVolumeMixer {
-        nonisolated(unsafe) static var shared = AppVolumeMixer()
+        static var shared = AppVolumeMixer()
         @Published var currentOutputDeviceUID: String? = "speakers"
         @Published var systemOutputVolume: Double? = 0.3
         @Published var systemOutputMuted: Bool? = false

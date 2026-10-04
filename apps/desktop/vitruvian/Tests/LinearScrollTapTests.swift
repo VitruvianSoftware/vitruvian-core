@@ -12,9 +12,9 @@ import VitruvianUI
 /// test build (Tests/generate_sources.py) and fed real wheel events. Only the
 /// services it asks and the defaults it reads are replaced here.
 enum LinearScrollTapTests {
-    enum StandardDefaults { nonisolated(unsafe) static var standard = Foundation.UserDefaults() }
+    enum StandardDefaults { static var standard = Foundation.UserDefaults() }
     final class Exceptions {
-        nonisolated(unsafe) static let shared = Exceptions()
+        static let shared = Exceptions()
         var excepted: Set<MouseExceptionScope> = []
         func excludesPointerTarget(_ scope: MouseExceptionScope, at point: CGPoint,
                                    sourceProcessID: Int64 = 0) -> Bool {
@@ -22,11 +22,11 @@ enum LinearScrollTapTests {
         }
     }
     final class Target {
-        nonisolated(unsafe) static let shared = Target()
+        static let shared = Target()
         func contains(_ point: CGPoint) -> Bool { false }
     }
     final class Session {
-        nonisolated(unsafe) static let shared = Session()
+        static let shared = Session()
         let isActive = true
     }
     final class Inverter {

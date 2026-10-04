@@ -11,9 +11,9 @@ import VitruvianUI
 /// the fallbacks are checked whatever processes this Mac lets the tests read.
 enum ProcessNameContract {
     enum Environment {
-        nonisolated(unsafe) static var appNames: [pid_t: String] = [:]
-        nonisolated(unsafe) static var kernelNames: [pid_t: String] = [:]
-        nonisolated(unsafe) static var paths: [pid_t: String] = [:]
+        static var appNames: [pid_t: String] = [:]
+        static var kernelNames: [pid_t: String] = [:]
+        static var paths: [pid_t: String] = [:]
     }
     final class NSRunningApplication {
         let localizedName: String?

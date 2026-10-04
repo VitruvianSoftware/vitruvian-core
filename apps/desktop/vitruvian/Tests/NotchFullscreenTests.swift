@@ -11,7 +11,7 @@ import VitruvianUI
 /// Production Space selection and visibility transitions, with no desktop changes.
 enum NotchFullscreenTests {
     enum UserDefaults {
-        nonisolated(unsafe) static let standard = Preferences()
+        static let standard = Preferences()
         final class Preferences {
             var enabled = false
             var preciseVolume = false
@@ -30,7 +30,7 @@ enum NotchFullscreenTests {
         struct Feature { let isAvailable = true }
     }
     final class BrightnessService {
-        nonisolated(unsafe) static let shared = BrightnessService()
+        static let shared = BrightnessService()
         var syncs = 0
         func syncWithPreferences() { syncs += 1 }
     }
@@ -43,16 +43,16 @@ enum NotchFullscreenTests {
         struct Session { let isActive = true }
     }
     static func AXIsProcessTrusted() -> Bool { true }
-    enum NotchService { nonisolated(unsafe) static var shared = Service() }
+    enum NotchService { static var shared = Service() }
     class VolumeState {
         var running = false
         func start() { running = true }
         func stop() { running = false }
     }
-    enum NSScreen { nonisolated(unsafe) static var screensHaveSeparateSpaces = true }
+    enum NSScreen { static var screensHaveSeparateSpaces = true }
     enum SpaceWindowBridge {
-        nonisolated(unsafe) static var value: Topology?
-        nonisolated(unsafe) static var reads = 0
+        static var value: Topology?
+        static var reads = 0
         static func topology() -> Topology? { reads += 1; return value }
     }
     class State {

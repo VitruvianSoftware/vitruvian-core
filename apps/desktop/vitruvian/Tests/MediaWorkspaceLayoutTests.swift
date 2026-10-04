@@ -36,7 +36,7 @@ enum MediaWorkspaceLayoutTests {
         lazy var service = Presentation(archives)
     }
 
-    @MainActor static func run(_ suite: TestSuite) {
+    static func run(_ suite: TestSuite) {
         func settle(_ condition: () -> Bool) -> Bool {
             let deadline = Date().addingTimeInterval(2)
             while !condition(), Date() < deadline {

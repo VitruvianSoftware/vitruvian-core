@@ -11,16 +11,16 @@ import VitruvianUI
 /// playback reader. Its last reply deliberately survives stop, so cached music
 /// cannot make the assertions pass merely because a test double cleared it.
 enum NotchMusicVisibilityTests {
-    enum ReviewDefaults { nonisolated(unsafe) static var current: UserDefaults! }
+    enum ReviewDefaults { static var current: UserDefaults! }
     final class NotchMusicService {
-        nonisolated(unsafe) static var shared = NotchMusicService()
+        static var shared = NotchMusicService()
         struct Playback { var isPlaying: Bool }
         var playback: Playback?
         var running = false
         func start() { running = true }
         func stop() { running = false }
     }
-    enum PowerSampler { nonisolated(unsafe) static var hasInternalBattery = true }
+    enum PowerSampler { static var hasInternalBattery = true }
     struct MonitorNeeds {
         var disk = false
         var fanSpeed = false
@@ -28,12 +28,12 @@ enum NotchMusicVisibilityTests {
     }
     struct Metric { let monitorNeeds = MonitorNeeds.none }
     final class SystemMonitor {
-        nonisolated(unsafe) static let shared = SystemMonitor()
+        static let shared = SystemMonitor()
         func setNotchDetailNeeds(_ needs: MonitorNeeds) {}
         func setNotchVisible(_ visible: Bool) {}
     }
     final class CameraPreviewService {
-        nonisolated(unsafe) static let shared = CameraPreviewService()
+        static let shared = CameraPreviewService()
         func hideEmbedded() {}
     }
     struct CaptureControls {

@@ -211,7 +211,7 @@ enum ScratchpadExportContract {
         func activate(ignoringOtherApps: Bool) {}
     }
     final class Panel {
-        nonisolated(unsafe) static var latest: Panel?
+        static var latest: Panel?
         var allowedContentTypes: [UTType] = []
         var canCreateDirectories = false
         var isExtensionHidden = true
@@ -245,16 +245,16 @@ enum ScratchpadExportContract {
     }
     enum Queue {
         static var main: Queue.Type { Self.self }
-        nonisolated(unsafe) static var jobs: [() -> Void] = []
+        static var jobs: [() -> Void] = []
         static func async(execute action: @escaping () -> Void) { jobs.append(action) }
         static func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
     final class Island {
-        nonisolated(unsafe) static let shared = Island()
+        static let shared = Island()
         var presentationWindow: Window?
     }
     enum HUD {
-        nonisolated(unsafe) static var errors = 0
+        static var errors = 0
         static func show(icon: String, message: String) { errors += 1 }
     }
     class Fixture {
@@ -401,7 +401,7 @@ enum ScratchpadSaveContract {
         }
     }
     enum HUD {
-        nonisolated(unsafe) static var messages: [String] = []
+        static var messages: [String] = []
         static func show(icon: String, message: String) { messages.append(message) }
     }
     class Fixture {

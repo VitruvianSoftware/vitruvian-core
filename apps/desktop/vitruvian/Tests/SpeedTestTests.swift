@@ -185,8 +185,8 @@ private final class SpeedTestTimeBoxScheduler {
 
 private final class SpeedTestProtocol: URLProtocol {
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var recordedRequests: [String: [String]] = [:]
-    nonisolated(unsafe) private static var downloadsWithData: Set<String> = []
+    private static var recordedRequests: [String: [String]] = [:]
+    private static var downloadsWithData: Set<String> = []
 
     static func requests(for scenario: String) -> [String] {
         lock.lock()

@@ -36,7 +36,7 @@ enum NotchLyricsTimelineTests {
         }
     }
 
-    @MainActor static func run(expect: (Bool, String) -> Void) {
+    static func run(expect: (Bool, String) -> Void) {
         let track = RadialNowPlayingSnapshot(title: "Timed verses", artist: nil, album: nil,
                                             artworkData: nil, appBundleIdentifier: nil, appPID: nil)
         func check(_ times: [Double], duration: Double = 10, offset: Double = 0,

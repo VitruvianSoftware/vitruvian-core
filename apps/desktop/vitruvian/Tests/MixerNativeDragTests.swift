@@ -76,8 +76,7 @@ enum MixerNativeDragTests {
         var draggedImageLocation: NSPoint { .zero }
         var draggedImage: NSImage? { nil }
         let draggingPasteboard = NSPasteboard.withUniqueName()
-        // Set only by this test, on the main thread.
-        nonisolated(unsafe) var draggingSource: Any?
+        var draggingSource: Any?
         var draggingSequenceNumber: Int { 1 }
         var draggingFormation: NSDraggingFormation = .none
         var animatesToDestination = false

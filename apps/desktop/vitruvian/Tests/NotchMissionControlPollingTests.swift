@@ -11,12 +11,12 @@ import VitruvianUI
 /// double. It neither opens windows nor queries the window server.
 enum NotchMissionControlPollingTests {
     enum ProcessInfo {
-        nonisolated(unsafe) static var processInfo = Clock()
+        static var processInfo = Clock()
         struct Clock { var systemUptime: TimeInterval = 100 }
     }
     enum NotchFrameProbe {
-        nonisolated(unsafe) static var visible = false
-        nonisolated(unsafe) static var reads = 0
+        static var visible = false
+        static var reads = 0
         static func overviewIsVisible(on screen: CGRect) -> Bool { reads += 1; return visible }
     }
     class State {

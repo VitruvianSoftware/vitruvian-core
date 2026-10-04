@@ -12,14 +12,14 @@ import VitruvianUI
 /// app. Both are non-activating panels, so Vitruvian rarely holds activation
 /// of its own, and a bare request left the player where it was.
 enum NowPlayingOpenContract {
-    nonisolated(unsafe) static var events: [String] = []
-    nonisolated(unsafe) static var cooperativeActivation = true
-    nonisolated(unsafe) static var running: App?
-    nonisolated(unsafe) static var installed: [String: URL] = [:]
-    nonisolated(unsafe) static var windowOnScreen = true
+    static var events: [String] = []
+    static var cooperativeActivation = true
+    static var running: App?
+    static var installed: [String: URL] = [:]
+    static var windowOnScreen = true
 
     final class App {
-        nonisolated(unsafe) static let current = App(processIdentifier: 1)
+        static let current = App(processIdentifier: 1)
         let processIdentifier: pid_t
         let isHidden: Bool
         let activationPolicy: NSApplication.ActivationPolicy
@@ -49,7 +49,7 @@ enum NowPlayingOpenContract {
             var addsToRecentItems = true
             var promptsUserIfNeeded = true
         }
-        nonisolated(unsafe) static let shared = Workspace()
+        static let shared = Workspace()
         func urlForApplication(withBundleIdentifier identifier: String) -> URL? { installed[identifier] }
         func openApplication(at url: URL, configuration: OpenConfiguration) {
             // A reopen shows a window without taking activation from the handoff.

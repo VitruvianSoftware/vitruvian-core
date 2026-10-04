@@ -37,7 +37,7 @@ enum ScreenshotSelectionRefreshContract {
             screenshotHideVitruvianWindows = "hide"
     }
     struct ReviewDefaults {
-        nonisolated(unsafe) static var current = ReviewDefaults()
+        static var current = ReviewDefaults()
         var values: [String: Bool] = ["freeze": true, "pointer": false, "hide": false]
         func bool(forKey key: String) -> Bool { values[key] ?? false }
     }

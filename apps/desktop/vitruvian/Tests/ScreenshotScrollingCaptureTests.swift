@@ -52,8 +52,7 @@ enum ScreenshotScrollingCaptureTests {
     }
 
     static func run(_ suite: TestSuite) {
-        // Set by the main-actor task and read on the main thread.
-        nonisolated(unsafe) var completed = false
+        var completed = false
         let task = Task { @MainActor in
             await checks(suite)
             completed = true

@@ -12,7 +12,7 @@ import VitruvianUI
 /// on short displays in every language. No visible window or app settings change.
 enum UpdateHighlightsTests {
     final class L10n: ObservableObject {
-        nonisolated(unsafe) static let shared = L10n()
+        static let shared = L10n()
         @Published var language = AppLanguage.enUS
         var s: Strings { LocalizationTests.languages.first { $0.0 == language }!.1 }
     }
@@ -29,7 +29,7 @@ enum UpdateHighlightsTests {
     }
 
     final class FeatureRuntime {
-        nonisolated(unsafe) static let shared = FeatureRuntime()
+        static let shared = FeatureRuntime()
         func setAvailable(_ features: [AppFeature], _ available: Bool) {}
     }
 

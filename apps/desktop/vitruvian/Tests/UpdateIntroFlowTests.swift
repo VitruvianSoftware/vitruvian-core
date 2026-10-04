@@ -11,12 +11,12 @@ import VitruvianUI
 /// isolated preferences and an explicit queue. No app windows become visible.
 enum UpdateIntroFlowTests {
     enum AppInfo {
-        nonisolated(unsafe) static var version = "3.4.0"
+        static var version = "3.4.0"
         static var isBeta: Bool { version.contains("beta") }
     }
-    enum UserDefaults { nonisolated(unsafe) static var standard: Foundation.UserDefaults! }
+    enum UserDefaults { static var standard: Foundation.UserDefaults! }
     enum DispatchQueue {
-        nonisolated(unsafe) static var main = Queue()
+        static var main = Queue()
         final class Queue {
             var jobs: [() -> Void] = []
             func async(execute action: @escaping () -> Void) { jobs.append(action) }
@@ -27,7 +27,7 @@ enum UpdateIntroFlowTests {
     }
     enum WindowActivationPolicy { static func release() {} }
     final class SecureInputMonitor {
-        nonisolated(unsafe) static let shared = SecureInputMonitor()
+        static let shared = SecureInputMonitor()
         func setSettingsWindowOpen(_ open: Bool) {}
     }
     class Fixture {

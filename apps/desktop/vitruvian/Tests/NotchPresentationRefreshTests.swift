@@ -15,12 +15,12 @@ import VitruvianUI
 enum NotchPresentationRefreshContract {
     typealias DispatchQueue = NotchScreenRefreshContract.DispatchQueue
     enum NSEvent {
-        nonisolated(unsafe) static var mouseLocation = CGPoint.zero
-        nonisolated(unsafe) static var monitorRemovals = 0
+        static var mouseLocation = CGPoint.zero
+        static var monitorRemovals = 0
         static func removeMonitor(_ token: Any) { monitorRemovals += 1 }
     }
     enum NSWorkspace {
-        nonisolated(unsafe) static var shared = Accessibility()
+        static var shared = Accessibility()
         struct Accessibility { var accessibilityDisplayShouldReduceMotion = false }
     }
     enum NotchPanel { static let normalLevel = 1, fullscreenLevel = 0 }
@@ -32,7 +32,7 @@ enum NotchPresentationRefreshContract {
         var onCaptureControlsSurfaceChange: ((CGRect, CGFloat) -> Void)?
     }
     enum UserDefaults {
-        nonisolated(unsafe) static var standard = Preferences()
+        static var standard = Preferences()
         struct Preferences {
             var hides = false
             var outline = false
@@ -50,7 +50,7 @@ enum NotchPresentationRefreshContract {
     struct NotchPlayback { let track: Int }
     struct NotchArtworkTint { let value: Int }
     final class NotchMusicService {
-        nonisolated(unsafe) static let shared = NotchMusicService()
+        static let shared = NotchMusicService()
         var playback: NotchPlayback?
         var artwork: NSImage?
         var artworkTint: NotchArtworkTint?

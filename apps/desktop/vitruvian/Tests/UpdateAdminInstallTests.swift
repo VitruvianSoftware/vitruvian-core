@@ -12,16 +12,16 @@ import VitruvianUI
 /// that log what ran. The real authorization holds the main thread until it
 /// is answered, so anything the prompt needs off the screen must go first.
 enum UpdateAdminInstallContract {
-    nonisolated(unsafe) static var events: [String] = []
+    static var events: [String] = []
 
     final class ExtraBrightnessService {
-        nonisolated(unsafe) static let shared = ExtraBrightnessService()
+        static let shared = ExtraBrightnessService()
         var onScreen = true
         func stop() { onScreen = false }
         func syncWithPreferences() { onScreen = true; events.append("overlay") }
     }
     enum AdminShell {
-        nonisolated(unsafe) static var answer: ((Bool) -> Void)?
+        static var answer: ((Bool) -> Void)?
         static func runInProcess(_ command: String, prompt: String,
                                  completion: @escaping (Bool) -> Void) {
             events.append(ExtraBrightnessService.shared.onScreen ? "prompt under overlay" : "prompt")
@@ -29,7 +29,7 @@ enum UpdateAdminInstallContract {
         }
     }
     enum DispatchQueue {
-        nonisolated(unsafe) static let main = Queue()
+        static let main = Queue()
         final class Queue {
             var pending: [() -> Void] = []
             func async(execute: @escaping () -> Void) { pending.append(execute) }
@@ -41,7 +41,7 @@ enum UpdateAdminInstallContract {
     final class Application {
         func terminate(_ sender: Any?) { events.append("quit") }
     }
-    nonisolated(unsafe) static let NSApp = Application()
+    static let NSApp = Application()
     struct L10n {
         struct Text { let adminPromptUpdate = "update" }
         static let shared = L10n()

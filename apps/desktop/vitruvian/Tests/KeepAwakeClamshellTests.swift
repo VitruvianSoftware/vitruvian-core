@@ -24,7 +24,7 @@ extension KeepAwakeLidSleepContract {
         static let keepAwakeUntilTime = "untilTime"
     }
     enum UserDefaults {
-        nonisolated(unsafe) static let standard = Store()
+        static let standard = Store()
         final class Store {
             var values: [String: Bool] = [:]
             var doubles: [String: Double] = [:]
@@ -40,8 +40,8 @@ extension KeepAwakeLidSleepContract {
         }
     }
     enum Thread {
-        nonisolated(unsafe) static var waits = 0
-        nonisolated(unsafe) static var onWait: (() -> Void)?
+        static var waits = 0
+        static var onWait: (() -> Void)?
         static func sleep(forTimeInterval interval: Double) { waits += 1; onWait?() }
     }
     enum Sudoers {
@@ -50,14 +50,14 @@ extension KeepAwakeLidSleepContract {
         typealias DispatchQueue = KeepAwakeLidSleepContract.DispatchQueue
         typealias Shell = KeepAwakeLidSleepContract.Shell
         typealias AdminShell = KeepAwakeLidSleepContract.AdminShell
-        nonisolated(unsafe) static var calls: [Bool] = []
-        nonisolated(unsafe) static var results = [true]
-        nonisolated(unsafe) static var disabled = false
-        nonisolated(unsafe) static var configured = true
-        nonisolated(unsafe) static var installCompletions: [(Bool) -> Void] = []
-        nonisolated(unsafe) static let sleepStateQueue = DispatchQueue.native
-        nonisolated(unsafe) static var sleepStateProbeSuspensions = 0
-        nonisolated(unsafe) static var probeWrites: [Bool] = []
+        static var calls: [Bool] = []
+        static var results = [true]
+        static var disabled = false
+        static var configured = true
+        static var installCompletions: [(Bool) -> Void] = []
+        static let sleepStateQueue = DispatchQueue.native
+        static var sleepStateProbeSuspensions = 0
+        static var probeWrites: [Bool] = []
         static func pmsetDisableSleepOnQueue(_ on: Bool) -> Bool {
             probeWrites.append(on)
             if configured { disabled = on }
@@ -81,9 +81,9 @@ extension KeepAwakeLidSleepContract {
         }
     }
     enum AdminShell {
-        nonisolated(unsafe) static var completions: [(Bool) -> Void] = []
-        nonisolated(unsafe) static var prompts = 0
-        nonisolated(unsafe) static var syncResult = false
+        static var completions: [(Bool) -> Void] = []
+        static var prompts = 0
+        static var syncResult = false
         static func run(_ command: String, prompt: String, completion: @escaping (Bool) -> Void) {
             prompts += 1; completions.append(completion)
         }
@@ -107,13 +107,13 @@ extension KeepAwakeLidSleepContract {
         }
     }
     enum Shell {
-        nonisolated(unsafe) static var status: Int32 = 0
-        nonisolated(unsafe) static var output: String?
+        static var status: Int32 = 0
+        static var output: String?
         static func run(_ executable: String, _ arguments: [String]) -> (status: Int32, output: String) {
             (status, output ?? "SleepDisabled \(Sudoers.disabled ? 1 : 0)")
         }
     }
-    nonisolated(unsafe) static var onSleep: (() -> Void)?
+    static var onSleep: (() -> Void)?
     static func drain() {
         for _ in 0..<30 {
             let queues = [DispatchQueue.background, DispatchQueue.native, DispatchQueue.main]

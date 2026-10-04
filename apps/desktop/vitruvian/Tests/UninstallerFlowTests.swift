@@ -29,7 +29,7 @@ enum UninstallerFlowTests {
     }
     enum Queue {
         enum QoS { case userInitiated }
-        nonisolated(unsafe) static var pending: [() -> Void] = []
+        static var pending: [() -> Void] = []
         static var main: Queue.Type { Self.self }
         static func global(qos: QoS) -> Queue.Type { Self.self }
         static func async(execute: @escaping () -> Void) { pending.append(execute) }
@@ -49,7 +49,7 @@ enum UninstallerFlowTests {
             let package: Package?
             let result: Result
         }
-        nonisolated(unsafe) static let shared = Brew()
+        static let shared = Brew()
         var callback: ((Package?) -> Void)?
         @Published var operationStatus: Status?
         var operation: Status?
@@ -61,7 +61,7 @@ enum UninstallerFlowTests {
         func uninstall(_ package: Package) { uninstalled.append(package.id) }
     }
     enum HUD {
-        nonisolated(unsafe) static var messages: [String] = []
+        static var messages: [String] = []
         static func show(icon: String, message: String) { messages.append(message) }
     }
     class UninstallerState {
@@ -89,7 +89,7 @@ enum UninstallerFlowTests {
         static func exclusiveOwnedBundleIDs(in url: URL, candidates: Set<String>, knownApplicationIDs: [String]) -> Set<String> { [] }
         static func signingIdentity(in url: URL, requireValidSignature: Bool) -> (teamIDs: Set<String>, groupIDs: Set<String>) { ([], []) }
         static func exclusiveGroupIDs(_ ids: Set<String>, selectedURL: URL, knownApplications: [URL]) -> Set<String> { [] }
-        nonisolated(unsafe) static var collects = 0
+        static var collects = 0
         static func collect(appURL: URL, primaryBundleID: String, exclusiveBundleIDs: Set<String>, teamIDs: Set<String>, exclusiveGroupIDs: Set<String>, cancellation: UninstallerSupport.ScanCancellation) -> [Leftover] {
             collects += 1
             return [Leftover(url: appURL)]
@@ -103,16 +103,16 @@ enum UninstallerFlowTests {
     }
     enum Feature {
         case uninstaller
-        nonisolated(unsafe) static var available = true
+        static var available = true
         var isAvailable: Bool { Self.available }
     }
     final class Preferences {
-        nonisolated(unsafe) static let standard = Preferences()
+        static let standard = Preferences()
         var enabled = true
         func bool(forKey: String) -> Bool { enabled }
     }
     final class Localization {
-        nonisolated(unsafe) static let shared = Localization()
+        static let shared = Localization()
         let s = Text()
         struct Text {
             let uninstallerRemoving = "Removing"
@@ -123,12 +123,12 @@ enum UninstallerFlowTests {
     enum Permission {
         enum Target { case finder }
         enum Status { case granted, undetermined, denied }
-        nonisolated(unsafe) static var status: Status = .undetermined
+        static var status: Status = .undetermined
         static func automationStatus(for target: Target) -> Status { status }
     }
     enum Script {
-        nonisolated(unsafe) static var requests = 0
-        nonisolated(unsafe) static var reads = 0
+        static var requests = 0
+        static var reads = 0
         static func consentToAutomate(bundleID: String) -> Bool {
             requests += 1
             return Permission.status == .granted

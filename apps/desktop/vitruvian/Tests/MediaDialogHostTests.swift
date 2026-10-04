@@ -19,7 +19,7 @@ enum MediaDialogHostContract {
     }
     struct Event { let window: Island? }
     final class NSSavePanel {
-        nonisolated(unsafe) static weak var current: NSSavePanel?
+        static weak var current: NSSavePanel?
         weak var parent: Island?
         var level = NSWindow.Level(rawValue: 0)
         var hidesOnDeactivate = true
@@ -55,9 +55,9 @@ enum MediaDialogHostContract {
             activations.append(NSSavePanel.current != nil)
         }
     }
-    nonisolated(unsafe) static var NSApp = Application()
+    static var NSApp = Application()
     enum DispatchQueue {
-        nonisolated(unsafe) static var main = Queue()
+        static var main = Queue()
         final class Queue {
             var jobs: [() -> Void] = []
             func async(execute action: @escaping () -> Void) { jobs.append(action) }
@@ -65,12 +65,12 @@ enum MediaDialogHostContract {
         }
     }
     final class NotchService {
-        nonisolated(unsafe) static var shared = NotchService()
+        static var shared = NotchService()
         var presentationWindow: Island? = Island()
         var expanded = true
     }
     final class QuickLauncherService {
-        nonisolated(unsafe) static var shared = QuickLauncherService()
+        static var shared = QuickLauncherService()
         var refocuses = 0
         func refocusAfterModal() { refocuses += 1 }
     }

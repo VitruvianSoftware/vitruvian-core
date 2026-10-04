@@ -10,12 +10,10 @@ import VitruvianUI
 /// Shared assertions for both the full run and selected suites. Recording a
 /// failure never stops the remaining assertions; the runner owns the exit code.
 ///
-/// The lock guards the counts, so a check may run on any thread.
-///
-/// The runner runs one suite at a time, on the main thread. So the test
-/// stand-ins keep their state in `nonisolated(unsafe)` statics, and a local
-/// that a main-queue callback sets is `nonisolated(unsafe)` too.
-final class TestSuite: @unchecked Sendable {
+/// The module defaults to the main actor, where the runner runs every suite.
+/// The suite is nonisolated, and its lock guards the counts, so a check may
+/// also run on another thread.
+nonisolated final class TestSuite: @unchecked Sendable {
     private let lock = NSLock()
     private var recordedChecks = 0
     private var recordedFailures: [String] = []

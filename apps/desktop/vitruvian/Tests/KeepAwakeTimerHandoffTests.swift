@@ -15,7 +15,7 @@ import VitruvianUI
 enum KeepAwakeTimerHandoffContract {
     enum SessionTrigger { case manual, automation }
     enum AppFeature {
-        nonisolated(unsafe) static let keepAwake = Feature()
+        static let keepAwake = Feature()
         final class Feature { var isAvailable = true }
     }
 }

@@ -116,7 +116,7 @@ enum NotchMirrorContract {
     // A click on a copy runs the island's own `bringIsland(to:)`, copied
     // from `NotchService` into `Service` below.
     final class NSScreen {
-        nonisolated(unsafe) static var screens: [NSScreen] = []
+        static var screens: [NSScreen] = []
         let notchDisplayID: CGDirectDisplayID
         init(_ id: CGDirectDisplayID) { notchDisplayID = id }
     }

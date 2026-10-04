@@ -31,16 +31,16 @@ enum ClipboardFeatureTests {
         }
         typealias NSSound = Sound
         final class Access {
-            nonisolated(unsafe) static let shared = Access()
+            static let shared = Access()
             func requestAccessibility() { host?.events.append("prompt") }
         }
         typealias Permissions = Access
         final class Queue {
-            nonisolated(unsafe) static let main = Queue()
+            static let main = Queue()
             func asyncAfter(deadline: DispatchTime, execute work: @escaping () -> Void) { work() }
         }
         typealias DispatchQueue = Queue
-        nonisolated(unsafe) static var host: QuickPasteHost?
+        static var host: QuickPasteHost?
         var events: [String] = []
         var trusted = true
         var promptedForAccessibility = false

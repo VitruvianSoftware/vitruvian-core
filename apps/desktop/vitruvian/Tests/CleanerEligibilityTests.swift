@@ -26,7 +26,7 @@ enum CleanerEligibilityTests {
         let detail: String
         var fileIdentity: UninstallerSupport.FileIdentity? { UninstallerSupport.fileIdentity(at: url) }
     }
-    nonisolated(unsafe) static var fixtureRoot: URL?
+    static var fixtureRoot: URL?
     static func NSHomeDirectory() -> String { fixtureRoot!.path }
 
     static func isDirectLeftoverRootChild(_ url: URL) -> Bool {
@@ -37,7 +37,7 @@ enum CleanerEligibilityTests {
         CleanerSupport.isOwned(candidate: owner, byInstalled: installed)
     }
 
-    nonisolated(unsafe) static var screenshotFolder: URL?
+    static var screenshotFolder: URL?
     static func isScreenshotFolderChild(_ url: URL) -> Bool {
         screenshotFolder.map { CleanerSupport.isDirectChild(url, of: $0) } ?? false
     }

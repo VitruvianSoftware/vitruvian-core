@@ -40,7 +40,7 @@ enum RecorderExportChipTests {
         }
     }
 
-    @MainActor private static func chipSize(bandWidth: CGFloat) -> CGSize {
+    private static func chipSize(bandWidth: CGFloat) -> CGSize {
         var reported = CGSize.zero
         let host = NSHostingView(rootView: Band(model: Model(), report: { reported = $0 }))
         host.sizingOptions = []
@@ -53,7 +53,7 @@ enum RecorderExportChipTests {
         return reported
     }
 
-    @MainActor static func run(expect: (Bool, String) -> Void) {
+    static func run(expect: (Bool, String) -> Void) {
         let roomy = chipSize(bandWidth: 500)
         let squeezed = chipSize(bandWidth: 330)
         expect(roomy != .zero && squeezed != .zero, "the export chip reports its laid-out size")

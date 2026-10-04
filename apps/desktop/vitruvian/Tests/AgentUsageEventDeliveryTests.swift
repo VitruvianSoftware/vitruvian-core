@@ -11,9 +11,9 @@ import VitruvianUI
 /// and an event recorder. No agent logs, network or notification windows.
 enum AgentUsageEventDeliveryTests {
     enum NotchAgentSupport {
-        nonisolated(unsafe) static var minimum: TimeInterval? = 10
-        nonisolated(unsafe) static var threshold: Double? = 0.2
-        nonisolated(unsafe) static var budget: Double? = 1
+        static var minimum: TimeInterval? = 10
+        static var threshold: Double? = 0.2
+        static var budget: Double? = 1
         static func finishMinimum() -> TimeInterval? { minimum }
         static func limitThreshold() -> Double? { threshold }
         static func dailyBudget() -> Double? { budget }

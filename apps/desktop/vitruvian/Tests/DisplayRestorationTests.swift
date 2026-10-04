@@ -31,21 +31,21 @@ enum DisplayRestorationTests {
             }
         }
     }
-    enum DispatchQueue { nonisolated(unsafe) static var main = Queue() }
+    enum DispatchQueue { static var main = Queue() }
     enum Hardware {
-        nonisolated(unsafe) static var lid: Bool? = true
-        nonisolated(unsafe) static var succeeds = true
-        nonisolated(unsafe) static var transactions = 0
-        nonisolated(unsafe) static var registrations = 0
-        nonisolated(unsafe) static var destroyedPorts = 0
-        nonisolated(unsafe) static var released: [UInt32] = []
-        nonisolated(unsafe) static var callback: (() -> Void)?
-        nonisolated(unsafe) static var onSubscribe: (() -> Void)?
-        nonisolated(unsafe) static var lidRead: (() -> Bool?)?
+        static var lid: Bool? = true
+        static var succeeds = true
+        static var transactions = 0
+        static var registrations = 0
+        static var destroyedPorts = 0
+        static var released: [UInt32] = []
+        static var callback: (() -> Void)?
+        static var onSubscribe: (() -> Void)?
+        static var lidRead: (() -> Bool?)?
     }
     enum DefaultsKey { static let displaysSwitchedOff = "off" }
     final class UserDefaults {
-        nonisolated(unsafe) static var standard = UserDefaults()
+        static var standard = UserDefaults()
         var stored: [Int] = []
         func array(forKey: String) -> [Any]? { stored }
     }
@@ -56,7 +56,7 @@ enum DisplayRestorationTests {
         var isBuiltIn: Bool { id == 1 }
     }
     enum DisplayConfigurationBridge {
-        nonisolated(unsafe) static var configureEnabled: ((Int, UInt32, Bool) -> Int32)? = { _, _, _ in 0 }
+        static var configureEnabled: ((Int, UInt32, Bool) -> Int32)? = { _, _, _ in 0 }
     }
     static func CGDisplayIsBuiltin(_ id: UInt32) -> UInt32 { id == 1 ? 1 : 0 }
     static func CGBeginDisplayConfiguration(_ reference: inout Int?) -> CGError {

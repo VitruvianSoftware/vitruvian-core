@@ -13,9 +13,9 @@ typealias EmojiQueryHabits = CommandBarQueryHabits
 /// permissions, panel visibility, typing and the session key are replaced;
 /// no keyboard events are sent and preferences live in a disposable domain.
 enum CommandBarEmojiContract {
-    enum UserDefaults { nonisolated(unsafe) static var standard: Foundation.UserDefaults! }
+    enum UserDefaults { static var standard: Foundation.UserDefaults! }
     final class Permissions {
-        nonisolated(unsafe) static let shared = Permissions()
+        static let shared = Permissions()
         var accessibility = true
     }
     struct CommandBarEntry {
@@ -36,7 +36,7 @@ enum CommandBarEmojiContract {
         typealias CommandBarEntry = CommandBarEmojiContract.CommandBarEntry
         typealias UserDefaults = CommandBarEmojiContract.UserDefaults
         typealias Permissions = CommandBarEmojiContract.Permissions
-        nonisolated(unsafe) static var typed: [String] = []
+        static var typed: [String] = []
         static func typeAtCursor(_ text: String) { typed.append(text) }
     }
     typealias CommandBarCatalog = Catalog

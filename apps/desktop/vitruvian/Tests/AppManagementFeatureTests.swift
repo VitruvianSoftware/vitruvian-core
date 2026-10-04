@@ -1459,7 +1459,7 @@ enum AppManagementFeatureTests {
                "the alert shows its own window at the level a modal alert would use")
         suite.expect(!alert.window.hidesOnDeactivate,
                "the alert stays on screen when another app becomes active")
-        suite.expect(alert.buttons.map { $0.keyEquivalent } == ["\r", "\u{1b}"],
+        suite.expect(alert.buttons.map(\.keyEquivalent) == ["\r", "\u{1b}"],
                "Return and Escape still answer the alert")
 
         alert.buttons[0].performClick(nil)

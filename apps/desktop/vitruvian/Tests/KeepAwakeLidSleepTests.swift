@@ -15,9 +15,9 @@ enum KeepAwakeLidSleepContract {
         static func + (lhs: Instant, rhs: Double) -> Instant { lhs }
     }
     enum DispatchQueue {
-        nonisolated(unsafe) static let main = Queue()
-        nonisolated(unsafe) static let background = Queue()
-        nonisolated(unsafe) static let native = Queue()
+        static let main = Queue()
+        static let background = Queue()
+        static let native = Queue()
         enum QoS { case utility, userInitiated }
         static func global(qos: QoS) -> Queue { background }
         final class Queue {
@@ -41,17 +41,17 @@ enum KeepAwakeLidSleepContract {
         }
     }
     enum BrightnessService {
-        nonisolated(unsafe) static var lid: Bool? = true
+        static var lid: Bool? = true
         static func lidClosed() -> Bool? { lid }
     }
     /// Only the built-in panel this fixture models; a value the production
     /// code would treat as "the panel already reads asleep" is `nil`, not 0.
     enum LidDisplayDimmer {
-        nonisolated(unsafe) static var reading: Double?
-        nonisolated(unsafe) static var written: [Double] = []
+        static var reading: Double?
+        static var written: [Double] = []
         /// True by default; set false to model the panel not being back in
         /// the online list yet, or the write itself failing.
-        nonisolated(unsafe) static var writeSucceeds = true
+        static var writeSucceeds = true
         static func currentBrightness() -> Double? { reading }
         @discardableResult
         static func setBrightness(_ value: Double) -> Bool {
@@ -66,12 +66,12 @@ enum KeepAwakeLidSleepContract {
     static let kIOGeneralInterest = "IOGeneralInterest"
     typealias IONotificationPortRef = Int
     typealias io_object_t = Int
-    nonisolated(unsafe) static var port = 1
-    nonisolated(unsafe) static var results = [0]
-    nonisolated(unsafe) static var calls = 0
-    nonisolated(unsafe) static var closes = 0
-    nonisolated(unsafe) static var policy: Bool? = true
-    nonisolated(unsafe) static var assertions: [[String: Any]]? = []
+    static var port = 1
+    static var results = [0]
+    static var calls = 0
+    static var closes = 0
+    static var policy: Bool? = true
+    static var assertions: [[String: Any]]? = []
     static func IOPMFindPowerManagement(_ value: Int) -> Int { port }
     static func IOPMSleepSystem(_ value: Int) -> Int {
         calls += 1
@@ -84,10 +84,10 @@ enum KeepAwakeLidSleepContract {
     /// way `DisplayRestorationTests` models `BrightnessService`'s own use of
     /// this exact IOKit pattern.
     enum DimmingObserver {
-        nonisolated(unsafe) static var registrations = 0
-        nonisolated(unsafe) static var releasedObjects = 0
-        nonisolated(unsafe) static var destroyedPorts = 0
-        nonisolated(unsafe) static var callback: (() -> Void)?
+        static var registrations = 0
+        static var releasedObjects = 0
+        static var destroyedPorts = 0
+        static var callback: (() -> Void)?
     }
     static func IOServiceMatching(_ name: String) -> Int { 1 }
     static func IOServiceGetMatchingService(_ port: Int, _ matching: Int) -> Int { 2 }

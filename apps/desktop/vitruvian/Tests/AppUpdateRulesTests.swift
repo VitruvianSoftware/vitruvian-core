@@ -12,7 +12,7 @@ import VitruvianUI
 enum AppUpdateRulesContract {
     enum UserDefaults {
         static let name = "vitru.tests.app-update-rules.\(UUID().uuidString)"
-        nonisolated(unsafe) static let standard = Foundation.UserDefaults(suiteName: name)!
+        static let standard = Foundation.UserDefaults(suiteName: name)!
     }
 
     struct AppFeature {

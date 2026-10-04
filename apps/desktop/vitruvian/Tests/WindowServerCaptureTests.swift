@@ -10,11 +10,14 @@ import VitruvianUI
 
 /// The production capture body and queue run against a controllable native
 /// call. No windows are captured and no Screen Recording permission is needed.
-enum WindowServerCaptureContract {
+/// Like the production provider it is nonisolated: captures run on the
+/// cooperative pool while the test waits on the main thread.
+nonisolated enum WindowServerCaptureContract {
     enum Provider {
         typealias CGSConnectionID = UInt32
         typealias CGSCaptureFunction =
             @convention(c) (CGSConnectionID, UnsafeMutablePointer<UInt32>, UInt32, UInt32) -> Unmanaged<CFArray>?
+        // Each test sets these before its captures start.
         nonisolated(unsafe) static var windowServerConnection: CGSConnectionID = 1
         static let windowServerCaptureOptions: UInt32 = (1 << 8) | (1 << 11)
         static let windowServerCaptures = WindowServerCaptureQueue()
@@ -25,6 +28,7 @@ enum WindowServerCaptureContract {
 
     enum Fake {
         static let lock = NSLock()
+        // The lock guards these.
         nonisolated(unsafe) static var inFlight = 0
         nonisolated(unsafe) static var maximumInFlight = 0
         nonisolated(unsafe) static var calls: [UInt32] = []

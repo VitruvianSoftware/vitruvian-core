@@ -14,7 +14,7 @@ private final class TestSettingsWindow: SettingsWindow {
 }
 
 enum SettingsWindowTests {
-    @MainActor static func run(expect: (Bool, String) -> Void) {
+    static func run(expect: (Bool, String) -> Void) {
         let app = NSApplication.shared
         let defaults = UserDefaults.standard
         let keys = [DefaultsKey.mouseButtonShortcutsEnabled, DefaultsKey.mouseSpacesGestureEnabled,
