@@ -288,7 +288,7 @@ enum NotchFileToolsTests {
         } catch { suite.expect(false, "renamed download fixtures failed: \(error)") }
     }
 
-    private final class ArchiveOutcome: @unchecked Sendable {
+    private nonisolated final class ArchiveOutcome: @unchecked Sendable {
         // Written by the archive lane, read only after its completion semaphore.
         var cancelled = false
         var staged: URL?

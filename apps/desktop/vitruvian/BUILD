@@ -433,13 +433,13 @@ echo "PROBE srcs: $(SRCS)" >&2
 dis=$$(mktemp)
 for f in $(SRCS); do
   case "$$f" in
-    *unit_tests_bin) xcrun objdump -dr --no-show-raw-insn "$$f" ;;
+    *unit_tests_bin) xcrun otool -tV "$$f" ;;
   esac
 done > "$$dis"
 echo "PROBE disassembly lines: $$(wc -l < "$$dis")" >&2
 grep -m8 -E 'swift_task_(reportUnexpectedExecutor|isCurrentExecutor)' "$$dis" >&2 || true
-awk '/^[0-9a-f]+ <.*>:$$/ { fn = $$2 } /swift_task_(reportUnexpectedExecutor|isCurrentExecutor)/ { print fn }' "$$dis" \\
-  | sort -u | tr -d '<>:' | sed 's/^_\\$$/$$/' | xcrun swift-demangle \\
+awk '/^[^ \\t].*:$$/ { fn = substr($$0, 1, length($$0) - 1) } /swift_task_(reportUnexpectedExecutor|isCurrentExecutor)/ { print fn }' "$$dis" \\
+  | sort -u | sed 's/^_\\$$/$$/' | xcrun swift-demangle \\
   | grep -E '(^| )VitruvianTests[.]' > $@ || true
 rm -f "$$dis"
 echo "PROBE executor checks: $$(wc -l < $@)" >&2
