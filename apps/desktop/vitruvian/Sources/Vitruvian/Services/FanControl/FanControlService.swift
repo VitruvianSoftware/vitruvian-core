@@ -447,7 +447,16 @@ package final class FanControlService: ObservableObject {
             self.connection = connection
         }
         guard let connection else { return nil }
-        return connection.remoteObjectProxyWithErrorHandler { _ in errorHandler(connection) }
+        return Self.remoteProxy(of: connection, errorHandler: errorHandler)
+    }
+
+    /// XPC calls the error handler on its own queue, so the handler is
+    /// written here, outside the main actor. `errorHandler` only hops to the
+    /// main queue.
+    nonisolated private static func remoteProxy(of connection: NSXPCConnection,
+                                                errorHandler: @escaping (NSXPCConnection) -> Void)
+        -> FanControlXPCProtocol? {
+        connection.remoteObjectProxyWithErrorHandler { _ in errorHandler(connection) }
             as? FanControlXPCProtocol
     }
 

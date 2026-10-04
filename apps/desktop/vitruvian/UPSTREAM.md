@@ -1237,6 +1237,19 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Recorder/RecorderEditorController.swift`: the waveform tracks
     and asset are handed over as `nonisolated(unsafe)` lets, and the
     progress closures take their own `[weak self]`.
+- **2026-10-04**: Refactor step 6zzh (`REFACTOR.md`):
+  - Tap callbacks as `nonisolated` static lets in
+    `Services/ScrollInverter.swift` and
+    `Services/MiddleClick/MiddleClickService.swift`.
+  - `Services/PointerTapRunLoop.swift`: `TapThreadRunLoop.stop(_:)`, used by
+    `Services/Switcher/AppSwitcher.swift`,
+    `Services/Finder/FinderCutPaste.swift`,
+    `Services/SuperKey/SuperKeyService.swift`,
+    `Services/KeyboardDebounce/KeyboardDebounceService.swift` and
+    `Services/Display/BrightnessService.swift`.
+  - `nonisolated` static helpers for the sound completion in
+    `Services/Notch/NotchLockScreenService.swift` and the XPC error handler
+    in `Services/FanControl/FanControlService.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

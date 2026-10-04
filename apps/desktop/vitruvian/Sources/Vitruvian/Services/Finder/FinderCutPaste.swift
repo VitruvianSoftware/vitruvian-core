@@ -208,10 +208,7 @@ package final class FinderCutPaste: ObservableObject {
         }
         if let tap = snapshot.tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let runLoop = snapshot.runLoop {
-            CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
-                CFRunLoopStop(runLoop)
-            }
-            CFRunLoopWakeUp(runLoop)
+            TapThreadRunLoop.stop(runLoop)
         } else if !snapshot.threadExists {
             tapLifecycleLock.withLock {
                 shouldStopTapThread = false

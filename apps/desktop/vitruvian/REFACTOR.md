@@ -2327,6 +2327,35 @@ Landed (6zzg, screen capture and recorder export): the last 13 of the 99.
   event-tap callbacks, and some of those taps run off the main thread.
   Step 6zzh traces them before Services switches.
 
+Landed (6zzh, what would stop the app in Swift 6 mode): 6zzg's probe listed
+1,745 functions with Swift 6's main-thread check. A SwiftSyntax tool matched
+each one to the call it is passed to, and each was traced to the thread
+that runs it.
+
+- **Nine run off the main thread**, so in Swift 6 mode each would stop the
+  app:
+  - the scroll inverter's and middle click's tap callbacks, which run on
+    the pointer thread;
+  - the block that ends each of five tap threads (the switcher, Finder cut
+    and paste, the Super Key, keyboard debounce and the brightness keys),
+    which runs on that thread;
+  - the lock-screen sound's completion, on a thread of the system's choosing;
+  - the fan control helper's XPC error handler, on XPC's own queue.
+- **The fix:** each is now written outside the main actor. The tap callbacks
+  are `nonisolated` static lets, the five stops share
+  `TapThreadRunLoop.stop(_:)`, and the sound and the error handler are made
+  in `nonisolated` static functions.
+- **Safe as they are:** everything else either runs synchronously
+  (collection algorithms, `withLock`, SwiftUI builders) or runs on the main
+  thread. That covers main-queue blocks and work items, `assumeIsolated`,
+  AppKit's event monitors, animations and sheets, and dispatch sources and
+  IOKit ports set to the main queue. The CoreAudio and HID callbacks were
+  listed only for the main-queue blocks inside them.
+- **Measured** (Swift 6 mode): no errors, and 1,736 checked functions,
+  exactly the nine fewer. The other differences are only renumbering: the
+  closures after a removed tap callback in the same `start()` count from one
+  lower. The unit tests and self test pass.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

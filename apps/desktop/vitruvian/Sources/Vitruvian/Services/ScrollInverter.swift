@@ -105,11 +105,7 @@ package final class ScrollInverter: ObservableObject {
             place: .tailAppendEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(1 << CGEventType.scrollWheel.rawValue),
-            callback: { _, type, event, userInfo in
-                guard let userInfo else { return Unmanaged.passUnretained(event) }
-                let inverter = Unmanaged<ScrollInverter>.fromOpaque(userInfo).takeUnretainedValue()
-                return inverter.handle(type: type, event: event)
-            },
+            callback: Self.eventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             ScrollWheelTarget.shared.setEnabled(false)
@@ -167,6 +163,15 @@ package final class ScrollInverter: ObservableObject {
         linearCarryVertical = 0
         linearCarryHorizontal = 0
         isRunning = false
+    }
+
+    /// Runs on the pointer thread, so it is written here, outside the main
+    /// actor: a closure written in `start()` would check for the main thread
+    /// first in Swift 6 mode, and stop the app on the first scroll.
+    nonisolated private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else { return Unmanaged.passUnretained(event) }
+        let inverter = Unmanaged<ScrollInverter>.fromOpaque(userInfo).takeUnretainedValue()
+        return inverter.handle(type: type, event: event)
     }
 
     nonisolated

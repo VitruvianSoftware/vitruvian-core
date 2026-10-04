@@ -65,3 +65,17 @@ package enum PointerTapRunLoop {
         return started!
     }()
 }
+
+/// Ends an event tap's own thread from any thread.
+///
+/// The block runs on that thread, so it is written here, outside any actor:
+/// a block written in main-actor code would check for the main thread first
+/// in Swift 6 mode, and stop the app instead of the run loop.
+package enum TapThreadRunLoop {
+    package static func stop(_ runLoop: CFRunLoop) {
+        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
+            CFRunLoopStop(runLoop)
+        }
+        CFRunLoopWakeUp(runLoop)
+    }
+}

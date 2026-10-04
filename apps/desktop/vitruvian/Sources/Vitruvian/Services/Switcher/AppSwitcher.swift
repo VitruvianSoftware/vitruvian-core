@@ -382,10 +382,7 @@ package final class AppSwitcher: ObservableObject {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
         if let runLoop = snapshot.runLoop {
-            CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
-                CFRunLoopStop(runLoop)
-            }
-            CFRunLoopWakeUp(runLoop)
+            TapThreadRunLoop.stop(runLoop)
         } else if !snapshot.threadExists {
             lifecycleLock.withLock {
                 shouldStopTapThread = false
