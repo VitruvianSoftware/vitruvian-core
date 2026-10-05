@@ -2650,6 +2650,28 @@ part of the island's own environment.
   byte for byte what they were (checked by regenerating before and after),
   and their stand-ins still apply. One mutation check names the new text.
 
+Landed (5n, the island's window): `NotchService` asks for its window
+through `NotchIslandHost` (`Services/Notch/NotchIslandHost.swift`), and its
+environment builds it.
+
+- **The protocol** is the 21 things the island asks of its window:
+  - its panel, the size it heads to, whether content departs, and Mission
+    Control's concealment;
+  - its hit tests;
+  - presenting and hiding;
+  - settling and closing;
+  - its file drop, outline, hover and activation hooks.
+
+  `NotchWindowHost` conforms as it is.
+- **`Environment.makeHost`** builds the window from the island, its
+  geometry and size. `.system` builds the `NotchWindowHost` with the views
+  the island always had. The mirror windows on other displays still build
+  their own, through `NotchMirrors`' protocol.
+- **One call spelled out:** a protocol method has no defaults, so the
+  island's one `present` now passes `hideWhenSettled: false`, the value it
+  took by default. The presentation test's stand-in window takes that
+  argument too.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

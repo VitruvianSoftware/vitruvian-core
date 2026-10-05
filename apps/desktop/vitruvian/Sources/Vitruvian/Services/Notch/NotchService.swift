@@ -76,13 +76,21 @@ package final class NotchService: ObservableObject {
     package struct Environment {
         /// The preferences the island follows.
         package var defaults: UserDefaults
+        /// Builds the window that draws the island, at its geometry and size.
+        package var makeHost: @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost
 
-        package init(defaults: UserDefaults) {
+        package init(defaults: UserDefaults,
+                     makeHost: @escaping @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost) {
             self.defaults = defaults
+            self.makeHost = makeHost
         }
 
         package static var system: Environment {
-            Environment(defaults: .standard)
+            Environment(defaults: .standard, makeHost: { island, geometry, size in
+                NotchWindowHost(content: ServiceViews.factory.notch(island), geometry: geometry, size: size,
+                                background: { ServiceViews.factory.notchBackground($0) },
+                                quickAccess: { ServiceViews.factory.notchQuickAccess(island, motion: $0, backdrop: $1) })
+            })
         }
     }
 
@@ -150,7 +158,7 @@ package final class NotchService: ObservableObject {
     @Published package private(set) var power = PowerReading()
     @Published private var musicDetailVisible = false
 
-    private var windowHost: NotchWindowHost?
+    private var windowHost: (any NotchIslandHost)?
     private var panel: NotchPanel? { windowHost?.panel }
     private var captureControlsCancel: (() -> Void)?
     private var captureControlsSubscription: AnyCancellable?
@@ -492,9 +500,12 @@ package final class NotchService: ObservableObject {
 
     /// The preferences the island follows (`Environment.defaults`).
     private let defaults: UserDefaults
+    /// Builds the island's window (`Environment.makeHost`).
+    private let makeHost: @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost
 
     package init(environment: Environment) {
         defaults = environment.defaults
+        makeHost = environment.makeHost
     }
 
     private var hiddenUntilHover: Bool {
@@ -2440,6 +2451,7 @@ package final class NotchService: ObservableObject {
                             revealFromHidden: !hiddenInFullscreen && captureControls == nil
                                 && defaults.bool(forKey: DefaultsKey.notchHideUntilHover)
                                 && defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
+                            hideWhenSettled: false,
                             usesGlass: !fullscreenCompact && usesGlassSurface)
         // The selector lives in a separate full-screen panel. A floating
         // capsule may sit below the display edge, so publish the island's
@@ -2658,9 +2670,7 @@ package final class NotchService: ObservableObject {
         // menus again at once rather than leaving the wings off until the timer.
         if !sameMenuBar { menuSpace.read() }
         if windowHost == nil {
-            windowHost = NotchWindowHost(content: ServiceViews.factory.notch(self), geometry: geometry, size: surfaceSize,
-                                        background: { ServiceViews.factory.notchBackground($0) },
-                                        quickAccess: { ServiceViews.factory.notchQuickAccess(self, motion: $0, backdrop: $1) })
+            windowHost = makeHost(self, geometry, surfaceSize)
             windowHost?.missionControlDidRestore = { [weak self] in self?.missionControlDidRestore() }
             windowHost?.setHoverHandler { [weak self] in self?.hover($0) }
             panel?.title = FeatureStrings.notch(L10n.shared.language).title

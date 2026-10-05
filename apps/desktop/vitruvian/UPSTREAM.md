@@ -1842,6 +1842,13 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/generate_sources.py` reads the island's text with that argument
     taken out, so its copies are unchanged, and `Tests/mutation_checks.py`
     names the new text in one mutation.
+- **2026-10-05**: Refactor step 5n (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` holds its window as the new
+    `NotchIslandHost` (`Services/Notch/NotchIslandHost.swift`), built by
+    `Environment.makeHost`; `.system` builds the `NotchWindowHost` as before.
+  - Its one `present` call passes `hideWhenSettled: false`, the default it
+    used, and `Tests/NotchPresentationRefreshTests.swift`'s stand-in window
+    takes that argument.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
