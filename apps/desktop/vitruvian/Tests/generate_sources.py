@@ -149,11 +149,6 @@ def main():
           + "}\nextension SwitcherActivationTests.Bridge {\n"
           + declaration("Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift",
                         "    static func frontWindow(") + "}\n")
-    write("NowPlayingOpen.swift", "import AppKit\n"
-          + "extension NowPlayingOpenContract.Application {\n"
-          + declaration("Sources/Vitruvian/Services/RadialMenu/RadialNowPlayingService.swift",
-                        "    static func open(", scope="enum RadialNowPlayingApplication {")
-          + "}\n")
     write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
           + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",

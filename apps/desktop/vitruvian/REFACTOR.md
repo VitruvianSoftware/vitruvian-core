@@ -877,6 +877,23 @@ which leaves 68.
 - **Known gap:** a second observer pair added on a repeated sync is still not
   seen by any check.
 
+Landed (4b, opening the player from the island or the radial card): one
+more generated file goes, which leaves 67.
+
+- **Injected:** `RadialNowPlayingApplication.open(_:using:)` takes an
+  `Opening`:
+  - the running player, as an `OpenablePlayer`: its policy, its hidden
+    state, unhiding, the activation handoff and both activation requests;
+  - whether it has a window on screen;
+  - where it is installed, and how an app is opened.
+
+  `system` keeps `NSRunningApplication`, the window list and the
+  workspace.
+- **Test:** the test passes recording doubles instead of shadowing the
+  AppKit types.
+- **No longer checked:** that the cooperative request names Vitruvian as its
+  source. That now sits in `system`'s one-line closure.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -1432,6 +1432,11 @@ is that notice. Add an entry for every change to upstream files.
   through an injected `System`; the tap callback hands keys to
   `observeMediaKey(type:key:)`. `Tests/FeatureCatalogTests.swift` drives it
   with doubles, and `Tests/generate_sources.py` no longer copies its methods.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/RadialMenu/RadialNowPlayingService.swift` opens the player through an
+  injected `Opening` (`open(_:using:)`); `Tests/NowPlayingOpenContract.swift`
+  passes recording doubles, and `Tests/generate_sources.py` no longer copies
+  `open`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

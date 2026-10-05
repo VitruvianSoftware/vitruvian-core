@@ -281,19 +281,82 @@ package enum RadialNowPlayingApplication {
         return icon
     }
 
+    /// A running player as `open` sees it.
+    package struct OpenablePlayer {
+        package var pid: pid_t
+        package var activationPolicy: NSApplication.ActivationPolicy
+        package var isHidden: Bool
+        package var bundleURL: URL?
+        package var unhide: () -> Void
+        /// Hands Vitruvian's activation over to the player.
+        package var yieldActivation: () -> Void
+        /// Asks the player to activate on Vitruvian's behalf; false when refused.
+        package var activateFromVitruvian: (NSApplication.ActivationOptions) -> Bool
+        package var activate: (NSApplication.ActivationOptions) -> Void
+
+        package init(pid: pid_t, activationPolicy: NSApplication.ActivationPolicy, isHidden: Bool,
+                     bundleURL: URL?, unhide: @escaping () -> Void, yieldActivation: @escaping () -> Void,
+                     activateFromVitruvian: @escaping (NSApplication.ActivationOptions) -> Bool,
+                     activate: @escaping (NSApplication.ActivationOptions) -> Void) {
+            self.pid = pid
+            self.activationPolicy = activationPolicy
+            self.isHidden = isHidden
+            self.bundleURL = bundleURL
+            self.unhide = unhide
+            self.yieldActivation = yieldActivation
+            self.activateFromVitruvian = activateFromVitruvian
+            self.activate = activate
+        }
+
+        init(_ application: NSRunningApplication) {
+            self.init(pid: application.processIdentifier, activationPolicy: application.activationPolicy,
+                      isHidden: application.isHidden, bundleURL: application.bundleURL,
+                      unhide: { application.unhide() },
+                      yieldActivation: { ActivationHandoff.yield(to: application) },
+                      activateFromVitruvian: { application.activate(from: NSRunningApplication.current, options: $0) },
+                      activate: { _ = application.activate(options: $0) })
+        }
+    }
+
+    /// What `open` reads and asks of the system. `system` is the running
+    /// applications, the window list and the workspace; tests pass doubles.
+    package struct Opening {
+        package var player: (RadialNowPlayingSnapshot) -> OpenablePlayer?
+        package var hasWindowOnScreen: (pid_t) -> Bool
+        package var installedURL: (_ bundleIdentifier: String) -> URL?
+        package var openApplication: (URL, NSWorkspace.OpenConfiguration) -> Void
+
+        package init(player: @escaping (RadialNowPlayingSnapshot) -> OpenablePlayer?,
+                     hasWindowOnScreen: @escaping (pid_t) -> Bool,
+                     installedURL: @escaping (String) -> URL?,
+                     openApplication: @escaping (URL, NSWorkspace.OpenConfiguration) -> Void) {
+            self.player = player
+            self.hasWindowOnScreen = hasWindowOnScreen
+            self.installedURL = installedURL
+            self.openApplication = openApplication
+        }
+
+        package static var system: Opening {
+            Opening(player: { RadialNowPlayingApplication.runningApplication(for: $0).map(OpenablePlayer.init) },
+                    hasWindowOnScreen: { RadialNowPlayingApplication.hasWindowOnScreen(pid: $0) },
+                    installedURL: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) },
+                    openApplication: { NSWorkspace.shared.openApplication(at: $0, configuration: $1) })
+        }
+    }
+
     /// The island and the radial card are non-activating panels, so Vitruvian
     /// rarely holds activation when one is clicked. Since macOS 14 a bare
     /// request from an inactive app is refused, and the player stayed behind.
-    package static func open(_ snapshot: RadialNowPlayingSnapshot) {
-        if let application = runningApplication(for: snapshot) {
+    package static func open(_ snapshot: RadialNowPlayingSnapshot, using opening: Opening = .system) {
+        if let application = opening.player(snapshot) {
             // A helper takes no activation; the handoff would leave Vitruvian in front.
             guard application.activationPolicy == .regular else { return }
             // Read before the unhide below: a hidden player's windows come back with it.
-            let showsNoWindow = !application.isHidden && !hasWindowOnScreen(pid: application.processIdentifier)
+            let showsNoWindow = !application.isHidden && !opening.hasWindowOnScreen(application.pid)
             if application.isHidden { application.unhide() }
-            ActivationHandoff.yield(to: application)
-            if !application.activate(from: NSRunningApplication.current, options: [.activateAllWindows]) {
-                application.activate(options: [.activateAllWindows])
+            application.yieldActivation()
+            if !application.activateFromVitruvian([.activateAllWindows]) {
+                application.activate([.activateAllWindows])
             }
             // Like a Dock click, a player that keeps playing with its window
             // closed shows one again, the way the App Switcher reopens a
@@ -303,13 +366,13 @@ package enum RadialNowPlayingApplication {
                 configuration.activates = false
                 configuration.addsToRecentItems = false
                 configuration.promptsUserIfNeeded = false
-                NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+                opening.openApplication(url, configuration)
             }
             return
         }
         guard let identifier = snapshot.appBundleIdentifier,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) else { return }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+              let url = opening.installedURL(identifier) else { return }
+        opening.openApplication(url, NSWorkspace.OpenConfiguration())
     }
 
     /// Whether the player has a window on the current Space. One on another
