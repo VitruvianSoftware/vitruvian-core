@@ -1426,6 +1426,12 @@ is that notice. Add an entry for every change to upstream files.
   and readers through an injected `Environment`, with readers behind
   `NotchAudioLevelReading`; `Tests/NotchAudioLevelTests.swift` passes its own,
   and `Tests/generate_sources.py` no longer copies the service.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Audio/MusicLaunchBlocker.swift` reads its defaults, permission,
+  clock, running players, notifications, key tap and replacement launcher
+  through an injected `System`; the tap callback hands keys to
+  `observeMediaKey(type:key:)`. `Tests/FeatureCatalogTests.swift` drives it
+  with doubles, and `Tests/generate_sources.py` no longer copies its methods.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

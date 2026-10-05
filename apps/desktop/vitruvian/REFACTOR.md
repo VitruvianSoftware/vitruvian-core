@@ -854,6 +854,29 @@ which leaves 69.
 - **Mutation suite:** its two fixtures on this file now act on the code the
   test runs.
 
+Landed (4b, the music-app launch blocker): one more generated file goes,
+which leaves 68.
+
+- **Injected:** `MusicLaunchBlocker` takes a `System`:
+  - defaults, Accessibility and the clock;
+  - the time since the last deliberate gesture, and which players run;
+  - the launch notifications, the media-key tap and the replacement app.
+
+  `system` keeps AppKit, Core Graphics and the workspace. The tap sits
+  behind `MusicLaunchKeyTap`. A launch reaches the blocker as a
+  `LaunchedApp`, and a key as a `MediaKey`.
+- **What moved:** the tap callback only reads the key and hands it to
+  `observeMediaKey(type:key:)`, and it always passes the event on. The tap
+  is listen-only, so it could not swallow a key anyway. That is why the old
+  per-key "passes the event through" check goes.
+- **Test:** the test drives the real blocker with a session of doubles
+  instead of a copy of five methods.
+- **Check added:** a did-launch never re-judges a launch its will-launch
+  let through, even after another key. A mutant without that guard passed
+  the old test.
+- **Known gap:** a second observer pair added on a repeated sync is still not
+  seen by any check.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

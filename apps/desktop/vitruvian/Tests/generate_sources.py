@@ -166,13 +166,6 @@ def main():
                         "    func commitEdits(", "    private func flushSave(", "    private func save(",
                         "    func createPad("])
           + "}\n}\n")
-    write("MusicLaunchBlockerLifecycle.swift", "import AppKit\nimport Foundation\n"
-          + "extension MusicLaunchBlockerContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration("Sources/Vitruvian/Services/Audio/MusicLaunchBlocker.swift", prefix)
-                    .replace("private ", "", 1) for prefix in [
-                        "    func syncWithPreferences(", "    private func start(", "    func stop(",
-                        "    private func handleLaunch(", "    private func handleMediaKeyEvent("])
-          + "}\n}\n")
     clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
     write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
           + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"

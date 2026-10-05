@@ -312,7 +312,6 @@ GENERATED_TEST_SOURCES = [
     "MenuPanelRecovery.swift",
     "MixerInputVolume.swift",
     "MixerOutputAdjustment.swift",
-    "MusicLaunchBlockerLifecycle.swift",
     "NotchCaptureKeyboard.swift",
     "NotchCompact.swift",
     "NotchDestinations.swift",
