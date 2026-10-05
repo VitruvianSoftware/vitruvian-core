@@ -1415,6 +1415,12 @@ is that notice. Add an entry for every change to upstream files.
   listing and its queues through an injected `Scanning`, and `snapshot(_:)` is
   `package`; `Tests/PortManagerRefreshTests.swift` passes inert ones, and
   `Tests/generate_sources.py` no longer copies the refresh.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/FanControl/FanControlLifecycle.swift` (new) holds fan control's
+  resume, preference and idle-work decisions, which
+  `Services/FanControl/FanControlService.swift` forwards to;
+  `Tests/FanControlResumeTests.swift` drives it with a recording host, and
+  `Tests/generate_sources.py` no longer copies the service's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

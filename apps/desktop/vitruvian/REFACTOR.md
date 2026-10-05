@@ -821,6 +821,23 @@ leaves 71.
   of shadowing `DispatchQueue`, `Shell`, the kill service and
   `proc_listallpids`.
 
+Landed (4b, Fan Control's resume): one more generated file goes, which
+leaves 70.
+
+- **Extracted:** `FanControlLifecycle` (new, `Services/FanControl`) holds
+  what fan control does on its own:
+  - resuming after a launch or wake;
+  - keeping or forgetting the resumed control as the preferences change;
+  - winding down idle work.
+
+  It reads the defaults it is given. `FanControlService` owns it and passes
+  in its access state, snapshot, panel state and the helper requests.
+- **Test:** the test drives the lifecycle with a recording host and a
+  defaults domain of its own instead of a copy of ten service members.
+- **Checks added:** an open panel keeps its updates running, waking with the
+  panel closed does nothing, and a control that stopped cooling is not kept.
+  Mutants of each of these passed the old test.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
