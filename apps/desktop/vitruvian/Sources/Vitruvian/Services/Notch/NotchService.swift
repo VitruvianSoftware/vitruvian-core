@@ -1017,11 +1017,10 @@ package final class NotchService: ObservableObject {
         let controls = NotchSupport.controls(in: defaults)
         let sliders = controls.filter { $0 == .volume || $0 == .brightness }.count
         let shortcuts = controls.filter { $0 != .volume && $0 != .brightness && $0 != .music }.count
-        let musicExtras = NotchLyricsSupport.isEnabled(in: defaults) || NotchQueueSupport.isEnabled(in: defaults)
         return geometry.expandedSize(module: module, detail: detail, panel: panel, detailHeight: detailHeight,
                                      shortcutCount: shortcuts,
                                      sliderCount: sliders, controlsHaveMusic: controls.contains(.music), musicHasContent: services.playback != nil,
-                                     musicHasControlsRow: AppFeature.mixer.isAvailable(in: defaults) || musicExtras,
+                                     musicHasControlsRow: NotchMusicControls(in: defaults).hasRow,
                                      musicExtraHeight: musicExtraHeight, fileMediaHeight: fileMediaHeight,
                                      systemCards: NotchSupport.systemCardCount(hasBattery: hasBattery(),
                                                                                fans: services.systemSnapshot.fanSpeeds.count, in: defaults),

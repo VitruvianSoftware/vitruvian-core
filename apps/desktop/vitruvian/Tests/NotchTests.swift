@@ -427,6 +427,9 @@ enum NotchTests {
         }
         suite.expect(short.preferredWingWidth == layout.wingRange.lowerBound,
                      "a one-word message leaves no band of empty black beside it")
+        suite.expect(layout.iconSide(stripHeight: 38) == layout.iconSize && layout.iconSide(stripHeight: 24) == 20
+                     && layout.iconSide(stripHeight: 2) == 0,
+                     "the banner's icon keeps its size where the strip has room and stays inside a short one")
         // The wing is measured with AppKit; SwiftUI draws the text. The air
         // has to cover any difference, in every script a banner can carry.
         for sample in ["done", "Your code is 482913", "会议提醒 项目评审", "🚀🎉 launch", "مرحبا بالعالم", "שלום עולם"] {

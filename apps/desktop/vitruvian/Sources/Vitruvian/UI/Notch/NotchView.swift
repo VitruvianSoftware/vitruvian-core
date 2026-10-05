@@ -252,7 +252,7 @@ package struct NotchView: View {
             timerMode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
             timerHasSession: session.hasSession,
             hasPlayback: music.playback != nil,
-            musicControlsRow: AppFeature.mixer.isAvailable || NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled(),
+            musicControlsRow: NotchMusicControls().hasRow,
             layout: service.geometry.layout)
     }
 

@@ -83,6 +83,7 @@ enum NotchCompactTests {
         scratchpad(suite)
         focus(suite)
         sizing(suite)
+        musicControls(suite)
     }
     private static func calendarRows(_ suite: TestSuite) {
         let day = Date(timeIntervalSince1970: 1_780_000_000)
@@ -304,6 +305,39 @@ enum NotchCompactTests {
         suite.expect(floating.responderChanges == 1,
                      "a queued floating focus request is discarded after the user changes hosts")
     }
+    /// The music page's row of controls, which its size and its drawing
+    /// both read from `NotchMusicControls`.
+    private static func musicControls(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-controls"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        suite.expect(!NotchMusicControls(in: defaults).hasRow, "with nothing to offer, the music page draws no row of controls")
+        defaults.set(true, forKey: DefaultsKey.notchLyricsEnabled)
+        suite.expect(!NotchMusicControls(in: defaults).hasRow, "lyrics switched on count only once the feature is available")
+        defaults.set(true, forKey: AppFeature.notchLyrics.availabilityKey)
+        // The Settings preview draws the page with the island off and Music
+        // hidden; the row the page draws is the row its size counts.
+        defaults.set(false, forKey: DefaultsKey.notchEnabled)
+        let lyrics = NotchMusicControls(in: defaults)
+        suite.expect(lyrics.hasRow && lyrics.lyrics && !lyrics.queue && !lyrics.mixer,
+                     "available lyrics give the page its row whether or not the island shows Music")
+        suite.expect(NotchMusicControls(lyricsEnabled: false, queueEnabled: false, in: defaults)
+                        == NotchMusicControls(mixer: false, lyrics: false, queue: false),
+                     "the page's own switches decide, not the stored ones")
+        defaults.set(true, forKey: AppFeature.mixer.availabilityKey)
+        suite.expect(NotchMusicControls(lyricsEnabled: false, queueEnabled: false, in: defaults).hasRow,
+                     "the mixer alone gives the page its row")
+        // A page too short for anything grows to hold what it draws.
+        func height(_ row: Bool) -> CGFloat {
+            NotchLayout.pageSize(content: CGSize(width: 300, height: 10), module: .music, detail: false, controls: [],
+                                 timerMode: .timer, timerHasSession: false, hasPlayback: false,
+                                 musicControlsRow: row, layout: .custom).height
+        }
+        suite.expect(height(true) - height(false) == NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing,
+                     "the music page's size holds exactly the row it draws")
+    }
+
     private static func sizing(_ suite: TestSuite) {
         /// A page's size with the home page's usual cards, a song playing and
         /// no timer under way.

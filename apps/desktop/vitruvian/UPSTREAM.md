@@ -1989,6 +1989,19 @@ is that notice. Add an entry for every change to upstream files.
     runs them. `Tests/KeepAwakeCatalogTests.swift` is gone with its
     registration in `Tests/MetricsTests.swift`; its checks are among the new
     ones.
+- **2026-10-05**: Refactor step 5y (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/Notch/NotchService.swift`,
+    `Sources/Vitruvian/UI/Notch/NotchView.swift` and
+    `Sources/Vitruvian/UI/Notch/NotchMusicView.swift` read the music page's
+    row of controls from the new `NotchMusicControls`
+    (`Core/Notch/NotchMusicControls.swift`). Lyrics and the queue count from
+    their switches and features in the size as in the drawing, so the
+    Settings preview no longer squeezes the player.
+  - `Sources/Vitruvian/Core/Notch/NotchNotificationSupport.swift` adds
+    `NotchNotificationBannerLayout.iconSide(stripHeight:)`, which
+    `Sources/Vitruvian/UI/Notch/NotchNoticeView.swift` draws the banner's
+    icon with.
+  - `Tests/NotchCompactTests.swift` and `Tests/NotchTests.swift` check both.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

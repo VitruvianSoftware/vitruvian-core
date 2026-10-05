@@ -202,6 +202,15 @@ package enum NotchNotificationBannerLayout {
     nonisolated(unsafe) package static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
     nonisolated(unsafe) package static let messageFont = NSFont.systemFont(ofSize: 11)
 
+    /// The icon's side on a strip `stripHeight` tall: its full size where
+    /// the strip has room, and clear of both edges where it does not.
+    package static func iconSide(stripHeight: CGFloat) -> CGFloat {
+        min(iconSize, max(0, stripHeight - 4))
+    }
+
+    /// A notice is measured before it knows its display, so the wing
+    /// reserves the icon at its largest `iconSide`; on a shorter strip the
+    /// title takes the slack.
     package static func wing(for content: NotchNotificationContent) -> CGFloat {
         func width(_ text: String, _ font: NSFont) -> CGFloat {
             // A line or two is all the banner shows, and the widest wing is

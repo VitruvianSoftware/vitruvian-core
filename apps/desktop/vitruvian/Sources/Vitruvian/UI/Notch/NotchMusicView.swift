@@ -24,9 +24,13 @@ package struct NotchMusicView: View {
     /// belong to this track. Neutral covers keep the panel white.
     private var accent: Color { service.artworkTint?.color ?? .white }
     private var halo: Color { service.artworkTint?.color ?? .clear }
-    private var showsLyrics: Bool { lyricsEnabled && AppFeature.notchLyrics.isAvailable }
-    private var showsQueue: Bool { queueEnabled && AppFeature.notchQueue.isAvailable }
-    private var hasControlsRow: Bool { AppFeature.mixer.isAvailable || showsLyrics || showsQueue }
+    /// What the page offers below the player, as its size counts it.
+    private var controls: NotchMusicControls {
+        NotchMusicControls(lyricsEnabled: lyricsEnabled, queueEnabled: queueEnabled)
+    }
+    private var showsLyrics: Bool { controls.lyrics }
+    private var showsQueue: Bool { controls.queue }
+    private var hasControlsRow: Bool { controls.hasRow }
     private var openExtra: MusicExtra? {
         guard service.playback != nil else { return nil }
         switch extra {

@@ -3087,6 +3087,29 @@ controls the island hosts:
   pointer is. `NotchCaptureControlsTests` still drives the controls through a
   real island.
 
+Landed (5y, two layout rules that drifted): a survey of the island's size
+math found 21 numbers or rules that its sizing and its views each spelled
+out. Nineteen still agree. Two did not:
+
+- **The music page's row of controls.** The size counted lyrics and the
+  queue only while the island was on and showing Music. The page drew their
+  buttons from the switches alone. The Settings preview shows the page in
+  both of those states, so its player was squeezed under a row the size had
+  left out. `NotchMusicControls` (`Core/Notch/NotchMusicControls.swift`)
+  now decides the row for `NotchService`, `NotchView` and `NotchMusicView`
+  alike.
+- **The banner's icon.** It was measured at 22pt and drawn at
+  `min(22, strip - 4)`. `NotchNotificationBannerLayout.iconSide(stripHeight:)`
+  is now the one rule. A notice is measured before it knows its display, so
+  the wing still reserves the largest side, which the comment now says.
+- **Tested:** `NotchCompactTests` checks that the row follows the switches
+  and features but not the island's own state, and that the page's size
+  holds exactly that row. `NotchTests` checks the icon's side.
+- **Left:** the 19 agreeing duplicates. The riskiest are the compact
+  reading inset and font (9 copies), the music page arithmetic, the controls
+  page split, and the notice inset (two constants). They move a few at a
+  time, each to a named rule beside its kin.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
