@@ -370,6 +370,23 @@ package enum DockPreviewSupport {
         max(160, tileSize * 1.5 + 60)
     }
 
+    /// Whether a pointer, in AppKit's global coordinates, is inside that band
+    /// of the display it is on, or of `mainFrame` when it is on none. Without
+    /// the Dock's preferences or a display every point counts.
+    package static func isNearDock(_ point: CGPoint, screenFrames: [CGRect], mainFrame: CGRect?,
+                                   preferences: DockPreviewPreferences?) -> Bool {
+        guard let preferences else { return true }
+        guard let frame = screenFrames.first(where: { NSMouseInRect(point, $0, false) }) ?? mainFrame else {
+            return true
+        }
+        let band = dockProximityBand(tileSize: preferences.hoverTileSize)
+        switch preferences.orientation {
+        case .bottom: return point.y <= frame.minY + band
+        case .left: return point.x <= frame.minX + band
+        case .right: return point.x >= frame.maxX - band
+        }
+    }
+
     /// Bounds expensive Accessibility hit testing independently of mouse
     /// polling rate while remaining much faster than the hover delay.
     package static let mouseMoveSampleInterval: TimeInterval = 1.0 / 60

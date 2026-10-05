@@ -196,6 +196,15 @@ package enum ScreenshotSupport {
         pointerOnDisplay && !selectionInProgress && !capturePending
     }
 
+    /// The same, for a pointer in AppKit's global coordinates and the frame
+    /// of the display the overlay covers: its top row counts, the row below
+    /// it belongs to the display underneath.
+    package static func captureGuideIsVisible(pointer: CGPoint, displayFrame: CGRect,
+                                              selectionInProgress: Bool, capturePending: Bool) -> Bool {
+        captureGuideIsVisible(pointerOnDisplay: NSMouseInRect(pointer, displayFrame, false),
+                              selectionInProgress: selectionInProgress, capturePending: capturePending)
+    }
+
     package static func fullScreenCaptureControlIsAvailable(selectedTool: ScreenCaptureTool?,
                                                     standaloneScreenshot: Bool,
                                                     requiresDraggedRegion: Bool,

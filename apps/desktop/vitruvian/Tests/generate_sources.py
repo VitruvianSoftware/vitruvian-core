@@ -457,18 +457,6 @@ def main():
           + declaration(selection, "    private static func matchesShortcutKey(")
           + declaration(selection, "    private func installKeyMonitor()")
           + "}\n}\n")
-    hop = "Sources/Vitruvian/Services/Switcher/SpaceHop.swift"
-    write("PointerOnDisplay.swift", "import AppKit\n"
-          + "extension PointerOnDisplayContract.Bridge {\n"
-          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
-          + "}\nextension PointerOnDisplayContract.Hop {\n"
-          + "".join(declaration(hop, prefix).replace("private ", "", 1)
-                    for prefix in ["    private enum TravelOutcome {", "    private func stepWithSpaceShortcut()"])
-          + "}\nextension PointerOnDisplayContract.Overlay {\n"
-          + declaration(selection, "    func refreshGuideVisibility()")
-          + "}\nextension PointerOnDisplayContract.Dock {\n"
-          + declaration(dock, "    private func isNearDock(").replace("private func", "func", 1)
-          + "}\n")
 
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"

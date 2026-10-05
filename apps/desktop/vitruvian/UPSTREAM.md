@@ -1688,6 +1688,13 @@ is that notice. Add an entry for every change to upstream files.
   drives both, `Tests/generate_sources.py` no longer copies them, and two
   emoji fixtures in `Tests/mutation_checks.py` follow the code to the
   recorder.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): whether the pointer
+  is on a display moves into pure functions in `Core/Switcher/SpaceHopSupport.swift`,
+  `Core/QuickTools/ScreenshotSupport.swift` and `Core/DockPreview/DockPreviewSupport.swift`,
+  which `Services/Switcher/SpaceHop.swift`, `Services/QuickTools/ScreenshotSelectionController.swift`
+  and `Services/DockPreview/DockPreviewService.swift` call.
+  `Tests/PointerOnDisplayTests.swift` calls them, and `Tests/generate_sources.py`
+  no longer copies the three owners.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

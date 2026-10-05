@@ -1291,9 +1291,9 @@ private final class ScreenshotOverlayView: NSView {
             guideHost.isHidden = true
             return
         }
-        let global = controller?.currentPointerLocation ?? NSEvent.mouseLocation
         guideHost.isHidden = !ScreenshotSupport.captureGuideIsVisible(
-            pointerOnDisplay: NSMouseInRect(global, panel.screenFrame, false),
+            pointer: controller?.currentPointerLocation ?? NSEvent.mouseLocation,
+            displayFrame: panel.screenFrame,
             selectionInProgress: controller?.selectionInProgress ?? true,
             capturePending: isCapturePending)
     }

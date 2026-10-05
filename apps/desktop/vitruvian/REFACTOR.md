@@ -1912,6 +1912,37 @@ generated file goes, which leaves 21.
   learned search, which the emoji parse, the memory and the habit keys
   each do again for a one-line field.
 
+Landed (4b, the pointer's display): one more generated file goes, which
+leaves 20.
+
+- **Moved to support:** three owners decided whether the pointer is on a
+  display, by AppKit's rule for the top and bottom rows. Each decision is
+  now a pure function that the owner calls:
+  - `SpaceHopSupport.warpTarget`, for where a Space hop puts the pointer;
+  - `ScreenshotSupport.captureGuideIsVisible(pointer:displayFrame:…)`, for
+    the capture guide;
+  - `DockPreviewSupport.isNearDock`, for the Dock's strip.
+
+  `SpaceHop`, the selection overlay and `DockPreviewService` keep reading
+  the screens and the pointer, and pass them in.
+- **Test:** the pointer test calls the three functions with the same
+  displays. Before, it compiled copies of the hop's step, the overlay's
+  guide refresh and the Dock check, with stand-ins for each type they
+  read. New checks:
+  - the guide hides during a selection or a pending capture;
+  - a display without a frame is not warped to, and its middle is
+    measured from the top;
+  - a pointer on no display is measured against the main display;
+  - the strip's own top row counts and the row above it does not;
+  - a magnifying Dock's strip is as deep as its largest icon;
+  - without preferences or a display every point counts.
+- **Verification:** a Linux Swift 6.4 model of the three functions runs
+  the test, 48 checks, and 18 mutants. One survives, equivalent: swapping
+  the selection and pending flags, which the guide treats alike.
+
+  The press and the warp themselves stay with `SpaceHop`, which macOS CI
+  builds.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

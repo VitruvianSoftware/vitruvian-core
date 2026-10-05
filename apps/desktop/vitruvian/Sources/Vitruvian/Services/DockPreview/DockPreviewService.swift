@@ -582,15 +582,8 @@ package final class DockPreviewService: ObservableObject {
     /// `dockHit` Accessibility call is worth making. Errs toward `true` when the
     /// Dock geometry is unknown so detection never silently stops working.
     private func isNearDock(_ point: CGPoint) -> Bool {
-        guard let preferences = cachedPreferences else { return true }
-        let screen = NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) } ?? NSScreen.main
-        guard let frame = screen?.frame else { return true }
-        let band = DockPreviewSupport.dockProximityBand(tileSize: preferences.hoverTileSize)
-        switch preferences.orientation {
-        case .bottom: return point.y <= frame.minY + band
-        case .left: return point.x <= frame.minX + band
-        case .right: return point.x >= frame.maxX - band
-        }
+        DockPreviewSupport.isNearDock(point, screenFrames: NSScreen.screens.map(\.frame),
+                                      mainFrame: NSScreen.main?.frame, preferences: cachedPreferences)
     }
 
     /// Where the cursor stands relative to the live session. The corridor only

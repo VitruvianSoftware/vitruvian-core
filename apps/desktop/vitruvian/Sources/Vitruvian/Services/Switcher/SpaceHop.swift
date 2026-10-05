@@ -202,16 +202,14 @@ package final class SpaceHop {
         if topology.displays.count > 1,
            let targetDisplay = topology.displays.first(where: { $0.spaces.contains(targetSpace) }),
            let displayID = targetDisplay.displayID {
-            let bounds = CGDisplayBounds(displayID)
-            let currentMouse = NSEvent.mouseLocation
             let screenFrame = NSScreen.screens.first(where: {
                 (($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value) == displayID
             })?.frame
-            if let screenFrame, !NSMouseInRect(currentMouse, screenFrame, false) {
+            if let targetPoint = SpaceHopSupport.warpTarget(pointer: NSEvent.mouseLocation, displayFrame: screenFrame,
+                                                            displayBounds: CGDisplayBounds(displayID)) {
                 if originalCursorLocation == nil {
                     originalCursorLocation = CGEvent(source: nil)?.location
                 }
-                let targetPoint = CGPoint(x: bounds.midX, y: bounds.midY)
                 warpedCursorLocation = targetPoint
                 CGWarpMouseCursorPosition(targetPoint)
             }
