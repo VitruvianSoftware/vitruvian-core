@@ -1879,6 +1879,20 @@ is that notice. Add an entry for every change to upstream files.
     through the defaults it was built with, and asks `NotchIslandServices`
     for the modal window, the status item, the Accessibility Keyboard, the
     popover, settings and the update preview.
+- **2026-10-05**: Refactor step 5u (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` asks its window for the keyboard
+    through `NotchIslandHost` (`hasKeyboard`, `takeKeyboard()`,
+    `releaseKeyboard()`) and installs the open island's click and key
+    monitors through `Environment.Parts.openEvents`, the new
+    `NotchOpenEvents` (`Services/Notch/NotchOpenEvents.swift`); `.system`
+    passes the panel's own calls and `NSEvent`'s monitors.
+  - `Tests/generate_sources.py` maps the keyboard calls back when it copies
+    the island.
+- **2026-10-05**: Refactor step 4b, the island's destinations (`REFACTOR.md`):
+  - `Tests/NotchDestinationTests.swift` drives a real island built by the
+    new `Tests/NotchIslandFixture.swift`, not compiled copies of its
+    opening, step-back and session members.
+  - `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -2387,6 +2387,41 @@ is the registry kept on purpose.
   helper. SwiftUI does not build on Linux, so the strip and the suite are
   proven on macOS CI.
 
+Landed (4b, the island's destinations): one more generated file goes,
+which leaves 6. Of those, five are copies and `LocalizationCatalog.swift`
+is the registry kept on purpose.
+
+- **`NotchIslandFixture`** (new, `Tests/`) builds a real `NotchService`
+  over test doubles:
+  - a window host that draws nothing, with a real but transparent panel;
+  - services that record what the island asks of them;
+  - one notched built-in display;
+  - notification centers of its own, so the session changes the test
+    announces are the only ones the island hears;
+  - timers that wait until the test runs them, and open-island monitors
+    whose handlers the test holds.
+- **Tests:** `NotchDestinationContract` drives that island. Before, it
+  compiled copies of 14 island members and two metric mappings over a
+  hand-written state class. Every
+  check is kept, and each now reaches the island the way the app does:
+  - Escape arrives as the open island's own key, not a call to the
+    private `stepBack()`.
+  - Lock, sleep, the console and the screen saver arrive as the
+    notifications the session tracker hears.
+  - An activity under way, a banner and system feedback come from the
+    services' readings and the island's own `show(_:)`.
+  - A closing island is `collapse()`, or capture controls where the check
+    is about them.
+  - Teardowns and returns are read from what the island asks of its
+    services, in order.
+- **Changed checks:**
+  - During a capture, Escape now never reaches the island: the controls
+    take its keys. The check says so, and that closing still leaves the
+    island as it is.
+  - The held banner is held for real, by the pointer resting on it.
+- **Verification:** the suite runs on macOS CI; AppKit does not build on
+  Linux.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
@@ -2783,6 +2818,23 @@ Landed (5t, the last preference reads and the app around the island):
 - The generator maps them back for its copies, which stay as they were.
 - **Left:** the mirror windows still build their own `NotchWindowHost`;
   they appear only with a copy on every display.
+
+Landed (5u, the keyboard and the open island's monitors): the last two
+things a test could not stand in for.
+
+- **The keyboard:** the island asks its window for it through
+  `NotchIslandHost`: `hasKeyboard`, `takeKeyboard()` and
+  `releaseKeyboard()`. `NotchWindowHost` answers from its panel, as the
+  island did. A test process cannot make a real window key, so a test's
+  host decides.
+- **The open island's monitors:** the click in another app that closes it,
+  and this app's clicks and keys that it takes, come from
+  `Environment.Parts.openEvents`, a `NotchOpenEvents`
+  (`Services/Notch/NotchOpenEvents.swift`). `.system` installs the same
+  `NSEvent` monitors. A test's island hands its handlers to the test, which
+  can then press Escape as the island's own key.
+- The generator maps the keyboard calls back for its copies, which stay as
+  they were.
 
 ## Step 6: typed preferences and explicit concurrency (in progress)
 

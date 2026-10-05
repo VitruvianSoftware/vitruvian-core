@@ -296,7 +296,6 @@ GENERATED_TEST_SOURCES = [
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
     "NotchCompact.swift",
-    "NotchDestinations.swift",
     "NotchHover.swift",
     "NotchMusicVisibility.swift",
     "NotchPresentationRefresh.swift",

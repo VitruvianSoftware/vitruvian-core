@@ -35,6 +35,10 @@ _NOTCH_DEFAULTS = [
     (re.compile(r"(?<![\w.])(?:self\.)?pointer\(\)"), "NSEvent.mouseLocation"),
     (re.compile(r"(?<![\w.])reducesMotion\(\)"), "NSWorkspace.shared.accessibilityDisplayShouldReduceMotion"),
     (re.compile(r"(?<![\w.])schedule\((.+), work\)"), r"DispatchQueue.main.asyncAfter(deadline: .now() + \1, execute: work)"),
+    # The island asks its window for the keyboard (`NotchIslandHost`).
+    (re.compile(r"windowHost\?\.takeKeyboard\(\)"), "panel?.makeKey()"),
+    (re.compile(r"windowHost\?\.releaseKeyboard\(\)"), "panel?.resignKey()"),
+    (re.compile(r"windowHost\?\.hasKeyboard"), "panel?.isKeyWindow"),
 ]
 # The services the island calls (`NotchIslandServices`), mapped back to the
 # shared instances its copies stand in for.
@@ -169,10 +173,6 @@ def write(name, text):
         path.write_text(text)
 
 
-def availability_declaration(path, prefix):
-    return declaration(path, prefix).replace(".feature.isAvailable", ".feature.isAvailable(in: ReviewDefaults.current)")
-
-
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
@@ -300,44 +300,6 @@ def main():
           + declaration(canvas, "    func setMouseEventsIgnored(")
           + declaration(canvas, "    private func restoreFromMissionControl(").replace("private func", "func", 1)
           + "}\n")
-    renderer = "Sources/Vitruvian/Services/MenuBar/MenuBarRenderer.swift"
-    metric_cases = "\n".join(line for line in declaration("Sources/Vitruvian/Services/SystemMonitor/MetricDetailKind.swift", "enum MetricDetailKind:").splitlines()
-                             if line.startswith("    case "))
-    menu_metric_cases = "\n".join(line for line in declaration(renderer, "enum MenuBarMetric:").splitlines()
-                                  if line.startswith("    case "))
-    write("NotchDestinations.swift", "import Foundation\n\nextension NotchDestinationContract {\n"
-          + "enum MetricDetailKind: String {\n" + metric_cases + "\n}\n"
-          + "enum MenuBarMetric: String, CaseIterable {\n" + menu_metric_cases + "\n"
-          + declaration(renderer, "    var feature: AppFeature")
-          + declaration("Sources/Vitruvian/Services/SystemMonitor/MetricDetailKind.swift", "    var detailKind:") + "}\n"
-          + "final class Service: State {\n"
-          + "struct Collaborators { var feedbackRoutingDidChange: () -> Void = {\n"
-          + "if AppFeature.mixer.isAvailable(in: ReviewDefaults.current) { PreciseVolumeRollerService.shared.syncWithPreferences() }\n"
-          + "if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }\n"
-          + "} }\nstatic var collaborators = Collaborators()\n"
-          + "func syncWithPreferences() { presentationSyncs += 1; refreshModules(); syncVisibleConsumers(); NotchTimerService.shared.syncWithPreferences() }\n"
-          + availability_declaration(notch, "    private func metricIsAvailable(")
-          + declaration(notch, "    private func refreshModules(")
-              .replace("NotchSupport.modules()", "NotchSupport.modules(in: ReviewDefaults.current)")
-          + declaration(notch, "    func open(_ module:")
-              .replace("NotchSupport.isEnabled()", "NotchSupport.isEnabled(in: ReviewDefaults.current)")
-          + "func removeHoverExitMonitors() {}\n"
-          + declaration(notch, "    func showScratchpad(")
-              .replace("NotchSupport.routesScratchpad()", "NotchSupport.routesScratchpad(in: ReviewDefaults.current)")
-          + declaration(notch, "    func toggleSections()")
-          + declaration(notch, "    func goBack()")
-          + declaration(notch, "    private func stepBack()").replace("private func", "func", 1)
-          + declaration(notch, "    func setPageLayer(")
-          + declaration(notch, "    func openAppPanel(")
-          + declaration(notch, "    func showMetric(")
-          + declaration(notch, "    var reopeningDestination:")
-              .replace("UserDefaults.standard", "ReviewDefaults.current!")
-          + declaration(notch, "    func openActivity(")
-              .replace("UserDefaults.standard", "ReviewDefaults.current!")
-          + declaration(notch, "    var reopeningModule:")
-          + declaration(notch, "    private func updateSession(").replace("private func", "func", 1)
-              .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
-          + "}\n}\n")
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):
