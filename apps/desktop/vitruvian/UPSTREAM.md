@@ -1795,6 +1795,14 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Notch/NotchFileDrop.swift`. `canAcceptFileDrop` forwards.
   - `Tests/ShelfDropRoutingTests.swift` drives it, and
     `Tests/generate_sources.py` no longer copies the island's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - Where a shelf drop goes moves from `Services/Shelf/ShelfService.swift`
+    to the new `Services/Shelf/ShelfDropIntake.swift`. `acceptDrop`,
+    `accept(draggingInfo:)` and `merge(draggingInfo:into:)` forward to it.
+  - The shelf's `fileURLs(from:)` reader moves to `ShelfPasteboardSupport`
+    in `Core/Shelf/ShelfSupport.swift`, and `ShelfService` forwards to it.
+  - `Tests/ShelfDropRoutingTests.swift` drives the intake, and
+    `Tests/generate_sources.py` no longer copies the shelf's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

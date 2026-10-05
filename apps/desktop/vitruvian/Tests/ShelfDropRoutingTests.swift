@@ -9,7 +9,8 @@ import VitruvianUI
 
 /// Production destination methods run against controlled delivery results.
 /// Native transport and payload integrity have separate transfer tests. The
-/// island's canvas is the module's own `NotchCanvasDrop`.
+/// island's canvas is the module's own `NotchCanvasDrop`, and the shelf takes
+/// drops through the module's own `ShelfDropIntake`.
 enum ShelfDropRoutingContract {
     enum AppFeature {
         static var shelf = Feature()
@@ -30,30 +31,37 @@ enum ShelfDropRoutingContract {
             func bool(forKey key: String) -> Bool { enabled }
         }
     }
-    final class Window {}
-    struct NSDraggingInfo {
-        let draggingPasteboard: NSPasteboard
-        let draggingDestinationWindow: Window?
-    }
-    class ShelfState {
-        var dockedPanel = Window()
+    /// The shelf, holding the module's own `ShelfDropIntake` wired the way
+    /// `ShelfService` wires it, over scripted deliveries.
+    final class ShelfService {
+        static var shared = ShelfService()
+        let dockedPanel = NSObject()
         var dockCompletions = 0
-        var promises: [Int] = []
-        var ordinaryItems: [String] = []
+        /// How many files the pasteboard promises.
+        var promises = 0
         var accepts = true
         var ordinaryAccepts = 0
         var promisedAccepts = 0
-        var deliveredItems: [String] = []
-        func filePromiseReceivers(from board: NSPasteboard) -> [Int] { promises }
-        func nonPromisedItems(from board: NSPasteboard) -> [String] { ordinaryItems }
-        func accept(pasteboard: NSPasteboard) -> Bool { ordinaryAccepts += 1; return accepts }
-        func beginPromisedFileReceive(_ receivers: [Int], additions: [String], mergeInto target: UUID?) -> Bool {
-            promisedAccepts += 1
-            deliveredItems = additions
-            return accepts
-        }
-        func dockDidAccept() { dockCompletions += 1 }
-        init() {}
+        /// What the last promised delivery was handed.
+        var delivered: (receivers: Int, pasteboard: NSPasteboard)?
+
+        lazy var intake = ShelfDropIntake(
+            enabled: { AppFeature.shelf.isAvailable && UserDefaults.standard.enabled },
+            promises: { [unowned self] _ in (0..<self.promises).map { _ in NSFilePromiseReceiver() } },
+            receive: { [unowned self] receivers, pasteboard, _ in
+                self.promisedAccepts += 1
+                self.delivered = (receivers.count, pasteboard)
+                return self.accepts
+            },
+            add: { [unowned self] _, _ in
+                self.ordinaryAccepts += 1
+                return self.accepts
+            },
+            dock: { [unowned self] in self.dockedPanel },
+            dockDidAccept: { [unowned self] in self.dockCompletions += 1 })
+
+        func acceptDrop(pasteboard: NSPasteboard) -> Bool { intake.accept(pasteboard) }
+        func fileURLs(from pasteboard: NSPasteboard) -> [URL] { ShelfPasteboardSupport.fileURLs(from: pasteboard) }
     }
     /// The island, holding the module's own `NotchFileDrop` wired the way
     /// `NotchService` wires it, to this contract's shelf and media tools. It
@@ -141,8 +149,7 @@ enum ShelfDropRoutingTests {
                 Context.UserDefaults.standard.enabled = true
                 Context.ShelfService.shared = Context.ShelfService()
                 let shelf = Context.ShelfService.shared
-                shelf.promises = promised ? [1, 2] : []
-                shelf.ordinaryItems = ["file", "note"]
+                shelf.promises = promised ? 2 : 0
                 shelf.accepts = accepted
                 let notch = Context.Notch()
                 let canvas = NotchCanvasDrop()
@@ -160,16 +167,17 @@ enum ShelfDropRoutingTests {
                 suite.expect(shelf.promisedAccepts == (promised ? 1 : 0)
                        && shelf.ordinaryAccepts == (promised ? 0 : 1),
                        "promised attachments reach native delivery instead of their fallback text")
-                suite.expect(!promised || shelf.deliveredItems == ["file", "note"],
-                       "ordinary file and note companions remain attached to a promised delivery")
+                suite.expect(!promised || (shelf.delivered?.receivers == 2 && shelf.delivered?.pasteboard === board),
+                       "a promised delivery gets every promise and the whole drop, so plain companions stay attached")
                 suite.expect(notch.opened == (accepted ? [.files] : [])
                        && notch.heldDrag == !accepted && notch.dragPlaceholder == !accepted,
                        "only accepted deliveries open files and release the island placeholder")
                 suite.expect(!canvas.finish(board), "one gesture cannot deliver twice")
 
-                let dockDrop = Context.NSDraggingInfo(draggingPasteboard: board,
-                                                     draggingDestinationWindow: shelf.dockedPanel)
-                suite.expect(shelf.accept(draggingInfo: dockDrop) == accepted
+                suite.expect(shelf.intake.accept(board, destination: NSObject()) == accepted
+                       && shelf.dockCompletions == 0,
+                       "a drop into another window leaves the dock alone")
+                suite.expect(shelf.intake.accept(board, destination: shelf.dockedPanel) == accepted
                        && shelf.dockCompletions == (accepted ? 1 : 0),
                        "the separate dock keeps its completion behavior through the shared receiver")
             }
@@ -179,7 +187,7 @@ enum ShelfDropRoutingTests {
             Context.UserDefaults.standard.enabled = true
             Context.ShelfService.shared = Context.ShelfService()
             let shelf = Context.ShelfService.shared
-            shelf.promises = [1]
+            shelf.promises = 1
             let notch = Context.Notch()
             let canvas = NotchCanvasDrop()
             canvas.actions = NotchFileDropActions(

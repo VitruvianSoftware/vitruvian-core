@@ -84,7 +84,6 @@ def main():
               "    private func closePopoverNow("])
           + "var popoverAnchor: PanelAnchor?\nvar lastGoodPanelAnchor: PanelAnchor?\n"
           + "}\n}\n")
-    shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
@@ -231,12 +230,7 @@ def main():
               .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
           + "}\n}\n")
     write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
-          + "final class ShelfService: ShelfState {\nstatic var shared = ShelfService()\n"
-          + declaration(shelf, "    func acceptDrop(pasteboard:")
-          + declaration(shelf, "    func accept(draggingInfo:")
-          + declaration(shelf, "    func fileURLs(from")
-          + declaration(shelf, "    private func unique(")
-          + "}\nfinal class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
+          + "final class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var offersMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")

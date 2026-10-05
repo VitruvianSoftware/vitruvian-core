@@ -2295,6 +2295,36 @@ members, so 9 remain.
   scripted island against stand-ins, and runs the revoked-destination
   checks. The suite itself runs on macOS CI.
 
+Landed (4b, the shelf's drop intake): the shelf-drop contract stops
+copying the shelf. Its generated file stays for the file-tools members,
+which the next slice takes, so 9 remain.
+
+- **`ShelfDropIntake`** (new, `Services/Shelf/`) is where a drop on the
+  shelf goes:
+  - nowhere while the shelf is unavailable or switched off;
+  - promised files to native delivery, handed the whole drop so the plain
+    items dropped with them stay attached;
+  - anything else read from the pasteboard now, onto the shelf or merged
+    into an item;
+  - a drop into the docked shelf's window completes the dock.
+  - `ShelfService` builds one over its own delivery, reading and dock
+    members. `acceptDrop`, `accept(draggingInfo:)` and
+    `merge(draggingInfo:into:)` forward to it, so the merge path shares
+    the rule it used to repeat.
+- **`ShelfPasteboardSupport.fileURLs(from:)`** is the file reader that was a
+  `ShelfService` method. It reads no shelf state. `ShelfService.fileURLs`
+  forwards to it.
+- **Tests:** `ShelfDropRoutingContract.ShelfService` is a scripted shelf
+  that holds the module's own intake. Before, the suite compiled copies of
+  four shelf members. Two checks change:
+  - the companion check now asks that a promised delivery gets every
+    promise and the whole drop, since gathering the companions stays in
+    `ShelfService`;
+  - a new check asks that a drop into another window leaves the dock alone.
+- **Verification:** a Linux Swift 6.4 model type-checks the intake, the
+  shelf's wiring of it and the scripted shelf against stand-ins, and runs
+  the routing and dock checks. The suite itself runs on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

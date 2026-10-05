@@ -1439,31 +1439,33 @@ package final class ShelfService: ObservableObject {
     /// Native destinations call this synchronously from performDragOperation,
     /// while the sender can still fulfill legacy file promises.
     package func acceptDrop(pasteboard: NSPasteboard) -> Bool {
-        guard AppFeature.shelf.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return false }
-        let receivers = filePromiseReceivers(from: pasteboard)
-        return receivers.isEmpty
-            ? accept(pasteboard: pasteboard)
-            : beginPromisedFileReceive(receivers, additions: nonPromisedItems(from: pasteboard), mergeInto: nil)
+        intake.accept(pasteboard)
     }
 
     package func accept(draggingInfo: NSDraggingInfo) -> Bool {
-        let accepted = acceptDrop(pasteboard: draggingInfo.draggingPasteboard)
-        if accepted, draggingInfo.draggingDestinationWindow === dockedPanel { dockDidAccept() }
-        return accepted
+        intake.accept(draggingInfo.draggingPasteboard, destination: draggingInfo.draggingDestinationWindow)
     }
 
     package func merge(draggingInfo: NSDraggingInfo, into targetID: UUID) -> Bool {
-        guard AppFeature.shelf.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return false }
-        let pasteboard = draggingInfo.draggingPasteboard
-        let receivers = filePromiseReceivers(from: pasteboard)
-        let accepted = receivers.isEmpty
-            ? mergePasteboard(pasteboard, into: targetID)
-            : beginPromisedFileReceive(receivers, additions: nonPromisedItems(from: pasteboard), mergeInto: targetID)
-        if accepted, draggingInfo.draggingDestinationWindow === dockedPanel { dockDidAccept() }
-        return accepted
+        intake.accept(draggingInfo.draggingPasteboard, into: targetID,
+                      destination: draggingInfo.draggingDestinationWindow)
     }
+
+    /// Where drops go (`ShelfDropIntake`).
+    private lazy var intake = ShelfDropIntake(
+        enabled: { AppFeature.shelf.isAvailable && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) },
+        promises: { [weak self] in self?.filePromiseReceivers(from: $0) ?? [] },
+        receive: { [weak self] receivers, pasteboard, target in
+            guard let self else { return false }
+            return self.beginPromisedFileReceive(receivers, additions: self.nonPromisedItems(from: pasteboard),
+                                                 mergeInto: target)
+        },
+        add: { [weak self] pasteboard, target in
+            guard let self else { return false }
+            return target.map { self.mergePasteboard(pasteboard, into: $0) } ?? self.accept(pasteboard: pasteboard)
+        },
+        dock: { [weak self] in self?.dockedPanel },
+        dockDidAccept: { [weak self] in self?.dockDidAccept() })
 
     private func filePromiseReceivers(from pasteboard: NSPasteboard) -> [NSFilePromiseReceiver] {
         pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil)
@@ -1850,16 +1852,7 @@ package final class ShelfService: ObservableObject {
     }
 
     package func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
-        let fileOptions: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: fileOptions) as? [NSURL],
-           !urls.isEmpty {
-            return unique(urls.map { $0 as URL }.filter(\.isFileURL))
-        }
-        if let paths = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String],
-           !paths.isEmpty {
-            return unique(paths.map { URL(fileURLWithPath: $0) })
-        }
-        return []
+        ShelfPasteboardSupport.fileURLs(from: pasteboard)
     }
 
     private func pasteboardCanCreateItem(_ pasteboard: NSPasteboard) -> Bool {
@@ -1914,11 +1907,6 @@ package final class ShelfService: ObservableObject {
     private func pasteboardTypeIsGIF(_ type: NSPasteboard.PasteboardType) -> Bool {
         type.rawValue == UTType.gif.identifier
             || UTType(type.rawValue)?.conforms(to: .gif) == true
-    }
-
-    private func unique(_ urls: [URL]) -> [URL] {
-        var seen = Set<String>()
-        return urls.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     private func canMergeInternalDrag(into targetID: UUID) -> Bool {
