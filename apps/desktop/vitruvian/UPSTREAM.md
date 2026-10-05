@@ -1442,6 +1442,12 @@ is that notice. Add an entry for every change to upstream files.
   an injected `AdminInstall`; `Tests/UpdateAdminInstallTests.swift` passes
   doubles to its own service, and `Tests/generate_sources.py` no longer copies
   `launchAdminInstaller`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Media/MediaPanelModal.swift` runs dialogs through
+  `run(_:host:completion:)` with an injected `Dialog` and `Host`, and the island
+  window behind `IslandWindowing`; `Tests/MediaDialogHostTests.swift` drives it
+  with doubles, and `Tests/generate_sources.py` no longer copies
+  `runPanelModal`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

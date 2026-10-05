@@ -690,10 +690,6 @@ def main():
           + "}\nfinal class FileView: HeightState {\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchFilesView.swift", "    private func mediaHeightChanged(").replace("private func", "func", 1)
           + "}\n}\n")
-    write("MediaDialogHost.swift", "import AppKit\n\nextension MediaDialogHostContract {\nenum Dialogs {\n"
-          + "static var panelModalActive = false\n"
-          + declaration("Sources/Vitruvian/Services/Media/MediaPanelModal.swift", "    static func runPanelModal(")
-          + "}\n}\n")
     write("RecorderExportChip.swift", "import AppKit\nimport SwiftUI\n\nextension RecorderExportChipTests {\n"
           + "struct Chip: View {\n@ObservedObject var model: Model\nlet strings = Strings()\n"
           + "var exportProgressLabel: String { strings.exportingLabel }\n"

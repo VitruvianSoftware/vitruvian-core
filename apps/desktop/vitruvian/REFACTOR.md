@@ -910,6 +910,21 @@ goes, which leaves 66.
   prompt leaves the service offering the update. Before, a double logged the
   offer.
 
+Landed (4b, the media workspace's file dialogs): one more generated file
+goes, which leaves 65.
+
+- **Injected:** `MediaPanelModal.run(_:host:completion:)` takes:
+  - a `Dialog`: begin above a level, focus, run modal;
+  - a `Host`: the island, the event and key windows, whether the island
+    is expanded, activation, the main queue and the launcher's refocus.
+
+  `runPanelModal` keeps its signature and passes the panel and `system`.
+  The island is an `IslandWindowing`, which `NSWindow` adopts.
+- **Test:** the test drives `run` with doubles instead of a copy.
+- **No longer checked:** that the panel stays up while another app is
+  active. That now sits in the panel wrapper. A dialog can no longer
+  be attached as a sheet: `Dialog` has no way to do it.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
