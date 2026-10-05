@@ -5023,6 +5023,32 @@ Landed (7c, the mouse-button settings): the three reads of
   - that the feature's engaged keys are the same two switches.
 - **Left:** 138 source reads in 26 test files, over 84 production files.
   The reads of `MouseButtonShortcutService.swift` stay for its own slice.
+
+Landed (7d, the Features hub's runtime): the three reads of
+`FeatureRuntime.swift` became behavioral checks in
+`Tests/FeatureRuntimeTests.swift`.
+
+- **Seams:**
+  - **Bindings as data.** What each feature's binding does is now a list of
+    named `FeatureBindingAction`s, from `FeatureRuntime.actions(for:in:)`,
+    read against the defaults it is given. One `perform` runs each action
+    on its live service. The table stays exhaustive: a new feature does not
+    compile until it says what it binds.
+  - **An environment.** The runtime takes an `Environment`: its defaults, the
+    performer, the follow-up after a change, and the saved domain.
+    `FeatureRuntime.shared` passes the live ones.
+- **What the checks run:**
+  - "Install all" on test defaults makes every installable feature available
+    without writing any enable key, with one change reported.
+  - A single install switches its main control on; a saved choice survives a
+    reinstall.
+  - Click debounce owns its service, the capture history follows exactly the
+    screenshot and recorder features, and the metric families recompute the
+    sampling plan.
+  - The island's extensions resync the island or stop their own service.
+  - Uninstalling media tools cancels their work, and switching WhatsApp
+    downloads off resets them.
+- **Left:** 135 source reads in 26 test files, over 83 production files.
 ## Not in scope
 
 Product decisions remain open:

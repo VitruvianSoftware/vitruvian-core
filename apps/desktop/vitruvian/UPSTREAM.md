@@ -2093,6 +2093,16 @@ is that notice. Add an entry for every change to upstream files.
     inset, which `UI/Shelf/ShelfTilesView.swift` now reads.
   - `Core/Notch/NotchPageSize.swift`, `Services/Notch/NotchService.swift` and
     the timer, music, files, agents and island views (`UI/Notch/`) use them.
+- **2026-10-05**: Refactor step 7d (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/FeatureRuntime.swift` takes an `Environment`
+    (defaults, binding performer, change follow-up, saved domain), with the
+    live one for `.shared`. Each feature's binding is a list of
+    `FeatureBindingAction`s from `actions(for:in:)`, which `perform` runs on
+    the live services in the same order as before.
+  - `Tests/FeatureCatalogTests.swift`, `Tests/PointerInputFeatureTests.swift`
+    and `Tests/ScreenshotFeatureTests.swift` no longer read it. The new
+    `Tests/FeatureRuntimeTests.swift`, run from `Tests/MetricsTests.swift`,
+    checks the runtime on its own defaults.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -563,11 +563,6 @@ enum FeatureCatalogTests {
         } else {
             suite.expect(false, "feature install defaults suite can be created")
         }
-        let runtimeSource = (try? String(contentsOfFile: "Sources/Vitruvian/Services/FeatureRuntime.swift",
-                                         encoding: .utf8)) ?? ""
-        suite.expect(runtimeSource.contains(
-            "setAvailable(AppFeature.allCases, available, enablingFirstInstalls: false)"),
-               "install all makes features available without switching on their behavior")
 
         // Most updating installs never saved an availability, so this list is
         // what they have: a feature leaving it would vanish for all of them.

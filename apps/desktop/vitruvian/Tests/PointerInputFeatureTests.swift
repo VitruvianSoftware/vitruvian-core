@@ -278,12 +278,6 @@ enum PointerInputFeatureTests {
         suite.expect(!clickDebounceServiceCode.contains("Timer(")
                 && !clickDebounceServiceCode.contains("asyncAfter"),
                "legacy click filtering adds no timer or delayed release to healthy clicks")
-        let featureRuntimeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/FeatureRuntime.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(featureRuntimeSource.contains(
-            "case .mouseClickDebounce: MouseClickDebounceService.shared.syncWithPreferences()"
-        ), "the Features hub owns the click debounce runtime lifecycle")
 
         suite.expect(ScrollWheelSupport.isMouseWheel(
             ScrollWheelEventTraits(isContinuous: false, momentumPhase: 0, scrollPhase: 0, scrollCount: 0),
