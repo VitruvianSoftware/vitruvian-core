@@ -431,7 +431,7 @@ private struct MetricRowOption: View {
 // Memory reading, matching the Network reading's inline option.
 private struct MemoryMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.menuBarMemory) private var menuBarMemory = false
+    @AppStorage(Preferences.menuBarMemory) private var menuBarMemory: Bool
     @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle: String
 
     var body: some View {
@@ -471,7 +471,7 @@ private struct DiskMenuBarOrderOption: View {
 
 private struct NetworkMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.menuBarNetwork) private var menuBarNetwork = false
+    @AppStorage(Preferences.menuBarNetwork) private var menuBarNetwork: Bool
     @AppStorage(Preferences.menuBarNetworkUploadFirst) private var uploadFirst: Bool
 
     var body: some View {

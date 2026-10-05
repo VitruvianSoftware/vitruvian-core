@@ -18,6 +18,19 @@ enum PreferenceTests {
         expectRegistered(Preferences.micMuteMenuBarIndicator, suite)
         expectRegistered(Preferences.screenshotPreviewPosition, suite)
         expectRegistered(Preferences.windowLayoutShortcutsEnabled, suite)
+        // Registered in step 6zzo; each read as its type's empty value before.
+        expectRegistered(Preferences.autoQuitEnabled, suite)
+        expectRegistered(Preferences.finderCutPasteEnabled, suite)
+        expectRegistered(Preferences.shelfEnabled, suite)
+        expectRegistered(Preferences.menuBarCPU, suite)
+        expectRegistered(Preferences.menuBarGPU, suite)
+        expectRegistered(Preferences.menuBarMemory, suite)
+        expectRegistered(Preferences.menuBarNetwork, suite)
+        expectRegistered(Preferences.menuBarBattery, suite)
+        expectRegistered(Preferences.menuBarPower, suite)
+        expectRegistered(Preferences.onboardingStep, suite)
+        expectRegistered(Preferences.commandBarLinks, suite)
+        expectRegistered(Preferences.commandBarRowShortcuts, suite)
 
         let domain = "com.vitruviansoftware.vitruvian.tests.preference"
         let defaults = UserDefaults(suiteName: domain)!

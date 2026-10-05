@@ -19,8 +19,8 @@ package struct CommandBarSettings: View {
     @AppStorage(Preferences.commandBarAliases) private var aliasesRaw: String
     @AppStorage(Preferences.commandBarPins) private var pinsRaw: String
     @AppStorage(Preferences.commandBarHidden) private var hiddenRaw: String
-    @AppStorage(DefaultsKey.commandBarLinks) private var linksData = Data()
-    @AppStorage(DefaultsKey.commandBarRowShortcuts) private var rowShortcutsRaw = ""
+    @AppStorage(Preferences.commandBarLinks) private var linksData: Data
+    @AppStorage(Preferences.commandBarRowShortcuts) private var rowShortcutsRaw: String
     @AppStorage(Preferences.commandBarFileScopes) private var fileScopesRaw: String
     @AppStorage(Preferences.commandBarFileIgnores) private var fileIgnoresRaw: String
     @State private var editing: CommandBarLink?

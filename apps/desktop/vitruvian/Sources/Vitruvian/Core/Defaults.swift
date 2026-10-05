@@ -956,6 +956,18 @@ package enum Defaults {
         DefaultsKey.windowLayoutShortcutBottomCenterSixth: Preferences.windowLayoutShortcutBottomCenterSixth.defaultValue,
         DefaultsKey.windowLayoutShortcutBottomRightSixth: Preferences.windowLayoutShortcutBottomRightSixth.defaultValue,
         DefaultsKey.windowLayoutShortcutFullScreen: Preferences.windowLayoutShortcutFullScreen.defaultValue,
+        DefaultsKey.autoQuitEnabled: Preferences.autoQuitEnabled.defaultValue,
+        DefaultsKey.finderCutPasteEnabled: Preferences.finderCutPasteEnabled.defaultValue,
+        DefaultsKey.shelfEnabled: Preferences.shelfEnabled.defaultValue,
+        DefaultsKey.menuBarCPU: Preferences.menuBarCPU.defaultValue,
+        DefaultsKey.menuBarGPU: Preferences.menuBarGPU.defaultValue,
+        DefaultsKey.menuBarMemory: Preferences.menuBarMemory.defaultValue,
+        DefaultsKey.menuBarNetwork: Preferences.menuBarNetwork.defaultValue,
+        DefaultsKey.menuBarBattery: Preferences.menuBarBattery.defaultValue,
+        DefaultsKey.menuBarPower: Preferences.menuBarPower.defaultValue,
+        DefaultsKey.onboardingStep: Preferences.onboardingStep.defaultValue,
+        DefaultsKey.commandBarLinks: Preferences.commandBarLinks.defaultValue,
+        DefaultsKey.commandBarRowShortcuts: Preferences.commandBarRowShortcuts.defaultValue,
     ]
 
     package static func register() {

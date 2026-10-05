@@ -11,7 +11,7 @@ package struct CommandBarAppShortcutsView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = CommandBarService.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @AppStorage(DefaultsKey.commandBarRowShortcuts) private var shortcutsRaw = ""
+    @AppStorage(Preferences.commandBarRowShortcuts) private var shortcutsRaw: String
     @AppStorage(Preferences.commandBarAliases) private var aliasesRaw: String
     @AppStorage(Preferences.commandBarPins) private var pinsRaw: String
     @State private var query = ""

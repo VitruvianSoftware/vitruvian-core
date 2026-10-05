@@ -11,20 +11,20 @@ import VitruvianServices
 /// visual cost before they occupy the actual menu bar.
 package struct MenuBarMetricsPreview: View {
     @ObservedObject private var monitor = SystemMonitor.shared
-    @AppStorage(DefaultsKey.menuBarCPU) private var cpu = false
-    @AppStorage(DefaultsKey.menuBarGPU) private var gpu = false
-    @AppStorage(DefaultsKey.menuBarMemory) private var memory = false
+    @AppStorage(Preferences.menuBarCPU) private var cpu: Bool
+    @AppStorage(Preferences.menuBarGPU) private var gpu: Bool
+    @AppStorage(Preferences.menuBarMemory) private var memory: Bool
     @AppStorage(Preferences.menuBarCPUTemperature) private var cpuTemperature: Bool
     @AppStorage(Preferences.menuBarGPUTemperature) private var gpuTemperature: Bool
     @AppStorage(Preferences.menuBarBatteryTemperature) private var batteryTemperature: Bool
-    @AppStorage(DefaultsKey.menuBarNetwork) private var network = false
+    @AppStorage(Preferences.menuBarNetwork) private var network: Bool
     @AppStorage(Preferences.menuBarDiskUsage) private var diskUsage: Bool
     @AppStorage(DiskMenuBarStyle.defaultsKey) private var diskStyle = DiskMenuBarStyle.percent
     @AppStorage(Preferences.menuBarDiskActivity) private var diskActivity: Bool
-    @AppStorage(DefaultsKey.menuBarBattery) private var battery = false
+    @AppStorage(Preferences.menuBarBattery) private var battery: Bool
     @AppStorage(Preferences.menuBarBatteryTime) private var batteryTime: Bool
     @AppStorage(Preferences.menuBarPeripheralBattery) private var peripheralBattery: Bool
-    @AppStorage(DefaultsKey.menuBarPower) private var power = false
+    @AppStorage(Preferences.menuBarPower) private var power: Bool
     @AppStorage(Preferences.menuBarFanSpeed) private var fanSpeed: Bool
     @AppStorage(Preferences.menuBarConnectedDevices) private var connectedDevices: Bool
     @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder: String

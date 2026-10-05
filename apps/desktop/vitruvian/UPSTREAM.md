@@ -1820,6 +1820,20 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/SwitcherScrollTests.swift` drives both, `Tests/mutation_checks.py`
     points its two switcher mutations at the new file, and
     `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 6zzo (`REFACTOR.md`):
+  - `Core/Defaults.swift` registers 12 more preferences:
+    - the Auto Quit, cut-and-paste and shelf switches;
+    - the six menu bar metric switches;
+    - the onboarding step;
+    - the command bar's links and row shortcuts.
+
+    Each is registered with the empty value its views already assumed.
+  - Their `@AppStorage` properties take the `Preference`, in:
+    - `UI/MenuBarMetricsPreview.swift`;
+    - `UI/MenuPanel/MenuPanelView.swift`;
+    - `UI/Onboarding/OnboardingView.swift`;
+    - the Auto Quit, command bar, cut-and-paste, monitor and shelf
+      settings views.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -9,7 +9,7 @@ import VitruvianServices
 package struct ShelfSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var shelf = ShelfService.shared
-    @AppStorage(DefaultsKey.shelfEnabled) private var enabled = false
+    @AppStorage(Preferences.shelfEnabled) private var enabled: Bool
     @AppStorage(Preferences.shelfShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.shelfShortcutAddsFinderSelection) private var shortcutAddsFinderSelection: Bool
     @AppStorage(Preferences.shelfShakeToOpen) private var shake: Bool

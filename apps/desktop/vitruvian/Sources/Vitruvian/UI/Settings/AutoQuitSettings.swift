@@ -10,7 +10,7 @@ package struct AutoQuitSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = AutoQuitService.shared
-    @AppStorage(DefaultsKey.autoQuitEnabled) private var enabled = false
+    @AppStorage(Preferences.autoQuitEnabled) private var enabled: Bool
     @State private var showingAppPicker = false
 
     package var body: some View {

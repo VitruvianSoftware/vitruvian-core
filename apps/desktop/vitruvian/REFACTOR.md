@@ -2819,6 +2819,36 @@ and a service can read `UserDefaults.standard[Preferences.x]`.
     what code that checks `object(forKey:) == nil` sees, so each needs a
     look first.
 
+Landed (6zzo, the unregistered switches): 12 of the `@AppStorage` keys that
+nothing registered are now `Preference`s, registered with their declared
+default. Their 21 `@AppStorage` properties take the `Preference`.
+
+- **Which:**
+  - the Auto Quit, cut-and-paste and shelf switches;
+  - the six menu bar metric switches (CPU, GPU, memory, network, battery,
+    power);
+  - the onboarding step;
+  - the command bar's links and row shortcuts.
+- **Why registering them changes nothing:** every view declared the type's
+  empty value (`false`, `0`, `""`, empty data), and every service read them
+  with `bool`, `integer`, `string` or `data(forKey:)`. The two decoders
+  return nothing for empty text or data, as for none. No code checks
+  `object(forKey:) == nil` for them.
+  - What a backup exports now includes them. It exports through
+    `object(forKey:)` on purpose, so that a backup is a complete snapshot.
+  - What "never switched on" counts reads the saved domain, not
+    registration, so it is unchanged.
+- **Kept unregistered on purpose:** the eight menu panel orders. An empty
+  order means the default one. The utility order's two migrations run
+  after registration and test `object(forKey:)`, so a registered `""` would
+  rewrite it. A test already pins the utility and toggle orders as
+  unregistered.
+- **Tests:** `PreferenceTests` checks each of the 12 the way it checks the
+  rest:
+  - it is registered with its declared default;
+  - it reads as that default through `UserDefaults` and `@AppStorage`,
+    before registration and after.
+
 Landed (6f, the first services on the main actor): six of Services' 97
 `ObservableObject`s are `@MainActor`. They are `AgentCodexResetService`,
 `AppAppearanceController`, `DiskProtectionService`,
