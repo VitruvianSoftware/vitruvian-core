@@ -2515,6 +2515,23 @@ real views:
   `NotchCalendarColor.color`. The checks are unchanged: the test doubles'
   button style and surface added no layout, and neither do the real ones.
 
+Landed (4b, the compact camera page and page sizing): the `NotchCompact`
+copy loses `NotchCameraView` and `NotchView.pageSize`.
+
+- **Camera page:** `NotchCameraView` takes its camera (`NotchEmbeddedCamera`,
+  which `CameraPreviewService` adopts) and its preview. The app keeps
+  calling `NotchCameraView(size:)`, which passes the shared camera and its
+  live preview. The test renders the real page over a camera that records
+  starts and stops.
+- **Page sizing:** `NotchLayout.pageSize(...)` (`Core/Notch/NotchPageSize.swift`)
+  is the page-size rule `NotchView` held privately. Each page's own inputs
+  are autoclosures, so only the selected page's preferences are read, as
+  before. `NotchView` passes its readings, and the test calls the rule
+  directly.
+- **Changed check:** "vertical detail pages preserve their existing
+  layout" now uses a page that would grow without the detail. The old one
+  used a page that never grows, so it could not fail.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

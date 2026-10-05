@@ -11,11 +11,11 @@ import VitruvianUI
 /// Production rail, editor, and focus bodies with inert services. Windows stay
 /// hidden; these contracts neither capture pixels nor send input events.
 enum NotchCompactTests {
-    final class CameraPreviewService: ObservableObject {
-        static let shared = CameraPreviewService()
+    /// A camera that records what the camera page asks of it.
+    final class Camera: NotchEmbeddedCamera {
         @Published var isEmbeddedPresented = false
         var stops = 0
-        /// What the preview's stop button calls, as the island handed it over.
+        /// What the preview's stop button calls, as the page handed it over.
         var previewStop: (() -> Void)?
         func showEmbedded() { isEmbeddedPresented = true }
         func hideEmbedded() {
@@ -24,30 +24,12 @@ enum NotchCompactTests {
             isEmbeddedPresented = false
         }
     }
-    struct CameraPreviewView: View {
-        let size: CGSize
-        let showsCameraMenu: Bool
-        var onStop: (() -> Void)? = nil
-        var body: some View {
-            Color.black.frame(width: size.width, height: size.height)
-                .onAppear { CameraPreviewService.shared.previewStop = onStop }
-        }
-    }
     final class NotchService: ObservableObject {
         var presentationWindow: NSWindow?
         @Published var scratchpadCloseSerial = 0
         @Published var scratchpadFindSerial = 0
         var scratchpadFindAction = NSTextFinder.Action.showFindInterface
-        var contentSize = CGSize(width: 304, height: 122)
-        var selected = NotchModule.controls
-        var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900),
-                                     safeAreaTop: 0, cameraWidth: 0, layout: .custom,
-                                     menuBarHeight: 64, customWidth: 360, customHeight: 260)
         func perform(_ action: () -> Void) { action() }
-    }
-    final class NotchTimerService {
-        static let shared = NotchTimerService()
-        var session = NotchTimerSession()
     }
     final class ScratchpadService: ObservableObject {
         static let shared = ScratchpadService()
@@ -111,13 +93,6 @@ enum NotchCompactTests {
         let blocks: [ScratchpadMarkdownBlock]
         var baseSize: CGFloat = 13
         var body: some View { Color.clear }
-    }
-    struct Music { var playback: Bool? = true }
-    struct Page {
-        var music = Music()
-        var showsDetail = false
-        var service = NotchService()
-        var controls: [NotchControlItem] = [.music, .volume, .brightness, .timer]
     }
     final class Window {
         static var key: Window?
@@ -224,18 +199,18 @@ enum NotchCompactTests {
         }
     }
     private static func camera(_ suite: TestSuite) {
-        let service = CameraPreviewService.shared
-        service.isEmbeddedPresented = false
-        service.stops = 0
-        service.previewStop = nil
+        let service = Camera()
         let host = NSHostingView(rootView: AnyView(VStack {
-            NotchCameraView(size: CGSize(width: 424, height: 180))
+            NotchCameraView(size: CGSize(width: 424, height: 180), camera: service) { size, stop in
+                Color.black.frame(width: size.width, height: size.height)
+                    .onAppear { service.previewStop = stop }
+            }
         }))
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 424, height: 180),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
-        defer { window.contentView = nil; service.isEmbeddedPresented = false }
+        defer { window.contentView = nil }
         host.frame = NSRect(x: 0, y: 0, width: 424, height: 180)
         settle(host)
         service.showEmbedded()
@@ -381,17 +356,22 @@ enum NotchCompactTests {
                      "a queued floating focus request is discarded after the user changes hosts")
     }
     private static func sizing(_ suite: TestSuite) {
-        var page = Page()
+        /// A page's size with the home page's usual cards, a song playing and
+        /// no timer under way.
+        func pageSize(_ content: CGSize, _ module: NotchModule, detail: Bool = false,
+                      controls: [NotchControlItem] = [.music, .volume, .brightness, .timer]) -> CGSize {
+            NotchLayout.pageSize(content: content, module: module, detail: detail, controls: controls,
+                                 timerMode: .timer, timerHasSession: false, hasPlayback: true,
+                                 musicControlsRow: true, layout: .custom)
+        }
         let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
         for bar: CGFloat in [24, 32, 40, 48, 64] {
             let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, layout: .custom,
                                          menuBarHeight: bar, customWidth: 360, customHeight: 260)
             for module in [NotchModule.controls, .timer, .calendar, .files, .music, .clipboard, .camera, .mixer] {
-                page.service.selected = module
-                page.service.contentSize = geometry.contentSize(for: geometry.expandedSize(module: module))
-                let layout = page.pageSize
-                suite.expect(layout.width == page.service.contentSize.width
-                             && layout.height >= page.service.contentSize.height,
+                let content = geometry.contentSize(for: geometry.expandedSize(module: module))
+                let layout = pageSize(content, module)
+                suite.expect(layout.width == content.width && layout.height >= content.height,
                              "\(module) keeps the chosen width and exposes any vertically overflowing content")
                 if module == .controls {
                     let required = NotchLayout.controls(hasCards: true, shortcutCount: 1, width: layout.width, height: layout.height)
@@ -411,18 +391,17 @@ enum NotchCompactTests {
                                  "a short clipboard page keeps the search field and a complete card reachable")
                 } else if module == .camera || module == .mixer {
                     suite.expect(layout.height >= 144, "camera and mixer controls keep a usable height in a short island")
-                    if page.service.contentSize.height >= 144 {
-                        suite.expect(layout.height == page.service.contentSize.height,
+                    if content.height >= 144 {
+                        suite.expect(layout.height == content.height,
                                      "camera and mixer actions fit without outer scrolling in a short island")
                     }
                 }
             }
         }
-        page.controls = [.volume]
-        page.service.selected = .controls
-        page.service.contentSize = CGSize(width: 424, height: 96)
-        suite.expect(page.pageSize == page.service.contentSize, "a single home card does not introduce unnecessary scrolling")
-        page.showsDetail = true
-        suite.expect(page.pageSize == page.service.contentSize, "vertical detail pages preserve their existing layout")
+        let card = CGSize(width: 424, height: 96)
+        suite.expect(pageSize(card, .controls, controls: [.volume]) == card,
+                     "a single home card does not introduce unnecessary scrolling")
+        suite.expect(pageSize(card, .calendar) != card && pageSize(card, .calendar, detail: true) == card,
+                     "vertical detail pages preserve their existing layout")
     }
 }

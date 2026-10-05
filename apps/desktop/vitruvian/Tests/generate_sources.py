@@ -73,7 +73,6 @@ def main():
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
     write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchCameraView.swift", "struct NotchCameraView:")
           + declaration("Sources/Vitruvian/Design/PlainTextEditor.swift", "struct PlainTextEditor:")
           + declaration(scratchpad_view, "struct NotchScratchpadView:")
           + "}\n"
@@ -83,10 +82,6 @@ def main():
           + declaration(scratchpad_service, "    private func focusText(").replace("private func", "func", 1)
           + "}\nextension NotchCompactTests.Embedded {\n"
           + declaration(scratchpad_view, "    private func focusEditor(").replace("private func", "func", 1)
-          + "}\nextension NotchCompactTests.Page {\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "    private var pageSize:")
-              .replace("private var", "var", 1).replace("NotchSupport.controls()", "controls")
-              .replace("NotchTimerService.shared", "NotchCompactTests.NotchTimerService.shared")
           + "}\n")
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"

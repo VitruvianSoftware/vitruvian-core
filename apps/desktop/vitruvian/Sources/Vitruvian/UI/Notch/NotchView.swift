@@ -245,44 +245,15 @@ package struct NotchView: View {
     /// Keep each page's minimum usable layout reachable when a custom height
     /// or the display leaves less room. The outer silhouette stays unchanged.
     private var pageSize: CGSize {
-        var size = service.contentSize
-        guard !showsDetail else { return size }
-        switch service.selected {
-        case .controls:
-            let items = NotchSupport.controls()
-            let shortcuts = items.filter { $0 != .music && $0 != .volume && $0 != .brightness }
-            size.height = max(size.height, NotchLayout.controls(
-                hasCards: items.contains(.music) || items.contains(.volume) || items.contains(.brightness),
-                shortcutCount: shortcuts.count, width: size.width, height: size.height).height)
-        case .timer:
-            let session = NotchTimerService.shared.session
-            size.height = max(size.height, NotchLayout.timer(
-                mode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
-                hasSession: session.hasSession, width: size.width, height: size.height))
-        case .calendar:
-            size.height = max(size.height, NotchLayout.calendarMonthMinimumHeight)
-        case .clipboard:
-            // Search, spacing and a complete card with its action row.
-            size.height = max(size.height, NotchLayout.clipboardSearchHeight + NotchLayout.rowSpacing
-                              + NotchLayout.clipboardCardHeight)
-        case .camera:
-            // Keep permission and error messages, and the stop button, reachable.
-            size.height = max(size.height, 144)
-        case .mixer:
-            // Shorten the tracks before pushing mute and level controls offscreen.
-            size.height = max(size.height, 144)
-        case .music:
-            let controlsRow = AppFeature.mixer.isAvailable || NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
-                ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
-            let player = music.playback == nil ? NotchLayout.musicIdleHeight
-                : NotchLayout.musicPlayerHeight(layout: service.geometry.layout, height: size.height)
-            size.height = max(size.height, player + controlsRow)
-        case .files:
-            // One shelf tile, its vertical insets, the footer and their gap.
-            size.height = max(size.height, 88 + 8 + 28 + NotchLayout.rowSpacing)
-        default: break
-        }
-        return size
+        let session = NotchTimerService.shared.session
+        return NotchLayout.pageSize(
+            content: service.contentSize, module: service.selected, detail: showsDetail,
+            controls: NotchSupport.controls(),
+            timerMode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
+            timerHasSession: session.hasSession,
+            hasPlayback: music.playback != nil,
+            musicControlsRow: AppFeature.mixer.isAvailable || NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled(),
+            layout: service.geometry.layout)
     }
 
     private var contentOverflows: Bool { pageSize.height > service.contentSize.height }
