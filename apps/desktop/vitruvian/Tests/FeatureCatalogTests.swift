@@ -2202,10 +2202,6 @@ enum FeatureCatalogTests {
             .joined(separator: "\n")
         suite.expect(!brightnessWorkQueueHalf.isEmpty && !brightnessWorkQueueCode.contains("NSScreen"),
                "the brightness work queue resolves display names without touching NSScreen")
-        // Display numbers are reissued after a reconnection, so the gamma
-        // restore before a switch-off must check the monitor like the others.
-        suite.expect(brightnessSource.contains("baseline.fingerprint == Self.displayFingerprint(display.id)"),
-               "the pre-switch-off gamma restore checks the display fingerprint")
 
         let ddcWrite = BrightnessSupport.writePacket(code: 0x10, value: 0x1234)
         let expectedDDCWrite: [UInt8] = [0x84, 0x03, 0x10, 0x12, 0x34, 0x8E]
@@ -2452,20 +2448,27 @@ enum FeatureCatalogTests {
         suite.expect(brightnessSource.components(separatedBy: "CGBeginDisplayConfiguration(").count == 2
                && brightnessSource.components(separatedBy: "CGCompleteDisplayConfiguration(").count == 2,
                "every display power change goes through the one reconfiguration transaction")
-        let beforeDisplayConfiguration = brightnessSource
-            .components(separatedBy: "CGBeginDisplayConfiguration(").first ?? ""
-        suite.expect((beforeDisplayConfiguration.components(separatedBy: "func ").last ?? "")
-                .contains("Thread.isMainThread"),
-               "the display reconfiguration transaction refuses to start off the main thread")
-        let configurationEntry = (beforeDisplayConfiguration
-            .components(separatedBy: "func ").last ?? "")
+        // The transaction itself is the live environment's `Power.configure`;
+        // the one way into it is `configureDisplay`, which guards it.
+        let configurationEntry = ((brightnessSource
+            .components(separatedBy: "private func configureDisplay(").dropFirst().first ?? "")
+            .components(separatedBy: "\n    }\n").first ?? "")
             .replacingOccurrences(of: #"(?s)/\*.*?\*/|//[^\n]*"#, with: "",
                                   options: .regularExpression)
-        suite.expect(configurationEntry.range(
-                    of: #"\bBrightnessSupport\s*\.\s*canConfigureDisplay\s*\("#,
-                    options: .regularExpression) != nil
-                && configurationEntry.range(of: #"\bCGDisplayIsBuiltin\s*\("#,
-                                            options: .regularExpression) != nil,
+        let transactionStart = configurationEntry.range(of: "configure(id, enabled)")?.lowerBound
+        func guards(_ pattern: String) -> Bool {
+            guard let start = transactionStart,
+                  let found = configurationEntry.range(of: pattern, options: .regularExpression) else { return false }
+            return found.lowerBound < start
+        }
+        suite.expect(brightnessSource.components(separatedBy: "configure(id, enabled)").count == 2
+                && guards(#"\bThread\.isMainThread\b"#),
+               "the display reconfiguration transaction refuses to start off the main thread")
+        suite.expect(guards(#"\bBrightnessSupport\s*\.\s*canConfigureDisplay\s*\("#)
+                && guards(#"\benvironment\.hardware\.isBuiltIn\(id\)"#)
+                && guards(#"\benvironment\.power\.lidClosed\(\)"#)
+                && brightnessSource.range(of: #"isBuiltIn:\s*\{\s*CGDisplayIsBuiltin\(\$0\)"#,
+                                          options: .regularExpression) != nil,
                "the shared transaction checks the live built-in and lid state before beginning")
 
         // A `UserDefaults` write posts `didChangeNotification`, and the

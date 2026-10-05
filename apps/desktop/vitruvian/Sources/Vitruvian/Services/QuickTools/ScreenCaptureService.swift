@@ -236,7 +236,9 @@ package final class ScreenCaptureService: ObservableObject {
             supportsScrollingCapture: options.availableTools.contains(.screenshot),
             screenCaptureOptions: options)
         if options.controlsInNotch {
-            connectCaptureControlsSurface(options, controller: controller)
+            Self.connectCaptureControlsSurface(options, controller: controller) { [weak self] options, controller in
+                self?.options === options && self?.selection === controller
+            }
             options.onPresentationReady = { [weak self, weak options] in
                 guard let self, let options, self.options === options else { return }
                 NotchService.shared.presentCaptureControls(options) { [weak self] in self?.cancelSelection() }
@@ -256,11 +258,16 @@ package final class ScreenCaptureService: ObservableObject {
         }
     }
 
-    private func connectCaptureControlsSurface(_ options: ScreenCaptureSelectionOptions,
-                                               controller: ScreenshotSelectionController) {
-        options.onCaptureControlsSurfaceChange = { [weak self, weak options, weak controller] screenFrame, surfaceHeight in
-            guard let self, let options, let controller,
-                  self.options === options, self.selection === controller else { return }
+    /// Hands the island's capture-controls geometry to the selection, for as
+    /// long as both are still the session `isCurrent` names. A late report
+    /// from an earlier session must not move a newer selection's controls.
+    package static func connectCaptureControlsSurface(
+        _ options: ScreenCaptureSelectionOptions,
+        controller: ScreenshotSelectionController,
+        isCurrent: @escaping @MainActor (ScreenCaptureSelectionOptions, ScreenshotSelectionController) -> Bool
+    ) {
+        options.onCaptureControlsSurfaceChange = { [weak options, weak controller] screenFrame, surfaceHeight in
+            guard let options, let controller, isCurrent(options, controller) else { return }
             controller.placeFullScreenControlBelowNotch(
                 screenFrame: screenFrame,
                 surfaceHeight: surfaceHeight)

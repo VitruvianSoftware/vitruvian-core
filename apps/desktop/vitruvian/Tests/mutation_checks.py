@@ -98,10 +98,10 @@ MUTATIONS = [
      "        lastApplied[id] = nil\n"
      "        levelKnownAt[id] = nil\n"
      "        stateLock.unlock()\n"
-     "        workQueue.async { [weak self] in\n"
+     "        environment.work { [weak self] in\n"
      "            guard let self else { return }\n"
      "            self.applySoftwareDim(id, value: 1)\n"
-     "            DispatchQueue.main.async { [weak self] in self?.refresh(force: true) }\n"
+     "            self.environment.main { [weak self] in self?.refresh(force: true) }\n"
      "        }\n",
      "        refresh(force: true)\n",
      "the picture goes back to its own curve when the choice goes off"),

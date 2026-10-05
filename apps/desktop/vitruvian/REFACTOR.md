@@ -2108,6 +2108,104 @@ leaves 16.
   - the review's confirm not checking the phase: `submit()` only
     confirms results, and `removeSelected()` checks again.
 
+Landed (4b, the brightness service's displays): three more generated files
+go, which leaves 13.
+
+- **`BrightnessService.Environment`** (new) is what the display side
+  reaches outside the app:
+  - the work queue and the main queue, the preferences and the clock;
+  - `Hardware`: the online and active displays, their info and
+    fingerprints, the system brightness calls, the external monitors' DDC
+    endpoints and I2C calls, the DDC pacing, and the gamma curves;
+  - `Power`: the reconfiguration call, the lid, and the lid observation
+    (the IOKit subscription moves into `LidObservation`);
+  - where screen and wake changes are posted, a delay for their debounce;
+  - the island and the overlay.
+
+  `shared` uses `live`. The brightness keys, their taps and the keyboard
+  light still talk to the system directly; `followsKeys` keeps a test's
+  rebuilds away from them. `start()` and `step` become package-visible, so
+  a test can start display control and press a key.
+- **Tests:** the three suites run a started service over a scripted desk
+  (`Tests/BrightnessRig.swift`): DDC monitors that speak the real packet
+  format, a built-in panel on the system pipeline, gamma curves, the
+  reconfiguration call and the lid. Before, they compiled copies of
+  fourteen service members over stand-in queues, bridges and IOKit calls.
+  - **Steps:** the routes come from the real rebuild, and checks follow
+    the step down to the bytes the monitor receives. New checks: steps in
+    a burst do not read the monitor again; a press during a read joins its
+    step; the overlay shows only a written step the island does not show;
+    a key step right after a slider move starts from the queued level.
+  - **Dimming choice:** the routes move through real rebuilds. Turning
+    the choice off, or extended dimming off, is checked by what the
+    rebuild and the next step do, not by the private levels: a write-only
+    monitor's slider starts from the monitor, and the next step reads it.
+  - **Restoration:** every scenario goes through what the app calls: a
+    tap on a row, the start-up and termination restores, the lid moving,
+    a cable coming out. A source-text check in `FeatureCatalogTests` (the
+    pre-switch-off gamma restore checks the fingerprint) becomes a
+    behavioral check here.
+- **Also:** the recorder's audio export check names the failure it saw.
+  It failed once on `main` and passed on rerun of the same commit.
+- **Verification:** a Linux Swift 6.4 model compiles the whole production
+  file, `live` included, over stand-ins for CoreGraphics, IOKit, AppKit and
+  the app's key-handling types. It runs the three suites (96 checks).
+  All 49 hand-written mutants of the production file fail them, one at
+  compile time.
+
+Landed (4b, the recorder editor's zoom aiming): one more generated file
+goes, which leaves 12.
+
+- **`RecorderEditorModel.Environment`** (new) is what the editor model
+  reaches outside the app: the preferences; `loadSource`, which reads the
+  recording's length, picture size, frame rate and audio tracks once it
+  opens; and `composePreview` with its delay, which turns a frame plan
+  into the player's composition. `live` is the AVFoundation code that was
+  inline. The controller still makes the model with `live`.
+- **Tests:** `RecorderZoomAimingTests` opens the real model over a take
+  with no file behind it. The recording opens as five seconds of
+  1000×500, and the preview composer counts what it is asked for. Before,
+  the suite compiled copies of twelve model members over a stand-in
+  player.
+  - The checks now follow the real undo stack and the real preview task.
+    New checks: a preview still on its way is dropped when aiming begins;
+    a drag sets a blur's area in the picture's own space, and one undo
+    takes it back.
+  - A source-text check in `RecorderFeatureTests` (a redrawn blur keeps
+    its strength) becomes a behavioral check here.
+- **Verification:** a Linux Swift 6.4 model type-checks the environment,
+  the load and the preview rebuild over AVFoundation stand-ins, and the
+  test's environment against them. The suite itself runs on macOS CI.
+
+Landed (4b, the screenshot chooser's refresh): one more generated file
+goes, which leaves 11.
+
+- **`ScreenshotSelectionController.Environment`** (new) is what the chooser
+  reaches outside the app: the displays (`Display`: a `ScreenGeometry` and
+  the height of the system's chrome), the pointer, the preferences, the
+  capture engine's four calls, and `show`, which puts the panels on screen.
+  `live` is what the controller called before. A panel is built from a
+  `Display` rather than an `NSScreen`.
+- **Seams:** the panel and overlay view become package-visible. So do the
+  confirmations the views call, the repeat and full-screen captures the
+  keys call, and the state the checks read (the panels, the pointer, the
+  full-screen action and its hover, the island's height). The capture
+  service's forwarding of the island's geometry is a static that takes
+  whether the session is still current.
+- **Tests:** `ScreenshotSelectionRefreshContract` starts real choosers the
+  way the capture service does, over two scripted 100-point displays and
+  captures that wait for the check to answer them. Their panels are built
+  but never shown. Every check is kept, now on real panels and pictures.
+  The guide-refresh counter is replaced by what the refresh shows: a
+  selection in progress hides the full-screen action on both displays.
+  New: the action shows under the pointer before its hover is checked.
+- **Not covered:** the service's own test of which session is current
+  (two identity comparisons).
+- **Verification:** a Linux Swift 6.4 model type-checks the environment
+  and the test's desk against stand-ins. The suite itself runs on macOS
+  CI. The six `mutation_checks.py` mutations of this file still name
+  messages the suite prints.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

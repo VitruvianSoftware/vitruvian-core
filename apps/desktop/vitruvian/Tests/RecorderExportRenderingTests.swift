@@ -165,7 +165,9 @@ nonisolated enum RecorderExportRenderingTests {
             doc.cuts = [.init(start: 0.2, end: 0.25)]
             let output = folder.appendingPathComponent("audio-\(speed).mp4")
             let failure = await RecorderExporter().export(take: audioTake, document: doc, output: .video, to: output, progress: { _ in })
-            suite.expect(failure == nil, "audio export succeeds at \(speed)x")
+            // Naming the failure, read or write, says where to look if this
+            // fails again: it has failed once in about sixty CI runs.
+            suite.expect(failure == nil, "audio export succeeds at \(speed)x, found \(String(describing: failure))")
             guard failure == nil else { continue }
             let samples = try await readAudio(output)
             func window(_ start: Double, _ end: Double) -> [Float] {

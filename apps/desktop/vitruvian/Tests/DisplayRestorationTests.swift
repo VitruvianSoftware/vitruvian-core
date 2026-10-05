@@ -1,416 +1,369 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import CoreGraphics
 import Foundation
-import os
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production restoration and transaction bodies, with in-memory IOKit,
-/// CoreGraphics, preferences and a manually drained main queue. No device writes.
+/// Switching displays off and back on, on a started production service over
+/// a scripted desk: the built-in panel (1) and two external screens (2, 3).
+/// Every scenario goes through what the app itself calls: a tap on a row,
+/// the start-up and termination restores, the lid and a cable coming out.
+/// The reconfiguration call and the lid are the rig's; no display changes.
 enum DisplayRestorationTests {
-    typealias CGDisplayConfigRef = Int
-    typealias IONotificationPortRef = Int
-    typealias io_object_t = UInt32
-    static let kIOMainPortDefault: UInt32 = 0
-    static let kIOGeneralInterest = "IOGeneralInterest"
-    static let KERN_SUCCESS: Int32 = 0
+    private typealias Rig = BrightnessRig
 
-    final class Queue {
-        var jobs: [() -> Void] = []
-        func async(execute work: @escaping () -> Void) { jobs.append(work) }
-        func drain() {
-            var count = 0
-            while !jobs.isEmpty {
-                count += 1
-                precondition(count < 20, "recovery must not loop on its own notifications")
-                jobs.removeFirst()()
-            }
-        }
-    }
-    enum DispatchQueue { static var main = Queue() }
-    enum Hardware {
-        static var lid: Bool? = true
-        static var succeeds = true
-        static var transactions = 0
-        static var registrations = 0
-        static var destroyedPorts = 0
-        static var released: [UInt32] = []
-        static var callback: (() -> Void)?
-        static var onSubscribe: (() -> Void)?
-        static var lidRead: (() -> Bool?)?
-    }
-    enum DefaultsKey { static let displaysSwitchedOff = "off" }
-    final class UserDefaults {
-        static var standard = UserDefaults()
-        var stored: [Int] = []
-        func array(forKey: String) -> [Any]? { stored }
-    }
-    struct BrightnessDisplay {
-        let id: UInt32
-        var method: Int? = 1
-        var isActive = false
-        var isBuiltIn: Bool { id == 1 }
-    }
-    enum DisplayConfigurationBridge {
-        static var configureEnabled: ((Int, UInt32, Bool) -> Int32)? = { _, _, _ in 0 }
-    }
-    static func CGDisplayIsBuiltin(_ id: UInt32) -> UInt32 { id == 1 ? 1 : 0 }
-    static func CGBeginDisplayConfiguration(_ reference: inout Int?) -> CGError {
-        Hardware.transactions += 1
-        reference = 1
-        return .success
-    }
-    static func CGCancelDisplayConfiguration(_ reference: Int) {}
-    static func CGCompleteDisplayConfiguration(_ reference: Int, _ option: CGConfigureOption) -> CGError {
-        Hardware.callback?()
-        return Hardware.succeeds ? .success : .failure
-    }
-    static func IOServiceMatching(_ name: String) -> Int { 1 }
-    static func IOServiceGetMatchingService(_ port: UInt32, _ matching: Int) -> UInt32 { 2 }
-    static func IOObjectRelease(_ object: UInt32) { Hardware.released.append(object) }
-    static func IONotificationPortCreate(_ port: UInt32) -> Int? { 3 }
-    static func IONotificationPortDestroy(_ port: Int) {
-        Hardware.destroyedPorts += 1
-        Hardware.callback = nil
-    }
-    static func IONotificationPortSetDispatchQueue(_ port: Int, _ queue: Queue) {}
-    static func IOServiceAddInterestNotification(
-        _ port: Int, _ root: UInt32, _ interest: String,
-        _ callback: @escaping (UnsafeMutableRawPointer?, UInt32, UInt32, UnsafeMutableRawPointer?) -> Void,
-        _ context: UnsafeMutableRawPointer?, _ notification: inout UInt32
-    ) -> Int32 {
-        Hardware.registrations += 1
-        notification = 4
-        Hardware.callback = { callback(context, root, 0, nil) }
-        Hardware.onSubscribe?()
-        return KERN_SUCCESS
+    private static func desk() -> (Rig.Desk, BrightnessService) {
+        let desk = Rig.Desk()
+        let panel = Rig.Display(id: 1, systemLevel: 0.5)
+        panel.builtIn = true
+        desk.displays = [panel, Rig.Display(id: 2), Rig.Display(id: 3)]
+        let service = BrightnessService(environment: desk.environment)
+        service.start()
+        desk.drain()
+        return (desk, service)
     }
 
-    class Fixture {
-        static let log = Logger(subsystem: "vitruvian.tests", category: "restoration")
-        var deferredRestoration = BrightnessSupport.DeferredDisplayRestoration()
-        var lidNotificationPort: IONotificationPortRef?
-        var lidNotification: io_object_t = 0
-        let stateLock = NSLock()
-        var managedDisabledIDs = Set<UInt32>()
-        var managedDisabledDisplays: [UInt32: BrightnessDisplay] = [:]
-        var pendingLevels: [UInt32: Double] = [:]
-        var knownActiveTopology = Set<UInt32>()
-        var displayControlFailure: BrightnessService.DisplayControlFailure?
-        var pendingDisplayIDs = Set<UInt32>()
-        var displays: [BrightnessDisplay] = []
-        var refreshes = 0
-        static func lidClosed() -> Bool? { Hardware.lidRead?() ?? Hardware.lid }
-        static func rememberDisplaySwitchedOff(_ id: UInt32) { UserDefaults.standard.stored.append(Int(id)) }
-        static func forgetDisplaySwitchedOff(_ id: UInt32) { UserDefaults.standard.stored.removeAll { $0 == Int(id) } }
-        func refresh(force: Bool = false) { refreshes += 1 }
+    private static func tap(_ desk: Rig.Desk, _ service: BrightnessService, _ id: CGDirectDisplayID) {
+        guard let row = service.displays.first(where: { $0.id == id }) else { return }
+        service.toggleDisplay(row)
+        desk.drain()
+    }
 
-        init() {}
+    /// A cable comes out or goes back in, and the debounce settles.
+    private static func plug(_ desk: Rig.Desk, _ id: CGDirectDisplayID, in plugged: Bool) {
+        desk.display(id).online = plugged
+        desk.display(id).active = plugged
+        desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        desk.runDelayed()
+    }
+
+    private static func switchedOff(_ desk: Rig.Desk) -> [Int] {
+        desk.defaults.array(forKey: DefaultsKey.displaysSwitchedOff) as? [Int] ?? []
     }
 
     static func run(_ suite: TestSuite) {
-        func make() -> BrightnessService {
-            DispatchQueue.main = Queue()
-            UserDefaults.standard = UserDefaults()
-            Hardware.lid = true
-            Hardware.succeeds = true
-            Hardware.transactions = 0
-            Hardware.registrations = 0
-            Hardware.destroyedPorts = 0
-            Hardware.released = []
-            Hardware.callback = nil
-            Hardware.onSubscribe = nil
-            Hardware.lidRead = nil
-            return BrightnessService()
-        }
-        var service = make()
-        UserDefaults.standard.stored = [1]
+        startup(suite)
+        termination(suite)
+        taps(suite)
+        headless(suite)
+        lidReads(suite)
+    }
+
+    private static func startup(_ suite: TestSuite) {
+        var (desk, service) = desk()
+        desk.display(1).online = false
+        desk.defaults.set([1], forKey: DefaultsKey.displaysSwitchedOff)
+        desk.lidClosed = true
         service.restoreDisplaysLeftOff()
         service.restoreDisplaysLeftOff()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 0 && Hardware.registrations == 1
-                     && UserDefaults.standard.stored == [1],
-                     "closed startup retains its record and owns only one observer without starting the feature")
-        Hardware.lid = false
-        Hardware.callback?()
-        suite.expect(Hardware.transactions == 0, "IOKit callback never configures displays inline")
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1 && UserDefaults.standard.stored.isEmpty
-                     && Hardware.destroyedPorts == 1 && Hardware.released.contains(4),
+        desk.drain()
+        suite.expect(desk.configurations.isEmpty && desk.lidSubscriptions == 1 && switchedOff(desk) == [1],
+                     "closed startup retains its record and owns only one observer")
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations == ["on:1"] && switchedOff(desk).isEmpty && desk.lidStops == 1,
                      "lid-open notification alone restores startup intent and releases observation")
+        desk.tearDown()
 
-        service = make()
-        UserDefaults.standard.stored = [1]
-        service.managedDisabledIDs = [1]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.restoreManagedDisplays()
-        Hardware.lid = false
-        Hardware.succeeds = false
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1 && service.managedDisabledIDs == [1]
-                     && UserDefaults.standard.stored == [1] && Hardware.destroyedPorts == 0,
-                     "feature-stop recovery retains failed intent without looping on transaction notifications")
-        Hardware.lid = true
-        Hardware.callback?()
-        DispatchQueue.main.drain()
-        Hardware.lid = false
-        Hardware.succeeds = true
-        Hardware.callback?()
-        DispatchQueue.main.drain()
-        suite.expect(service.managedDisabledIDs.isEmpty && service.managedDisabledDisplays.isEmpty
-                     && UserDefaults.standard.stored.isEmpty && Hardware.destroyedPorts == 1,
-                     "later opening clears managed snapshots and persisted recovery after success")
-
-        service = make()
-        UserDefaults.standard.stored = [1]
-        Hardware.onSubscribe = { Hardware.lid = false }
+        (desk, service) = Self.desk()
+        desk.display(1).online = false
+        desk.defaults.set([1], forKey: DefaultsKey.displaysSwitchedOff)
+        desk.lidClosed = true
+        desk.onLidSubscribe = { desk.lidClosed = false }
         service.restoreDisplaysLeftOff()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1 && UserDefaults.standard.stored.isEmpty,
+        desk.drain()
+        suite.expect(desk.configurations == ["on:1"] && switchedOff(desk).isEmpty,
                      "subscribe-then-recheck catches an opening during observer registration")
+        desk.tearDown()
 
-        service = make()
-        service.managedDisabledIDs = [1]
-        Hardware.lid = false
-        service.restoreDeferredDisplays()
-        suite.expect(Hardware.transactions == 0,
-                     "an intentionally disabled display without deferred intent remains disabled")
-        DispatchQueue.main.async { [weak service] in
-            service?.commitDisplayToggle(BrightnessDisplay(id: 1), enabled: true)
-        }
-        Hardware.lid = true
-        DispatchQueue.main.drain()
-        suite.expect(service.displayControlFailure == .closedLid && Hardware.transactions == 0
-                     && service.deferredRestoration.ids == [1] && Hardware.registrations == 1,
-                     "a tap denied by the closed lid says so and is remembered for the lid opening")
-        Hardware.lid = false
-        Hardware.callback?()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1 && service.displayControlFailure == nil
-                     && service.deferredRestoration.ids.isEmpty && service.managedDisabledIDs.isEmpty
-                     && Hardware.destroyedPorts == 1,
-                     "opening the lid finishes the remembered tap and clears its message")
-        Hardware.succeeds = false
-        service.commitDisplayToggle(BrightnessDisplay(id: 1), enabled: true)
-        DispatchQueue.main.drain()
-        suite.expect(service.displayControlFailure == .failed && service.deferredRestoration.ids.isEmpty,
-                     "an open-lid transaction failure remains generic and is not remembered")
-
-        service = make()
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        service.commitDisplayToggle(BrightnessDisplay(id: 1), enabled: true)
-        DispatchQueue.main.drain()
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids == [1] && service.managedDisabledIDs == [1]
-                     && Hardware.transactions == 1 && Hardware.destroyedPorts == 0,
-                     "a remembered tap outlives a headless recovery that brought another display back")
-        Hardware.lid = false
-        service.restoreDeferredDisplays()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 2 && service.deferredRestoration.ids.isEmpty
-                     && service.managedDisabledIDs.isEmpty,
-                     "opening the lid then finishes the tap as well")
-
-        service = make()
-        UserDefaults.standard.stored = [1]
+        // A new explicit switch-off lands before the recheck an older
+        // deferred restoration queued, and cancels it.
+        (desk, service) = Self.desk()
+        service.toggleDisplay(service.displays.first { $0.id == 1 }!)
+        desk.work.drain()
+        desk.defaults.set([1], forKey: DefaultsKey.displaysSwitchedOff)
+        desk.lidClosed = true
         service.restoreDisplaysLeftOff()
-        Hardware.lid = false
-        service.commitDisplayToggle(BrightnessDisplay(id: 1, isActive: true), enabled: false)
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids.isEmpty && Hardware.transactions == 1
-                     && Hardware.destroyedPorts == 1 && service.managedDisabledIDs == [1],
+        desk.lidClosed = false
+        desk.drain()
+        suite.expect(desk.configurations == ["off:1"] && desk.lidStops == 1 && switchedOff(desk) == [1],
                      "new explicit disable cancels older deferred recovery before queued recheck")
+        desk.tearDown()
+    }
+
+    private static func termination(_ suite: TestSuite) {
+        let (desk, service) = desk()
+        defer { desk.tearDown() }
+        tap(desk, service, 1)
+        suite.expect(desk.configurations == ["off:1"] && switchedOff(desk) == [1]
+                     && service.displays.first { $0.id == 1 }?.isActive == false,
+                     "switching a display off keeps its row and writes the intention down")
+        suite.expect(!desk.isWatchingLid, "an intentionally disabled display is not watched for the lid")
+        desk.lidClosed = true
+        service.restoreDisplaysBeforeTermination()
+        desk.lidClosed = false
+        desk.configureSucceeds = false
+        desk.drain()
+        suite.expect(desk.configurations == ["off:1", "on:1"] && switchedOff(desk) == [1]
+                     && desk.lidStops == 0 && desk.isWatchingLid,
+                     "feature-stop recovery retains failed intent without looping on transaction notifications")
+        desk.lidMoved(closed: true)
+        desk.drain()
+        desk.configureSucceeds = true
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(switchedOff(desk).isEmpty && desk.lidStops == 1 && desk.configurations.last == "on:1",
+                     "later opening clears persisted recovery after success")
+        let made = desk.configurations.count
+        service.restoreDisplaysBeforeTermination()
+        desk.drain()
+        suite.expect(desk.configurations.count == made, "later opening clears the managed snapshot too")
+
+        // Display numbers are reissued after a reconnection, so the gamma
+        // restore before a switch-off checks the monitor like the others.
+        for sameMonitor in [true, false] {
+            let (dimmedDesk, dimmed) = Self.desk()
+            defer { dimmedDesk.tearDown() }
+            dimmed.setBrightness(0.5, for: 2)
+            dimmedDesk.drain()
+            if !sameMonitor { dimmedDesk.display(2).fingerprint = "another-monitor" }
+            dimmedDesk.events = []
+            tap(dimmedDesk, dimmed, 2)
+            suite.expect(dimmedDesk.events.prefix(2) == (sameMonitor ? ["picture:1.0", "off:2"] : ["off:2"]),
+                         "the pre-switch-off gamma restore checks the display fingerprint, found \(dimmedDesk.events)")
+        }
+    }
+
+    private static func taps(_ suite: TestSuite) {
+        var (desk, service) = desk()
+        tap(desk, service, 1)
+        desk.lidClosed = true
+        tap(desk, service, 1)
+        suite.expect(service.displayControlFailure == .closedLid && desk.configurations == ["off:1"]
+                     && desk.lidSubscriptions == 1,
+                     "a tap denied by the closed lid says so and is remembered for the lid opening")
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations == ["off:1", "on:1"] && service.displayControlFailure == nil
+                     && desk.lidStops == 1,
+                     "opening the lid finishes the remembered tap and clears its message")
+        tap(desk, service, 1)
+        desk.configureSucceeds = false
+        tap(desk, service, 1)
+        suite.expect(service.displayControlFailure == .failed && !desk.isWatchingLid,
+                     "an open-lid transaction failure remains generic and is not remembered")
+        desk.tearDown()
 
         for initialFailure in [BrightnessService.DisplayControlFailure.failed, .closedLid] {
-            service = make()
-            UserDefaults.standard.stored = [1]
-            service.managedDisabledIDs = [1]
-            service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
+            (desk, service) = Self.desk()
+            tap(desk, service, 1)
+            desk.lidClosed = true
             service.restoreDisplaysLeftOff()
-            DispatchQueue.main.drain()
-            Hardware.lid = initialFailure == .closedLid
-            Hardware.succeeds = false
-            service.commitDisplayToggle(BrightnessDisplay(id: 1), enabled: true)
-            DispatchQueue.main.drain()
+            desk.drain()
+            desk.lidClosed = initialFailure == .closedLid
+            desk.configureSucceeds = false
+            tap(desk, service, 1)
             suite.expect(service.displayControlFailure == initialFailure,
                          "production manual completion publishes the actual failure")
-            Hardware.lid = true
-            service.restoreDeferredDisplays()
-            Hardware.lid = false
-            service.restoreDeferredDisplays()
-            DispatchQueue.main.drain()
-            suite.expect(service.displayControlFailure == initialFailure
-                         && UserDefaults.standard.stored == [1],
+            desk.lidMoved(closed: true)
+            desk.drain()
+            desk.lidMoved(closed: false)
+            desk.drain()
+            suite.expect(service.displayControlFailure == initialFailure && switchedOff(desk) == [1],
                          "failed deferred restoration preserves the existing error and recovery intent")
-            Hardware.lid = true
-            service.restoreDeferredDisplays()
-            Hardware.lid = false
-            Hardware.succeeds = true
-            service.restoreDeferredDisplays()
-            DispatchQueue.main.drain()
-            suite.expect(service.displayControlFailure == nil && UserDefaults.standard.stored.isEmpty,
+            desk.lidMoved(closed: true)
+            desk.drain()
+            desk.configureSucceeds = true
+            desk.lidMoved(closed: false)
+            desk.drain()
+            suite.expect(service.displayControlFailure == nil && switchedOff(desk).isEmpty,
                          "successful deferred restoration clears generic and closed-lid errors")
+            desk.tearDown()
         }
-
-        service = make()
-        service.managedDisabledIDs = [1]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.displayControlFailure == .closedLid,
-                     "headless restoration preserves the closed-lid denial reason")
-        Hardware.lid = false
-        Hardware.callback?()
-        DispatchQueue.main.drain()
-        suite.expect(service.displayControlFailure == nil,
-                     "successful headless deferred recovery removes its panel error")
-
-        service = make()
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids.isEmpty && service.managedDisabledIDs == [1]
-                     && Hardware.destroyedPorts == 1,
-                     "headless success cancels only the newly queued closed-lid candidate")
-        Hardware.lid = false
-        service.restoreDeferredDisplays()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1 && service.deferredRestoration.ids.isEmpty,
-                     "superseded headless intent does not restore another display after lid opening")
-
-        service = make()
-        UserDefaults.standard.stored = [1]
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        service.restoreDisplaysLeftOff()
-        DispatchQueue.main.drain()
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids == [1],
-                     "headless success preserves an independently owed restoration")
-        Hardware.lid = false
-        service.restoreDeferredDisplays()
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids.isEmpty && Hardware.transactions == 2,
-                     "independent deferred restoration still completes after headless success")
-
-        service = make()
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        Hardware.succeeds = false
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        Hardware.succeeds = true
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids.isEmpty,
-                     "repeated headless attempts retain ownership until a later external success")
-
-        service = make()
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        Hardware.succeeds = false
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        Hardware.lid = false
-        service.restoreManagedDisplays()
-        DispatchQueue.main.drain()
-        Hardware.lid = true
-        Hardware.succeeds = true
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids == [1],
-                     "a failed restore-all request promotes prior headless intent")
-
-        service = make()
-        UserDefaults.standard.stored = [1, 2]
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        Hardware.succeeds = false
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids == [1],
-                     "failed headless round keeps the closed internal request queued")
-        var retryReads = [false, true]
-        Hardware.lidRead = { retryReads.isEmpty ? true : retryReads.removeFirst() }
-        service.restoreDeferredDisplays()
-        Hardware.lidRead = nil
-        Hardware.lid = true
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1 && service.deferredRestoration.ids == [1],
-                     "a deferred retry that closes at the transaction keeps headless ownership")
-        Hardware.lid = true
-        Hardware.succeeds = true
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids.isEmpty && service.managedDisabledIDs == [1]
-                     && UserDefaults.standard.stored == [1] && Hardware.destroyedPorts == 1,
-                     "later external headless success cancels only the internal headless request: ids=\(service.deferredRestoration.ids) managed=\(service.managedDisabledIDs) stored=\(UserDefaults.standard.stored) destroyed=\(Hardware.destroyedPorts)")
-        Hardware.lid = false
-        service.restoreDeferredDisplays()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 2 && UserDefaults.standard.stored == [1],
-                     "opening after cancellation does not enable the internal display: transactions=\(Hardware.transactions) stored=\(UserDefaults.standard.stored)")
-
-        service = make()
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        var lidReads = [true, false, true]
-        Hardware.lidRead = { lidReads.isEmpty ? true : lidReads.removeFirst() }
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
-        suite.expect(service.deferredRestoration.ids.isEmpty,
-                     "headless candidate retry uses the shared transaction-time lid result")
-        Hardware.lid = false
-        service.restoreDeferredDisplays()
-        DispatchQueue.main.drain()
-        suite.expect(Hardware.transactions == 1,
-                     "opening after a successful external headless recovery does not enable the internal display")
-
-        service = make()
-        UserDefaults.standard.stored = [1]
-        service.restoreDisplaysLeftOff()
-        service.commitDisplayToggle(BrightnessDisplay(id: 1), enabled: true)
-        Hardware.lid = false
-        DispatchQueue.main.drain()
-        suite.expect(service.displayControlFailure == nil && Hardware.transactions == 1,
-                     "queued manual completion cannot republish denial after earlier queued recovery succeeds")
 
         for startup in [true, false] {
-            service = make()
-            service.commitDisplayToggle(BrightnessDisplay(id: 1), enabled: true)
-            UserDefaults.standard.stored = [1]
-            service.managedDisabledIDs = [1]
-            service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-            Hardware.lid = false
-            if startup { service.restoreDisplaysLeftOff() } else { service.restoreManagedDisplays() }
-            DispatchQueue.main.drain()
-            suite.expect(service.displayControlFailure == nil && UserDefaults.standard.stored.isEmpty,
+            (desk, service) = Self.desk()
+            tap(desk, service, 1)
+            desk.lidClosed = true
+            tap(desk, service, 1)
+            desk.lidClosed = false
+            if startup { service.restoreDisplaysLeftOff() } else { service.restoreDisplaysBeforeTermination() }
+            desk.drain()
+            suite.expect(service.displayControlFailure == nil && switchedOff(desk).isEmpty,
                          "startup and feature-stop success share restoration error cleanup")
+            desk.tearDown()
         }
+    }
 
-        service = make()
-        service.managedDisabledIDs = [1, 2]
-        service.managedDisabledDisplays[1] = BrightnessDisplay(id: 1)
-        service.managedDisabledDisplays[2] = BrightnessDisplay(id: 2)
-        Hardware.succeeds = false
-        _ = service.restoreManagedDisplayIfHeadless(drawableDisplayIDs: [])
-        DispatchQueue.main.drain()
+    /// The last screen comes unplugged while this app has others switched
+    /// off: one comes back, the built-in panel first.
+    private static func headless(_ suite: TestSuite) {
+        var (desk, service) = desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        plug(desk, 3, in: false)
+        suite.expect(desk.configurations == ["off:1", "off:2", "on:1"] && switchedOff(desk) == [2],
+                     "losing the last display brings back one switched-off display, the panel first")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        desk.lidClosed = true
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        plug(desk, 3, in: false)
+        suite.expect(desk.configurations.last == "on:2" && desk.isWatchingLid && switchedOff(desk) == [1],
+                     "a remembered tap outlives a headless recovery that brought another display back")
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations.last == "on:1" && !desk.isWatchingLid,
+                     "opening the lid then finishes the tap as well")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        plug(desk, 3, in: false)
+        desk.lidClosed = true
+        plug(desk, 2, in: false)
+        suite.expect(service.displayControlFailure == .closedLid,
+                     "headless restoration preserves the closed-lid denial reason")
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(service.displayControlFailure == nil && desk.configurations.last == "on:1",
+                     "successful headless deferred recovery removes its panel error")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        desk.lidClosed = true
+        plug(desk, 3, in: false)
+        suite.expect(!desk.isWatchingLid && desk.configurations.last == "on:2" && switchedOff(desk) == [1],
+                     "headless success cancels only the newly queued closed-lid candidate")
+        let made = desk.configurations.count
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations.count == made,
+                     "superseded headless intent does not restore another display after lid opening")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        // Only the panel is owed from an earlier run.
+        desk.defaults.set([1], forKey: DefaultsKey.displaysSwitchedOff)
+        desk.lidClosed = true
+        service.restoreDisplaysLeftOff()
+        desk.drain()
+        plug(desk, 3, in: false)
+        suite.expect(desk.isWatchingLid && desk.configurations.last == "on:2",
+                     "headless success preserves an independently owed restoration")
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations.last == "on:1" && !desk.isWatchingLid,
+                     "independent deferred restoration still completes after headless success")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        desk.lidClosed = true
+        desk.configureSucceeds = false
+        plug(desk, 3, in: false)
+        suite.expect(desk.isWatchingLid && service.displayControlFailure == .failed,
+                     "a failed headless round keeps the closed panel's request and reports the real failure")
+        desk.configureSucceeds = true
+        plug(desk, 3, in: true)
+        plug(desk, 3, in: false)
+        suite.expect(!desk.isWatchingLid && desk.configurations.last == "on:2",
+                     "repeated headless attempts retain ownership until a later external success")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        desk.lidClosed = true
+        desk.configureSucceeds = false
+        plug(desk, 3, in: false)
+        desk.lidClosed = false
+        service.restoreDisplaysBeforeTermination()
+        desk.drain()
+        desk.lidClosed = true
+        desk.configureSucceeds = true
+        plug(desk, 3, in: true)
+        plug(desk, 3, in: false)
+        suite.expect(desk.isWatchingLid && desk.configurations.last == "on:2",
+                     "a failed restore-all request promotes prior headless intent")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        desk.configureSucceeds = false
+        plug(desk, 3, in: false)
         suite.expect(service.displayControlFailure == .failed,
                      "a genuine headless transaction failure is not mislabeled as a closed-lid denial")
+        desk.tearDown()
+    }
+
+    /// The lid is read again at the transaction, and that reading decides.
+    private static func lidReads(_ suite: TestSuite) {
+        var (desk, service) = desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        desk.lidClosed = true
+        desk.configureSucceeds = false
+        plug(desk, 3, in: false)
+        suite.expect(desk.isWatchingLid, "failed headless round keeps the closed internal request queued")
+        let made = desk.configurations.count
+        desk.lidReads = [false, true]
+        desk.lidMoved(closed: true)
+        desk.drain()
+        suite.expect(desk.configurations.count == made && desk.isWatchingLid,
+                     "a deferred retry that closes at the transaction keeps headless ownership")
+        desk.configureSucceeds = true
+        plug(desk, 3, in: true)
+        plug(desk, 3, in: false)
+        suite.expect(!desk.isWatchingLid && switchedOff(desk) == [1] && desk.configurations.last == "on:2",
+                     "later external headless success cancels only the internal headless request")
+        let afterCancel = desk.configurations.count
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations.count == afterCancel && switchedOff(desk) == [1],
+                     "opening after cancellation does not enable the internal display")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        tap(desk, service, 2)
+        desk.lidReads = [true, false]
+        plug(desk, 3, in: false)
+        suite.expect(!desk.isWatchingLid && desk.configurations.last == "on:2",
+                     "headless candidate retry uses the shared transaction-time lid result")
+        let headlessDone = desk.configurations.count
+        desk.lidMoved(closed: false)
+        desk.drain()
+        suite.expect(desk.configurations.count == headlessDone,
+                     "opening after a successful external headless recovery does not enable the internal display")
+        desk.tearDown()
+
+        // A tap on the panel waits behind the start-up restoration's recheck;
+        // the lid opens in between, so the recheck succeeds first.
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        service.toggleDisplay(service.displays.first { $0.id == 1 }!)
+        desk.work.drain()
+        desk.lidReads = [true, true]
+        service.restoreDisplaysLeftOff()
+        desk.drain()
+        suite.expect(service.displayControlFailure == nil
+                     && desk.configurations.filter { $0 == "on:1" }.count == 1,
+                     "queued manual completion cannot republish denial after earlier queued recovery succeeds")
+        desk.tearDown()
     }
 }

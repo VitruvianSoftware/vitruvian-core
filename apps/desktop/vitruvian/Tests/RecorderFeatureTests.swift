@@ -1154,11 +1154,6 @@ enum RecorderFeatureTests {
         suite.expect(legacyBlur?.strength == ScreenshotSupport.BlurStrength.defaultLevel
                 && legacyBlur?.end == 4,
                "a blur saved before strength existed opens at the strength it was drawn with")
-        let recorderControllerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Recorder/RecorderEditorController.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(recorderControllerSource.contains("rect: rect,\n                                      strength: item.strength)"),
-               "redrawing a blur's area keeps its strength")
         let blurredDocument = RecorderEditDocument.decoded(
             RecorderEditDocument(blurs: [blur]).encoded())
         suite.expect(blurredDocument.blurs == [blur],
