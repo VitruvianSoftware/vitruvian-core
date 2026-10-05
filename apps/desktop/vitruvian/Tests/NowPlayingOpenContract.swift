@@ -26,7 +26,7 @@ enum NowPlayingOpenContract {
                     cooperative: Bool = true) -> RadialNowPlayingApplication.OpenablePlayer {
             .init(pid: 20, activationPolicy: policy, isHidden: isHidden, bundleURL: bundle,
                   unhide: { record.events.append("unhide:20") },
-                  yieldActivation: { record.events.append("yield:20") },
+                  handOffActivation: { record.events.append("yield:20") },
                   activateFromVitruvian: {
                       record.events.append("activate:20:\($0.contains(.activateAllWindows))")
                       return cooperative

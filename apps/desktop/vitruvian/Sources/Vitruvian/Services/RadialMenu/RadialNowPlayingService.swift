@@ -289,13 +289,13 @@ package enum RadialNowPlayingApplication {
         package var bundleURL: URL?
         package var unhide: () -> Void
         /// Hands Vitruvian's activation over to the player.
-        package var yieldActivation: () -> Void
+        package var handOffActivation: () -> Void
         /// Asks the player to activate on Vitruvian's behalf; false when refused.
         package var activateFromVitruvian: (NSApplication.ActivationOptions) -> Bool
         package var activate: (NSApplication.ActivationOptions) -> Void
 
         package init(pid: pid_t, activationPolicy: NSApplication.ActivationPolicy, isHidden: Bool,
-                     bundleURL: URL?, unhide: @escaping () -> Void, yieldActivation: @escaping () -> Void,
+                     bundleURL: URL?, unhide: @escaping () -> Void, handOffActivation: @escaping () -> Void,
                      activateFromVitruvian: @escaping (NSApplication.ActivationOptions) -> Bool,
                      activate: @escaping (NSApplication.ActivationOptions) -> Void) {
             self.pid = pid
@@ -303,7 +303,7 @@ package enum RadialNowPlayingApplication {
             self.isHidden = isHidden
             self.bundleURL = bundleURL
             self.unhide = unhide
-            self.yieldActivation = yieldActivation
+            self.handOffActivation = handOffActivation
             self.activateFromVitruvian = activateFromVitruvian
             self.activate = activate
         }
@@ -312,7 +312,7 @@ package enum RadialNowPlayingApplication {
             self.init(pid: application.processIdentifier, activationPolicy: application.activationPolicy,
                       isHidden: application.isHidden, bundleURL: application.bundleURL,
                       unhide: { application.unhide() },
-                      yieldActivation: { ActivationHandoff.yield(to: application) },
+                      handOffActivation: { ActivationHandoff.yield(to: application) },
                       activateFromVitruvian: { application.activate(from: NSRunningApplication.current, options: $0) },
                       activate: { _ = application.activate(options: $0) })
         }
@@ -354,7 +354,7 @@ package enum RadialNowPlayingApplication {
             // Read before the unhide below: a hidden player's windows come back with it.
             let showsNoWindow = !application.isHidden && !opening.hasWindowOnScreen(application.pid)
             if application.isHidden { application.unhide() }
-            application.yieldActivation()
+            application.handOffActivation()
             if !application.activateFromVitruvian([.activateAllWindows]) {
                 application.activate([.activateAllWindows])
             }

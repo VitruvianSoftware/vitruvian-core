@@ -23,7 +23,7 @@ enum FanControlResumeContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "vitruvian.tests.fan-control-resume"
+        let domain = "com.vitruviansoftware.vitruvian.tests.fan-control-resume"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
