@@ -20,6 +20,63 @@ import VitruvianDesign
 package final class AppUpdatesService: ObservableObject {
     package static let shared = AppUpdatesService()
 
+    /// What the service reads and reaches outside its own sources: the
+    /// preferences, the feature switch, notifications and the scan. `live`
+    /// is the app's; tests pass their own.
+    @MainActor
+    package struct Environment {
+        package var defaults: UserDefaults
+        package var isAvailable: () -> Bool
+        package var notify: (_ title: String, _ body: String) -> Void
+        /// Scans the installed apps and the chosen sources, and hands the
+        /// findings back on the main thread. Nil runs the service's own scan.
+        package var scan: ((ScanRequest, @escaping @MainActor @Sendable (ScanResult) -> Void) -> Void)?
+
+        package init(defaults: UserDefaults, isAvailable: @escaping () -> Bool,
+                     notify: @escaping (_ title: String, _ body: String) -> Void,
+                     scan: ((ScanRequest, @escaping @MainActor @Sendable (ScanResult) -> Void) -> Void)?) {
+            self.defaults = defaults
+            self.isAvailable = isAvailable
+            self.notify = notify
+            self.scan = scan
+        }
+
+        package static var live: Environment {
+            Environment(defaults: .standard, isAvailable: { AppFeature.appUpdates.isAvailable },
+                        notify: { Notifier.post(title: $0, body: $1) }, scan: nil)
+        }
+    }
+
+    /// One scan: the rules it checks against and the sources it asks.
+    package struct ScanRequest: Sendable {
+        package let rules: [AppUpdatesSupport.UpdateRule]
+        package let includeHomebrewApps: Bool
+        package let includeAppStore: Bool
+        package let includeOnlineCatalog: Bool
+        package let country: String?
+        package let automatic: Bool
+    }
+
+    /// What a scan found, and which sources answered.
+    package struct ScanResult: Sendable {
+        package let items: [AppUpdatesSupport.Item]
+        package let packageManagerAvailable: Bool
+        package let onlineCatalogAvailable: Bool
+        package let appStoreAvailable: Bool
+        package let uncheckedAppNames: [String]
+
+        package init(items: [AppUpdatesSupport.Item], packageManagerAvailable: Bool, onlineCatalogAvailable: Bool,
+                     appStoreAvailable: Bool, uncheckedAppNames: [String]) {
+            self.items = items
+            self.packageManagerAvailable = packageManagerAvailable
+            self.onlineCatalogAvailable = onlineCatalogAvailable
+            self.appStoreAvailable = appStoreAvailable
+            self.uncheckedAppNames = uncheckedAppNames
+        }
+    }
+
+    private let environment: Environment
+
     @Published package private(set) var items: [AppUpdatesSupport.Item] = []
     @Published package private(set) var rules: [AppUpdatesSupport.UpdateRule] = []
     /// Latest scan, including skipped versions, so removing a rule needs no network work.
@@ -59,7 +116,9 @@ package final class AppUpdatesService: ObservableObject {
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
     private var scanGeneration = 0
-    private var sourceRefreshPending = false
+    /// A scan in flight reads rules or sources that have since changed, so
+    /// its answer is discarded and the scan runs again.
+    package private(set) var sourceRefreshPending = false
     private var automaticCheckPending = false
     private var knownIDs = Set<String>()
     /// The person was sent elsewhere to finish an update, so the list is
@@ -71,23 +130,24 @@ package final class AppUpdatesService: ObservableObject {
     /// list refreshes itself even when no window is on screen to notice.
     private var upgradeObserver: AnyCancellable?
 
-    private init() {
-        let stamp = UserDefaults.standard.double(forKey: DefaultsKey.appUpdatesLastCheck)
+    package init(environment: Environment = .live) {
+        self.environment = environment
+        let stamp = environment.defaults.double(forKey: DefaultsKey.appUpdatesLastCheck)
         lastCheck = stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
         rules = AppUpdatesSupport.decodedRules(
-            UserDefaults.standard.string(forKey: DefaultsKey.appUpdatesRules))
+            environment.defaults.string(forKey: DefaultsKey.appUpdatesRules))
     }
 
     // MARK: - Lifecycle
 
     package var frequency: AppUpdatesSupport.CheckFrequency {
         AppUpdatesSupport.CheckFrequency.sanitized(
-            UserDefaults.standard.string(forKey: DefaultsKey.appUpdatesCheckFrequency))
+            environment.defaults.string(forKey: DefaultsKey.appUpdatesCheckFrequency))
     }
 
     package func syncWithPreferences() {
         reloadRules()
-        guard AppFeature.appUpdates.isAvailable, frequency != .off else {
+        guard environment.isAvailable(), frequency != .off else {
             stop()
             return
         }
@@ -149,7 +209,7 @@ package final class AppUpdatesService: ObservableObject {
     /// Scans the enabled sources. `automatic` marks the background pass,
     /// which alone can post a notification and re-arm the schedule.
     package func check(automatic: Bool = false) {
-        guard AppFeature.appUpdates.isAvailable else { return }
+        guard environment.isAvailable() else { return }
         if isChecking {
             automaticCheckPending = automaticCheckPending || automatic
             return
@@ -160,12 +220,33 @@ package final class AppUpdatesService: ObservableObject {
         lastError = nil
         scanGeneration += 1
         let generation = scanGeneration
-        let includeHomebrewApps = UserDefaults.standard.bool(
-            forKey: DefaultsKey.appUpdatesIncludeHomebrewApps)
-        let includeAppStore = UserDefaults.standard.bool(forKey: DefaultsKey.appUpdatesIncludeAppStore)
-        let includeOnlineCatalog = UserDefaults.standard.bool(
-            forKey: DefaultsKey.appUpdatesIncludeOnlineCatalog)
-        let country = Locale.current.region?.identifier
+        let request = ScanRequest(
+            rules: checkedRules,
+            includeHomebrewApps: environment.defaults.bool(forKey: DefaultsKey.appUpdatesIncludeHomebrewApps),
+            includeAppStore: environment.defaults.bool(forKey: DefaultsKey.appUpdatesIncludeAppStore),
+            includeOnlineCatalog: environment.defaults.bool(forKey: DefaultsKey.appUpdatesIncludeOnlineCatalog),
+            country: Locale.current.region?.identifier,
+            automatic: automatic)
+        let deliver: @MainActor @Sendable (ScanResult) -> Void = { [weak self] result in
+            guard let self, generation == self.scanGeneration else { return }
+            self.finishCheck(result, automatic: automatic)
+        }
+        if let scan = environment.scan {
+            scan(request, deliver)
+        } else {
+            runScan(request, deliver: deliver)
+        }
+    }
+
+    /// The service's own scan: the installed apps, then every chosen source
+    /// at once, settled on the work queue and handed to the main thread.
+    private func runScan(_ request: ScanRequest, deliver: @escaping @MainActor @Sendable (ScanResult) -> Void) {
+        let checkedRules = request.rules
+        let includeHomebrewApps = request.includeHomebrewApps
+        let includeAppStore = request.includeAppStore
+        let includeOnlineCatalog = request.includeOnlineCatalog
+        let country = request.country
+        let automatic = request.automatic
 
         workQueue.async { [weak self] in
             guard let self else { return }
@@ -223,35 +304,29 @@ package final class AppUpdatesService: ObservableObject {
                 let storeResult = storeResult, onlineResult = onlineResult
                 let resolvedFeed = feedResult.resolvingCatalogFallback(
                     checkedPaths: onlineResult.checkedPaths, candidates: onlineCandidates)
-                DispatchQueue.main.async {
-                    guard generation == self.scanGeneration else { return }
-                    self.finishCheck(items: AppUpdatesSupport.merged(packageResult.items,
-                                                                     storeResult.items,
-                                                                     resolvedFeed.items,
-                                                                     onlineResult.items.filter {
-                                                                         !resolvedFeed.checkedPaths.contains($0.bundlePath ?? "")
-                                                                     }),
-                                     packageManagerAvailable: packageResult.available,
-                                     onlineCatalogAvailable: onlineResult.available && resolvedFeed.available,
-                                     appStoreAvailable: storeResult.available,
-                                     uncheckedAppNames: AppUpdatesSupport.uncheckedAppNames(
-                                        storeResult.uncheckedApps + resolvedFeed.uncheckedApps + onlineResult.uncheckedApps,
-                                        checkedPaths: resolvedFeed.checkedPaths),
-                                     automatic: automatic)
-                }
+                let result = ScanResult(
+                    items: AppUpdatesSupport.merged(packageResult.items,
+                                                    storeResult.items,
+                                                    resolvedFeed.items,
+                                                    onlineResult.items.filter {
+                                                        !resolvedFeed.checkedPaths.contains($0.bundlePath ?? "")
+                                                    }),
+                    packageManagerAvailable: packageResult.available,
+                    onlineCatalogAvailable: onlineResult.available && resolvedFeed.available,
+                    appStoreAvailable: storeResult.available,
+                    uncheckedAppNames: AppUpdatesSupport.uncheckedAppNames(
+                        storeResult.uncheckedApps + resolvedFeed.uncheckedApps + onlineResult.uncheckedApps,
+                        checkedPaths: resolvedFeed.checkedPaths))
+                DispatchQueue.main.async { deliver(result) }
             }
         }
     }
 
-    private func finishCheck(items scannedItems: [AppUpdatesSupport.Item],
-                             packageManagerAvailable available: Bool,
-                             onlineCatalogAvailable catalogAvailable: Bool,
-                             appStoreAvailable storeAvailable: Bool,
-                             uncheckedAppNames: [String],
-                             automatic: Bool) {
+    private func finishCheck(_ result: ScanResult, automatic: Bool) {
+        let scannedItems = result.items
         // The feature can be switched off in the hub while a scan is in
         // flight; its findings belong to a surface that no longer exists.
-        guard AppFeature.appUpdates.isAvailable else {
+        guard environment.isAvailable() else {
             isChecking = false
             sourceRefreshPending = false
             automaticCheckPending = false
@@ -271,30 +346,30 @@ package final class AppUpdatesService: ObservableObject {
         // otherwise the first background check of every launch would speak up
         // about the same pending update again. Findings that are gone drop out,
         // so an app updating again later is announced again.
-        var announced = Self.announcedIDs().intersection(newItems.map(\.id))
+        var announced = announcedIDs().intersection(newItems.map(\.id))
         let fresh = newItems.filter { !announced.contains($0.id) }
         selection = AppUpdatesSupport.reconciledSelection(previous: selection,
                                                           knownIDs: knownIDs,
                                                           items: newItems)
         knownIDs = Set(newItems.map(\.id))
         items = newItems
-        packageManagerAvailable = available
-        onlineCatalogAvailable = catalogAvailable
-        appStoreAvailable = storeAvailable
-        self.uncheckedAppNames = uncheckedAppNames
+        packageManagerAvailable = result.packageManagerAvailable
+        onlineCatalogAvailable = result.onlineCatalogAvailable
+        appStoreAvailable = result.appStoreAvailable
+        uncheckedAppNames = result.uncheckedAppNames
         hasCheckedThisSession = true
         isChecking = false
         let now = Date()
         lastCheck = now
-        UserDefaults.standard.set(now.timeIntervalSince1970, forKey: DefaultsKey.appUpdatesLastCheck)
-        UserDefaults.standard.set(newItems.count, forKey: DefaultsKey.appUpdatesLastCount)
+        environment.defaults.set(now.timeIntervalSince1970, forKey: DefaultsKey.appUpdatesLastCheck)
+        environment.defaults.set(newItems.count, forKey: DefaultsKey.appUpdatesLastCount)
         if shouldFinishAutomatically {
             if notifyIfWanted(freshCount: fresh.count, total: newItems.count) {
                 announced = Set(newItems.map(\.id))
             }
             scheduleNext()
         }
-        Self.saveAnnouncedIDs(announced)
+        saveAnnouncedIDs(announced)
     }
 
     /// Only the background pass speaks up, and only about apps the person has
@@ -302,21 +377,21 @@ package final class AppUpdatesService: ObservableObject {
     /// stays quiet after the first notice. True when a notice went out.
     private func notifyIfWanted(freshCount: Int, total: Int) -> Bool {
         guard freshCount > 0,
-              UserDefaults.standard.bool(forKey: DefaultsKey.appUpdatesNotify) else { return false }
+              environment.defaults.bool(forKey: DefaultsKey.appUpdatesNotify) else { return false }
         let strings = FeatureStrings.appUpdates(L10n.shared.language)
         let body = total == 1
             ? strings.notificationBodyOne
             : String(format: strings.notificationBodyFormat, "\(total)")
-        Notifier.post(title: strings.pageTitle, body: body)
+        environment.notify(strings.pageTitle, body)
         return true
     }
 
-    private static func announcedIDs() -> Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: DefaultsKey.appUpdatesNotifiedIDs) ?? [])
+    private func announcedIDs() -> Set<String> {
+        Set(environment.defaults.stringArray(forKey: DefaultsKey.appUpdatesNotifiedIDs) ?? [])
     }
 
-    private static func saveAnnouncedIDs(_ ids: Set<String>) {
-        UserDefaults.standard.set(ids.sorted(), forKey: DefaultsKey.appUpdatesNotifiedIDs)
+    private func saveAnnouncedIDs(_ ids: Set<String>) {
+        environment.defaults.set(ids.sorted(), forKey: DefaultsKey.appUpdatesNotifiedIDs)
     }
 
     // MARK: - Package manager source
@@ -594,14 +669,14 @@ package final class AppUpdatesService: ObservableObject {
     private func saveRules(_ newRules: [AppUpdatesSupport.UpdateRule]) {
         guard let raw = AppUpdatesSupport.encodedRules(newRules) else { return }
         rules = newRules
-        UserDefaults.standard.set(raw, forKey: DefaultsKey.appUpdatesRules)
+        environment.defaults.set(raw, forKey: DefaultsKey.appUpdatesRules)
         applyRules()
     }
 
     /// Settings restore and reset use the same preference as the panel.
-    private func reloadRules() {
+    package func reloadRules() {
         let restored = AppUpdatesSupport.decodedRules(
-            UserDefaults.standard.string(forKey: DefaultsKey.appUpdatesRules))
+            environment.defaults.string(forKey: DefaultsKey.appUpdatesRules))
         guard restored != rules else { return }
         rules = restored
         hasCheckedThisSession = false
@@ -615,8 +690,8 @@ package final class AppUpdatesService: ObservableObject {
                                                           knownIDs: knownIDs, items: visible)
         knownIDs = Set(visible.map(\.id))
         items = visible
-        UserDefaults.standard.set(visible.count, forKey: DefaultsKey.appUpdatesLastCount)
-        Self.saveAnnouncedIDs(Self.announcedIDs().intersection(knownIDs))
+        environment.defaults.set(visible.count, forKey: DefaultsKey.appUpdatesLastCount)
+        saveAnnouncedIDs(announcedIDs().intersection(knownIDs))
     }
 
     // MARK: - Acting on the list

@@ -293,7 +293,6 @@ TEST_PRODUCTION_SOURCES = [
 
 # Files Tests/generate_sources.py writes; Bazel needs them declared up front.
 GENERATED_TEST_SOURCES = [
-    "AppUpdateRules.swift",
     "AppUpdates.swift",
     "BrightnessStep.swift",
     "ClipboardPreview.swift",

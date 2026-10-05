@@ -1232,6 +1232,26 @@ which leaves 47.
 - **Verification:** the rule moved verbatim. Its geometry lives in Core, so
   this slice relies on macOS CI.
 
+Landed (4b, app update rules and scan completion): one more generated file
+goes, which leaves 46.
+
+- **Injected:** `AppUpdatesService` takes an `Environment`:
+  - the preferences;
+  - the feature switch;
+  - notifications;
+  - an optional scan.
+
+  `live` is the app's, so `shared` behaves as before.
+- **Split:** `check()` builds a `ScanRequest` and hands the scan's `ScanResult`
+  to `finishCheck`. Without an injected scan, the service's own `runScan` runs
+  the same sources on its work queue.
+- **Opened:** `reloadRules()` is `package`, and `sourceRefreshPending` is
+  readable.
+- **Test:** the rules test runs the real service. Its scans finish when the
+  test says, so it drives check, scan and completion as the app does,
+  instead of a copy of ten members.
+- **Verification:** AppKit and Combine, so macOS CI only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -7,43 +7,27 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production rule mutations and scan completion, with isolated preferences and
-/// counters in place of scanning, scheduling and notifications.
+/// The production service's rules and scan completion, with preferences of its
+/// own and scans the test finishes. Nothing is scanned, scheduled or posted.
 enum AppUpdateRulesContract {
-    enum UserDefaults {
-        static let name = "vitru.tests.app-update-rules.\(UUID().uuidString)"
-        static let standard = Foundation.UserDefaults(suiteName: name)!
-    }
+    static let defaultsName = "vitru.tests.app-update-rules.\(UUID().uuidString)"
+    static let defaults = UserDefaults(suiteName: defaultsName)!
 
-    struct AppFeature {
-        static let appUpdates = AppFeature()
-        var isAvailable: Bool { true }
-    }
-
-    class State {
-        var rules: [AppUpdatesSupport.UpdateRule] = []
-        var allItems: [AppUpdatesSupport.Item] = []
-        var items: [AppUpdatesSupport.Item] = []
-        var selection: Set<String> = []
-        var knownIDs: Set<String> = []
-        var isChecking = false
-        var sourceRefreshPending = false
-        var automaticCheckPending = false
-        var packageManagerAvailable = true
-        var onlineCatalogAvailable = true
-        var appStoreAvailable = true
-        var uncheckedAppNames: [String] = []
-        var hasCheckedThisSession = false
-        var lastCheck: Date?
-        var scans = 0
+    /// The scans a service asked for, and the notices it posted.
+    final class Scans {
+        var requests: [AppUpdatesService.ScanRequest] = []
+        var pending: [@MainActor @Sendable (AppUpdatesService.ScanResult) -> Void] = []
         var notifications = 0
-        func check(automatic: Bool = false) { scans += 1 }
-        func scheduleNext() {}
-        func notifyIfWanted(freshCount: Int, total: Int) -> Bool {
-            notifications += freshCount
-            return freshCount > 0
-        }
-        init() {}
+    }
+
+    static func service(_ scans: Scans) -> AppUpdatesService {
+        AppUpdatesService(environment: .init(
+            defaults: defaults, isAvailable: { true },
+            notify: { _, _ in scans.notifications += 1 },
+            scan: { request, deliver in
+                scans.requests.append(request)
+                scans.pending.append(deliver)
+            }))
     }
 
     typealias Support = AppUpdatesSupport
@@ -57,7 +41,10 @@ enum AppUpdateRulesContract {
     }
 
     static func run(_ suite: TestSuite) {
-        defer { UserDefaults.standard.removePersistentDomain(forName: UserDefaults.name) }
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        // Notices are on, and no background check is ever scheduled.
+        defaults.set(true, forKey: DefaultsKey.appUpdatesNotify)
+        defaults.set(AppUpdatesSupport.CheckFrequency.off.rawValue, forKey: DefaultsKey.appUpdatesCheckFrequency)
         let app = Support.InstalledApp(name: "Editor", bundleID: "com.example.editor",
                                       path: "/Applications/Editor.app", version: "2.1.1", isFromAppStore: false)
         let skip = Support.UpdateRule(bundleID: app.bundleID, name: app.name, version: "v2.1.2")
@@ -113,31 +100,37 @@ enum AppUpdateRulesContract {
         let current = item("2.1.2")
         let next = item("2.1.3")
         let unrelated = item("2.1.2", bundleID: "com.example.other")
-        let service = Service()
+        let scans = Scans()
+        let service = Self.service(scans)
+        /// Hands the oldest scan still running these findings.
+        func complete(_ items: [Support.Item]) {
+            guard !scans.pending.isEmpty else { return }
+            scans.pending.removeFirst()(.init(items: items, packageManagerAvailable: true,
+                                              onlineCatalogAvailable: true, appStoreAvailable: true,
+                                              uncheckedAppNames: []))
+        }
         func finish(_ items: [Support.Item], automatic: Bool = false) {
-            service.isChecking = true
-            service.finishCheck(items: items, packageManagerAvailable: true,
-                                onlineCatalogAvailable: true, appStoreAvailable: true,
-                                uncheckedAppNames: [], automatic: automatic)
+            service.check(automatic: automatic)
+            complete(items)
         }
         finish([current, unrelated])
         service.skipVersion(current)
         suite.expect(service.items == [unrelated] && service.selection == [unrelated.id],
                      "skip removes the row and its bulk-update selection immediately")
-        suite.expect(UserDefaults.standard.integer(forKey: DefaultsKey.appUpdatesLastCount) == 1,
+        suite.expect(defaults.integer(forKey: DefaultsKey.appUpdatesLastCount) == 1,
                      "summary counts visible updates only")
-        let reloaded = Service()
-        reloaded.reloadRules()
+        let reloaded = Self.service(Scans())
         suite.expect(reloaded.rules == service.rules, "new service restores the saved choice")
         finish([current, unrelated], automatic: true)
-        suite.expect(service.notifications == 1 && service.items == [unrelated],
+        suite.expect(scans.notifications == 1 && service.items == [unrelated],
                      "scan completion and notifications exclude the skipped release")
+        var started = scans.requests.count
         service.removeRule(service.rules[0])
-        suite.expect(service.items == [current, unrelated] && service.scans == 0,
+        suite.expect(service.items == [current, unrelated] && scans.requests.count == started,
                      "removing a version rule restores cached results without any scan")
         service.skipVersion(current)
         finish([next], automatic: true)
-        suite.expect(service.items == [next] && service.selection == [next.id] && service.notifications == 2,
+        suite.expect(service.items == [next] && service.selection == [next.id] && scans.notifications == 2,
                      "the next release returns selected and can notify normally")
         service.skipVersion(next)
         suite.expect(service.rules.count == 1 && service.rules[0].version == "2.1.3",
@@ -146,21 +139,25 @@ enum AppUpdateRulesContract {
         service.excludeApp(next)
         suite.expect(service.items.isEmpty && service.selection.isEmpty, "exclusion removes the visible app")
         finish([])
+        started = scans.requests.count
         service.removeRule(service.rules[0])
         suite.expect(service.rules.isEmpty && service.items.isEmpty && !service.hasCheckedThisSession
-                     && service.scans == 0, "removing an exclusion neither fabricates a current result nor scans everything")
+                     && scans.requests.count == started,
+                     "removing an exclusion neither fabricates a current result nor scans everything")
         finish([next])
         suite.expect(service.items == [next], "the next explicit scan includes the restored app")
-        service.isChecking = true
+        service.check()
         service.skipVersion(next)
         suite.expect(service.rules.isEmpty, "rule actions cannot race an active scan")
-        UserDefaults.standard.set(excludedRaw, forKey: DefaultsKey.appUpdatesRules)
+        defaults.set(excludedRaw, forKey: DefaultsKey.appUpdatesRules)
         service.reloadRules()
         suite.expect(service.items.isEmpty && service.sourceRefreshPending,
                      "settings restore invalidates an in-flight scan using older candidate rules")
-        finish([next])
-        suite.expect(service.scans == 1 && service.items.isEmpty, "obsolete scan is discarded after settings restore")
-        UserDefaults.standard.removeObject(forKey: DefaultsKey.appUpdatesRules)
+        started = scans.requests.count
+        complete([next])
+        suite.expect(scans.requests.count == started + 1 && service.items.isEmpty,
+                     "obsolete scan is discarded after settings restore, and the scan runs again")
+        defaults.removeObject(forKey: DefaultsKey.appUpdatesRules)
         service.reloadRules()
         suite.expect(service.rules.isEmpty, "settings reset also removes rules from the live service")
 
