@@ -1559,6 +1559,12 @@ is that notice. Add an entry for every change to upstream files.
   and island; `NotchService` forwards to it. `Tests/NotchVolumeFeedbackTests.swift`
   drives it, `Tests/generate_sources.py` no longer copies the service's volume
   members, and `Tests/mutation_checks.py` mutates the new file.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/QuickTools/ScratchpadService.swift` takes an injected environment
+  (store, HUD warning, autosave timer, save dialog, island window, activation,
+  main queue) and exports from an `IslandWindowing` host;
+  `Tests/ScratchpadStoreContractTests.swift` drives the real service, and
+  `Tests/generate_sources.py` no longer copies its export and save members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

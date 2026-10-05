@@ -326,8 +326,6 @@ GENERATED_TEST_SOURCES = [
     "PostUpdateStatusItemRecovery.swift",
     "QuickLauncherBodies.swift",
     "RecorderZoomAiming.swift",
-    "ScratchpadExport.swift",
-    "ScratchpadSave.swift",
     "ScreenshotSelectionRefresh.swift",
     "ScreenshotShareCompletion.swift",
     "ScreenshotShortcutCompletion.swift",

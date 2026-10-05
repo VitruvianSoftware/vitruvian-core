@@ -125,18 +125,6 @@ def main():
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
           + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
           + "}\n}\n")
-    write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
-          + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
-                        "    func exportText(")
-          + "}\n}\n")
-    write("ScratchpadSave.swift", "import Foundation\n"
-          + "extension ScratchpadSaveContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift", prefix)
-                    .replace("private func", "func", 1) for prefix in [
-                        "    func commitEdits(", "    private func flushSave(", "    private func save(",
-                        "    func createPad("])
-          + "}\n}\n")
     clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
     write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
           + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"

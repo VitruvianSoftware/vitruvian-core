@@ -1291,6 +1291,34 @@ leaves 44.
   checks), and kills all 9 mutants of the type. The model also caught that
   `Output` and `Island` must be `@MainActor`, because the mixer is.
 
+Landed (4b, the scratchpad's export and saves): two more generated files go,
+which leaves 42.
+
+- **Injected:** `ScratchpadService` takes an `Environment`:
+  - the store it saves to;
+  - the HUD warning;
+  - the autosave's timer;
+  - a save dialog per export (`ExportDialog`, which `live` builds over
+    `NSSavePanel`);
+  - the island's window, app activation and the main queue.
+
+  `live` is the app's, so `shared` behaves as before. The export's host is
+  now an `IslandWindowing`, which `NSWindow` already adopts.
+- **Test:** both contracts run a real pad over a store in a directory of
+  their own, which the save test makes unwritable and then repairs, instead
+  of copies of five members.
+  - New checks: an edit replaces the autosave waiting before it, closing
+    writes at once and drops it, edits kept through failed writes reach the
+    disk, an empty pad exports nothing, and with no host and no floating pad
+    nothing opens.
+  - Gone: the key-window and current-event host variants, since the export
+    reads neither.
+  - The dialog's `hidesOnDeactivate` is set in `live`, as the download
+    folder chooser's is, so no test sees it.
+- **Verification:** a Linux model of the store, the document and the
+  service's save and export members runs both contracts (45 checks), and
+  kills all 22 mutants of those members.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
