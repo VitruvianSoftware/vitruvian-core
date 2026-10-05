@@ -276,9 +276,8 @@ package struct FeatureHubSettings: View {
     private func undoNeverUsedUninstall() {
         let batch = recentlyUninstalled
         recentlyUninstalled = []
-        FeatureRuntime.shared.keep(batch)
         withAnimation(.easeOut(duration: 0.22)) {
-            FeatureRuntime.shared.setAvailable(batch, true, enablingFirstInstalls: false)
+            FeatureRuntime.shared.reinstallKept(batch)
         }
     }
 

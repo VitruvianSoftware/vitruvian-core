@@ -13,8 +13,8 @@ package struct NotchAgentsView: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsPeriod) private var period: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
-    @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
+    @AppStorage(Preferences.notchAgentsCardOrder) private var cardOrder: String
+    @AppStorage(Preferences.notchAgentsHiddenCards) private var hiddenCards: String
     @AppStorage(Preferences.notchAgentsClaude) private var claude: Bool
     @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
@@ -26,14 +26,13 @@ package struct NotchAgentsView: View {
     private var providers: [AgentProvider] {
         // The switches are read here so a change in Settings redraws the page.
         _ = (claude, codex, opencode)
-        return NotchAgentSupport.providers().filter(usage.snapshot.seen.contains)
+        return NotchAgentSupport.pageProviders(seen: usage.snapshot.seen)
     }
 
     private var rows: [[NotchAgentTile]] {
         // The strings are read here so a change in Settings redraws the page.
         _ = (cardOrder, hiddenCards)
-        return NotchAgentSupport.rows(NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers),
-                                      width: size.width)
+        return NotchAgentSupport.pageRows(providers: providers, width: size.width)
     }
 
     package var body: some View {

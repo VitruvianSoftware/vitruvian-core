@@ -13,7 +13,49 @@ import VitruvianDesign
 /// services it drives.
 @MainActor
 package final class FeatureRuntime: ObservableObject {
-    package static let shared = FeatureRuntime()
+    package static let shared = FeatureRuntime(environment: .live)
+
+    /// What the runtime reads and drives. The app passes the standard
+    /// defaults and the live services; a test passes its own defaults and
+    /// records the binding actions instead of running them.
+    package struct Environment {
+        package var defaults: UserDefaults
+        /// Runs one of a feature's binding actions (`FeatureBindingAction`).
+        package var perform: @MainActor (FeatureBindingAction) -> Void
+        /// Once after each availability change.
+        package var availabilityDidChange: @MainActor () -> Void
+        /// The values saved in the app's own domain, as opposed to registered.
+        package var savedPreferences: @MainActor () -> [String: Any]
+
+        package init(defaults: UserDefaults,
+                     perform: @escaping @MainActor (FeatureBindingAction) -> Void,
+                     availabilityDidChange: @escaping @MainActor () -> Void,
+                     savedPreferences: @escaping @MainActor () -> [String: Any]) {
+            self.defaults = defaults
+            self.perform = perform
+            self.availabilityDidChange = availabilityDidChange
+            self.savedPreferences = savedPreferences
+        }
+
+        package static var live: Environment {
+            Environment(
+                defaults: .standard,
+                perform: { FeatureRuntime.perform($0) },
+                // The Command Bar drops rows of features that just left the
+                // hub, so a pin cannot linger as a bare id.
+                availabilityDidChange: {
+                    CommandBarService.shared.noteHubChange()
+                    if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
+                },
+                savedPreferences: {
+                    guard let domain = Bundle.main.bundleIdentifier else { return [:] }
+                    return UserDefaults.standard.persistentDomain(forName: domain) ?? [:]
+                })
+        }
+    }
+
+    private let environment: Environment
+    private var defaults: UserDefaults { environment.defaults }
 
     /// Bumped on every availability change; views observing the runtime
     /// re-read the catalog when it moves.
@@ -24,21 +66,28 @@ package final class FeatureRuntime: ObservableObject {
     /// stops working immediately, but its (inert) singleton only leaves
     /// memory on the next launch — this set is what the hub's restart banner
     /// keys off, including the install-then-uninstall-again case.
-    private var loadedThisSession = Set(AppFeature.allCases.filter(\.isAvailable))
+    private var loadedThisSession: Set<AppFeature>
 
     /// What was installed when the app came up and has not been installed
     /// again since. A feature installed later in the session, a reinstall
     /// included, has not had its chance yet, so it is never offered for
     /// uninstalling as unused until the next launch.
-    private var offerableThisSession = Set(AppFeature.allCases.filter(\.isAvailable))
+    private var offerableThisSession: Set<AppFeature>
 
-    private init() {}
+    package init(environment: Environment) {
+        self.environment = environment
+        let available = Set(AppFeature.allCases.filter { $0.isAvailable(in: environment.defaults) })
+        loadedThisSession = available
+        offerableThisSession = available
+    }
+
+    private func installed(_ feature: AppFeature) -> Bool { feature.isAvailable(in: defaults) }
 
     /// True while something that loaded this session is now uninstalled, so
     /// a restart would actually unload it. Features already uninstalled when
     /// the app came up never loaded, so they need no restart.
     package var needsRestartToUnload: Bool {
-        loadedThisSession.contains { !$0.isAvailable }
+        loadedThisSession.contains { !installed($0) }
     }
 
     /// Relaunches the app in place: a detached helper waits for this process
@@ -72,9 +121,9 @@ package final class FeatureRuntime: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    package func isAvailable(_ feature: AppFeature) -> Bool { feature.isAvailable }
+    package func isAvailable(_ feature: AppFeature) -> Bool { installed(feature) }
 
-    package var availableCount: Int { AppFeature.allCases.filter(\.isAvailable).count }
+    package var availableCount: Int { AppFeature.allCases.filter(installed).count }
 
     /// How many features this Mac can end up with. Counting against the whole
     /// catalog instead would leave the hub's install-all button forever one
@@ -82,7 +131,7 @@ package final class FeatureRuntime: ObservableObject {
     /// An install that predates the check still counts, so the tally can
     /// never read more installed than installable.
     package var installableCount: Int {
-        AppFeature.allCases.filter { $0.isHardwareSupported || $0.isAvailable }.count
+        AppFeature.allCases.filter { $0.isHardwareSupported || installed($0) }.count
     }
 
     /// The one gate every install passes, whichever surface asks: the hub
@@ -95,7 +144,7 @@ package final class FeatureRuntime: ObservableObject {
     /// strands someone's settings costs far more than one that leaves a
     /// feature reporting itself unsupported.
     private func mayFlip(_ feature: AppFeature, to available: Bool) -> Bool {
-        guard feature.isAvailable != available else { return false }
+        guard installed(feature) != available else { return false }
         return !available || feature.isHardwareSupported
     }
 
@@ -111,25 +160,25 @@ package final class FeatureRuntime: ObservableObject {
         var changed = false
         let firstIslandInstall = available && features.contains(.notch)
             && mayFlip(.notch, to: true)
-            && !UserDefaults.standard.bool(forKey: DefaultsKey.notchInitialExtensionsInstalled)
+            && !defaults.bool(forKey: DefaultsKey.notchInitialExtensionsInstalled)
         let requested = firstIslandInstall
             ? features + AppFeature.dynamicIslandExtensions.filter { !features.contains($0) }
             : features
         let savedValues = savedPreferences()
         for feature in requested where mayFlip(feature, to: available) {
             if available && enablingFirstInstalls {
-                feature.enableOnFirstInstall(in: .standard, savedValues: savedValues)
+                feature.enableOnFirstInstall(in: defaults, savedValues: savedValues)
             }
-            UserDefaults.standard.set(available, forKey: feature.availabilityKey)
+            defaults.set(available, forKey: feature.availabilityKey)
             if available {
                 loadedThisSession.insert(feature)
                 offerableThisSession.remove(feature)
             }
-            Self.runBinding(for: feature)
+            runBinding(for: feature)
             changed = true
         }
-        if firstIslandInstall && AppFeature.notch.isAvailable {
-            UserDefaults.standard.set(true, forKey: DefaultsKey.notchInitialExtensionsInstalled)
+        if firstIslandInstall && installed(.notch) {
+            defaults.set(true, forKey: DefaultsKey.notchInitialExtensionsInstalled)
         }
         if changed { finishAvailabilityChange() }
     }
@@ -147,32 +196,32 @@ package final class FeatureRuntime: ObservableObject {
     /// losing any of their settings.
     package func replaceAvailable(with selected: Set<AppFeature>, enabling keys: [String] = []) {
         for key in keys {
-            UserDefaults.standard.set(true, forKey: key)
+            defaults.set(true, forKey: key)
         }
         let savedValues = savedPreferences()
         for feature in AppFeature.allCases
         where mayFlip(feature, to: selected.contains(feature)) {
             let joins = selected.contains(feature)
             if joins {
-                feature.enableOnFirstInstall(in: .standard, savedValues: savedValues)
+                feature.enableOnFirstInstall(in: defaults, savedValues: savedValues)
             }
-            UserDefaults.standard.set(joins, forKey: feature.availabilityKey)
+            defaults.set(joins, forKey: feature.availabilityKey)
             if joins {
                 loadedThisSession.insert(feature)
                 offerableThisSession.remove(feature)
             }
-            Self.runBinding(for: feature)
+            runBinding(for: feature)
         }
         // Features that stayed installed still need a sync: their enable
         // keys may have just flipped on. Syncs are idempotent, so a repeat
         // for the ones handled above costs nothing. A selected feature the
         // gate refused is not installed, so it is skipped like any other
         // unavailable one and its service never comes to life.
-        for feature in selected where feature.isAvailable {
-            Self.runBinding(for: feature)
+        for feature in selected where installed(feature) {
+            runBinding(for: feature)
         }
-        if selected.contains(.notch) && AppFeature.notch.isAvailable {
-            UserDefaults.standard.set(true, forKey: DefaultsKey.notchInitialExtensionsInstalled)
+        if selected.contains(.notch) && installed(.notch) {
+            defaults.set(true, forKey: DefaultsKey.notchInitialExtensionsInstalled)
         }
         finishAvailabilityChange()
     }
@@ -181,23 +230,32 @@ package final class FeatureRuntime: ObservableObject {
     /// page to offer as one batch, minus the ones the person chose to keep.
     package func neverSwitchedOnFeatures() -> [AppFeature] {
         let saved = savedPreferences()
-        let kept = Self.keptFeatures()
-        return AppFeature.neverSwitchedOn(isAvailable: \.isAvailable,
-                                          boolFor: UserDefaults.standard.bool(forKey:),
+        let kept = keptFeatures()
+        return AppFeature.neverSwitchedOn(isAvailable: installed,
+                                          boolFor: defaults.bool(forKey:),
                                           isSaved: { saved[$0] != nil })
             .filter { offerableThisSession.contains($0) && !kept.contains($0) }
+    }
+
+    /// Brings back features just uninstalled as never used, when the person
+    /// changes their mind. That is also an answer to the offer, so they are
+    /// kept and never offered again; none of them was ever on, and the
+    /// reinstall leaves their switches off too.
+    package func reinstallKept(_ features: [AppFeature]) {
+        keep(features)
+        setAvailable(features, true, enablingFirstInstalls: false)
     }
 
     /// Stops offering these features as unused. A later one that turns out
     /// never used is still offered, on its own merits.
     package func keep(_ features: [AppFeature]) {
-        let kept = Self.keptFeatures().union(features)
-        UserDefaults.standard.set(kept.map(\.rawValue).sorted().joined(separator: ","),
-                                  forKey: DefaultsKey.featureHubKeptFeatures)
+        let kept = keptFeatures().union(features)
+        defaults.set(kept.map(\.rawValue).sorted().joined(separator: ","),
+                     forKey: DefaultsKey.featureHubKeptFeatures)
     }
 
-    private static func keptFeatures() -> Set<AppFeature> {
-        Set((UserDefaults.standard.string(forKey: DefaultsKey.featureHubKeptFeatures) ?? "")
+    private func keptFeatures() -> Set<AppFeature> {
+        Set((defaults.string(forKey: DefaultsKey.featureHubKeptFeatures) ?? "")
             .split(separator: ",")
             .compactMap { AppFeature(rawValue: String($0)) })
     }
@@ -207,197 +265,240 @@ package final class FeatureRuntime: ObservableObject {
         setAvailable(AppFeature.allCases, available, enablingFirstInstalls: false)
     }
 
-    private func savedPreferences() -> [String: Any] {
-        guard let domain = Bundle.main.bundleIdentifier else { return [:] }
-        return UserDefaults.standard.persistentDomain(forName: domain) ?? [:]
-    }
+    private func savedPreferences() -> [String: Any] { environment.savedPreferences() }
 
     /// Launch path: replaces the old unconditional sync block. Only available
     /// features get their binding run, so nothing else even instantiates.
     package func syncAtLaunch() {
-        for feature in AppFeature.allCases where feature.isAvailable {
-            Self.runBinding(for: feature)
+        for feature in AppFeature.allCases where installed(feature) {
+            runBinding(for: feature)
         }
     }
 
     /// Re-syncs a set of features (used by the permission sinks); skips
     /// unavailable ones so their singletons never come to life.
     package func sync(_ features: [AppFeature]) {
-        for feature in features where feature.isAvailable {
-            Self.runBinding(for: feature)
+        for feature in features where installed(feature) {
+            runBinding(for: feature)
         }
     }
 
-    /// One bump for Settings, and the Command Bar drops rows of features that
-    /// just left the hub so a pin cannot linger as a bare id.
+    /// One bump for Settings, then the environment's own follow-up.
     private func finishAvailabilityChange() {
         revision += 1
-        CommandBarService.shared.noteHubChange()
-        if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
+        environment.availabilityDidChange()
     }
 
-    /// Runs what `feature` must re-evaluate when its availability (or a
-    /// permission it depends on) changes. Exhaustive on purpose: a new
-    /// `AppFeature` case does not compile until it says what it binds, or
+    private func runBinding(for feature: AppFeature) {
+        for action in Self.actions(for: feature, in: defaults) { environment.perform(action) }
+    }
+
+    /// What `feature` must re-evaluate when its availability (or a permission
+    /// it depends on) changes, read from `defaults`. Exhaustive on purpose: a
+    /// new `AppFeature` case does not compile until it says what it binds, or
     /// that it binds nothing. (This was a dictionary looked up with `?()`,
     /// where a forgotten entry silently did nothing.) Media binds only so
     /// uninstalling it can cancel work already in flight.
-    private static func runBinding(for feature: AppFeature) {
+    package static func actions(for feature: AppFeature, in defaults: UserDefaults) -> [FeatureBindingAction] {
+        let islandShows = AppFeature.notch.isAvailable(in: defaults)
+        /// An island extension resyncs the island while it shows, and stops
+        /// its own service once the island is gone.
+        func islandExtension(stopping stop: FeatureBindingAction?) -> [FeatureBindingAction] {
+            islandShows ? [.notch] : stop.map { [$0] } ?? []
+        }
         switch feature {
-        case .switcher:
-            WindowUseTracker.shared.syncWithFeatures()
-            AppSwitcher.shared.syncWithPreferences()
+        case .switcher: return [.windowUseTracker, .appSwitcher]
+        case .dockPreview: return [.dockPreview]
+        case .dockClick: return [.dockClick]
+        case .windowMaximizer: return [.windowMaximizer]
+        case .windowLayout: return [.windowUseTracker, .windowLayout, .pointerDisplay]
+        case .autoQuit: return [.autoQuit]
+        case .scrollInverter, .scrollHorizontal, .linearScroll: return [.scrollInverter]
+        case .focusFollowsMouse: return [.focusFollowsMouse]
+        case .smoothScroll: return [.smoothScroll]
+        case .mouseAcceleration: return [.mouseAcceleration]
+        case .mouseNavigation: return [.mouseNavigation]
+        case .mouseButtonShortcuts: return [.mouseButtonShortcuts]
+        case .middleClick: return [.middleClick]
+        case .mouseClickDebounce: return [.mouseClickDebounce]
+        case .keyboardDebounce: return [.keyboardDebounce]
+        case .quitWindowProtection: return [.quitProtection]
+        case .superKey: return [.superKey]
+        case .textSnippets: return [.textSnippets, .snippetLibrary]
+        // Auto clear rides the clipboard feature's availability but not its
+        // capture toggle: uninstalling the feature stops it, turning history
+        // off does not.
+        case .clipboardHistory: return [.clipboardHistory, .clipboardAutoClear]
+        case .mediaTools:
+            return AppFeature.mediaTools.isAvailable(in: defaults) ? [.fileTools]
+                : [.fileTools, .cancelMedia, .closeMediaEditors]
+        case .pastePlain: return [.pastePlain]
+        case .finderCutPaste: return [.finderCutPaste]
+        case .finderRename: return [.finderRename]
+        case .shelf: return [.shelf, .fileTools]
+        case .urlCleaner: return [.urlCleaner]
+        case .diskImageInstaller: return [.diskImageInstaller]
+        case .mixer: return [.preciseVolumeRoller, .appVolumeMixer, .audioInputDevices]
+        case .soundOutputSwitcher: return [.appVolumeMixer, .soundOutputSwitcher]
+        // Priority owns no sibling CoreAudio listener stack. Keep the shared
+        // system-device observers alive even when Volume mixer is not
+        // installed, then start/stop the policy that consumes them.
+        case .audioPriority: return [.appVolumeMixer, .audioInputDevices, .audioPriority]
+        case .micMute: return [.micMute]
+        case .musicBlock: return [.musicLaunchBlocker]
+        case .keepAwake: return [.keepAwake, .hotkeys]
+        case .brightness: return [.brightness]
+        case .extraBrightness: return [.extraBrightness]
+        case .bluetoothSleep: return [.bluetoothSleep]
+        case .quickLauncher: return [.quickLauncher]
+        case .colorPicker: return [.screenCapture]
+        case .screenOCR: return [.screenCapture, .screenText]
+        case .screenshot: return [.screenCapture, .screenshot, .recentCaptures]
+        case .screenRecorder: return [.screenCapture, .screenRecorder, .recentCaptures]
+        case .cameraPreview: return [.cameraPreview]
+        case .wallpaper: return [.wallpaper]
+        case .radialMenu: return [.radialMenu]
+        case .notch: return [.notch]
+        case .notchGestures: return islandExtension(stopping: nil)
+        case .notchTimer: return islandExtension(stopping: .stopNotchTimer)
+        case .notchAccessories: return islandExtension(stopping: .stopNotchAccessories)
+        case .notchLyrics: return NotchLyricsSupport.isEnabled(in: defaults) ? [] : [.stopNotchLyrics]
+        case .notchQueue: return [.notchQueue]
+        case .notchLiveEqualizer: return [.notchAudioLevel]
+        case .notchNotifications: return islandExtension(stopping: .stopNotchNotifications)
+        case .notchDownloads: return islandExtension(stopping: .stopNotchDownloads)
+        case .notchCalendar: return islandExtension(stopping: .stopNotchCalendar)
+        case .notchAgents: return islandExtension(stopping: .stopAgentUsage)
+        case .notchWatch: return islandExtension(stopping: .stopNotchWatch)
+        case .scratchpad: return [.scratchpad]
+        case .commandBar: return [.commandBar]
+        case .cleaner:
+            let schedules: [FeatureBindingAction] = [.cleanerScheduler, .whatsAppScheduler, .whatsAppOrganizer]
+            let keepsDownloads = AppFeature.cleaner.isAvailable(in: defaults)
+                && defaults.bool(forKey: DefaultsKey.whatsAppDownloadsEnabled)
+            return keepsDownloads ? schedules : schedules + [.resetWhatsAppDownloads, .stopWhatsAppOrganizer]
+        case .appUpdates: return [.appUpdates]
+        // Connected devices feeds SystemMonitor's sampling plan like the
+        // metric families. As a dictionary entry it was simply missing, so
+        // uninstalling it mid-session left the plan stale until something
+        // else recomputed it.
+        case .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
+             .connectedDevices:
+            return [.monitorPlan, .monitorAlerts]
+        case .fanControl:
+            let needsRecovery = defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded)
+            let hasRegisteredHelper = !(defaults.string(forKey: DefaultsKey.fanControlHelperVersion) ?? "").isEmpty
+            let syncsHelper = needsRecovery || (!AppFeature.fanControl.isAvailable(in: defaults) && hasRegisteredHelper)
+            return syncsHelper ? [.monitorPlan, .fanControl] : [.monitorPlan]
+        // On-demand tools: they check what they need each time they run, so
+        // there is nothing to start, stop or re-evaluate.
+        case .quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager:
+            return []
+        }
+    }
+
+    /// Runs one binding action on the live service.
+    fileprivate static func perform(_ action: FeatureBindingAction) {
+        switch action {
+        case .windowUseTracker: WindowUseTracker.shared.syncWithFeatures()
+        case .appSwitcher: AppSwitcher.shared.syncWithPreferences()
         case .dockPreview: DockPreviewService.shared.syncWithPreferences()
         case .dockClick: DockClickService.shared.syncWithPreferences()
         case .windowMaximizer: WindowMaximizer.shared.syncWithPreferences()
-        case .windowLayout:
-            WindowUseTracker.shared.syncWithFeatures()
-            WindowLayoutService.shared.syncWithPreferences()
-            PointerDisplayService.shared.syncWithPreferences()
+        case .windowLayout: WindowLayoutService.shared.syncWithPreferences()
+        case .pointerDisplay: PointerDisplayService.shared.syncWithPreferences()
         case .autoQuit: AutoQuitService.shared.syncWithPreferences()
         case .scrollInverter: ScrollInverter.shared.syncWithPreferences()
-        case .scrollHorizontal: ScrollInverter.shared.syncWithPreferences()
         case .focusFollowsMouse: FocusFollowsMouseService.shared.syncWithPreferences()
         case .smoothScroll: SmoothScrollService.shared.syncWithPreferences()
-        case .linearScroll: ScrollInverter.shared.syncWithPreferences()
         case .mouseAcceleration: MouseAccelerationService.shared.syncWithPreferences()
         case .mouseNavigation: MouseNavigationService.shared.syncWithPreferences()
         case .mouseButtonShortcuts: MouseButtonShortcutService.shared.syncWithPreferences()
         case .middleClick: MiddleClickService.shared.syncWithPreferences()
         case .mouseClickDebounce: MouseClickDebounceService.shared.syncWithPreferences()
         case .keyboardDebounce: KeyboardDebounceService.shared.syncWithPreferences()
-        case .quitWindowProtection: QuitProtectionService.shared.syncWithPreferences()
+        case .quitProtection: QuitProtectionService.shared.syncWithPreferences()
         case .superKey: SuperKeyService.shared.syncWithPreferences()
-        case .textSnippets:
-            TextSnippetService.shared.syncWithPreferences()
-            SnippetLibraryService.shared.syncWithPreferences()
-        case .clipboardHistory:
-            ClipboardHistoryService.shared.syncWithPreferences()
-            // Auto clear rides the clipboard feature's availability but not its
-            // capture toggle: uninstalling the feature stops it, turning history
-            // off does not.
-            ClipboardAutoClearService.shared.syncWithPreferences()
-        case .mediaTools:
-            NotchFileToolsService.shared.syncWithPreferences()
-            guard !AppFeature.mediaTools.isAvailable else { return }
-            MediaService.shared.cancel()
-            ScreenRecorderService.shared.closeEditors(ownedBy: .mediaTools)
+        case .textSnippets: TextSnippetService.shared.syncWithPreferences()
+        case .snippetLibrary: SnippetLibraryService.shared.syncWithPreferences()
+        case .clipboardHistory: ClipboardHistoryService.shared.syncWithPreferences()
+        case .clipboardAutoClear: ClipboardAutoClearService.shared.syncWithPreferences()
+        case .fileTools: NotchFileToolsService.shared.syncWithPreferences()
+        case .cancelMedia: MediaService.shared.cancel()
+        case .closeMediaEditors: ScreenRecorderService.shared.closeEditors(ownedBy: .mediaTools)
         case .pastePlain: PastePlainService.shared.syncWithPreferences()
         case .finderCutPaste: FinderCutPaste.shared.syncWithPreferences()
         case .finderRename: FinderRenameService.shared.syncWithPreferences()
-        case .shelf:
-            ShelfService.shared.syncWithPreferences()
-            NotchFileToolsService.shared.syncWithPreferences()
+        case .shelf: ShelfService.shared.syncWithPreferences()
         case .urlCleaner: URLCleanerService.shared.syncWithPreferences()
         case .diskImageInstaller: DiskImageInstallerService.shared.syncWithPreferences()
-        case .mixer:
-            PreciseVolumeRollerService.shared.syncWithPreferences()
-            AppVolumeMixer.shared.syncWithPreferences()
-            AudioInputDeviceManager.shared.syncWithPreferences()
-        case .soundOutputSwitcher:
-            AppVolumeMixer.shared.syncWithPreferences()
-            SoundOutputSwitcher.shared.syncWithPreferences()
-        case .audioPriority:
-            // Priority owns no sibling CoreAudio listener stack. Keep the
-            // shared system-device observers alive even when Volume mixer is
-            // not installed, then start/stop the policy that consumes them.
-            AppVolumeMixer.shared.syncWithPreferences()
-            AudioInputDeviceManager.shared.syncWithPreferences()
-            AudioPriorityService.shared.syncWithPreferences()
+        case .preciseVolumeRoller: PreciseVolumeRollerService.shared.syncWithPreferences()
+        case .appVolumeMixer: AppVolumeMixer.shared.syncWithPreferences()
+        case .audioInputDevices: AudioInputDeviceManager.shared.syncWithPreferences()
+        case .soundOutputSwitcher: SoundOutputSwitcher.shared.syncWithPreferences()
+        case .audioPriority: AudioPriorityService.shared.syncWithPreferences()
         case .micMute: MicMuteService.shared.syncWithPreferences()
-        case .musicBlock: MusicLaunchBlocker.shared.syncWithPreferences()
-        case .keepAwake:
-            KeepAwakeManager.shared.syncWithFeatures()
-            HotkeyManager.shared.syncWithPreferences()
+        case .musicLaunchBlocker: MusicLaunchBlocker.shared.syncWithPreferences()
+        case .keepAwake: KeepAwakeManager.shared.syncWithFeatures()
+        case .hotkeys: HotkeyManager.shared.syncWithPreferences()
         case .brightness: BrightnessService.shared.syncWithPreferences()
         case .extraBrightness: ExtraBrightnessService.shared.syncWithPreferences()
         case .bluetoothSleep: BluetoothSleepService.shared.syncWithPreferences()
         case .quickLauncher: QuickLauncherService.shared.syncWithPreferences()
-        case .colorPicker:
-            ScreenCaptureService.shared.syncWithPreferences()
-        case .screenOCR:
-            ScreenCaptureService.shared.syncWithPreferences()
-            ScreenTextService.shared.syncWithPreferences()
-        case .screenshot:
-            ScreenCaptureService.shared.syncWithPreferences()
-            ScreenshotService.shared.syncWithPreferences()
-            RecentCaptureService.shared.syncWithPreferences()
-        case .screenRecorder:
-            ScreenCaptureService.shared.syncWithPreferences()
-            ScreenRecorderService.shared.syncWithPreferences()
-            RecentCaptureService.shared.syncWithPreferences()
+        case .screenCapture: ScreenCaptureService.shared.syncWithPreferences()
+        case .screenText: ScreenTextService.shared.syncWithPreferences()
+        case .screenshot: ScreenshotService.shared.syncWithPreferences()
+        case .screenRecorder: ScreenRecorderService.shared.syncWithPreferences()
+        case .recentCaptures: RecentCaptureService.shared.syncWithPreferences()
         case .cameraPreview: CameraPreviewService.shared.syncWithPreferences()
         case .wallpaper: WallpaperService.shared.syncWithPreferences()
         case .radialMenu: RadialMenuService.shared.syncWithPreferences()
         case .notch: NotchService.shared.syncWithPreferences()
-        case .notchGestures:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-        case .notchTimer:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { NotchTimerService.shared.stop() }
-        case .notchAccessories:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { NotchAccessoryService.shared.stop() }
-        case .notchLyrics:
-            if !NotchLyricsSupport.isEnabled() { NotchLyricsService.shared.stop() }
+        case .stopNotchTimer: NotchTimerService.shared.stop()
+        case .stopNotchAccessories: NotchAccessoryService.shared.stop()
+        case .stopNotchLyrics: NotchLyricsService.shared.stop()
         case .notchQueue: NotchMusicService.shared.syncQueuePreference()
-        case .notchLiveEqualizer: NotchAudioLevelService.shared.syncWithPreferences()
-        case .notchNotifications:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { NotchNotificationService.shared.stop() }
-        case .notchDownloads:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { NotchDownloadService.shared.stop() }
-        case .notchCalendar:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { NotchCalendarService.shared.stop() }
-        case .notchAgents:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { AgentUsageService.shared.stop() }
-        case .notchWatch:
-            if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-            else { NotchWatchService.shared.stop() }
+        case .notchAudioLevel: NotchAudioLevelService.shared.syncWithPreferences()
+        case .stopNotchNotifications: NotchNotificationService.shared.stop()
+        case .stopNotchDownloads: NotchDownloadService.shared.stop()
+        case .stopNotchCalendar: NotchCalendarService.shared.stop()
+        case .stopAgentUsage: AgentUsageService.shared.stop()
+        case .stopNotchWatch: NotchWatchService.shared.stop()
         case .scratchpad: ScratchpadService.shared.syncWithPreferences()
         case .commandBar: CommandBarService.shared.syncWithPreferences()
-        case .cleaner:
-            CleanerScheduler.shared.syncWithPreferences()
-            WhatsAppDownloadScheduler.shared.syncWithPreferences()
-            WhatsAppDownloadOrganizer.shared.syncWithPreferences()
-            if !AppFeature.cleaner.isAvailable || !WhatsAppDownloadSupport.isEnabled {
-                WhatsAppDownloadManager.shared.reset()
-                WhatsAppDownloadOrganizer.shared.stop()
-            }
+        case .cleanerScheduler: CleanerScheduler.shared.syncWithPreferences()
+        case .whatsAppScheduler: WhatsAppDownloadScheduler.shared.syncWithPreferences()
+        case .whatsAppOrganizer: WhatsAppDownloadOrganizer.shared.syncWithPreferences()
+        case .resetWhatsAppDownloads: WhatsAppDownloadManager.shared.reset()
+        case .stopWhatsAppOrganizer: WhatsAppDownloadOrganizer.shared.stop()
         case .appUpdates: AppUpdatesService.shared.syncWithPreferences()
-        case .monitorCPU: FeatureRuntime.syncMonitor()
-        case .monitorGPU: FeatureRuntime.syncMonitor()
-        case .monitorMemory: FeatureRuntime.syncMonitor()
-        case .monitorNetwork: FeatureRuntime.syncMonitor()
-        case .monitorDisk: FeatureRuntime.syncMonitor()
-        case .monitorPower: FeatureRuntime.syncMonitor()
-        case .fanControl:
-            SystemMonitor.shared.planDidChange()
-            let defaults = UserDefaults.standard
-            let needsRecovery = defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded)
-            let hasRegisteredHelper = !(defaults.string(forKey: DefaultsKey.fanControlHelperVersion) ?? "").isEmpty
-            if needsRecovery || (!AppFeature.fanControl.isAvailable && hasRegisteredHelper) {
-                FanControlService.shared.syncWithPreferences()
-            }
-        // Connected devices feeds SystemMonitor's sampling plan like the metric
-        // families above. As a dictionary entry it was simply missing, so
-        // uninstalling it mid-session left the plan stale until something else
-        // recomputed it.
-        case .connectedDevices: FeatureRuntime.syncMonitor()
-        // On-demand tools: they check what they need each time they run, so
-        // there is nothing to start, stop or re-evaluate.
-        case .quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager:
-            break
+        case .monitorPlan: SystemMonitor.shared.planDidChange()
+        case .monitorAlerts: MonitorAlertService.shared.syncWithPreferences()
+        case .fanControl: FanControlService.shared.syncWithPreferences()
         }
     }
+}
 
-    private static func syncMonitor() {
-        SystemMonitor.shared.planDidChange()
-        MonitorAlertService.shared.syncWithPreferences()
-    }
+/// One thing a feature's binding does to a live service, named so a test can
+/// read a feature's bindings without bringing any service to life. Most sync
+/// a service with its preferences; the `stop…`, `cancel…`, `close…` and
+/// `reset…` ones tear down what an uninstalled feature left running.
+package enum FeatureBindingAction: Hashable, CaseIterable {
+    case windowUseTracker, appSwitcher, dockPreview, dockClick, windowMaximizer, windowLayout, pointerDisplay
+    case autoQuit, scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration, mouseNavigation
+    case mouseButtonShortcuts, middleClick, mouseClickDebounce, keyboardDebounce, quitProtection, superKey
+    case textSnippets, snippetLibrary, clipboardHistory, clipboardAutoClear
+    case fileTools, cancelMedia, closeMediaEditors
+    case pastePlain, finderCutPaste, finderRename, shelf, urlCleaner, diskImageInstaller
+    case preciseVolumeRoller, appVolumeMixer, audioInputDevices, soundOutputSwitcher, audioPriority
+    case micMute, musicLaunchBlocker, keepAwake, hotkeys, brightness, extraBrightness, bluetoothSleep
+    case quickLauncher, screenCapture, screenText, screenshot, screenRecorder, recentCaptures
+    case cameraPreview, wallpaper, radialMenu
+    case notch, stopNotchTimer, stopNotchAccessories, stopNotchLyrics, notchQueue, notchAudioLevel
+    case stopNotchNotifications, stopNotchDownloads, stopNotchCalendar, stopAgentUsage, stopNotchWatch
+    case scratchpad, commandBar
+    case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
+    case appUpdates, monitorPlan, monitorAlerts, fanControl
 }
 
 /// Hardware a feature needs and this Mac may not have. One switch answers

@@ -8,14 +8,15 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production rail, editor, and focus bodies with inert services. Windows stay
+/// The compact pages' real views and rules: the camera page, calendar rows,
+/// the rail, the scratchpad's editor and focus, and page sizing. Windows stay
 /// hidden; these contracts neither capture pixels nor send input events.
 enum NotchCompactTests {
-    final class CameraPreviewService: ObservableObject {
-        static let shared = CameraPreviewService()
+    /// A camera that records what the camera page asks of it.
+    final class Camera: NotchEmbeddedCamera {
         @Published var isEmbeddedPresented = false
         var stops = 0
-        /// What the preview's stop button calls, as the island handed it over.
+        /// What the preview's stop button calls, as the page handed it over.
         var previewStop: (() -> Void)?
         func showEmbedded() { isEmbeddedPresented = true }
         func hideEmbedded() {
@@ -24,129 +25,17 @@ enum NotchCompactTests {
             isEmbeddedPresented = false
         }
     }
-    struct CameraPreviewView: View {
-        let size: CGSize
-        let showsCameraMenu: Bool
-        var onStop: (() -> Void)? = nil
-        var body: some View {
-            Color.black.frame(width: size.width, height: size.height)
-                .onAppear { CameraPreviewService.shared.previewStop = onStop }
-        }
-    }
-    final class NotchService: ObservableObject {
-        var presentationWindow: NSWindow?
-        @Published var scratchpadCloseSerial = 0
-        @Published var scratchpadFindSerial = 0
-        var scratchpadFindAction = NSTextFinder.Action.showFindInterface
-        var contentSize = CGSize(width: 304, height: 122)
-        var selected = NotchModule.controls
-        var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900),
-                                     safeAreaTop: 0, cameraWidth: 0, layout: .custom,
-                                     menuBarHeight: 64, customWidth: 360, customHeight: 260)
-        func perform(_ action: () -> Void) { action() }
-    }
-    final class NotchTimerService {
-        static let shared = NotchTimerService()
-        var session = NotchTimerSession()
-    }
-    final class ScratchpadService: ObservableObject {
-        static let shared = ScratchpadService()
-        @Published var text = "original note"
-        @Published var isPreviewing = false
-        @Published var pads: [ScratchpadPad] = []
-        @Published var selectedPadID: UUID?
-        @Published var saveFailed = false
-        var canCreatePad: Bool { true }
-        var canClosePad: Bool { false }
-        var selectedPadName: String { "pad" }
-        var panel: NSPanel?
-        weak var textView: NSTextView?
-        func flushSave() {}
-        func focusText() {}
-        func loadForEmbedding() -> Bool { true }
-        func commitEdits() {}
-        func createPad(defaultName: String) {}
-        func closePad(_ id: UUID) -> Bool { true }
-        func renamePad(_ id: UUID, to name: String) {}
-        func selectPad(_ id: UUID) {}
-        func copyAll() {}
-        func apply(_ mark: ScratchpadMark, through editor: NSTextView? = nil) {}
-        @Published var marksExpanded = false
-        func toggleMarks() { marksExpanded.toggle() }
-        func performFind(_ action: NSTextFinder.Action, in editor: NSTextView? = nil) {}
-        func hideFindBar(in editor: NSTextView) {}
-        func togglePreview() { isPreviewing.toggle() }
-        func show(allowsIsland: Bool = true) {}
-        func exportText(suggestedName: String, from window: NSWindow? = nil) {}
-    }
-    struct NotchEmptyView: View {
-        let symbol: String
-        let message: String
-        var body: some View { Text(message) }
-    }
-    struct NotchControlSurface: ViewModifier {
-        let cornerRadius: CGFloat
-        var interactive = true
-        func body(content: Content) -> some View { content }
-    }
-    struct NotchButtonStyle: ButtonStyle {
-        var cornerRadius: CGFloat = 10
-        var lifts = true
-        func makeBody(configuration: Configuration) -> some View { configuration.label }
-    }
-    struct NotchIconButton: View {
-        let symbol: String
-        let title: String
-        var selected = false
-        let action: () -> Void
-        var body: some View { Button(title, action: action) }
-    }
-    struct ScratchpadFormatBar: View {
-        enum Style { case pad, island }
-        let style: Style
-        var editor: NSTextView?
-        var body: some View { Color.clear }
-    }
-    struct MarkdownPreview: View {
-        let blocks: [ScratchpadMarkdownBlock]
-        var baseSize: CGFloat = 13
-        var body: some View { Color.clear }
-    }
-    struct Music { var playback: Bool? = true }
-    struct Page {
-        var music = Music()
-        var showsDetail = false
-        var service = NotchService()
-        var controls: [NotchControlItem] = [.music, .volume, .brightness, .timer]
-    }
-    final class Window {
+    /// A window as the scratchpad's focus sees it, key when the test says so.
+    final class Window: ScratchpadFocusWindow {
         static var key: Window?
         var isVisible = true
         var isKeyWindow: Bool { Self.key === self }
         var responderChanges = 0
         func makeKey() { Self.key = self }
-        func makeFirstResponder(_ view: TextView?) { responderChanges += 1 }
-    }
-    /// Not named ScrollView: inside this namespace that would shadow SwiftUI's
-    /// own, which the notch views use for their rows.
-    final class EditorScrollView {
-        var isFindBarVisible = false
-    }
-    final class TextView {
-        var window: Window?
-        var string = "note"
-        var enclosingScrollView: EditorScrollView? = EditorScrollView()
-        func setSelectedRange(_ range: NSRange) {}
-        func scrollRangeToVisible(_ range: NSRange) {}
-    }
-    final class Floating {
-        var panel: Window? = Window()
-        var textView: TextView? = TextView()
-    }
-    final class Embedded {
-        class Handle { var view: TextView? = TextView() }
-        var editor = Handle()
-        var pad = ScratchpadService.shared
+        func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+            responderChanges += 1
+            return true
+        }
     }
     struct Entry: Identifiable { let id: Int }
     final class RailState: ObservableObject {
@@ -169,7 +58,7 @@ enum NotchCompactTests {
         var body: some View {
             let entries = (0..<state.count).map { NotchCompactTests.Entry(id: $0) }
             return NotchRail(items: entries, rows: state.rows, itemWidth: 76, width: 424,
-                             scrollTarget: state.selected, content: marker)
+                             scrollTarget: state.selected) { marker($0) }
                 .frame(width: 424, height: 152)
         }
         private func marker(_ item: NotchCompactTests.Entry) -> some View {
@@ -194,6 +83,8 @@ enum NotchCompactTests {
         scratchpad(suite)
         focus(suite)
         sizing(suite)
+        musicControls(suite)
+        controlGroups(suite)
     }
     private static func calendarRows(_ suite: TestSuite) {
         let day = Date(timeIntervalSince1970: 1_780_000_000)
@@ -224,18 +115,18 @@ enum NotchCompactTests {
         }
     }
     private static func camera(_ suite: TestSuite) {
-        let service = CameraPreviewService.shared
-        service.isEmbeddedPresented = false
-        service.stops = 0
-        service.previewStop = nil
+        let service = Camera()
         let host = NSHostingView(rootView: AnyView(VStack {
-            NotchCameraView(size: CGSize(width: 424, height: 180))
+            NotchCameraView(size: CGSize(width: 424, height: 180), camera: service) { size, stop in
+                Color.black.frame(width: size.width, height: size.height)
+                    .onAppear { service.previewStop = stop }
+            }
         }))
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 424, height: 180),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
-        defer { window.contentView = nil; service.isEmbeddedPresented = false }
+        defer { window.contentView = nil }
         host.frame = NSRect(x: 0, y: 0, width: 424, height: 180)
         settle(host)
         service.showEmbedded()
@@ -308,23 +199,46 @@ enum NotchCompactTests {
                "a short last row keeps the cell width and sits centered under the row above")
     }
     private static func scratchpad(_ suite: TestSuite) {
-        let pad = ScratchpadService.shared
-        pad.text = "original note"
-        pad.isPreviewing = false
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-compact"
+        let defaults = UserDefaults(suiteName: domain)!
+        // A real pad over a directory of its own, on a real island's page.
+        let harness = ScratchpadHarness(root: root)
+        let fixture = NotchIslandFixture(defaults: defaults)
+        defer {
+            withExtendedLifetime(fixture) {}
+            harness.cleanUp()
+            try? manager.removeItem(at: root)
+            defaults.removePersistentDomain(forName: domain)
+        }
+        harness.defaults.set(true, forKey: AppFeature.scratchpad.availabilityKey)
+        let pad: ScratchpadService = harness.service
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 424, height: 180),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: NotchScratchpadView(service: NotchService()))
+        let host = NSHostingView(rootView: NotchScratchpadView(service: fixture.island, pad: pad))
         window.contentView = host
+        // The page saves as it leaves, while the pad's harness is still there.
+        defer {
+            window.contentView = nil
+            settle()
+        }
         host.frame = NSRect(x: 0, y: 0, width: 424, height: 180)
+        settle(host)
+        pad.text = "original note"
         settle(host)
         guard let editor = descendants(host).compactMap({ $0 as? NSTextView }).first else {
             suite.expect(false, "the embedded scratchpad creates its native editor")
             return
         }
-        for preview in [true, false] {
-            pad.isPreviewing = preview
+        /// Preview on or off, as its button turns it.
+        func preview(_ on: Bool) {
+            if pad.isPreviewing != on { pad.togglePreview() }
             settle(host)
+        }
+        for previewing in [true, false] {
+            preview(previewing)
             suite.expect(descendants(host).contains { $0 === editor },
                          "preview preserves the same editor and undo history")
             pad.clear(through: editor)
@@ -340,58 +254,131 @@ enum NotchCompactTests {
             settle(host)
             suite.expect(pad.text == "original note", "committing the restored text updates the shared document")
         }
-        pad.isPreviewing = true
-        settle(host)
+        preview(true)
         pad.text = "another pad"
         settle(host)
-        pad.isPreviewing = false
-        settle(host)
+        preview(false)
         suite.expect(editor.string == "another pad" && editor.undoManager?.canUndo != true,
                      "switching documents while previewing cannot undo into the previous document")
-        window.contentView = nil
     }
     private static func focus(_ suite: TestSuite) {
-        let floating = Floating()
-        let embedded = Embedded()
+        let floating = Window()
         let island = Window()
-        embedded.editor.view?.window = island
-        floating.textView?.window = floating.panel
+        let floatingEditor = NSTextView()
+        let islandEditor = NSTextView()
+        var queued: [@MainActor () -> Void] = []
+        /// What the floating pad does for a document action, or for an explicit show.
+        func focusFloating(requiresKeyWindow: Bool = true) {
+            ScratchpadFocus.bringForward(floating, requiresKeyWindow: requiresKeyWindow,
+                                         later: { queued.append($0) }) { (window: floating, editor: floatingEditor) }
+        }
+        /// What the island's page does when its pad changes.
+        func focusEmbedded() {
+            ScratchpadFocus.placeCaret(in: islandEditor, window: island)
+        }
+        /// The main queue runs what was queued for it.
+        func runQueued() {
+            let work = queued
+            queued.removeAll()
+            work.forEach { $0() }
+        }
         defer { Window.key = nil }
         for visible in [true, false] {
-            floating.panel?.isVisible = visible
+            floating.isVisible = visible
             Window.key = island
-            floating.focusText()
-            embedded.focusEditor()
-            settle()
-            suite.expect(Window.key === island && floating.panel?.responderChanges == 0,
+            focusFloating()
+            focusEmbedded()
+            runQueued()
+            suite.expect(Window.key === island && floating.responderChanges == 0,
                          "document actions preserve island focus with the floating host visible or hidden")
         }
-        floating.panel?.isVisible = true
-        floating.focusText(requiresKeyWindow: false)
-        settle()
-        suite.expect(Window.key === floating.panel && floating.panel?.responderChanges == 1,
+        floating.isVisible = true
+        focusFloating(requiresKeyWindow: false)
+        runQueued()
+        suite.expect(Window.key === floating && floating.responderChanges == 1,
                      "explicitly opening the floating pad still gives its editor the keyboard")
         let before = island.responderChanges
-        embedded.focusEditor()
+        focusEmbedded()
         suite.expect(island.responderChanges == before, "an island observer cannot change the nonkey editor selection")
-        floating.focusText()
+        focusFloating()
         Window.key = island
-        settle()
-        suite.expect(floating.panel?.responderChanges == 1,
+        runQueued()
+        suite.expect(floating.responderChanges == 1,
                      "a queued floating focus request is discarded after the user changes hosts")
     }
+    /// The music page's row of controls, which its size and its drawing
+    /// both read from `NotchMusicControls`.
+    private static func musicControls(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-controls"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        suite.expect(!NotchMusicControls(in: defaults).hasRow, "with nothing to offer, the music page draws no row of controls")
+        defaults.set(true, forKey: DefaultsKey.notchLyricsEnabled)
+        suite.expect(!NotchMusicControls(in: defaults).hasRow, "lyrics switched on count only once the feature is available")
+        defaults.set(true, forKey: AppFeature.notchLyrics.availabilityKey)
+        // The Settings preview draws the page with the island off and Music
+        // hidden; the row the page draws is the row its size counts.
+        defaults.set(false, forKey: DefaultsKey.notchEnabled)
+        let lyrics = NotchMusicControls(in: defaults)
+        suite.expect(lyrics.hasRow && lyrics.lyrics && !lyrics.queue && !lyrics.mixer,
+                     "available lyrics give the page its row whether or not the island shows Music")
+        suite.expect(NotchMusicControls(lyricsEnabled: false, queueEnabled: false, in: defaults)
+                        == NotchMusicControls(mixer: false, lyrics: false, queue: false),
+                     "the page's own switches decide, not the stored ones")
+        defaults.set(true, forKey: AppFeature.mixer.availabilityKey)
+        suite.expect(NotchMusicControls(lyricsEnabled: false, queueEnabled: false, in: defaults).hasRow,
+                     "the mixer alone gives the page its row")
+        // A page too short for anything grows to hold what it draws.
+        func height(_ row: Bool) -> CGFloat {
+            NotchLayout.pageSize(content: CGSize(width: 300, height: 10), module: .music, detail: false, controls: [],
+                                 timerMode: .timer, timerHasSession: false, hasPlayback: false,
+                                 musicControlsRow: row, layout: .custom).height
+        }
+        suite.expect(height(true) - height(false) == NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing,
+                     "the music page's size holds exactly the row it draws")
+    }
+
+    /// The home page's split into cards and shortcuts, which its size, its
+    /// drawing and the Settings preview all read from `NotchControlGroups`.
+    private static func controlGroups(_ suite: TestSuite) {
+        let groups = NotchControlGroups([.timer, .volume, .music, .keepAwake, .brightness])
+        suite.expect(groups.levels == [.volume, .brightness] && groups.music
+                     && groups.shortcuts == [.timer, .keepAwake] && groups.hasCards,
+                     "the levels and music share the card row and the rest are shortcuts, in their order")
+        suite.expect(!NotchControlGroups([.timer, .calendar]).hasCards && NotchControlGroups([.music]).hasCards
+                     && NotchControlGroups([.brightness]).hasCards,
+                     "the card row appears for music or any level, and only then")
+        let short = CGSize(width: 300, height: 10)
+        for items: [NotchControlItem] in [[.timer, .volume, .music], [.timer, .calendar, .keepAwake], [.brightness]] {
+            let groups = NotchControlGroups(items)
+            let page = NotchLayout.pageSize(content: short, module: .controls, detail: false, controls: items,
+                                            timerMode: .timer, timerHasSession: false, hasPlayback: true,
+                                            musicControlsRow: true, layout: .custom)
+            let drawn = NotchLayout.controls(hasCards: groups.hasCards, shortcutCount: groups.shortcuts.count,
+                                             width: short.width, height: short.height)
+            suite.expect(page.height == max(short.height, drawn.height),
+                         "the home page's size holds the rows it draws for \(items)")
+        }
+    }
+
     private static func sizing(_ suite: TestSuite) {
-        var page = Page()
+        /// A page's size with the home page's usual cards, a song playing and
+        /// no timer under way.
+        func pageSize(_ content: CGSize, _ module: NotchModule, detail: Bool = false,
+                      controls: [NotchControlItem] = [.music, .volume, .brightness, .timer]) -> CGSize {
+            NotchLayout.pageSize(content: content, module: module, detail: detail, controls: controls,
+                                 timerMode: .timer, timerHasSession: false, hasPlayback: true,
+                                 musicControlsRow: true, layout: .custom)
+        }
         let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
         for bar: CGFloat in [24, 32, 40, 48, 64] {
             let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, layout: .custom,
                                          menuBarHeight: bar, customWidth: 360, customHeight: 260)
             for module in [NotchModule.controls, .timer, .calendar, .files, .music, .clipboard, .camera, .mixer] {
-                page.service.selected = module
-                page.service.contentSize = geometry.contentSize(for: geometry.expandedSize(module: module))
-                let layout = page.pageSize
-                suite.expect(layout.width == page.service.contentSize.width
-                             && layout.height >= page.service.contentSize.height,
+                let content = geometry.contentSize(for: geometry.expandedSize(module: module))
+                let layout = pageSize(content, module)
+                suite.expect(layout.width == content.width && layout.height >= content.height,
                              "\(module) keeps the chosen width and exposes any vertically overflowing content")
                 if module == .controls {
                     let required = NotchLayout.controls(hasCards: true, shortcutCount: 1, width: layout.width, height: layout.height)
@@ -411,18 +398,17 @@ enum NotchCompactTests {
                                  "a short clipboard page keeps the search field and a complete card reachable")
                 } else if module == .camera || module == .mixer {
                     suite.expect(layout.height >= 144, "camera and mixer controls keep a usable height in a short island")
-                    if page.service.contentSize.height >= 144 {
-                        suite.expect(layout.height == page.service.contentSize.height,
+                    if content.height >= 144 {
+                        suite.expect(layout.height == content.height,
                                      "camera and mixer actions fit without outer scrolling in a short island")
                     }
                 }
             }
         }
-        page.controls = [.volume]
-        page.service.selected = .controls
-        page.service.contentSize = CGSize(width: 424, height: 96)
-        suite.expect(page.pageSize == page.service.contentSize, "a single home card does not introduce unnecessary scrolling")
-        page.showsDetail = true
-        suite.expect(page.pageSize == page.service.contentSize, "vertical detail pages preserve their existing layout")
+        let card = CGSize(width: 424, height: 96)
+        suite.expect(pageSize(card, .controls, controls: [.volume]) == card,
+                     "a single home card does not introduce unnecessary scrolling")
+        suite.expect(pageSize(card, .calendar) != card && pageSize(card, .calendar, detail: true) == card,
+                     "vertical detail pages preserve their existing layout")
     }
 }

@@ -41,8 +41,7 @@ package struct ScreenshotCaptureSettings: View {
     @AppStorage(Preferences.screenshotPreviewPosition) private var previewPositionRaw: String
     @AppStorage(Preferences.screenshotPreviewTakesFocus) private var previewTakesFocus: Bool
     @AppStorage(Preferences.screenshotPreviewEnabled) private var previewEnabled: Bool
-    @AppStorage(DefaultsKey.screenshotPreviewDuration) private var previewDuration =
-        ScreenshotSupport.defaultConfirmationPreviewDuration
+    @AppStorage(Preferences.screenshotPreviewDuration) private var previewDuration: Int
     @AppStorage(Preferences.screenshotSharingEnabled) private var sharingEnabled: Bool
     @AppStorage(Preferences.screenshotUploadShortcutEnabled) private var uploadShortcutEnabled: Bool
     @AppStorage(Preferences.screenshotUploadDuration) private var uploadDuration: Int

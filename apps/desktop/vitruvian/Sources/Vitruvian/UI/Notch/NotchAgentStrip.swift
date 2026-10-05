@@ -17,7 +17,7 @@ package struct NotchAgentStrip: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsReadout) private var readout: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     private var live: [AgentLiveSession] { usage.snapshot.live }
     private var working: [AgentProvider] {
@@ -35,13 +35,13 @@ package struct NotchAgentStrip: View {
                                                        working: working.count)
         let textSize = NotchAgentSupport.stripTextSize(height: geometry.compactActivityContentHeight)
         let iconInset = !geometry.compactActivityUsesFooter
-            ? geometry.compactActivityEdgeInset(boxHeight: iconSize + 4, radius: (iconSize + 4) / 2) : 0
+            ? geometry.compactMarkInset(side: iconSize + 4) : 0
         let textInset = !geometry.compactActivityUsesFooter
-            ? geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0) : 0
+            ? geometry.compactReadingInset(textSize: textSize) : 0
         HStack(spacing: 0) {
             Button { service.openActivity(.agents) } label: {
                 HStack(spacing: 1) {
-                    if geometry.compactActivityWingWidth >= 28 {
+                    if geometry.compactActivityWingWidth >= NotchLayout.compactMarkWing {
                         ForEach(working) { NotchAgentGlyph(provider: $0, size: iconSize) }
                     }
                 }
@@ -53,7 +53,7 @@ package struct NotchAgentStrip: View {
             Color.clear.frame(width: geometry.compactActivityCameraGap)
             Button { service.openActivity(.agents) } label: {
                 Group {
-                    if geometry.compactActivityWingWidth >= 42 {
+                    if geometry.compactActivityWingWidth >= NotchLayout.compactReadingWing {
                         NotchAgentReadoutTimeline(readout: NotchAgentReadout(rawValue: readout) ?? .elapsed) { date in
                             let text = reading(at: date)
                             Text(text)
@@ -120,7 +120,7 @@ package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     package var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in

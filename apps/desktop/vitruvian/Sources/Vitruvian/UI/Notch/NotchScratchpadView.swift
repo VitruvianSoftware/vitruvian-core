@@ -15,7 +15,7 @@ import VitruvianServices
 /// one undo.
 package struct NotchScratchpadView: View {
     @ObservedObject package var service: NotchService
-    @ObservedObject private var pad = ScratchpadService.shared
+    @ObservedObject private var pad: ScratchpadService
     @ObservedObject private var l10n = L10n.shared
     @State private var loadFailed = false
     @State private var copied = false
@@ -34,6 +34,12 @@ package struct NotchScratchpadView: View {
     }
 
     private var selectedPad: ScratchpadPad? { pad.pads.first { $0.id == pad.selectedPadID } }
+
+    /// The island's page over `pad`; the app's is the shared one.
+    package init(service: NotchService, pad: ScratchpadService = .shared) {
+        _service = ObservedObject(wrappedValue: service)
+        _pad = ObservedObject(wrappedValue: pad)
+    }
 
     package var body: some View {
         Group {
@@ -138,7 +144,7 @@ package struct NotchScratchpadView: View {
     }
 
     private var markRow: some View {
-        ScratchpadFormatBar(style: .island, editor: editor.view)
+        ScratchpadFormatBar(style: .island, editor: editor.view, service: pad)
     }
 
     private var toolbar: some View {
@@ -253,11 +259,8 @@ package struct NotchScratchpadView: View {
     /// The caret lands at the end of the pad's text, as the floating pad
     /// puts it after a tab change.
     private func focusEditor() {
-        guard !pad.isPreviewing, let view = editor.view, let window = view.window, window.isKeyWindow else { return }
-        window.makeFirstResponder(view)
-        let end = NSRange(location: (view.string as NSString).length, length: 0)
-        view.setSelectedRange(end)
-        view.scrollRangeToVisible(end)
+        guard !pad.isPreviewing, let view = editor.view else { return }
+        ScratchpadFocus.placeCaret(in: view, window: view.window)
     }
 
     private func presentRename(_ entry: ScratchpadPad) {

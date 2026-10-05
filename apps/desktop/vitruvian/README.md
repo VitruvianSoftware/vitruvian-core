@@ -28,7 +28,7 @@ bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian
 bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests \
   //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:fan_helper_selftest
 
-# One test group (list them with --test_arg=--list)
+# One test group (the names are in Tests/TestGroups.swift)
 bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests --test_arg=--suite=notch
 ```
 

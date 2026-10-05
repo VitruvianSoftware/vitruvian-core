@@ -32,17 +32,17 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchLiveEqualizer) private var liveEqualizer: Bool
     @AppStorage(Preferences.notchEnabled) private var enabled: Bool
     @AppStorage(Preferences.notchDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchSilhouette) private var silhouette = NotchSilhouette.capsule.rawValue
+    @AppStorage(Preferences.notchSilhouette) private var silhouette: String
     @AppStorage(Preferences.notchOpenOnHover) private var hover: Bool
     @AppStorage(Preferences.notchHideInFullscreen) private var hideInFullscreen: Bool
     @AppStorage(Preferences.notchHideUntilHover) private var hideUntilHover: Bool
     @AppStorage(Preferences.notchCoversMenus) private var coversMenus: Bool
     @AppStorage(Preferences.notchHoverDelay) private var hoverDelay: Double
     @AppStorage(Preferences.notchReturnHome) private var returnHome: Bool
-    @AppStorage(DefaultsKey.notchHomeModule) private var homeModule = NotchModule.controls.rawValue
+    @AppStorage(Preferences.notchHomeModule) private var homeModule: String
     @AppStorage(Preferences.notchOpensActivity) private var opensActivity: Bool
-    @AppStorage(DefaultsKey.notchHiddenModules) private var hidden = ""
-    @AppStorage(DefaultsKey.notchModuleOrder) private var order = ""
+    @AppStorage(Preferences.notchHiddenModules) private var hidden: String
+    @AppStorage(Preferences.notchModuleOrder) private var order: String
     @AppStorage(Preferences.notchVolume) private var volume: Bool
     @AppStorage(Preferences.notchMicrophone) private var microphone: Bool
     @AppStorage(Preferences.notchBrightness) private var brightness: Bool
@@ -54,9 +54,9 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchTrackChange) private var trackChange: Bool
     @AppStorage(Preferences.notchShowPlayingMusic) private var showPlayingMusic: Bool
     @AppStorage(Preferences.notchIncludeOtherPlayers) private var includeOtherPlayers: Bool
-    @AppStorage(DefaultsKey.notchIdleContent) private var idle = NotchIdleContent.music.rawValue
-    @AppStorage(DefaultsKey.notchHiddenControls) private var hiddenControls = NotchControlItem.defaultHidden
-    @AppStorage(DefaultsKey.notchControlOrder) private var controlOrder = ""
+    @AppStorage(Preferences.notchIdleContent) private var idle: String
+    @AppStorage(Preferences.notchHiddenControls) private var hiddenControls: String
+    @AppStorage(Preferences.notchControlOrder) private var controlOrder: String
     @AppStorage(Preferences.notchShowInCaptures) private var showInCaptures: Bool
     @AppStorage(Preferences.notchLockScreen) private var lockScreen: Bool
     @AppStorage(Preferences.notchLockSounds) private var lockSounds: Bool
@@ -77,11 +77,11 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchCaptureControls) private var captureControls: Bool
     @AppStorage(Preferences.notchQuickPanel) private var quickPanel: Bool
     @AppStorage(Preferences.notchAppPanel) private var appPanel: Bool
-    @AppStorage(DefaultsKey.notchHidesMenuBarIcon) private var hidesMenuBarIcon = false
+    @AppStorage(Preferences.notchHidesMenuBarIcon) private var hidesMenuBarIcon: Bool
     @AppStorage(Preferences.notchKeepAwakeActivity) private var keepAwakeActivity: Bool
     @AppStorage(Preferences.notchScratchpad) private var scratchpad: Bool
     @AppStorage(Preferences.brightnessControlEnabled) private var brightnessControlEnabled: Bool
-    @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardHistoryEnabled = false
+    @AppStorage(Preferences.clipboardHistoryEnabled) private var clipboardHistoryEnabled: Bool
     @AppStorage(Preferences.notchHoverExpands) private var hoverExpand: Bool
     @AppStorage(Preferences.notchQuickAccessLayout) private var accessData: Data
     @State private var tab = NotchSettingsTab.layout

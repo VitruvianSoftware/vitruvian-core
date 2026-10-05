@@ -72,9 +72,9 @@ package struct NotchView: View {
                                          size: service.surfaceSize)
             } else if service.captureControlsCollapsed {
                 HStack(spacing: 0) {
-                    Image(systemName: options.selectedTool.systemImageName).frame(width: 28)
+                    Image(systemName: options.selectedTool.systemImageName).frame(width: NotchLayout.captureCollapsedSide)
                     Color.clear.frame(width: service.geometry.cameraWidth)
-                    Image(systemName: "chevron.down").frame(width: 28)
+                    Image(systemName: "chevron.down").frame(width: NotchLayout.captureCollapsedSide)
                 }
                 .font(.system(size: 10, weight: .semibold))
                 .frame(maxHeight: .infinity)
@@ -87,7 +87,7 @@ package struct NotchView: View {
         } else if service.dragPlaceholder {
             Label(text.dropHint, systemImage: "tray.and.arrow.down")
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
+                .frame(maxWidth: .infinity, minHeight: NotchLayout.dropHintHeight)
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(.white.opacity(0.24),
@@ -224,7 +224,7 @@ package struct NotchView: View {
                         content
                             .frame(height: contentOverflows ? pageSize.height : nil)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .padding(.bottom, 4)
+                            .padding(.bottom, NotchLayout.scrollBottomPadding)
                             .contentShape(Rectangle())
                     }
                     .scrollIndicators(.automatic)
@@ -245,44 +245,15 @@ package struct NotchView: View {
     /// Keep each page's minimum usable layout reachable when a custom height
     /// or the display leaves less room. The outer silhouette stays unchanged.
     private var pageSize: CGSize {
-        var size = service.contentSize
-        guard !showsDetail else { return size }
-        switch service.selected {
-        case .controls:
-            let items = NotchSupport.controls()
-            let shortcuts = items.filter { $0 != .music && $0 != .volume && $0 != .brightness }
-            size.height = max(size.height, NotchLayout.controls(
-                hasCards: items.contains(.music) || items.contains(.volume) || items.contains(.brightness),
-                shortcutCount: shortcuts.count, width: size.width, height: size.height).height)
-        case .timer:
-            let session = NotchTimerService.shared.session
-            size.height = max(size.height, NotchLayout.timer(
-                mode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
-                hasSession: session.hasSession, width: size.width, height: size.height))
-        case .calendar:
-            size.height = max(size.height, NotchLayout.calendarMonthMinimumHeight)
-        case .clipboard:
-            // Search, spacing and a complete card with its action row.
-            size.height = max(size.height, NotchLayout.clipboardSearchHeight + NotchLayout.rowSpacing
-                              + NotchLayout.clipboardCardHeight)
-        case .camera:
-            // Keep permission and error messages, and the stop button, reachable.
-            size.height = max(size.height, 144)
-        case .mixer:
-            // Shorten the tracks before pushing mute and level controls offscreen.
-            size.height = max(size.height, 144)
-        case .music:
-            let controlsRow = AppFeature.mixer.isAvailable || NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
-                ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
-            let player = music.playback == nil ? NotchLayout.musicIdleHeight
-                : NotchLayout.musicPlayerHeight(layout: service.geometry.layout, height: size.height)
-            size.height = max(size.height, player + controlsRow)
-        case .files:
-            // One shelf tile, its vertical insets, the footer and their gap.
-            size.height = max(size.height, 88 + 8 + 28 + NotchLayout.rowSpacing)
-        default: break
-        }
-        return size
+        let session = NotchTimerService.shared.session
+        return NotchLayout.pageSize(
+            content: service.contentSize, module: service.selected, detail: showsDetail,
+            controls: NotchSupport.controls(),
+            timerMode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
+            timerHasSession: session.hasSession,
+            hasPlayback: music.playback != nil,
+            musicControlsRow: NotchMusicControls().hasRow,
+            layout: service.geometry.layout)
     }
 
     private var contentOverflows: Bool { pageSize.height > service.contentSize.height }
@@ -303,7 +274,7 @@ package struct NotchView: View {
     private var header: some View {
         HStack(spacing: service.expandedGeometry.headerCameraGap > 0 ? 0 : 6) {
             let quickActions = NotchQuickAccessConfiguration.current().actions
-            HStack(spacing: 6) {
+            HStack(spacing: NotchLayout.headerButtonSpacing) {
                 if service.showingSections {
                     NotchIconButton(symbol: "chevron.left", title: l10n.s.obBack, action: service.toggleSections)
                     if service.expandedGeometry.headerCameraGap == 0 {
@@ -723,7 +694,7 @@ package struct NotchActivityPicker: View {
                         Image(systemName: activity.symbol)
                         Text(activity.title(language)).lineLimit(1).minimumScaleFactor(0.8)
                     }
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: NotchActivityPickerLayout.labelSize, weight: .medium))
                     .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity)
                     .frame(height: NotchActivityPickerLayout.rowHeight)

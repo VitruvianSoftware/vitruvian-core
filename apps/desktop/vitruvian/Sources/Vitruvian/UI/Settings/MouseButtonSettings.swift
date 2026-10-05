@@ -15,8 +15,8 @@ package struct MouseButtonShortcutsSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = MouseButtonShortcutService.shared
-    @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var enabled = false
-    @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
+    @AppStorage(Preferences.mouseButtonShortcutsEnabled) private var enabled: Bool
+    @AppStorage(Preferences.mouseSpacesGestureEnabled) private var spacesEnabled: Bool
     @AppStorage(Preferences.mouseSpacesGestureButton) private var spacesButton: Int
     @AppStorage(Preferences.mouseSpacesGestureFollowsDrag) private var spacesFollowsDrag: Bool
 
@@ -74,14 +74,9 @@ package struct MouseButtonShortcutsSection: View {
                 Toggle(text.spacesEnableLabel, isOn: $spacesEnabled)
                     .labelsHidden()
                     .onChange(of: spacesEnabled) { _, on in
-                        if !on {
-                            stopSpacesCapture()
-                            // The row is gone while this switch is off, so a kept
-                            // binding could only act invisibly: it would refuse
-                            // the button to shortcut capture, then come back dead
-                            // under a shortcut recorded meanwhile.
-                            spacesButton = 0
-                        }
+                        if !on { stopSpacesCapture() }
+                        let kept = MouseButtonCapture.spacesButton(afterSwitch: on, current: spacesButton)
+                        if kept != spacesButton { spacesButton = kept }
                         MouseButtonShortcutService.shared.syncWithPreferences()
                         if on, !permissions.accessibility {
                             permissions.requestAccessibility()
@@ -115,7 +110,7 @@ package struct MouseButtonShortcutsSection: View {
             // One exception list for one tap: the service checks these apps
             // before both the shortcut and the drag branch, so the list must
             // be reachable while either switch keeps that check deciding.
-            if enabled || spacesEnabled {
+            if MouseButtonCapture.isEngaged(shortcuts: enabled, spaces: spacesEnabled) {
                 MouseExceptionsList(scope: .buttonShortcuts)
             }
         }
@@ -181,7 +176,7 @@ package struct MouseButtonShortcutsSection: View {
                     if service.isRunning {
                         Image(systemName: "circle.dashed")
                             .foregroundStyle(.secondary)
-                        Text(text.captureWaiting)
+                        Text(MouseButtonCapture.waitingPrompt(.shortcut, text: text))
                     } else {
                         Image(systemName: "exclamationmark.circle.fill")
                             .foregroundStyle(.orange)
@@ -222,7 +217,7 @@ package struct MouseButtonShortcutsSection: View {
                     if service.isRunning {
                         Image(systemName: "circle.dashed")
                             .foregroundStyle(.secondary)
-                        Text(text.spacesCaptureWaiting)
+                        Text(MouseButtonCapture.waitingPrompt(.spaces, text: text))
                     } else {
                         Image(systemName: "exclamationmark.circle.fill")
                             .foregroundStyle(.orange)
@@ -296,13 +291,11 @@ package struct MouseButtonShortcutsSection: View {
 
     private func handleCapture(_ seen: Int64?) {
         guard capturing, let seen else { return }
-        if !MouseButtonShortcutSupport.canMap(seen) {
-            captureFeedback = text.captureUnsupported
-        } else if RadialMenuSupport.claimsMouseButton(seen) {
-            captureFeedback = text.captureWheel
-        } else if mappings[seen] != nil || pendingButton == seen
-                    || (spacesEnabled && Int64(spacesButton) == seen) {
-            captureFeedback = text.captureExists
+        let outcome = MouseButtonCapture.outcome(.shortcut, button: seen, mapped: { mappings[$0] != nil },
+                                                 pending: pendingButton,
+                                                 spacesButton: spacesEnabled ? Int64(spacesButton) : nil)
+        if let refusal = MouseButtonCapture.feedback(outcome, .shortcut, text: text) {
+            captureFeedback = refusal
         } else {
             pendingButton = seen
             recordError = nil
@@ -332,12 +325,10 @@ package struct MouseButtonShortcutsSection: View {
     /// instead of leaving the press looking ignored.
     private func handleSpacesCapture(_ seen: Int64?) {
         guard spacesCapturing, let seen else { return }
-        if !MouseSpacesGestureSupport.canBind(seen) {
-            spacesFeedback = text.spacesCaptureUnsupported
-        } else if RadialMenuSupport.claimsMouseButton(seen) {
-            spacesFeedback = text.captureWheel
-        } else if mappings[seen] != nil || pendingButton == seen {
-            spacesFeedback = text.spacesCaptureExists
+        let outcome = MouseButtonCapture.outcome(.spaces, button: seen, mapped: { mappings[$0] != nil },
+                                                 pending: pendingButton)
+        if let refusal = MouseButtonCapture.feedback(outcome, .spaces, text: text) {
+            spacesFeedback = refusal
         } else {
             // Set before the capture ends, so the sync that ends it already
             // sees the new button.

@@ -113,9 +113,12 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and
   private content need an explicit exclusion.
-- Tests use the custom runner in `Tests/TestSuite.swift`, registered by hand in
-  `Tests/MetricsTests.swift`. A test file that is not registered compiles and
-  never runs. Write behavioral tests, not assertions on source text.
+- Tests check through `TestSuite` (`Tests/TestSuite.swift`) and run under Swift
+  Testing, one case per suite listed in `Tests/TestGroups.swift`. A new
+  contract runs from a suite there or from a contract that already runs;
+  `TestRegistrationTests` fails on one that nothing runs. Write behavioral
+  tests, not assertions on source text: `Tests/source_pins.txt` counts the
+  reads of source files that remain, and a new one fails until it is listed.
 
 ## Verifying
 

@@ -6,18 +6,39 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-package struct NotchCameraView: View {
+/// What the camera page starts, stops and watches. The app's is
+/// `CameraPreviewService.shared`.
+@MainActor
+package protocol NotchEmbeddedCamera: ObservableObject {
+    var isEmbeddedPresented: Bool { get }
+    func showEmbedded()
+    func hideEmbedded()
+}
+
+extension CameraPreviewService: NotchEmbeddedCamera {}
+
+/// The camera page: a card that starts the camera, then its preview over the
+/// whole page with a stop button. Leaving the page stops the camera.
+package struct NotchCameraView<Camera: NotchEmbeddedCamera, Preview: View>: View {
     package let size: CGSize
-    @ObservedObject private var service = CameraPreviewService.shared
+    @ObservedObject private var service: Camera
+    /// The live image at a size, with the button that stops it.
+    private let preview: (_ size: CGSize, _ stop: @escaping () -> Void) -> Preview
     @ObservedObject private var l10n = L10n.shared
     private var text: NotchActivityStrings { FeatureStrings.notchActivities(l10n.language) }
+
+    package init(size: CGSize, camera: Camera,
+                 preview: @escaping (_ size: CGSize, _ stop: @escaping () -> Void) -> Preview) {
+        self.size = size
+        _service = ObservedObject(wrappedValue: camera)
+        self.preview = preview
+    }
 
     package var body: some View {
         Group {
             if service.isEmbeddedPresented {
                 // The preview takes the whole page, with its stop button over the image.
-                CameraPreviewView(size: NotchLayout.cameraPreviewSize(in: size), showsCameraMenu: true,
-                                  onStop: service.hideEmbedded)
+                preview(NotchLayout.cameraPreviewSize(in: size)) { service.hideEmbedded() }
             } else {
                 HStack(spacing: 16) {
                     Image(systemName: "web.camera").font(.system(size: 30, weight: .light))
@@ -27,7 +48,7 @@ package struct NotchCameraView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(text.cameraHint).font(.callout).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Button(text.startCamera, action: service.showEmbedded)
+                        Button(text.startCamera) { service.showEmbedded() }
                             .buttonStyle(.borderedProminent)
                     }
                 }
@@ -36,5 +57,14 @@ package struct NotchCameraView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onDisappear { service.hideEmbedded() }
+    }
+}
+
+extension NotchCameraView where Camera == CameraPreviewService, Preview == CameraPreviewView {
+    /// The app's camera page: the shared camera and its live preview.
+    package init(size: CGSize) {
+        self.init(size: size, camera: .shared) { size, stop in
+            CameraPreviewView(size: size, showsCameraMenu: true, onStop: stop)
+        }
     }
 }

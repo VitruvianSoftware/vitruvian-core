@@ -14,14 +14,14 @@ import VitruvianUI
 /// cooperative pool while the test waits on the main thread.
 nonisolated enum WindowServerCaptureContract {
     enum Provider {
-        typealias CGSConnectionID = UInt32
-        typealias CGSCaptureFunction =
-            @convention(c) (CGSConnectionID, UnsafeMutablePointer<UInt32>, UInt32, UInt32) -> Unmanaged<CFArray>?
+        typealias Connection = UInt32
+        typealias CaptureFunction =
+            @convention(c) (Connection, UnsafeMutablePointer<UInt32>, UInt32, UInt32) -> Unmanaged<CFArray>?
         // Each test sets these before its captures start.
-        nonisolated(unsafe) static var windowServerConnection: CGSConnectionID = 1
+        nonisolated(unsafe) static var windowServerConnection: Connection = 1
         static let windowServerCaptureOptions: UInt32 = (1 << 8) | (1 << 11)
         static let windowServerCaptures = WindowServerCaptureQueue()
-        nonisolated(unsafe) static var windowServerCapture: CGSCaptureFunction? = { connection, id, count, options in
+        nonisolated(unsafe) static var windowServerCapture: CaptureFunction? = { connection, id, count, options in
             Fake.capture(connection: connection, id: id.pointee, count: count, options: options)
         }
 

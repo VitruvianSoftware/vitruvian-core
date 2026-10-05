@@ -3,10 +3,11 @@
 
 # Vitruvian refactor plan
 
-Status: **in progress**. Each step is one PR that builds and tests green on the
-`vitruvian-desktop-macos` unit before the next starts. Steps are ordered so that
-each one makes the next safer: the compiler takes over checks that are done by
-hand today, and only then does the code get moved around.
+Status: **done**: steps 1 to 7 have landed, and each says what it leaves on
+purpose. Each slice was a PR that built and tested green on the
+`vitruvian-desktop-macos` unit before the next started. Steps are ordered so that
+each one makes the next safer: the compiler takes over checks that were done by
+hand, and only then does the code get moved around.
 
 The gaps come from the architecture review of the imported code:
 
@@ -527,7 +528,7 @@ layering ratchet is gone.
     after: none that a test slices or searches by changes.
   - The one top-level test copy of a `UI` type left (`NotchActivityPicker`)
     is never handed to the module or type-checked by it.
-## Step 4: dependency injection at the seams that tests need (in progress)
+## Step 4: dependency injection at the seams that tests need (done)
 
 Problem: services take no collaborators. Tests fake them by shadowing type names
 inside the test module.
@@ -2504,7 +2505,122 @@ its whole map of the island's preferences, pointer, clock and services.
 - **Generator:** it deletes generated files it no longer writes, so
   `build.sh`'s glob cannot compile a stale copy.
 
-## Step 5: decompose NotchService (in progress)
+Landed (4b, the compact pages' calendar rows and rail): the `NotchCompact`
+copy loses four declarations. Its calendar-row and rail checks render the
+real views:
+
+- `NotchCalendarEventRow` is `package`, with its initializer spelled out.
+- `NotchRail` spells out its initializer; its callers already passed the
+  memberwise labels in order.
+- The copy no longer carries the row, its countdown modifier, the rail or
+  `NotchCalendarColor.color`. The checks are unchanged: the test doubles'
+  button style and surface added no layout, and neither do the real ones.
+
+Landed (4b, the compact camera page and page sizing): the `NotchCompact`
+copy loses `NotchCameraView` and `NotchView.pageSize`.
+
+- **Camera page:** `NotchCameraView` takes its camera (`NotchEmbeddedCamera`,
+  which `CameraPreviewService` adopts) and its preview. The app keeps
+  calling `NotchCameraView(size:)`, which passes the shared camera and its
+  live preview. The test renders the real page over a camera that records
+  starts and stops.
+- **Page sizing:** `NotchLayout.pageSize(...)` (`Core/Notch/NotchPageSize.swift`)
+  is the page-size rule `NotchView` held privately. Each page's own inputs
+  are autoclosures, so only the selected page's preferences are read, as
+  before. `NotchView` passes its readings, and the test calls the rule
+  directly.
+- **Changed check:** "vertical detail pages preserve their existing
+  layout" now uses a page that would grow without the detail. The old one
+  used a page that never grows, so it could not fail.
+
+Landed (4b, the compact scratchpad): the `NotchCompact` copy is gone. That
+leaves 2 generated files: one copy (`MenuPanelRecovery`) and the registry
+kept on purpose.
+
+- **Editor:** `NotchScratchpadView` and `ScratchpadFormatBar` take their pad,
+  and the app's is the shared one. The test renders the real island page
+  over a real pad in a directory of its own (`ScratchpadHarness`), on a
+  real island from `NotchIslandFixture`. Preview turns on and off through
+  `togglePreview()`, as its button does.
+- **Preferences:** `ScratchpadService.Environment` carries the `defaults` the
+  pad reads its availability, shortcut, retention and click-outside settings
+  from. `.live` passes `.standard`, and the harness passes a suite of its
+  own.
+- **Focus:** `ScratchpadFocus` (`Services/QuickTools/ScratchpadFocus.swift`)
+  holds both pads' focus rules over `ScratchpadFocusWindow`, which `NSWindow`
+  adopts:
+  - `bringForward` is the floating pad's: only an explicit show takes the
+    keyboard from another window, and a queued caret move is dropped once
+    another window is key;
+  - `placeCaret` is the island page's.
+
+  The test drives both over windows whose key status it sets. AppKit gives
+  key status only to an active app, which the test runner is not.
+- **Mutations:** "floating scratchpad takes another host's focus" now
+  mutates the guard in `ScratchpadFocus.swift`.
+
+Landed (4b, the menu panel's presentation): the last copy goes. What the
+generator writes now is the localization registry alone, and no test
+compiles a copy of production code.
+
+- **`MenuPanelPresenter`** (`Services/MenuPanel/MenuPanelPresenter.swift`)
+  is the main panel's presentation, moved out of `AppDelegate` with its
+  state, near verbatim:
+  - where the panel opens: the click, the status item's frame, the
+    remembered spot, the display;
+  - how it holds that spot while the menu bar shifts;
+  - how it closes, and why;
+  - how it comes back in place after something other than Vitruvian
+    closed it;
+  - where Settings opens beside it.
+- **Generic over the platform:** the presenter reads its display, windows,
+  status button and popover through `MenuPanelScreen`, `MenuPanelWindow`,
+  `MenuPanelButton` and `MenuPanelPopover`, which AppKit's types adopt
+  (`AppKitMenuPanel`).
+- **`Environment`** carries the rest:
+  - the screens, the current event, the main queue and window
+    observation;
+  - the shared services the panel's content uses (`MenuPanelFocus`,
+    `PanelInteractionState`, the sampling it releases);
+  - `AppDelegate`'s own hooks: dismissal monitors, following activation,
+    the stable positioning view, the Settings window.
+- **What stayed in `AppDelegate`:** the popover itself and its content, the
+  monitors and keys, activation tracking, metric anchor switches and the
+  positioning view, all of which now go through the presenter's state.
+- **Tests:** `MenuPanelRecoveryTests` drives the real presenter over a
+  platform of its own and a fixture that records every hook. It used to
+  shadow `NSScreen`, `NSWindow`, `NotificationCenter`, `DispatchQueue`,
+  `NSApp` and five singletons inside the test module. Every check is
+  kept. The release of sampling and metric focus is now counted at the
+  one hook that does both.
+- **Generator:** with no copy left, `Tests/generate_sources.py` loses its
+  extraction helpers.
+
+Landed (4c, no stand-in shadows a real type): step 4 is done. Its
+problem was tests faking a service's collaborators by declaring types with
+the real names. The services now take their collaborators, but six test
+files still named their stand-ins after what they stand in for.
+
+- **Renamed:**
+  - the screen-refresh contract's `DispatchQueue`, `NSWorkspace`, `Bundle`,
+    `NSEvent`, `NSScreen` and `ClipboardHistoryService` are `Clock`,
+    `Frontmost`, `OwnApp`, `Pointer`, `Display` and `Clipboard`;
+  - the shelf drop contract's `AppFeature`, `NotchSupport`, `UserDefaults`
+    and `ShelfService` are `Features`, `IslandModules`, `Switches` and
+    `Shelf`;
+  - the audio level reader, the volume feedback's mixer, the update intro's
+    shell and the window-server capture's two aliases take names of their
+    own.
+- **The check:** `TestDoubleNameTests` fails when a test declares a type
+  named after a framework type (`NS`, `CG`, `CF`, `AX`, `Dispatch`), one of
+  the Foundation types tests used to fake, or one of the app's own top-level
+  types. It runs with the repository checks, and first checks its scanner
+  and rule on known text.
+- **What step 4 leaves:** nothing open. Every test runs the module's own
+  code over injected collaborators: no generated copy, no shadowing type.
+  The `.shared` singletons stay as the composition root.
+
+## Step 5: decompose NotchService (done)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
 outbound singletons and 119 inbound call sites. View-layout math is duplicated
@@ -2948,7 +3064,192 @@ the mouse in a `NotchWindowInputPolicy` (`Services/Notch/NotchWindowInputPolicy.
   mouse methods to test this. They now drive the policy, through a test
   host that applies it as the real one does.
 
-## Step 6: typed preferences and explicit concurrency (in progress)
+Landed (5x, the notice queue): `NotchNoticeQueue`
+(`Services/Notch/NotchNoticeQueue.swift`) holds the island's notice:
+- the one on screen;
+- whether its message is open in place;
+- the one still drawn while the island closes around it.
+
+- **What moved:** the rules the island spelled out at each use:
+  - which notice may take the screen (a held message gives way only to
+    its own kind or a more urgent one);
+  - how one arrives (reveal, replace or a value update, and whether an
+    open message stays open);
+  - the width a burst of banners keeps;
+  - how one leaves (departing, closing with the island, or at once);
+  - whether the pointer can hold it;
+  - whether it survives a preference change.
+- **What stayed:** `NotchService` still owns the timers, the hover, the
+  animation and what each notice says. It publishes the queue and reads
+  `notice`, `noticeExpanded` and `departingNotice` from it. The seven
+  places that cleared the notice by hand now call `clear()`.
+- **Tested directly:** `NotchNoticeQueueTests` checks each rule on the value
+  itself, including that the pointer is read only when an open message
+  could stay open. The island suites (hover, destinations) still drive the
+  same rules through a real island.
+
+Landed (5l, the capture-controls host): `NotchCaptureControlsState`
+(`Services/Notch/NotchCaptureControlsState.swift`) holds the capture
+controls the island hosts:
+- the options they edit;
+- whether they wait compact around the camera;
+- whether a selection is being dragged;
+- how to cancel.
+
+- **What moved:** the rules the island applied by hand:
+  - which clicks the controls take (compact ones only over their hover
+    area, none during a selection);
+  - when open controls may close;
+  - what the pointer's comings and goings do: keep them open, close them
+    soon or later, open them after the hover delay, or cancel that
+    opening.
+- **What stayed:** `NotchService` keeps the window, the movement watch, the
+  timers and the hover, and applies the response it is given. It publishes
+  the state and reads `captureControls`, `captureControlsCollapsed` and
+  `captureSelectionInProgress` from it.
+- **Tested directly:** `NotchCaptureControlsStateTests` checks each rule on
+  the value, including that a selection in progress never asks where the
+  pointer is. `NotchCaptureControlsTests` still drives the controls through a
+  real island.
+
+Landed (5y, two layout rules that drifted): a survey of the island's size
+math found 21 numbers or rules that its sizing and its views each spelled
+out. Nineteen still agree. Two did not:
+
+- **The music page's row of controls.** The size counted lyrics and the
+  queue only while the island was on and showing Music. The page drew their
+  buttons from the switches alone. The Settings preview shows the page in
+  both of those states, so its player was squeezed under a row the size had
+  left out. `NotchMusicControls` (`Core/Notch/NotchMusicControls.swift`)
+  now decides the row for `NotchService`, `NotchView` and `NotchMusicView`
+  alike.
+- **The banner's icon.** It was measured at 22pt and drawn at
+  `min(22, strip - 4)`. `NotchNotificationBannerLayout.iconSide(stripHeight:)`
+  is now the one rule. A notice is measured before it knows its display, so
+  the wing still reserves the largest side, which the comment now says.
+- **Tested:** `NotchCompactTests` checks that the row follows the switches
+  and features but not the island's own state, and that the page's size
+  holds exactly that row. `NotchTests` checks the icon's side.
+- **Left:** the 19 agreeing duplicates. The riskiest are the compact
+  reading inset and font (9 copies), the music page arithmetic, the controls
+  page split, and the notice inset (two constants). They move a few at a
+  time, each to a named rule beside its kin.
+
+Landed (5z, the compact reading inset): the nine places that kept a reading
+clear of the strip's curve each wrote
+`compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)`. Four measured
+(three in `NotchService`, one in `NotchKeepAwakeSupport`) and five drew (the
+timer, agent, keep awake and watch strips, and the download percentage).
+`NotchGeometry.compactReadingInset(textSize:)` is now the one rule. The
+fonts stay as they are: the measuring side needs an `NSFont` and the
+drawing side a SwiftUI `Font`, and both already ask for the same system
+face.
+
+Landed (5za, the home page's split): five places split the home page's
+controls into level cards, the music card and shortcuts, each with its own
+filters:
+- `NotchService`'s and `NotchLayout.pageSize`'s sizing;
+- `NotchControlsView`;
+- the Settings editor's preview size and preview drawing.
+
+`NotchControlGroups` (`Core/Notch/NotchSupport.swift`, beside
+`NotchControlItem`) is now the one split, with `hasCards` for the card row.
+`NotchCompactTests` checks the split and that the page's size holds the
+rows drawn from it.
+
+Landed (5zb, the music page's arithmetic): the island's sizing,
+`NotchLayout.pageSize` and `NotchMusicView` each added the controls row and
+its spacing, and chose between the player and the idle message, by hand. The
+smallest player, 88pt, sat in `musicPlayerHeight` and again in the view.
+`NotchLayout.musicControlsRow(_:)`, `musicMainHeight(hasPlayback:layout:height:)`
+and `musicPlayerMinimumHeight` now hold them.
+
+Landed (5zc, the notice's inset and narrowest wing): the banner was
+measured with its own `inset` of 16, but drawn with `NotchNoticeLayout`'s,
+which was also 16. The narrowest wing, 88, was written in the banner's range
+and again in a text notice's width. The banner's inset now is
+`NotchNoticeLayout.inset`, and `NotchNoticeLayout.minimumWing` starts both
+ranges. `Tests/mutation_checks.py` follows the renamed line.
+
+Landed (5zd, the island's small sizes): five sizes were numbers that only
+agreed by coincidence. Each now has a name its sizing and its drawing share:
+- **Peek:** 52 below the safe top. It is `NotchLayout.navigationHeight`
+  plus `bottomInset`.
+- **Drop hint:** 66, the label's 52 and a 14pt gap that was never written
+  down. It is `NotchGeometry.dropPlaceholder`, from `dropHintHeight` and
+  `dropHintBottomGap`.
+- **Folded capture controls:** the camera plus 56, two 28pt sides. It is
+  `NotchGeometry.collapsedCaptureControls`, from `captureCollapsedSide`.
+- **Scrolling page's last row:** 4 below it. It is `scrollBottomPadding`.
+- **Download beside another activity:** an 80pt wing, which also decided
+  whether its percentage shows. It is `NotchDownloadSupport.companionWing`.
+
+Landed (5ze, the header's icon buttons): `NotchIconButton` drew a 28pt
+square and the header spaced it 6pt from its title. The geometry measured the
+title after `28 + 6` and centred a capsule's buttons with
+`(headerHeight - 28) / 2`. `NotchLayout.iconButtonSide` and
+`headerButtonSpacing` now serve all four. The capture controls' narrow
+buttons are squares of their own `rowHeight`.
+
+Landed (5zf, the lyrics and queue cards): both cards gave their list
+`height - 24 - 10 - 18`: their padding twice, the spacing below the title
+row, and that row. Each also wrote its padding and spacing. They now read
+`NotchLayout.musicExtraPadding`, `musicExtraSpacing`,
+`musicExtraTitleHeight` and `musicExtraListHeight(_:)`.
+
+Landed (5zg, the display's margins): the island kept 24pt to the display's
+sides (12 each) and 48pt below its tallest page. Those numbers were written
+eleven times: nine in `NotchGeometry` and the capsule's width, one in the
+activity picker's clamp, and one in the locked island. `NotchLayout.displaySideMargins`
+and `displayBottomMargin` hold them. `NotchGeometry.maximumSurfaceWidth` and
+`maximumSurfaceHeight` give the limits.
+
+Landed (5zh, the compact strips' marks): eleven places kept a round mark
+clear of the strip's curve with
+`compactActivityEdgeInset(boxHeight: s, radius: s / 2)`. They measure and
+draw the timer, keep awake, watch, agent and download marks.
+`NotchGeometry.compactMarkInset(side:)` is now the one rule. The wing
+widths that show a mark (28) and a reading (42) were written in five strips.
+They are `NotchLayout.compactMarkWing` and `compactReadingWing`.
+
+Landed (5zi, the System grid): the island sized the System page from its
+card rows and hover inset, and `NotchSystemView` added the same rows and
+inset to decide whether to scroll. `NotchLayout.systemGridHeight(count:width:)`
+is now both, and `NotchGeometry.systemRows(cards:)`, which only the sizing
+used, is gone.
+
+Landed (5zj, the survey's last five): each of these now has one rule, or
+named sizes, that the island's sizing and its views share:
+- **The running timer page:** `NotchLayout.timerActiveHeight(mode:)`, from
+  the row of controls (96), the gap (4), and the Pomodoro's progress line
+  (18). `NotchTimerView` draws the row and the gap with the same names.
+- **The Files page's minimum:** a shelf tile, its insets and the footer.
+  The tile's size, spacing and inset move from `ShelfTilesView` into
+  `ShelfTileLayout` in Core. The footer's trash button is
+  `NotchLayout.iconButtonSide`.
+- **The home page's music card:** `musicCardArtworkSide(height:)`, its
+  padding, spacing and transport width give the minimum width and the
+  drawing alike.
+- **The activity picker:** the label's size and font, and the chrome a
+  choice adds around it (`choiceChrome`). Its width limit takes the
+  display's margins from `NotchLayout.displaySideMargins`.
+- **The AI page:** `NotchAgentSupport.pageProviders(seen:)` and
+  `pageRows(providers:width:)` give the island's size and `NotchAgentsView`
+  the same agents and rows.
+- **A misleading comment:** `watchStripWing`'s said it weighed the eye. It
+  does not: the eye fits the wing's floor, which the island applies to both
+  sides. The comment now says so.
+
+With this, every duplicate the survey found reads from one place, and each
+responsibility the step listed has its own type. `NotchService` is 3,216
+lines, down from 3,400. Its only remaining `.shared` references are:
+- the language (`L10n.shared`);
+- `NSWorkspace.shared` in its live environment.
+
+Every service it uses comes through its `Environment`, as
+`AgentUsageService` set the pattern.
+
+## Step 6: typed preferences and explicit concurrency (done)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
   795 string constants plus the defaults dictionary, so `@AppStorage` and service
@@ -4646,7 +4947,65 @@ now.
   with the Linux toolchain, shows the error without the default and none with
   it.
 
-## Step 7: test-suite hygiene
+Landed (6zzp, the views' last written-out defaults): 30 `@AppStorage`
+properties in 17 views still wrote a default beside `DefaultsKey`. They now
+take their `Preference`, and the default comes from where it is
+registered.
+- **Which:** the Clipboard, Notch, Agents, Shelf, Screenshot, Monitor,
+  Switcher and keyboard debounce settings, and the island's agent strip,
+  capsule, lock screen and clipboard pages. Also the menu panel's clipboard
+  and window layout views, the quick launcher, and the metrics preview.
+- **Why they could move now:** every one wrote the registered default
+  word for word. No test reads their source any more, since step 7 turned
+  those reads into behavior.
+- **Left on purpose:**
+  - the eight menu panel orders, which stay unregistered (see 6zzo);
+  - `notchTimerMode`, which its view reads as an enum;
+  - `includeBetaUpdates`, whose view starts from `AppInfo.isBeta`.
+- **Left for step 7:** 14 properties in six files that tests still read as
+  text: the menu panel, mouse, mouse button, window layout and Command Bar
+  settings, and the switcher. They move with those reads.
+
+Landed (6zzq, the mouse switches): with step 7c's reads gone, eight more
+`@AppStorage` properties take their `Preference`:
+- the two mouse-button switches in the Mouse, Mouse Button and menu panel
+  views;
+- smooth scrolling;
+- the menu panel's clipboard switch.
+
+The switcher's window shortcut and the Command Bar's disabled sources
+follow; no test reads them. 14 remain:
+- the eight panel orders;
+- two enums, the timer mode and the horizontal scroll modifier;
+- `includeBetaUpdates`;
+- three in the Command Bar and window layout settings. Tests read their
+  keys there as text, to check that each has its own row.
+
+Landed (6zzr, the last written-out defaults): step 6 is done. Five more
+`@AppStorage` properties take their `Preference`:
+- **Two enums:** the timer mode and the horizontal scroll modifier. A view
+  reads each as its enum, so `@AppStorage` gains an initializer for an enum
+  stored as its raw text (`Design/PreferenceStorage.swift`). It starts from
+  the case the preference's default names, and each such default is written
+  from its case (`NotchTimerMode.timer.rawValue`), so it always names one.
+  `PreferenceTests` checks the starting case and a stored one.
+- **Three settings switches:** the Command Bar's ASCII layout, and window
+  layout's side repeat and disabled snap zones. Two tests check that each
+  switch has its settings row by finding its key in the view's source;
+  they now look for the `Preferences` name. Those reads stay in the ledger
+  (step 7e).
+
+What step 6 leaves, on purpose:
+- **Nine `@AppStorage` properties with their own default:**
+  - the eight menu panel orders, which stay unregistered (6zzo);
+  - `includeBetaUpdates`, whose default is whether this build is a beta.
+- **Service reads by `DefaultsKey`:** each moves to
+  `UserDefaults[preference]` as its code is touched. Both read the same
+  registered default, so nothing depends on the move.
+- **Concurrency:** every Swift target builds in the Swift 6 language mode
+  (6zzn), so there is nothing left to turn on.
+
+## Step 7: test-suite hygiene (done)
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
   caught.
@@ -4669,6 +5028,150 @@ stopped working when `build.sh` stopped building the app.
   Each of the 56 mutations rebuilds a module and reruns a suite, so no PR
   waits on it. A red run files or refreshes one tracking issue.
 - **Fixtures:** all 56 still apply. One needed `package func toggle()`.
+
+Landed (7b, the Command Bar catalog): the six reads of `CommandBarCatalog.swift`
+became behavioral checks in `Tests/CommandBarCatalogRowTests.swift`.
+
+- **Seams:** the rows those reads pinned are built by functions that take
+  their actions: the clipboard clear, keep awake, restart, volume
+  confirmation and window rows, plus the uninstall rows and the feature
+  switches, which take their `defaults`. The catalog passes the live
+  services.
+- **What the checks run:** each row's id, title and confirmation, the
+  number it takes, and what it calls. They cover the keep awake presets, the
+  uninstall rows offering only apps the uninstaller takes, the rows for
+  process and window ids not learning habits, and a window row capturing
+  its focus source before the beat.
+- **Dropped:** the emoji id read. `Tests/CommandBarEmojiTests.swift`
+  already builds those rows and checks their ids for every skin tone.
+- **Left:** 141 source reads in 26 test files, over 86 production files.
+
+
+Landed (7c, the mouse-button settings): the three reads of
+`MouseButtonSettings.swift`, `MouseSettings.swift` and the mouse rows of
+`MenuPanelView.swift` became behavioral checks in
+`Tests/MouseButtonCaptureTests.swift`.
+
+- **Seam:** `MouseButtonCapture` (`Core/MouseButtons/MouseButtonCapture.swift`)
+  decides:
+  - what a pressed button means to the shortcut capture and to the Spaces
+    drag capture (refused as unusable, the radial menu's, already taken, or
+    accepted);
+  - what each capture says about a refusal, and its waiting prompt;
+  - the drag's button once its switch changes;
+  - whether either switch engages the tap.
+
+  The settings page, the Mouse page's permission note and status, and the
+  menu panel's row read it instead of spelling those rules out.
+- **What the checks run:**
+  - each capture's outcomes, including that the drag refuses a button
+    half-way through becoming a shortcut;
+  - that the drag's prompt and refusals never borrow the shortcut
+    capture's words;
+  - that switching the drag off drops its binding;
+  - that the feature's engaged keys are the same two switches.
+- **Left:** 138 source reads in 26 test files, over 84 production files.
+  The reads of `MouseButtonShortcutService.swift` stay for its own slice.
+
+Landed (7d, the Features hub's runtime): the three reads of
+`FeatureRuntime.swift` became behavioral checks in
+`Tests/FeatureRuntimeTests.swift`.
+
+- **Seams:**
+  - **Bindings as data.** What each feature's binding does is now a list of
+    named `FeatureBindingAction`s, from `FeatureRuntime.actions(for:in:)`,
+    read against the defaults it is given. One `perform` runs each action
+    on its live service. The table stays exhaustive: a new feature does not
+    compile until it says what it binds.
+  - **An environment.** The runtime takes an `Environment`: its defaults, the
+    performer, the follow-up after a change, and the saved domain.
+    `FeatureRuntime.shared` passes the live ones.
+- **What the checks run:**
+  - "Install all" on test defaults makes every installable feature available
+    without writing any enable key, with one change reported.
+  - A single install switches its main control on; a saved choice survives a
+    reinstall.
+  - Click debounce owns its service, the capture history follows exactly the
+    screenshot and recorder features, and the metric families recompute the
+    sampling plan.
+  - The island's extensions resync the island or stop their own service.
+  - Uninstalling media tools cancels their work, and switching WhatsApp
+    downloads off resets them.
+- **Left:** 135 source reads in 26 test files, over 83 production files.
+
+Landed (7e, the ledger of source pins): 133 reads of source files as text
+remain, in 26 test files. They are now counted in `Tests/source_pins.txt`,
+which `SourcePinLedgerTests` recounts on every run, so the number can only
+change on purpose:
+- a new source-text check fails until its line is added, in review;
+- a check turned behavioral fails until its line comes down.
+
+Also in this slice, the Features hub's "undo" of the never-used offer moves
+into `FeatureRuntime.reinstallKept(_:)`. `FeatureRuntimeTests` checks that
+it reinstalls without switching anything on, and keeps the features out of
+the offer. The read of `FeatureHubSettings.swift` that pinned it goes.
+
+- **What remains, and why it stays for now:** most of the 133 pin one of
+  three things:
+  - a SwiftUI view's structure (a lazy stack's nesting, a row's alignment,
+    a call a view must make), which only rendering could check;
+  - a service's live wiring to the system (event taps, the window server,
+    run loops), where the behavior is the operating system's;
+  - resources and build files (`Info.plist`, `build.sh`, localized strings),
+    which are data, not code.
+
+  Each converts when its code moves behind a seam, as 7b–7e did. The ledger
+  keeps the rest from growing meanwhile.
+Landed (7f, Swift Testing beside the runner): the suites now run through
+Swift Testing as well as through the binary's own runner.
+
+- **One list:** `Tests/TestGroups.swift` holds the suites and their run
+  order. `MetricsTests` runs them from there, and the harness checks that
+  the names Swift Testing lists match.
+- **The cases:** `Tests/SwiftTesting/UnitTests.swift` turns each suite into
+  one `@Test` case, run one at a time on the main actor. Every failed check
+  is recorded as an issue, and a suite that checks nothing fails.
+- **Where a suite runs:** on the main thread, from a run loop block. A
+  main-actor test body runs inside a main-queue callout, and the run loop
+  drains no more of the main queue under one. The suites spin the run loop
+  so that queued main-queue work can finish, so the first run, from the test
+  body, failed 16 checks there and crashed in the shelf's file promises.
+  Each suite now hands its failures back to the case, which records them.
+- **The target:** `unit_tests_swift_testing` builds them with `swift_test`
+  and runs the result through `bazel/run_unit_tests.sh`, like `unit_tests`.
+  It gets the same working directory, bare bundle and preference sweep.
+  It is `exclusive`, because both runners use the same throwaway defaults
+  suites and would clear each other's.
+- **Left:** `unit_tests` stays until this target has run green beside it.
+  Then the binary's runner goes, and Swift Testing is the only one.
+
+Landed (7g, Swift Testing runs the tests): step 7 is done. `unit_tests`
+runs under Swift Testing alone, and the binary's own runner is gone.
+
+- **The runner:** `Tests/MetricsTests.swift` and `TestSuite.finish()` are
+  deleted. `unit_tests_bin` is the `swift_test` from 7f, and `unit_tests`
+  runs it through the same wrapper as before. The second target, and its
+  `exclusive` tag, go.
+- **Kept from the old runner:**
+  - each suite prints its line (`notch: OK (75073 checks, 49.03s)`) and its
+    failed checks, and a suite that checks nothing fails;
+  - `--suite=<name>` still selects suites. The wrapper passes them in
+    `VITRUVIAN_TEST_SUITES`, and an unknown name fails its case;
+  - the log still ends in `TESTS OK` or `TESTS FAILED`, so
+    `mutation_checks.py` runs unchanged.
+- **Dropped:** `--list`. The names are in `Tests/TestGroups.swift`.
+- **Registration is checked:** `TestRegistrationTests` follows the runs from
+  `TestGroups` through every contract and fails on a contract that nothing
+  runs. It used to compile and never run.
+- **`build.sh --test`** compiled the tests and a few sources as one module.
+  It has not worked since the tests import the app's modules (step 3.2e),
+  and it is left as upstream wrote it.
+
+What step 7 leaves: 133 reads of source files as text, counted in
+`Tests/source_pins.txt` (7e). They pin code that has not moved: SwiftUI view
+structure, live wiring to the system, and resources and build files. Each
+converts when its code moves behind a seam, and the ledger only lets the
+count fall.
 
 ## Not in scope
 

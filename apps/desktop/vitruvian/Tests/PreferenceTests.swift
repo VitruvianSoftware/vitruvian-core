@@ -66,6 +66,23 @@ enum PreferenceTests {
         suite.expect(registeredExceptions == Defaults.mandatoryAutoQuitExceptionBundleIDs
                      && Preferences.autoQuitExceptions.defaultValue == Defaults.mandatoryAutoQuitExceptionBundleIDs,
                      "a list is registered with its declared default")
+
+        // An enum stored as its raw text (step 6zzr).
+        expectRegistered(Preferences.notchTimerMode, suite)
+        expectRegistered(Preferences.scrollHorizontalModifier, suite)
+        let modes = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.preference.enum")!
+        modes.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.preference.enum")
+        defer { modes.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.preference.enum") }
+        suite.expect(AppStorage<NotchTimerMode>(Preferences.notchTimerMode, store: modes).wrappedValue == .timer
+                     && AppStorage<ScrollHorizontalModifier>(Preferences.scrollHorizontalModifier, store: modes)
+                        .wrappedValue == .shift,
+                     "an enum starts from the case its preference's default names")
+        modes.set(NotchTimerMode.stopwatch.rawValue, forKey: Preferences.notchTimerMode.key)
+        modes.set(ScrollHorizontalModifier.option.rawValue, forKey: Preferences.scrollHorizontalModifier.key)
+        suite.expect(AppStorage<NotchTimerMode>(Preferences.notchTimerMode, store: modes).wrappedValue == .stopwatch
+                     && AppStorage<ScrollHorizontalModifier>(Preferences.scrollHorizontalModifier, store: modes)
+                        .wrappedValue == .option,
+                     "an enum reads the case stored as its raw text")
     }
 
     /// The app registers the declared default, and a view shows it whether or
@@ -95,7 +112,8 @@ enum PreferenceTests {
         case let preference as Preference<Bool>: return AppStorage(preference, store: defaults).wrappedValue as? Value
         case let preference as Preference<Int>: return AppStorage(preference, store: defaults).wrappedValue as? Value
         case let preference as Preference<Double>: return AppStorage(preference, store: defaults).wrappedValue as? Value
-        case let preference as Preference<String>: return AppStorage(preference, store: defaults).wrappedValue as? Value
+        case let preference as Preference<String>:
+            return AppStorage<String>(preference, store: defaults).wrappedValue as? Value
         case let preference as Preference<Data>: return AppStorage(preference, store: defaults).wrappedValue as? Value
         default: return nil
         }

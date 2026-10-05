@@ -28,8 +28,15 @@ package struct ScratchpadFormatBar: View {
     /// service find the one belonging to its panel.
     package var editor: NSTextView?
 
-    @ObservedObject private var service = ScratchpadService.shared
+    @ObservedObject private var service: ScratchpadService
     @ObservedObject private var l10n = L10n.shared
+
+    /// The row for `service`'s pad; the app's is the shared one.
+    package init(style: Style, editor: NSTextView? = nil, service: ScratchpadService = .shared) {
+        self.style = style
+        self.editor = editor
+        _service = ObservedObject(wrappedValue: service)
+    }
 
     private var text: ScratchpadFeatureStrings { FeatureStrings.scratchpad(l10n.language) }
     private var tint: Color { style.isDark ? .white.opacity(0.55) : .secondary }
@@ -61,11 +68,5 @@ package struct ScratchpadFormatBar: View {
         .buttonStyle(.plain)
         .help(text.label(for: mark))
         .accessibilityLabel(text.label(for: mark))
-    }
-
-    // Spelled out because a memberwise initializer never leaves its module.
-    package init(style: Style, editor: NSTextView? = nil) {
-        self.style = style
-        self.editor = editor
     }
 }

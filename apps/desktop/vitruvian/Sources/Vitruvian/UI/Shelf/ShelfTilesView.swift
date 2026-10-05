@@ -103,9 +103,9 @@ package struct ShelfTilesView: NSViewRepresentable {
     /// continue past its edge, so a short strip never scrolls down.
     package var sideways = false
 
-    package static let tileSize = NSSize(width: 78, height: 88)
-    package static let spacing: CGFloat = 10
-    package static let inset: CGFloat = 4
+    package static let tileSize: NSSize = ShelfTileLayout.tileSize
+    package static let spacing = ShelfTileLayout.spacing
+    package static let inset = ShelfTileLayout.inset
 
     package func makeNSView(context: Context) -> NSScrollView {
         // A view built now has nothing to reveal: the docked shelf rebuilds

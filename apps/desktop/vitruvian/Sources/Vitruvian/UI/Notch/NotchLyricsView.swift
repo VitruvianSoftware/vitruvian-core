@@ -18,7 +18,7 @@ package struct NotchLyricsView: View {
     private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
 
     package var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: NotchLayout.musicExtraSpacing) {
             if let lyrics = service.lyrics {
                 if lyrics.instrumental {
                     message(text.instrumental)
@@ -68,7 +68,7 @@ package struct NotchLyricsView: View {
                 }.font(.caption)
             }
         }
-        .padding(12)
+        .padding(NotchLayout.musicExtraPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
         .onChange(of: online) { update() }
@@ -76,7 +76,7 @@ package struct NotchLyricsView: View {
 
     /// Room left for the verses under the card's padding and its one row of
     /// controls.
-    private var readingHeight: CGFloat { height - 24 - 10 - 18 }
+    private var readingHeight: CGFloat { NotchLayout.musicExtraListHeight(height) }
 
     private func update() { service.update(playback: playback, visible: true) }
 

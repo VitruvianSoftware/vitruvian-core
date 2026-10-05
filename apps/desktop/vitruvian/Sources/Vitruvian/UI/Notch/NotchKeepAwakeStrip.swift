@@ -37,16 +37,16 @@ package struct NotchKeepAwakeStrip: View {
         return Button { service.openActivity(NotchCompactActivity.keepAwake.module) } label: {
             HStack(spacing: 0) {
                 Group {
-                    if wing >= 28 {
+                    if wing >= NotchLayout.compactMarkWing {
                         Image(systemName: NotchKeepAwakeSupport.symbol)
                             .font(.system(size: iconSize, weight: .medium))
                     }
                 }
-                .padding(.leading, geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2))
+                .padding(.leading, geometry.compactMarkInset(side: iconSize))
                 .frame(width: wing, height: height, alignment: .leading)
                 Color.clear.frame(width: geometry.compactActivityCameraGap)
                 Group {
-                    if wing >= 42 {
+                    if wing >= NotchLayout.compactReadingWing {
                         if let end {
                             reading(NotchKeepAwakeSupport.compactText(
                                 until: end, now: now, locale: Locale(identifier: l10n.language.rawValue)), size: textSize)
@@ -57,7 +57,7 @@ package struct NotchKeepAwakeStrip: View {
                     }
                 }
                 // Digits carry no descenders, so their ink is about the cap height.
-                .padding(.trailing, geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0))
+                .padding(.trailing, geometry.compactReadingInset(textSize: textSize))
                 .frame(width: wing, height: height, alignment: .trailing)
             }
             .foregroundStyle(.yellow)

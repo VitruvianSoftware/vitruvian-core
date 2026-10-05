@@ -231,7 +231,7 @@ package struct NotchDownloadStrip: View {
         min(17, geometry.compactActivityContentHeight - NotchLayout.compactEdgeGap * 2)
     }
     private var iconInset: CGFloat {
-        geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2)
+        geometry.compactMarkInset(side: iconSize)
     }
 
     package var body: some View {

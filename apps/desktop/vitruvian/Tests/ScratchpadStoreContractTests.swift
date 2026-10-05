@@ -230,11 +230,14 @@ final class ScratchpadHarness {
     var dialogs: [Dialog] = []
     var activations = 0
     var jobs: [@MainActor () -> Void] = []
+    /// The pad's own preferences, apart from the user's.
+    let defaults: UserDefaults
     private(set) var service: ScratchpadService!
 
     init(root: URL) {
         directory = root.appendingPathComponent(UUID().uuidString)
         let defaults = UserDefaults(suiteName: suiteName)!
+        self.defaults = defaults
         service = ScratchpadService(environment: .init(
             makeStore: { [unowned self] in ScratchpadStore(directoryURL: self.directory, defaults: defaults) },
             showWarning: { [unowned self] in self.warnings.append($0) },
@@ -253,7 +256,8 @@ final class ScratchpadHarness {
             },
             islandWindow: { [unowned self] in self.island },
             activate: { [unowned self] in self.activations += 1 },
-            main: { [unowned self] in self.jobs.append($0) }))
+            main: { [unowned self] in self.jobs.append($0) },
+            defaults: defaults))
     }
 
     /// Loads the document the way a settings backup asks for it.

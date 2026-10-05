@@ -101,8 +101,8 @@ enum NotchAudioLevelTests {
 /// The production service runs on its own playback and with readers that
 /// only record what they are told; no audio device is created.
 enum NotchAudioLevelLifecycleContract {
-    final class NotchAudioLevelReader: NotchAudioLevelReading {
-        static var instances: [NotchAudioLevelReader] = []
+    final class RecordingReader: NotchAudioLevelReading {
+        static var instances: [RecordingReader] = []
         let onLevels: ([Double]) -> Void
         let onSilence: () -> Void
         let onUnavailable: () -> Void
@@ -127,7 +127,7 @@ enum NotchAudioLevelLifecycleContract {
     }
 
     static func run(expect: (Bool, String) -> Void) {
-        typealias Reader = NotchAudioLevelReader
+        typealias Reader = RecordingReader
         let settings = Settings()
         let music = CurrentValueSubject<NotchPlayback?, Never>(nil)
         let service = NotchAudioLevelService(environment: .init(

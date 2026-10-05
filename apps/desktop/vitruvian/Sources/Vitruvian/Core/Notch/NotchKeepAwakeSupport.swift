@@ -53,8 +53,8 @@ package enum NotchKeepAwakeSupport {
         } ?? symbolWidth(openSymbol, size: textSize)
         let iconSize = NotchTimerSupport.stripIconSize(height: height)
         let mark = symbolWidth(symbol, size: iconSize)
-            + provisional.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2)
-        return max(reading + provisional.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0), mark)
+            + provisional.compactMarkInset(side: iconSize)
+        return max(reading + provisional.compactReadingInset(textSize: textSize), mark)
             + NotchTimerSupport.stripCameraGap
     }
 

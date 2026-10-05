@@ -24,7 +24,7 @@ package struct QuickLauncherView: View {
     @AppStorage(Preferences.colorPickerFormat) private var colorFormat: String
     @AppStorage(Preferences.colorPickerBareHex) private var colorBareHex: Bool
     @AppStorage(Preferences.defaultDuration) private var defaultDuration: Int
-    @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
+    @AppStorage(Preferences.clipboardHistoryEnabled) private var clipboardEnabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var clipboardLimit: Int
 
     private var columns: [GridItem] {

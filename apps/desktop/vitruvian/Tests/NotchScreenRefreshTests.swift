@@ -14,7 +14,7 @@ import VitruvianUI
 enum NotchScreenRefreshContract {
     struct Deadline {
         let seconds: Double
-        static func now() -> Self { Self(seconds: DispatchQueue.main.now) }
+        static func now() -> Self { Self(seconds: Clock.main.now) }
         static func + (left: Self, right: Double) -> Self { Self(seconds: left.seconds + right) }
     }
     final class Scheduler {
@@ -31,7 +31,7 @@ enum NotchScreenRefreshContract {
             }
         }
     }
-    enum DispatchQueue { static var main = Scheduler() }
+    enum Clock { static var main = Scheduler() }
     /// Stands in for `NotchMenuSpaceReader`, whose own suite covers the
     /// reading; this one counts what the island asks of it.
     final class MenuSpace {
@@ -54,14 +54,14 @@ enum NotchScreenRefreshContract {
         func read() { reads += 1 }
     }
     struct RunningApplication { let bundleIdentifier: String? }
-    enum NSWorkspace {
+    enum Frontmost {
         static let shared = Workspace()
         final class Workspace { var frontmostApplication: RunningApplication? }
     }
-    enum Bundle {
+    enum OwnApp {
         static let main = RunningApplication(bundleIdentifier: "com.vitruviansoftware.vitruvian.tests.notch")
     }
-    enum ClipboardHistoryService {
+    enum Clipboard {
         static let shared = History()
         final class History {
             var remembered = 0
@@ -72,7 +72,7 @@ enum NotchScreenRefreshContract {
         var resignations = 0
         func resignKey() { resignations += 1 }
     }
-    enum NSEvent {
+    enum Pointer {
         static var mouseLocation = CGPoint.zero
         struct EventTypeMask: OptionSet {
             let rawValue: UInt64
@@ -95,9 +95,9 @@ enum NotchScreenRefreshContract {
         static func reset() { globalHandlers = []; localHandlers = []; removed = 0 }
     }
     /// Displays side by side; the one the pointer is on is found by frame.
-    final class NSScreen {
-        static var screens: [NSScreen] = []
-        static var withMouse: NSScreen? { screens.first { $0.frame.contains(NSEvent.mouseLocation) } }
+    final class Display {
+        static var screens: [Display] = []
+        static var withMouse: Display? { screens.first { $0.frame.contains(Pointer.mouseLocation) } }
         let notchDisplayID: CGDirectDisplayID
         let frame: CGRect
         init(_ id: CGDirectDisplayID, _ frame: CGRect) { notchDisplayID = id; self.frame = frame }
@@ -160,7 +160,7 @@ enum NotchScreenRefreshContract {
         /// The island takes the display its identifier names, as updateScreen does.
         func updateScreen() {
             screenUpdates += 1
-            if let screen = NSScreen.screens.first(where: { $0.notchDisplayID == displayID }) {
+            if let screen = Display.screens.first(where: { $0.notchDisplayID == displayID }) {
                 geometry = NotchGeometry(screen: screen.frame, safeAreaTop: 0, cameraWidth: 0)
             }
         }
@@ -168,12 +168,12 @@ enum NotchScreenRefreshContract {
 
         lazy var refresh = NotchScreenRefresh(
             environment: NotchScreenRefresh.Environment(
-                schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work) },
+                schedule: { delay, work in Clock.main.asyncAfter(deadline: .now() + delay, execute: work) },
                 accessibilityGranted: { [unowned self] in self.accessibilityGranted },
                 coversMenus: { [unowned self] in self.coversMenus },
-                frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
-                ownBundleID: Bundle.main.bundleIdentifier,
-                mouseLocation: { NSEvent.mouseLocation }),
+                frontmostBundleID: { Frontmost.shared.frontmostApplication?.bundleIdentifier },
+                ownBundleID: OwnApp.main.bundleIdentifier,
+                mouseLocation: { Pointer.mouseLocation }),
             island: NotchScreenRefresh.Island(
                 running: { [unowned self] in self.running },
                 suspended: { [unowned self] in self.suspended },
@@ -205,7 +205,7 @@ enum NotchScreenRefreshContract {
                 },
                 refreshPresentation: { [unowned self] in self.refreshPresentation(animated: false) },
                 resignKey: { [unowned self] in self.panel?.resignKey() },
-                rememberPasteTarget: { ClipboardHistoryService.shared.rememberPasteTarget() },
+                rememberPasteTarget: { Clipboard.shared.rememberPasteTarget() },
                 collapse: { [unowned self] in self.collapse() },
                 takeDisplay: { [unowned self] id in
                     self.displayID = id
@@ -226,34 +226,34 @@ enum NotchScreenRefreshContract {
     }
 
     static func run(_ suite: TestSuite) {
-        DispatchQueue.main = Scheduler()
-        NSWorkspace.shared.frontmostApplication = nil
-        ClipboardHistoryService.shared.remembered = 0
+        Clock.main = Scheduler()
+        Frontmost.shared.frontmostApplication = nil
+        Clipboard.shared.remembered = 0
         defer {
-            NSWorkspace.shared.frontmostApplication = nil
-            ClipboardHistoryService.shared.remembered = 0
+            Frontmost.shared.frontmostApplication = nil
+            Clipboard.shared.remembered = 0
         }
         let service = Service()
         let preferences = Service()
         for _ in 0..<100 { preferences.schedulePreferenceSync() }
-        suite.expect(DispatchQueue.main.pending == 1 && preferences.preferenceSyncs == 0,
+        suite.expect(Clock.main.pending == 1 && preferences.preferenceSyncs == 0,
                      "a preference burst defers one island sync until drawing has finished")
-        DispatchQueue.main.advance(0)
+        Clock.main.advance(0)
         suite.expect(preferences.preferenceSyncs == 1 && !preferences.refresh.hasPendingPreferenceSync,
                      "the deferred sync consumes the entire preference burst once")
         preferences.schedulePreferenceSync()
-        DispatchQueue.main.advance(0)
+        Clock.main.advance(0)
         suite.expect(preferences.preferenceSyncs == 2, "later preference changes still synchronize the island")
         preferences.schedulePreferenceSync()
         preferences.running = false
-        DispatchQueue.main.advance(0)
+        Clock.main.advance(0)
         preferences.schedulePreferenceSync()
-        suite.expect(preferences.preferenceSyncs == 2 && DispatchQueue.main.pending == 0,
+        suite.expect(preferences.preferenceSyncs == 2 && Clock.main.pending == 0,
                      "pending and later preference notifications cannot restart a stopped island")
         preferences.running = true
         preferences.suspended = true
         preferences.schedulePreferenceSync()
-        DispatchQueue.main.advance(0)
+        Clock.main.advance(0)
         suite.expect(preferences.preferenceSyncs == 3,
                      "suspended islands still apply preference changes that stop disabled services")
         let initialSize = service.geometry.compactMusicGeometry.compactActivitySize
@@ -261,34 +261,34 @@ enum NotchScreenRefreshContract {
         var geometryChanged = false
         for _ in 0..<120 {
             service.screenParametersDidChange()
-            pendingPeak = max(pendingPeak, DispatchQueue.main.pending)
-            DispatchQueue.main.advance(1.0 / 60)
+            pendingPeak = max(pendingPeak, Clock.main.pending)
+            Clock.main.advance(1.0 / 60)
             geometryChanged = geometryChanged || service.geometry.compactMusicGeometry.compactActivitySize != initialSize
         }
         suite.expect(service.preferenceSyncs == 0 && pendingPeak == 1,
                "a two-second screen-parameter burst retains one pending refresh instead of resynchronizing each event")
         suite.expect(!geometryChanged && !service.geometry.compactMusicGeometry.compactActivityUsesFooter,
                "brightness-only notifications preserve measured music wings and never move music below the camera")
-        DispatchQueue.main.advance(0.11)
+        Clock.main.advance(0.11)
         suite.expect(service.preferenceSyncs == 1 && service.reads == 1 && !service.refresh.hasPendingScreenRefresh,
                "the settled screen configuration triggers one synchronization and menu measurement")
         suite.expect(service.geometry.compactSideRoom == 64,
                "refreshing menu space retains the last valid measurement until its replacement arrives")
         service.screenParametersDidChange()
-        DispatchQueue.main.advance(0.11)
+        Clock.main.advance(0.11)
         suite.expect(service.preferenceSyncs == 2, "a later independent screen change is still processed")
 
         service.screenParametersDidChange()
         service.suspended = true
-        DispatchQueue.main.advance(0.11)
+        Clock.main.advance(0.11)
         suite.expect(service.preferenceSyncs == 2 && !service.refresh.hasPendingScreenRefresh,
                "a queued display update cannot resynchronize the island after suspension")
         service.suspended = false
         service.screenParametersDidChange()
         service.running = false
-        DispatchQueue.main.advance(0.11)
+        Clock.main.advance(0.11)
         service.screenParametersDidChange()
-        suite.expect(service.preferenceSyncs == 2 && DispatchQueue.main.pending == 0,
+        suite.expect(service.preferenceSyncs == 2 && Clock.main.pending == 0,
                "stopping the island makes queued and later screen notifications inert")
 
         let fullscreen = Service()
@@ -361,7 +361,7 @@ enum NotchScreenRefreshContract {
         let beforeChange = simulated.menuSpace.generation
         let beforePresentation = simulated.presentations
         let beforeReads = simulated.reads
-        NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.terminal")
+        Frontmost.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.terminal")
         simulated.applicationDidActivate()
         suite.expect(simulated.geometry.compactSideRoom == 64 && simulated.menuSpace.generation > beforeChange
                && simulated.presentations == beforePresentation && simulated.reads == beforeReads + 1,
@@ -374,10 +374,10 @@ enum NotchScreenRefreshContract {
         simulated.expanded = true
         simulated.modules = [.controls, .clipboard]
         simulated.applicationDidActivate()
-        suite.expect(simulated.collapses == 1 && ClipboardHistoryService.shared.remembered == 1
+        suite.expect(simulated.collapses == 1 && Clipboard.shared.remembered == 1
                && simulated.reads == beforeReads + 2,
                "an open island still remembers the paste target and collapses when another app activates")
-        NSWorkspace.shared.frontmostApplication = Bundle.main
+        Frontmost.shared.frontmostApplication = OwnApp.main
         simulated.applicationDidActivate()
         suite.expect(simulated.collapses == 1 && simulated.panel?.resignations == 2 && simulated.reads == beforeReads + 3,
                "this app activating re-reads the menus without giving up its own island")
@@ -391,8 +391,8 @@ enum NotchScreenRefreshContract {
         hovered.openedByHover = true
         hovered.windowHost?.rect = hovered.geometry.frame(for: hovered.geometry.expanded)
         let onIsland = CGPoint(x: hovered.geometry.screen.midX, y: hovered.geometry.screen.maxY - 1)
-        NSEvent.mouseLocation = onIsland
-        NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.editor")
+        Pointer.mouseLocation = onIsland
+        Frontmost.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.editor")
         hovered.applicationDidActivate()
         suite.expect(hovered.collapses == 0 && hovered.panel?.resignations == 1,
                "an island hover opened stays under the pointer when reaching it makes the app beneath active, "
@@ -402,11 +402,11 @@ enum NotchScreenRefreshContract {
         suite.expect(hovered.collapses == 1,
                "after a click inside, which may be what opened the other app, the island still closes as it comes forward")
         hovered.clickedSinceOpening = false
-        NSEvent.mouseLocation = CGPoint(x: hovered.geometry.screen.minX, y: hovered.geometry.screen.minY)
+        Pointer.mouseLocation = CGPoint(x: hovered.geometry.screen.minX, y: hovered.geometry.screen.minY)
         hovered.applicationDidActivate()
         suite.expect(hovered.collapses == 2, "an island hover opened closes when another app activates away from the pointer")
         hovered.openedByHover = false
-        NSEvent.mouseLocation = onIsland
+        Pointer.mouseLocation = onIsland
         hovered.applicationDidActivate()
         suite.expect(hovered.collapses == 3,
                "an island opened by a click or shortcut still closes when another app activates under the pointer")
@@ -455,9 +455,9 @@ enum NotchScreenRefreshContract {
                "compact activity on a simulated cutout covers the menus")
 
         let roomsBeforeFocusChange = idleSimulated.appliedRooms
-        NSWorkspace.shared.frontmostApplication = Bundle.main
+        Frontmost.shared.frontmostApplication = OwnApp.main
         idleSimulated.applicationDidActivate()
-        NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.editor")
+        Frontmost.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.editor")
         idleSimulated.applicationDidActivate()
         suite.expect(!idleSimulated.menuSpace.isRunning && idleSimulated.appliedRooms == roomsBeforeFocusChange
                && idleSimulated.geometry.compactSideRoom == idleEmptyBar,
@@ -474,7 +474,7 @@ enum NotchScreenRefreshContract {
         physical.syncMenuSpaceMonitoring()
         suite.expect(!physical.menuSpace.isRunning && physical.reads == 0,
                "an empty physical camera does not need a menu reader")
-        NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.terminal")
+        Frontmost.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.terminal")
         physical.applicationDidActivate()
         suite.expect(physical.geometry.compactSideRoom == 64 && physical.presentations == 0,
                "the physical camera retains its existing presentation during app changes")
@@ -506,18 +506,18 @@ enum NotchScreenRefreshContract {
     /// The pointer, the displays and the clock behind `NotchPointerFollower`.
     static let followerEnvironment = NotchPointerFollower.Environment(
         addMonitors: { moved in
-            let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
-            return [NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { _ in moved() }),
-                    NSEvent.addLocalMonitorForEvents(matching: moves, handler: { event in moved(); return event })]
+            let moves: Pointer.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+            return [Pointer.addGlobalMonitorForEvents(matching: moves, handler: { _ in moved() }),
+                    Pointer.addLocalMonitorForEvents(matching: moves, handler: { event in moved(); return event })]
                 .compactMap { $0 }
         },
-        removeMonitor: { NSEvent.removeMonitor($0) },
-        mouseLocation: { NSEvent.mouseLocation },
-        displayCount: { NSScreen.screens.count },
-        displayWithMouse: { NSScreen.withMouse?.notchDisplayID },
+        removeMonitor: { Pointer.removeMonitor($0) },
+        mouseLocation: { Pointer.mouseLocation },
+        displayCount: { Display.screens.count },
+        displayWithMouse: { Display.withMouse?.notchDisplayID },
         schedule: { delay, action in
             let work = DispatchWorkItem(block: action)
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            Clock.main.asyncAfter(deadline: .now() + delay, execute: work)
             return { work.cancel() }
         })
 
@@ -526,11 +526,11 @@ enum NotchScreenRefreshContract {
     /// with `NotchScreenRefresh`'s `canFollowPointer` and `move(to:)`; only
     /// the displays, the monitors and the clock are doubles.
     private static func pointerFollowContracts(_ suite: TestSuite) {
-        DispatchQueue.main = Scheduler()
-        NSEvent.reset()
-        defer { NSEvent.reset(); NSScreen.screens = []; NSEvent.mouseLocation = .zero }
-        let builtIn = NSScreen(1, CGRect(x: 0, y: 0, width: 1470, height: 956))
-        let external = NSScreen(2, CGRect(x: 1470, y: 0, width: 1920, height: 1080))
+        Clock.main = Scheduler()
+        Pointer.reset()
+        defer { Pointer.reset(); Display.screens = []; Pointer.mouseLocation = .zero }
+        let builtIn = Display(1, CGRect(x: 0, y: 0, width: 1470, height: 956))
+        let external = Display(2, CGRect(x: 1470, y: 0, width: 1920, height: 1080))
         func island() -> Service {
             let service = Service()
             service.geometry = NotchGeometry(screen: builtIn.frame, safeAreaTop: 32, cameraWidth: 179)
@@ -549,17 +549,17 @@ enum NotchScreenRefreshContract {
                     displayID: { [unowned service] in service.displayID },
                     whenSettled: { [unowned service] action in service.windowHost?.whenSettled(action) },
                     move: { [unowned service] id in
-                        guard NSScreen.screens.contains(where: { $0.notchDisplayID == id }) else { return }
+                        guard Display.screens.contains(where: { $0.notchDisplayID == id }) else { return }
                         service.refresh.move(to: id)
                     }))
             return service
         }
-        NSScreen.screens = [builtIn]
+        Display.screens = [builtIn]
         let single = island()
         single.followsPointer = true
         single.syncPointerFollowing()
         suite.expect(!single.pointerFollower.isWatching, "one display gives the pointer nothing to follow, so nothing is watched")
-        NSScreen.screens = [builtIn, external]
+        Display.screens = [builtIn, external]
         let off = island()
         off.syncPointerFollowing()
         suite.expect(!off.pointerFollower.isWatching, "the other display choices watch no pointer movement")
@@ -568,30 +568,30 @@ enum NotchScreenRefreshContract {
         service.followsPointer = true
         service.syncPointerFollowing()
         service.syncPointerFollowing()
-        suite.expect(service.pointerFollower.isWatching && NSEvent.globalHandlers.count == 1 && NSEvent.localHandlers.count == 1,
+        suite.expect(service.pointerFollower.isWatching && Pointer.globalHandlers.count == 1 && Pointer.localHandlers.count == 1,
                      "following the pointer watches movement once, in other apps and in its own windows")
-        NSEvent.mouseLocation = CGPoint(x: 700, y: 500)
-        NSEvent.globalHandlers.first?(NSEvent.Event())
-        suite.expect(DispatchQueue.main.pending == 0, "moving on the island's own display schedules nothing")
-        NSEvent.mouseLocation = CGPoint(x: 2000, y: 500)
-        for _ in 0..<5 { NSEvent.globalHandlers.first?(NSEvent.Event()) }
-        suite.expect(DispatchQueue.main.pending == 1, "a burst of moves on another display waits once")
-        DispatchQueue.main.advance(0.1)
-        NSEvent.mouseLocation = CGPoint(x: 700, y: 500)
-        _ = NSEvent.localHandlers.first?(NSEvent.Event())
-        DispatchQueue.main.advance(0.2)
+        Pointer.mouseLocation = CGPoint(x: 700, y: 500)
+        Pointer.globalHandlers.first?(Pointer.Event())
+        suite.expect(Clock.main.pending == 0, "moving on the island's own display schedules nothing")
+        Pointer.mouseLocation = CGPoint(x: 2000, y: 500)
+        for _ in 0..<5 { Pointer.globalHandlers.first?(Pointer.Event()) }
+        suite.expect(Clock.main.pending == 1, "a burst of moves on another display waits once")
+        Clock.main.advance(0.1)
+        Pointer.mouseLocation = CGPoint(x: 700, y: 500)
+        _ = Pointer.localHandlers.first?(Pointer.Event())
+        Clock.main.advance(0.2)
         suite.expect(service.displayID == 1 && service.screenUpdates == 0,
                      "a pointer back on the island's display before the wait ends leaves the island where it is")
-        NSEvent.mouseLocation = CGPoint(x: 2000, y: 500)
-        NSEvent.globalHandlers.first?(NSEvent.Event())
-        DispatchQueue.main.advance(0.19)
+        Pointer.mouseLocation = CGPoint(x: 2000, y: 500)
+        Pointer.globalHandlers.first?(Pointer.Event())
+        Clock.main.advance(0.19)
         suite.expect(service.displayID == 1, "the island waits a moment before it follows")
-        DispatchQueue.main.advance(0.02)
+        Clock.main.advance(0.02)
         suite.expect(service.displayID == 2 && service.screenUpdates == 1 && service.geometry.screen == external.frame
                      && service.presentations == 1 && service.consumerSyncs == 1,
                      "a pointer resting on another display brings the closed island there")
-        NSEvent.globalHandlers.first?(NSEvent.Event())
-        suite.expect(DispatchQueue.main.pending == 0, "on its new display the island schedules nothing more")
+        Pointer.globalHandlers.first?(Pointer.Event())
+        suite.expect(Clock.main.pending == 0, "on its new display the island schedules nothing more")
 
         let blockers: [(String, (Service) -> Void)] = [
             ("open", { $0.expanded = true }), ("peeking", { $0.peeking = true }), ("showing a notice", { $0.notice = true }),
@@ -604,31 +604,31 @@ enum NotchScreenRefreshContract {
             let held = island()
             held.followsPointer = true
             block(held)
-            NSEvent.mouseLocation = CGPoint(x: 2000, y: 500)
+            Pointer.mouseLocation = CGPoint(x: 2000, y: 500)
             held.schedulePointerFollow()
-            DispatchQueue.main.advance(1)
+            Clock.main.advance(1)
             suite.expect(held.displayID == 1 && held.screenUpdates == 0, "an island \(name) stays on its display")
         }
         let concealed = island()
         concealed.followsPointer = true
         concealed.windowHost?.isConcealedForMissionControl = true
         concealed.schedulePointerFollow()
-        DispatchQueue.main.advance(1)
+        Clock.main.advance(1)
         suite.expect(concealed.displayID == 1, "the island waits for Mission Control to end before it moves")
         concealed.windowHost?.isConcealedForMissionControl = false
         concealed.schedulePointerFollow()
-        DispatchQueue.main.advance(1)
+        Clock.main.advance(1)
         suite.expect(concealed.displayID == 2, "once Mission Control ends, the island follows the pointer")
 
         let stopping = island()
         stopping.followsPointer = true
         stopping.syncPointerFollowing()
         stopping.schedulePointerFollow()
-        let removedBefore = NSEvent.removed
+        let removedBefore = Pointer.removed
         stopping.suspended = true
         stopping.syncPointerFollowing()
-        DispatchQueue.main.advance(1)
-        suite.expect(!stopping.pointerFollower.isWatching && NSEvent.removed == removedBefore + 2
+        Clock.main.advance(1)
+        suite.expect(!stopping.pointerFollower.isWatching && Pointer.removed == removedBefore + 2
                      && !stopping.pointerFollower.hasPendingMove && stopping.displayID == 1,
                      "suspending the island removes its pointer monitors and drops a pending move")
     }

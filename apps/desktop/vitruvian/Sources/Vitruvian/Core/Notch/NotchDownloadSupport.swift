@@ -200,6 +200,9 @@ package enum NotchDownloadSupport {
     /// Folder entries the page lists, newest first.
     package static let maximumListedFiles = 200
     package static let percentSize: CGFloat = 10
+    /// The wing a download keeps beside another activity, wide enough for
+    /// its percentage.
+    package static let companionWing: CGFloat = 80
     package static let compactNameWingThreshold: CGFloat = 94
     private static let compactNameMinimumWing: CGFloat = 64
     private static let compactNameMaximumWing: CGFloat = 160
@@ -215,7 +218,7 @@ package enum NotchDownloadSupport {
 
     /// Digits carry no descenders, so their ink is about the cap height.
     package static func percentInset(in geometry: NotchGeometry) -> CGFloat {
-        geometry.compactActivityEdgeInset(boxHeight: percentSize * 0.72, radius: 0)
+        geometry.compactReadingInset(textSize: percentSize)
     }
 
     /// Restore the file name only when menus leave a readable wing. Otherwise
@@ -226,7 +229,7 @@ package enum NotchDownloadSupport {
               room >= compactNameWingThreshold else { return 56 }
         let provisional = geometry.compactDownloadGeometry(wing: compactNameWingThreshold)
         let icon = min(17, provisional.compactActivityContentHeight - NotchLayout.compactEdgeGap * 2)
-        let inset = provisional.compactActivityEdgeInset(boxHeight: icon, radius: icon / 2)
+        let inset = provisional.compactMarkInset(side: icon)
         return min(compactNameMaximumWing,
                    max(compactNameMinimumWing, (inset + compactNameContentWidth(name, icon: icon) + 4).rounded(.up)))
     }

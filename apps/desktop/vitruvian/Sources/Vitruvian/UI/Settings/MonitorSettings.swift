@@ -20,7 +20,7 @@ package struct MonitorSettings: View {
     @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics: Bool
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing: String
     @AppStorage(Preferences.menuBarMetricAppearance) private var metricAppearance: String
-    @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
+    @AppStorage(Preferences.menuBarHideIconWithMetrics) private var hideIconWithMetrics: Bool
     @AppStorage(Preferences.monitorInterval) private var interval: Int
     @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     @AppStorage(Preferences.monitorMemoryMetric) private var memoryMetric: String

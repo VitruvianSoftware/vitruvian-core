@@ -12,6 +12,8 @@ package enum NotchNoticeLayout {
     package static let spacing: CGFloat = 8
     /// The inset from the island's curved end.
     package static let inset: CGFloat = 16
+    /// The narrowest wing a notice or a banner takes.
+    package static let minimumWing: CGFloat = 88
     package static let textSize: CGFloat = 11
     // NSFont is immutable once made, so any thread may share it.
     /// The text measured in the font it is drawn in.

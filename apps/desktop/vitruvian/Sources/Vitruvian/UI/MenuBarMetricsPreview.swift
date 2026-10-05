@@ -40,7 +40,7 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle: String
     @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing: String
-    @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
+    @AppStorage(Preferences.menuBarHideIconWithMetrics) private var hideIconWithMetrics: Bool
     @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics: Bool
     @ObservedObject private var l10n = L10n.shared
 

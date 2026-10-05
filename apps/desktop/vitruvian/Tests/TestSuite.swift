@@ -8,7 +8,8 @@ import VitruvianServices
 import VitruvianUI
 
 /// Shared assertions for both the full run and selected suites. Recording a
-/// failure never stops the remaining assertions; the runner owns the exit code.
+/// failure never stops the remaining assertions; Swift Testing reports each
+/// failure (`Tests/SwiftTesting/UnitTests.swift`).
 ///
 /// The module defaults to the main actor, where the runner runs every suite.
 /// The suite is nonisolated, and its lock guards the counts, so a check may
@@ -47,16 +48,6 @@ nonisolated final class TestSuite: @unchecked Sendable {
         let status = failures.count == previousFailures ? "OK" : "FAILED"
         print("\(name): \(status) (\(checks - before) checks, \(String(format: "%.2f", elapsed))s)")
     }
-
-    func finish() -> Never {
-        if failures.isEmpty {
-            print("TESTS OK (\(checks) checks)")
-            exit(0)
-        }
-        print("TESTS FAILED (\(failures.count) of \(checks)):")
-        failures.forEach { print("  - \($0)") }
-        exit(1)
-    }
 }
 
 enum TestHarnessTests {
@@ -77,6 +68,8 @@ enum TestHarnessTests {
         accepted.expectClose(-1.25, -1, "negative values", tol: 0.25)
         suite.expect(accepted.failures.isEmpty && accepted.checks == 3,
                      "finite comparisons retain exact and tolerance-boundary behavior")
+        suite.expect(TestGroups.names == TestGroups.all(TestSuite()).map(\.0),
+                     "Swift Testing lists the same suites, in the same order, as TestGroups runs")
 
         let reference = TestFormat.parse("%1$d items in %2$@")?.arguments
         suite.expect(reference == [1: "d", 2: "@"], "format arguments have explicit identities")

@@ -45,7 +45,8 @@ package struct NotchNoticeView: View {
     @ViewBuilder private var leading: some View {
         if let content = notice.notification {
             HStack(spacing: NotchNotificationBannerLayout.spacing) {
-                NotchNotificationAppIcon(app: content.app, size: min(NotchNotificationBannerLayout.iconSize, geometry.stripHeight - 4))
+                NotchNotificationAppIcon(app: content.app,
+                                         size: NotchNotificationBannerLayout.iconSide(stripHeight: geometry.stripHeight))
                 Text(content.compactTitle)
                     .font(Font(NotchNotificationBannerLayout.titleFont as CTFont))
                     .lineLimit(1)

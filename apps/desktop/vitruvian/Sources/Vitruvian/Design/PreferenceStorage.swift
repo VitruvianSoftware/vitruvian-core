@@ -38,3 +38,15 @@ extension AppStorage where Value == Data {
         self.init(wrappedValue: preference.defaultValue, preference.key, store: store)
     }
 }
+
+// An enum stored as its raw text, such as a mode, starts from the case its
+// preference's default names. Declare the default from the case
+// (`default: NotchTimerMode.timer.rawValue`), so it always names one.
+extension AppStorage where Value: RawRepresentable, Value.RawValue == String {
+    package init(_ preference: Preference<String>, store: UserDefaults? = nil) {
+        guard let initial = Value(rawValue: preference.defaultValue) else {
+            preconditionFailure("\(preference.key)'s default names no \(Value.self)")
+        }
+        self.init(wrappedValue: initial, preference.key, store: store)
+    }
+}

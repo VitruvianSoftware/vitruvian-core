@@ -24,9 +24,13 @@ package struct NotchMusicView: View {
     /// belong to this track. Neutral covers keep the panel white.
     private var accent: Color { service.artworkTint?.color ?? .white }
     private var halo: Color { service.artworkTint?.color ?? .clear }
-    private var showsLyrics: Bool { lyricsEnabled && AppFeature.notchLyrics.isAvailable }
-    private var showsQueue: Bool { queueEnabled && AppFeature.notchQueue.isAvailable }
-    private var hasControlsRow: Bool { AppFeature.mixer.isAvailable || showsLyrics || showsQueue }
+    /// What the page offers below the player, as its size counts it.
+    private var controls: NotchMusicControls {
+        NotchMusicControls(lyricsEnabled: lyricsEnabled, queueEnabled: queueEnabled)
+    }
+    private var showsLyrics: Bool { controls.lyrics }
+    private var showsQueue: Bool { controls.queue }
+    private var hasControlsRow: Bool { controls.hasRow }
     private var openExtra: MusicExtra? {
         guard service.playback != nil else { return nil }
         switch extra {
@@ -37,11 +41,12 @@ package struct NotchMusicView: View {
     }
 
     package var body: some View {
-        let controlsRow = hasControlsRow ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
+        let controlsRow = NotchLayout.musicControlsRow(hasControlsRow)
         let extraHeight = openExtra == nil ? 0 : min(extrasHeight, max(0, size.height - controlsRow))
         // The player yields to lyrics or the queue only where the island is
         // too short to hold both.
-        let showsPlayer = openExtra == nil || size.height - controlsRow - extraHeight - NotchLayout.rowSpacing >= 88
+        let showsPlayer = openExtra == nil || size.height - controlsRow - extraHeight - NotchLayout.rowSpacing
+            >= NotchLayout.musicPlayerMinimumHeight
         let playerHeight = max(0, size.height - controlsRow - (openExtra == nil ? 0 : extraHeight + NotchLayout.rowSpacing))
         VStack(spacing: NotchLayout.rowSpacing) {
             if showsPlayer {
@@ -433,9 +438,9 @@ package struct NotchMusicControlsView: View {
     private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
 
     package var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: NotchLayout.musicCardSpacing) {
             Button { notch.select(.music) } label: {
-                NotchArtwork(image: music.artwork, size: max(40, height - 24))
+                NotchArtwork(image: music.artwork, size: NotchLayout.musicCardArtworkSide(height: height))
             }
             .buttonStyle(NotchButtonStyle(cornerRadius: 16))
             .accessibilityLabel(text.mediaNowPlaying)
@@ -465,7 +470,7 @@ package struct NotchMusicControlsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, NotchLayout.musicCardPadding)
         .frame(maxWidth: .infinity)
         .frame(height: height)
         .modifier(NotchControlSurface(cornerRadius: 18))

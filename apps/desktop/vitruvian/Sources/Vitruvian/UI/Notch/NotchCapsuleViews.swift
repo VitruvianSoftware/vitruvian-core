@@ -371,7 +371,7 @@ package struct NotchCapsuleAgentStrip: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsReadout) private var readout: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     private var working: [AgentProvider] {
         AgentProvider.allCases.filter { provider in usage.snapshot.live.contains { $0.provider == provider } }

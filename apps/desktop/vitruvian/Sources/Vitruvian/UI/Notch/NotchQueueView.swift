@@ -15,7 +15,7 @@ package struct NotchQueueView: View {
     private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
 
     package var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: NotchLayout.musicExtraSpacing) {
             HStack {
                 Text(text.queue).font(.callout.weight(.semibold))
                 Spacer()
@@ -51,7 +51,7 @@ package struct NotchQueueView: View {
                             }.padding(.vertical, 8)
                         }
                     }
-                }.frame(height: max(40, height - 24 - 10 - 18))
+                }.frame(height: max(40, NotchLayout.musicExtraListHeight(height)))
             } else if !service.queueLoading {
                 Text(service.upcoming == nil ? text.queueUnavailable : text.queueEmpty)
                     .font(.callout).foregroundStyle(.secondary)
@@ -60,7 +60,7 @@ package struct NotchQueueView: View {
                     .buttonStyle(.borderless).font(.caption)
             }
         }
-        .padding(12)
+        .padding(NotchLayout.musicExtraPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
     }

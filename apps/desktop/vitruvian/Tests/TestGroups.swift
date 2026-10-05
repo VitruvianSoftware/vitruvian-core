@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 Vorssaint
+// Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
 import VitruvianCore
@@ -7,16 +7,68 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-// The runner lists every independently selectable suite. A filtered run says
-// exactly which suites ran; an unknown or empty selection is an error.
-@main
-struct MetricsTests {
-    static func main() {
-        // Line-buffered, so a suite that crashes the run still leaves the
-        // names of the suites that finished before it in the test log.
-        setvbuf(stdout, nil, _IOLBF, 0)
-        let suite = TestSuite()
-        let groups: [(String, () -> Void)] = [
+/// Every independently selectable suite, in run order. Swift Testing runs
+/// each as one case (`Tests/SwiftTesting/UnitTests.swift`).
+enum TestGroups {
+    /// The suites' names, spelled out so Swift Testing can list them before
+    /// anything runs. `TestHarnessTests` checks they match `all(_:)`.
+    nonisolated static let names = [
+        "harness",
+        "metrics",
+        "clipboard",
+        "pointer-input",
+        "scroll-modifier",
+        "linear-scroll",
+        "preferences",
+        "app-management",
+        "window-layout",
+        "media",
+        "mixer",
+        "audio-priority",
+        "shelf",
+        "overlays",
+        "updates",
+        "repository",
+        "screenshots",
+        "recorder",
+        "command-bar",
+        "notch",
+        "switcher-model",
+        "agents",
+        "features",
+        "utilities",
+        "settings",
+        "display-restoration",
+        "software-dimming",
+        "capture",
+        "keyboard",
+        "storage",
+        "quit-protection",
+        "scratchpad",
+        "recording",
+        "network",
+        "app-updates",
+        "localization",
+        "cleaner",
+        "uninstaller",
+        "launcher",
+        "dock-autohide",
+        "switcher",
+        "keep-awake",
+        "wallpaper",
+        "emoji",
+    ]
+
+    /// The suites a run asks for, or all of them. `bazel/run_unit_tests.sh`
+    /// turns each `--suite=` into a name in `VITRUVIAN_TEST_SUITES`.
+    nonisolated static var selected: [String] {
+        let asked = ProcessInfo.processInfo.environment["VITRUVIAN_TEST_SUITES"]?
+            .split(separator: ",").map(String.init) ?? []
+        return asked.isEmpty ? names : asked
+    }
+
+    static func all(_ suite: TestSuite) -> [(String, () -> Void)] {
+        [
             ("harness", {
                 TestHarnessTests.run(suite)
                 PreferenceNamespaceTests.run(suite)
@@ -30,6 +82,7 @@ struct MetricsTests {
             ("pointer-input", {
                 PointerOnDisplayContract.run(suite)
                 PointerInputFeatureTests.run(suite)
+                MouseButtonCaptureContract.run(suite)
                 KeyboardDebounceTapTests.run(suite)
                 PointerDisplayLookupContract.run(suite)
                 SuperKeyTapContract.run(suite)
@@ -69,7 +122,12 @@ struct MetricsTests {
                 UpdateHighlightsTests.run(suite)
                 UpdateIntroFlowTests.run(suite)
             }),
-            ("repository", { RepositoryFeatureTests.run(suite) }),
+            ("repository", {
+                RepositoryFeatureTests.run(suite)
+                SourcePinLedgerContract.run(suite)
+                TestDoubleNameContract.run(suite)
+                TestRegistrationContract.run(suite)
+            }),
             ("screenshots", {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
@@ -96,6 +154,7 @@ struct MetricsTests {
             ("agents", { NotchAgentTests.run(suite) }),
             ("features", {
                 FeatureCatalogTests.run(suite)
+                FeatureRuntimeContract.run(suite)
                 MenuPanelSectionGateContract.run(suite)
             }),
             ("utilities", {
@@ -165,7 +224,6 @@ struct MetricsTests {
                 WindowServerCaptureContract.run(suite)
             }),
             ("keep-awake", {
-                KeepAwakeCatalogContract.run(suite)
                 MenuPanelToggleLabelContract.run(suite)
                 KeepAwakeLidSleepTests.run { suite.expect($0, $1) }
                 KeepAwakeTimerHandoffTests.run { suite.expect($0, $1) }
@@ -173,27 +231,5 @@ struct MetricsTests {
             ("wallpaper", { WallpaperContract.run(suite) }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
         ]
-        var selected = Set<String>()
-        var listOnly = false
-        for argument in CommandLine.arguments.dropFirst() {
-            if argument == "--list" {
-                listOnly = true
-                continue
-            }
-            guard argument.hasPrefix("--suite="),
-                  groups.contains(where: { $0.0 == String(argument.dropFirst(8)) }) else {
-                fputs("Unknown test selection: \(argument)\n", stderr)
-                exit(2)
-            }
-            selected.insert(String(argument.dropFirst(8)))
-        }
-        if listOnly {
-            groups.forEach { print($0.0) }
-            exit(0)
-        }
-        for (name, body) in groups where selected.isEmpty || selected.contains(name) {
-            suite.run(name, body)
-        }
-        suite.finish()
     }
 }

@@ -20,13 +20,13 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.windowDirectionalEnabled) private var directionalEnabled: Bool
     @AppStorage(Preferences.windowDirectionalShortcut) private var directionalShortcutRaw: String
     @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled: Bool
-    @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
+    @AppStorage(Preferences.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones: String
     @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled: Bool
     @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers: String
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow: Bool
     @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap: Int
     @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap: Int
-    @AppStorage(DefaultsKey.windowLayoutSideRepeatCyclesThirds) private var sideRepeatCyclesThirds = false
+    @AppStorage(Preferences.windowLayoutSideRepeatCyclesThirds) private var sideRepeatCyclesThirds: Bool
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
     // Same preference the Switcher page exposes next to Dock Preview; it is
     // mirrored here because it is a window-juggling behavior people look for

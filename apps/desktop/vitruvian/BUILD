@@ -6,7 +6,7 @@
 #
 #   :Vitruvian            the .app: app binary, privileged fan helper, Now Playing
 #                         adapter dylib, launchd plist, icons and resources
-#   :unit_tests           upstream's unit-test binary (`build.sh --test`)
+#   :unit_tests           the unit tests, which Swift Testing runs
 #   :selftest             the assembled app's `--selftest` health check
 #   :fan_helper_selftest  the fan helper's own `--selftest`
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
@@ -22,6 +22,7 @@ load("@build_bazel_rules_apple//apple:resources.bzl", "apple_resource_group")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -392,22 +393,24 @@ genrule(
     tools = [":sync_sources"],
 )
 
-# Upstream's test binary: the listed production sources, Tests/*.swift and the
-# generated extractions compiled as one module with its own @main runner.
-# Listed sources that now live in a module come from that module instead; today
-# that is all of them, so the first glob is empty until upstream lists a file
-# outside the modules again.
-swift_binary(
+# The unit tests: the listed production sources, Tests/*.swift and the
+# generated localization registry, compiled as one module that Swift Testing
+# runs (REFACTOR.md step 7). Each suite in Tests/TestGroups.swift is one case,
+# run on the main actor. Listed sources that now live in a module come from
+# that module instead; today that is all of them, so the first glob is empty
+# until upstream lists a file outside the modules again.
+#
+# Swift 6 language mode since REFACTOR.md step 6zzm. Every suite runs on the
+# main thread, so the module defaults to the main actor; what runs on a queue
+# or thread says `nonisolated`.
+swift_test(
     name = "unit_tests_bin",
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         TEST_PRODUCTION_SOURCES,
         allow_empty = True,
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
-    ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
-    # Swift 6 language mode since REFACTOR.md step 6zzm. The runner runs every
-    # suite on the main thread, so the module defaults to the main actor; what
-    # runs on a queue or thread says `nonisolated`.
+    ) + glob(["Tests/*.swift"]) + glob(["Tests/SwiftTesting/*.swift"]) + [":generated_test_sources"],
     copts = [
         "-default-isolation",
         "MainActor",

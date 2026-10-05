@@ -13,19 +13,19 @@ import VitruvianUI
 /// drops through the module's own `ShelfDropIntake`, and the media tools are
 /// the module's own `NotchFileToolsService` and `NotchMediaDrop`.
 enum ShelfDropRoutingContract {
-    enum AppFeature {
+    enum Features {
         static var shelf = Feature()
         static var mediaTools = Feature()
         struct Feature { var isAvailable = true }
     }
-    enum NotchSupport {
+    enum IslandModules {
         static var enabled = true
         static var visibleModules: [NotchModule] = [.files]
         static func isEnabled() -> Bool { enabled }
         static func modules() -> [NotchModule] { visibleModules }
         static func showsFiles() -> Bool { isEnabled() && modules().contains(.files) }
     }
-    enum UserDefaults {
+    enum Switches {
         static var standard = Store()
         struct Store {
             var enabled = true
@@ -34,8 +34,8 @@ enum ShelfDropRoutingContract {
     }
     /// The shelf, holding the module's own `ShelfDropIntake` wired the way
     /// `ShelfService` wires it, over scripted deliveries.
-    final class ShelfService {
-        static var shared = ShelfService()
+    final class Shelf {
+        static var shared = Shelf()
         let dockedPanel = NSObject()
         var dockCompletions = 0
         /// How many files the pasteboard promises.
@@ -47,7 +47,7 @@ enum ShelfDropRoutingContract {
         var delivered: (receivers: Int, pasteboard: NSPasteboard)?
 
         lazy var intake = ShelfDropIntake(
-            enabled: { AppFeature.shelf.isAvailable && UserDefaults.standard.enabled },
+            enabled: { Features.shelf.isAvailable && Switches.standard.enabled },
             promises: { [unowned self] _ in (0..<self.promises).map { _ in NSFilePromiseReceiver() } },
             receive: { [unowned self] receivers, pasteboard, _ in
                 self.promisedAccepts += 1
@@ -86,8 +86,8 @@ enum ShelfDropRoutingContract {
                 mediaAccepts: { FileTools.shared.drop.accepts },
                 openMedia: { FileTools.shared.drop.open($0) },
                 hideMedia: { FileTools.shared.service.hideMedia() },
-                shelfEnabled: { AppFeature.shelf.isAvailable && UserDefaults.standard.enabled },
-                shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) }),
+                shelfEnabled: { Features.shelf.isAvailable && Switches.standard.enabled },
+                shelfAccept: { Shelf.shared.acceptDrop(pasteboard: $0) }),
             island: NotchFileDrop.Island(
                 acceptsUserInteraction: { [unowned self] in self.acceptsUserInteraction },
                 capturing: { [unowned self] in self.captureControls != nil },
@@ -128,9 +128,9 @@ enum ShelfDropRoutingContract {
         var opens = true
         let service = NotchFileToolsService(environment: .init(
             available: {
-                NotchSupport.showsFiles() && AppFeature.mediaTools.isAvailable && AppFeature.shelf.isAvailable
+                IslandModules.showsFiles() && Features.mediaTools.isAvailable && Features.shelf.isAvailable
             },
-            shelfEnabled: { UserDefaults.standard.enabled }))
+            shelfEnabled: { Switches.standard.enabled }))
         lazy var drop = NotchMediaDrop(
             offered: { [unowned self] in self.service.offersMediaDrop },
             busy: { [unowned self] in self.busy },
@@ -148,10 +148,10 @@ enum ShelfDropRoutingTests {
         defer { board.releaseGlobally() }
         for promised in [false, true] {
             for accepted in [false, true] {
-                Context.AppFeature.shelf.isAvailable = true
-                Context.UserDefaults.standard.enabled = true
-                Context.ShelfService.shared = Context.ShelfService()
-                let shelf = Context.ShelfService.shared
+                Context.Features.shelf.isAvailable = true
+                Context.Switches.standard.enabled = true
+                Context.Shelf.shared = Context.Shelf()
+                let shelf = Context.Shelf.shared
                 shelf.promises = promised ? 2 : 0
                 shelf.accepts = accepted
                 let notch = Context.Notch()
@@ -186,10 +186,10 @@ enum ShelfDropRoutingTests {
             }
         }
         for revoked in 0..<5 {
-            Context.AppFeature.shelf.isAvailable = true
-            Context.UserDefaults.standard.enabled = true
-            Context.ShelfService.shared = Context.ShelfService()
-            let shelf = Context.ShelfService.shared
+            Context.Features.shelf.isAvailable = true
+            Context.Switches.standard.enabled = true
+            Context.Shelf.shared = Context.Shelf()
+            let shelf = Context.Shelf.shared
             shelf.promises = 1
             let notch = Context.Notch()
             let canvas = NotchCanvasDrop()
@@ -198,8 +198,8 @@ enum ShelfDropRoutingTests {
                 accept: { notch.accept($0) }, exit: {})
             _ = canvas.begin(board, localSource: false)
             switch revoked {
-            case 0: Context.AppFeature.shelf.isAvailable = false
-            case 1: Context.UserDefaults.standard.enabled = false
+            case 0: Context.Features.shelf.isAvailable = false
+            case 1: Context.Switches.standard.enabled = false
             case 2: notch.modules = []
             case 3: notch.acceptsUserInteraction = false
             default: notch.captureControls = 1
@@ -207,8 +207,8 @@ enum ShelfDropRoutingTests {
             suite.expect(!canvas.finish(board) && shelf.promisedAccepts == 0 && notch.opened.isEmpty,
                    "a destination disabled after hover cannot start an attachment delivery")
         }
-        Context.AppFeature.shelf.isAvailable = true
-        Context.UserDefaults.standard.enabled = true
+        Context.Features.shelf.isAvailable = true
+        Context.Switches.standard.enabled = true
         mediaDrops(suite)
     }
 
@@ -216,12 +216,12 @@ enum ShelfDropRoutingTests {
         let board = NSPasteboard.withUniqueName()
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("notch-media-drop-\(UUID().uuidString)", isDirectory: true)
         func reset() {
-            Context.AppFeature.shelf.isAvailable = true
-            Context.AppFeature.mediaTools.isAvailable = true
-            Context.UserDefaults.standard.enabled = true
-            Context.NotchSupport.enabled = true
-            Context.NotchSupport.visibleModules = [.files]
-            Context.ShelfService.shared = Context.ShelfService()
+            Context.Features.shelf.isAvailable = true
+            Context.Features.mediaTools.isAvailable = true
+            Context.Switches.standard.enabled = true
+            Context.IslandModules.enabled = true
+            Context.IslandModules.visibleModules = [.files]
+            Context.Shelf.shared = Context.Shelf()
             Context.FileTools.shared = Context.FileTools()
         }
         defer {
@@ -259,10 +259,10 @@ enum ShelfDropRoutingTests {
                     suite.expect(accepted && files.service.mediaSession?.tool == (optimize ? tool : nil),
                            "dropping in each destination opens exactly its selected tool or the shelf")
                     if optimize, tool != nil {
-                        suite.expect(files.inputs == urls && !notch.pinned && Context.ShelfService.shared.ordinaryAccepts == 0,
+                        suite.expect(files.inputs == urls && !notch.pinned && Context.Shelf.shared.ordinaryAccepts == 0,
                                "optimization receives the full input batch without pinning the island or shelving source files")
                     } else {
-                        suite.expect(Context.ShelfService.shared.ordinaryAccepts == 1 && !notch.pinned,
+                        suite.expect(Context.Shelf.shared.ordinaryAccepts == 1 && !notch.pinned,
                                "ordinary drops keep the original shelf delivery path")
                     }
                     suite.expect(!notch.choosingFileDropDestination && !notch.targetsMediaDrop,
@@ -287,16 +287,16 @@ enum ShelfDropRoutingTests {
                 _ = notch.updateFileDrop(at: CGPoint(x: area.midX, y: area.midY))
                 let files = Context.FileTools.shared
                 switch revoked {
-                case 0: Context.AppFeature.mediaTools.isAvailable = false
-                case 1: Context.AppFeature.shelf.isAvailable = false
-                case 2: Context.UserDefaults.standard.enabled = false
-                case 3: Context.NotchSupport.enabled = false
-                case 4: Context.NotchSupport.visibleModules = []
+                case 0: Context.Features.mediaTools.isAvailable = false
+                case 1: Context.Features.shelf.isAvailable = false
+                case 2: Context.Switches.standard.enabled = false
+                case 3: Context.IslandModules.enabled = false
+                case 4: Context.IslandModules.visibleModules = []
                 case 5: files.busy = true
                 case 6: notch.acceptsUserInteraction = false
                 default: notch.captureControls = 1
                 }
-                suite.expect(!notch.accept(board) && files.inputs.isEmpty && Context.ShelfService.shared.ordinaryAccepts == 0,
+                suite.expect(!notch.accept(board) && files.inputs.isEmpty && Context.Shelf.shared.ordinaryAccepts == 0,
                        "revoked access or running work rejects optimization without rerouting or replacing work")
                 suite.expect(!notch.choosingFileDropDestination && !notch.targetsMediaDrop,
                        "a refused drop clears its transient presentation")
@@ -388,7 +388,7 @@ enum ShelfDropRoutingTests {
                 suite.expect(canvas.perform(board, at: release, visible: visible.contains(release)) == !finishOutside
                        && Context.FileTools.shared.service.mediaSession == nil,
                        "the release point is rechecked even when the last drag update targeted media")
-                suite.expect(Context.ShelfService.shared.ordinaryAccepts == (finishOutside ? 0 : 1)
+                suite.expect(Context.Shelf.shared.ordinaryAccepts == (finishOutside ? 0 : 1)
                        && !destination.choosingFileDropDestination,
                        "releasing outside cancels cleanly and releasing over the shelf preserves its route")
             }

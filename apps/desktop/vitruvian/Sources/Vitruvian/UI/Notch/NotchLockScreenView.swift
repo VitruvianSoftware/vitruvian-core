@@ -250,7 +250,7 @@ package struct NotchLockScreenActivities: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsReadout) private var readout: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     package var body: some View {

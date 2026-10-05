@@ -213,7 +213,7 @@ package enum NotchAgentSupport {
     package static func stripMarksWidth(working: Int, in geometry: NotchGeometry) -> CGFloat {
         let size = stripMarkSize(height: geometry.compactActivityContentHeight, working: working)
         return marksWidth(size: size, count: working)
-            + geometry.compactActivityEdgeInset(boxHeight: size + 4, radius: (size + 4) / 2)
+            + geometry.compactMarkInset(side: size + 4)
     }
 
     /// What the strip shows beside the camera while agents work: the reading
@@ -262,6 +262,18 @@ package enum NotchAgentSupport {
             default: return [NotchAgentTile(card: card, provider: nil)]
             }
         }
+    }
+
+    /// The agents the AI page shows: only those that left something on this
+    /// Mac get cards. The island's size and the page both ask here.
+    package static func pageProviders(seen: Set<AgentProvider>, in defaults: UserDefaults = .standard) -> [AgentProvider] {
+        providers(in: defaults).filter(seen.contains)
+    }
+
+    /// The AI page's rows for `providers` across `width`.
+    package static func pageRows(providers: [AgentProvider], width: CGFloat,
+                                 in defaults: UserDefaults = .standard) -> [[NotchAgentTile]] {
+        rows(tiles(cards: cards(in: defaults), providers: providers), width: width)
     }
 
     /// Cards pair up in reading order; a chart, or a card left without a

@@ -25,9 +25,6 @@ enum ScreenshotFeatureTests {
                                                     forName: UserDefaults.registrationDomain)
         }
 
-        let featureRuntimeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/FeatureRuntime.swift",
-            encoding: .utf8)) ?? ""
         let layoutDictionary = [kTISPropertyInputSourceType: kTISTypeKeyboardLayout] as CFDictionary
         let layoutSources = (TISCreateInputSourceList(layoutDictionary, true)?.takeRetainedValue()
             as? [TISInputSource]) ?? []
@@ -958,10 +955,8 @@ enum ScreenshotFeatureTests {
             encoding: .utf8)) ?? ""
         suite.expect(recentCaptureServiceSource.contains("QuickToolHotkey(id: 21)")
                 && recentCaptureServiceSource.contains(
-                    "hotkey.onPress = { [weak self] in self?.showHistoryWindow() }")
-                && featureRuntimeSource.components(separatedBy:
-                    "RecentCaptureService.shared.syncWithPreferences()").count == 3,
-               "the history shortcut opens its window and follows both capture producers")
+                    "hotkey.onPress = { [weak self] in self?.showHistoryWindow() }"),
+               "the history shortcut opens its window")
         let recentCapturePaletteCode = recentCaptureServiceSource
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }

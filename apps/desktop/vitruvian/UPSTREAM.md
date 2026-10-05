@@ -1922,6 +1922,239 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/generate_sources.py` no longer copies them, drops its map of the
     island's environment and services, which no copy uses any more, and
     deletes generated files it no longer writes.
+- **2026-10-05**: Refactor step 4b, the compact calendar rows and rail (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Notch/NotchCalendarView.swift`: `NotchCalendarEventRow`
+    is `package` and spells out its initializer.
+  - `Sources/Vitruvian/UI/Notch/NotchComponents.swift`: `NotchRail` spells out
+    its initializer.
+  - `Tests/NotchCompactTests.swift` renders both real views;
+    `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b, the compact camera page and page sizing (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Notch/NotchCameraView.swift`: the view takes its
+    camera (the new `NotchEmbeddedCamera`, which `CameraPreviewService`
+    adopts) and preview; `init(size:)` passes the app's.
+  - `Sources/Vitruvian/UI/Notch/NotchView.swift`: `pageSize` calls the new
+    `NotchLayout.pageSize` (`Core/Notch/NotchPageSize.swift`), which holds
+    the rule it held.
+  - `Tests/NotchCompactTests.swift` tests both on the real code;
+    `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b, the compact scratchpad (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift`: its
+    `Environment` carries the `defaults` it reads its preferences from.
+    `focusText` goes through the new `ScratchpadFocus`
+    (`Services/QuickTools/ScratchpadFocus.swift`).
+  - `Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift` and
+    `Sources/Vitruvian/UI/Scratchpad/ScratchpadFormatBar.swift` take their pad,
+    defaulting to the shared one. The island page places its caret through
+    `ScratchpadFocus`.
+  - `Tests/NotchCompactTests.swift` tests the real page and focus rules;
+    `Tests/ScratchpadStoreContractTests.swift`'s harness passes its own
+    defaults; `Tests/mutation_checks.py` mutates the focus guard where it
+    now lives; `Tests/generate_sources.py` no longer copies any of it.
+- **2026-10-05**: Refactor step 4b, the menu panel's presentation (`REFACTOR.md`):
+  - `Sources/Vitruvian/App/AppDelegate.swift`: the panel's placement,
+    drift correction, close, foreign-close recovery and Settings placement
+    move, with their state, to the new `MenuPanelPresenter`
+    (`Services/MenuPanel/MenuPanelPresenter.swift`). `AppDelegate` builds it
+    over AppKit and its own hooks, and forwards the popover's close
+    callbacks to it.
+  - `Tests/MenuPanelRecoveryTests.swift` drives the real presenter instead of
+    a compiled copy over shadowed AppKit types.
+  - `Tests/generate_sources.py` copies nothing any more; it writes the
+    localization registry.
+- **2026-10-05**: Refactor step 5x (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` keeps its notice in the new
+    `NotchNoticeQueue` (`Services/Notch/NotchNoticeQueue.swift`), which decides
+    which notice may show and how it arrives and leaves.
+  - `Tests/NotchTests.swift` runs the new `Tests/NotchNoticeQueueTests.swift`.
+- **2026-10-05**: Refactor step 5l (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` keeps its capture controls in the new
+    `NotchCaptureControlsState` (`Services/Notch/NotchCaptureControlsState.swift`),
+    which decides the clicks they take and what the pointer does to them.
+  - `Tests/NotchTests.swift` runs the new
+    `Tests/NotchCaptureControlsStateTests.swift`.
+- **2026-10-05**: Refactor step 7b, the Command Bar catalog (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift`: the
+    clipboard clear, keep awake, restart and volume confirmation rows come
+    from their own builders (`clipboardClearEntry`, `keepAwakeEntries`,
+    `restartAppEntry`, `confirmVolume`) with their actions passed in.
+    `toggleEntries` and the uninstall rows read the `defaults` they are
+    given; the Finder selection row is told whether the app is in
+    Applications and whether the uninstaller takes it; `windowEntries` is
+    given the frontmost app, the beat and the activation. `afterBeat` is
+    package. Every caller passes the live values, so the bar behaves as before.
+  - `Tests/CommandBarFeatureTests.swift`, `Tests/PointerInputFeatureTests.swift`
+    and `Tests/SwitcherModelFeatureTests.swift` no longer read the catalog's
+    source; the new `Tests/CommandBarCatalogRowTests.swift` builds the rows and
+    runs them. `Tests/KeepAwakeCatalogTests.swift` is gone with its
+    registration in `Tests/MetricsTests.swift`; its checks are among the new
+    ones.
+- **2026-10-05**: Refactor step 5y (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/Notch/NotchService.swift`,
+    `Sources/Vitruvian/UI/Notch/NotchView.swift` and
+    `Sources/Vitruvian/UI/Notch/NotchMusicView.swift` read the music page's
+    row of controls from the new `NotchMusicControls`
+    (`Core/Notch/NotchMusicControls.swift`). Lyrics and the queue count from
+    their switches and features in the size as in the drawing, so the
+    Settings preview no longer squeezes the player.
+  - `Sources/Vitruvian/Core/Notch/NotchNotificationSupport.swift` adds
+    `NotchNotificationBannerLayout.iconSide(stripHeight:)`, which
+    `Sources/Vitruvian/UI/Notch/NotchNoticeView.swift` draws the banner's
+    icon with.
+  - `Tests/NotchCompactTests.swift` and `Tests/NotchTests.swift` check both.
+- **2026-10-05**: Refactor step 5z (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchGeometry.compactReadingInset(textSize:)`. `Services/Notch/NotchService.swift`,
+  `Core/Notch/NotchKeepAwakeSupport.swift`, `Core/Notch/NotchDownloadSupport.swift`
+  and the timer, agent, keep awake and watch strips in `UI/Notch/` use it
+  instead of spelling the digits' inset out.
+- **2026-10-05**: Refactor step 5za (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds `NotchControlGroups`.
+  `Services/Notch/NotchService.swift`, `Core/Notch/NotchPageSize.swift`,
+  `UI/Notch/NotchControlsView.swift` and `UI/Settings/NotchLayoutEditor.swift`
+  split the home page's controls with it instead of their own filters.
+- **2026-10-05**: Refactor step 5zb (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchLayout.musicControlsRow(_:)`, `musicMainHeight(hasPlayback:layout:height:)`
+  and `musicPlayerMinimumHeight`, used by its own sizing,
+  `Core/Notch/NotchPageSize.swift` and `UI/Notch/NotchMusicView.swift`.
+- **2026-10-05**: Refactor step 5zc (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchNoticeLayout.swift` adds `minimumWing`.
+  `Core/Notch/NotchNotificationSupport.swift` takes the banner's inset and the
+  low end of its range from `NotchNoticeLayout`, and
+  `Services/Notch/NotchService.swift` a text notice's narrowest wing.
+  `Tests/mutation_checks.py` quotes the changed line.
+- **2026-10-05**: Refactor step 5zd (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` names the peek's height
+  and adds `NotchLayout.scrollBottomPadding`, `captureCollapsedSide`,
+  `dropHintHeight`, `dropHintBottomGap` and `NotchGeometry.dropPlaceholder`
+  and `collapsedCaptureControls`. `Core/Notch/NotchDownloadSupport.swift` adds
+  `companionWing`. `Services/Notch/NotchService.swift`, `UI/Notch/NotchView.swift`
+  and `UI/Notch/NotchTimerStrip.swift` use them instead of the numbers.
+- **2026-10-05**: Refactor step 5ze (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchLayout.iconButtonSide` and `headerButtonSpacing` and measures the
+  header with them. `UI/Notch/NotchComponents.swift` (`NotchIconButton`) and
+  `UI/Notch/NotchView.swift`'s header draw with them.
+- **2026-10-05**: Refactor step 5zf (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds the lyrics and queue
+  cards' padding, spacing, title height and `musicExtraListHeight(_:)`, which
+  `UI/Notch/NotchLyricsView.swift` and `UI/Notch/NotchQueueView.swift` draw with.
+- **2026-10-05**: Refactor step 5zg (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchLayout.displaySideMargins`, `displayBottomMargin` and
+  `NotchGeometry.maximumSurfaceWidth`/`maximumSurfaceHeight`, and its sizing
+  uses them. `Services/Notch/NotchService.swift` (the activity picker) and
+  `Services/Notch/NotchLockScreenSupport.swift` do too.
+- **2026-10-05**: Refactor step 5zh (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchGeometry.compactMarkInset(side:)`, `NotchLayout.compactMarkWing` and
+  `compactReadingWing`.
+  - The mark's inset is measured with the new rule in
+    `Services/Notch/NotchService.swift` and in `Core/Notch/NotchKeepAwakeSupport.swift`,
+    `NotchDownloadSupport.swift` and `NotchAgentSupport.swift`.
+  - It is drawn with it in the timer, keep awake, watch, agent and download
+    views (`UI/Notch/`). Those strips and the calendar strip use the named
+    wing widths.
+- **2026-10-05**: Refactor step 5zi (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchLayout.systemGridHeight(count:width:)` in place of
+  `NotchGeometry.systemRows(cards:)`; `UI/Notch/NotchSystemView.swift` uses it.
+- **2026-10-05**: Refactor step 6zzp (`REFACTOR.md`): 30 `@AppStorage`
+  properties take their `Preference` instead of `DefaultsKey` and a written
+  default, in `UI/MenuBarMetricsPreview.swift`, `UI/MenuPanel/PanelClipboardView.swift`,
+  `UI/MenuPanel/PanelWindowLayoutView.swift`, `UI/Notch/NotchAgentStrip.swift`,
+  `UI/Notch/NotchAgentsView.swift`, `UI/Notch/NotchCapsuleViews.swift`,
+  `UI/Notch/NotchClipboardView.swift`, `UI/Notch/NotchLockScreenView.swift`,
+  `UI/QuickLauncher/QuickLauncherView.swift` and the Clipboard, Keyboard
+  Debounce, Monitor, Notch Agents, Notch, Screenshot, Shelf and Switcher
+  settings (`UI/Settings/`).
+- **2026-10-05**: Refactor steps 7c and 6zzq (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Settings/MouseButtonSettings.swift` decides its
+    captures, prompts and refusals, the drag's binding and its exception
+    list through the new `MouseButtonCapture`
+    (`Core/MouseButtons/MouseButtonCapture.swift`).
+    `UI/Settings/MouseSettings.swift` and `UI/MenuPanel/MenuPanelView.swift`
+    read whether either mouse-button switch is on from it.
+  - Those three views take the mouse-button, smooth scrolling and clipboard
+    switches from their `Preference`, as `UI/Switcher/SwitcherView.swift`
+    takes the window shortcut and `UI/Settings/CommandBarSettings.swift` the
+    disabled sources.
+  - `Tests/PointerInputFeatureTests.swift` no longer reads the three views;
+    `Tests/MouseButtonCaptureTests.swift` (run from `Tests/MetricsTests.swift`)
+    checks the rules.
+- **2026-10-05**: Refactor step 5zj (`REFACTOR.md`):
+  - `Sources/Vitruvian/Core/Notch/NotchSupport.swift` names the running
+    timer's sizes, the music card's and the activity picker's label and
+    chrome.
+  - `Core/Notch/NotchAgentSupport.swift` adds `pageProviders(seen:)` and
+    `pageRows(providers:width:)`.
+  - `Core/Shelf/ShelfSupport.swift` holds the shelf tile's size, spacing and
+    inset, which `UI/Shelf/ShelfTilesView.swift` now reads.
+  - `Core/Notch/NotchPageSize.swift`, `Services/Notch/NotchService.swift` and
+    the timer, music, files, agents and island views (`UI/Notch/`) use them.
+- **2026-10-05**: Refactor step 7d (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/FeatureRuntime.swift` takes an `Environment`
+    (defaults, binding performer, change follow-up, saved domain), with the
+    live one for `.shared`. Each feature's binding is a list of
+    `FeatureBindingAction`s from `actions(for:in:)`, which `perform` runs on
+    the live services in the same order as before.
+  - `Tests/FeatureCatalogTests.swift`, `Tests/PointerInputFeatureTests.swift`
+    and `Tests/ScreenshotFeatureTests.swift` no longer read it. The new
+    `Tests/FeatureRuntimeTests.swift`, run from `Tests/MetricsTests.swift`,
+    checks the runtime on its own defaults.
+- **2026-10-05**: Refactor step 7e (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Settings/FeatureHubSettings.swift` undoes the
+    never-used offer through the new `FeatureRuntime.reinstallKept(_:)`
+    (`Services/FeatureRuntime.swift`).
+  - The new `Tests/source_pins.txt` counts the tests' reads of source files,
+    which the new `Tests/SourcePinLedgerTests.swift` (run from
+    `Tests/MetricsTests.swift`) recounts.
+  - `Tests/FeatureCatalogTests.swift` drops the undo's source read, and
+    `Tests/FeatureRuntimeTests.swift` checks it instead.
+- **2026-10-05**: Refactor step 7f (`REFACTOR.md`):
+  - `Tests/MetricsTests.swift` takes its suites from the new
+    `Tests/TestGroups.swift` instead of listing them itself, so the new
+    `Tests/SwiftTesting/UnitTests.swift` runs the same list through Swift
+    Testing.
+  - `Tests/TestSuite.swift` (the harness checks) checks that the names
+    Swift Testing lists match the runner's suites, in order.
+- **2026-10-05**: Refactor step 4c (`REFACTOR.md`): test stand-ins no
+  longer take the names of the types they stand in for.
+  - `Tests/NotchScreenRefreshTests.swift`: `DispatchQueue`, `NSWorkspace`,
+    `Bundle`, `NSEvent`, `NSScreen` and `ClipboardHistoryService` become
+    `Clock`, `Frontmost`, `OwnApp`, `Pointer`, `Display` and `Clipboard`.
+  - `Tests/ShelfDropRoutingTests.swift`: `AppFeature`, `NotchSupport`,
+    `UserDefaults` and `ShelfService` become `Features`, `IslandModules`,
+    `Switches` and `Shelf`.
+  - `Tests/NotchAudioLevelTests.swift` (`RecordingReader`),
+    `Tests/NotchVolumeFeedbackTests.swift` (`Mixer`),
+    `Tests/UpdateIntroFlowTests.swift` (`IntroShell`) and
+    `Tests/WindowServerCaptureTests.swift` (`Connection`,
+    `CaptureFunction`).
+  - The new `Tests/TestDoubleNameTests.swift` keeps it so.
+- **2026-10-05**: Refactor step 6zzr (`REFACTOR.md`): five more
+  `@AppStorage` properties take their `Preference` instead of a
+  `DefaultsKey` and a written-out default.
+  - `Sources/Vitruvian/UI/Notch/NotchTimerView.swift` (the timer mode) and
+    `Sources/Vitruvian/UI/Settings/MouseSettings.swift` (the horizontal
+    scroll modifier) read theirs as enums, through a new `@AppStorage`
+    initializer in `Design/PreferenceStorage.swift`.
+  - `Sources/Vitruvian/UI/Settings/CommandBarSettings.swift` (ASCII
+    layout) and `Sources/Vitruvian/UI/Settings/WindowLayoutSettings.swift`
+    (side repeat, disabled snap zones).
+  - `Tests/CommandBarFeatureTests.swift` and
+    `Tests/WindowLayoutFeatureTests.swift` look for the `Preferences` name
+    in those views.
+- **2026-10-05**: Refactor step 7g (`REFACTOR.md`): Swift Testing runs the
+  unit tests.
+  - `Tests/MetricsTests.swift`, the `@main` runner, is deleted. Its suites
+    run from `Tests/TestGroups.swift` through
+    `Tests/SwiftTesting/UnitTests.swift`.
+  - `Tests/TestSuite.swift` drops `finish()`, which only that runner
+    called.
+  - `build.sh --test` still names `Tests/*.swift`. It has not built since
+    the tests import the app's modules, and is unchanged.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

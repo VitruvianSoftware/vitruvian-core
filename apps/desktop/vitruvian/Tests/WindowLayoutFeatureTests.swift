@@ -1019,7 +1019,7 @@ enum WindowLayoutFeatureTests {
         let sideRepeatSettingsCode = sideRepeatSettingsSource.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        suite.expect(sideRepeatSettingsCode.contains("DefaultsKey.windowLayoutSideRepeatCyclesThirds")
+        suite.expect(sideRepeatSettingsCode.contains("Preferences.windowLayoutSideRepeatCyclesThirds")
                 && sideRepeatSettingsCode.contains("text.sideRepeatCycle")
                 && sideRepeatSettingsCode.contains("text.sideRepeatCycleCaption"),
                "window layout settings expose the side repeat cycle toggle with its caption")

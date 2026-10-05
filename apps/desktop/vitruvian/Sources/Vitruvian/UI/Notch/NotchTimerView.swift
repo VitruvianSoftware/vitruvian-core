@@ -10,7 +10,7 @@ package struct NotchTimerView: View {
     package let size: CGSize
     @ObservedObject private var service = NotchTimerService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchTimerMode) private var mode: NotchTimerMode = .timer
+    @AppStorage(Preferences.notchTimerMode) private var mode: NotchTimerMode
     @AppStorage(Preferences.notchPomodoroFocusMinutes) private var focusMinutes: Int
     @AppStorage(Preferences.notchPomodoroShortBreakMinutes) private var shortBreakMinutes: Int
     @AppStorage(Preferences.notchPomodoroLongBreakMinutes) private var longBreakMinutes: Int
@@ -144,7 +144,7 @@ package struct NotchTimerView: View {
     }
 
     private var activeTimer: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: NotchLayout.timerActiveLineSpacing) {
             activeControls
             if service.session.mode == .pomodoro {
                 Text(String(format: text.sessionProgress, service.session.sessionNumber, service.session.configuration.totalSessions))
@@ -177,7 +177,7 @@ package struct NotchTimerView: View {
                 reading
             }
         }
-        .frame(height: 96)
+        .frame(height: NotchLayout.timerActiveRowHeight)
     }
 
     private var reading: some View {

@@ -14,8 +14,8 @@ package struct CommandBarSettings: View {
     @AppStorage(Preferences.commandBarShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.commandBarCompactMode) private var compactMode: Bool
     @AppStorage(Preferences.commandBarEmojiSkinTone) private var emojiSkinTone: String
-    @AppStorage(DefaultsKey.commandBarASCIILayoutEnabled) private var asciiLayoutEnabled = false
-    @AppStorage(DefaultsKey.commandBarDisabledSources) private var disabledSources = ""
+    @AppStorage(Preferences.commandBarASCIILayoutEnabled) private var asciiLayoutEnabled: Bool
+    @AppStorage(Preferences.commandBarDisabledSources) private var disabledSources: String
     @AppStorage(Preferences.commandBarAliases) private var aliasesRaw: String
     @AppStorage(Preferences.commandBarPins) private var pinsRaw: String
     @AppStorage(Preferences.commandBarHidden) private var hiddenRaw: String

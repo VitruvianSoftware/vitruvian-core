@@ -20,7 +20,7 @@ package struct SwitcherSettings: View {
     @AppStorage(Preferences.switcherMergeTabs) private var switcherMergeTabs: Bool
     @AppStorage(Preferences.switcherWindowlessApps) private var switcherWindowlessApps: String
     @AppStorage(Preferences.switcherMinimizedPlacement) private var switcherMinimizedPlacement: String
-    @AppStorage(DefaultsKey.switcherTreatHiddenAppsLikeMinimized) private var switcherTreatHiddenAppsLikeMinimized = true
+    @AppStorage(Preferences.switcherTreatHiddenAppsLikeMinimized) private var switcherTreatHiddenAppsLikeMinimized: Bool
     @AppStorage(Preferences.switcherShowFullscreenWindows) private var switcherShowFullscreenWindows: Bool
     @AppStorage(Preferences.switcherScreenPlacement) private var switcherScreenPlacement: String
     @AppStorage(Preferences.switcherCurrentDisplayOnly) private var switcherCurrentDisplayOnly: Bool

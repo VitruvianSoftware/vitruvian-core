@@ -128,7 +128,7 @@ package enum NotchLockScreenLayout {
     /// The locked island hung from the top of `screen`, around its camera.
     package static func islandFrame(in screen: CGRect, cameraWidth: CGFloat, cameraHeight: CGFloat) -> CGRect? {
         guard [screen.width, screen.height, cameraWidth, cameraHeight].allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
-        let width = min(screen.width - 24, cameraWidth + islandWing * 2)
+        let width = min(screen.width - NotchLayout.displaySideMargins, cameraWidth + islandWing * 2)
         guard width > cameraWidth else { return nil }
         // Centred on the camera to the half point: a notch only comes on Retina displays.
         return CGRect(x: screen.midX - width / 2, y: screen.maxY - cameraHeight, width: width, height: cameraHeight)

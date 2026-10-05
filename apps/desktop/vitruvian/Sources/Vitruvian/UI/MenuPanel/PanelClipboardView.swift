@@ -9,7 +9,7 @@ import VitruvianServices
 package struct PanelClipboardView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var history = ClipboardHistoryService.shared
-    @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var enabled = false
+    @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled: Bool
     @State private var query = ""
     @State private var copiedID: UUID?

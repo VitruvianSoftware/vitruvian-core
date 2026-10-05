@@ -192,16 +192,26 @@ package enum NotchNotificationSupport {
 package enum NotchNotificationBannerLayout {
     package static let iconSize: CGFloat = 22
     package static let spacing: CGFloat = 8
-    package static let wingRange: ClosedRange<CGFloat> = 88...190
-    /// The inset from the island's curved end, and a little air so the
-    /// fitted text never truncates where SwiftUI rounds its width.
-    package static let inset: CGFloat = 16
+    package static let wingRange: ClosedRange<CGFloat> = NotchNoticeLayout.minimumWing...190
+    /// The inset from the island's curved end, which the banner is drawn
+    /// with as every notice is, and a little air so the fitted text never
+    /// truncates where SwiftUI rounds its width.
+    package static let inset = NotchNoticeLayout.inset
     package static let air: CGFloat = 6
     // NSFont is immutable once made, so any thread may share these.
     /// The fonts the banner draws with, so it is measured in the same ones.
     nonisolated(unsafe) package static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
     nonisolated(unsafe) package static let messageFont = NSFont.systemFont(ofSize: 11)
 
+    /// The icon's side on a strip `stripHeight` tall: its full size where
+    /// the strip has room, and clear of both edges where it does not.
+    package static func iconSide(stripHeight: CGFloat) -> CGFloat {
+        min(iconSize, max(0, stripHeight - 4))
+    }
+
+    /// A notice is measured before it knows its display, so the wing
+    /// reserves the icon at its largest `iconSide`; on a shorter strip the
+    /// title takes the slack.
     package static func wing(for content: NotchNotificationContent) -> CGFloat {
         func width(_ text: String, _ font: NSFont) -> CGFloat {
             // A line or two is all the banner shows, and the widest wing is

@@ -563,11 +563,6 @@ enum FeatureCatalogTests {
         } else {
             suite.expect(false, "feature install defaults suite can be created")
         }
-        let runtimeSource = (try? String(contentsOfFile: "Sources/Vitruvian/Services/FeatureRuntime.swift",
-                                         encoding: .utf8)) ?? ""
-        suite.expect(runtimeSource.contains(
-            "setAvailable(AppFeature.allCases, available, enablingFirstInstalls: false)"),
-               "install all makes features available without switching on their behavior")
 
         // Most updating installs never saved an availability, so this list is
         // what they have: a feature leaving it would vanish for all of them.
@@ -656,10 +651,6 @@ enum FeatureCatalogTests {
         }
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.featureHubKeptFeatures),
                "features someone chose to keep travel in backups, so a restored Mac never offers them again")
-        let hubUndoSource = (try? String(contentsOfFile: "Sources/Vitruvian/UI/Settings/FeatureHubSettings.swift",
-                                         encoding: .utf8)) ?? ""
-        suite.expect(hubUndoSource.contains("setAvailable(batch, true, enablingFirstInstalls: false)"),
-               "undoing the offer reinstalls without switching on what was never on")
         suite.expect(FeatureGroup.allCases.map { AppFeature.features(in: $0).count }.reduce(0, +)
                 == AppFeature.allCases.count,
                "every feature belongs to exactly one group")

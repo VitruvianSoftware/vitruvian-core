@@ -21,16 +21,17 @@ package struct NotchControlsView: View {
 
     package var body: some View {
         let items = NotchSupport.controls()
-        let levels = items.filter { $0 == .volume || $0 == .brightness }
-        let shortcuts = items.filter { $0 != .volume && $0 != .brightness && $0 != .music }
-        let layout = NotchLayout.controls(hasCards: items.contains(.music) || !levels.isEmpty,
+        let groups = NotchControlGroups(items)
+        let levels = groups.levels
+        let shortcuts = groups.shortcuts
+        let layout = NotchLayout.controls(hasCards: groups.hasCards,
                                           shortcutCount: shortcuts.count, width: size.width, height: size.height)
         if items.isEmpty {
             NotchEmptyView(symbol: "slider.horizontal.3", message: FeatureStrings.notch(l10n.language).empty)
         } else {
             VStack(spacing: NotchLayout.rowSpacing) {
                 if layout.cardRow > 0 {
-                    cards(levels: levels, music: items.contains(.music), height: layout.cardRow)
+                    cards(levels: levels, music: groups.music, height: layout.cardRow)
                 }
                 if layout.shortcutRows > 0 {
                     NotchRail(items: shortcuts, rows: layout.shortcutRows, itemWidth: NotchLayout.shortcutWidth,
