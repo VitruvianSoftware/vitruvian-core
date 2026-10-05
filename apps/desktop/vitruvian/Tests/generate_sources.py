@@ -838,15 +838,6 @@ def main():
           + declaration(view, "    private func icon(for item: QuickLauncherItem)")
           + declaration(view, "    private func isActive(_ item: QuickLauncherItem)")
           + "func display(_ item: QuickLauncherItem) -> (String, Bool) { (icon(for: item), isActive(item)) }\n}\n}\n")
-    # The panel's tabs and the rows they hold, as shipped. PanelOrderItem is
-    # declared once, in QuickLauncherBodies.swift above.
-    menu_panel = "Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift"
-    write("MenuPanelSectionGates.swift", "import Foundation\n\nextension MenuPanelSectionGateContract {\n"
-          + declaration("Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift", "enum PanelSectionID:")
-          + "".join(declaration(menu_panel, prefix).replace("private enum", "enum", 1)
-                    for prefix in ["private enum UtilityPanelItem:", "private enum ControlPanelItem:"])
-          + declaration("Sources/Vitruvian/Services/QuickTools/QuickTogglesService.swift", "enum QuickToggleAction:")
-          + "}\n")
 
     preview = "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift"
     write("ScreenshotShareCompletion.swift", "import Foundation\n"

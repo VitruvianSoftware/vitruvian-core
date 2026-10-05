@@ -661,6 +661,15 @@ Landed (4b, the dimming choice): one more generated file goes, which leaves
   needs a step 5 style extraction or a seam per collaborator, not a one-line
   overload, so later slices will be fewer copies each.
 
+Landed (4b, the panel's tab gates): one more generated file goes, which
+leaves 85.
+
+- **Injected:** `MenuPanelRowFeatures.utilities` and `.controls` list the hub
+  features behind the panel's utility and control rows. The row enums stay
+  private to the panel; the test compares these lists, and the shipped
+  `QuickToggleAction`, against the shipped `PanelSectionID.featureGate`
+  instead of copies of all four types.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
