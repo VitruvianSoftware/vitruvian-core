@@ -1767,6 +1767,42 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/generate_sources.py` no longer copies it.
   - `Tests/MetricsTests.swift` line-buffers its output, so a crash still
     shows which suites finished.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The island stepping aside for a full-screen Space moves from
+    `Services/Notch/NotchService.swift` to the new
+    `Services/Notch/NotchFullscreenVisibility.swift`.
+  - `Services/Audio/PreciseVolumeRollerService.swift` takes an injected
+    `Environment`: its preference, whether the island takes the volume keys,
+    Accessibility, the session and the event tap's creation.
+  - `Tests/NotchFullscreenTests.swift` drives both, and
+    `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The island's deferred preference and screen passes, its menu reader's
+    schedule, its response to another app coming forward and its move to
+    another display go from `Services/Notch/NotchService.swift` to the new
+    `Services/Notch/NotchScreenRefresh.swift`.
+  - `Tests/NotchScreenRefreshTests.swift` drives it, and
+    `Tests/generate_sources.py` no longer copies those members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The drag handling of the private canvas view in
+    `Services/Notch/NotchWindowHost.swift` goes to the new
+    `Services/Notch/NotchCanvasDrop.swift`. The canvas forwards to it.
+  - `Tests/ShelfDropRoutingTests.swift` drives it, and
+    `Tests/generate_sources.py` no longer copies the canvas.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The rule for when the island takes files goes from
+    `Services/Notch/NotchService.swift` to
+    `Services/Notch/NotchFileDrop.swift`. `canAcceptFileDrop` forwards.
+  - `Tests/ShelfDropRoutingTests.swift` drives it, and
+    `Tests/generate_sources.py` no longer copies the island's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - Where a shelf drop goes moves from `Services/Shelf/ShelfService.swift`
+    to the new `Services/Shelf/ShelfDropIntake.swift`. `acceptDrop`,
+    `accept(draggingInfo:)` and `merge(draggingInfo:into:)` forward to it.
+  - The shelf's `fileURLs(from:)` reader moves to `ShelfPasteboardSupport`
+    in `Core/Shelf/ShelfSupport.swift`, and `ShelfService` forwards to it.
+  - `Tests/ShelfDropRoutingTests.swift` drives the intake, and
+    `Tests/generate_sources.py` no longer copies the shelf's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

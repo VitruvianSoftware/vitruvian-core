@@ -8,84 +8,66 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production Space selection and visibility transitions, with no desktop changes.
+/// The module's own full-screen visibility and volume roller, over a scripted
+/// preference, Spaces and island. No desktop Space changes and no event tap is
+/// installed.
 enum NotchFullscreenTests {
-    enum UserDefaults {
-        static let standard = Preferences()
-        final class Preferences {
-            var enabled = false
-            var preciseVolume = false
-            func bool(forKey key: String) -> Bool {
-                switch key {
-                case DefaultsKey.notchHideInFullscreen: return enabled
-                case DefaultsKey.preciseVolumeRollerEnabled: return preciseVolume
-                default: return false
-                }
-            }
+    typealias Topology = SpaceWindowBridge.Topology
+
+    /// The preference and the Spaces.
+    final class Desk {
+        var hides = false
+        var topology: Topology?
+        var reads = 0
+
+        var environment: NotchFullscreenVisibility.Environment {
+            NotchFullscreenVisibility.Environment(
+                hidesInFullscreen: { [unowned self] in self.hides },
+                showsFullscreen: { [unowned self] id in
+                    self.reads += 1
+                    return self.topology?.isFullscreen(on: id, separateSpaces: true)
+                })
         }
     }
-    enum AppFeature {
-        static let mixer = Feature()
-        static let brightness = Feature()
-        struct Feature { let isAvailable = true }
-    }
-    final class BrightnessService {
-        static let shared = BrightnessService()
-        var syncs = 0
-        func syncWithPreferences() { syncs += 1 }
-    }
-    enum NotchSupport {
-        enum Event { case volume }
-        static func routes(_ event: Event) -> Bool { true }
-    }
-    enum SessionActivity {
-        static let shared = Session()
-        struct Session { let isActive = true }
-    }
-    static func AXIsProcessTrusted() -> Bool { true }
-    enum NotchService { static var shared = Service() }
-    class VolumeState {
-        var running = false
-        func start() { running = true }
-        func stop() { running = false }
-        init() {}
-    }
-    enum NSScreen { static var screensHaveSeparateSpaces = true }
-    enum SpaceWindowBridge {
-        static var value: Topology?
-        static var reads = 0
-        static func topology() -> Topology? { reads += 1; return value }
-    }
-    class State {
-        var running = true, suspended = false, hiddenInFullscreen = false
-        var hoverEmphasized = false
-        var panel: Bool? = true
-        var windowHost: Host? = Host()
-        struct Host { var isConcealedForMissionControl = false }
+
+    /// The island's side, recording what it is asked to do.
+    final class Island {
+        var hidden = false
+        /// Running and not suspended.
+        var active = true
+        var calls: [String] = []
+        var routingChanges = 0
+        /// What `updateScreen` does on this island, if anything.
         var screenUpdate: (() -> Void)?
-        var heldDrag = true, dragPlaceholder = true, noticeExpanded = true
-        var hoverWork: DispatchWorkItem?, noticeWork: DispatchWorkItem?
-        var notice: Bool? = true
-        var collapses = 0, cancellations = 0, screenUpdates = 0, consumerSyncs = 0, refreshes = 0, departures = 0
-        func cancelCaptureControls() { cancellations += 1 }
-        func endDeparture() { departures += 1 }
-        func collapse() { collapses += 1 }
-        func updateScreen() { screenUpdates += 1; screenUpdate?() }
-        func syncVisibleConsumers() { consumerSyncs += 1 }
-        func refreshPresentation(animated: Bool) { refreshes += 1 }
-        func updateFullscreenDisplays() {}
-        func syncMirrors() {}
+        /// What the composition root runs when key routing changes.
+        var onRoutingChange: (() -> Void)?
+
+        var side: NotchFullscreenVisibility.Island {
+            NotchFullscreenVisibility.Island(
+                hidden: { [unowned self] in self.hidden },
+                setHidden: { [unowned self] in self.hidden = $0 },
+                isActive: { [unowned self] in self.active },
+                cancelHover: { [unowned self] in self.calls.append("cancelHover") },
+                releaseDrag: { [unowned self] in self.calls.append("releaseDrag") },
+                cancelCaptureControls: { [unowned self] in self.calls.append("cancelCaptureControls") },
+                dismissNotice: { [unowned self] in self.calls.append("dismissNotice") },
+                collapse: { [unowned self] in self.calls.append("collapse") },
+                feedbackRoutingDidChange: { [unowned self] in
+                    self.routingChanges += 1
+                    self.onRoutingChange?()
+                },
+                updateScreen: { [unowned self] in
+                    self.calls.append("updateScreen")
+                    self.screenUpdate?()
+                },
+                updateFullscreenDisplays: { [unowned self] in self.calls.append("updateFullscreenDisplays") },
+                syncMirrors: { [unowned self] in self.calls.append("syncMirrors") },
+                syncVisibleConsumers: { [unowned self] in self.calls.append("syncVisibleConsumers") },
+                refreshPresentation: { [unowned self] in self.calls.append("refreshPresentation") })
+        }
     }
 
     static func run(_ suite: TestSuite) {
-        defer {
-            UserDefaults.standard.enabled = false
-            UserDefaults.standard.preciseVolume = false
-            NSScreen.screensHaveSeparateSpaces = true
-            SpaceWindowBridge.value = nil
-            NotchService.shared = Service()
-            PreciseVolumeRollerService.shared.stop()
-        }
         let topology = Topology(displays: [
             .init(displayID: 1, spaces: [10, 11], fullscreenSpaces: [11], currentSpace: 10),
             .init(displayID: 2, spaces: [20, 21], fullscreenSpaces: [21], currentSpace: 21)
@@ -104,85 +86,103 @@ enum NotchFullscreenTests {
                      && !unknown.isFullscreen(on: 1, separateSpaces: true),
                      "a shared Space can omit its display UUID")
 
-        let service = Service()
-        SpaceWindowBridge.value = topology
-        SpaceWindowBridge.reads = 0
-        service.updateFullscreenVisibility(displayID: 2)
-        suite.expect(!service.hiddenInFullscreen && SpaceWindowBridge.reads == 0,
+        let desk = Desk()
+        desk.topology = topology
+        let island = Island()
+        let visibility = NotchFullscreenVisibility(environment: desk.environment, island: island.side)
+        visibility.update(displayID: 2)
+        suite.expect(!island.hidden && desk.reads == 0 && island.routingChanges == 0,
                      "the opt-in preference avoids Space queries while disabled")
-        UserDefaults.standard.enabled = true
-        service.hoverEmphasized = true
-        service.hoverWork = DispatchWorkItem {}
-        service.noticeWork = DispatchWorkItem {}
-        let hover = service.hoverWork!, notice = service.noticeWork!
-        let brightnessSyncs = BrightnessService.shared.syncs
-        service.updateFullscreenVisibility(displayID: 2)
-        suite.expect(service.hiddenInFullscreen && service.collapses == 1 && service.cancellations == 1
-                     && !service.heldDrag && !service.dragPlaceholder && service.notice == nil
-                     && !service.hoverEmphasized && hover.isCancelled && notice.isCancelled && service.departures == 1,
+        desk.hides = true
+        visibility.update(displayID: 2)
+        suite.expect(island.hidden && island.calls == ["cancelHover", "releaseDrag", "cancelCaptureControls",
+                                                       "dismissNotice", "collapse"],
                      "entering fullscreen clears hover emphasis, pending reveals, banners, departing notices, drags and capture controls")
-        suite.expect(BrightnessService.shared.syncs == brightnessSyncs + 1,
+        suite.expect(island.routingChanges == 1,
                      "entering fullscreen hands the brightness keys back to the system")
-        service.updateFullscreenVisibility(displayID: 2)
-        suite.expect(service.collapses == 1 && BrightnessService.shared.syncs == brightnessSyncs + 1,
+        island.calls = []
+        visibility.update(displayID: 2)
+        suite.expect(island.calls.isEmpty && island.routingChanges == 1,
                      "unchanged fullscreen state does not repeat dismissal or key routing")
-        service.updateFullscreenVisibility(displayID: 1)
-        suite.expect(!service.hiddenInFullscreen && !service.hoverEmphasized
-                     && BrightnessService.shared.syncs == brightnessSyncs + 2,
-                     "returning to a desktop restores eligibility without retaining the old hover emphasis")
-        service.updateFullscreenVisibility(displayID: 2)
-        UserDefaults.standard.enabled = false
-        service.updateFullscreenVisibility(displayID: 2)
-        suite.expect(!service.hiddenInFullscreen, "disabling the option restores eligibility in fullscreen")
-        UserDefaults.standard.enabled = true
-        SpaceWindowBridge.value = nil
-        service.updateFullscreenVisibility(displayID: 2)
-        suite.expect(!service.hiddenInFullscreen, "unavailable Space queries leave the island reachable")
-        service.fullscreenEnvironmentDidChange()
-        suite.expect(service.screenUpdates == 1 && service.consumerSyncs == 0 && service.refreshes == 0,
+        visibility.update(displayID: 1)
+        suite.expect(!island.hidden && island.calls.isEmpty && island.routingChanges == 2,
+                     "returning to a desktop restores eligibility and key routing without stepping aside again")
+        visibility.update(displayID: 2)
+        desk.hides = false
+        visibility.update(displayID: 2)
+        suite.expect(!island.hidden, "disabling the option restores eligibility in fullscreen")
+        desk.hides = true
+        desk.topology = nil
+        visibility.update(displayID: 2)
+        suite.expect(!island.hidden, "unavailable Space queries leave the island reachable")
+
+        island.calls = []
+        visibility.environmentDidChange()
+        suite.expect(island.calls == ["updateScreen", "updateFullscreenDisplays", "syncMirrors"],
                      "an unchanged fullscreen state leaves consumers and a transition on screen alone")
-        service.screenUpdate = { [weak service] in service?.hiddenInFullscreen = true }
-        service.fullscreenEnvironmentDidChange()
-        suite.expect(service.screenUpdates == 2 && service.consumerSyncs == 1 && service.refreshes == 1,
+        island.calls = []
+        island.screenUpdate = { island.hidden = true }
+        visibility.environmentDidChange()
+        suite.expect(island.calls == ["updateScreen", "updateFullscreenDisplays", "syncMirrors",
+                                      "syncVisibleConsumers", "refreshPresentation"],
                      "a fullscreen change reevaluates the display, consumers and presentation together")
-        service.screenUpdate = nil
-        service.suspended = true
-        service.fullscreenEnvironmentDidChange()
-        suite.expect(service.screenUpdates == 2, "Space changes cannot reveal a locked or sleeping session")
-        UserDefaults.standard.enabled = false
-        let idle = Service()
-        idle.fullscreenEnvironmentDidChange()
-        suite.expect(idle.screenUpdates == 0 && idle.consumerSyncs == 0 && idle.refreshes == 0,
-                     "with the option off, app and Space changes do no fullscreen work")
+        island.screenUpdate = nil
+        island.calls = []
+        island.active = false
+        visibility.environmentDidChange()
+        suite.expect(island.calls.isEmpty, "Space changes cannot reveal a locked or sleeping session")
+        desk.hides = false
+        let idle = Island()
+        NotchFullscreenVisibility(environment: desk.environment, island: idle.side).environmentDidChange()
+        suite.expect(idle.calls.isEmpty, "with the option off, app and Space changes do no fullscreen work")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.notchHideInFullscreen] as? Bool == false
                      && SettingsBackupSupport.exportKeys().contains(DefaultsKey.notchHideInFullscreen),
                      "fullscreen hiding is opt-in and included in settings backup")
         volumeLifecycleChecks(topology, suite)
     }
 
+    /// The precise volume roller wants its tap while its own option is on, or
+    /// while the island takes the volume keys, which it gives up in a
+    /// full-screen Space. Wired the way `main.swift` wires them, through key
+    /// routing. The stand-in tap is always refused, so a roller that wants its
+    /// tap reports it failed, and one that stops clears that.
     private static func volumeLifecycleChecks(_ topology: Topology, _ suite: TestSuite) {
-        // Run the production volume eligibility and fullscreen callbacks with
-        // an inert tap. No hardware keys, permissions or desktop Spaces change.
-        UserDefaults.standard.enabled = true
-        SpaceWindowBridge.value = topology
         for preciseVolume in [false, true] {
-            UserDefaults.standard.preciseVolume = preciseVolume
-            let service = Service()
-            NotchService.shared = service
-            let volume = PreciseVolumeRollerService.shared
+            let suiteName = "vitru.tests.notch-fullscreen-\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            defaults.set(preciseVolume, forKey: DefaultsKey.preciseVolumeRollerEnabled)
+            let desk = Desk()
+            desk.hides = true
+            desk.topology = topology
+            let island = Island()
+            let visibility = NotchFullscreenVisibility(environment: desk.environment, island: island.side)
+            var taps = 0
+            let volume = PreciseVolumeRollerService(environment: .init(
+                defaults: defaults,
+                mixerAvailable: { true },
+                islandTakesVolume: { !island.hidden },
+                accessibilityGranted: { true },
+                sessionIsActive: { true },
+                createTap: { _, _ in
+                    taps += 1
+                    return nil
+                }))
+            island.onRoutingChange = { volume.syncWithPreferences() }
             var displayID: CGDirectDisplayID = 2
-            service.screenUpdate = { [weak service] in service?.updateFullscreenVisibility(displayID: displayID) }
-            service.updateScreen()
+            island.screenUpdate = { visibility.update(displayID: displayID) }
+
+            visibility.update(displayID: displayID)
             volume.syncWithPreferences()
-            suite.expect(service.hiddenInFullscreen && volume.running == preciseVolume,
+            suite.expect(island.hidden && volume.tapFailed == preciseVolume && (taps > 0) == preciseVolume,
                          "fullscreen startup keeps the tap only when the precise volume roller needs it")
             displayID = 1
-            service.fullscreenEnvironmentDidChange()
-            suite.expect(!service.hiddenInFullscreen && service.acceptsSystemFeedback && volume.running,
+            visibility.environmentDidChange()
+            suite.expect(!island.hidden && volume.tapFailed,
                          "returning to the desktop restores the volume tap without a preference change")
             displayID = 2
-            service.fullscreenEnvironmentDidChange()
-            suite.expect(service.hiddenInFullscreen && volume.running == preciseVolume,
+            visibility.environmentDidChange()
+            suite.expect(island.hidden && volume.tapFailed == preciseVolume,
                          "entering fullscreen releases the notch tap but preserves the precise volume roller")
         }
     }

@@ -966,8 +966,8 @@ private final class NotchCanvas: NSView {
     private var outlineEnabled = false
     private var outlineColor = NSColor.white
     private let contentVisibility = CALayer()
-    private var dropActions: NotchFileDropActions?
-    private var acceptingDrag = false
+    /// External drags over the island (`NotchCanvasDrop`).
+    private let drop = NotchCanvasDrop()
     private var contentSize: CGSize
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
@@ -1086,26 +1086,20 @@ private final class NotchCanvas: NSView {
     }
 
     func setFileDropActions(_ actions: NotchFileDropActions?) {
-        let wasEnabled = dropActions != nil
-        dropActions = actions
+        let wasEnabled = drop.actions != nil
+        drop.actions = actions
         guard wasEnabled != (actions != nil) else { return }
         unregisterDraggedTypes()
         if actions != nil { registerForDraggedTypes(ShelfService.tileDropTypes) }
-        else { acceptingDrag = false }
     }
 
+    // This stable native view receives external drops while its content expands.
     func beginDrop(_ pasteboard: NSPasteboard, localSource: Bool) -> NSDragOperation {
-        // In-app tile drags keep their own reorder/merge destinations. This
-        // stable native view receives external drops while its content expands.
-        acceptingDrag = !localSource && dropActions?.canAccept(pasteboard) == true
-        if acceptingDrag { dropActions?.enter(pasteboard) }
-        return acceptingDrag ? .copy : []
+        drop.begin(pasteboard, localSource: localSource)
     }
 
     func finishDrop(_ pasteboard: NSPasteboard) -> Bool {
-        guard acceptingDrag else { return false }
-        defer { acceptingDrag = false; dropActions?.exit() }
-        return dropActions?.accept(pasteboard) == true
+        drop.finish(pasteboard)
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -1113,32 +1107,18 @@ private final class NotchCanvas: NSView {
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard containsVisiblePoint(convert(sender.draggingLocation, from: nil)) else {
-            if acceptingDrag { acceptingDrag = false; dropActions?.exit() }
-            return []
-        }
-        let operation = acceptingDrag ? .copy : beginDrop(sender.draggingPasteboard, localSource: sender.draggingSource != nil)
-        if acceptingDrag, dropActions?.update?(convert(sender.draggingLocation, from: nil)) == false { return [] }
-        return operation
+        let point = convert(sender.draggingLocation, from: nil)
+        return drop.update(sender.draggingPasteboard, at: point, visible: containsVisiblePoint(point),
+                           localSource: sender.draggingSource != nil)
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        acceptingDrag = false
-        dropActions?.exit()
+        drop.exit()
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard containsVisiblePoint(convert(sender.draggingLocation, from: nil)) else {
-            acceptingDrag = false
-            dropActions?.exit()
-            return false
-        }
-        if acceptingDrag, dropActions?.update?(convert(sender.draggingLocation, from: nil)) == false {
-            acceptingDrag = false
-            dropActions?.exit()
-            return false
-        }
-        return finishDrop(sender.draggingPasteboard)
+        let point = convert(sender.draggingLocation, from: nil)
+        return drop.perform(sender.draggingPasteboard, at: point, visible: containsVisiblePoint(point))
     }
 
 #if VITRUVIAN_DEVELOPMENT

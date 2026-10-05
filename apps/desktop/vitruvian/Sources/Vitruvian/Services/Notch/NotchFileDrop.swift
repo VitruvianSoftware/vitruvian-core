@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
+import VitruvianCore
 
 /// Files dragged onto the island. A drop the media tools can take offers two
 /// destinations, the shelf and the tools, and the pointer picks one; any
@@ -15,15 +16,18 @@ package final class NotchFileDrop {
         package var mediaAccepts: () -> Bool
         package var openMedia: (NSPasteboard) -> Bool
         package var hideMedia: () -> Void
+        /// The shelf is available and switched on.
+        package var shelfEnabled: () -> Bool
         package var shelfAccept: (NSPasteboard) -> Bool
 
         package init(offersMedia: @escaping (NSPasteboard) -> Bool, mediaAccepts: @escaping () -> Bool,
                      openMedia: @escaping (NSPasteboard) -> Bool, hideMedia: @escaping () -> Void,
-                     shelfAccept: @escaping (NSPasteboard) -> Bool) {
+                     shelfEnabled: @escaping () -> Bool, shelfAccept: @escaping (NSPasteboard) -> Bool) {
             self.offersMedia = offersMedia
             self.mediaAccepts = mediaAccepts
             self.openMedia = openMedia
             self.hideMedia = hideMedia
+            self.shelfEnabled = shelfEnabled
             self.shelfAccept = shelfAccept
         }
 
@@ -34,15 +38,21 @@ package final class NotchFileDrop {
                         mediaAccepts: { NotchFileToolsService.shared.canAcceptMediaDrop },
                         openMedia: { NotchFileToolsService.shared.openMediaDrop($0) },
                         hideMedia: { NotchFileToolsService.shared.hideMedia() },
+                        shelfEnabled: {
+                            AppFeature.shelf.isAvailable
+                                && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
+                        },
                         shelfAccept: shelfAccept)
         }
     }
 
     /// The island's side.
     package struct Island {
-        /// The island takes files now (`NotchService.canAcceptFileDrop`).
-        package var canAccept: () -> Bool
         package var acceptsUserInteraction: () -> Bool
+        /// The capture controls hold the island.
+        package var capturing: () -> Bool
+        /// The island shows its files module.
+        package var showsFiles: () -> Bool
         /// Where on the open island the media tools take the drop.
         package var mediaArea: () -> CGRect
         /// Runs before the destinations change, so the views showing them redraw.
@@ -53,12 +63,14 @@ package final class NotchFileDrop {
         /// A drop landed: the island stops holding the drag.
         package var landed: () -> Void
 
-        package init(canAccept: @escaping () -> Bool, acceptsUserInteraction: @escaping () -> Bool,
+        package init(acceptsUserInteraction: @escaping () -> Bool, capturing: @escaping () -> Bool,
+                     showsFiles: @escaping () -> Bool,
                      mediaArea: @escaping () -> CGRect, willChange: @escaping () -> Void,
                      openFiles: @escaping (_ takeFocus: Bool) -> Void, refreshPresentation: @escaping () -> Void,
                      landed: @escaping () -> Void) {
-            self.canAccept = canAccept
             self.acceptsUserInteraction = acceptsUserInteraction
+            self.capturing = capturing
+            self.showsFiles = showsFiles
             self.mediaArea = mediaArea
             self.willChange = willChange
             self.openFiles = openFiles
@@ -84,10 +96,17 @@ package final class NotchFileDrop {
         self.island = island
     }
 
+    /// The island takes files now: it is interactive, not capturing, shows
+    /// its files, and the shelf is on.
+    package var canAccept: Bool {
+        island.acceptsUserInteraction() && !island.capturing() && island.showsFiles()
+            && environment.shelfEnabled()
+    }
+
     /// A drag entered the island: it opens on its files, offering the media
     /// tools when they can take what is dragged.
     package func begin(_ pasteboard: NSPasteboard) {
-        guard island.canAccept() else { return }
+        guard canAccept else { return }
         choosingDestination = environment.offersMedia(pasteboard)
         targetsMedia = false
         island.openFiles(false)
@@ -112,7 +131,7 @@ package final class NotchFileDrop {
     /// Delivers the drop to the destination the pointer chose.
     package func accept(_ pasteboard: NSPasteboard) -> Bool {
         defer { end() }
-        guard island.canAccept() else { return false }
+        guard canAccept else { return false }
         let optimize = choosingDestination && targetsMedia
         let accepted = optimize ? environment.openMedia(pasteboard) : environment.shelfAccept(pasteboard)
         if accepted {

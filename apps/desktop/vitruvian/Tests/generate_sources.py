@@ -84,25 +84,7 @@ def main():
               "    private func closePopoverNow("])
           + "var popoverAnchor: PanelAnchor?\nvar lastGoodPanelAnchor: PanelAnchor?\n"
           + "}\n}\n")
-    shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
-    # The composition root wires the island's collaborators; each contract
-    # wires its own stand-ins the way main.swift wires the services.
-    write("NotchFullscreen.swift", "import CoreGraphics\nimport Foundation\nextension NotchFullscreenTests {\n"
-          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
-          + "final class Service: State {\n"
-          + "struct Collaborators { var feedbackRoutingDidChange: () -> Void = {\n"
-          + "if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }\n"
-          + "if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }\n"
-          + "} }\nstatic var collaborators = Collaborators()\n"
-          + declaration(notch, "    var acceptsUserInteraction: Bool {")
-          + declaration(notch, "    var acceptsSystemFeedback: Bool {")
-          + declaration(notch, "    private func updateFullscreenVisibility(").replace("private func", "func", 1)
-          + declaration(notch, "    private func fullscreenEnvironmentDidChange()").replace("private func", "func", 1)
-          + "}\nfinal class PreciseVolumeRollerService: VolumeState {\n"
-          + "static let shared = PreciseVolumeRollerService()\n"
-          + declaration("Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift", "    func syncWithPreferences()")
-          + "}\n}\n")
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
     write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"
@@ -170,17 +152,6 @@ def main():
                                                 "AppFeature.fanControl.isAvailable(in: ReviewDefaults.current)")
     write("NotchMusicVisibility.swift", "import Foundation\nextension NotchMusicVisibilityTests {\n"
           + "final class Service: State {\n" + music_visibility + "}\n}\n")
-    write("NotchScreenRefresh.swift", "import Foundation\n\nextension NotchScreenRefreshContract {\nfinal class Service: State {\n"
-          + declaration(notch, "    private func schedulePreferenceSync()").replace("private func", "func", 1)
-          + declaration(notch, "    private func screenParametersDidChange()").replace("private func", "func", 1)
-          + declaration(notch, "    private func invalidateMenuSpace(").replace("private func", "func", 1)
-          + declaration(notch, "    private func applicationDidActivate()").replace("private func", "func", 1)
-          + declaration(notch, "    private func syncMenuSpaceMonitoring()").replace("private func", "func", 1)
-              .replace("AXIsProcessTrusted()", "accessibilityGranted")
-              .replace("NotchSupport.coversMenus()", "coversMenus")
-          + declaration(notch, "    private var canFollowPointer:").replace("private var", "var", 1)
-          + declaration(notch, "    private func move(to screen:").replace("private func", "func", 1)
-          + "}\n}\n")
     write("NotchPresentationRefresh.swift", "import AppKit\nimport Foundation\nimport Combine\nimport SwiftUI\n"
           + "extension NotchPresentationRefreshContract {\nfinal class Service: State {\n"
           + "func hover(_ entered: Bool) {\nlet wasInside = inside\n"
@@ -259,13 +230,7 @@ def main():
               .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
           + "}\n}\n")
     write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
-          + declaration(canvas, "struct NotchFileDropActions {")
-          + "final class ShelfService: ShelfState {\nstatic var shared = ShelfService()\n"
-          + declaration(shelf, "    func acceptDrop(pasteboard:")
-          + declaration(shelf, "    func accept(draggingInfo:")
-          + declaration(shelf, "    func fileURLs(from")
-          + declaration(shelf, "    private func unique(")
-          + "}\nfinal class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
+          + "final class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var offersMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")
@@ -274,29 +239,6 @@ def main():
                         scope="final class NotchFileToolsService:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func hideMedia(")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
-          + "}\nfinal class Notch: NotchState {\n"
-          + "struct Collaborators { var shelfAccept: (NSPasteboard) -> Bool = { ShelfService.shared.acceptDrop(pasteboard: $0) } }\n"
-          + "static var collaborators = Collaborators()\n"
-          + "lazy var fileDrop = ShelfDropRoutingContract.fileDrop(for: self)\n"
-          + declaration(notch, "    var choosingFileDropDestination:")
-          + declaration(notch, "    var targetsMediaDrop:")
-          + declaration(notch, "    var canAcceptFileDrop:")
-          + declaration(notch, "    private var mediaDropArea:").replace("private var", "var", 1)
-          + declaration(notch, "    func beginFileDrop(")
-          + declaration(notch, "    func updateFileDrop(")
-          + declaration(notch, "    func endFileDrop(")
-          + declaration(notch, "    func accept(_ pasteboard:")
-          + declaration(notch, "    private func fileDropLanded(").replace("private func", "func", 1)
-          + "}\nfinal class Canvas {\nvar acceptingDrag = false\n"
-          + "var dropActions: NotchFileDropActions?\n"
-          + "var visibleRect = CGRect(x: 0, y: 0, width: 440, height: 400)\n"
-          + "func convert(_ point: CGPoint, from: Int?) -> CGPoint { point }\n"
-          + "func containsVisiblePoint(_ point: CGPoint) -> Bool { visibleRect.contains(point) }\n"
-          + declaration(canvas, "    func beginDrop(")
-          + declaration(canvas, "    func finishDrop(")
-          + declaration(canvas, "    override func draggingUpdated(").replace("override func", "func", 1)
-          + declaration(canvas, "    override func draggingExited(").replace("override func", "func", 1)
-          + declaration(canvas, "    override func performDragOperation(").replace("override func", "func", 1)
           + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"

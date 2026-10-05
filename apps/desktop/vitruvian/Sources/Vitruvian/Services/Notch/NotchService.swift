@@ -159,8 +159,9 @@ package final class NotchService: ObservableObject {
     private lazy var fileDrop: NotchFileDrop = NotchFileDrop(
         environment: .system(shelfAccept: { Self.collaborators.shelfAccept($0) }),
         island: NotchFileDrop.Island(
-            canAccept: { [weak self] in self?.canAcceptFileDrop ?? false },
             acceptsUserInteraction: { [weak self] in self?.acceptsUserInteraction ?? false },
+            capturing: { [weak self] in self?.captureControls != nil },
+            showsFiles: { [weak self] in self?.modules.contains(.files) == true },
             mediaArea: { [weak self] in self?.mediaDropArea ?? .null },
             willChange: { [weak self] in self?.objectWillChange.send() },
             openFiles: { [weak self] in self?.open(.files, takeFocus: $0) },
@@ -302,8 +303,6 @@ package final class NotchService: ObservableObject {
         },
         apply: { [weak self] in self?.applyMenuSpace($0) })
     private var menuBarMeasurements = NotchMenuBarMeasurements()
-    private var screenRefreshWork: DispatchWorkItem?
-    private var preferenceSyncWork: DispatchWorkItem?
     /// The display the island is on. The pointer choice keeps it there until
     /// the island rests, so a preference sync never moves an open island.
     private var displayID: CGDirectDisplayID?
@@ -396,6 +395,86 @@ package final class NotchService: ObservableObject {
                 guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
                 self.move(to: screen)
             }))
+
+    /// The deferred refreshes, the menu reader's schedule, activations and
+    /// moves between displays (`NotchScreenRefresh`).
+    private lazy var screenRefresh: NotchScreenRefresh = NotchScreenRefresh(
+        environment: .system,
+        island: NotchScreenRefresh.Island(
+            running: { [weak self] in self?.running ?? false },
+            suspended: { [weak self] in self?.suspended ?? true },
+            hiddenInFullscreen: { [weak self] in self?.hiddenInFullscreen ?? false },
+            hiddenUntilHover: { [weak self] in self?.hiddenUntilHover ?? false },
+            expanded: { [weak self] in self?.expanded ?? false },
+            peeking: { [weak self] in self?.peeking ?? false },
+            showsNotice: { [weak self] in self?.notice != nil },
+            showsCaptureControls: { [weak self] in self?.captureControls != nil },
+            holdsDrag: { [weak self] in self?.heldDrag ?? false },
+            choosingFileDropDestination: { [weak self] in self?.choosingFileDropDestination ?? false },
+            keepsWorkingSurface: { [weak self] in self?.keepsWorkingSurface ?? false },
+            holdsMusic: { [weak self] in self?.heldMusic != nil },
+            pinned: { [weak self] in self?.pinned ?? false },
+            openedByHover: { [weak self] in self?.openedByHover ?? false },
+            clickedSinceOpening: { [weak self] in self?.clickedSinceOpening ?? false },
+            showsClipboard: { [weak self] in self?.modules.contains(.clipboard) ?? false },
+            idleContent: { [weak self] in self?.idleContent ?? .none },
+            hasCompactActivity: { [weak self] in self?.compactActivity != nil },
+            geometry: { [weak self] in self?.geometry ?? NotchGeometry(screen: .zero, safeAreaTop: 0, cameraWidth: 0) },
+            displayHasMenuBar: { [weak self] in self?.displayHasMenuBar ?? false },
+            containsHover: { [weak self] in self?.windowHost?.containsHover($0) == true },
+            syncWithPreferences: { [weak self] in self?.syncWithPreferences() },
+            fullscreenEnvironmentDidChange: { [weak self] in self?.fullscreenEnvironmentDidChange() },
+            applyMenuSpace: { [weak self] in self?.applyMenuSpace($0) },
+            withdrawMenuSpace: { [weak self] in
+                guard let self else { return }
+                self.geometry.compactSideRoom = nil
+                self.refreshPresentation(animated: false)
+            },
+            refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) },
+            resignKey: { [weak self] in self?.panel?.resignKey() },
+            rememberPasteTarget: { ClipboardHistoryService.shared.rememberPasteTarget() },
+            collapse: { [weak self] in self?.collapse() },
+            takeDisplay: { [weak self] id in
+                self?.displayID = id
+                self?.updateScreen()
+            },
+            syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
+            startMenuSpace: { [weak self] in self?.menuSpace.start() },
+            stopMenuSpace: { [weak self] in self?.menuSpace.stop() },
+            invalidateMenuSpace: { [weak self] in self?.menuSpace.invalidate() },
+            readMenuSpace: { [weak self] in self?.menuSpace.read() }))
+
+    /// Stepping aside for a full-screen Space (`NotchFullscreenVisibility`).
+    private lazy var fullscreen: NotchFullscreenVisibility = NotchFullscreenVisibility(
+        environment: .system,
+        island: NotchFullscreenVisibility.Island(
+            hidden: { [weak self] in self?.hiddenInFullscreen ?? false },
+            setHidden: { [weak self] in self?.hiddenInFullscreen = $0 },
+            isActive: { [weak self] in self.map { $0.running && !$0.suspended } ?? false },
+            cancelHover: { [weak self] in
+                guard let self else { return }
+                self.hoverWork?.cancel(); self.hoverWork = nil
+                self.hoverEmphasized = false
+            },
+            releaseDrag: { [weak self] in
+                self?.heldDrag = false
+                self?.dragPlaceholder = false
+            },
+            cancelCaptureControls: { [weak self] in self?.cancelCaptureControls() },
+            dismissNotice: { [weak self] in
+                guard let self else { return }
+                self.noticeWork?.cancel(); self.noticeWork = nil
+                self.endDeparture()
+                self.notice = nil
+                self.noticeExpanded = false
+            },
+            collapse: { [weak self] in self?.collapse() },
+            feedbackRoutingDidChange: { Self.collaborators.feedbackRoutingDidChange() },
+            updateScreen: { [weak self] in self?.updateScreen() },
+            updateFullscreenDisplays: { [weak self] in self?.updateFullscreenDisplays() },
+            syncMirrors: { [weak self] in self?.syncMirrors() },
+            syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
+            refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) }))
 
     private init() {}
 
@@ -986,7 +1065,7 @@ package final class NotchService: ObservableObject {
     }
 
     package func syncWithPreferences() {
-        preferenceSyncWork?.cancel(); preferenceSyncWork = nil
+        screenRefresh.cancelPreferenceSync()
         guard NotchSupport.isEnabled() else { stop(); return }
         if !running {
             running = true
@@ -1067,7 +1146,7 @@ package final class NotchService: ObservableObject {
     }
 
     package func stop(restoreCapture: Bool = true) {
-        preferenceSyncWork?.cancel(); preferenceSyncWork = nil
+        screenRefresh.cancelPreferenceSync()
         NotchLyricsService.shared.stop()
         NotchFileToolsService.shared.stop()
         AgentUsageService.shared.stop()
@@ -1093,7 +1172,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func tearDownPresentation() {
-        screenRefreshWork?.cancel(); screenRefreshWork = nil
+        screenRefresh.cancelScreenRefresh()
         captureControlsWork?.cancel(); captureControlsWork = nil
         musicDetailVisible = false
         pageLayers.removeAll()
@@ -1926,9 +2005,7 @@ package final class NotchService: ObservableObject {
     }
 
     package var canAcceptFileDrop: Bool {
-        acceptsUserInteraction && captureControls == nil && modules.contains(.files)
-            && AppFeature.shelf.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
+        fileDrop.canAccept
     }
 
     /// Where on the open island the media tools take a drop.
@@ -1936,7 +2013,6 @@ package final class NotchService: ObservableObject {
         NotchFileToolsSupport.mediaDropArea(in: expandedGeometry, size: surfaceSize)
     }
 
-    // Each forward spans lines so the shelf-drop contract can copy it.
     package func beginFileDrop(_ pasteboard: NSPasteboard) {
         fileDrop.begin(pasteboard)
     }
@@ -2413,21 +2489,12 @@ package final class NotchService: ObservableObject {
     /// Only a closed island moves. A file dragged toward it brings the drop
     /// area along, so the file can land on either display; an open page, a
     /// notice or a drag out of the island stays where it is.
-    private var canFollowPointer: Bool {
-        // A song held for its New track notice keeps its old display's geometry.
-        !expanded && !peeking && notice == nil && captureControls == nil && !heldDrag
-            && !choosingFileDropDestination && !keepsWorkingSurface && heldMusic == nil
-    }
+    private var canFollowPointer: Bool { screenRefresh.canFollowPointer }
 
     private func schedulePointerFollow() { pointerFollower.pointerMoved() }
 
     private func move(to screen: NSScreen) {
-        displayID = screen.notchDisplayID
-        updateScreen()
-        // The menu space measured so far belongs to the display it left.
-        invalidateMenuSpace()
-        syncVisibleConsumers()
-        refreshPresentation(animated: false)
+        screenRefresh.move(to: screen.notchDisplayID)
     }
 
     /// A new song's title shows in the capsule for a few seconds, then the
@@ -2495,56 +2562,11 @@ package final class NotchService: ObservableObject {
         NSScreen.screensHaveSeparateSpaces || NSScreen.withMenuBar?.frame == geometry.screen
     }
 
-    private func syncMenuSpaceMonitoring() {
-        guard !hiddenInFullscreen else { menuSpace.stop(); return }
-        // The explicit cover-menus choice also keeps a simulated island at
-        // rest. Otherwise its visibility follows AX menu measurements, which
-        // can change just because focus moves to another app or display.
-        // A display without a menu bar, beside the main one when displays
-        // share Spaces, has no menus to leave room for either.
-        if running, !suspended, NotchSupport.coversMenus() || !displayHasMenuBar {
-            // Nothing to measure: the island keeps the room an empty bar
-            // would leave it, over whatever menus and status items are there.
-            menuSpace.stop()
-            applyMenuSpace(NotchMenuBarLayout.sideRoom(screen: geometry.screen, cameraWidth: geometry.cameraWidth,
-                                                       barHeight: geometry.menuBarHeight, occupied: []))
-            return
-        }
-        guard AXIsProcessTrusted() else {
-            menuSpace.stop()
-            if geometry.compactSideRoom != nil {
-                geometry.compactSideRoom = nil
-                refreshPresentation(animated: false)
-            }
-            return
-        }
-        let wanted = running && !suspended && !hiddenUntilHover && !expanded && captureControls == nil
-            && (idleContent != .none || compactActivity != nil || !geometry.isNotched)
-        guard wanted else { menuSpace.stop(); return }
-        menuSpace.start()
-    }
+    private func syncMenuSpaceMonitoring() { screenRefresh.syncMenuSpaceMonitoring() }
 
-    private func invalidateMenuSpace() {
-        menuSpace.invalidate()
-        // Keep the last measured layout until its replacement arrives, so a
-        // switch does not blink; the read that follows withdraws the cutout
-        // once the new menu bar reaches the camera.
-        menuSpace.read()
-    }
+    private func invalidateMenuSpace() { screenRefresh.invalidateMenuSpace() }
 
-    private func screenParametersDidChange() {
-        guard running, !suspended else { return }
-        screenRefreshWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.screenRefreshWork = nil
-            guard self.running, !self.suspended else { return }
-            self.invalidateMenuSpace()
-            self.syncWithPreferences()
-        }
-        screenRefreshWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
-    }
+    private func screenParametersDidChange() { screenRefresh.screenParametersDidChange() }
 
     private func applyMenuSpace(_ room: CGFloat?) {
         guard geometry.compactSideRoom != room else { return }
@@ -2663,43 +2685,11 @@ package final class NotchService: ObservableObject {
     }
 
     private func updateFullscreenVisibility(displayID: CGDirectDisplayID) {
-        let hidden = UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen)
-            && SpaceWindowBridge.topology()?.isFullscreen(on: displayID, separateSpaces: NSScreen.screensHaveSeparateSpaces) == true
-        guard hidden != hiddenInFullscreen else { return }
-        hiddenInFullscreen = hidden
-        if hidden {
-            hoverWork?.cancel(); hoverWork = nil
-            hoverEmphasized = false
-            heldDrag = false
-            dragPlaceholder = false
-            cancelCaptureControls()
-            noticeWork?.cancel(); noticeWork = nil
-            endDeparture()
-            notice = nil
-            noticeExpanded = false
-            collapse()
-        }
-        // Space changes do not run a full preference sync. Restore volume
-        // and brightness key routing when the island becomes eligible for
-        // feedback again, and hand the keys back while it is away.
-        Self.collaborators.feedbackRoutingDidChange()
+        fullscreen.update(displayID: displayID)
     }
 
     private func fullscreenEnvironmentDidChange() {
-        // Only the opt-in option depends on Spaces and the active app.
-        guard running, !suspended,
-              hiddenInFullscreen || UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen)
-        else { return }
-        let wasHidden = hiddenInFullscreen
-        updateScreen()
-        // Each copy follows full screen on its own display.
-        updateFullscreenDisplays()
-        syncMirrors()
-        // An unchanged state must not cut short a transition on screen, such
-        // as the island closing after a click in another app.
-        guard hiddenInFullscreen != wasHidden else { return }
-        syncVisibleConsumers()
-        refreshPresentation(animated: false)
+        fullscreen.environmentDidChange()
     }
 
     private func installObservers() {
@@ -2741,32 +2731,9 @@ package final class NotchService: ObservableObject {
 
     /// AppStorage can notify during drawing. A preference import or a group
     /// of edits only needs one deferred pass over the final saved settings.
-    private func schedulePreferenceSync() {
-        guard running, preferenceSyncWork == nil else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.preferenceSyncWork = nil
-            guard self.running else { return }
-            self.syncWithPreferences()
-        }
-        preferenceSyncWork = work
-        DispatchQueue.main.async(execute: work)
-    }
+    private func schedulePreferenceSync() { screenRefresh.schedulePreferenceSync() }
 
-    private func applicationDidActivate() {
-        guard !suspended else { return }
-        fullscreenEnvironmentDidChange()
-        invalidateMenuSpace()
-        let identifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        guard identifier != Bundle.main.bundleIdentifier, identifier != AssistiveKeyboard.bundleID else { return }
-        panel?.resignKey()
-        if expanded, modules.contains(.clipboard) { ClipboardHistoryService.shared.rememberPasteTarget() }
-        if expanded, !pinned, !keepsWorkingSurface, captureControls == nil,
-           NotchSupport.closesOnActivation(openedByHover: openedByHover, clicked: clickedSinceOpening,
-                                           pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true) {
-            collapse()
-        }
-    }
+    private func applicationDidActivate() { screenRefresh.applicationDidActivate() }
 
     private func syncPanelKey() {
         let isKey = panel?.isKeyWindow == true

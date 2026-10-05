@@ -2206,6 +2206,125 @@ goes, which leaves 11.
   CI. The six `mutation_checks.py` mutations of this file still name
   messages the suite prints.
 
+Landed (4b, the island's full-screen visibility): one more generated
+file goes, which leaves 10.
+
+- **`NotchFullscreenVisibility`** (new, `Services/Notch/`) decides when the
+  island steps aside for a full-screen Space (an opt-in) and what it does
+  then:
+  - **Stepping aside:** it cancels hover, releases a drag, cancels the
+    capture controls, dismisses the notice and collapses, in that order.
+  - **Key routing:** it resyncs who owns the volume and brightness keys
+    whenever the island steps aside or returns.
+  - **Following:** on a Space or app change it follows only while the
+    island runs.
+  - Its environment is the preference and the Spaces (`.system`). The island
+    hands it those steps; `NotchService` keeps `hiddenInFullscreen`.
+- **`PreciseVolumeRollerService.Environment`** (new): the roller's
+  preference, whether the island takes the volume keys, Accessibility, the
+  session, and the event tap's creation. `shared` uses `.system`, as
+  before. The re-arm of a disabled tap still reads the system, since only a
+  live tap reaches it.
+- **Tests:** `NotchFullscreenTests` drives the module's own visibility over
+  a scripted preference, Spaces and island. It also drives a real roller,
+  wired through key routing the way `main.swift` wires them, over a tap
+  that macOS always refuses. Before, it compiled copies of four island
+  members and the roller's sync. Every check is kept; the step-aside check
+  now also pins the order.
+- **Verification:** a Linux Swift 6.4 model type-checks the new type and the
+  test's desk and island against stand-ins. The suite itself runs on macOS
+  CI.
+
+Landed (4b, the island's screen refresh): one more generated file goes,
+which leaves 9.
+
+- **`NotchScreenRefresh`** (new, `Services/Notch/`) keeps the island
+  current as the displays, the app in front and the preferences change.
+  It owns:
+  - one deferred pass per burst of preference or screen notifications;
+  - when the menu reader runs, and the room the island keeps without it;
+  - what another app coming forward does: resign key, remember the paste
+    target, collapse an open island unless the pointer is still in it;
+  - `canFollowPointer` and `move(to:)`, the two halves of following the
+    pointer that `NotchPointerFollower` asks the island for.
+  - Its environment is the main queue, Accessibility, the cover-the-menus
+    preference, the app in front, this app's identifier and the pointer
+    (`.system`). The island hands in its state and its reactions.
+  - `NotchService` keeps one-line forwards, so the rest of the island and
+    its other contracts are unchanged.
+- **Tests:** `NotchScreenRefreshContract` builds the module's own type over
+  its scripted island, which keeps its fields and forwards the old names.
+  Before, the suite compiled copies of seven island members. Every check
+  is kept, the pointer-follow ones included.
+- **Verification:** a Linux Swift 6.4 model type-checks the new type against
+  stand-ins. The suite itself runs on macOS CI.
+
+Landed (4b, the island canvas's drops): the shelf-drop contract stops
+copying the canvas. Its generated file stays for the shelf, file-tools and
+island members, which the next slices take one owner at a time, so 9 remain.
+
+- **`NotchCanvasDrop`** (new, `Services/Notch/`) is the drag bookkeeping
+  that lived in the window host's private canvas view:
+  - whether a drag is taken (drags from inside the app are not);
+  - delivering a taken drag once;
+  - letting go of a drag that leaves the visible island;
+  - checking the release point again, whatever the last update targeted.
+  - The canvas still converts the drag's location and says whether it is
+    on the visible island, then forwards one line to this type.
+- **Tests:** `ShelfDropRoutingTests` drives the module's own type with the
+  module's `NotchFileDropActions`. Before, it compiled copies of the
+  canvas's five drop methods and of the actions struct. Every check is
+  kept.
+- **Verification:** a Linux Swift 6.4 model type-checks and runs the new
+  type against stand-ins. The suite itself runs on macOS CI.
+
+Landed (4b, the island's file-drop gate): the shelf-drop contract stops
+copying the island. Its generated file stays for the shelf and file-tools
+members, so 9 remain.
+
+- **`NotchFileDrop`** now decides whether the island takes files: it is
+  interactive, not holding the capture controls, showing its files, and
+  the shelf is available and switched on. Its environment gains the shelf
+  switch, and its island gives the three island facts in place of the one
+  answer. `NotchService.canAcceptFileDrop` forwards to it.
+- **Tests:** `ShelfDropRoutingContract.Notch` is a scripted island that
+  holds the module's own `NotchFileDrop` and keeps the island's names for
+  it. Before, the suite compiled copies of nine island members. Every
+  check is kept.
+- **Verification:** a Linux Swift 6.4 model type-checks the type and the
+  scripted island against stand-ins, and runs the revoked-destination
+  checks. The suite itself runs on macOS CI.
+
+Landed (4b, the shelf's drop intake): the shelf-drop contract stops
+copying the shelf. Its generated file stays for the file-tools members,
+which the next slice takes, so 9 remain.
+
+- **`ShelfDropIntake`** (new, `Services/Shelf/`) is where a drop on the
+  shelf goes:
+  - nowhere while the shelf is unavailable or switched off;
+  - promised files to native delivery, handed the whole drop so the plain
+    items dropped with them stay attached;
+  - anything else read from the pasteboard now, onto the shelf or merged
+    into an item;
+  - a drop into the docked shelf's window completes the dock.
+  - `ShelfService` builds one over its own delivery, reading and dock
+    members. `acceptDrop`, `accept(draggingInfo:)` and
+    `merge(draggingInfo:into:)` forward to it, so the merge path shares
+    the rule it used to repeat.
+- **`ShelfPasteboardSupport.fileURLs(from:)`** is the file reader that was a
+  `ShelfService` method. It reads no shelf state. `ShelfService.fileURLs`
+  forwards to it.
+- **Tests:** `ShelfDropRoutingContract.ShelfService` is a scripted shelf
+  that holds the module's own intake. Before, the suite compiled copies of
+  four shelf members. Two checks change:
+  - the companion check now asks that a promised delivery gets every
+    promise and the whole drop, since gathering the companions stays in
+    `ShelfService`;
+  - a new check asks that a drop into another window leaves the dock alone.
+- **Verification:** a Linux Swift 6.4 model type-checks the intake, the
+  shelf's wiring of it and the scripted shelf against stand-ins, and runs
+  the routing and dock checks. The suite itself runs on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

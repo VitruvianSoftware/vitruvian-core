@@ -244,6 +244,27 @@ package enum ShelfInteractionSupport {
 
 /// Types accepted by the native shelf drop targets.
 package enum ShelfPasteboardSupport {
+    /// The files a pasteboard holds, each once, from file URLs or the
+    /// older filenames list.
+    package static func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        let fileOptions: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: fileOptions) as? [NSURL],
+           !urls.isEmpty {
+            return unique(urls.map { $0 as URL }.filter(\.isFileURL))
+        }
+        if let paths = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String],
+           !paths.isEmpty {
+            return unique(paths.map { URL(fileURLWithPath: $0) })
+        }
+        return []
+    }
+
+    /// Each file once, by its standardized path.
+    private static func unique(_ urls: [URL]) -> [URL] {
+        var seen = Set<String>()
+        return urls.filter { seen.insert($0.standardizedFileURL.path).inserted }
+    }
+
     /// Orders a mixed drop by pasteboard position. Receivers follow the
     /// promised pasteboard items in order; a receiver without one goes last.
     package static func mergedItemIndices(companionPositions: [Int], receiverIndices: [Int],
