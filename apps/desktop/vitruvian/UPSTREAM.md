@@ -2040,6 +2040,12 @@ is that notice. Add an entry for every change to upstream files.
   `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds the lyrics and queue
   cards' padding, spacing, title height and `musicExtraListHeight(_:)`, which
   `UI/Notch/NotchLyricsView.swift` and `UI/Notch/NotchQueueView.swift` draw with.
+- **2026-10-05**: Refactor step 5zg (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchLayout.displaySideMargins`, `displayBottomMargin` and
+  `NotchGeometry.maximumSurfaceWidth`/`maximumSurfaceHeight`, and its sizing
+  uses them. `Services/Notch/NotchService.swift` (the activity picker) and
+  `Services/Notch/NotchLockScreenSupport.swift` do too.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

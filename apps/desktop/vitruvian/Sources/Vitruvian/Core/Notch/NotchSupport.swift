@@ -238,6 +238,10 @@ package enum NotchLayout {
         return width + (button ? iconButtonSide + headerButtonSpacing : 0)
     }
     package static let navigationHeight: CGFloat = 36
+    /// The room the island keeps to the display's sides, both together, and
+    /// below its tallest page.
+    package static let displaySideMargins: CGFloat = 24
+    package static let displayBottomMargin: CGFloat = 48
     /// The header's square icon buttons, and the space between one and the
     /// title or button beside it.
     package static let iconButtonSide: CGFloat = 28
@@ -826,7 +830,7 @@ package enum NotchCapsuleLayout {
     /// the menus' free space on both sides of the capsule's middle.
     package static func availableWidth(_ geometry: NotchGeometry) -> CGFloat {
         let room = geometry.compactSideRoom ?? 0
-        return max(0, min(geometry.screen.width - 24, geometry.cameraWidth + 2 * (room.isFinite ? max(0, room) : 0)))
+        return max(0, min(geometry.maximumSurfaceWidth, geometry.cameraWidth + 2 * (room.isFinite ? max(0, room) : 0)))
     }
 
     /// The surface around a row `content` wide between `leading` and
@@ -1919,7 +1923,7 @@ package struct NotchGeometry: Equatable {
         return available >= 44 ? available : 0
     }
     package var collapsed: CGSize {
-        CGSize(width: min(screen.width - 24, cameraWidth + restingWingWidth * 2), height: stripHeight)
+        CGSize(width: min(maximumSurfaceWidth, cameraWidth + restingWingWidth * 2), height: stripHeight)
     }
     package func restingSize(showsContent: Bool) -> CGSize {
         if showsContent { return collapsed }
@@ -2065,7 +2069,7 @@ package struct NotchGeometry: Equatable {
         return compact
     }
     package var musicStrip: CGSize {
-        let preferred = min(max(layout == .spacious ? 520 : 440, cameraWidth + 88, minimumCompactWidth), screen.width - 24)
+        let preferred = min(max(layout == .spacious ? 520 : 440, cameraWidth + 88, minimumCompactWidth), maximumSurfaceWidth)
         let measuredRoom = compactSideRoom ?? 0
         let room = measuredRoom.isFinite ? max(0, measuredRoom).rounded(.down) : 0
         let wings = min(max(0, preferred - cameraWidth), room * 2)
@@ -2125,7 +2129,7 @@ package struct NotchGeometry: Equatable {
     package var noticeCameraGap: CGFloat { cameraWidth }
 
     package func noticeSize(wingWidth: CGFloat) -> CGSize {
-        CGSize(width: min(screen.width - 24, noticeCameraGap + wingWidth * 2), height: stripHeight)
+        CGSize(width: min(maximumSurfaceWidth, noticeCameraGap + wingWidth * 2), height: stripHeight)
     }
 
     package func noticeWingWidth(preferred: CGFloat) -> CGFloat {
@@ -2139,10 +2143,14 @@ package struct NotchGeometry: Equatable {
     }
     package func notificationPreviewSize(contentHeight: CGFloat) -> CGSize {
         let height = safeContentTop + max(0, contentHeight) + NotchLayout.bottomInset
-        return CGSize(width: notificationPreviewWidth, height: min(height, screen.height - 48))
+        return CGSize(width: notificationPreviewWidth, height: min(height, maximumSurfaceHeight))
     }
+    /// The widest and tallest the island grows: the display less the room
+    /// it keeps to the sides and below its tallest page.
+    package var maximumSurfaceWidth: CGFloat { screen.width - NotchLayout.displaySideMargins }
+    package var maximumSurfaceHeight: CGFloat { screen.height - NotchLayout.displayBottomMargin }
     package var peek: CGSize {
-        CGSize(width: min(screen.width - 24, max(cameraWidth + 110, 340)),
+        CGSize(width: min(maximumSurfaceWidth, max(cameraWidth + 110, 340)),
                height: safeContentTop + NotchLayout.navigationHeight + NotchLayout.bottomInset)
     }
     /// The island holding the drop hint while a file is dragged to it.
@@ -2156,7 +2164,7 @@ package struct NotchGeometry: Equatable {
     package var expanded: CGSize { expandedSize(module: .controls) }
     package var expandedWidth: CGFloat {
         let preferred = NotchLayout.preferredWidth(layout, custom: customWidth)
-        return min(max(preferred, cameraWidth + 36), screen.width - 24 - NotchQuickAccessLayout.gutter * 2)
+        return min(max(preferred, cameraWidth + 36), maximumSurfaceWidth - NotchQuickAccessLayout.gutter * 2)
     }
     package var contentWidth: CGFloat { max(0, expandedWidth - NotchLayout.horizontalInset * 2) }
     /// Content height available before a page needs to scroll.
@@ -2252,7 +2260,7 @@ package struct NotchGeometry: Equatable {
         var preferredHeight = headerTopInset + headerChromeHeight + contentHeight
         if layout == .custom { preferredHeight = min(preferredHeight, customHeight) }
         return CGSize(width: expandedWidth,
-                      height: min(preferredHeight, screen.height - 48 - quickAccessBottomInset))
+                      height: min(preferredHeight, maximumSurfaceHeight - quickAccessBottomInset))
     }
 
     /// Leave room for the row indicator without narrowing the tiles below
@@ -2274,7 +2282,7 @@ package struct NotchGeometry: Equatable {
         let content = min(pageBudget, count == 0 ? NotchLayout.emptyHeight
             : NotchLayout.railHeight(rows: sectionRows(count: count), rowHeight: NotchLayout.sectionTileHeight, spacing: NotchLayout.sectionSpacing))
         let desiredHeight = headerTopInset + headerChromeHeight + content
-        return CGSize(width: expandedWidth, height: min(desiredHeight, screen.height - 48 - quickAccessBottomInset))
+        return CGSize(width: expandedWidth, height: min(desiredHeight, maximumSurfaceHeight - quickAccessBottomInset))
     }
 
     package func contentSize(for size: CGSize) -> CGSize {

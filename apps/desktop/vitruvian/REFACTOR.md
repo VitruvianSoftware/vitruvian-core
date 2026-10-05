@@ -3172,6 +3172,13 @@ row, and that row. Each also wrote its padding and spacing. They now read
 `NotchLayout.musicExtraPadding`, `musicExtraSpacing`,
 `musicExtraTitleHeight` and `musicExtraListHeight(_:)`.
 
+Landed (5zg, the display's margins): the island kept 24pt to the display's
+sides (12 each) and 48pt below its tallest page. Those numbers were written
+eleven times: nine in `NotchGeometry` and the capsule's width, one in the
+activity picker's clamp, and one in the locked island. `NotchLayout.displaySideMargins`
+and `displayBottomMargin` hold them. `NotchGeometry.maximumSurfaceWidth` and
+`maximumSurfaceHeight` give the limits.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

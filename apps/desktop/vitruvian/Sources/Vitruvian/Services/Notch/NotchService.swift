@@ -822,7 +822,7 @@ package final class NotchService: ObservableObject {
                                  base: NotchGeometry? = nil) -> NotchGeometry {
         var geometry = base ?? self.geometry
         if base == nil, showsCompactActivityPicker {
-            let room = max(0, (geometry.screen.width - 24 - NotchActivityPickerLayout.horizontalInset * 2
+            let room = max(0, (geometry.maximumSurfaceWidth - NotchActivityPickerLayout.horizontalInset * 2
                                - geometry.cameraWidth) / 2)
             geometry.compactSideRoom = min(geometry.compactSideRoom ?? 0, room)
         }
