@@ -293,9 +293,6 @@ TEST_PRODUCTION_SOURCES = [
 
 # Files Tests/generate_sources.py writes; Bazel needs them declared up front.
 GENERATED_TEST_SOURCES = [
-    "AgentUsageArchiveSave.swift",
-    "AgentUsageArchiveSettle.swift",
-    "AgentUsageEventDelivery.swift",
     "AgentUsageRead.swift",
     "AppUpdateRules.swift",
     "AppUpdates.swift",

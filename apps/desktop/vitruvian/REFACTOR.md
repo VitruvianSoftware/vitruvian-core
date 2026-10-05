@@ -670,6 +670,19 @@ leaves 85.
   `QuickToggleAction`, against the shipped `PanelSectionID.featureGate`
   instead of copies of all four types.
 
+Landed (4b, the agent usage service's save, settle and alerts): three more
+generated files go, which leaves 82.
+
+- **Injected:** `AgentUsageService.settleArchive(on:keeping:save:remove:)`
+  settles saved progress on the reading queue, and
+  `AgentUsageService.saveProgress(mark:savedMark:providers:store:cursors:save:)`
+  writes it when reading moved on. The service passes its own queue, state and
+  archive; the tests pass recorders.
+- **Injected:** `AgentUsageService.delivers(_:queuedIn:running:session:providers:in:)`
+  is the rule an agent event meets on the main thread: dropped after a stop or
+  restart, or past the person's choices. The test reads those choices from a
+  test defaults domain instead of a stand-in `NotchAgentSupport`.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
