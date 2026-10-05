@@ -2626,6 +2626,30 @@ to the services whose state it shows.
   while it plays, that the system's banner hides only for a notification
   the island stands in for, and that unbinding stops everything.
 
+Landed (5m, the island's preferences): `NotchService` reads its
+preferences from the `UserDefaults` it is built with. This is the first
+part of the island's own environment.
+
+- **Why:** five generated tests still copy the island's core, its hover,
+  notices, capture controls, presentation and destinations. Each needs
+  only one fact to drive the real `NotchService`: a test can build one.
+  Building one is harmless, since every collaborator it holds is lazy, so
+  what is left is what it reads and calls.
+- **What changed:**
+  - `NotchService.Environment` carries the preferences, and `.shared` is
+    built with `.system`, the standard defaults.
+  - Its 24 direct reads use them, and so do its 42 `NotchSupport` queries
+    through their `in:` forms. So do its eight feature checks and the lock
+    screen's sound check.
+  - The escaping closures capture the preferences rather than the island.
+- **What is next:** the window host behind a protocol, then the pointer,
+  the main-queue timers and the services it calls, one PR each. After
+  that, the five tests can build the island instead of copying it.
+- **Generated copies:** `Tests/generate_sources.py` reads the island's text
+  with the preferences argument taken out again. So the five copies are
+  byte for byte what they were (checked by regenerating before and after),
+  and their stand-ins still apply. One mutation check names the new text.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

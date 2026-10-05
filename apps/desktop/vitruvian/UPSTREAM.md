@@ -1834,6 +1834,14 @@ is that notice. Add an entry for every change to upstream files.
     - `UI/Onboarding/OnboardingView.swift`;
     - the Auto Quit, command bar, cut-and-paste, monitor and shelf
       settings views.
+- **2026-10-05**: Refactor step 5m (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` takes a `NotchService.Environment`
+    with the preferences it reads; `.shared` passes the standard ones. Its
+    defaults reads, `NotchSupport` queries, feature checks and the lock
+    screen's sound check go through them.
+  - `Tests/generate_sources.py` reads the island's text with that argument
+    taken out, so its copies are unchanged, and `Tests/mutation_checks.py`
+    names the new text in one mutation.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

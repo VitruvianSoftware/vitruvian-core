@@ -73,9 +73,9 @@ MUTATIONS = [
      "return choice == .music && !isPlaying ? .none : choice",
      "disabled automatic music stops the reader even when resting content is Music"),
     ("resting music retains a disabled reader", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
-     "            || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity() || NotchSupport.routes(.track))))",
-     "            || (!hiddenUntilHover && (NotchSupport.idleContent() == .music || NotchSupport.watchesMusicActivity()"
-     " || NotchSupport.routes(.track))))",
+     "            || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))",
+     "            || (!hiddenUntilHover && (NotchSupport.idleContent(in: defaults) == .music"
+     " || NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))",
      "disabled automatic music stops the reader even when resting content is Music"),
     ("closing music retains its on-demand reader", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
      "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n    }\n\n    package func toggle()",

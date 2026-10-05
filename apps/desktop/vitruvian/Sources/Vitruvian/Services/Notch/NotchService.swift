@@ -72,7 +72,21 @@ package struct NotchNotice: Equatable {
 /// their original owners, gates and privacy rules.
 @MainActor
 package final class NotchService: ObservableObject {
-    package static let shared = NotchService()
+    /// What the island reads from outside itself. The app passes `.system`.
+    package struct Environment {
+        /// The preferences the island follows.
+        package var defaults: UserDefaults
+
+        package init(defaults: UserDefaults) {
+            self.defaults = defaults
+        }
+
+        package static var system: Environment {
+            Environment(defaults: .standard)
+        }
+    }
+
+    package static let shared = NotchService(environment: .system)
     /// The services that follow the island. The composition root
     /// (`main.swift`) fills this in before the app runs, so the island names
     /// none of them.
@@ -332,11 +346,11 @@ package final class NotchService: ObservableObject {
                 let separate = NSScreen.screensHaveSeparateSpaces
                 return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
             },
-            hidesUntilHover: { NotchSupport.hidesUntilHover() },
-            coversMenus: { NotchSupport.coversMenus() },
-            showsInCaptures: { NotchSupport.showsInCaptures() },
-            outlineEnabled: { UserDefaults.standard.bool(forKey: DefaultsKey.notchOutlineEnabled) },
-            hidesInFullscreen: { UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen) },
+            hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
+            coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
+            showsInCaptures: { [defaults] in NotchSupport.showsInCaptures(in: defaults) },
+            outlineEnabled: { [defaults] in defaults.bool(forKey: DefaultsKey.notchOutlineEnabled) },
+            hidesInFullscreen: { [defaults] in defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },
             openTitle: { FeatureStrings.notch(L10n.shared.language).open }),
         island: { [weak self] in
             guard let self, self.showsOnAllDisplays, self.running, !self.suspended, self.windowHost != nil else { return nil }
@@ -476,11 +490,16 @@ package final class NotchService: ObservableObject {
             syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
             refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) }))
 
-    private init() {}
+    /// The preferences the island follows (`Environment.defaults`).
+    private let defaults: UserDefaults
+
+    package init(environment: Environment) {
+        defaults = environment.defaults
+    }
 
     private var hiddenUntilHover: Bool {
-        !hiddenInFullscreen && UserDefaults.standard.bool(forKey: DefaultsKey.notchHideUntilHover)
-            && UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover)
+        !hiddenInFullscreen && defaults.bool(forKey: DefaultsKey.notchHideUntilHover)
+            && defaults.bool(forKey: DefaultsKey.notchOpenOnHover)
             && !expanded && !peeking && !dragPlaceholder && captureControls == nil
     }
 
@@ -498,7 +517,7 @@ package final class NotchService: ObservableObject {
     /// A Mac without a battery has no charge to show, so a saved battery
     /// choice rests empty there; playing music still shows as before.
     package var idleContent: NotchIdleContent {
-        let content = NotchSupport.visibleIdleContent(isPlaying: !awaitsTrackNotice && NotchMusicService.shared.playback?.isPlaying == true)
+        let content = NotchSupport.visibleIdleContent(isPlaying: !awaitsTrackNotice && NotchMusicService.shared.playback?.isPlaying == true, in: defaults)
         return content == .battery && !PowerSampler.hasInternalBattery ? .none : content
     }
 
@@ -511,12 +530,12 @@ package final class NotchService: ObservableObject {
     }
 
     package var hasDownloadActivity: Bool {
-        NotchSupport.routes(.download)
+        NotchSupport.routes(.download, in: defaults)
             && NotchDownloadService.shared.items.contains { $0.active && !$0.completed }
     }
 
     package var hasMusicActivity: Bool {
-        NotchSupport.showsMusicActivity(isPlaying: NotchMusicService.shared.playback?.isPlaying == true)
+        NotchSupport.showsMusicActivity(isPlaying: NotchMusicService.shared.playback?.isPlaying == true, in: defaults)
     }
 
     package var hasAgentActivity: Bool {
@@ -792,7 +811,7 @@ package final class NotchService: ObservableObject {
                         detail: selectedMetric != nil, panel: showingAppPanel,
                         detailHeight: selectedMetric == .fan ? fanDetailHeight : nil,
                         musicExtraHeight: musicExtras && musicDetailVisible ? geometry.musicExtrasHeight : 0,
-                        fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable
+                        fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable(in: defaults)
                             && NotchFileToolsService.shared.mediaPresented ? NotchFileToolsService.shared.mediaContentHeight : nil,
                         toolCount: launcher.isEditing || launcher.activeUtility != nil ? nil : launcher.visibleItems.count,
                         capturePreviewHeight: captureContent == nil ? nil : captureContentHeight)
@@ -836,17 +855,17 @@ package final class NotchService: ObservableObject {
     private func pageSize(in geometry: NotchGeometry, module: NotchModule, detail: Bool, panel: Bool,
                           detailHeight: CGFloat?, musicExtraHeight: CGFloat, fileMediaHeight: CGFloat?, toolCount: Int?,
                           capturePreviewHeight: CGFloat?) -> CGSize {
-        let controls = NotchSupport.controls()
+        let controls = NotchSupport.controls(in: defaults)
         let sliders = controls.filter { $0 == .volume || $0 == .brightness }.count
         let shortcuts = controls.filter { $0 != .volume && $0 != .brightness && $0 != .music }.count
         let musicExtras = NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
         return geometry.expandedSize(module: module, detail: detail, panel: panel, detailHeight: detailHeight,
                                      shortcutCount: shortcuts,
                                      sliderCount: sliders, controlsHaveMusic: controls.contains(.music), musicHasContent: NotchMusicService.shared.playback != nil,
-                                     musicHasControlsRow: AppFeature.mixer.isAvailable || musicExtras,
+                                     musicHasControlsRow: AppFeature.mixer.isAvailable(in: defaults) || musicExtras,
                                      musicExtraHeight: musicExtraHeight, fileMediaHeight: fileMediaHeight,
                                      systemCards: NotchSupport.systemCardCount(hasBattery: PowerSampler.hasInternalBattery,
-                                                                               fans: SystemMonitor.shared.snapshot.fanSpeeds.count),
+                                                                               fans: SystemMonitor.shared.snapshot.fanSpeeds.count, in: defaults),
                                      toolCount: toolCount, capturePreviewHeight: capturePreviewHeight,
                                      timerHasSession: NotchTimerService.shared.session.hasSession,
                                      timerMode: NotchTimerService.shared.session.hasSession
@@ -1042,11 +1061,11 @@ package final class NotchService: ObservableObject {
     }
 
     package var protectedWindowIDs: Set<CGWindowID> {
-        NotchSupport.showsInCaptures() ? [] : islandWindowIDs
+        NotchSupport.showsInCaptures(in: defaults) ? [] : islandWindowIDs
     }
 
     package var captureVisibleWindowIDs: Set<CGWindowID> {
-        NotchSupport.showsInCaptures() ? islandWindowIDs : []
+        NotchSupport.showsInCaptures(in: defaults) ? islandWindowIDs : []
     }
 
     /// The island's window and its copies on other displays, as shown.
@@ -1066,7 +1085,7 @@ package final class NotchService: ObservableObject {
 
     package func syncWithPreferences() {
         screenRefresh.cancelPreferenceSync()
-        guard NotchSupport.isEnabled() else { stop(); return }
+        guard NotchSupport.isEnabled(in: defaults) else { stop(); return }
         if !running {
             running = true
             installObservers()
@@ -1105,24 +1124,24 @@ package final class NotchService: ObservableObject {
         syncGestures()
         NotchTimerService.shared.syncWithPreferences()
         NotchAccessoryService.shared.syncWithPreferences()
-        let signature = NotchEvent.allCases.map { String(NotchSupport.routes($0)) }.joined()
-            + NotchSupport.idleContent().rawValue + String(NotchSupport.watchesMusicActivity())
+        let signature = NotchEvent.allCases.map { String(NotchSupport.routes($0, in: defaults)) }.joined()
+            + NotchSupport.idleContent(in: defaults).rawValue + String(NotchSupport.watchesMusicActivity(in: defaults))
             + String(NotchKeepAwakeSupport.showsActivity())
             + modules.map(\.rawValue).joined()
-            + String(AppFeature.fanControl.isAvailable)
-            + String(NotchSupport.routesShelf()) + String(NotchSupport.revealsShelfDrag())
-            + String(NotchSupport.routesCaptureControls())
+            + String(AppFeature.fanControl.isAvailable(in: defaults))
+            + String(NotchSupport.routesShelf(in: defaults)) + String(NotchSupport.revealsShelfDrag(in: defaults))
+            + String(NotchSupport.routesCaptureControls(in: defaults))
         if signature != settingsSignature {
             settingsSignature = signature
             bindEvents()
             Self.collaborators.fileRoutingDidChange()
         }
-        if !NotchSupport.routes(.capture), captureContent != nil {
+        if !NotchSupport.routes(.capture, in: defaults), captureContent != nil {
             let fallback = captureFallback
             clearCapture()
             fallback?()
         }
-        if captureControls != nil, !NotchSupport.routesCaptureControls() { cancelCaptureControls() }
+        if captureControls != nil, !NotchSupport.routesCaptureControls(in: defaults) { cancelCaptureControls() }
         syncNoticeWithPreferences()
         syncVisibleConsumers()
         refreshPresentation(animated: false)
@@ -1134,7 +1153,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func refreshModules() {
-        let updated = NotchSupport.modules()
+        let updated = NotchSupport.modules(in: defaults)
         if modules != updated { modules = updated }
         let selection = modules.contains(selected) ? selected : modules.first ?? .controls
         if selected != selection { selected = selection }
@@ -1142,7 +1161,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func metricIsAvailable(_ metric: MetricDetailKind) -> Bool {
-        MenuBarMetric.allCases.contains { $0.detailKind == metric && $0.feature.isAvailable }
+        MenuBarMetric.allCases.contains { $0.detailKind == metric && $0.feature.isAvailable(in: defaults) }
     }
 
     package func stop(restoreCapture: Bool = true) {
@@ -1245,12 +1264,12 @@ package final class NotchService: ObservableObject {
     /// that off. Otherwise the reopening preference decides.
     package var reopeningDestination: (module: NotchModule, appPanel: Bool, sections: Bool) {
         if !expanded {
-            let opensActivity = UserDefaults.standard.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
+            let opensActivity = defaults.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
             let activity = notice?.notificationID != nil ? NotchModule.notifications
                 : opensActivity ? compactActivity?.module : nil
             if let activity, modules.contains(activity) { return (activity, false, false) }
-            if UserDefaults.standard.bool(forKey: DefaultsKey.notchReturnHome) {
-                let saved = UserDefaults.standard.string(forKey: DefaultsKey.notchHomeModule) ?? ""
+            if defaults.bool(forKey: DefaultsKey.notchReturnHome) {
+                let saved = defaults.string(forKey: DefaultsKey.notchHomeModule) ?? ""
                 switch NotchReopeningDestination(rawValue: saved) {
                 case .appPanel: return (modules.contains(.controls) ? .controls : modules.first ?? .controls, true, false)
                 case .explore: return (selected, false, true)
@@ -1271,13 +1290,13 @@ package final class NotchService: ObservableObject {
     /// unless the user turned off opening the visible activity, in which case
     /// the reopening choice decides here too.
     package func openActivity(_ module: NotchModule) {
-        let opensActivity = UserDefaults.standard.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
+        let opensActivity = defaults.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
         if opensActivity { open(module) } else { open() }
     }
 
     package func open(_ module: NotchModule? = nil, pinned: Bool = false, takeFocus: Bool = true,
               appPanel: Bool = false, metric: MetricDetailKind? = nil, feedback: Bool = true, sections: Bool = false) {
-        guard NotchSupport.isEnabled(), !suspended else { return }
+        guard NotchSupport.isEnabled(in: defaults), !suspended else { return }
         if !running || self.panel == nil { syncWithPreferences() }
         else { refreshModules() }
         guard let panel else { return }
@@ -1366,7 +1385,7 @@ package final class NotchService: ObservableObject {
 
     @discardableResult
     package func showClipboard(toggle: Bool = false) -> Bool {
-        guard acceptsUserInteraction, NotchSupport.routesClipboardWindow() else { return false }
+        guard acceptsUserInteraction, NotchSupport.routesClipboardWindow(in: defaults) else { return false }
         if toggle, expanded, selected == .clipboard, !showingAppPanel, !showingSections { collapse() }
         else { open(.clipboard) }
         return true
@@ -1410,9 +1429,9 @@ package final class NotchService: ObservableObject {
         if inside {
             if holdsNotification, let id = notice?.notificationID { holdNotification(id); return }
             guard !hoverState.suppressed, (notice == nil || hiddenUntilHover), !expanded, !peeking, !dragPlaceholder,
-                  UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
+                  defaults.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
             if !hiddenInFullscreen, compactActivity != nil, compactActivityGeometry.compactActivityWingWidth > 0,
-               !UserDefaults.standard.bool(forKey: DefaultsKey.notchHoverExpands) { return }
+               !defaults.bool(forKey: DefaultsKey.notchHoverExpands) { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
@@ -1420,12 +1439,12 @@ package final class NotchService: ObservableObject {
                       !self.expanded, !self.peeking, !self.pinned, !self.heldDrag, !self.keepsWorkingSurface,
                       !self.showsCompactActivityPicker,
                       self.captureControls == nil, (self.notice == nil || self.hiddenUntilHover), !self.dragPlaceholder,
-                      UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover),
+                      self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
                       self.windowHost?.blocksHoverReveal() == false,
                       self.geometry.contains(NSEvent.mouseLocation, in: self.hiddenUntilHover ? self.geometry.collapsed : self.surfaceSize) else { return }
                 // Following the closed island ends as it opens or peeks.
                 self.removeHoverExitMonitors()
-                if UserDefaults.standard.bool(forKey: DefaultsKey.notchHoverExpands) {
+                if self.defaults.bool(forKey: DefaultsKey.notchHoverExpands) {
                     self.open(takeFocus: false)
                 } else {
                     self.mutatePresentation(transitionContent: .reveal) { self.peeking = true }
@@ -1433,7 +1452,7 @@ package final class NotchService: ObservableObject {
                 }
             }
             hoverWork = work
-            let delay = NotchSupport.sanitizedHoverDelay(UserDefaults.standard.double(forKey: DefaultsKey.notchHoverDelay))
+            let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         } else if holdsNotification
                     || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
@@ -1493,19 +1512,19 @@ package final class NotchService: ObservableObject {
     private func holdNotification(_ id: UUID) {
         noticeWork?.cancel(); noticeWork = nil
         guard !noticeExpanded, !hoverState.suppressed,
-              UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
+              defaults.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.hoverWork = nil
             guard self.running, !self.suspended, self.inside, !self.hoverState.suppressed, !self.pinned, !self.heldDrag,
                   !self.keepsWorkingSurface, self.holdsNotification, self.notice?.notificationID == id, !self.noticeExpanded,
-                  UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover),
+                  self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
                   self.geometry.contains(NSEvent.mouseLocation, in: self.surfaceSize) else { return }
             self.mutatePresentation(transitionContent: .reveal) { self.peeking = false; self.noticeExpanded = true }
             self.provideHapticFeedback()
         }
         hoverWork = work
-        let delay = NotchSupport.sanitizedHoverDelay(UserDefaults.standard.double(forKey: DefaultsKey.notchHoverDelay))
+        let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
@@ -1519,7 +1538,7 @@ package final class NotchService: ObservableObject {
 
     private func syncNoticeWithPreferences() {
         guard let notice else { return }
-        if !NotchSupport.routes(notice.event) || (notice.notificationID != nil && hiddenUntilHover) {
+        if !NotchSupport.routes(notice.event, in: defaults) || (notice.notificationID != nil && hiddenUntilHover) {
             dismissNotice()
         }
     }
@@ -1668,7 +1687,7 @@ package final class NotchService: ObservableObject {
     }
 
     package func activateQuickAction(_ action: NotchQuickAction) {
-        guard NotchSupport.isEnabled(), action.isAvailable() else { return }
+        guard NotchSupport.isEnabled(in: defaults), action.isAvailable() else { return }
         switch action {
         case .explore: toggleSections()
         case .settings: openSettings()
@@ -1706,7 +1725,7 @@ package final class NotchService: ObservableObject {
 
     @discardableResult
     package func showScratchpad(toggle: Bool = false) -> Bool {
-        guard NotchSupport.routesScratchpad(), acceptsUserInteraction else { return false }
+        guard NotchSupport.routesScratchpad(in: defaults), acceptsUserInteraction else { return false }
         if toggle, expanded, selected == .scratchpad, !showingAppPanel, !showingSections,
            selectedMetric == nil, panel?.isKeyWindow == true { collapse() }
         else { open(.scratchpad) }
@@ -1723,14 +1742,14 @@ package final class NotchService: ObservableObject {
     }
 
     package func openQuickPanel(toggle: Bool = false) -> Bool {
-        guard NotchSupport.routesQuickPanel(), acceptsUserInteraction else { return false }
+        guard NotchSupport.routesQuickPanel(in: defaults), acceptsUserInteraction else { return false }
         if toggle, expanded, selected == .tools, !showingSections { collapse() }
         else { open(.tools) }
         return true
     }
 
     package func openShelf(toggle: Bool = false) -> Bool {
-        guard NotchSupport.routesShelf(), acceptsUserInteraction else { return false }
+        guard NotchSupport.routesShelf(in: defaults), acceptsUserInteraction else { return false }
         if toggle, expanded, selected == .files, !showingSections { collapse() }
         else { open(.files) }
         return true
@@ -1783,14 +1802,14 @@ package final class NotchService: ObservableObject {
     }
 
     package func provideHapticFeedback() {
-        guard acceptsUserInteraction, panel?.isVisible == true, NotchSupport.usesHapticFeedback() else { return }
+        guard acceptsUserInteraction, panel?.isVisible == true, NotchSupport.usesHapticFeedback(in: defaults) else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
     }
 
     package func fileDragChanged(_ active: Bool, internalDrag: Bool = false) {
-        guard running, !suspended, internalDrag || NotchSupport.routesShelf() else { return }
+        guard running, !suspended, internalDrag || NotchSupport.routesShelf(in: defaults) else { return }
         heldDrag = active && internalDrag
-        if active, !internalDrag, NotchSupport.revealsShelfDrag(), !expanded {
+        if active, !internalDrag, NotchSupport.revealsShelfDrag(in: defaults), !expanded {
             mutatePresentation { dragPlaceholder = true; peeking = false }
         } else if !active {
             mutatePresentation { dragPlaceholder = false }
@@ -2043,7 +2062,7 @@ package final class NotchService: ObservableObject {
 
     @discardableResult
     package func show(_ incoming: NotchNotice) -> Bool {
-        guard showsSystemFeedback, NotchSupport.routes(incoming.event),
+        guard showsSystemFeedback, NotchSupport.routes(incoming.event, in: defaults),
               NotchSupport.shouldReplace(notice?.event, with: incoming.event, held: noticeExpanded) else { return false }
         noticeWork?.cancel(); noticeWork = nil
         var incoming = incoming
@@ -2221,7 +2240,7 @@ package final class NotchService: ObservableObject {
     package func presentCapture(id: UUID, content: AnyView, actions: AnyView? = nil, height: CGFloat,
                         takeFocus: Bool, closeOnCollapse: Bool, fallback: @escaping () -> Void,
                         close: @escaping () -> Void, hover: @escaping (Bool) -> Void) -> Bool {
-        guard acceptsSystemFeedback, NotchSupport.routes(.capture) else { return false }
+        guard acceptsSystemFeedback, NotchSupport.routes(.capture, in: defaults) else { return false }
         let keepOpen = expanded && pinned
         captureID = id
         captureContentHeight = height
@@ -2407,20 +2426,20 @@ package final class NotchService: ObservableObject {
         let contentTransition = compactMusicTransition(transitionContent, animated: animated)
         if captureControls == nil {
             // A simulated cutout yields to the menu bar when it reappears in full screen.
-            panel?.level = hiddenInFullscreen && !geometry.isNotched && !NotchSupport.coversMenus()
+            panel?.level = hiddenInFullscreen && !geometry.isNotched && !NotchSupport.coversMenus(in: defaults)
                 ? NotchPanel.fullscreenLevel : NotchPanel.normalLevel
         }
         // Preferences can change computed dimensions without publishing a
         // service property. Update SwiftUI's layout along with the native host.
         if let windowHost, windowHost.targetSize != size { objectWillChange.send() }
-        windowHost?.setOutline(enabled: !fullscreenCompact && UserDefaults.standard.bool(forKey: DefaultsKey.notchOutlineEnabled),
+        windowHost?.setOutline(enabled: !fullscreenCompact && defaults.bool(forKey: DefaultsKey.notchOutlineEnabled),
                                color: compactActivityIsVisible && compactActivity == .timer ? .systemOrange : .white)
         windowHost?.present(size: size, geometry: expanded ? expandedGeometry : geometry, animated: animated,
                             transitionContent: contentTransition,
                             quickAccess: expanded && captureControls == nil && !access.buttons.isEmpty ? access : nil,
                             revealFromHidden: !hiddenInFullscreen && captureControls == nil
-                                && UserDefaults.standard.bool(forKey: DefaultsKey.notchHideUntilHover)
-                                && UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover),
+                                && defaults.bool(forKey: DefaultsKey.notchHideUntilHover)
+                                && defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
                             usesGlass: !fullscreenCompact && usesGlassSurface)
         // The selector lives in a separate full-screen panel. A floating
         // capsule may sit below the display edge, so publish the island's
@@ -2584,7 +2603,7 @@ package final class NotchService: ObservableObject {
     private static let hasLid = BrightnessService.lidClosed() != nil
 
     private var displayPreference: NotchDisplay {
-        NotchDisplay(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.notchDisplay) ?? "") ?? .automatic
+        NotchDisplay(rawValue: defaults.string(forKey: DefaultsKey.notchDisplay) ?? "") ?? .automatic
     }
 
     private func screenIndex(in screens: [NSScreen]) -> Int? {
@@ -2646,7 +2665,7 @@ package final class NotchService: ObservableObject {
             windowHost?.setHoverHandler { [weak self] in self?.hover($0) }
             panel?.title = FeatureStrings.notch(L10n.shared.language).title
         }
-        if modules.contains(.files), AppFeature.shelf.isAvailable {
+        if modules.contains(.files), AppFeature.shelf.isAvailable(in: defaults) {
             windowHost?.setFileDropActions(NotchFileDropActions(
                 canAccept: { [weak self] pasteboard in
                     self?.canAcceptFileDrop == true && Self.collaborators.shelfCanAccept(pasteboard)
@@ -2660,7 +2679,7 @@ package final class NotchService: ObservableObject {
                 },
                 update: { [weak self] in self?.updateFileDrop(at: $0) == true }))
         } else { windowHost?.setFileDropActions(nil) }
-        panel?.sharingType = NotchSupport.showsInCaptures() ? .readOnly : .none
+        panel?.sharingType = NotchSupport.showsInCaptures(in: defaults) ? .readOnly : .none
         updateFullscreenVisibility(displayID: screen.notchDisplayID)
     }
 
@@ -2672,16 +2691,16 @@ package final class NotchService: ObservableObject {
         } else { cameraWidth = 0 }
         return NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaInsets.top,
                              cameraWidth: cameraWidth,
-                             layout: NotchSize(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.notchSize) ?? "") ?? .spacious,
+                             layout: NotchSize(rawValue: defaults.string(forKey: DefaultsKey.notchSize) ?? "") ?? .spacious,
                              menuBarHeight: menuBarMeasurements.height(
                                 displayID: screen.notchDisplayID, frame: screen.frame,
                                 visibleTop: screen.visibleFrame.maxY, scale: screen.backingScaleFactor,
                                 statusBarThickness: NSStatusBar.system.thickness),
-                             customWidth: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomWidth),
-                             customHeight: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomHeight),
+                             customWidth: defaults.double(forKey: DefaultsKey.notchCustomWidth),
+                             customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
                              cameraFit: NotchCameraFit.current(), silhouette: NotchSilhouette.current(),
                              capsuleFit: NotchCapsuleFit.current(),
-                             outline: UserDefaults.standard.bool(forKey: DefaultsKey.notchOutlineEnabled))
+                             outline: defaults.bool(forKey: DefaultsKey.notchOutlineEnabled))
     }
 
     private func updateFullscreenVisibility(displayID: CGDirectDisplayID) {
@@ -2755,7 +2774,7 @@ package final class NotchService: ObservableObject {
         // An unlock is someone at the Mac, even when the display's wake is
         // announced after it.
         if session.locked != wasLocked, session.locked ? session.hearsLockChange : session.onConsole,
-           NotchLockScreenSupport.playsSounds() {
+           NotchLockScreenSupport.playsSounds(in: defaults) {
             NotchLockScreenService.shared.playSound(locking: session.locked)
         }
         if couldPresent != session.canPresent {
@@ -2937,15 +2956,15 @@ package final class NotchService: ObservableObject {
     private func bindEvents() {
         subscriptions.removeAll()
         eventBindings.bind(NotchEventBindings.Settings(modules: modules,
-                                                       routes: { NotchSupport.routes($0) },
+                                                       routes: { [defaults] in NotchSupport.routes($0, in: defaults) },
                                                        keepAwakeActivity: NotchKeepAwakeSupport.showsActivity(),
-                                                       fanControl: AppFeature.fanControl.isAvailable),
+                                                       fanControl: AppFeature.fanControl.isAvailable(in: defaults)),
                            heldSongTitles: $heldMusic.map { $0?.playback.track.title }.eraseToAnyPublisher())
         stopPower()
-        if NotchSupport.routes(.volume) {
+        if NotchSupport.routes(.volume, in: defaults) {
             volumeFeedback.follow().store(in: &subscriptions)
         }
-        if NotchSupport.routes(.battery) || idleContent == .battery { startPower() }
+        if NotchSupport.routes(.battery, in: defaults) || idleContent == .battery { startPower() }
     }
 
     private func showAgentEvent(_ event: AgentUsageEvent) {
@@ -3043,7 +3062,7 @@ package final class NotchService: ObservableObject {
         if fullscreenCompact {
             CameraPreviewService.shared.hideEmbedded()
             // A copy on another display still shows the song playing.
-            let copiesShowMusic = showsCopies && NotchSupport.watchesMusicActivity()
+            let copiesShowMusic = showsCopies && NotchSupport.watchesMusicActivity(in: defaults)
             if copiesShowMusic { NotchMusicService.shared.start() } else { NotchMusicService.shared.stop() }
             releaseMonitor()
             return
@@ -3052,14 +3071,14 @@ package final class NotchService: ObservableObject {
             appPanel: showingAppPanel, captureControls: captureControls != nil) {
             CameraPreviewService.shared.hideEmbedded()
         }
-        let musicWanted = modules.contains(.music) && ((expanded && (selected == .music || (selected == .controls && NotchSupport.controls().contains(.music)))
+        let musicWanted = modules.contains(.music) && ((expanded && (selected == .music || (selected == .controls && NotchSupport.controls(in: defaults).contains(.music)))
             && !showingAppPanel && !showingSections)
-            || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity() || NotchSupport.routes(.track))))
+            || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))
         if musicWanted { NotchMusicService.shared.start() } else { NotchMusicService.shared.stop() }
         let needs = expanded && selected == .system && selectedMetric == nil && modules.contains(.system) && !showingAppPanel && !showingSections
         var detailNeeds = expanded && !showingSections ? selectedMetric?.monitorNeeds ?? .none : .none
-        if needs, AppFeature.monitorDisk.isAvailable { detailNeeds.disk = true }
-        if needs, AppFeature.fanControl.isAvailable { detailNeeds.fanSpeed = true }
+        if needs, AppFeature.monitorDisk.isAvailable(in: defaults) { detailNeeds.disk = true }
+        if needs, AppFeature.fanControl.isAvailable(in: defaults) { detailNeeds.fanSpeed = true }
         SystemMonitor.shared.setNotchDetailNeeds(detailNeeds)
         if needs != notchNeedsMonitor {
             notchNeedsMonitor = needs

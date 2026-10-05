@@ -21,11 +21,28 @@ OUTPUT = ROOT / "build/generated-tests"
 _PACKAGE_MODIFIER = re.compile(r"^( *(?:@[\w.]+(?:\([^()\n]*\))? +)*)package ", re.M)
 
 
+# The island reads its preferences from the `UserDefaults` it was built with
+# (`NotchService.Environment`). Its copies here still stand in for the
+# process-wide preferences, so they read the text as it was before that seam.
+_NOTCH = "Sources/Vitruvian/Services/Notch/NotchService.swift"
+_NOTCH_DEFAULTS = [
+    (re.compile(r"\[defaults\] in "), ""),
+    (re.compile(r"\.isAvailable\(in: defaults\)"), ".isAvailable"),
+    (re.compile(r", in: defaults\)"), ")"),
+    (re.compile(r"\(in: defaults\)"), "()"),
+    (re.compile(r"(?<![\w.])(?:self\.)?defaults\."), "UserDefaults.standard."),
+]
+
+
 def _source(path):
     """A production file's text as the extractions here expect it: without the
     `package` modifiers that its module needs and these copies do not. Each line
     keeps its number, so `#sourceLocation` still points at the right line."""
-    return _PACKAGE_MODIFIER.sub(r"\1", (ROOT / path).read_text())
+    text = _PACKAGE_MODIFIER.sub(r"\1", (ROOT / path).read_text())
+    if path == _NOTCH:
+        for pattern, replacement in _NOTCH_DEFAULTS:
+            text = pattern.sub(replacement, text)
+    return text
 
 
 def declaration(path, prefix, scope=None, keep_nonisolated=False):
