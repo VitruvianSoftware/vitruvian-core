@@ -1827,6 +1827,230 @@ which leaves 23.
 
   CoreAudio itself needs macOS CI.
 
+Landed (4b, Now Playing routing): one more generated file goes, which
+leaves 22.
+
+- **Injected:** `NotchNativePlayback` in the Now Playing adapter gets a
+  `Platform`, and `live` is the system's:
+  - MediaRemote's functions and string constants, by name;
+  - the running applications, as `NowPlayingApplication` (new);
+  - the system uptime;
+  - the reply line to the app, the session refresh, and the queue.
+
+  The adapter's command switch moves into `NotchNativePlayback.perform`,
+  and what the test needs becomes `package`.
+- **Test:** the routing test links the adapter's module and drives the
+  real selection over a recording MediaRemote. Before, it compiled a copy
+  of fifteen members with a stand-in target and a stored running flag.
+  Only that file imports the module, because it carries a second copy of
+  the app's playback types. The music hardening test reaches the adapter
+  the way the app does: a reply for the context, and a request line through
+  the real framer. New checks:
+  - a quit app, or one without a bundle, gets no player path;
+  - another app on the same process, or a quit one, is never read;
+  - artwork is copied in;
+  - a failure answer is not delivery;
+  - each command reaches the player with its own number, and a seek with
+    its position;
+  - a system without the position option refuses the seek;
+  - a refused gesture still answers, and the new player is not read;
+  - a recording in another process is a new revision;
+  - a path or recording that changes during validation refuses;
+  - a validation of an old recording answers no;
+  - an untitled player publishes no controls;
+  - an empty item ID is none, and the adapter's own item key counts;
+  - a helper process shows its own name and its owner, and routes to
+    itself;
+  - rows arrive in a stable order;
+  - a blank title is no track, and choosing the waiting row again does
+    not restart its wait;
+  - the selected app quitting releases the choice;
+  - the music app on screen stays when another takes the session.
+- **Verification:** a Linux Swift 6.4 model of the selection runs the
+  test, 107 checks, and 80 mutants. The model swaps blocks and C function
+  pointers for closures, and the player path for a plain object. Three
+  survive, each equivalent:
+  - a released choice that keeps its timer, since every new choice resets
+    it;
+  - an untitled player that keeps its old context, which cannot validate
+    without an identity;
+  - validation's first running check, since the read it guards refuses a
+    player that is not running.
+
+  The system-player check needs a real system player, so the model does
+  not reach it. MediaRemote's player paths and the bridge into the
+  hardening test need macOS CI.
+
+Landed (4b, the command bar's emoji rows and run learning): one more
+generated file goes, which leaves 21.
+
+- **Extracted:** `CommandBarRunRecorder` (new) takes from
+  `CommandBarService` what running a row teaches the bar:
+  - the use it counts and saves;
+  - the search that found it, remembered for the session;
+  - the emoji's other tones;
+  - the field and selection handed to the row.
+
+  Its `Host` is the field as it stands, the bar's close, typing and the
+  settings. `CommandBarCatalog.emojiEntries` takes the settings, the
+  Accessibility answer and the typing, which default to the bar's own.
+- **Test:** the emoji test drives the real rows and the real recorder over
+  a disposable settings domain, through the real session key. Before, it
+  compiled copies of the four service members and the catalog's rows. New
+  checks:
+  - the step that orders the memory counts;
+  - the field and selection are handed over before the close wipes them,
+    and a new opening forgets them;
+  - a completed search learns what was typed;
+  - a row runs once, with its number;
+  - a row that keeps the bar open runs without counting or learning;
+  - a hidden shortcut learns nothing even with a search in the field;
+  - without Accessibility every row says so.
+- **Verification:** a Linux Swift 6.4 model of the recorder and the rows
+  runs the test, 257 checks, and 37 mutants. CryptoKit and pinyin are
+  stubbed off Apple platforms. One survives, equivalent: trimming the
+  learned search, which the emoji parse, the memory and the habit keys
+  each do again for a one-line field.
+
+Landed (4b, the pointer's display): one more generated file goes, which
+leaves 20.
+
+- **Moved to support:** three owners decided whether the pointer is on a
+  display, by AppKit's rule for the top and bottom rows. Each decision is
+  now a pure function that the owner calls:
+  - `SpaceHopSupport.warpTarget`, for where a Space hop puts the pointer;
+  - `ScreenshotSupport.captureGuideIsVisible(pointer:displayFrame:…)`, for
+    the capture guide;
+  - `DockPreviewSupport.isNearDock`, for the Dock's strip.
+
+  `SpaceHop`, the selection overlay and `DockPreviewService` keep reading
+  the screens and the pointer, and pass them in.
+- **Test:** the pointer test calls the three functions with the same
+  displays. Before, it compiled copies of the hop's step, the overlay's
+  guide refresh and the Dock check, with stand-ins for each type they
+  read. New checks:
+  - the guide hides during a selection or a pending capture;
+  - a display without a frame is not warped to, and its middle is
+    measured from the top;
+  - a pointer on no display is measured against the main display;
+  - the strip's own top row counts and the row above it does not;
+  - a magnifying Dock's strip is as deep as its largest icon;
+  - without preferences or a display every point counts.
+- **Verification:** a Linux Swift 6.4 model of the three functions runs
+  the test, 48 checks, and 18 mutants. One survives, equivalent: swapping
+  the selection and pending flags, which the guide treats alike.
+
+  The press and the warp themselves stay with `SpaceHop`, which macOS CI
+  builds.
+
+Landed (4b, the display under the pointer): one more generated file goes,
+which leaves 19.
+
+- **Added:** `ScreenGeometry` (`Core/ScreenGeometry.swift`, new) is what
+  placement reads of a display: its id, frames and scale. `under(_:among:fallback:)`
+  picks the display a pointer is on by AppKit's rule, through the existing
+  `NSScreen.screen(containing:…)`. `NSScreen.geometries` lists the attached
+  displays.
+- **Moved to pure functions** that take displays, one per owner:
+  - the full-display capture picks `ScreenGeometry.under`;
+  - `SpaceWindowBridge.visibleSpace(near:in:screens:main:)`;
+  - `WindowDirectionalIndicator.frame` (Core, new), with its size;
+  - `QuitProtectionSupport.panelOrigin`;
+  - `ScreenshotSupport.capturePointerNudge`, the loupe's arrow keys;
+  - `DockPreviewSupport.dropOrigin`.
+
+  The overlay under the pointer uses `NSScreen.screen(containing:…)` over
+  its panels. Each owner passes `NSScreen.geometries` and keeps its own
+  side effects.
+- **Test:** the lookup test calls the functions with the same three
+  displays. Before, it compiled copies of seven members with stand-ins
+  for screens, panels, the capture engine and the window activator. It no
+  longer needs a run loop. New checks:
+  - a display the topology misses falls back to its first, and a pointer
+    outside every display follows the main display's Space;
+  - the quit confirmation goes to the display asked for, clears the
+    Dock, rounds to whole points, and uses the first display without a
+    main one; with no display it places nothing;
+  - the directional indicator stays 8 points inside a corner;
+  - each arrow moves its own way, ten pixels with Shift, and another key
+    or no display moves nothing;
+  - the pointer crosses onto the next display, stops on the first column
+    and the top row, and stops on the fallback's edge from nowhere.
+- **Verification:** a Linux Swift 6.4 model of the functions runs the test,
+  71 checks, and 27 mutants, none surviving.
+
+Landed (4b, the update intros): one more generated file goes, which leaves
+18.
+
+- **Extracted:** `UpdateIntroSequence` (`Services/Update/`, new) takes from
+  `AppDelegate`:
+  - which intro an update shows next: the tour, the support page, the
+    showcase, then the brightness prompt;
+  - what closing one means, and the review flags;
+  - the rule that the support page waits for its Done action;
+  - the seen markers, and what onboarding marks.
+
+  Its `Host` is the settings, the version, quitting, the window the shell
+  opens for an intro, the showcase's cache, the last step and the next turn
+  of the main queue. `AppDelegate` keeps the windows and reports their
+  close. `AppInfo.isPrerelease` names the beta rule `isBeta` already used.
+- **Test:** the intro test drives the real sequence through a shell that
+  only notes the windows it was asked for. Before, it compiled copies of
+  nine `AppDelegate` members over a fixture with a stubbed showcase. New
+  checks:
+  - onboarding writes every first-run marker;
+  - a beta that has seen its tour asks for nothing else;
+  - asking for an open tour or support page keeps its mode;
+  - quitting may close the support page without Done, and nothing opens
+    while quitting;
+  - the next intro waits for the closing window to go;
+  - the showcase: once on its release, never on another, its cache
+    cleared otherwise, and quitting does not consume it;
+  - onboarding marks the showcase and the support page only on their own
+    releases.
+- **Verification:** a Linux Swift 6.4 model of the sequence, with the real
+  version rules from Core, runs the test, 167 checks, and 45 mutants. Three
+  survive, each equivalent:
+  - asking a beta for the support page or showcase, which their own
+    release gates refuse;
+  - resetting Done when the support page opens, and the review flag when
+    the tour closes: the close and the open reset each again.
+
+Landed (4b, a capture's keys): one more generated file goes, which leaves
+17.
+
+- **Moved to pure code** (`Services/QuickTools/ScreenshotCaptureKeys.swift`,
+  new):
+  - `ScreenshotPreviewKeys`: whether a preview owns the keyboard, and
+    what a press does to it;
+  - `ScreenshotChooserKeys`: what a press does while an area or window is
+    being chosen, over the overlays or the island's controls.
+
+  The two controllers' key monitors read the event, ask, and act. The
+  chooser's per-letter helpers go.
+- **`NotchService.CaptureFocus`** (new) is what decides whether the island
+  shows a capture. `isCaptureVisible(id:)` reads it from the island's
+  state.
+- **Test:** the keyboard test calls the routing and the focus with plain
+  values. Before, it compiled the two monitors, the chooser's helpers and
+  the island's check over stand-in events and windows. New checks:
+  - a metric's detail, a capture without content, or an island that is
+    away owns no capture keys;
+  - a preview that is not on screen ignores keys;
+  - modified keys are passed on, and Shift-E still edits;
+  - Return is kept from the app even when no display can be taken;
+  - only releasing a held Space ends the move;
+  - a sheet or a recording keeps the island's keys from the chooser;
+  - the floating chooser ignores the island's state;
+  - tools switch by number only when offered and without a command key;
+  - scrolling capture and the loupe follow their letters;
+  - C copies a color, and the arrows nudge, only while the loupe takes
+    keys, the arrows ten pixels with Shift.
+- **Verification:** a Linux Swift 6.4 model of the routing and the focus
+  runs the test, 440 checks, and 54 mutants. One survives, equivalent:
+  passing a command press through the plain-key switch, whose own guard
+  passes it on.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

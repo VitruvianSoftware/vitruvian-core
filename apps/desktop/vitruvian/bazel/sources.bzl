@@ -294,28 +294,22 @@ TEST_PRODUCTION_SOURCES = [
 # Files Tests/generate_sources.py writes; Bazel needs them declared up front.
 GENERATED_TEST_SOURCES = [
     "BrightnessStep.swift",
-    "CommandBarEmojiBodies.swift",
     "DisplayRestoration.swift",
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
-    "NotchCaptureKeyboard.swift",
     "NotchCompact.swift",
     "NotchDestinations.swift",
     "NotchFullscreen.swift",
     "NotchHover.swift",
     "NotchMusicVisibility.swift",
-    "NotchPlaybackRouting.swift",
     "NotchPresentationRefresh.swift",
     "NotchScreenRefresh.swift",
-    "PointerDisplayLookups.swift",
-    "PointerOnDisplay.swift",
     "RecorderZoomAiming.swift",
     "ScreenshotSelectionRefresh.swift",
     "ShelfDropRouting.swift",
     "SoftwareDimmingRoute.swift",
     "SwitcherScroll.swift",
     "UninstallerFlow.swift",
-    "UpdateIntroFlow.swift",
 ]
 
 # Sources of the privileged fan-control helper.

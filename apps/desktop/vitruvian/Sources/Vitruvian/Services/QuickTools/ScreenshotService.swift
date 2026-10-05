@@ -330,15 +330,14 @@ package final class ScreenshotService: ObservableObject {
         }
         preview?.close()
         preview = nil
-        let pointer = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) })
-                ?? NSScreen.main,
+        guard let screen = ScreenGeometry.under(NSEvent.mouseLocation, among: NSScreen.geometries,
+                                                fallback: NSScreen.main?.geometry),
               screen.displayID != 0 else {
             QuickToolHUD.show(icon: "camera.viewfinder", message: strings.captureFailed)
             return
         }
         let displayID = screen.displayID
-        let scale = screen.backingScaleFactor
+        let scale = screen.scale
         let frame = screen.frame
         let includePointer = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotIncludePointer)
         let hideWindows = hideVitruvianWindows

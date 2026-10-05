@@ -38,6 +38,11 @@ package enum AppInfo {
         if isDeveloperBuild && UserDefaults.standard.bool(forKey: DefaultsKey.simulateBetaUI) {
             return true
         }
+        return isPrerelease(version)
+    }
+
+    /// Whether a version names a pre-release (e.g. 3.3.4-beta.1 or 3.3.4-rc.1).
+    package static func isPrerelease(_ version: String) -> Bool {
         let v = version.lowercased()
         return v.contains("-beta") || v.contains("-rc") || v.contains("-alpha")
     }

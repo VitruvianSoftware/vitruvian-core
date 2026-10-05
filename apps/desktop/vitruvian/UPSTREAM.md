@@ -1670,6 +1670,54 @@ is that notice. Add an entry for every change to upstream files.
   (CoreAudio through the new `Services/Audio/AudioHAL.swift`, their queues,
   settings and feedback); `Tests/MixerInputVolumeTests.swift` drives both,
   and `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `NowPlayingAdapter/NowPlayingSelection.swift` takes an injected platform
+  (MediaRemote, the running applications, the uptime, the reply line, the
+  refresh and the queue). The command switch moves there from
+  `NowPlayingAdapter/NowPlayingAdapter.swift` as `perform`, and both files
+  open what the test needs as `package`.
+  - `Tests/NotchPlaybackRoutingTests.swift` drives the adapter's module
+    (`BUILD` adds it to the test binary), and `Tests/NotchMusicHardeningTests.swift`
+    reaches it through reply and request lines.
+  - `Tests/generate_sources.py` no longer copies the selection.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): what running a row
+  teaches `Services/CommandBar/CommandBarService.swift` moves to the new
+  `Services/CommandBar/CommandBarRunRecorder.swift`, and
+  `CommandBarCatalog.emojiEntries` in `Services/CommandBar/CommandBarCatalog.swift`
+  takes its settings, permission and typing. `Tests/CommandBarEmojiTests.swift`
+  drives both, `Tests/generate_sources.py` no longer copies them, and two
+  emoji fixtures in `Tests/mutation_checks.py` follow the code to the
+  recorder.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): whether the pointer
+  is on a display moves into pure functions in `Core/Switcher/SpaceHopSupport.swift`,
+  `Core/QuickTools/ScreenshotSupport.swift` and `Core/DockPreview/DockPreviewSupport.swift`,
+  which `Services/Switcher/SpaceHop.swift`, `Services/QuickTools/ScreenshotSelectionController.swift`
+  and `Services/DockPreview/DockPreviewService.swift` call.
+  `Tests/PointerOnDisplayTests.swift` calls them, and `Tests/generate_sources.py`
+  no longer copies the three owners.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the display under
+  the pointer is read through the new `Core/ScreenGeometry.swift`.
+  - Pure placement functions join `Core/WindowLayout/WindowLayoutSupport.swift`,
+    `Core/QuitProtectionSupport.swift`, `Core/QuickTools/ScreenshotSupport.swift`,
+    `Core/DockPreview/DockPreviewSupport.swift` and
+    `Services/Switcher/SpaceWindowBridge.swift`.
+  - `Services/QuickTools/ScreenshotService.swift`, `ScreenshotSelectionController.swift`,
+    `Services/WindowLayout/WindowLayoutService.swift`, `Services/QuitProtection/QuitProtectionHUD.swift`
+    and `Services/DockPreview/DockPreviewService.swift` call them.
+  - `Tests/PointerDisplayLookupTests.swift` calls them, and
+    `Tests/generate_sources.py` no longer copies the seven members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the update-intro
+  sequence in `App/AppDelegate.swift` moves to the new
+  `Services/Update/UpdateIntroSequence.swift`. `Core/AppInfo.swift` gains
+  `isPrerelease`. `Tests/UpdateIntroFlowTests.swift` drives the sequence,
+  and `Tests/generate_sources.py` no longer copies the delegate's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the key routing of
+  `Services/QuickTools/ScreenshotQuickPreviewController.swift` and
+  `Services/QuickTools/ScreenshotSelectionController.swift` moves to the new
+  `Services/QuickTools/ScreenshotCaptureKeys.swift`.
+  `Services/Notch/NotchService.swift` gains `CaptureFocus` behind
+  `isCaptureVisible(id:)`. `Tests/NotchCaptureKeyboardTests.swift` calls
+  them, and `Tests/generate_sources.py` no longer copies the monitors.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -2168,10 +2168,50 @@ package final class NotchService: ObservableObject {
         refreshPresentation()
     }
 
+    /// What decides whether a capture's keys belong to it.
+    package struct CaptureFocus {
+        package var acceptsSystemFeedback: Bool
+        package var expanded: Bool
+        package var selected: NotchModule
+        package var showingAppPanel: Bool
+        package var showingSections: Bool
+        package var showingMetric: Bool
+        /// A capture's area or window is being chosen.
+        package var choosing: Bool
+        package var captureID: UUID?
+        package var hasContent: Bool
+
+        package init(acceptsSystemFeedback: Bool, expanded: Bool, selected: NotchModule, showingAppPanel: Bool,
+                     showingSections: Bool, showingMetric: Bool, choosing: Bool, captureID: UUID?, hasContent: Bool) {
+            self.acceptsSystemFeedback = acceptsSystemFeedback
+            self.expanded = expanded
+            self.selected = selected
+            self.showingAppPanel = showingAppPanel
+            self.showingSections = showingSections
+            self.showingMetric = showingMetric
+            self.choosing = choosing
+            self.captureID = captureID
+            self.hasContent = hasContent
+        }
+
+        /// The island is open on its captures, nothing in front of them, and
+        /// shows this one.
+        package func shows(_ id: UUID) -> Bool {
+            acceptsSystemFeedback && expanded && selected == .captures
+                && !showingAppPanel && !showingSections && !showingMetric
+                && !choosing && captureID == id && hasContent
+        }
+    }
+
+    package var captureFocus: CaptureFocus {
+        CaptureFocus(acceptsSystemFeedback: acceptsSystemFeedback, expanded: expanded, selected: selected,
+                     showingAppPanel: showingAppPanel, showingSections: showingSections,
+                     showingMetric: selectedMetric != nil, choosing: captureControls != nil,
+                     captureID: captureID, hasContent: captureContent != nil)
+    }
+
     package func isCaptureVisible(id: UUID) -> Bool {
-        acceptsSystemFeedback && expanded && selected == .captures
-            && !showingAppPanel && !showingSections && selectedMetric == nil
-            && captureControls == nil && captureID == id && captureContent != nil
+        captureFocus.shows(id)
     }
 
     package func removeCapture(id: UUID) {

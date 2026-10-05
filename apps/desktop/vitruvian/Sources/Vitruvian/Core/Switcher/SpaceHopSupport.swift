@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
+import Foundation
 
 /// Pure decisions behind showing and reaching windows that live on a Space the
 /// user is not currently looking at (issue #339). Kept free of AppKit and
@@ -51,6 +52,16 @@ package enum SpaceHopSupport {
     package static func isExcludedFromWindowCycle(windowTagsLow: UInt32) -> Bool {
         let ignoresCycleTag: UInt32 = 1 << 18
         return windowTagsLow & ignoresCycleTag != 0
+    }
+
+    /// Where the pointer goes before a Spaces shortcut, which acts on the
+    /// display under the pointer: the middle of the window's display, given
+    /// in CoreGraphics coordinates, unless the pointer is already on it. The
+    /// display's AppKit frame decides that, top row and bottom row included
+    /// the way AppKit counts them. Nil also when the display has no frame.
+    package static func warpTarget(pointer: CGPoint, displayFrame: CGRect?, displayBounds: CGRect) -> CGPoint? {
+        guard let displayFrame, !NSMouseInRect(pointer, displayFrame, false) else { return nil }
+        return CGPoint(x: displayBounds.midX, y: displayBounds.midY)
     }
 
     /// How many "move a space" presses take the user from the visible Space to

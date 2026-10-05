@@ -280,6 +280,14 @@ package enum DockPreviewSupport {
         )
     }
 
+    /// The same, against the visible frame of the display the pointer is on,
+    /// or of `fallback`.
+    package static func dropOrigin(pointer: CGPoint, windowSize: CGSize,
+                                   screens: [ScreenGeometry], fallback: ScreenGeometry?) -> CGPoint {
+        dragOrigin(pointer: pointer, windowSize: windowSize,
+                   visibleFrame: ScreenGeometry.under(pointer, among: screens, fallback: fallback)?.visibleFrame ?? .zero)
+    }
+
     // Card metrics. The preview size setting sizes what the card shows, so the
     // thumbnail and the icon standing in for it follow it, and so do the gaps
     // around them, which hold nothing of their own. What does not follow it is
@@ -368,6 +376,23 @@ package enum DockPreviewSupport {
     /// Size against `hoverTileSize` so magnified icons stay inside the band.
     package static func dockProximityBand(tileSize: CGFloat) -> CGFloat {
         max(160, tileSize * 1.5 + 60)
+    }
+
+    /// Whether a pointer, in AppKit's global coordinates, is inside that band
+    /// of the display it is on, or of `mainFrame` when it is on none. Without
+    /// the Dock's preferences or a display every point counts.
+    package static func isNearDock(_ point: CGPoint, screenFrames: [CGRect], mainFrame: CGRect?,
+                                   preferences: DockPreviewPreferences?) -> Bool {
+        guard let preferences else { return true }
+        guard let frame = screenFrames.first(where: { NSMouseInRect(point, $0, false) }) ?? mainFrame else {
+            return true
+        }
+        let band = dockProximityBand(tileSize: preferences.hoverTileSize)
+        switch preferences.orientation {
+        case .bottom: return point.y <= frame.minY + band
+        case .left: return point.x <= frame.minX + band
+        case .right: return point.x >= frame.maxX - band
+        }
     }
 
     /// Bounds expensive Accessibility hit testing independently of mouse

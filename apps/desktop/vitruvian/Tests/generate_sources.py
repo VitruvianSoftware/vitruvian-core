@@ -67,14 +67,6 @@ def availability_declaration(path, prefix):
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
-    write("UpdateIntroFlow.swift", "import AppKit\nimport Foundation\n"
-          + "extension UpdateIntroFlowTests {\nfinal class Host: Fixture {\n"
-          + "".join(declaration(panel, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func presentUpdateIntros()", "    private func showUpdateHighlightsIfNeeded()",
-              "    private func markUpdateHighlightsSeen()", "    private func showSupportUpdateIntroIfNeeded()",
-              "    func windowShouldClose(", "    func windowWillClose(", "    private func markOnboardingComplete()",
-              "    private func markSupportUpdateIntroSeenIfCurrentUpdate()", "    private func markSupportUpdateIntroSeen()"])
-          + "}\n}\n")
     write("MenuPanelRecovery.swift", "import AppKit\nimport Foundation\n"
           + "extension MenuPanelRecoveryTests {\nfinal class Host: Fixture {\n"
           + "".join(declaration(panel, prefix).replace("private ", "") for prefix in [
@@ -114,15 +106,6 @@ def main():
           + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
-    write("CommandBarEmojiBodies.swift", "import Foundation\n"
-          + "extension CommandBarEmojiContract.Catalog {\n"
-          + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-                        "    static func emojiEntries(")
-          + "}\nextension CommandBarEmojiContract.Service {\n"
-          + "".join(declaration(bar, prefix).replace("private func", "func", 1)
-                    for prefix in ["    struct RowAction:", "    private func skinToneActions(",
-                                   "    private func recordUsage(", "    private func finish("])
-          + "}\n")
     write("UninstallerFlow.swift", "import AppKit\nimport Carbon.HIToolbox\nimport Combine\n"
           + "extension UninstallerFlowTests {\n"
           + declaration(uninstall, "    enum Phase:")
@@ -139,29 +122,6 @@ def main():
               "    private func finishUninstallReview()"])
           + "}\n}\nextension UninstallerFlowTests.Finder {\n"
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
-          + "}\n")
-    dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
-    adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
-    # Only the clock changes, so tests drive the wait for a chosen source's track.
-    write("NotchPlaybackRouting.swift", "import Foundation\nimport ObjectiveC\nextension NotchPlaybackRoutingContract {\n"
-          + declaration(playback_adapter, "    private struct Identity:").replace("private struct", "struct", 1)
-          + declaration(playback_adapter, "    private static func playPauseCommand(")
-          + declaration(playback_adapter, "    static var target:")
-          + declaration(playback_adapter, "    static var sourceReply:")
-          + declaration(playback_adapter, "    static func choose(")
-          + declaration(playback_adapter, "    static func select()")
-            .replace("ProcessInfo.processInfo.systemUptime", "uptime")
-          + declaration(playback_adapter, "    static func publish(").replace("    static func", "    @discardableResult\n    static func", 1)
-          + declaration(playback_adapter, "    static func updatePlayPauseCommand(")
-          + declaration(playback_adapter, "    static func validatedTarget(")
-          + declaration(playback_adapter, "    static func readInfo(")
-          + declaration(playback_adapter, "    static func supportedCommands(")
-          + declaration(playback_adapter, "    private static func currentPlayerPID(").replace("private static", "static", 1)
-          + declaration(playback_adapter, "    static func send(")
-          + declaration(playback_adapter, "    private static func makeTarget(").replace("private static", "static", 1)
-          + declaration(adapter_entry, "private func sendPlaybackCommand(").replace("private func", "static func", 1)
-          + declaration(adapter_entry, "func encodedReply(").replace("func encodedReply", "static func encodedReply", 1)
           + "}\n")
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
@@ -411,7 +371,6 @@ def main():
           + declaration(switcher_service, "    private var selectedItemID:")
           + declaration(switcher_service, "    private func applySearchFilter(")
           + "}\n")
-    preview = "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift"
     selection = "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift"
     refresh_methods = [
         "    private func screenCaptureToolDidChange()",
@@ -454,52 +413,6 @@ def main():
           + "}\n"
           + declaration(selection, "private final class PassThroughHostingView<")
               .replace("private final class", "final class", 1))
-    write("NotchCaptureKeyboard.swift", "import Foundation\nimport Carbon.HIToolbox\n\nextension NotchCaptureKeyboardContract {\n"
-          + "final class NotchService {\nstatic var shared = NotchService()\n"
-          + "var presentationWindow: NSPanel? = NSPanel()\nvar acceptsSystemFeedback = true\n"
-          + "var expanded = true\nvar selected = NotchModule.captures\nvar showingAppPanel = false\n"
-          + "var showingSections = false\nvar selectedMetric: Int?\nvar captureControls: Int?\n"
-          + "var captureID: UUID?\nvar captureContent: Bool? = true\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchService.swift", "    func isCaptureVisible(")
-          + "}\nfinal class Preview {\n"
-          + "typealias Action = VitruvianServices.ScreenshotQuickPreviewController.Action\n"
-          + "var keyMonitor: Any?\nvar closed = false\nvar shownInNotch = true\nlet presentationID = UUID()\n"
-          + "var actions: [Action] = []\nfunc perform(_ action: Action) { actions.append(action) }\n"
-          + "func close() { closed = true }\nfunc attach(_ panel: NSPanel) { installKeyMonitor(for: panel) }\n"
-          + declaration(preview, "    private func installKeyMonitor(for panel:")
-          + "}\nfinal class Selection {\n"
-          + "final class Options { var controlsInNotch = true; var hasFocusedControl = false }\n"
-          + "enum Outcome { case cancelled }\nvar screenCaptureOptions: Options? = Options()\n"
-          + "var keyMonitor: Any?\nvar globalKeyMonitor: Any?\nvar spaceIsDown = false\n"
-          + "var acceptsWindowClick = true\nvar loupeAcceptsKeyboardActions = false\n"
-          + "var actions: [String] = []\nvar draggingPanel: ScreenshotOverlayPanel?\n"
-          + 'func finish(_ outcome: Outcome) { actions.append("cancel") }\n'
-          + 'func captureFullDisplayUnderMouse() { actions.append("fullDisplay") }\n'
-          + "func panelUnderMouse() -> ScreenshotOverlayPanel? { draggingPanel }\n"
-          + 'func repeatLastRegion() { actions.append("repeat") }\n'
-          + "func selectCaptureTool(for event: NSEvent) -> Bool { false }\n"
-          + "static func isScrollingCaptureKey(_ event: NSEvent) -> Bool { false }\n"
-          + "static func isLoupeKey(_ event: NSEvent) -> Bool { false }\n"
-          + "static func isCopyColorKey(_ event: NSEvent) -> Bool { false }\n"
-          + "static func isNudgeKey(_ event: NSEvent) -> Bool { false }\n"
-          + "func toggleScrollingCapture() {}\nfunc toggleLoupe() {}\nfunc copyLoupeColor() {}\n"
-          + "func nudgePointer(keyCode: Int, fast: Bool) {}\nfunc attach() { installKeyMonitor() }\n"
-          + declaration(selection, "    private static func isRepeatRegionKey(")
-          + declaration(selection, "    private static func matchesShortcutKey(")
-          + declaration(selection, "    private func installKeyMonitor()")
-          + "}\n}\n")
-    hop = "Sources/Vitruvian/Services/Switcher/SpaceHop.swift"
-    write("PointerOnDisplay.swift", "import AppKit\n"
-          + "extension PointerOnDisplayContract.Bridge {\n"
-          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
-          + "}\nextension PointerOnDisplayContract.Hop {\n"
-          + "".join(declaration(hop, prefix).replace("private ", "", 1)
-                    for prefix in ["    private enum TravelOutcome {", "    private func stepWithSpaceShortcut()"])
-          + "}\nextension PointerOnDisplayContract.Overlay {\n"
-          + declaration(selection, "    func refreshGuideVisibility()")
-          + "}\nextension PointerOnDisplayContract.Dock {\n"
-          + declaration(dock, "    private func isNearDock(").replace("private func", "func", 1)
-          + "}\n")
 
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
@@ -552,32 +465,6 @@ def main():
           + "static let factories: [(String, (AppLanguage) -> Any)] = [\n"
           + "".join(f'("{name}", {{ FeatureStrings.{name}($0) }}),\n' for name in factories)
           + "]\n}\n")
-
-    screens = "Sources/Vitruvian/Core/AppKitExtensions.swift"
-    bridge = "Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift"
-    write("PointerDisplayLookups.swift", "import AppKit\nimport Carbon.HIToolbox\nimport QuartzCore\n"
-          + "extension PointerDisplayLookupContract.Screen {\n"
-          + declaration(screens, "    static var withMouse:")
-          + declaration(screens, "    static var withMenuBar:")
-          + "}\nextension PointerDisplayLookupContract.Capturer {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
-                        "    private func beginFullScreenCapture()").replace("private func", "func", 1)
-          + "}\nextension PointerDisplayLookupContract.Bridge {\n"
-          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
-          + declaration(bridge, "    static func visibleSpace(near")
-          + "}\nextension PointerDisplayLookupContract.Layout {\n"
-          + declaration("Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
-                        "    private func showDirectionalIndicator(").replace("private func", "func", 1)
-          + "}\nextension PointerDisplayLookupContract.HUD {\n"
-          + declaration("Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
-                        "    private func positionPanel(").replace("private func", "func", 1)
-          + "}\nextension PointerDisplayLookupContract.Chooser {\n"
-          + "".join(declaration(selection, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func nudgePointer(", "    private func panelUnderMouse()"])
-          + "}\nextension PointerDisplayLookupContract.Dock {\n"
-          + declaration(dock, "    func endWindowDrag(")
-          + "}\n")
-
 
 
 if __name__ == "__main__":

@@ -426,52 +426,23 @@ package final class ScreenshotSelectionController {
 
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self else { return event }
-            let inNotch = self.screenCaptureOptions?.controlsInNotch == true
-                && event.window === NotchService.shared.presentationWindow
-            guard event.window is ScreenshotOverlayPanel || inNotch else { return event }
-            if inNotch {
-                guard event.window?.attachedSheet == nil, !(event.window?.firstResponder is NSText),
-                      !ShortcutCapture.isCapturing else { return event }
-                let movesSelection = event.keyCode == UInt16(kVK_Space)
-                    && (self.spaceIsDown || self.panelUnderMouse()?.overlayView.isDragging == true)
-                if self.screenCaptureOptions?.hasFocusedControl == true,
-                   event.keyCode != UInt16(kVK_Escape), !movesSelection { return event }
-            }
-            if event.type == .keyUp {
-                guard event.keyCode == UInt16(kVK_Space), self.spaceIsDown else { return event }
-                self.spaceIsDown = false
-                return nil
-            }
-            switch Int(event.keyCode) {
-            case kVK_Escape:
-                self.finish(.cancelled)
-            case kVK_Return, kVK_ANSI_KeypadEnter:
-                if self.acceptsWindowClick {
-                    self.captureFullDisplayUnderMouse()
-                }
-            case kVK_Space:
-                if let panel = self.panelUnderMouse(), panel.overlayView.isDragging {
-                    // Holding Space moves the in-progress selection.
-                    self.spaceIsDown = true
-                } else { return event }
-            case _ where Self.isRepeatRegionKey(event):
-                self.repeatLastRegion()
-            case _ where self.selectCaptureTool(for: event):
-                break
-            case _ where Self.isScrollingCaptureKey(event):
-                self.toggleScrollingCapture()
-            case _ where Self.isLoupeKey(event):
-                self.toggleLoupe()
-            case _ where Self.isCopyColorKey(event):
-                guard self.loupeAcceptsKeyboardActions else { return event }
-                self.copyLoupeColor()
-            case _ where Self.isNudgeKey(event):
-                guard self.loupeAcceptsKeyboardActions else { return event }
-                self.nudgePointer(keyCode: Int(event.keyCode),
-                                  fast: event.modifierFlags.contains(.shift))
-            default:
-                return event
+            guard let self,
+                  let command = ScreenshotChooserKeys.command(
+                    keyCode: Int(event.keyCode), keyUp: event.type == .keyUp, flags: event.modifierFlags,
+                    characters: event.charactersIgnoringModifiers, context: self.keyContext(for: event))
+            else { return event }
+            switch command {
+            case .consume: break
+            case .cancel: self.finish(.cancelled)
+            case .captureDisplay: self.captureFullDisplayUnderMouse()
+            case .startMovingSelection: self.spaceIsDown = true
+            case .stopMovingSelection: self.spaceIsDown = false
+            case .repeatRegion: self.repeatLastRegion()
+            case .selectTool(let tool): self.screenCaptureOptions?.select(tool)
+            case .toggleScrolling: self.toggleScrollingCapture()
+            case .toggleLoupe: self.toggleLoupe()
+            case .copyColor: self.copyLoupeColor()
+            case .nudge(let keyCode, let fast): self.nudgePointer(keyCode: keyCode, fast: fast)
             }
             return nil
         }
@@ -481,29 +452,21 @@ package final class ScreenshotSelectionController {
         }
     }
 
-    private func selectCaptureTool(for event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-              let tool = ScreenCaptureTool.matchingShortcut(event.charactersIgnoringModifiers),
-              let screenCaptureOptions,
-              screenCaptureOptions.availableTools.contains(tool)
-        else { return false }
-        screenCaptureOptions.select(tool)
-        return true
-    }
-
-    /// The loupe toggle follows the typed character, with the physical slot
-    /// as a fallback: the Z key sits elsewhere on some keyboard layouts and
-    /// the localized hints promise the letter itself.
-    private static func isLoupeKey(_ event: NSEvent) -> Bool {
-        matchesShortcutKey(event, character: "z", physicalKeyCode: kVK_ANSI_Z)
-    }
-
-    private static func isScrollingCaptureKey(_ event: NSEvent) -> Bool {
-        matchesShortcutKey(event, character: "s", physicalKeyCode: kVK_ANSI_S)
-    }
-
-    private static func isRepeatRegionKey(_ event: NSEvent) -> Bool {
-        matchesShortcutKey(event, character: "r", physicalKeyCode: kVK_ANSI_R)
+    /// Where a press landed and what the chooser is doing, for its keys.
+    private func keyContext(for event: NSEvent) -> ScreenshotChooserKeys.Context {
+        let window = event.window
+        return ScreenshotChooserKeys.Context(
+            inOverlay: window is ScreenshotOverlayPanel,
+            inIsland: screenCaptureOptions?.controlsInNotch == true && window === NotchService.shared.presentationWindow,
+            hasSheet: window?.attachedSheet != nil,
+            editingText: window?.firstResponder is NSText,
+            recordingShortcut: ShortcutCapture.isCapturing,
+            focusedControl: screenCaptureOptions?.hasFocusedControl == true,
+            spaceIsDown: spaceIsDown,
+            dragging: panelUnderMouse()?.overlayView.isDragging == true,
+            acceptsWindowClick: acceptsWindowClick,
+            availableTools: screenCaptureOptions?.availableTools ?? [],
+            loupeAcceptsKeys: loupeAcceptsKeyboardActions)
     }
 
     private func toggleScrollingCapture() {
@@ -529,32 +492,6 @@ package final class ScreenshotSelectionController {
             : ScreenshotSupport.captureLoupeZoom(loupeZoom, adjustedBy: scrollDelta)
     }
 
-    /// C copies the color under the pointer in the configured picker format
-    /// without ending the session, so a whole palette can be read off one
-    /// frozen screen. Only meaningful while the loupe shows which pixel.
-    private static func isCopyColorKey(_ event: NSEvent) -> Bool {
-        matchesShortcutKey(event, character: "c", physicalKeyCode: kVK_ANSI_C)
-    }
-
-    /// Accept either the character promised by the shortcut hint or its
-    /// physical ANSI key. The latter keeps shortcuts reachable on layouts
-    /// whose printable character is non-Latin.
-    private static func matchesShortcutKey(_ event: NSEvent,
-                                           character: String,
-                                           physicalKeyCode: Int) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
-        else { return false }
-        return event.charactersIgnoringModifiers?.lowercased() == character
-            || Int(event.keyCode) == physicalKeyCode
-    }
-
-    private static func isNudgeKey(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
-        else { return false }
-        return [kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow]
-            .contains(Int(event.keyCode))
-    }
-
     private var loupeAcceptsKeyboardActions: Bool {
         acceptsCaptureInput && loupeEnabled && !panels.contains(where: { $0.overlayView.isDragging })
     }
@@ -576,32 +513,11 @@ package final class ScreenshotSelectionController {
     /// Warping generates no mouse event, so the overlays are refreshed by
     /// hand with the position just warped to.
     private func nudgePointer(keyCode: Int, fast: Bool) {
-        guard loupeAcceptsKeyboardActions else { return }
-        var dx: CGFloat = 0
-        var dy: CGFloat = 0
-        switch keyCode {
-        case kVK_LeftArrow: dx = -1
-        case kVK_RightArrow: dx = 1
-        case kVK_UpArrow: dy = 1
-        case kVK_DownArrow: dy = -1
-        default: return
-        }
-        let location = currentPointerLocation ?? NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(location, $0.frame, false) })
-            ?? NSScreen.withMouse else { return }
-        let delta = ScreenshotSupport.captureLoupeNudge(dx: dx,
-                                                        dy: dy,
-                                                        fast: fast,
-                                                        scale: screen.backingScaleFactor)
-        var target = CGPoint(x: location.x + delta.x, y: location.y + delta.y)
-        if !NSScreen.screens.contains(where: { NSMouseInRect(target, $0.frame, false) }) {
-            // The pointer spans [minX, maxX) x (minY, maxY], as NSMouseInRect counts it.
-            let frame = screen.frame
-            let pixel = 1 / max(screen.backingScaleFactor, 1)
-            target = CGPoint(
-                x: min(max(target.x, frame.minX), frame.maxX - pixel),
-                y: min(max(target.y, frame.minY + pixel), frame.maxY))
-        }
+        guard loupeAcceptsKeyboardActions,
+              let target = ScreenshotSupport.capturePointerNudge(
+                keyCode: keyCode, fast: fast, from: currentPointerLocation ?? NSEvent.mouseLocation,
+                screens: NSScreen.geometries, fallback: NSScreen.withMouse?.geometry)
+        else { return }
         currentPointerLocation = target
         let mainHeight = NSScreen.withMenuBar?.frame.height ?? 0
         CGWarpMouseCursorPosition(CGPoint(x: target.x, y: mainHeight - target.y))
@@ -609,8 +525,8 @@ package final class ScreenshotSelectionController {
     }
 
     private func panelUnderMouse() -> ScreenshotOverlayPanel? {
-        let location = currentPointerLocation ?? NSEvent.mouseLocation
-        return panels.first { NSMouseInRect(location, $0.screenFrame, false) } ?? panels.first
+        NSScreen.screen(containing: currentPointerLocation ?? NSEvent.mouseLocation, among: panels,
+                        frame: { $0.screenFrame }, fallback: panels.first)
     }
 
     private func keyPanelUnderMouse() -> ScreenshotOverlayPanel? {
@@ -1291,9 +1207,9 @@ private final class ScreenshotOverlayView: NSView {
             guideHost.isHidden = true
             return
         }
-        let global = controller?.currentPointerLocation ?? NSEvent.mouseLocation
         guideHost.isHidden = !ScreenshotSupport.captureGuideIsVisible(
-            pointerOnDisplay: NSMouseInRect(global, panel.screenFrame, false),
+            pointer: controller?.currentPointerLocation ?? NSEvent.mouseLocation,
+            displayFrame: panel.screenFrame,
             selectionInProgress: controller?.selectionInProgress ?? true,
             capturePending: isCapturePending)
     }

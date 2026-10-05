@@ -1117,12 +1117,8 @@ package final class WindowLayoutService: ObservableObject {
     }
 
     private func showDirectionalIndicator(at pointer: CGPoint, action: WindowDirectionalAction?) {
-        let size = CGSize(width: 180, height: 180)
-        let screenFrame = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) })?.visibleFrame
-            ?? NSScreen.main?.visibleFrame ?? .zero
-        var origin = CGPoint(x: pointer.x - size.width / 2, y: pointer.y - size.height / 2)
-        origin.x = min(max(origin.x, screenFrame.minX + 8), screenFrame.maxX - size.width - 8)
-        origin.y = min(max(origin.y, screenFrame.minY + 8), screenFrame.maxY - size.height - 8)
+        let frame = WindowDirectionalIndicator.frame(pointer: pointer, screens: NSScreen.geometries,
+                                                     main: NSScreen.main?.geometry)
         let panel: NSPanel
         if let directionalIndicatorPanel {
             panel = directionalIndicatorPanel
@@ -1141,10 +1137,10 @@ package final class WindowLayoutService: ObservableObject {
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary,
                                         .transient, .ignoresCycle]
             panel.animationBehavior = .none
-            panel.contentView = WindowDirectionalIndicatorView(frame: CGRect(origin: .zero, size: size))
+            panel.contentView = WindowDirectionalIndicatorView(frame: CGRect(origin: .zero, size: frame.size))
             directionalIndicatorPanel = panel
         }
-        panel.setFrame(CGRect(origin: origin, size: size), display: true)
+        panel.setFrame(frame, display: true)
         updateDirectionalIndicator(action: action)
         panel.alphaValue = 0
         panel.orderFrontRegardless()

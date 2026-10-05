@@ -144,11 +144,16 @@ package final class CommandBarService: ObservableObject {
     private var catalog: [CommandBarEntry] = [] { didSet { foldedSections[.catalog] = nil } }
     package let scriptRunner = CommandBarScriptRunner()
     package let fileSearch = CommandBarFileSearch()
-    /// Which row answered which few letters, for as long as the app runs. Not
-    /// stored: the bar forgets everything typed into it when it goes.
-    private var queryMemory = CommandBarQueryMemory()
-    /// Counts choices, so the memory can order its own entries without a clock.
-    private var queryMemoryStep = 0
+    /// What running a row teaches the bar, and the field it ran from.
+    private lazy var runs = CommandBarRunRecorder(host: .init(
+        field: { [unowned self] in
+            .init(mode: self.mode, query: self.query, savedQuery: self.savedQuery,
+                  queryBeforeCompletion: self.queryBeforeCompletion, selectedText: self.selectedText,
+                  isVisible: self.isVisible)
+        },
+        hide: { [unowned self] in self.hide() },
+        type: { CommandBarCatalog.typeAtCursor($0) },
+        defaults: .standard))
     private var entriesByID: [String: CommandBarEntry] = [:]
     private var normalizedByID: [String: (title: String, keywords: String)] = [:]
     private var entriesByStableKey: [String: CommandBarEntry] = [:]
@@ -219,10 +224,6 @@ package final class CommandBarService: ObservableObject {
     /// What the ranking last ran on, to tell a keystroke apart from a list
     /// rebuilt underneath by a background load.
     private var lastRankedQuery: String?
-    /// Decoded once when preferences reload, never while a keystroke ranks
-    /// rows. The second cache keeps already-keyed prefixes for this opening.
-    private var queryHabitStore = CommandBarQueryHabitStoreCache()
-    private var preparedHabitQuery = CommandBarQueryHabits.PreparationCache()
     /// The system only shows its Accessibility prompt once; after that a
     /// refusal is a beep, the pattern the other quick tools follow.
     private var promptedForAccessibility = false
@@ -349,8 +350,7 @@ package final class CommandBarService: ObservableObject {
         savedQuery = ""
         queryBeforeCompletion = nil
         completedQuery = nil
-        queryWhenRun = ""
-        selectionWhenRun = ""
+        runs.forgetRun()
         lastPointerLocation = NSEvent.mouseLocation
         selectedID = nil
         lastRankedQuery = nil
@@ -647,11 +647,8 @@ package final class CommandBarService: ObservableObject {
     }
 
     /// What was in the field, and what was selected, at the instant a row ran.
-    /// Closing the bar wipes both before the row's own closure gets to work,
-    /// so they are handed over here instead of being read back from a panel
-    /// that is already gone.
-    package private(set) var queryWhenRun = ""
-    package private(set) var selectionWhenRun = ""
+    package var queryWhenRun: String { runs.queryWhenRun }
+    package var selectionWhenRun: String { runs.selectionWhenRun }
 
     /// The text the person had selected when the bar opened, for the rows and
     /// the saved destinations that act on it.
@@ -838,7 +835,6 @@ package final class CommandBarService: ObservableObject {
     }
     private var hiddenCache: Set<String> = []
     private var disabledCache: Set<CommandBarSource> = []
-    private var usageCache: [String: CommandBarUse] = [:]
     /// Cached like the pins: read once per open, checked on every keystroke.
     private var compactMode = false
     /// The list was asked for anyway, through `peekHome()`. Cleared on the
@@ -861,7 +857,7 @@ package final class CommandBarService: ObservableObject {
         // source is on.
         disabledCache = CommandBarPreferences.disabledSources(
             from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarDisabledSources) ?? "")
-        usageCache = CommandBarUsage.decode(
+        runs.usage = CommandBarUsage.decode(
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         shortcutCache = rowShortcuts
         compactMode = UserDefaults.standard.bool(forKey: DefaultsKey.commandBarCompactMode)
@@ -985,8 +981,8 @@ package final class CommandBarService: ObservableObject {
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         usage.removeValue(forKey: entry.id)
         UserDefaults.standard.set(CommandBarUsage.encode(usage), forKey: DefaultsKey.commandBarUsage)
-        queryMemory.forget(id: entry.id)
-        queryHabitStore.remove(resultID: entry.id)
+        runs.queryMemory.forget(id: entry.id)
+        runs.queryHabitStore.remove(resultID: entry.id)
         refreshAfterPreferenceChange()
     }
 
@@ -995,9 +991,9 @@ package final class CommandBarService: ObservableObject {
     /// the ranking would leave half of it standing.
     package func forgetLearnedRanking() {
         CommandBarLearning.forgetAll()
-        queryMemory.clear()
-        queryHabitStore.forgetAll()
-        preparedHabitQuery.reset()
+        runs.queryMemory.clear()
+        runs.queryHabitStore.forgetAll()
+        runs.preparedHabitQuery.reset()
         refreshAfterPreferenceChange()
     }
 
@@ -1270,7 +1266,7 @@ package final class CommandBarService: ObservableObject {
             rows.append(contentsOf: pinnedRows)
         }
 
-        let usage = usageCache
+        let usage = runs.usage
         let pinnedIDs = Set(pinnedRows.map(\.id))
         let ids = CommandBarUsage.suggestionIDs(usage: usage,
                                                 available: offerable.map(\.id).filter { !pinnedIDs.contains($0) },
@@ -1393,14 +1389,14 @@ package final class CommandBarService: ObservableObject {
                 : categoryContent(category, bar: bar)
             let now = Date().timeIntervalSince1970
             let habitQuery = pool.contains(where: \.countsUsage)
-                ? CommandBarQueryHabits.prepare(trimmed, cache: &preparedHabitQuery)
+                ? CommandBarQueryHabits.prepare(trimmed, cache: &runs.preparedHabitQuery)
                 : nil
             let candidates = pool.enumerated().map { index, entry in
                 let folded = normalizedByID[entry.id]
                 let habitBoost = entry.countsUsage ? habitQuery.map {
                     CommandBarQueryHabits.boost(for: entry.id,
                                                 preparedQuery: $0,
-                                                store: queryHabitStore.store,
+                                                store: runs.queryHabitStore.store,
                                                 now: now)
                 } ?? 0 : 0
                 return CommandBarCandidate(index: index,
@@ -1424,14 +1420,14 @@ package final class CommandBarService: ObservableObject {
             let pool = categoryContent(.emoji, bar: bar)
             guard !emojiQuery.isEmpty else { return Array(pool.prefix(40)) }
             let habitQuery = CommandBarQueryHabits.prepare(
-                emojiQuery, cache: &preparedHabitQuery)
+                emojiQuery, cache: &runs.preparedHabitQuery)
             let now = Date().timeIntervalSince1970
             let candidates = pool.enumerated().map { index, entry in
                 let folded = normalizedByID[entry.id]
                 let habitPriority = CommandBarQueryHabits.boost(
                     for: entry.id,
                     preparedQuery: habitQuery,
-                    store: queryHabitStore.store,
+                    store: runs.queryHabitStore.store,
                     now: now)
                 return CommandBarCandidate(index: index,
                                            normalizedTitle: folded?.title
@@ -1504,7 +1500,7 @@ package final class CommandBarService: ObservableObject {
             ? split.text
             : trimmed
 
-        let usage = usageCache
+        let usage = runs.usage
         let now = Date().timeIntervalSince1970
 
         // The clipboard is searched with everything that was typed: digits
@@ -1570,7 +1566,7 @@ package final class CommandBarService: ObservableObject {
         // and folding is four allocations a time.
         let foldedQuery = CommandBarSearch.normalized(effectiveQuery)
         let habitQuery = CommandBarQueryHabits.prepare(
-            effectiveQuery, cache: &preparedHabitQuery)
+            effectiveQuery, cache: &runs.preparedHabitQuery)
         let candidates = pool.enumerated().map { index, entry in
             let folded = normalizedByID[entry.id]
             // A name the person gave outranks every title in the catalog:
@@ -1580,7 +1576,7 @@ package final class CommandBarService: ObservableObject {
             let habitPriority = entry.countsUsage
                 ? CommandBarQueryHabits.boost(for: entry.id,
                                               preparedQuery: habitQuery,
-                                              store: queryHabitStore.store,
+                                              store: runs.queryHabitStore.store,
                                               now: now)
                 : 0
             return CommandBarCandidate(index: index,
@@ -1600,7 +1596,7 @@ package final class CommandBarService: ObservableObject {
                                     // What this session already answered with
                                     // for exactly these letters.
                                     + (entry.countsUsage
-                                        ? queryMemory.boost(normalizedQuery: foldedQuery, id: entry.id)
+                                        ? runs.queryMemory.boost(normalizedQuery: foldedQuery, id: entry.id)
                                         : 0)
                                     // What the Mac itself holds leads what is
                                     // borrowed from the app in front.
@@ -1803,7 +1799,7 @@ package final class CommandBarService: ObservableObject {
                 })
             }
         }
-        actions.append(contentsOf: skinToneActions(for: entry))
+        actions.append(contentsOf: runs.skinToneActions(for: entry))
         if CommandBarPreferences.acceptsPin(rowID: entry.id) {
             actions.append(RowAction(id: "pin",
                                      title: isPinned(entry) ? bar.actionUnpin : bar.actionPin,
@@ -1849,28 +1845,6 @@ package final class CommandBarService: ObservableObject {
             })
         }
         return actions
-    }
-
-    /// The other tones of the selected emoji, for the person whose default is
-    /// not the one this message wants. Usage still belongs to the same emoji;
-    /// the chosen tone applies only to this insertion, not the preference.
-    private func skinToneActions(for entry: CommandBarEntry) -> [RowAction] {
-        // The id carries the emoji itself, untoned, so the base needs no lookup.
-        guard let base = CommandBarPreferences.emojiIdentity(fromRowID: entry.id),
-              CommandBarEmoji.acceptsSkinTone(base) else { return [] }
-        let current = CommandBarPreferences.skinTone(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
-        return CommandBarEmoji.SkinTone.allCases.filter { $0 != current }.map { tone in
-            let character = CommandBarEmoji.applying(tone, to: base)
-            return RowAction(id: "emojiSkinTone.\(tone.rawValue)",
-                             title: character,
-                             symbolName: "hand.raised") { [weak self] in
-                guard let self else { return }
-                self.recordUsage(of: entry)
-                self.hide()
-                CommandBarCatalog.typeAtCursor(character)
-            }
-        }
     }
 
     /// Shows a row where it lives instead of running it. An app that was
@@ -2379,56 +2353,8 @@ package final class CommandBarService: ObservableObject {
         }
     }
 
-    /// Normal insertion and one-off variants share the same learning history.
-    private func recordUsage(of entry: CommandBarEntry) {
-        let now = Date().timeIntervalSince1970
-        let typedQuery: String
-        switch mode {
-        case .argument, .actions:
-            typedQuery = CommandBarCompletion.queryForLearning(
-                current: savedQuery, beforeCompletion: queryBeforeCompletion)
-        default:
-            typedQuery = CommandBarCompletion.queryForLearning(
-                current: query, beforeCompletion: queryBeforeCompletion)
-        }
-        let trimmedQuery = typedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let learningQuery = CommandBarSearch.emojiQuery(from: trimmedQuery) ?? trimmedQuery
-        if entry.countsUsage, isVisible {
-            // Only what is on screen teaches anything: a row run from its own
-            // combination was never typed for.
-            queryMemoryStep &+= 1
-            queryMemory.record(query: learningQuery, id: entry.id, step: queryMemoryStep)
-        }
-        if entry.countsUsage {
-            let stored = UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage)
-            let next = CommandBarUsage.recording(CommandBarUsage.decode(stored),
-                                                 id: entry.id,
-                                                 now: now)
-            UserDefaults.standard.set(CommandBarUsage.encode(next), forKey: DefaultsKey.commandBarUsage)
-            usageCache = next
-        }
-        if entry.countsUsage, !learningQuery.isEmpty {
-            let prepared = CommandBarQueryHabits.prepare(
-                learningQuery, cache: &preparedHabitQuery)
-            if !prepared.isEmpty {
-                queryHabitStore.record(preparedQuery: prepared,
-                                       resultID: entry.id,
-                                       now: now)
-            }
-        }
-    }
-
     private func finish(_ entry: CommandBarEntry, value: Int?) {
-        recordUsage(of: entry)
-        // Handed over before hiding, which wipes the field and the selection.
-        queryWhenRun = query
-        selectionWhenRun = selectedText
-        guard !entry.keepsBarOpen else {
-            entry.run(value)
-            return
-        }
-        hide()
-        entry.run(value)
+        runs.finish(entry, value: value)
     }
 
     // MARK: - Clipboard paste
