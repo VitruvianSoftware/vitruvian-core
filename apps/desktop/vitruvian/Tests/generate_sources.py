@@ -320,49 +320,6 @@ def main():
           + declaration(switcher_service, "    private var selectedItemID:")
           + declaration(switcher_service, "    private func applySearchFilter(")
           + "}\n")
-    selection = "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift"
-    refresh_methods = [
-        "    private func screenCaptureToolDidChange()",
-        "    private func adoptCapturePolicy(",
-        "    private func applySource(",
-        "    private func loadLiveLoupeImages()",
-        "    private func markCapturePending()",
-        "    private func captureFullDisplayUnderMouse()",
-        "    fileprivate func captureFullScreenFromControl(",
-        "    private func captureFullDisplay(",
-        "    private func repeatLastRegion()",
-        "    fileprivate func confirmWindow(",
-        "    fileprivate func confirmRegion(",
-        "    fileprivate func confirmColor(",
-    ]
-    write("ScreenshotSelectionRefresh.swift", "import Foundation\nimport AppKit\nimport SwiftUI\n"
-          + "extension ScreenshotSelectionRefreshContract.Chooser {\n"
-          + declaration(selection, "    fileprivate func setSelectionInProgress(").replace("fileprivate func", "func", 1)
-          + declaration(selection, "    fileprivate var acceptsCaptureInput:").replace("fileprivate var", "var", 1)
-          + declaration(selection, "    fileprivate var offersFullScreenCapture:").replace("fileprivate var", "var", 1)
-          + declaration(selection, "    fileprivate var acceptsWindowClick:").replace("fileprivate var", "var", 1)
-          + declaration(selection, "    func placeFullScreenControlBelowNotch(")
-          + declaration(selection, "    private var repeatTargetPanel:").replace("private var", "var", 1)
-          + declaration(selection, "    fileprivate var offersRepeatLastRegion:").replace("fileprivate var", "var", 1)
-          + "".join(declaration(selection, prefix).replace("fileprivate func", "func", 1)
-                    .replace("private func", "func", 1).replace("UserDefaults.standard", "ReviewDefaults.current")
-                    for prefix in refresh_methods)
-          + "}\nextension ScreenshotSelectionRefreshContract.View {\n"
-          + declaration(selection, "    func captureToolDidChange()")
-          + declaration(selection, "    func setNotchCaptureControlsHeight(")
-          + declaration(selection, "    func refreshFullScreenControlVisibility()")
-          + declaration(selection, "    private func pointerIsOverFullScreenControl(").replace("private func", "func", 1)
-          + declaration(selection, "    private func updatePointerHover(").replace("private func", "func", 1)
-          + declaration(selection, "    private func fullScreenControlHoverChanged(").replace("private func", "func", 1)
-          + declaration(selection, "    private func resetFullScreenControlHover(").replace("private func", "func", 1)
-          + declaration(selection, "    private func applyDeferredNotchCaptureControlsHeight(").replace("private func", "func", 1)
-          + "}\nextension ScreenshotSelectionRefreshContract.SurfaceService {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenCaptureService.swift",
-                        "    private func connectCaptureControlsSurface(").replace("private func", "func", 1)
-          + "}\n"
-          + declaration(selection, "private final class PassThroughHostingView<")
-              .replace("private final class", "final class", 1))
-
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):

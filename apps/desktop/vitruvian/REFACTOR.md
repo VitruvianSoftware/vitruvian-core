@@ -2177,6 +2177,35 @@ goes, which leaves 12.
   the load and the preview rebuild over AVFoundation stand-ins, and the
   test's environment against them. The suite itself runs on macOS CI.
 
+Landed (4b, the screenshot chooser's refresh): one more generated file
+goes, which leaves 11.
+
+- **`ScreenshotSelectionController.Environment`** (new) is what the chooser
+  reaches outside the app: the displays (`Display`: a `ScreenGeometry` and
+  the height of the system's chrome), the pointer, the preferences, the
+  capture engine's four calls, and `show`, which puts the panels on screen.
+  `live` is what the controller called before. A panel is built from a
+  `Display` rather than an `NSScreen`.
+- **Seams:** the panel and overlay view become package-visible. So do the
+  confirmations the views call, the repeat and full-screen captures the
+  keys call, and the state the checks read (the panels, the pointer, the
+  full-screen action and its hover, the island's height). The capture
+  service's forwarding of the island's geometry is a static that takes
+  whether the session is still current.
+- **Tests:** `ScreenshotSelectionRefreshContract` starts real choosers the
+  way the capture service does, over two scripted 100-point displays and
+  captures that wait for the check to answer them. Their panels are built
+  but never shown. Every check is kept, now on real panels and pictures.
+  The guide-refresh counter is replaced by what the refresh shows: a
+  selection in progress hides the full-screen action on both displays.
+  New: the action shows under the pointer before its hover is checked.
+- **Not covered:** the service's own test of which session is current
+  (two identity comparisons).
+- **Verification:** a Linux Swift 6.4 model type-checks the environment
+  and the test's desk against stand-ins. The suite itself runs on macOS
+  CI. The six `mutation_checks.py` mutations of this file still name
+  messages the suite prints.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
