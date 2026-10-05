@@ -189,10 +189,18 @@ package struct MediaWorkspaceView: View {
         Binding {
             selectedTool
         } set: { newValue in
-            guard newValue != selectedTool else { return }
-            onToolChange?()
-            selectedTool = newValue
+            Self.pick(newValue, current: selectedTool, onToolChange: onToolChange) { selectedTool = $0 }
         }
+    }
+
+    /// A change of tool lets the old content capture itself for the
+    /// transition before the controls are replaced; picking the tool already
+    /// chosen changes nothing.
+    package static func pick(_ tool: MediaTool, current: MediaTool, onToolChange: (() -> Void)?,
+                             select: (MediaTool) -> Void) {
+        guard tool != current else { return }
+        onToolChange?()
+        select(tool)
     }
 
     private var isRunning: Bool {
@@ -243,29 +251,12 @@ package struct MediaWorkspaceView: View {
     }
 
     private var layout: some View {
-        Group {
-            if let onContentHeightChange {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: compact ? 10 : 14) {
-                        header
-                        toolPicker
-                        content.padding(.trailing, 1)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                        onContentHeightChange($0)
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: compact ? 10 : 14) {
-                    header
-                    toolPicker
-                    ScrollView {
-                        content.padding(.trailing, 1)
-                    }
-                    .frame(maxHeight: compact ? 430 : .infinity)
-                }
-            }
+        MediaWorkspaceStack(compact: compact, onContentHeightChange: onContentHeightChange) {
+            header
+        } toolPicker: {
+            toolPicker
+        } content: {
+            content
         }
     }
 
@@ -309,13 +300,9 @@ package struct MediaWorkspaceView: View {
         }
     }
 
-    @ViewBuilder private var inputDropTarget: some View {
-        if inNotch {
+    private var inputDropTarget: some View {
+        MediaInputDropTarget(inNotch: inNotch, isDropTargeted: $isDropTargeted, acceptDrop: { acceptDrop($0) }) {
             inputSelector
-        } else {
-            inputSelector.onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                acceptDrop(providers)
-            }
         }
     }
 
@@ -1706,4 +1693,79 @@ package struct MediaWorkspaceView: View {
         formatter.minimum = 0
         return formatter
     }()
+}
+
+/// The workspace's header, tool picker and content. In the island it reports
+/// its content's natural height, so the island can fit it; on its own, the
+/// content scrolls under a fixed header and picker.
+package struct MediaWorkspaceStack<Header: View, ToolPicker: View, Content: View>: View {
+    private let compact: Bool
+    private let onContentHeightChange: ((CGFloat) -> Void)?
+    private let header: Header
+    private let toolPicker: ToolPicker
+    private let content: Content
+
+    package init(compact: Bool, onContentHeightChange: ((CGFloat) -> Void)?,
+                 @ViewBuilder header: () -> Header, @ViewBuilder toolPicker: () -> ToolPicker,
+                 @ViewBuilder content: () -> Content) {
+        self.compact = compact
+        self.onContentHeightChange = onContentHeightChange
+        self.header = header()
+        self.toolPicker = toolPicker()
+        self.content = content()
+    }
+
+    package var body: some View {
+        Group {
+            if let onContentHeightChange {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+                        header
+                        toolPicker
+                        content.padding(.trailing, 1)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                        onContentHeightChange($0)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+                    header
+                    toolPicker
+                    ScrollView {
+                        content.padding(.trailing, 1)
+                    }
+                    .frame(maxHeight: compact ? 430 : .infinity)
+                }
+            }
+        }
+    }
+}
+
+/// The input selector, which takes file drops itself only outside the island:
+/// in the island, its destination chooser takes them.
+package struct MediaInputDropTarget<Selector: View>: View {
+    private let inNotch: Bool
+    @Binding private var isDropTargeted: Bool
+    private let acceptDrop: ([NSItemProvider]) -> Bool
+    private let selector: Selector
+
+    package init(inNotch: Bool, isDropTargeted: Binding<Bool>, acceptDrop: @escaping ([NSItemProvider]) -> Bool,
+                 @ViewBuilder selector: () -> Selector) {
+        self.inNotch = inNotch
+        _isDropTargeted = isDropTargeted
+        self.acceptDrop = acceptDrop
+        self.selector = selector()
+    }
+
+    package var body: some View {
+        if inNotch {
+            selector
+        } else {
+            selector.onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                acceptDrop(providers)
+            }
+        }
+    }
 }

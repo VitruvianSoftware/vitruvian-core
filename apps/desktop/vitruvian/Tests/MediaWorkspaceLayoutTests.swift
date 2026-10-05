@@ -31,9 +31,28 @@ enum MediaWorkspaceLayoutTests {
         }
     }
 
-    class HeightState {
+    /// The island's media sizing, over the shelf contract's file tools.
+    final class FileView {
         let archives = ShelfDropRoutingContract.NotchFileToolsService()
         lazy var service = Presentation(archives)
+        func mediaHeightChanged(_ height: CGFloat, id: UUID) {
+            NotchFilesView.mediaHeightChanged(height, id: id, in: archives) { service.refreshPresentation() }
+        }
+    }
+
+    /// The production stack around a header, picker and content of known heights.
+    struct Workspace: View {
+        @ObservedObject var fixture: Fixture
+        let onContentHeightChange: ((CGFloat) -> Void)?
+        var body: some View {
+            MediaWorkspaceStack(compact: true, onContentHeightChange: onContentHeightChange) {
+                Color.clear.frame(height: 22)
+            } toolPicker: {
+                Color.clear.frame(height: 24)
+            } content: {
+                Color.clear.frame(height: fixture.height)
+            }
+        }
     }
 
     static func run(_ suite: TestSuite) {
@@ -73,17 +92,19 @@ enum MediaWorkspaceLayoutTests {
                "duplicate, invalid and stale measurements never restart the resize")
 
         let selection = Selection()
-        let picker = ToolPicker(fixture: selection, onToolChange: {
-            selection.events.append("transition:\(selection.tool.rawValue)")
-        })
+        func pick(_ tool: MediaTool) {
+            MediaWorkspaceView.pick(tool, current: selection.tool, onToolChange: {
+                selection.events.append("transition:\(selection.tool.rawValue)")
+            }) { selection.tool = $0 }
+        }
         for tool in [MediaTool.gifMaker, .textExtractor, .imageCompressor, .videoCompressor] {
             let previous = selection.tool
             selection.events = []
-            picker.selectedToolBinding.wrappedValue = tool
+            pick(tool)
             suite.expect(selection.events == ["transition:\(previous.rawValue)", "content:\(tool.rawValue)"],
                    "each tool change captures the old content for its transition before replacing the controls")
             selection.events = []
-            picker.selectedToolBinding.wrappedValue = tool
+            pick(tool)
             suite.expect(selection.events.isEmpty, "reselecting the current tool does not reset work or restart its animation")
         }
 
@@ -91,7 +112,10 @@ enum MediaWorkspaceLayoutTests {
             view.subviews.reduce(into: Set(view.registeredDraggedTypes)) { $0.formUnion(types(in: $1)) }
         }
         for embedded in [false, true] {
-            let input = NSHostingView(rootView: Input(inNotch: embedded))
+            let input = NSHostingView(rootView: MediaInputDropTarget(
+                inNotch: embedded, isDropTargeted: .constant(false), acceptDrop: { _ in false }) {
+                    Color.clear.frame(width: 300, height: 70)
+                })
             input.frame = CGRect(x: 0, y: 0, width: 300, height: 70)
             input.layoutSubtreeIfNeeded()
             _ = input.fittingSize
@@ -107,3 +131,5 @@ enum MediaWorkspaceLayoutTests {
         }
     }
 }
+
+extension ShelfDropRoutingContract.NotchFileToolsService: NotchMediaHeightTracking {}

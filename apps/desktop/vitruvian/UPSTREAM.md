@@ -1519,6 +1519,14 @@ is that notice. Add an entry for every change to upstream files.
   `UI/Settings/NotchAgentsSettings.swift` draw; `Tests/NotchSettingsChoiceTests.swift`
   measures them, and `Tests/generate_sources.py` no longer copies the rows or the
   card primitives.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/Media/MediaWorkspaceView.swift` draws its layout and drop target through
+  `MediaWorkspaceStack` and `MediaInputDropTarget` and picks tools through a
+  static `pick`, and `UI/Notch/NotchFilesView.swift` sizes the island through a
+  static `mediaHeightChanged` over `NotchMediaHeightTracking`
+  (`Services/Notch/NotchFileToolsService.swift`);
+  `Tests/MediaWorkspaceLayoutTests.swift` uses them, and
+  `Tests/generate_sources.py` no longer copies the view members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

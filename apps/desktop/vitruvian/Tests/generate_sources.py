@@ -535,7 +535,8 @@ def main():
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func openMediaDrop(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func updateMediaHeight(")
+          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func updateMediaHeight(",
+                        scope="final class NotchFileToolsService:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func hideMedia(")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
           + "}\nfinal class Notch: NotchState {\n"
@@ -561,27 +562,6 @@ def main():
           + declaration(canvas, "    override func draggingUpdated(").replace("override func", "func", 1)
           + declaration(canvas, "    override func draggingExited(").replace("override func", "func", 1)
           + declaration(canvas, "    override func performDragOperation(").replace("override func", "func", 1)
-          + "}\n}\n")
-    media_workspace = "Sources/Vitruvian/UI/Media/MediaWorkspaceView.swift"
-    write("MediaWorkspaceLayout.swift", "import AppKit\nimport SwiftUI\nimport UniformTypeIdentifiers\n"
-          + "extension MediaWorkspaceLayoutTests {\n"
-          + "struct Workspace: View {\nlet compact = true\n@ObservedObject var fixture: Fixture\n"
-          + "let onContentHeightChange: ((CGFloat) -> Void)?\n"
-          + "var header: some View { Color.clear.frame(height: 22) }\n"
-          + "var toolPicker: some View { Color.clear.frame(height: 24) }\n"
-          + "var content: some View { Color.clear.frame(height: fixture.height) }\n"
-          + "var body: some View { layout }\n"
-          + declaration(media_workspace, "    private var layout:")
-          + "}\nstruct Input: View {\nlet inNotch: Bool\n@State var isDropTargeted = false\n"
-          + "var inputSelector: some View { Color.clear.frame(width: 300, height: 70) }\n"
-          + "func acceptDrop(_ providers: [NSItemProvider]) -> Bool { false }\n"
-          + "var body: some View { inputDropTarget }\n"
-          + declaration(media_workspace, "    @ViewBuilder private var inputDropTarget:")
-          + "}\nstruct ToolPicker {\nlet fixture: Selection\nlet onToolChange: (() -> Void)?\n"
-          + "var selectedTool: MediaTool { get { fixture.tool } nonmutating set { fixture.tool = newValue } }\n"
-          + declaration(media_workspace, "    private var selectedToolBinding:").replace("private var", "var", 1)
-          + "}\nfinal class FileView: HeightState {\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchFilesView.swift", "    private func mediaHeightChanged(").replace("private func", "func", 1)
           + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"

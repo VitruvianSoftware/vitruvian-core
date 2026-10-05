@@ -118,12 +118,17 @@ package struct NotchFilesView: View {
     }
 
     private func mediaHeightChanged(_ height: CGFloat, id: UUID) {
+        Self.mediaHeightChanged(height, id: id, in: archives) { service.refreshPresentation() }
+    }
+
+    package static func mediaHeightChanged(_ height: CGFloat, id: UUID, in archives: some NotchMediaHeightTracking,
+                                           refresh: () -> Void) {
         let previous = archives.mediaContentHeight
         archives.updateMediaHeight(id: id, height: height)
         // Start the native resize in the same layout callback. Waiting for a
         // second SwiftUI update leaves the new controls inside the old frame,
         // and an unrelated preference refresh can settle it without animation.
-        if archives.mediaContentHeight != previous { service.refreshPresentation() }
+        if archives.mediaContentHeight != previous { refresh() }
     }
 
     private func dropDestination(_ title: String, symbol: String, selected: Bool, available: Bool = true) -> some View {

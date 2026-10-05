@@ -1166,6 +1166,27 @@ which leaves 51.
   instead of copies of the card primitives and of the page fragments.
 - **Verification:** SwiftUI, so macOS CI only.
 
+Landed (4b, the media workspace's layout): one more generated file goes, which
+leaves 50.
+
+- **Extracted, in `MediaWorkspaceView.swift`:**
+  - `MediaWorkspaceStack` stacks the header, tool picker and content, and
+    reports the content's natural height in the island;
+  - `MediaInputDropTarget` takes file drops only outside the island;
+  - the static `pick(_:current:onToolChange:select:)` is the tool picker's
+    change rule.
+- **Extracted, in `NotchFilesView.swift`:** the static
+  `mediaHeightChanged(_:id:in:refresh:)` resizes the island over
+  `NotchMediaHeightTracking`, which `NotchFileToolsService` adopts.
+- **Test:** the test lays out the real stack and drop target, and drives the
+  real height and tool rules, instead of copies of four private members. Its
+  file tools are still the shelf routing contract's, which adopts the new
+  protocol in the test.
+- **Generator:** the shelf routing copy now scopes `updateMediaHeight` to the
+  service class, since the protocol declares it too.
+- **Verification:** a Linux Swift 6 model runs the height and tool rules with
+  these fixtures. The views rely on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
