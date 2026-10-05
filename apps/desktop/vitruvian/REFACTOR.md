@@ -3063,6 +3063,30 @@ Landed (5x, the notice queue): `NotchNoticeQueue`
   could stay open. The island suites (hover, destinations) still drive the
   same rules through a real island.
 
+Landed (5l, the capture-controls host): `NotchCaptureControlsState`
+(`Services/Notch/NotchCaptureControlsState.swift`) holds the capture
+controls the island hosts:
+- the options they edit;
+- whether they wait compact around the camera;
+- whether a selection is being dragged;
+- how to cancel.
+
+- **What moved:** the rules the island applied by hand:
+  - which clicks the controls take (compact ones only over their hover
+    area, none during a selection);
+  - when open controls may close;
+  - what the pointer's comings and goings do: keep them open, close them
+    soon or later, open them after the hover delay, or cancel that
+    opening.
+- **What stayed:** `NotchService` keeps the window, the movement watch, the
+  timers and the hover, and applies the response it is given. It publishes
+  the state and reads `captureControls`, `captureControlsCollapsed` and
+  `captureSelectionInProgress` from it.
+- **Tested directly:** `NotchCaptureControlsStateTests` checks each rule on
+  the value, including that a selection in progress never asks where the
+  pointer is. `NotchCaptureControlsTests` still drives the controls through a
+  real island.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

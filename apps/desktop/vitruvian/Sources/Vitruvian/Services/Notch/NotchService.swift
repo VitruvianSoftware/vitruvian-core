@@ -249,9 +249,11 @@ package final class NotchService: ObservableObject {
         fileDrop.targetsMedia
     }
     @Published package private(set) var selectedMetric: MetricDetailKind?
-    @Published package private(set) var captureControls: ScreenCaptureSelectionOptions?
-    @Published package private(set) var captureControlsCollapsed = false
-    @Published package private(set) var captureSelectionInProgress = false
+    /// The capture controls the island hosts (`NotchCaptureControlsState`).
+    @Published package private(set) var captureState = NotchCaptureControlsState()
+    package var captureControls: ScreenCaptureSelectionOptions? { captureState.options }
+    package var captureControlsCollapsed: Bool { captureState.collapsed }
+    package var captureSelectionInProgress: Bool { captureState.selectionInProgress }
     @Published package var pinned = false
     @Published package private(set) var selected: NotchModule = .controls
     @Published package private(set) var showingAppPanel = false
@@ -296,7 +298,6 @@ package final class NotchService: ObservableObject {
 
     private var windowHost: (any NotchIslandHost)?
     private var panel: NotchPanel? { windowHost?.panel }
-    private var captureControlsCancel: (() -> Void)?
     private var captureControlsSubscription: AnyCancellable?
     private var captureControlsWork: DispatchWorkItem?
     private var heldDrag = false
@@ -1331,7 +1332,7 @@ package final class NotchService: ObservableObject {
         services.stopTimer()
         services.stopAccessories()
         services.stopWatch()
-        let cancelCapture = captureControlsCancel
+        let cancelCapture = captureState.cancel
         endCaptureControls()
         cancelCapture?()
         let fallback = restoreCapture ? captureFallback : captureClose
@@ -1976,12 +1977,9 @@ package final class NotchService: ObservableObject {
         guard acceptsSystemFeedback else { cancel(); return }
         let closeCapture = detachCaptureIfClosingOnCollapse()
         pinned = false
-        captureControlsCancel = cancel
-        captureControls = options
         // The controls wait compact around the camera, clear of what is being
         // captured, and open while the pointer rests on them.
-        captureControlsCollapsed = true
-        captureSelectionInProgress = false
+        captureState.begin(options, cancel: cancel)
         options.onSelectionProgressChange = { [weak self, weak options] active in
             guard let self, let options, self.captureControls === options else { return }
             self.setCaptureSelectionInProgress(active)
@@ -2018,16 +2016,16 @@ package final class NotchService: ObservableObject {
         hoverWork?.cancel(); hoverWork = nil
         hoverState.close(pointerInside: windowHost?.containsHover(pointer()) == true)
         captureControls?.hasFocusedControl = false
-        captureControlsCollapsed = true
+        captureState.collapse()
         refreshPresentation(animated: !captureSelectionInProgress)
         updateCaptureControlsClickThrough()
     }
 
     package func expandCaptureControls() {
-        guard captureControls != nil, !captureSelectionInProgress else { return }
+        guard captureState.canExpand else { return }
         hoverWork?.cancel(); hoverWork = nil
         hoverState.open()
-        captureControlsCollapsed = false
+        captureState.expand()
         refreshPresentation()
         windowHost?.takeKeyboard()
         updateCaptureControlsClickThrough()
@@ -2035,7 +2033,7 @@ package final class NotchService: ObservableObject {
 
     private func setCaptureSelectionInProgress(_ active: Bool) {
         guard captureControls != nil else { return }
-        captureSelectionInProgress = active
+        captureState.setSelectionInProgress(active)
         if active { collapseCaptureControls() }
         else {
             refreshPresentation()
@@ -2048,15 +2046,15 @@ package final class NotchService: ObservableObject {
     /// control to take focus, which then keeps them open.
     package func scheduleCaptureControlsCollapse(after delay: TimeInterval = 3) {
         captureControlsWork?.cancel(); captureControlsWork = nil
-        guard let options = captureControls, !captureControlsCollapsed, !captureSelectionInProgress,
-              !options.hasFocusedControl, !inside else { return }
+        guard let options = captureControls,
+              captureState.mayCollapse(focused: options.hasFocusedControl, pointerInside: inside) else { return }
         let work = DispatchWorkItem { [weak self, weak options] in
             guard let self, let options, self.captureControls === options else { return }
             self.captureControlsWork = nil
-            guard !self.captureControlsCollapsed, !self.captureSelectionInProgress,
-                  !options.hasFocusedControl, !self.trackingMenu,
-                  self.panel?.attachedSheet == nil,
-                  self.windowHost?.containsHover(self.pointer()) != true else { return }
+            guard !self.trackingMenu, self.panel?.attachedSheet == nil,
+                  self.captureState.mayCollapse(focused: options.hasFocusedControl,
+                                                pointerInside: self.windowHost?.containsHover(self.pointer()) == true)
+            else { return }
             self.collapseCaptureControls()
         }
         captureControlsWork = work
@@ -2064,21 +2062,18 @@ package final class NotchService: ObservableObject {
     }
 
     private func updateCaptureControlsHover(wasInside: Bool) {
-        guard let options = captureControls, !captureSelectionInProgress else { return }
-        if !captureControlsCollapsed {
-            if inside {
-                captureControlsWork?.cancel(); captureControlsWork = nil
-            } else if wasInside {
-                // Leaving closes them, as it closes an island opened by hover.
-                scheduleCaptureControlsCollapse(after: NotchQuickAccessLayout.hoverExitDelay)
-            } else if captureControlsWork == nil {
-                scheduleCaptureControlsCollapse()
-            }
-            return
+        guard let options = captureControls else { return }
+        switch captureState.hoverResponse(inside: inside, wasInside: wasInside,
+                                          closingPending: captureControlsWork != nil,
+                                          openingPending: hoverWork.map { !$0.isCancelled } == true,
+                                          suppressed: hoverState.suppressed) {
+        case .none: return
+        case .keepOpen: captureControlsWork?.cancel(); captureControlsWork = nil; return
+        case .closeSoon: scheduleCaptureControlsCollapse(after: NotchQuickAccessLayout.hoverExitDelay); return
+        case .closeLater: scheduleCaptureControlsCollapse(); return
+        case .cancelOpening: hoverWork?.cancel(); hoverWork = nil; return
+        case .openSoon: hoverWork?.cancel(); hoverWork = nil
         }
-        if inside == wasInside, let hoverWork, !hoverWork.isCancelled { return }
-        hoverWork?.cancel(); hoverWork = nil
-        guard inside, !hoverState.suppressed else { return }
         let work = DispatchWorkItem { [weak self, weak options] in
             guard let self, let options, self.captureControls === options else { return }
             self.hoverWork = nil
@@ -2100,8 +2095,8 @@ package final class NotchService: ObservableObject {
         let point = pointer()
         // A collapsing animation still reserves the old window frame. Only
         // the compact target should own clicks while that space is released.
-        let overControls = !captureSelectionInProgress && windowHost?.contains(point) == true
-            && (!captureControlsCollapsed || windowHost?.containsHover(point) == true)
+        let overControls = captureState.takesMouse(overWindow: windowHost?.contains(point) == true,
+                                                   overHoverArea: windowHost?.containsHover(point) == true)
         windowHost?.setMouseEventsIgnored(!overControls)
         // While the panel catches the mouse it is the window under the pointer
         // across its whole frame, transparent parts included, so it must be the
@@ -2143,11 +2138,8 @@ package final class NotchService: ObservableObject {
         hoverWork?.cancel(); hoverWork = nil
         captureControls?.onSelectionProgressChange = nil
         geometry.compactSideRoom = nil
-        captureControls = nil
-        captureControlsCollapsed = false
-        captureSelectionInProgress = false
+        captureState.end()
         captureControlsSubscription = nil
-        captureControlsCancel = nil
         removeCaptureControlsClickThrough()
         panel?.level = NotchPanel.normalLevel
         panel?.acceptsKeyFocus = false
@@ -2156,7 +2148,7 @@ package final class NotchService: ObservableObject {
         syncVisibleConsumers()
     }
 
-    package func cancelCaptureControls() { captureControlsCancel?() }
+    package func cancelCaptureControls() { captureState.cancel?() }
 
     package func openSettings() {
         collapse()
@@ -2768,7 +2760,7 @@ package final class NotchService: ObservableObject {
     /// in use elsewhere, so a capture preview moves to its own window, and a
     /// finished timer waits to ring until the island can be dismissed again.
     private func withdrawFromMissingScreen() {
-        let cancelCapture = captureControlsCancel
+        let cancelCapture = captureState.cancel
         endCaptureControls()
         cancelCapture?()
         let fallback = captureFallback
@@ -2914,7 +2906,7 @@ package final class NotchService: ObservableObject {
             if session.canPresent {
                 syncWithPreferences()
             } else {
-                let cancel = captureControlsCancel
+                let cancel = self.captureState.cancel
                 endCaptureControls()
                 cancel?()
                 captureClose?()

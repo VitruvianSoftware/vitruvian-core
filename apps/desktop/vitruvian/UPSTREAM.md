@@ -1967,6 +1967,12 @@ is that notice. Add an entry for every change to upstream files.
     `NotchNoticeQueue` (`Services/Notch/NotchNoticeQueue.swift`), which decides
     which notice may show and how it arrives and leaves.
   - `Tests/NotchTests.swift` runs the new `Tests/NotchNoticeQueueTests.swift`.
+- **2026-10-05**: Refactor step 5l (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` keeps its capture controls in the new
+    `NotchCaptureControlsState` (`Services/Notch/NotchCaptureControlsState.swift`),
+    which decides the clicks they take and what the pointer does to them.
+  - `Tests/NotchTests.swift` runs the new
+    `Tests/NotchCaptureControlsStateTests.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

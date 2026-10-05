@@ -951,6 +951,7 @@ enum NotchTests {
         NotchPanelTests.run { suite.expect($0, $1) }
         NotchHoverTests.run(suite)
         NotchNoticeQueueTests.run(suite)
+        NotchCaptureControlsStateTests.run(suite)
         NotchScreenEdgeClickTests.run(suite)
         NotchPresentationRefreshContract.run(suite)
         NotchScreenRefreshContract.run(suite)
