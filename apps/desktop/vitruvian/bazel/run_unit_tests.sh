@@ -2,23 +2,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 VitruvianSoftware
 
-# Bazel test wrapper for the unit-test binaries (the runner's own and Swift Testing's), mirroring
-# `build.sh --test`:
+# Bazel test wrapper for the unit tests, which Swift Testing runs
+# (Tests/SwiftTesting/UnitTests.swift):
 #   1. run the binary from the app root, because the tests open repository
 #      files (sources, Resources/, build.sh) by app-relative paths;
 #   2. on a full run, run Tests/PreferenceCleanupTests.sh;
-#   3. always sweep the throwaway UserDefaults suites the tests created.
+#   3. always sweep the throwaway UserDefaults suites the tests created;
+#   4. end the log with TESTS OK or TESTS FAILED, which mutation_checks.py
+#      reads.
 #
 # The suites live in the account's real ~/Library/Preferences: cfprefsd writes
 # them there whatever $HOME says, and Bazel points $HOME at TEST_TMPDIR. So the
 # sweep resolves the home directory from the account, and the target is tagged
 # no-sandbox because the sandbox would refuse those removals.
 #
-# Extra arguments pass through to the binary (e.g. --suite=notch, --list):
+# --suite=<name> runs one suite (repeat it for several; the names are in
+# Tests/TestGroups.swift):
 #   bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests \
 #     --test_arg=--suite=notch
 #
-# usage: run_unit_tests.sh <test binary> <app dir> [binary args...]
+# usage: run_unit_tests.sh <test binary> <app dir> [--suite=<name>...]
 set -euo pipefail
 
 app_dir="$2"
@@ -28,12 +31,25 @@ app_dir="$2"
 # Resources/Info.plist (test data), which CFBundle reads as an old-style bundle:
 # the "bare harness" would then report the app's version, so AppInfo.isBeta and
 # everything keyed off it would follow the shipped Info.plist instead of the
-# "dev" fallback the tests expect. The copy is named like build.sh's binary, so
-# its own preferences domain is the one the sweep below removes.
+# "dev" fallback the tests expect. The copy keeps the name the sweep below
+# knows, so its own preferences domain goes too.
 mkdir -p "$TEST_TMPDIR/bin"
 binary="$TEST_TMPDIR/bin/metrics-tests"
 cp "$PWD/$1" "$binary"
 shift 2
+
+# The suites to run, for UnitTests to read (TestGroups.selected).
+selection=""
+for argument in "$@"; do
+	case "$argument" in
+	--suite=?*) selection="${selection:+$selection,}${argument#--suite=}" ;;
+	*)
+		echo "Unknown test selection: $argument" >&2
+		exit 2
+		;;
+	esac
+done
+export VITRUVIAN_TEST_SUITES="$selection"
 
 real_home="$(eval echo "~$(id -un)")"
 
@@ -53,8 +69,13 @@ if [[ -x "$backtracer" ]]; then
 fi
 
 status=0
-"$binary" "$@" || status=$?
-if [[ $# -eq 0 ]]; then
+"$binary" || status=$?
+if [[ $status -eq 0 ]]; then
+	echo "TESTS OK"
+else
+	echo "TESTS FAILED: the failed checks are listed under their suites above"
+fi
+if [[ -z "$selection" ]]; then
 	/bin/zsh Tests/PreferenceCleanupTests.sh || status=1
 fi
 discard_test_preferences || status=1

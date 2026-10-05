@@ -3,10 +3,11 @@
 
 # Vitruvian refactor plan
 
-Status: **in progress**. Each step is one PR that builds and tests green on the
-`vitruvian-desktop-macos` unit before the next starts. Steps are ordered so that
-each one makes the next safer: the compiler takes over checks that are done by
-hand today, and only then does the code get moved around.
+Status: **done**: steps 1 to 7 have landed, and each says what it leaves on
+purpose. Each slice was a PR that built and tested green on the
+`vitruvian-desktop-macos` unit before the next started. Steps are ordered so that
+each one makes the next safer: the compiler takes over checks that were done by
+hand, and only then does the code get moved around.
 
 The gaps come from the architecture review of the imported code:
 
@@ -5004,7 +5005,7 @@ What step 6 leaves, on purpose:
 - **Concurrency:** every Swift target builds in the Swift 6 language mode
   (6zzn), so there is nothing left to turn on.
 
-## Step 7: test-suite hygiene
+## Step 7: test-suite hygiene (done)
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
   caught.
@@ -5143,6 +5144,34 @@ Swift Testing as well as through the binary's own runner.
   suites and would clear each other's.
 - **Left:** `unit_tests` stays until this target has run green beside it.
   Then the binary's runner goes, and Swift Testing is the only one.
+
+Landed (7g, Swift Testing runs the tests): step 7 is done. `unit_tests`
+runs under Swift Testing alone, and the binary's own runner is gone.
+
+- **The runner:** `Tests/MetricsTests.swift` and `TestSuite.finish()` are
+  deleted. `unit_tests_bin` is the `swift_test` from 7f, and `unit_tests`
+  runs it through the same wrapper as before. The second target, and its
+  `exclusive` tag, go.
+- **Kept from the old runner:**
+  - each suite prints its line (`notch: OK (75073 checks, 49.03s)`) and its
+    failed checks, and a suite that checks nothing fails;
+  - `--suite=<name>` still selects suites. The wrapper passes them in
+    `VITRUVIAN_TEST_SUITES`, and an unknown name fails its case;
+  - the log still ends in `TESTS OK` or `TESTS FAILED`, so
+    `mutation_checks.py` runs unchanged.
+- **Dropped:** `--list`. The names are in `Tests/TestGroups.swift`.
+- **Registration is checked:** `TestRegistrationTests` follows the runs from
+  `TestGroups` through every contract and fails on a contract that nothing
+  runs. It used to compile and never run.
+- **`build.sh --test`** compiled the tests and a few sources as one module.
+  It has not worked since the tests import the app's modules (step 3.2e),
+  and it is left as upstream wrote it.
+
+What step 7 leaves: 133 reads of source files as text, counted in
+`Tests/source_pins.txt` (7e). They pin code that has not moved: SwiftUI view
+structure, live wiring to the system, and resources and build files. Each
+converts when its code moves behind a seam, and the ledger only lets the
+count fall.
 
 ## Not in scope
 

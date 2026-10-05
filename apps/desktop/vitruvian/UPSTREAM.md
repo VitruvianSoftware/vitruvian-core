@@ -2146,6 +2146,15 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/CommandBarFeatureTests.swift` and
     `Tests/WindowLayoutFeatureTests.swift` look for the `Preferences` name
     in those views.
+- **2026-10-05**: Refactor step 7g (`REFACTOR.md`): Swift Testing runs the
+  unit tests.
+  - `Tests/MetricsTests.swift`, the `@main` runner, is deleted. Its suites
+    run from `Tests/TestGroups.swift` through
+    `Tests/SwiftTesting/UnitTests.swift`.
+  - `Tests/TestSuite.swift` drops `finish()`, which only that runner
+    called.
+  - `build.sh --test` still names `Tests/*.swift`. It has not built since
+    the tests import the app's modules, and is unchanged.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -7,8 +7,8 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Every independently selectable suite, in run order, for both runners: the
-/// binary's own (`MetricsTests`) and Swift Testing's (`Tests/SwiftTesting`).
+/// Every independently selectable suite, in run order. Swift Testing runs
+/// each as one case (`Tests/SwiftTesting/UnitTests.swift`).
 enum TestGroups {
     /// The suites' names, spelled out so Swift Testing can list them before
     /// anything runs. `TestHarnessTests` checks they match `all(_:)`.
@@ -58,6 +58,14 @@ enum TestGroups {
         "wallpaper",
         "emoji",
     ]
+
+    /// The suites a run asks for, or all of them. `bazel/run_unit_tests.sh`
+    /// turns each `--suite=` into a name in `VITRUVIAN_TEST_SUITES`.
+    nonisolated static var selected: [String] {
+        let asked = ProcessInfo.processInfo.environment["VITRUVIAN_TEST_SUITES"]?
+            .split(separator: ",").map(String.init) ?? []
+        return asked.isEmpty ? names : asked
+    }
 
     static func all(_ suite: TestSuite) -> [(String, () -> Void)] {
         [
@@ -118,6 +126,7 @@ enum TestGroups {
                 RepositoryFeatureTests.run(suite)
                 SourcePinLedgerContract.run(suite)
                 TestDoubleNameContract.run(suite)
+                TestRegistrationContract.run(suite)
             }),
             ("screenshots", {
                 ScreenshotPreviewHoverTests.run(suite)

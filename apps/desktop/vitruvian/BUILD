@@ -6,7 +6,7 @@
 #
 #   :Vitruvian            the .app: app binary, privileged fan helper, Now Playing
 #                         adapter dylib, launchd plist, icons and resources
-#   :unit_tests           upstream's unit-test binary (`build.sh --test`)
+#   :unit_tests           the unit tests, which Swift Testing runs
 #   :selftest             the assembled app's `--selftest` health check
 #   :fan_helper_selftest  the fan helper's own `--selftest`
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
@@ -393,22 +393,24 @@ genrule(
     tools = [":sync_sources"],
 )
 
-# Upstream's test binary: the listed production sources, Tests/*.swift and the
-# generated extractions compiled as one module with its own @main runner.
-# Listed sources that now live in a module come from that module instead; today
-# that is all of them, so the first glob is empty until upstream lists a file
-# outside the modules again.
-swift_binary(
+# The unit tests: the listed production sources, Tests/*.swift and the
+# generated localization registry, compiled as one module that Swift Testing
+# runs (REFACTOR.md step 7). Each suite in Tests/TestGroups.swift is one case,
+# run on the main actor. Listed sources that now live in a module come from
+# that module instead; today that is all of them, so the first glob is empty
+# until upstream lists a file outside the modules again.
+#
+# Swift 6 language mode since REFACTOR.md step 6zzm. Every suite runs on the
+# main thread, so the module defaults to the main actor; what runs on a queue
+# or thread says `nonisolated`.
+swift_test(
     name = "unit_tests_bin",
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         TEST_PRODUCTION_SOURCES,
         allow_empty = True,
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
-    ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
-    # Swift 6 language mode since REFACTOR.md step 6zzm. The runner runs every
-    # suite on the main thread, so the module defaults to the main actor; what
-    # runs on a queue or thread says `nonisolated`.
+    ) + glob(["Tests/*.swift"]) + glob(["Tests/SwiftTesting/*.swift"]) + [":generated_test_sources"],
     copts = [
         "-default-isolation",
         "MainActor",
@@ -448,70 +450,6 @@ sh_test(
     # The tests' UserDefaults suites land in the real ~/Library/Preferences;
     # the sandbox would block sweeping them afterwards.
     tags = [
-        "manual",
-        "no-remote",
-        "no-sandbox",
-    ],
-    target_compatible_with = MACOS_ONLY,
-)
-
-# The same suites through Swift Testing (REFACTOR.md step 7f): each group
-# `TestGroups` lists is one serialized case on the main actor, with every
-# failed check recorded as an issue. The binary's own runner (`MetricsTests`,
-# with `@main`) stays out, so `unit_tests` keeps running beside it until this
-# target has proven it runs everything the same way.
-swift_test(
-    name = "unit_tests_swift_testing_bin",
-    package_name = SWIFT_PACKAGE,
-    srcs = glob(
-        TEST_PRODUCTION_SOURCES,
-        allow_empty = True,
-        exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
-    ) + glob(
-        ["Tests/*.swift"],
-        exclude = ["Tests/MetricsTests.swift"],
-    ) + glob(["Tests/SwiftTesting/*.swift"]) + [":generated_test_sources"],
-    copts = [
-        "-default-isolation",
-        "MainActor",
-    ],
-    features = ["swift.enable_v6"],
-    module_name = "VitruvianSwiftTests",
-    tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
-    deps = [
-        ":FanControlKit",
-        ":VMStatisticsCompat",
-        ":VitruvianCore",
-        ":VitruvianDesign",
-        ":VitruvianNowPlayingLib",
-        ":VitruvianServices",
-        ":VitruvianUI",
-    ],
-)
-
-# Run through the same wrapper as unit_tests, for the same working directory,
-# bare bundle and preference sweep. Exclusive, because both runners use the
-# same throwaway UserDefaults suites and would clear each other's.
-sh_test(
-    name = "unit_tests_swift_testing",
-    size = "large",
-    srcs = ["bazel/run_unit_tests.sh"],
-    args = [
-        "$(rootpath :unit_tests_swift_testing_bin)",
-        package_name(),
-    ],
-    data = [
-        "build.sh",
-        ":unit_tests_swift_testing_bin",
-    ] + glob([
-        "Resources/**",
-        "Sources/**",
-        "Tests/**",
-        "Tools/**",
-    ]),
-    tags = [
-        "exclusive",
         "manual",
         "no-remote",
         "no-sandbox",
@@ -585,7 +523,6 @@ pipeline_unit(
         ":selftest",
         ":sources_in_sync_test",
         ":unit_tests",
-        ":unit_tests_swift_testing",
     ],
     tier = "L1",
     timeout_minutes = 60,
