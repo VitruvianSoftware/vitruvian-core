@@ -977,6 +977,15 @@ goes, which leaves 63.
   - a click on the island opens the picker over it, even while another
     window is key.
 
+Landed (4b, the recorder's export chip): one more generated file goes,
+which leaves 62.
+
+- **Extracted:** `RecorderExportProgressChip` (new, `UI/Recorder`) is the
+  chip. `RecorderEditorView` passes it the phase, progress, label, cancel
+  title and action.
+- **Test:** the layout test renders the real view instead of a copy of its
+  body.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -690,12 +690,6 @@ def main():
           + "}\nfinal class FileView: HeightState {\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchFilesView.swift", "    private func mediaHeightChanged(").replace("private func", "func", 1)
           + "}\n}\n")
-    write("RecorderExportChip.swift", "import AppKit\nimport SwiftUI\n\nextension RecorderExportChipTests {\n"
-          + "struct Chip: View {\n@ObservedObject var model: Model\nlet strings = Strings()\n"
-          + "var exportProgressLabel: String { strings.exportingLabel }\n"
-          + "var body: some View { exportProgressChip }\n"
-          + declaration("Sources/Vitruvian/UI/Recorder/RecorderEditorView.swift", "    private var exportProgressChip:")
-          + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"
     write("SwitcherScroll.swift", "import AppKit\nimport SwiftUI\n"
