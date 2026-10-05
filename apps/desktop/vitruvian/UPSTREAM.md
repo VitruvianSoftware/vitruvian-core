@@ -1377,6 +1377,39 @@ is that notice. Add an entry for every change to upstream files.
   which `Tests/KeepAwakeTimerHandoffTests.swift` calls; `Tests/generate_sources.py`
   no longer copies `continueAutomaticallyAfterTimerIfNeeded`, and
   `Tests/mutation_checks.py` targets the static's guard.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): `Tests/generate_sources.py`
+  no longer copies nine data types the production modules export
+  (`DisplayControlFailure`, `CommandBarService.Mode`, `JunkCleaner.Phase`,
+  `UpdateService.State`, the quick preview's `Action`, `NotchMediaSession` and
+  `SpaceWindowBridge.Topology` three times). The generated tests alias the
+  module's types instead.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the Dock preview's
+  desktop-change observation moves from `Services/DockPreview/DockPreviewService.swift`
+  into the new `Services/DockPreview/DockPreviewSpaceObservation.swift`, which
+  `Tests/DockPreviewScopeTests.swift` drives directly; `Tests/generate_sources.py`
+  no longer copies the observation methods.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Cleaner/JunkCleaner.swift` reads its home folder, screenshot
+  folders and Launch Services lookup from an injected `Places`, and runs its
+  category scans and queues through an injected `Scanning`; `scan(attended:)`
+  loops over the categories in the same order. `Tests/CleanerEligibilityTests.swift`
+  and `Tests/CleanerScanFlowTests.swift` call the module, and
+  `Tests/generate_sources.py` no longer copies the cleaner.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/CommandBar/CommandBarCatalog.swift` routes the bar's brightness
+  command through an injected `BrightnessRoute`, which
+  `Tests/CommandBarFeatureTests.swift` passes; `Tests/generate_sources.py` no
+  longer copies `applyBrightness`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/DockPreview/DockPreviewFrameRestoration.swift` checks and
+  restores a window through an injected `RestoreHost`, which
+  `Tests/DockPreviewFrameRestorationTests.swift` passes; `Tests/generate_sources.py`
+  no longer copies `restore`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/KeyboardDebounce/KeyboardDebounceService.swift` decides a key
+  event in `suppresses(_:event:state:config:)`, which
+  `Tests/KeyboardDebounceTapTests.swift` calls; `Tests/generate_sources.py` no
+  longer copies the tap handler.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -10,20 +10,11 @@ import VitruvianServices
 import VitruvianUI
 
 enum KeyboardDebounceTapTests {
-    // The tap handler is extracted from production on every test build. Only
-    // the state it reads is supplied here; no event tap is installed.
-    final class Service {
-        let eventLock = NSLock()
-        let lifecycleLock = NSLock()
-        var shouldStopTapThread = false
-        var tap: CFMachPort?
-        var state = KeyboardDebounceState()
-        var config = KeyboardDebounceConfig(enabled: true, globalWindowMs: 50, keyWindows: [:])
-        func syncWithPreferences() {}
-    }
-
+    // The module's tap rule, with the state it reads supplied here; no event
+    // tap is installed.
     static func run(_ suite: TestSuite) {
-        let service = Service()
+        var state = KeyboardDebounceState()
+        let config = KeyboardDebounceConfig(enabled: true, globalWindowMs: 50, keyWindows: [:])
         let timebase = EventTimestamp.machTimebase
         func ticks(milliseconds: UInt64) -> UInt64 {
             milliseconds * 1_000_000 * timebase.denom / timebase.numer
@@ -39,7 +30,7 @@ enum KeyboardDebounceTapTests {
         }
         func passes(_ event: CGEvent?) -> Bool {
             guard let event else { return false }
-            return service.handle(type: event.type, event: event) != nil
+            return !KeyboardDebounceService.suppresses(event.type, event: event, state: &state, config: config)
         }
 
         let hardwareKeyDown = key(down: true, at: pressed)

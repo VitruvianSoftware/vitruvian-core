@@ -122,7 +122,7 @@ def main():
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("DisplayRestoration.swift", "import CoreGraphics\nimport Foundation\n"
           + "extension DisplayRestorationTests {\nfinal class BrightnessService: Fixture {\n"
-          + declaration(brightness, "    enum DisplayControlFailure:")
+          + "typealias DisplayControlFailure = VitruvianServices.BrightnessService.DisplayControlFailure\n"
           + "".join(declaration(brightness, prefix).replace("private ", "", 1) for prefix in [
               "    private static func configureDisplay(", "    private func restoreDisplay(",
               "    private func syncLidObserver(", "    private func restoreDeferredDisplays(",
@@ -225,11 +225,6 @@ def main():
           + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
-    write("CommandBarBrightness.swift", "import AppKit\n"
-          + "extension CommandBarFeatureTests.BrightnessHost {\n"
-          + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-                        "    private static func applyBrightness(").replace("private static", "static", 1)
-          + "}\n")
     write("CommandBarEmojiBodies.swift", "import Foundation\n"
           + "extension CommandBarEmojiContract.Catalog {\n"
           + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
@@ -242,7 +237,7 @@ def main():
     write("UninstallerFlow.swift", "import AppKit\nimport Carbon.HIToolbox\nimport Combine\n"
           + "extension UninstallerFlowTests {\n"
           + declaration(uninstall, "    enum Phase:")
-          + declaration(bar, "    enum Mode:")
+          + "typealias Mode = VitruvianServices.CommandBarService.Mode\n"
           + "final class Uninstaller: UninstallerState {\nstatic let shared = Uninstaller()\n"
           + "".join(declaration(uninstall, prefix) for prefix in [
               "    var isRemoving: Bool", "    func select(appURL:",
@@ -257,15 +252,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    write("DockPreviewFrameRetry.swift", "import Foundation\nextension DockPreviewFrameRestorationTests {\n"
-          + declaration("Sources/Vitruvian/Services/DockPreview/DockPreviewFrameRestoration.swift",
-                        "    private static func restore(").replace("private static func", "static func", 1)
-          + "}\n")
-    write("DockPreviewScope.swift", "import Foundation\nextension DockPreviewScopeTests.Service {\n"
-          + "".join(declaration(dock, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func syncSpaceObservation()",
-                                   "    private func stopSpaceObservation()"])
-          + "}\n")
     write("DockAutohideInput.swift", "import CoreGraphics\nimport Foundation\nextension DockAutohideHoldTests.Service {\n"
           + "".join(declaration(dock, prefix, scope="final class DockPreviewService:")
                     .replace("private func", "func", 1)
@@ -285,11 +271,6 @@ def main():
     write("LinearScrollTap.swift", "import CoreGraphics\nimport Foundation\nextension LinearScrollTapTests.Inverter {\n"
           + wheel_tap.replace("private func", "func", 1)
                      .replace("AppFeature.linearScroll.isAvailable", "AppFeature.linearScroll.isAvailable(in: defaults)")
-          + "}\n")
-    write("KeyboardDebounceTap.swift", "import ApplicationServices\nimport CoreGraphics\nimport Foundation\n"
-          + "extension KeyboardDebounceTapTests.Service {\n"
-          + declaration("Sources/Vitruvian/Services/KeyboardDebounce/KeyboardDebounceService.swift",
-                        "    private func handle(type:").replace("private func", "func", 1)
           + "}\n")
     # Entire input/mute services retain their production control flow. Only
     # visibility, scheduling, defaults and HAL transport are replaced by fixtures.
@@ -343,25 +324,6 @@ def main():
               "    private func applyQueuedOutputSteps(",
               "    private func isCurrentOutputAdjustment(", "    private var hasCurrentOutputAdjustment:",
               "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
-          + "}\n}\n")
-    cleaner = "Sources/Vitruvian/Services/Cleaner/JunkCleaner.swift"
-    write("CleanerEligibilityBodies.swift", "import Foundation\nextension CleanerEligibilityTests {\n"
-          + "".join(declaration(cleaner, "    private static func " + name)
-                    .replace("private static func", "static func", 1)
-                    for name in ["appendLeftovers(", "scanCaches(", "scanLogs(",
-                                 "directorySize(", "fileSize(", "sorted(",
-                                 "scanScreenshots(", "isScreenCapture(", "extendedAttribute("])
-          + declaration(cleaner, "    private static func leftoverOwner(")
-          + declaration(cleaner, "    private static func containerOwner(")
-          + declaration(cleaner, "    private static func mayRemove(")
-          + "static func owner(_ url: URL, metadata: Bool = false) -> String? {\n"
-          + "leftoverOwner(entry: url.lastPathComponent, url: url, usesContainerMetadata: metadata)\n}\n"
-          + "static func canRemove(_ item: Item, installed: Set<String> = []) -> Bool {\n"
-          + "mayRemove(item, installed: installed)\n}\n}\n")
-    write("CleanerScanFlow.swift", "import Foundation\nextension CleanerScanFlowTests {\n"
-          + declaration(cleaner, "    enum Phase:")
-          + "final class Scanner: ScannerState {\nstatic let shared = Scanner()\n"
-          + "".join(declaration(cleaner, prefix) for prefix in ["    func reset()", "    func scan("])
           + "}\n}\n")
 
     super_key = "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift"
@@ -439,7 +401,7 @@ def main():
     # The composition root wires the island's collaborators; each contract
     # wires its own stand-ins the way main.swift wires the services.
     write("NotchFullscreen.swift", "import CoreGraphics\nimport Foundation\nextension NotchFullscreenTests {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift", "    struct Topology {")
+          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
           + "final class Service: State {\n"
           + "struct Collaborators { var feedbackRoutingDidChange: () -> Void = {\n"
           + "if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }\n"
@@ -500,7 +462,7 @@ def main():
     update_view = "Sources/Vitruvian/UI/Notch/NotchUpdateControl.swift"
     write("NotchUpdate.swift", "import AppKit\nimport SwiftUI\nimport Combine\nextension NotchUpdateTests {\n"
           + "final class UpdateService: ObservableObject {\nstatic let shared = UpdateService()\n"
-          + declaration(update, "    enum State:")
+          + "typealias State = VitruvianServices.UpdateService.State\n"
           + "@Published var state: State = .idle\n}\n"
           + "final class L10n: ObservableObject {\nstatic let shared = L10n()\n@Published var language = AppLanguage.enUS\n"
           + declaration("Sources/Vitruvian/Core/Localization.swift", "    var s: Strings")
@@ -673,7 +635,6 @@ def main():
           + "}\n}\n")
     write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
           + declaration(canvas, "struct NotchFileDropActions {")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "struct NotchMediaSession:")
           + "final class ShelfService: ShelfState {\nstatic var shared = ShelfService()\n"
           + declaration(shelf, "    func acceptDrop(pasteboard:")
           + declaration(shelf, "    func accept(draggingInfo:")
@@ -907,7 +868,7 @@ def main():
           + "var captureID: UUID?\nvar captureContent: Bool? = true\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchService.swift", "    func isCaptureVisible(")
           + "}\nfinal class Preview {\n"
-          + declaration(preview, "    enum Action {")
+          + "typealias Action = VitruvianServices.ScreenshotQuickPreviewController.Action\n"
           + "var keyMonitor: Any?\nvar closed = false\nvar shownInNotch = true\nlet presentationID = UUID()\n"
           + "var actions: [Action] = []\nfunc perform(_ action: Action) { actions.append(action) }\n"
           + "func close() { closed = true }\nfunc attach(_ panel: NSPanel) { installKeyMonitor(for: panel) }\n"
@@ -936,7 +897,7 @@ def main():
     hop = "Sources/Vitruvian/Services/Switcher/SpaceHop.swift"
     write("PointerOnDisplay.swift", "import AppKit\n"
           + "extension PointerOnDisplayContract.Bridge {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift", "    struct Topology {")
+          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
           + "}\nextension PointerOnDisplayContract.Hop {\n"
           + "".join(declaration(hop, prefix).replace("private ", "", 1)
                     for prefix in ["    private enum TravelOutcome {", "    private func stepWithSpaceShortcut()"])
@@ -1195,7 +1156,7 @@ def main():
           + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
                         "    private func beginFullScreenCapture()").replace("private func", "func", 1)
           + "}\nextension PointerDisplayLookupContract.Bridge {\n"
-          + declaration(bridge, "    struct Topology {")
+          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
           + declaration(bridge, "    static func visibleSpace(near")
           + "}\nextension PointerDisplayLookupContract.Layout {\n"
           + declaration("Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",

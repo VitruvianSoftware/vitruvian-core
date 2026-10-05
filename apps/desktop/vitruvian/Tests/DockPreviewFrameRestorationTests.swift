@@ -9,33 +9,35 @@ import VitruvianServices
 import VitruvianUI
 
 enum DockPreviewFrameRestorationTests {
-    struct SwitcherItem {
-        let pid: Int = 10
-        let windowOwnerPID: Int = 11
-        let windowID: UInt32? = 12
-    }
-    struct Screen {
-        let id: UInt32 = 1
-        var frame: CGRect
-        var visibleFrame: CGRect
-    }
-    enum NSWorkspace {
-        static let shared = Workspace()
-        final class Workspace { var frontmostApplication: App? = App() }
-        struct App { var processIdentifier = 10 }
-    }
-    enum WindowActivator {
-        static var focused: UInt32? = 12
-        static var restores = 0
-        static func focusedWindowID(for pid: Int) -> UInt32? { focused }
-        static func restoreFrameAfterDockHold(_ item: SwitcherItem, original: CGRect, heldVisibleFrame: CGRect) {
-            restores += 1
-        }
-    }
-    static var currentScreen: Screen?
+    typealias Restoration = DockPreviewFrameRestoration
+    static let item = SwitcherItem(id: "window", title: "Window", appName: "App", pid: 10, windowOwnerPID: 11,
+                                   windowID: 12, isOnScreen: true, isAppHidden: false, isMinimized: false,
+                                   isFullscreen: false, isOnHiddenSpace: false, frame: .zero)
+    static var currentScreen: Restoration.Screen?
+    static var focused: CGWindowID? = 12
+    static var frontmost: pid_t? = 10
+    static var restores = 0
     static var checks = 0
-    static func screen(_ id: UInt32) -> Screen? { currentScreen }
-    static func axFrame(_ rect: CGRect) -> CGRect { rect }
+    /// Each wait the restore asks for, and the check it schedules, run one at a time.
+    static var delays: [TimeInterval] = []
+    static var pending: [@MainActor () -> Void] = []
+    static let host = Restoration.RestoreHost(
+        screen: { _ in currentScreen.map { ($0.frame, $0.visibleFrame) } },
+        frontmostPID: { frontmost },
+        focusedWindow: { _ in focused },
+        restore: { _, _, _ in restores += 1 },
+        after: { delay, work in
+            // The restore is only ever started on the test's thread.
+            MainActor.assumeIsolated {
+                delays.append(delay)
+                pending.append(work)
+            }
+        })
+
+    static func step() {
+        guard !pending.isEmpty else { return }
+        pending.removeFirst()()
+    }
 
     static func run(_ suite: TestSuite) {
         let original = CGRect(x: 0, y: 25, width: 1440, height: 875)
@@ -67,48 +69,46 @@ enum DockPreviewFrameRestorationTests {
             visibleFrame: left.offsetBy(dx: secondaryOffset.dx, dy: secondaryOffset.dy)),
                      "secondary screens with negative global coordinates preserve their geometry")
 
-        let screen = Screen(frame: CGRect(x: 0, y: 0, width: 1440, height: 900), visibleFrame: original)
-        currentScreen = Screen(frame: screen.frame, visibleFrame: bottom)
-        WindowActivator.restores = 0
-        restore(SwitcherItem(), original: original, screen: screen,
-                heldVisibleFrame: bottom, isCurrent: { true }, attempt: 0)
-        drain(for: 0.2)
-        suite.expect(WindowActivator.restores == 0, "activation never restores against the Dock-reduced work area")
+        let screen = Restoration.Screen(id: 1, frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+                                        visibleFrame: original)
+        func restore(attempt: Int = 0, isCurrent: @escaping @MainActor @Sendable () -> Bool = { true }) {
+            Restoration.restore(item, original: original, screen: screen, heldVisibleFrame: bottom,
+                                isCurrent: isCurrent, attempt: attempt, host: host)
+        }
+        currentScreen = Restoration.Screen(id: 1, frame: screen.frame, visibleFrame: bottom)
+        restores = 0
+        delays = []
+        pending = []
+        restore()
+        step()
+        suite.expect(restores == 0 && pending.count == 1,
+                     "activation never restores against the Dock-reduced work area, and checks again")
         currentScreen = screen
-        drain(until: { WindowActivator.restores > 0 })
-        suite.expect(WindowActivator.restores == 1, "the selected window is restored once the work area recovers")
+        step()
+        suite.expect(restores == 1 && pending.isEmpty, "the selected window is restored once the work area recovers")
+        suite.expect(delays == [0.15, 0.05], "the first check waits for the hold to end, later ones come sooner")
 
-        for scenario in 0..<4 {
+        for scenario in 0..<5 {
             currentScreen = screen
-            WindowActivator.focused = scenario == 0 ? 99 : 12
+            focused = scenario == 0 ? 99 : 12
+            frontmost = scenario == 4 ? 99 : 10
             if scenario == 1 { currentScreen = nil }
             if scenario == 2 { currentScreen?.frame.size.width = 1280 }
             checks = 0
-            restore(SwitcherItem(), original: original, screen: screen,
-                    heldVisibleFrame: bottom, isCurrent: { checks += 1; return scenario != 3 }, attempt: 0)
-            drain(until: { checks > 0 })
-            suite.expect(WindowActivator.restores == 1,
-                         "focus changes, disconnected or reconfigured displays and newer holds cancel restoration")
+            restore(isCurrent: { checks += 1; return scenario != 3 })
+            step()
+            suite.expect(checks == 1 && restores == 1 && pending.isEmpty,
+                         "focus changes, another app in front, disconnected or reconfigured displays and newer holds cancel restoration")
         }
-        WindowActivator.focused = 12
-        currentScreen = Screen(frame: screen.frame, visibleFrame: bottom)
+        focused = 12
+        frontmost = 10
+        currentScreen = Restoration.Screen(id: 1, frame: screen.frame, visibleFrame: bottom)
         checks = 0
-        restore(SwitcherItem(), original: original, screen: screen,
-                heldVisibleFrame: bottom, isCurrent: { checks += 1; return true }, attempt: 15)
-        drain(until: { checks > 0 })
+        restore(attempt: 15, isCurrent: { checks += 1; return true })
+        step()
         currentScreen = screen
-        drain(for: 0.2)
-        suite.expect(WindowActivator.restores == 1, "an unrecovered work area has a bounded retry budget")
-    }
-
-    private static func drain(for seconds: TimeInterval) {
-        let deadline = Date().addingTimeInterval(seconds)
-        while Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
-    }
-
-    // Waits for the queued check itself, so a slow runner cannot move it past the next step.
-    private static func drain(until done: () -> Bool, timeout: TimeInterval = 5) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !done(), Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
+        step()
+        suite.expect(checks == 1 && restores == 1 && pending.isEmpty,
+                     "an unrecovered work area has a bounded retry budget")
     }
 }

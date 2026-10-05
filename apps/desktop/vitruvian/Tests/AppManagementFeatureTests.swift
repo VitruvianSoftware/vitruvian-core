@@ -820,12 +820,12 @@ enum AppManagementFeatureTests {
             contentsOfFile: "Sources/Vitruvian/Services/Cleaner/JunkCleaner.swift",
             encoding: .utf8)) ?? ""
         let cleanSelectedBody = sourceBody(of: junkCleanerSource, from: "func cleanSelected(",
-                                           to: "private static func mayRemove")
+                                           to: "static func mayRemove(")
         suite.expect(cleanSelectedBody.contains("chosen.contains { $0.category == .leftovers }")
-               && cleanSelectedBody.contains("? Self.installedBundleIDs() : []")
-               && !cleanSelectedBody.contains("let installed = Self.installedBundleIDs()"),
+               && cleanSelectedBody.contains("? Self.installedBundleIDs(places: places) : []")
+               && !cleanSelectedBody.contains("let installed = Self.installedBundleIDs("),
                "a clean builds the installed-apps oracle only when a leftover row is selected")
-        let mayRemoveBody = sourceBody(of: junkCleanerSource, from: "private static func mayRemove",
+        let mayRemoveBody = sourceBody(of: junkCleanerSource, from: "static func mayRemove(",
                                        to: "private static func trashViaFinder")
         let leftoverBranch = mayRemoveBody.range(of: "if item.category == .leftovers")
         suite.expect(mayRemoveBody.components(separatedBy: "installed: installed").count == 2,

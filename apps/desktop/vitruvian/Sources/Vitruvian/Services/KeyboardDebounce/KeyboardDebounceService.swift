@@ -250,27 +250,31 @@ package final class KeyboardDebounceService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        // Keys this app posts (a Quit Protection confirmation, text a snippet
-        // retypes) follow a real press on purpose and are not chatter.
-        guard type == .keyDown || type == .keyUp, !OwnKeyEvent.isPosted(event) else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        let timestamp = EventTimestamp.nanoseconds(of: event)
-        let eventKind: KeyboardDebounceState.EventKind = type == .keyDown ? .keyDown : .keyUp
         let shouldSuppress = eventLock.withLock {
-            state.shouldSuppress(keyCode: keyCode,
-                                 isAutoRepeat: isRepeat,
-                                 event: eventKind,
-                                 timestampNanoseconds: timestamp,
-                                 config: config)
+            Self.suppresses(type, event: event, state: &state, config: config)
         }
         if shouldSuppress {
             return nil
         }
         return Unmanaged.passUnretained(event)
+    }
+
+    /// Whether a key event the tap sees is chatter to drop, as `state`
+    /// remembers the keys before it.
+    nonisolated package static func suppresses(_ type: CGEventType, event: CGEvent, state: inout KeyboardDebounceState,
+                                              config: KeyboardDebounceConfig) -> Bool {
+        // Keys this app posts (a Quit Protection confirmation, text a snippet
+        // retypes) follow a real press on purpose and are not chatter.
+        guard type == .keyDown || type == .keyUp, !OwnKeyEvent.isPosted(event) else { return false }
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        let timestamp = EventTimestamp.nanoseconds(of: event)
+        let eventKind: KeyboardDebounceState.EventKind = type == .keyDown ? .keyDown : .keyUp
+        return state.shouldSuppress(keyCode: keyCode,
+                                    isAutoRepeat: isRepeat,
+                                    event: eventKind,
+                                    timestampNanoseconds: timestamp,
+                                    config: config)
     }
 }
 

@@ -7,39 +7,24 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The generated methods are the real scan and removal guards. Only the
-/// home directory, allowed root and installed-app lookup are replaced; no cleaning is performed.
+/// The module's real scans and removal guard, in a fixture home folder where
+/// Launch Services knows no app. No cleaning is performed.
 enum CleanerEligibilityTests {
-    struct Item {
-        let url: URL
-        let category: CleanerSupport.Category
-        let size: Int64
-        let recommended: Bool
-        init(url: URL, category: CleanerSupport.Category = .leftovers, size: Int64 = 1,
-             detail: String, recommended: Bool = false) {
-            self.url = url
-            self.category = category
-            self.size = size
-            self.detail = detail
-            self.recommended = recommended
-        }
-        let detail: String
-        var fileIdentity: UninstallerSupport.FileIdentity? { UninstallerSupport.fileIdentity(at: url) }
-    }
-    static var fixtureRoot: URL?
-    static func NSHomeDirectory() -> String { fixtureRoot!.path }
+    typealias Item = JunkCleaner.Item
 
-    static func isDirectLeftoverRootChild(_ url: URL) -> Bool {
-        fixtureRoot.map { CleanerSupport.isDirectChild(url, of: $0) } ?? false
+    /// A fixture's home folder: no app is registered with Launch Services,
+    /// and screenshots are saved in `screenshots`.
+    static func places(home: URL, screenshots: [URL] = []) -> JunkCleaner.Places {
+        JunkCleaner.Places(home: home.path, screenshotFolders: { screenshots }, isRegistered: { _ in false })
     }
 
-    static func hasLivingOwner(_ owner: String, installed: Set<String>) -> Bool {
-        CleanerSupport.isOwned(candidate: owner, byInstalled: installed)
+    static func item(_ url: URL, _ category: CleanerSupport.Category = .leftovers, detail: String,
+                     recommended: Bool = false) -> Item {
+        Item(url: url, category: category, size: 1, detail: detail, recommended: recommended)
     }
 
-    static var screenshotFolder: URL?
-    static func isScreenshotFolderChild(_ url: URL) -> Bool {
-        screenshotFolder.map { CleanerSupport.isDirectChild(url, of: $0) } ?? false
+    static func owner(_ url: URL, metadata: Bool = false) -> String? {
+        JunkCleaner.leftoverOwner(entry: url.lastPathComponent, url: url, usesContainerMetadata: metadata)
     }
 
     static func setAttribute(_ name: String, _ data: Data, on url: URL) {
@@ -108,8 +93,8 @@ enum CleanerEligibilityTests {
         let manager = FileManager.default
         let folder = root.appendingPathComponent("Shots", isDirectory: true)
         try manager.createDirectory(at: folder.appendingPathComponent("Kept"), withIntermediateDirectories: true)
-        screenshotFolder = folder
-        defer { screenshotFolder = nil }
+        let places = Self.places(home: root, screenshots: [folder])
+        func canRemove(_ item: Item) -> Bool { JunkCleaner.mayRemove(item, installed: [], places: places) }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
@@ -133,19 +118,19 @@ enum CleanerEligibilityTests {
                         opened: Date().addingTimeInterval(-86_400))
         let moved = try capture(oldName, in: folder.appendingPathComponent("Kept"))
 
-        let found = scanScreenshots(in: [folder], days: 30)
+        let found = JunkCleaner.scanScreenshots(in: [folder], days: 30)
         suite.expect(found.map { $0.url.resolvingSymlinksInPath().path }
                         == [forgotten.resolvingSymlinksInPath().path]
                      && found.allSatisfy { $0.category == .screenshots && !$0.recommended },
                      "only an old, unopened, marked capture under its own name is listed, unchecked")
-        suite.expect(scanScreenshots(in: [folder], days: 60).isEmpty,
+        suite.expect(JunkCleaner.scanScreenshots(in: [folder], days: 60).isEmpty,
                      "a longer age leaves a younger capture alone")
-        suite.expect(canRemove(Item(url: forgotten, category: .screenshots, detail: "")),
+        suite.expect(canRemove(item(forgotten, .screenshots, detail: "")),
                      "a listed capture can be moved to the Trash")
-        suite.expect(!canRemove(Item(url: moved, category: .screenshots, detail: "")),
+        suite.expect(!canRemove(item(moved, .screenshots, detail: "")),
                      "a capture outside the top of the screenshot folder is never removed")
         removexattr(forgotten.path, CleanerSupport.screenCaptureAttribute, 0)
-        suite.expect(!canRemove(Item(url: forgotten, category: .screenshots, detail: "")),
+        suite.expect(!canRemove(item(forgotten, .screenshots, detail: "")),
                      "a file that no longer proves it is a capture is never removed")
     }
 
@@ -153,8 +138,11 @@ enum CleanerEligibilityTests {
         let manager = FileManager.default
         let root = manager.temporaryDirectory.resolvingSymlinksInPath()
             .appendingPathComponent("vitruvian-cleaner-\(UUID().uuidString)", isDirectory: true)
-        fixtureRoot = root
-        defer { fixtureRoot = nil; try? manager.removeItem(at: root) }
+        defer { try? manager.removeItem(at: root) }
+        let places = Self.places(home: root)
+        func canRemove(_ item: Item, installed: Set<String> = []) -> Bool {
+            JunkCleaner.mayRemove(item, installed: installed, places: places)
+        }
         do {
             try manager.createDirectory(at: root, withIntermediateDirectories: true)
             for category in [CleanerSupport.Category.caches, .logs] {
@@ -166,50 +154,59 @@ enum CleanerEligibilityTests {
                     try Data(repeating: 1, count: 4096).write(to: folder.appendingPathComponent("data"))
                 }
                 var leftovers: [Item] = []
-                appendLeftovers(in: dir.path, usesContainerMetadata: false,
-                                installed: [], fm: manager, into: &leftovers)
+                JunkCleaner.appendLeftovers(in: dir.path, usesContainerMetadata: false,
+                                            installed: [], places: places, fm: manager, into: &leftovers)
                 let claimed = Set(leftovers.map { $0.url.standardizedFileURL.path })
-                let found = category == .caches ? scanCaches(excluding: claimed) : scanLogs(excluding: claimed)
+                let found = category == .caches ? JunkCleaner.scanCaches(excluding: claimed, places: places)
+                    : JunkCleaner.scanLogs(excluding: claimed, places: places)
                 suite.expect(found.isEmpty,
                              "localized folders cannot return as recommended \(category) after leftover scanning")
-                let normal = category == .caches ? scanCaches(excluding: []) : scanLogs(excluding: [])
+                let normal = category == .caches ? JunkCleaner.scanCaches(excluding: [], places: places)
+                    : JunkCleaner.scanLogs(excluding: [], places: places)
                 suite.expect(normal.contains { $0.detail == "com.vendor.editor" && $0.recommended },
                              "ordinary \(category) remain recommended")
                 for name in ["logitec.localized", "Vendor.LoCaLiZeD"] {
-                    suite.expect(!canRemove(Item(url: dir.appendingPathComponent(name),
-                                                 category: category, detail: name, recommended: true)),
+                    suite.expect(!canRemove(item(dir.appendingPathComponent(name), category, detail: name,
+                                                 recommended: true)),
                                  "stale recommended \(category) cannot remove \(name)")
                 }
             }
+            // Leftovers sit directly in one of the Library folders the scan reads.
+            let support = root.appendingPathComponent("Library/Application Support", isDirectory: true)
+            let preferences = root.appendingPathComponent("Library/Preferences", isDirectory: true)
+            let containers = root.appendingPathComponent("Library/Containers", isDirectory: true)
+            for folder in [support, preferences, containers] {
+                try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+            }
             for name in ["logitec.localized", "Logitech.localized", "Vendor.LoCaLiZeD",
                          "com.vendor.editor.localized"] {
-                let folder = root.appendingPathComponent(name, isDirectory: true)
+                let folder = support.appendingPathComponent(name, isDirectory: true)
                 try manager.createDirectory(at: folder, withIntermediateDirectories: false)
                 suite.expect(owner(folder) == nil,
                              "localized directory \(name) is not offered as an app leftover")
-                suite.expect(!canRemove(Item(url: folder, detail: name)),
+                suite.expect(!canRemove(item(folder, detail: name)),
                              "a previously listed localized directory \(name) cannot be removed")
             }
 
             for id in ["com.vendor.editor", "com.vendor.localized.editor", "com.vendor.localized"] {
-                let preference = root.appendingPathComponent(id + ".plist")
+                let preference = preferences.appendingPathComponent(id + ".plist")
                 try Data().write(to: preference)
                 suite.expect(owner(preference) == id,
                              "a real preference file retains its exact owner \(id)")
-                suite.expect(canRemove(Item(url: preference, detail: id)),
+                suite.expect(canRemove(item(preference, detail: id)),
                              "an unowned preference for \(id) remains eligible after scanning")
-                suite.expect(!canRemove(Item(url: preference, detail: id), installed: [id]),
+                suite.expect(!canRemove(item(preference, detail: id), installed: [id]),
                              "preferences for an installed owner \(id) remain protected")
             }
 
-            let container = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let container = containers.appendingPathComponent(UUID().uuidString, isDirectory: true)
             try manager.createDirectory(at: container, withIntermediateDirectories: false)
             try PropertyListSerialization.data(fromPropertyList: [
                 "MCMMetadataIdentifier": "com.vendor.localized",
             ], format: .xml, options: 0).write(to: container.appendingPathComponent(
                 ".com.apple.containermanagerd.metadata.plist"))
             suite.expect(owner(container, metadata: true) == "com.vendor.localized"
-                         && canRemove(Item(url: container, detail: "com.vendor.localized")),
+                         && canRemove(item(container, detail: "com.vendor.localized")),
                          "container metadata remains an identifier rather than a directory name")
 
             runScreenshotRules(suite)

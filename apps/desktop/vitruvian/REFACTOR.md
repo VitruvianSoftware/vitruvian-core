@@ -726,6 +726,87 @@ which leaves 78.
 - **Mutation fixture:** `mutation_checks.py` "a timed session hands over on
   one condition" now targets the static's guard.
 
+Landed (4b, type copies): nine copies of data types that production already
+declares `package` become the module's own types. No generated file goes
+away, so 78 remain.
+
+- **Aliased:** `BrightnessService.DisplayControlFailure`,
+  `CommandBarService.Mode`, `JunkCleaner.Phase`, `UpdateService.State`,
+  `ScreenshotQuickPreviewController.Action`, and `SpaceWindowBridge.Topology`
+  in three scopes. Each is a module-qualified typealias where the copied
+  methods name the type unqualified.
+- **Dropped:** the copy of `NotchMediaSession`, a top-level type the module
+  already exports.
+- **Kept:** the copy of `AppUninstaller.Phase`, whose `.done` case holds the
+  test's stand-in `Leftover`.
+
+Landed (4b, the Dock preview's desktop-change observer): one more generated
+file goes, which leaves 77.
+
+- **Extracted:** `Services/DockPreview/DockPreviewSpaceObservation.swift`
+  keeps at most one desktop-change observer. While previews list only the
+  current desktop, a change ends the open session, unless a window is being
+  dragged.
+- **Wiring:** `DockPreviewService` hands it its state and `endSession`. The
+  notification center and name are injected.
+- **Test:** the test drives the type on its own `NotificationCenter` instead
+  of copies of `syncSpaceObservation` and `stopSpaceObservation`.
+
+Landed (4b, the Cleaner's scans, grouped by owning file): both copies of
+`JunkCleaner` go, which leaves 75.
+
+- **Injected places:** `JunkCleaner.Places` names the home folder, the
+  folders screenshots are saved in, and how an app registered with Launch
+  Services is found. Every scanner and the removal guard read it instead of
+  `NSHomeDirectory()` and `NSWorkspace`.
+- **Injected scanning:** `JunkCleaner.Scanning` names what a scan runs for
+  each category and the two queues it uses.
+  - `shared` keeps the system's of both.
+  - A package initializer lets a test build a cleaner with its own.
+- **Tests:**
+  - `CleanerEligibilityTests` lays its fixtures out under the real Library
+    folders of a fixture home and calls `mayRemove`, `appendLeftovers`,
+    `scanCaches`, `scanLogs`, `scanScreenshots` and `leftoverOwner`.
+  - `CleanerScanFlowTests` drives a real cleaner through a manual queue.
+- **Source text:** the anchors in `AppManagementFeatureTests` follow the
+  new signatures.
+
+Landed (4b, the command bar's brightness command): one more generated
+file goes, which leaves 74.
+
+- **Injected:** `CommandBarCatalog.applyBrightness(percent:display:route:)`
+  takes a `BrightnessRoute`: the display under the pointer, the displays
+  the brightness service drives, the set, refresh and refusal, and how the
+  retry is scheduled. `system` keeps the AppKit lookups, the service and
+  the 0.7 s retry.
+- **Test:** the test passes a route of its own instead of shadowing
+  `NSScreen`, `NSEvent`, `NSSound`, the service and the queue.
+
+Landed (4b, the Dock preview's frame restore): one more generated file
+goes, which leaves 73.
+
+- **Injected:** `DockPreviewFrameRestoration.restore(...)` takes a
+  `RestoreHost`:
+  - a display's frames now;
+  - the frontmost process and the focused window;
+  - the restore itself, and the wait between checks.
+
+  `system` keeps AppKit, the window activator and the main queue.
+  `Screen` is `package`.
+- **Test:** the test steps the checks one at a time instead of waiting on
+  the run loop.
+- **Checks added:** the waits are 0.15 s and then 0.05 s, and another app
+  in front cancels the restore. The stand-in it replaced always reported
+  the item's app in front.
+
+Landed (4b, the keyboard debounce tap): one more generated file goes, which
+leaves 72.
+
+- **Injected:** `KeyboardDebounceService.suppresses(_:event:state:config:)` is
+  the tap's rule for a key event, with the state and settings passed in.
+- **What stayed:** the tap keeps its re-arm branch and its lock.
+- **Test:** the test calls the rule with a state of its own.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
