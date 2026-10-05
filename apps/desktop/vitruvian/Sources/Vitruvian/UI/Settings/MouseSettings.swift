@@ -20,8 +20,7 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.scrollInverterEnabled) private var invertVertical: Bool
     @AppStorage(Preferences.scrollInverterHorizontalEnabled) private var invertHorizontal: Bool
     @AppStorage(Preferences.scrollHorizontalEnabled) private var horizontalScrollEnabled: Bool
-    @AppStorage(DefaultsKey.scrollHorizontalModifier) private var horizontalScrollModifier =
-        ScrollHorizontalModifier.shift
+    @AppStorage(Preferences.scrollHorizontalModifier) private var horizontalScrollModifier: ScrollHorizontalModifier
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
     @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay: Int
     @AppStorage(Preferences.smoothScrollEnabled) private var smoothScrollEnabled: Bool

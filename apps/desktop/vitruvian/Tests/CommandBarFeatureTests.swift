@@ -487,7 +487,7 @@ enum CommandBarFeatureTests {
         let asciiSettingsSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/UI/Settings/CommandBarSettings.swift",
             encoding: .utf8)) ?? ""
-        suite.expect(asciiSettingsSource.contains("DefaultsKey.commandBarASCIILayoutEnabled"),
+        suite.expect(asciiSettingsSource.contains("Preferences.commandBarASCIILayoutEnabled"),
                "the ASCII layout switch has its own settings row")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.commandBarASCIILayoutEnabled] as? Bool == false,
                "the ASCII layout switch ships off: the bar starts on whatever layout is already up")

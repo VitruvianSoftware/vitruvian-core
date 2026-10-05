@@ -3248,7 +3248,7 @@ lines, down from 3,400. Its only remaining `.shared` references are:
 Every service it uses comes through its `Environment`, as
 `AgentUsageService` set the pattern.
 
-## Step 6: typed preferences and explicit concurrency (in progress)
+## Step 6: typed preferences and explicit concurrency (done)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
   795 string constants plus the defaults dictionary, so `@AppStorage` and service
@@ -4979,6 +4979,30 @@ follow; no test reads them. 14 remain:
 - `includeBetaUpdates`;
 - three in the Command Bar and window layout settings. Tests read their
   keys there as text, to check that each has its own row.
+
+Landed (6zzr, the last written-out defaults): step 6 is done. Five more
+`@AppStorage` properties take their `Preference`:
+- **Two enums:** the timer mode and the horizontal scroll modifier. A view
+  reads each as its enum, so `@AppStorage` gains an initializer for an enum
+  stored as its raw text (`Design/PreferenceStorage.swift`). It starts from
+  the case the preference's default names, and each such default is written
+  from its case (`NotchTimerMode.timer.rawValue`), so it always names one.
+  `PreferenceTests` checks the starting case and a stored one.
+- **Three settings switches:** the Command Bar's ASCII layout, and window
+  layout's side repeat and disabled snap zones. Two tests check that each
+  switch has its settings row by finding its key in the view's source;
+  they now look for the `Preferences` name. Those reads stay in the ledger
+  (step 7e).
+
+What step 6 leaves, on purpose:
+- **Nine `@AppStorage` properties with their own default:**
+  - the eight menu panel orders, which stay unregistered (6zzo);
+  - `includeBetaUpdates`, whose default is whether this build is a beta.
+- **Service reads by `DefaultsKey`:** each moves to
+  `UserDefaults[preference]` as its code is touched. Both read the same
+  registered default, so nothing depends on the move.
+- **Concurrency:** every Swift target builds in the Swift 6 language mode
+  (6zzn), so there is nothing left to turn on.
 
 ## Step 7: test-suite hygiene
 

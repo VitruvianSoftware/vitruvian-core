@@ -10,7 +10,7 @@ package struct NotchTimerView: View {
     package let size: CGSize
     @ObservedObject private var service = NotchTimerService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchTimerMode) private var mode: NotchTimerMode = .timer
+    @AppStorage(Preferences.notchTimerMode) private var mode: NotchTimerMode
     @AppStorage(Preferences.notchPomodoroFocusMinutes) private var focusMinutes: Int
     @AppStorage(Preferences.notchPomodoroShortBreakMinutes) private var shortBreakMinutes: Int
     @AppStorage(Preferences.notchPomodoroLongBreakMinutes) private var longBreakMinutes: Int

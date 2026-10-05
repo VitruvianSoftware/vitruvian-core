@@ -2133,6 +2133,19 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/WindowServerCaptureTests.swift` (`Connection`,
     `CaptureFunction`).
   - The new `Tests/TestDoubleNameTests.swift` keeps it so.
+- **2026-10-05**: Refactor step 6zzr (`REFACTOR.md`): five more
+  `@AppStorage` properties take their `Preference` instead of a
+  `DefaultsKey` and a written-out default.
+  - `Sources/Vitruvian/UI/Notch/NotchTimerView.swift` (the timer mode) and
+    `Sources/Vitruvian/UI/Settings/MouseSettings.swift` (the horizontal
+    scroll modifier) read theirs as enums, through a new `@AppStorage`
+    initializer in `Design/PreferenceStorage.swift`.
+  - `Sources/Vitruvian/UI/Settings/CommandBarSettings.swift` (ASCII
+    layout) and `Sources/Vitruvian/UI/Settings/WindowLayoutSettings.swift`
+    (side repeat, disabled snap zones).
+  - `Tests/CommandBarFeatureTests.swift` and
+    `Tests/WindowLayoutFeatureTests.swift` look for the `Preferences` name
+    in those views.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
