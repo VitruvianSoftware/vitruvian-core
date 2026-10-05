@@ -527,7 +527,7 @@ layering ratchet is gone.
     after: none that a test slices or searches by changes.
   - The one top-level test copy of a `UI` type left (`NotchActivityPicker`)
     is never handed to the module or type-checked by it.
-## Step 4: dependency injection at the seams that tests need (in progress)
+## Step 4: dependency injection at the seams that tests need (done)
 
 Problem: services take no collaborators. Tests fake them by shadowing type names
 inside the test module.
@@ -2594,6 +2594,30 @@ compiles a copy of production code.
   one hook that does both.
 - **Generator:** with no copy left, `Tests/generate_sources.py` loses its
   extraction helpers.
+
+Landed (4c, no stand-in shadows a real type): step 4 is done. Its
+problem was tests faking a service's collaborators by declaring types with
+the real names. The services now take their collaborators, but six test
+files still named their stand-ins after what they stand in for.
+
+- **Renamed:**
+  - the screen-refresh contract's `DispatchQueue`, `NSWorkspace`, `Bundle`,
+    `NSEvent`, `NSScreen` and `ClipboardHistoryService` are `Clock`,
+    `Frontmost`, `OwnApp`, `Pointer`, `Display` and `Clipboard`;
+  - the shelf drop contract's `AppFeature`, `NotchSupport`, `UserDefaults`
+    and `ShelfService` are `Features`, `IslandModules`, `Switches` and
+    `Shelf`;
+  - the audio level reader, the volume feedback's mixer, the update intro's
+    shell and the window-server capture's two aliases take names of their
+    own.
+- **The check:** `TestDoubleNameTests` fails when a test declares a type
+  named after a framework type (`NS`, `CG`, `CF`, `AX`, `Dispatch`), one of
+  the Foundation types tests used to fake, or one of the app's own top-level
+  types. It runs with the repository checks, and first checks its scanner
+  and rule on known text.
+- **What step 4 leaves:** nothing open. Every test runs the module's own
+  code over injected collaborators: no generated copy, no shadowing type.
+  The `.shared` singletons stay as the composition root.
 
 ## Step 5: decompose NotchService (done)
 

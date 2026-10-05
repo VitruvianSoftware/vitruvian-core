@@ -11,7 +11,7 @@ import VitruvianUI
 /// Runs the island's volume notice with real Combine delivery, a controlled
 /// audio source and a clock of its own, without changing hardware volume.
 enum NotchVolumeFeedbackTests {
-    final class AppVolumeMixer {
+    final class Mixer {
         @Published var currentOutputDeviceUID: String? = "speakers"
         @Published var systemOutputVolume: Double? = 0.3
         @Published var systemOutputMuted: Bool? = false
@@ -42,7 +42,7 @@ enum NotchVolumeFeedbackTests {
         }
     }
 
-    static func makeFeedback(_ mixer: AppVolumeMixer, _ island: Island) -> NotchVolumeFeedback {
+    static func makeFeedback(_ mixer: Mixer, _ island: Island) -> NotchVolumeFeedback {
         NotchVolumeFeedback(
             output: .init(volume: { mixer.systemOutputVolume }, muted: { mixer.systemOutputMuted },
                           deviceUID: { mixer.currentOutputDeviceUID },
@@ -68,7 +68,7 @@ enum NotchVolumeFeedbackTests {
         let connection = NotchNotice(event: .accessory, title: "Wireless Headphones",
                                      detail: "Connected", symbol: "headphones")
         for identityFirst in [false, true] {
-            let mixer = AppVolumeMixer()
+            let mixer = Mixer()
             let island = Island()
             let feedback = makeFeedback(mixer, island)
             let subscription = feedback.follow()
@@ -162,7 +162,7 @@ enum NotchVolumeFeedbackTests {
 
         // The command bar writes a level and then reports it, because the
         // observer can have nothing new to show for that write.
-        let mixer = AppVolumeMixer()
+        let mixer = Mixer()
         let island = Island()
         let feedback = makeFeedback(mixer, island)
         let subscription = feedback.follow()

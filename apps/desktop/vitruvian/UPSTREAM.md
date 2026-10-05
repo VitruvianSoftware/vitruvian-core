@@ -2119,6 +2119,20 @@ is that notice. Add an entry for every change to upstream files.
     Testing.
   - `Tests/TestSuite.swift` (the harness checks) checks that the names
     Swift Testing lists match the runner's suites, in order.
+- **2026-10-05**: Refactor step 4c (`REFACTOR.md`): test stand-ins no
+  longer take the names of the types they stand in for.
+  - `Tests/NotchScreenRefreshTests.swift`: `DispatchQueue`, `NSWorkspace`,
+    `Bundle`, `NSEvent`, `NSScreen` and `ClipboardHistoryService` become
+    `Clock`, `Frontmost`, `OwnApp`, `Pointer`, `Display` and `Clipboard`.
+  - `Tests/ShelfDropRoutingTests.swift`: `AppFeature`, `NotchSupport`,
+    `UserDefaults` and `ShelfService` become `Features`, `IslandModules`,
+    `Switches` and `Shelf`.
+  - `Tests/NotchAudioLevelTests.swift` (`RecordingReader`),
+    `Tests/NotchVolumeFeedbackTests.swift` (`Mixer`),
+    `Tests/UpdateIntroFlowTests.swift` (`IntroShell`) and
+    `Tests/WindowServerCaptureTests.swift` (`Connection`,
+    `CaptureFunction`).
+  - The new `Tests/TestDoubleNameTests.swift` keeps it so.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

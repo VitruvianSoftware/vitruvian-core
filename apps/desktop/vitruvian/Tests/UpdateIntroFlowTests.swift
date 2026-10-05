@@ -13,7 +13,7 @@ import VitruvianUI
 enum UpdateIntroFlowTests {
     typealias Intro = UpdateIntroSequence.Intro
 
-    final class Shell {
+    final class IntroShell {
         let defaults: Foundation.UserDefaults
         var version: String
         var isTerminating = false
@@ -28,7 +28,7 @@ enum UpdateIntroFlowTests {
             isTerminating: { [unowned self] in self.isTerminating },
             open: { [unowned self] intro in
                 guard self.windows.insert(intro).inserted else { return false }
-                self.shown.append(Shell.name(intro))
+                self.shown.append(IntroShell.name(intro))
                 return true
             },
             cleanupShowcaseCache: { [unowned self] in self.cleanups += 1 },
@@ -68,11 +68,11 @@ enum UpdateIntroFlowTests {
         let defaults = Foundation.UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         /// A fresh launch of `version`, with nothing seen yet.
-        func reset(_ version: String) -> Shell {
+        func reset(_ version: String) -> IntroShell {
             defaults.removePersistentDomain(forName: name)
-            return Shell(defaults, version: version)
+            return IntroShell(defaults, version: version)
         }
-        func close(_ intro: Intro, in shell: Shell) {
+        func close(_ intro: Intro, in shell: IntroShell) {
             suite.expect(shell.close(intro), "the \(Shell.name(intro)) is open, and closing it settles without a loop")
         }
         for version in ["3.4.0", "3.4.1", "3.4.2"] {
@@ -91,7 +91,7 @@ enum UpdateIntroFlowTests {
                 close(.support, in: shell)
                 suite.expect(!shell.sequence.shouldCloseSupport(), "the next support page waits for Done again")
                 for nextVersion in [version, "3.4.10", "3.4.11"] {
-                    let relaunch = Shell(defaults, version: nextVersion)
+                    let relaunch = IntroShell(defaults, version: nextVersion)
                     relaunch.sequence.present()
                     suite.expect(relaunch.shown == ["finished"], "completed intros never repeat on relaunch or later hotfixes")
                 }
@@ -105,7 +105,7 @@ enum UpdateIntroFlowTests {
                      && defaults.string(forKey: DefaultsKey.lastUpdateIntroVersion) == "3.4.0-beta.7"
                      && defaults.string(forKey: DefaultsKey.brightnessUpdatePromptState) == BrightnessUpdatePromptInfo.handled,
                      "beta onboarding marks the first run done but cannot consume the future stable support screen")
-        let upgraded = Shell(defaults, version: "3.4.2")
+        let upgraded = IntroShell(defaults, version: "3.4.2")
         upgraded.sequence.present()
         close(.highlights, in: upgraded)
         suite.expect(upgraded.shown == ["tour", "support"], "a fresh beta install gets both intros on stable upgrade")
@@ -150,7 +150,7 @@ enum UpdateIntroFlowTests {
         for version in ["3.4.0", "3.4.1", "3.4.2"] {
             let clean = reset(version)
             clean.sequence.markOnboardingComplete()
-            let hotfix = Shell(defaults, version: "3.4.10")
+            let hotfix = IntroShell(defaults, version: "3.4.10")
             hotfix.sequence.present()
             suite.expect(hotfix.shown == ["finished"], "fresh stable onboarding does not repeat introductions after a hotfix")
         }
@@ -160,11 +160,11 @@ enum UpdateIntroFlowTests {
         partial.isTerminating = true
         suite.expect(partial.sequence.shouldCloseSupport(), "quitting may close the support page without Done")
         close(.support, in: partial)
-        let resumed = Shell(defaults, version: "3.4.1")
+        let resumed = IntroShell(defaults, version: "3.4.1")
         resumed.sequence.present()
         suite.expect(resumed.shown == ["support"], "a hotfix resumes only the unfinished support page")
         close(.support, in: resumed)
-        let completed = Shell(defaults, version: "3.4.2")
+        let completed = IntroShell(defaults, version: "3.4.2")
         completed.sequence.present()
         suite.expect(completed.shown == ["finished"], "finishing the remaining page prevents later repeats")
         let interrupted = reset("3.4.0")
@@ -190,9 +190,9 @@ enum UpdateIntroFlowTests {
         suite.expect(showcase.shown == ["showcase", "finished"]
                      && defaults.string(forKey: DefaultsKey.updateShowcaseIntroVersion) == UpdateShowcaseInfo.releaseVersion,
                      "closing the showcase marks it seen and moves on")
-        let again = Shell(defaults, version: UpdateShowcaseInfo.releaseVersion)
+        let again = IntroShell(defaults, version: UpdateShowcaseInfo.releaseVersion)
         again.sequence.present()
-        let later = Shell(defaults, version: "3.1.5")
+        let later = IntroShell(defaults, version: "3.1.5")
         later.sequence.present()
         suite.expect(again.shown == ["finished"] && again.cleanups == 1
                      && later.shown == ["finished"] && later.cleanups == 1,
