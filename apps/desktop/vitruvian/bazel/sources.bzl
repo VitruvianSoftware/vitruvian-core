@@ -298,7 +298,6 @@ GENERATED_TEST_SOURCES = [
     "BrightnessStep.swift",
     "ClipboardPreview.swift",
     "CommandBarEmojiBodies.swift",
-    "CommandBarInputSource.swift",
     "CommandBarTermination.swift",
     "DisplayRestoration.swift",
     "DockAutohideInput.swift",

@@ -1084,6 +1084,25 @@ file goes, which leaves 56.
 - **Verification:** the controller draws through Core Graphics and SwiftUI,
   which the Linux model cannot build. It relies on macOS CI.
 
+Landed (4b, the command bar's borrowed keyboard layout): one more generated
+file goes, which leaves 55.
+
+- **Extracted:** `CommandBarInputSourceBorrowing` (new, `Services/CommandBar`)
+  borrows an ASCII layout when the bar opens and puts the person's own source
+  back on close or quit. It takes a `System`: the preference, the Text Input
+  Sources calls and the next main-loop turn. `live` keeps today's behavior.
+  `CommandBarService` owns it, says which presentation is current, and keeps
+  `hasBorrowedInputSource` and `restoreBorrowedInputSource()` for the app
+  delegate.
+- **Test:** the input-source test drives the real borrowing instead of a copy
+  of four service members. The termination test, which still copies the
+  delegate's callback, runs it against the real borrowing.
+- **Check added:** a close with nothing borrowed queues no work. Without it, a
+  close that queued a no-op restore passed.
+- **Not covered:** the restore's second guard, that the record is still the
+  one it captured. It is unreachable through the service: each open starts a
+  new presentation first.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

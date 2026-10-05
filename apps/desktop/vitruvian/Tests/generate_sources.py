@@ -164,15 +164,6 @@ def main():
               "    func filteredEntries(", "    private func foldedCandidates("])
           + "func setEntries(_ values: [ClipboardHistoryEntry]) { entries = values }\n"
           + "}\n}\n")
-    write("CommandBarInputSource.swift", "import Foundation\n"
-          + "extension CommandBarInputSourceContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration("Sources/Vitruvian/Services/CommandBar/CommandBarService.swift", prefix)
-                    .replace("private func", "func", 1) for prefix in [
-                        "    private func adoptASCIIInputSource(",
-                        "    private func restoreSuspendedInputSource(",
-                        "    func restoreBorrowedInputSource(",
-                        "    var hasBorrowedInputSource:"])
-          + "}\n}\n")
     write("CommandBarTermination.swift", "import AppKit\nimport Foundation\n"
           + "extension CommandBarTerminationContract {\nfinal class Host: Fixture {\n"
           + declaration("Sources/Vitruvian/App/AppDelegate.swift", "    func applicationShouldTerminate(")
