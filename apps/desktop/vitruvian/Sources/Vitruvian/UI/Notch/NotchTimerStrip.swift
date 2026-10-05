@@ -143,7 +143,7 @@ package struct NotchCompanionMark: View {
     private var downloadIndicator: some View {
         HStack(spacing: 5) {
             Image(systemName: "arrow.down.circle.fill").font(.system(size: 13))
-            if geometry.compactActivityWingWidth >= 80,
+            if geometry.compactActivityWingWidth >= NotchDownloadSupport.companionWing,
                let fraction = downloads.items.first(where: { $0.active && !$0.completed })?.fraction {
                 Text(fraction, format: .percent.precision(.fractionLength(0)))
                     .font(.system(size: 10, weight: .medium)).monospacedDigit()

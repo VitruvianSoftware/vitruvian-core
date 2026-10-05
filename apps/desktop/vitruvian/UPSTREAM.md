@@ -2024,6 +2024,13 @@ is that notice. Add an entry for every change to upstream files.
   low end of its range from `NotchNoticeLayout`, and
   `Services/Notch/NotchService.swift` a text notice's narrowest wing.
   `Tests/mutation_checks.py` quotes the changed line.
+- **2026-10-05**: Refactor step 5zd (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` names the peek's height
+  and adds `NotchLayout.scrollBottomPadding`, `captureCollapsedSide`,
+  `dropHintHeight`, `dropHintBottomGap` and `NotchGeometry.dropPlaceholder`
+  and `collapsedCaptureControls`. `Core/Notch/NotchDownloadSupport.swift` adds
+  `companionWing`. `Services/Notch/NotchService.swift`, `UI/Notch/NotchView.swift`
+  and `UI/Notch/NotchTimerStrip.swift` use them instead of the numbers.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

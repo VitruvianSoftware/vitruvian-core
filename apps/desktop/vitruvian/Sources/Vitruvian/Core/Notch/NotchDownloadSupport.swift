@@ -200,6 +200,9 @@ package enum NotchDownloadSupport {
     /// Folder entries the page lists, newest first.
     package static let maximumListedFiles = 200
     package static let percentSize: CGFloat = 10
+    /// The wing a download keeps beside another activity, wide enough for
+    /// its percentage.
+    package static let companionWing: CGFloat = 80
     package static let compactNameWingThreshold: CGFloat = 94
     private static let compactNameMinimumWing: CGFloat = 64
     private static let compactNameMaximumWing: CGFloat = 160

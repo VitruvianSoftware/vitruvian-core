@@ -3146,6 +3146,19 @@ and again in a text notice's width. The banner's inset now is
 `NotchNoticeLayout.inset`, and `NotchNoticeLayout.minimumWing` starts both
 ranges. `Tests/mutation_checks.py` follows the renamed line.
 
+Landed (5zd, the island's small sizes): five sizes were numbers that only
+agreed by coincidence. Each now has a name its sizing and its drawing share:
+- **Peek:** 52 below the safe top. It is `NotchLayout.navigationHeight`
+  plus `bottomInset`.
+- **Drop hint:** 66, the label's 52 and a 14pt gap that was never written
+  down. It is `NotchGeometry.dropPlaceholder`, from `dropHintHeight` and
+  `dropHintBottomGap`.
+- **Folded capture controls:** the camera plus 56, two 28pt sides. It is
+  `NotchGeometry.collapsedCaptureControls`, from `captureCollapsedSide`.
+- **Scrolling page's last row:** 4 below it. It is `scrollBottomPadding`.
+- **Download beside another activity:** an 80pt wing, which also decided
+  whether its percentage shows. It is `NotchDownloadSupport.companionWing`.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

@@ -238,6 +238,15 @@ package enum NotchLayout {
         return width + (button ? 28 + 6 : 0)
     }
     package static let navigationHeight: CGFloat = 36
+    /// The room a scrolling page keeps below its last row.
+    package static let scrollBottomPadding: CGFloat = 4
+    /// Each side of the capture controls folded around the camera: the tool
+    /// on one, the chevron on the other.
+    package static let captureCollapsedSide: CGFloat = 28
+    /// The drop hint shown while a file is dragged to the island, and the
+    /// room below it.
+    package static let dropHintHeight: CGFloat = 52
+    package static let dropHintBottomGap: CGFloat = 14
     package static let spacing: CGFloat = 12
     package static let bottomInset: CGFloat = 16
     package static var chromeHeight: CGFloat { headerHeight + spacing + bottomInset }
@@ -1976,7 +1985,7 @@ package struct NotchGeometry: Equatable {
         var compact = self
         let room = compactSideRoom ?? 0
         let range = NotchTimerSupport.stripWingRange
-        let wing = showsDownloads ? 80 : min(range.upperBound, max(range.lowerBound, fitted.isFinite ? fitted.rounded(.up) : 0))
+        let wing = showsDownloads ? NotchDownloadSupport.companionWing : min(range.upperBound, max(range.lowerBound, fitted.isFinite ? fitted.rounded(.up) : 0))
         compact.compactSideRoom = room.isFinite && room >= 64 ? min(wing, room) : 0
         // A wider simulated camera must not consume the timer's text budget.
         compact.minimumCompactWidth = cameraWidth + wing * 2
@@ -2118,7 +2127,16 @@ package struct NotchGeometry: Equatable {
         return CGSize(width: notificationPreviewWidth, height: min(height, screen.height - 48))
     }
     package var peek: CGSize {
-        CGSize(width: min(screen.width - 24, max(cameraWidth + 110, 340)), height: safeContentTop + 52)
+        CGSize(width: min(screen.width - 24, max(cameraWidth + 110, 340)),
+               height: safeContentTop + NotchLayout.navigationHeight + NotchLayout.bottomInset)
+    }
+    /// The island holding the drop hint while a file is dragged to it.
+    package var dropPlaceholder: CGSize {
+        CGSize(width: peek.width, height: safeContentTop + NotchLayout.dropHintHeight + NotchLayout.dropHintBottomGap)
+    }
+    /// The capture controls folded around the camera.
+    package var collapsedCaptureControls: CGSize {
+        CGSize(width: cameraWidth + NotchLayout.captureCollapsedSide * 2, height: stripHeight)
     }
     package var expanded: CGSize { expandedSize(module: .controls) }
     package var expandedWidth: CGFloat {
@@ -2177,7 +2195,7 @@ package struct NotchGeometry: Equatable {
         let showsFileMedia = module == .files && !detail && fileMediaHeight != nil
         let contentHeight: CGFloat
         if detail, !panel, let detailHeight {
-            contentHeight = min(pageBudget, max(0, detailHeight) + 4)
+            contentHeight = min(pageBudget, max(0, detailHeight) + NotchLayout.scrollBottomPadding)
         } else if detail || panel {
             contentHeight = pageBudget
         } else if showsFileMedia {
@@ -2185,7 +2203,7 @@ package struct NotchGeometry: Equatable {
             // the display bound them below.
             contentHeight = max(0, fileMediaHeight ?? 0)
         } else if showsCapturePreview {
-            contentHeight = max(0, capturePreviewHeight ?? 0) + 4
+            contentHeight = max(0, capturePreviewHeight ?? 0) + NotchLayout.scrollBottomPadding
         } else {
             switch module {
             case .controls:

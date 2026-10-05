@@ -72,9 +72,9 @@ package struct NotchView: View {
                                          size: service.surfaceSize)
             } else if service.captureControlsCollapsed {
                 HStack(spacing: 0) {
-                    Image(systemName: options.selectedTool.systemImageName).frame(width: 28)
+                    Image(systemName: options.selectedTool.systemImageName).frame(width: NotchLayout.captureCollapsedSide)
                     Color.clear.frame(width: service.geometry.cameraWidth)
-                    Image(systemName: "chevron.down").frame(width: 28)
+                    Image(systemName: "chevron.down").frame(width: NotchLayout.captureCollapsedSide)
                 }
                 .font(.system(size: 10, weight: .semibold))
                 .frame(maxHeight: .infinity)
@@ -87,7 +87,7 @@ package struct NotchView: View {
         } else if service.dragPlaceholder {
             Label(text.dropHint, systemImage: "tray.and.arrow.down")
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
+                .frame(maxWidth: .infinity, minHeight: NotchLayout.dropHintHeight)
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(.white.opacity(0.24),
@@ -224,7 +224,7 @@ package struct NotchView: View {
                         content
                             .frame(height: contentOverflows ? pageSize.height : nil)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .padding(.bottom, 4)
+                            .padding(.bottom, NotchLayout.scrollBottomPadding)
                             .contentShape(Rectangle())
                     }
                     .scrollIndicators(.automatic)

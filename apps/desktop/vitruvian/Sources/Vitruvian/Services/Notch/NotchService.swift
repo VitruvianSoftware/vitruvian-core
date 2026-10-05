@@ -878,7 +878,7 @@ package final class NotchService: ObservableObject {
             let sides = max(inset + calendarClockWidth, companionMarkWidth(companion, in: provisional))
                 + NotchTimerSupport.stripCameraGap
             // A download keeps room for its percentage, as beside a timer.
-            return companion == .downloads ? max(80, sides) : sides
+            return companion == .downloads ? max(NotchDownloadSupport.companionWing, sides) : sides
         }
         func width(_ text: String, _ font: NSFont) -> CGFloat {
             (text as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
@@ -1086,12 +1086,12 @@ package final class NotchService: ObservableObject {
         if fullscreenCompact { return geometry.bareCutout }
         if captureControls != nil {
             if captureControlsCollapsed {
-                return CGSize(width: geometry.cameraWidth + 56, height: geometry.stripHeight)
+                return geometry.collapsedCaptureControls
             }
             return captureControlsLayout.size
         }
         if expanded { return expandedSize }
-        if dragPlaceholder { return CGSize(width: geometry.peek.width, height: geometry.safeContentTop + 66) }
+        if dragPlaceholder { return geometry.dropPlaceholder }
         if let notice {
             guard noticeExpanded else { return geometry.noticeSize(wingWidth: notice.preferredWingWidth) }
             return geometry.notificationPreviewSize(
