@@ -300,7 +300,6 @@ GENERATED_TEST_SOURCES = [
     "NotchHover.swift",
     "NotchMusicVisibility.swift",
     "NotchPresentationRefresh.swift",
-    "ShelfDropRouting.swift",
     "SwitcherScroll.swift",
 ]
 

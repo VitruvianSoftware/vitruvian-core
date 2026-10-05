@@ -229,17 +229,6 @@ def main():
           + declaration(notch, "    private func updateSession(").replace("private func", "func", 1)
               .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
           + "}\n}\n")
-    write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
-          + "final class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var offersMediaDrop:")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func openMediaDrop(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func updateMediaHeight(",
-                        scope="final class NotchFileToolsService:")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func hideMedia(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
-          + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"
     write("SwitcherScroll.swift", "import AppKit\nimport SwiftUI\n"

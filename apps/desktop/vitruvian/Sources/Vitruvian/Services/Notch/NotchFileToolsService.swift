@@ -28,7 +28,29 @@ package protocol NotchMediaHeightTracking: AnyObject {
 
 @MainActor
 package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTracking {
-    package static let shared = NotchFileToolsService()
+    /// The switches the tools follow. The app passes `.system`.
+    package struct Environment {
+        /// The island shows its files, and the media tools and the shelf are available.
+        package var available: @MainActor () -> Bool
+        /// The shelf is switched on.
+        package var shelfEnabled: @MainActor () -> Bool
+
+        package init(available: @escaping @MainActor () -> Bool, shelfEnabled: @escaping @MainActor () -> Bool) {
+            self.available = available
+            self.shelfEnabled = shelfEnabled
+        }
+
+        @MainActor package static var system: Environment {
+            Environment(
+                available: {
+                    NotchSupport.showsFiles()
+                        && AppFeature.mediaTools.isAvailable && AppFeature.shelf.isAvailable
+                },
+                shelfEnabled: { UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) })
+        }
+    }
+
+    package static let shared = NotchFileToolsService(environment: .system)
     package let media = MediaService(replacesExistingOutputs: false)
     @Published package private(set) var mediaSession: NotchMediaSession?
     @Published package private(set) var mediaPresented = false
@@ -44,34 +66,38 @@ package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTra
     private var operation: NotchArchiveOperation?
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch.archive", qos: .userInitiated)
     private var generation = UUID()
+    private let environment: Environment
+    /// Drops onto the tools (`NotchMediaDrop`).
+    private lazy var drop = NotchMediaDrop(
+        offered: { [weak self] in self?.offersMediaDrop == true },
+        busy: { [weak self] in self?.isBusy ?? true },
+        openMedia: { [weak self] in self?.openMedia($0, inputs: $1) == true })
 
-    private init() {}
+    package init(environment: Environment) {
+        self.environment = environment
+    }
     deinit { operation?.cancel(immediately: true) }
 
     package var offersMediaDrop: Bool {
-        NotchSupport.showsFiles()
-            && AppFeature.mediaTools.isAvailable && AppFeature.shelf.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
+        environment.available() && environment.shelfEnabled()
     }
 
     package var canAcceptMediaDrop: Bool {
-        if case .running = media.state { return false }
-        return offersMediaDrop && !isRunning
+        drop.accepts
+    }
+
+    /// The media tools or an archive are working.
+    private var isBusy: Bool {
+        if case .running = media.state { return true }
+        return isRunning
     }
 
     package func mediaDropContent(for pasteboard: NSPasteboard) -> (tool: MediaTool, inputs: [URL])? {
-        guard offersMediaDrop,
-              !pasteboard.canReadObject(forClasses: [NSFilePromiseReceiver.self], options: nil) else { return nil }
-        let inputs = ShelfService.shared.fileURLs(from: pasteboard)
-        // Mixed payloads stay in the shelf, where every companion is preserved.
-        guard inputs.count >= (pasteboard.pasteboardItems?.count ?? 0) else { return nil }
-        guard let tool = NotchFileToolsSupport.optimizationTool(for: inputs) else { return nil }
-        return (tool, inputs)
+        drop.content(for: pasteboard)
     }
 
     package func openMediaDrop(_ pasteboard: NSPasteboard) -> Bool {
-        guard canAcceptMediaDrop, let content = mediaDropContent(for: pasteboard) else { return false }
-        return openMedia(content.tool, inputs: content.inputs)
+        drop.open(pasteboard)
     }
 
     package func updateMediaHeight(id: UUID, height: CGFloat) {
@@ -90,8 +116,7 @@ package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTra
     }
 
     package func syncWithPreferences() {
-        guard NotchSupport.showsFiles(),
-              AppFeature.mediaTools.isAvailable, AppFeature.shelf.isAvailable else {
+        guard environment.available() else {
             stop()
             return
         }
@@ -117,9 +142,7 @@ package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTra
 
     @discardableResult
     package func openMedia(_ tool: MediaTool, inputs: [URL]) -> Bool {
-        guard NotchSupport.showsFiles(),
-              AppFeature.mediaTools.isAvailable, AppFeature.shelf.isAvailable,
-              NotchFileToolsSupport.accepts(inputs, for: tool) else { return false }
+        guard environment.available(), NotchFileToolsSupport.accepts(inputs, for: tool) else { return false }
         closeMedia()
         mediaSession = NotchMediaSession(inputs: inputs, tool: tool)
         mediaPresented = true
@@ -147,8 +170,7 @@ package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTra
     }
 
     package func archive(_ inputs: [URL], destination: URL, directory: Bool) {
-        guard !isRunning, AppFeature.notch.isAvailable, AppFeature.shelf.isAvailable,
-              AppFeature.mediaTools.isAvailable, NotchSupport.showsFiles() else { return }
+        guard !isRunning, AppFeature.notch.isAvailable, environment.available() else { return }
         guard destination.isFileURL, !inputs.isEmpty, inputs.allSatisfy(\.isFileURL) else {
             failure = CocoaError(.fileWriteInvalidFileName).localizedDescription
             return

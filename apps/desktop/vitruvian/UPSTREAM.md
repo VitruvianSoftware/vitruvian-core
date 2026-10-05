@@ -1803,6 +1803,14 @@ is that notice. Add an entry for every change to upstream files.
     in `Core/Shelf/ShelfSupport.swift`, and `ShelfService` forwards to it.
   - `Tests/ShelfDropRoutingTests.swift` drives the intake, and
     `Tests/generate_sources.py` no longer copies the shelf's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - What the island's media tools take as a drop goes from
+    `Services/Notch/NotchFileToolsService.swift` to the new
+    `Services/Notch/NotchMediaDrop.swift`. The service forwards to it.
+  - The service takes an injected `Environment` for its switches.
+  - `Tests/ShelfDropRoutingTests.swift` and
+    `Tests/MediaWorkspaceLayoutTests.swift` drive the module's own types,
+    and `Tests/generate_sources.py` no longer writes `ShelfDropRouting.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

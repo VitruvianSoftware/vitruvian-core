@@ -2325,6 +2325,38 @@ which the next slice takes, so 9 remain.
   shelf's wiring of it and the scripted shelf against stand-ins, and runs
   the routing and dock checks. The suite itself runs on macOS CI.
 
+Landed (4b, the media tools as a drop destination): the shelf-drop
+contract's generated file goes, which leaves 8.
+
+- **`NotchMediaDrop`** (new, `Services/Notch/`) decides what the island's
+  media tools take:
+  - nothing unless they are offered and not already working;
+  - only a drop whose every item is a file one tool optimizes, with
+    nothing promised, so mixed drops keep their companions on the shelf;
+  - opening the tool reports whether the tool took its inputs.
+- **`NotchFileToolsService`** takes an injected `Environment`: whether the
+  island shows its files with the tools and the shelf available, and the
+  shelf switch (`.system`).
+  - Its drop members forward to a `NotchMediaDrop`. That drop is busy while
+    a media job or an archive runs.
+  - Its own switch checks (preference sync, opening a tool, archiving) read
+    the same environment.
+- **Tests:** `ShelfDropRoutingContract.FileTools` holds a real service over
+  the contract's switches, and a `NotchMediaDrop` wired the way the service
+  wires it. Two things are scripted instead: whether the tools are busy, and
+  whether a tool takes its inputs. A real job's running state only arrives
+  asynchronously.
+  - Before, the suite compiled copies of seven service members. Every check
+    is kept.
+  - The two running-work revocations (media, archive) become one busy case,
+    since the drop sees one fact.
+  - `MediaWorkspaceLayoutTests` measures the real service, opened on a
+    scratch video.
+- **Verification:** a Linux Swift 6.4 model type-checks the drop, the
+  service's wiring and the scripted tools against stand-ins. It runs the
+  gate, mixed, promised, refusal and busy checks. The suites themselves run
+  on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

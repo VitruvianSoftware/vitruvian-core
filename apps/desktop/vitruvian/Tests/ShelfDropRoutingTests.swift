@@ -9,8 +9,9 @@ import VitruvianUI
 
 /// Production destination methods run against controlled delivery results.
 /// Native transport and payload integrity have separate transfer tests. The
-/// island's canvas is the module's own `NotchCanvasDrop`, and the shelf takes
-/// drops through the module's own `ShelfDropIntake`.
+/// island's canvas is the module's own `NotchCanvasDrop`, the shelf takes
+/// drops through the module's own `ShelfDropIntake`, and the media tools are
+/// the module's own `NotchFileToolsService` and `NotchMediaDrop`.
 enum ShelfDropRoutingContract {
     enum AppFeature {
         static var shelf = Feature()
@@ -81,10 +82,10 @@ enum ShelfDropRoutingContract {
 
         lazy var fileDrop = NotchFileDrop(
             environment: NotchFileDrop.Environment(
-                offersMedia: { NotchFileToolsService.shared.mediaDropContent(for: $0) != nil },
-                mediaAccepts: { NotchFileToolsService.shared.canAcceptMediaDrop },
-                openMedia: { NotchFileToolsService.shared.openMediaDrop($0) },
-                hideMedia: { NotchFileToolsService.shared.hideMedia() },
+                offersMedia: { FileTools.shared.drop.content(for: $0) != nil },
+                mediaAccepts: { FileTools.shared.drop.accepts },
+                openMedia: { FileTools.shared.drop.open($0) },
+                hideMedia: { FileTools.shared.service.hideMedia() },
                 shelfEnabled: { AppFeature.shelf.isAvailable && UserDefaults.standard.enabled },
                 shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) }),
             island: NotchFileDrop.Island(
@@ -115,25 +116,27 @@ enum ShelfDropRoutingContract {
             opened.append(module)
         }
     }
-    class FileToolsState {
-        enum MediaState { case idle, running }
-        final class Media { var state = MediaState.idle }
-        let media = Media()
-        var mediaSession: NotchMediaSession?
-        var mediaContentHeight: CGFloat?
-        var mediaPresented = false
-        var isRunning = false
-        var acceptsMedia = true
-        var inputs: [URL] = []
-        func openMedia(_ tool: MediaTool, inputs: [URL]) -> Bool {
-            guard acceptsMedia else { return false }
-            self.inputs = inputs
-            mediaSession = NotchMediaSession(inputs: inputs, tool: tool)
-            mediaPresented = true
-            mediaContentHeight = nil
-            return true
-        }
-        init() {}
+    /// The media tools: the module's own service over this contract's
+    /// switches, and its own drop decision wired the way the service wires
+    /// it, except that whether the tools are already working, and whether a
+    /// tool takes what it is opened on, are scripted.
+    final class FileTools {
+        static var shared = FileTools()
+        /// The tools are already working, on media or an archive.
+        var busy = false
+        /// A tool takes the inputs it is opened on.
+        var opens = true
+        let service = NotchFileToolsService(environment: .init(
+            available: {
+                NotchSupport.showsFiles() && AppFeature.mediaTools.isAvailable && AppFeature.shelf.isAvailable
+            },
+            shelfEnabled: { UserDefaults.standard.enabled }))
+        lazy var drop = NotchMediaDrop(
+            offered: { [unowned self] in self.service.offersMediaDrop },
+            busy: { [unowned self] in self.busy },
+            openMedia: { [unowned self] in self.opens && self.service.openMedia($0, inputs: $1) })
+        /// The inputs of the media workspace, shown or not.
+        var inputs: [URL] { service.mediaSession?.inputs ?? [] }
     }
 }
 
@@ -219,7 +222,7 @@ enum ShelfDropRoutingTests {
             Context.NotchSupport.enabled = true
             Context.NotchSupport.visibleModules = [.files]
             Context.ShelfService.shared = Context.ShelfService()
-            Context.NotchFileToolsService.shared = Context.NotchFileToolsService()
+            Context.FileTools.shared = Context.FileTools()
         }
         defer {
             board.releaseGlobally()
@@ -252,8 +255,8 @@ enum ShelfDropRoutingTests {
                     let area = NotchFileToolsSupport.mediaDropArea(in: notch.geometry, size: notch.surfaceSize)
                     _ = notch.updateFileDrop(at: optimize ? CGPoint(x: area.midX, y: area.midY) : CGPoint(x: 40, y: area.midY))
                     let accepted = notch.accept(board)
-                    let files = Context.NotchFileToolsService.shared
-                    suite.expect(accepted && files.mediaSession?.tool == (optimize ? tool : nil),
+                    let files = Context.FileTools.shared
+                    suite.expect(accepted && files.service.mediaSession?.tool == (optimize ? tool : nil),
                            "dropping in each destination opens exactly its selected tool or the shelf")
                     if optimize, tool != nil {
                         suite.expect(files.inputs == urls && !notch.pinned && Context.ShelfService.shared.ordinaryAccepts == 0,
@@ -271,10 +274,10 @@ enum ShelfDropRoutingTests {
             let text = NSPasteboardItem()
             text.setString("companion", forType: .string)
             board.writeObjects([image as NSURL, text])
-            suite.expect(Context.NotchFileToolsService.shared.mediaDropContent(for: board) == nil,
+            suite.expect(Context.FileTools.shared.drop.content(for: board) == nil,
                    "a text companion prevents partial optimization of a mixed drag")
 
-            for revoked in 0..<9 {
+            for revoked in 0..<8 {
                 reset()
                 board.clearContents()
                 board.writeObjects([image as NSURL])
@@ -282,16 +285,15 @@ enum ShelfDropRoutingTests {
                 notch.beginFileDrop(board)
                 let area = NotchFileToolsSupport.mediaDropArea(in: notch.geometry, size: notch.surfaceSize)
                 _ = notch.updateFileDrop(at: CGPoint(x: area.midX, y: area.midY))
-                let files = Context.NotchFileToolsService.shared
+                let files = Context.FileTools.shared
                 switch revoked {
                 case 0: Context.AppFeature.mediaTools.isAvailable = false
                 case 1: Context.AppFeature.shelf.isAvailable = false
                 case 2: Context.UserDefaults.standard.enabled = false
                 case 3: Context.NotchSupport.enabled = false
                 case 4: Context.NotchSupport.visibleModules = []
-                case 5: files.media.state = .running
-                case 6: files.isRunning = true
-                case 7: notch.acceptsUserInteraction = false
+                case 5: files.busy = true
+                case 6: notch.acceptsUserInteraction = false
                 default: notch.captureControls = 1
                 }
                 suite.expect(!notch.accept(board) && files.inputs.isEmpty && Context.ShelfService.shared.ordinaryAccepts == 0,
@@ -312,14 +314,14 @@ enum ShelfDropRoutingTests {
             notch.endFileDrop()
             suite.expect(notch.choosingFileDropDestination == false && offered == 2 && targeted == 3 && notch.changes == 5,
                    "the island announces each change of the drop's destinations, and only a change")
-            suite.expect(!notch.choosingFileDropDestination && Context.NotchFileToolsService.shared.mediaSession == nil,
+            suite.expect(!notch.choosingFileDropDestination && Context.FileTools.shared.service.mediaSession == nil,
                    "leaving a drag never creates a media workspace")
 
             for initiallyPinned in [false, true] {
                 reset()
                 let repeatDrop = Context.Notch()
                 repeatDrop.pinned = initiallyPinned
-                let files = Context.NotchFileToolsService.shared
+                let files = Context.FileTools.shared
                 for (input, optimize) in [(image, true), (secondImage, false), (secondImage, true), (video, true)] {
                     board.clearContents()
                     board.writeObjects([input as NSURL])
@@ -328,35 +330,36 @@ enum ShelfDropRoutingTests {
                            "every new compatible drag offers both destinations even with an existing media workspace")
                     let area = NotchFileToolsSupport.mediaDropArea(in: repeatDrop.geometry, size: repeatDrop.surfaceSize)
                     _ = repeatDrop.updateFileDrop(at: CGPoint(x: optimize ? area.midX : 40, y: area.midY))
-                    suite.expect(repeatDrop.accept(board) && files.mediaPresented == optimize && repeatDrop.pinned == initiallyPinned,
+                    suite.expect(repeatDrop.accept(board) && files.service.mediaPresented == optimize && repeatDrop.pinned == initiallyPinned,
                            "each drop follows its new destination and leaves the user's pin choice untouched")
                     if optimize { suite.expect(files.inputs == [input], "a new optimization replaces only the deliberately selected input") }
                     else { suite.expect(files.inputs == [image], "choosing the shelf hides media without discarding its previous work") }
                 }
-                let id = files.mediaSession!.id
-                files.updateMediaHeight(id: id, height: 321.3)
-                suite.expect(files.mediaContentHeight == 322, "media records its actual content height at a stable whole-point boundary")
-                for rejected in [CGFloat.nan, .infinity, 0, -1] { files.updateMediaHeight(id: id, height: rejected) }
-                files.updateMediaHeight(id: UUID(), height: 900)
-                suite.expect(files.mediaContentHeight == 322, "invalid sizes and callbacks from a replaced workspace cannot stretch the island")
-                files.updateMediaHeight(id: id, height: 240)
-                suite.expect(files.mediaContentHeight == 240, "hiding extra media controls shrinks the recorded content height")
-                files.media.state = .running
+                let media = files.service
+                let id = media.mediaSession!.id
+                media.updateMediaHeight(id: id, height: 321.3)
+                suite.expect(media.mediaContentHeight == 322, "media records its actual content height at a stable whole-point boundary")
+                for rejected in [CGFloat.nan, .infinity, 0, -1] { media.updateMediaHeight(id: id, height: rejected) }
+                media.updateMediaHeight(id: UUID(), height: 900)
+                suite.expect(media.mediaContentHeight == 322, "invalid sizes and callbacks from a replaced workspace cannot stretch the island")
+                media.updateMediaHeight(id: id, height: 240)
+                suite.expect(media.mediaContentHeight == 240, "hiding extra media controls shrinks the recorded content height")
+                files.busy = true
                 repeatDrop.beginFileDrop(board)
                 let area = NotchFileToolsSupport.mediaDropArea(in: repeatDrop.geometry, size: repeatDrop.surfaceSize)
                 suite.expect(repeatDrop.choosingFileDropDestination
                        && !repeatDrop.updateFileDrop(at: CGPoint(x: area.midX, y: area.midY)),
                        "running media keeps the chooser available but cannot be overwritten by another drop")
                 suite.expect(repeatDrop.updateFileDrop(at: CGPoint(x: 40, y: area.midY)) && repeatDrop.accept(board)
-                       && !files.mediaPresented && files.media.state == .running,
+                       && !media.mediaPresented && media.mediaSession?.id == id,
                        "the shelf remains usable while an optimization continues without interruption")
-                files.showMedia()
-                suite.expect(files.mediaPresented && files.mediaSession?.id == id,
+                media.showMedia()
+                suite.expect(media.mediaPresented && media.mediaSession?.id == id,
                        "returning to media resumes the same work and results")
-                files.media.state = .idle
-                files.acceptsMedia = false
-                suite.expect(!files.openMediaDrop(board) && files.mediaSession?.id == id,
-                       "a late input validation failure cannot claim success using a previous media session")
+                files.busy = false
+                files.opens = false
+                suite.expect(!files.drop.open(board) && media.mediaSession?.id == id,
+                       "a tool that refuses its inputs cannot claim success using a previous media session")
             }
 
             for finishOutside in [false, true] {
@@ -383,7 +386,7 @@ enum ShelfDropRoutingTests {
                        "moving across the island highlights the media destination")
                 let release = finishOutside ? CGPoint(x: -1, y: -1) : CGPoint(x: 40, y: area.midY)
                 suite.expect(canvas.perform(board, at: release, visible: visible.contains(release)) == !finishOutside
-                       && Context.NotchFileToolsService.shared.mediaSession == nil,
+                       && Context.FileTools.shared.service.mediaSession == nil,
                        "the release point is rechecked even when the last drag update targeted media")
                 suite.expect(Context.ShelfService.shared.ordinaryAccepts == (finishOutside ? 0 : 1)
                        && !destination.choosingFileDropDestination,
