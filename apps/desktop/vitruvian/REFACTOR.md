@@ -5159,6 +5159,11 @@ runs under Swift Testing alone, and the binary's own runner is gone.
     `VITRUVIAN_TEST_SUITES`, and an unknown name fails its case;
   - the log still ends in `TESTS OK` or `TESTS FAILED`, so
     `mutation_checks.py` runs unchanged.
+- **Every suite must report:** Swift Testing would pass a run that skipped
+  suites, so the wrapper counts the suites' lines against the suites asked
+  for, which is every name in `TestGroups` on a full run, and fails on a
+  shortfall. Checked with a stand-in binary: all 44 reporting passes, while
+  43, none, or a failing binary fail.
 - **Dropped:** `--list`. The names are in `Tests/TestGroups.swift`.
 - **Registration is checked:** `TestRegistrationTests` follows the runs from
   `TestGroups` through every contract and fails on a contract that nothing
