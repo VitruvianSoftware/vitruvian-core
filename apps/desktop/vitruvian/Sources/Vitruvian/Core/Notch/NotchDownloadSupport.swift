@@ -215,7 +215,7 @@ package enum NotchDownloadSupport {
 
     /// Digits carry no descenders, so their ink is about the cap height.
     package static func percentInset(in geometry: NotchGeometry) -> CGFloat {
-        geometry.compactActivityEdgeInset(boxHeight: percentSize * 0.72, radius: 0)
+        geometry.compactReadingInset(textSize: percentSize)
     }
 
     /// Restore the file name only when menus leave a readable wing. Otherwise

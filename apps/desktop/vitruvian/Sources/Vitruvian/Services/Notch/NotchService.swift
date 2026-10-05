@@ -854,7 +854,7 @@ package final class NotchService: ObservableObject {
             : (services.watchHeadline as NSString).size(withAttributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
             ]).width.rounded(.up)
-        let inset = provisional.compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)
+        let inset = provisional.compactReadingInset(textSize: size)
         return reading + inset + NotchTimerSupport.stripCameraGap
     }
 
@@ -909,7 +909,7 @@ package final class NotchService: ObservableObject {
                                                  locale: Locale(identifier: L10n.shared.language.rawValue))
         let reading = (NotchAgentSupport.readingShape(text) as NSString).size(withAttributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
-        ]).width.rounded(.up) + provisional.compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)
+        ]).width.rounded(.up) + provisional.compactReadingInset(textSize: size)
         return max(reading, companionMarkWidth(companion, in: provisional)) + NotchTimerSupport.stripCameraGap
     }
 
@@ -954,7 +954,7 @@ package final class NotchService: ObservableObject {
         let width = (shape as NSString).size(withAttributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
         ]).width
-        let reading = width.rounded(.up) + provisional.compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)
+        let reading = width.rounded(.up) + provisional.compactReadingInset(textSize: size)
         // The marks on the other side, drawn as the strip draws them.
         let working = Set(services.agentUsage.live.map(\.provider)).count
         let marks = NotchAgentSupport.stripMarksWidth(working: working, in: provisional)

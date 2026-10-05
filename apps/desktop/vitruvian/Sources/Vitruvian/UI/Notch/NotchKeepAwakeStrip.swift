@@ -57,7 +57,7 @@ package struct NotchKeepAwakeStrip: View {
                     }
                 }
                 // Digits carry no descenders, so their ink is about the cap height.
-                .padding(.trailing, geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0))
+                .padding(.trailing, geometry.compactReadingInset(textSize: textSize))
                 .frame(width: wing, height: height, alignment: .trailing)
             }
             .foregroundStyle(.yellow)

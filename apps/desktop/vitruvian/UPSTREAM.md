@@ -2002,6 +2002,12 @@ is that notice. Add an entry for every change to upstream files.
     `Sources/Vitruvian/UI/Notch/NotchNoticeView.swift` draws the banner's
     icon with.
   - `Tests/NotchCompactTests.swift` and `Tests/NotchTests.swift` check both.
+- **2026-10-05**: Refactor step 5z (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchGeometry.compactReadingInset(textSize:)`. `Services/Notch/NotchService.swift`,
+  `Core/Notch/NotchKeepAwakeSupport.swift`, `Core/Notch/NotchDownloadSupport.swift`
+  and the timer, agent, keep awake and watch strips in `UI/Notch/` use it
+  instead of spelling the digits' inset out.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -35,7 +35,7 @@ package struct NotchTimerStrip: View {
     private var textInset: CGFloat {
         guard !geometry.compactActivityUsesFooter else { return 0 }
         // Digits carry no descenders, so their ink is about the cap height.
-        return geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0)
+        return geometry.compactReadingInset(textSize: textSize)
     }
 
     package var body: some View {

@@ -3110,6 +3110,16 @@ out. Nineteen still agree. Two did not:
   page split, and the notice inset (two constants). They move a few at a
   time, each to a named rule beside its kin.
 
+Landed (5z, the compact reading inset): the nine places that kept a reading
+clear of the strip's curve each wrote
+`compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)`. Four measured
+(three in `NotchService`, one in `NotchKeepAwakeSupport`) and five drew (the
+timer, agent, keep awake and watch strips, and the download percentage).
+`NotchGeometry.compactReadingInset(textSize:)` is now the one rule. The
+fonts stay as they are: the measuring side needs an `NSFont` and the
+drawing side a SwiftUI `Font`, and both already ask for the same system
+face.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

@@ -410,7 +410,7 @@ package struct NotchWatchStrip: View {
     }
     private var textSize: CGFloat { NotchTimerSupport.stripTextSize(height: geometry.compactActivityContentHeight) }
     private var iconInset: CGFloat { geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2) }
-    private var textInset: CGFloat { geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0) }
+    private var textInset: CGFloat { geometry.compactReadingInset(textSize: textSize) }
 
     package var body: some View {
         Button { service.openActivity(.watch) } label: {

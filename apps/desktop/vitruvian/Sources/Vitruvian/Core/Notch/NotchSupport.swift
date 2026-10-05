@@ -2035,6 +2035,13 @@ package struct NotchGeometry: Equatable {
     package var compactActivityShoulder: CGFloat {
         NotchLayout.shoulder(height: compactActivitySize.height)
     }
+    /// Inset that keeps a line of digits `textSize` tall an even gap from the
+    /// strip's silhouette. Digits carry no descenders, so their ink is about
+    /// the cap height. Every compact reading is measured and drawn with it.
+    package func compactReadingInset(textSize: CGFloat) -> CGFloat {
+        compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0)
+    }
+
     /// Inset that keeps a vertically centred box of `boxHeight`, itself rounded
     /// by `radius`, an even `gap` away from the strip's silhouette.
     /// A strip is barely taller than its corners, so its lower half is one long
