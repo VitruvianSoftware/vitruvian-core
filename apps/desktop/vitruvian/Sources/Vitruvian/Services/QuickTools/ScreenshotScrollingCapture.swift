@@ -14,6 +14,8 @@ package enum ScreenshotScrollingCapture {
         private let lock = NSLock()
         private var requested = false
 
+        package init() {}
+
         package func request() {
             lock.lock()
             requested = true

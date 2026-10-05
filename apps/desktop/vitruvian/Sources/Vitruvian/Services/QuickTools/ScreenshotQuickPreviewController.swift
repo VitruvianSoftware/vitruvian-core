@@ -46,8 +46,6 @@ package final class ScreenshotQuickPreviewController {
 
         package static var main: Scheduler {
             Scheduler(async: { work in
-                // Handed to the main queue, which alone runs it.
-                nonisolated(unsafe) let work = work
                 DispatchQueue.main.async { MainActor.assumeIsolated { work() } }
             }, after: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) })
         }

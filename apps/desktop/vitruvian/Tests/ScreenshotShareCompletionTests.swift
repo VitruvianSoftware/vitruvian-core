@@ -28,7 +28,7 @@ enum ScreenshotShareCompletionTests {
         var baseDismissDuration: TimeInterval? = 12
         var autoDismissDuration: TimeInterval? = 12
         /// The production scheduler's shape, on the shared test clock.
-        let scheduler = ScreenshotQuickPreviewController.Scheduler(
+        let scheduler = VitruvianServices.ScreenshotQuickPreviewController.Scheduler(
             async: { work in DispatchQueue.main.async { work() } },
             after: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) })
         struct Animation {
