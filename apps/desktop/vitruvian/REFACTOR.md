@@ -726,6 +726,20 @@ which leaves 78.
 - **Mutation fixture:** `mutation_checks.py` "a timed session hands over on
   one condition" now targets the static's guard.
 
+Landed (4b, type copies): nine copies of data types that production already
+declares `package` become the module's own types. No generated file goes
+away, so 78 remain.
+
+- **Aliased:** `BrightnessService.DisplayControlFailure`,
+  `CommandBarService.Mode`, `JunkCleaner.Phase`, `UpdateService.State`,
+  `ScreenshotQuickPreviewController.Action`, and `SpaceWindowBridge.Topology`
+  in three scopes. Each is a module-qualified typealias where the copied
+  methods name the type unqualified.
+- **Dropped:** the copy of `NotchMediaSession`, a top-level type the module
+  already exports.
+- **Kept:** the copy of `AppUninstaller.Phase`, whose `.done` case holds the
+  test's stand-in `Leftover`.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
