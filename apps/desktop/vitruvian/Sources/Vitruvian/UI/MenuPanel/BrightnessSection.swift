@@ -227,12 +227,21 @@ package struct SoftwareDimmingButton: View {
     }
 
     private var offered: Bool {
-        guard display.isActive, !display.isBuiltIn, display.canChooseDimming else { return false }
+        Self.offersChoice(isActive: display.isActive, isBuiltIn: display.isBuiltIn,
+                          canChooseDimming: display.canChooseDimming, isDDC: display.method == .ddc,
+                          readable: display.readable, chosen: chosen, compact: compact)
+    }
+
+    /// Whether a display's row offers the dimming choice. The tests ask this
+    /// with plain values (REFACTOR.md step 4b).
+    package static func offersChoice(isActive: Bool, isBuiltIn: Bool, canChooseDimming: Bool, isDDC: Bool,
+                                     readable: Bool, chosen: Bool, compact: Bool) -> Bool {
+        guard isActive, !isBuiltIn, canChooseDimming else { return false }
         if chosen { return true }
-        guard display.method == .ddc else { return false }
+        guard isDDC else { return false }
         // The panel keeps only the write-only way out; extra dimming is
         // offered in Settings and joins the panel once it is on.
-        return !(compact && display.readable)
+        return !(compact && readable)
     }
 
     package var body: some View {

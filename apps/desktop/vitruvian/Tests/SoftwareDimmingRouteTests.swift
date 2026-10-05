@@ -51,6 +51,19 @@ enum SoftwareDimmingRouteContract {
         var canChooseDimming = true
     }
 
+    /// A display row: which rows offer the dimming choice is the shipped rule.
+    final class Row {
+        var display = Display()
+        var chosen = false
+        var compact = false
+        var offered: Bool {
+            SoftwareDimmingButton.offersChoice(
+                isActive: display.isActive, isBuiltIn: display.isBuiltIn,
+                canChooseDimming: display.canChooseDimming, isDDC: display.method == .ddc,
+                readable: display.readable, chosen: chosen, compact: compact)
+        }
+    }
+
     final class Log {
         var lines: [String] = []
         func log(_ message: String) { lines.append(message) }

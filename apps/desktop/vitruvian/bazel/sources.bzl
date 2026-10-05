@@ -372,7 +372,6 @@ GENERATED_TEST_SOURCES = [
     "ShelfDragCompletion.swift",
     "ShelfDropRouting.swift",
     "SoftwareDimmingRoute.swift",
-    "SoftwareDimmingRow.swift",
     "SuperKeyTap.swift",
     "SwitcherActivationBodies.swift",
     "SwitcherScroll.swift",

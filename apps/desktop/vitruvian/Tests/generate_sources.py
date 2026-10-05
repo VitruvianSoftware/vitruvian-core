@@ -1064,13 +1064,6 @@ def main():
           + declaration(music, "    private func updateAutomation(").replace("private func", "func", 1)
           + "}\n}\n")
 
-    brightness_row = "Sources/Vitruvian/UI/MenuPanel/BrightnessSection.swift"
-    write("SoftwareDimmingRow.swift", "import CoreGraphics\nimport Foundation\n\n"
-          + "extension SoftwareDimmingRouteContract {\n"
-          + "final class Row {\nvar display = Display()\nvar chosen = false\nvar compact = false\n"
-          + declaration(brightness_row, "    private var offered:").replace("private var", "var", 1)
-          + "}\n}\n")
-
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
           + "extension SoftwareDimmingRouteContract {\n"
