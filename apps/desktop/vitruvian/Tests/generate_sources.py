@@ -86,23 +86,6 @@ def main():
           + "}\n}\n")
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
-    # The composition root wires the island's collaborators; each contract
-    # wires its own stand-ins the way main.swift wires the services.
-    write("NotchFullscreen.swift", "import CoreGraphics\nimport Foundation\nextension NotchFullscreenTests {\n"
-          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
-          + "final class Service: State {\n"
-          + "struct Collaborators { var feedbackRoutingDidChange: () -> Void = {\n"
-          + "if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }\n"
-          + "if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }\n"
-          + "} }\nstatic var collaborators = Collaborators()\n"
-          + declaration(notch, "    var acceptsUserInteraction: Bool {")
-          + declaration(notch, "    var acceptsSystemFeedback: Bool {")
-          + declaration(notch, "    private func updateFullscreenVisibility(").replace("private func", "func", 1)
-          + declaration(notch, "    private func fullscreenEnvironmentDidChange()").replace("private func", "func", 1)
-          + "}\nfinal class PreciseVolumeRollerService: VolumeState {\n"
-          + "static let shared = PreciseVolumeRollerService()\n"
-          + declaration("Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift", "    func syncWithPreferences()")
-          + "}\n}\n")
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
     write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"

@@ -1767,6 +1767,15 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/generate_sources.py` no longer copies it.
   - `Tests/MetricsTests.swift` line-buffers its output, so a crash still
     shows which suites finished.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The island stepping aside for a full-screen Space moves from
+    `Services/Notch/NotchService.swift` to the new
+    `Services/Notch/NotchFullscreenVisibility.swift`.
+  - `Services/Audio/PreciseVolumeRollerService.swift` takes an injected
+    `Environment`: its preference, whether the island takes the volume keys,
+    Accessibility, the session and the event tap's creation.
+  - `Tests/NotchFullscreenTests.swift` drives both, and
+    `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

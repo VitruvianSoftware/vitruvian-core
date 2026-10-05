@@ -397,6 +397,38 @@ package final class NotchService: ObservableObject {
                 self.move(to: screen)
             }))
 
+    /// Stepping aside for a full-screen Space (`NotchFullscreenVisibility`).
+    private lazy var fullscreen: NotchFullscreenVisibility = NotchFullscreenVisibility(
+        environment: .system,
+        island: NotchFullscreenVisibility.Island(
+            hidden: { [weak self] in self?.hiddenInFullscreen ?? false },
+            setHidden: { [weak self] in self?.hiddenInFullscreen = $0 },
+            isActive: { [weak self] in self.map { $0.running && !$0.suspended } ?? false },
+            cancelHover: { [weak self] in
+                guard let self else { return }
+                self.hoverWork?.cancel(); self.hoverWork = nil
+                self.hoverEmphasized = false
+            },
+            releaseDrag: { [weak self] in
+                self?.heldDrag = false
+                self?.dragPlaceholder = false
+            },
+            cancelCaptureControls: { [weak self] in self?.cancelCaptureControls() },
+            dismissNotice: { [weak self] in
+                guard let self else { return }
+                self.noticeWork?.cancel(); self.noticeWork = nil
+                self.endDeparture()
+                self.notice = nil
+                self.noticeExpanded = false
+            },
+            collapse: { [weak self] in self?.collapse() },
+            feedbackRoutingDidChange: { Self.collaborators.feedbackRoutingDidChange() },
+            updateScreen: { [weak self] in self?.updateScreen() },
+            updateFullscreenDisplays: { [weak self] in self?.updateFullscreenDisplays() },
+            syncMirrors: { [weak self] in self?.syncMirrors() },
+            syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
+            refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) }))
+
     private init() {}
 
     private var hiddenUntilHover: Bool {
@@ -2663,43 +2695,11 @@ package final class NotchService: ObservableObject {
     }
 
     private func updateFullscreenVisibility(displayID: CGDirectDisplayID) {
-        let hidden = UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen)
-            && SpaceWindowBridge.topology()?.isFullscreen(on: displayID, separateSpaces: NSScreen.screensHaveSeparateSpaces) == true
-        guard hidden != hiddenInFullscreen else { return }
-        hiddenInFullscreen = hidden
-        if hidden {
-            hoverWork?.cancel(); hoverWork = nil
-            hoverEmphasized = false
-            heldDrag = false
-            dragPlaceholder = false
-            cancelCaptureControls()
-            noticeWork?.cancel(); noticeWork = nil
-            endDeparture()
-            notice = nil
-            noticeExpanded = false
-            collapse()
-        }
-        // Space changes do not run a full preference sync. Restore volume
-        // and brightness key routing when the island becomes eligible for
-        // feedback again, and hand the keys back while it is away.
-        Self.collaborators.feedbackRoutingDidChange()
+        fullscreen.update(displayID: displayID)
     }
 
     private func fullscreenEnvironmentDidChange() {
-        // Only the opt-in option depends on Spaces and the active app.
-        guard running, !suspended,
-              hiddenInFullscreen || UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen)
-        else { return }
-        let wasHidden = hiddenInFullscreen
-        updateScreen()
-        // Each copy follows full screen on its own display.
-        updateFullscreenDisplays()
-        syncMirrors()
-        // An unchanged state must not cut short a transition on screen, such
-        // as the island closing after a click in another app.
-        guard hiddenInFullscreen != wasHidden else { return }
-        syncVisibleConsumers()
-        refreshPresentation(animated: false)
+        fullscreen.environmentDidChange()
     }
 
     private func installObservers() {

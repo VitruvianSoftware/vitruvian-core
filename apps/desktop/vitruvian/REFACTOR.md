@@ -2206,6 +2206,35 @@ goes, which leaves 11.
   CI. The six `mutation_checks.py` mutations of this file still name
   messages the suite prints.
 
+Landed (4b, the island's full-screen visibility): one more generated
+file goes, which leaves 10.
+
+- **`NotchFullscreenVisibility`** (new, `Services/Notch/`) decides when the
+  island steps aside for a full-screen Space (an opt-in) and what it does
+  then:
+  - **Stepping aside:** it cancels hover, releases a drag, cancels the
+    capture controls, dismisses the notice and collapses, in that order.
+  - **Key routing:** it resyncs who owns the volume and brightness keys
+    whenever the island steps aside or returns.
+  - **Following:** on a Space or app change it follows only while the
+    island runs.
+  - Its environment is the preference and the Spaces (`.system`). The island
+    hands it those steps; `NotchService` keeps `hiddenInFullscreen`.
+- **`PreciseVolumeRollerService.Environment`** (new): the roller's
+  preference, whether the island takes the volume keys, Accessibility, the
+  session, and the event tap's creation. `shared` uses `.system`, as
+  before. The re-arm of a disabled tap still reads the system, since only a
+  live tap reaches it.
+- **Tests:** `NotchFullscreenTests` drives the module's own visibility over
+  a scripted preference, Spaces and island. It also drives a real roller,
+  wired through key routing the way `main.swift` wires them, over a tap
+  that macOS always refuses. Before, it compiled copies of four island
+  members and the roller's sync. Every check is kept; the step-aside check
+  now also pins the order.
+- **Verification:** a Linux Swift 6.4 model type-checks the new type and the
+  test's desk and island against stand-ins. The suite itself runs on macOS
+  CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

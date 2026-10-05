@@ -29,17 +29,66 @@ package final class PreciseVolumeRollerService: ObservableObject {
         contentsOfFile: "/System/Library/LoginPlugins/BezelServices.loginPlugin/Contents/Resources/volume.aiff",
         byReference: true)
 
-    private init() {
+    /// What decides whether the tap runs, and the tap itself. The app
+    /// passes `.system`.
+    package struct Environment {
+        package var defaults: UserDefaults
+        package var mixerAvailable: @MainActor () -> Bool
+        /// The island shows volume changes itself, so its keys need the tap too.
+        package var islandTakesVolume: @MainActor () -> Bool
+        package var accessibilityGranted: @MainActor () -> Bool
+        package var sessionIsActive: @MainActor () -> Bool
+        /// Installs the event tap, or nil when macOS refuses it.
+        package var createTap: @MainActor (_ callback: CGEventTapCallBack,
+                                           _ userInfo: UnsafeMutableRawPointer) -> CFMachPort?
+
+        package init(defaults: UserDefaults, mixerAvailable: @escaping @MainActor () -> Bool,
+                     islandTakesVolume: @escaping @MainActor () -> Bool,
+                     accessibilityGranted: @escaping @MainActor () -> Bool,
+                     sessionIsActive: @escaping @MainActor () -> Bool,
+                     createTap: @escaping @MainActor (CGEventTapCallBack, UnsafeMutableRawPointer) -> CFMachPort?) {
+            self.defaults = defaults
+            self.mixerAvailable = mixerAvailable
+            self.islandTakesVolume = islandTakesVolume
+            self.accessibilityGranted = accessibilityGranted
+            self.sessionIsActive = sessionIsActive
+            self.createTap = createTap
+        }
+
+        @MainActor package static var system: Environment {
+            Environment(
+                defaults: .standard,
+                mixerAvailable: { AppFeature.mixer.isAvailable },
+                islandTakesVolume: { NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback },
+                accessibilityGranted: { AXIsProcessTrusted() },
+                sessionIsActive: { SessionActivity.shared.isActive },
+                createTap: { callback, userInfo in
+                    let systemDefined = CGEventType(rawValue: CleaningSystemKeyEvent.systemDefinedEventTypeRawValue)!
+                    return CGEvent.tapCreate(
+                        tap: .cgSessionEventTap,
+                        place: .headInsertEventTap,
+                        options: .defaultTap,
+                        eventsOfInterest: CGEventMask(1 << systemDefined.rawValue),
+                        callback: callback,
+                        userInfo: userInfo)
+                })
+        }
+    }
+
+    private let environment: Environment
+
+    package init(environment: Environment = .system) {
+        self.environment = environment
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
     package func syncWithPreferences() {
-        let wanted = AppFeature.mixer.isAvailable
-            && (UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
-                || (NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback))
+        let wanted = environment.mixerAvailable()
+            && (environment.defaults.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
+                || environment.islandTakesVolume())
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
-                                               accessibilityGranted: AXIsProcessTrusted(),
-                                               sessionIsActive: SessionActivity.shared.isActive) {
+                                               accessibilityGranted: environment.accessibilityGranted(),
+                                               sessionIsActive: environment.sessionIsActive()) {
             start()
         } else {
             stop()
@@ -70,7 +119,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
     }
 
     private func start() {
-        guard AXIsProcessTrusted() else {
+        guard environment.accessibilityGranted() else {
             removeTap()
             tapFailed = false
             return
@@ -80,7 +129,6 @@ package final class PreciseVolumeRollerService: ObservableObject {
         }
         guard tap == nil else { return }
 
-        let systemDefined = CGEventType(rawValue: CleaningSystemKeyEvent.systemDefinedEventTypeRawValue)!
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else { return Unmanaged.passUnretained(event) }
             let service = Unmanaged<PreciseVolumeRollerService>
@@ -89,14 +137,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
             // The tap's source is on the main run loop (below).
             return MainActor.assumeIsolated { service.handle(type: type, event: event) }
         }
-        guard let created = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(1 << systemDefined.rawValue),
-            callback: callback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
+        guard let created = environment.createTap(callback, Unmanaged.passUnretained(self).toOpaque()) else {
             tapFailed = true
             return
         }
@@ -126,7 +167,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         if routeNotchVolume(nsEvent, event: event) { return nil }
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled),
+        guard environment.defaults.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled),
               let volumePress = Self.volumePress(fromData1: nsEvent.data1) else {
             return Unmanaged.passUnretained(event)
         }
@@ -166,7 +207,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
             }
             return true
         }
-        let precise = UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
+        let precise = environment.defaults.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
         if precise, let direction = key.rollerDirection,
            !gate.accepts(direction, at: ProcessInfo.processInfo.systemUptime) { return true }
         feedbackStep &+= 1
