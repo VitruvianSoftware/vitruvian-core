@@ -860,22 +860,6 @@ def main():
           + declaration(dock, "    private func isNearDock(").replace("private func", "func", 1)
           + "}\n")
 
-    lyrics = "Sources/Vitruvian/Services/Notch/NotchLyricsService.swift"
-    write("NotchLyricsLifecycle.swift", "import Foundation\nimport UniformTypeIdentifiers\n\nextension NotchLyricsContract {\n"
-          + "final class Service {\nvar memory = NotchLyricsMemory()\n"
-          + "var lyrics: NotchLyrics? { memory.lyrics }\nvar track: NotchMusicIdentity? { memory.track }\n"
-          + "var visible = false\nvar online = false\nvar generation = UUID()\nvar state: State = .idle\n"
-          + "var session: Session?\nvar importPanel: Panel?\nvar loads: [NotchMusicIdentity] = []\n"
-          + "func load(_ track: NotchMusicIdentity) { loads.append(track); state = .loading; session = Session() }\n"
-          + declaration(lyrics, "    func update(playback:")
-          + declaration(lyrics, "    func playbackChanged(")
-          + declaration(lyrics, "    func hide()")
-          + declaration(lyrics, "    func stop()")
-          + declaration(lyrics, "    private func cancel()")
-          + declaration(lyrics, "    func importLyrics()")
-          + declaration(lyrics, "    private func canReturnToLyrics(")
-          + "}\n}\n")
-
     music = "Sources/Vitruvian/Services/Notch/NotchMusicService.swift"
     write("NotchMusicControls.swift", "import AppKit\n\nextension NotchMusicCommandContract {\n"
           + "final class Service {\ntypealias Command = NotchPlaybackCommand\n"

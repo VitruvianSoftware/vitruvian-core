@@ -925,6 +925,34 @@ goes, which leaves 65.
   active. That now sits in the panel wrapper. A dialog can no longer
   be attached as a sheet: `Dialog` has no way to do it.
 
+Landed (4b, the island's lyrics): one more generated file goes, which
+leaves 64.
+
+- **Injected:** `NotchLyricsService` takes an `Environment`:
+  - the preferences;
+  - lookups, which return their cancellation;
+  - the island's state, as an `Island`;
+  - a `Chooser` (begin above a level, focus, cancel);
+  - activation, reopening the music section, and both queues.
+
+  `system` keeps the lyrics download, NotchService, an `NSOpenPanel`, `NSApp`
+  and the dispatch queues.
+- **What changed:**
+  - A token, not panel identity, names the open chooser.
+  - `visible` and `track` are readable.
+  - `IslandWindowing` is now `Sendable`, so the reopen hop can capture the
+    window weakly.
+- **Test:** the lifecycle and picker tests drive the real service on a
+  session of doubles. Lyrics now come from answered lookups or chosen files,
+  where before the test wrote them straight into the cache.
+- **Checks added:** six mutants passed the old test, and each now fails one
+  of these:
+  - a late answer from an earlier chooser;
+  - a retried lookup's predecessor answering;
+  - work that supersedes a chosen file's late read;
+  - an island that moved on before the reopen;
+  - focus taken before activation.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

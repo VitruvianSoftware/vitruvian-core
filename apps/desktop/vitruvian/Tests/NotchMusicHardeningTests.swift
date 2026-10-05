@@ -8,105 +8,113 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-private typealias ProductionLyricsParser = NotchLyricsSupport
-
-/// Production lifecycle bodies are extracted by generate_sources.py. Only the
-/// session, chooser, preference source and network entry point are test doubles.
+/// The production lyrics service runs on a session of doubles: the
+/// preferences, the lookups, the file chooser, the island and both queues. No
+/// request is sent, no panel opens and nothing activates.
 enum NotchLyricsContract {
-    enum State { case idle, consent, loading, unavailable, failed, ready }
-    enum Preferences {
-        static var enabled = true
-        static var online = false
-        static func isEnabled() -> Bool { enabled }
-        static func onlineEnabled() -> Bool { enabled && online }
-        static let maximumBytes = ProductionLyricsParser.maximumBytes
-        static func parse(_ source: String, duration: Double) -> [NotchLyricLine] {
-            ProductionLyricsParser.parse(source, duration: duration)
+    /// Work waiting for its queue. Only the test's own thread touches it.
+    nonisolated final class Queue: @unchecked Sendable {
+        var jobs: [() -> Void] = []
+        func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
+    }
+
+    final class Lookup {
+        let url: URL
+        let answer: @Sendable (Data?, Bool) -> Void
+        var cancelled = false
+        init(url: URL, answer: @escaping @Sendable (Data?, Bool) -> Void) {
+            self.url = url
+            self.answer = answer
         }
     }
-    typealias NotchLyricsSupport = Preferences
-    final class Session {
-        var cancelled = false
-        func invalidateAndCancel() { cancelled = true }
-    }
-    final class Window {
-        struct Level { let rawValue: Int }
-        var level = Level(rawValue: 26)
+
+    final class Window: IslandWindowing {
         var isVisible = true
-        var attached = false
+        var level = NSWindow.Level(rawValue: 26)
         var focused = false
         var focusReturns = 0
+        func makeKey() { focused = true }
     }
-    typealias NSWindow = Window
-    enum NSApplication { enum ModalResponse { case OK, cancel } }
-    final class Panel {
-        static weak var current: Panel?
-        var level = Window.Level(rawValue: 0)
-        var hidesOnDeactivate = true
-        var cancelled = false
-        var focused = false
-        var allowedContentTypes: [UTType] = []
-        var allowsMultipleSelection = true
-        var canChooseDirectories = true
-        var message = ""
-        var url: URL?
-        weak var parent: Window?
-        private var completed: ((NSApplication.ModalResponse) -> Void)?
-        func begin(completionHandler: @escaping (NSApplication.ModalResponse) -> Void) {
-            Self.current = self
-            completed = completionHandler
-        }
-        func makeKeyAndOrderFront(_ sender: Any?) { focused = true }
-        func finish(_ response: NSApplication.ModalResponse) {
-            Self.current = nil
-            completed?(response)
-            parent?.focused = false
-        }
-        func cancel(_ sender: Any?) { cancelled = true; finish(.cancel) }
-    }
-    typealias NSOpenPanel = Panel
-    enum L10n {
-        static let shared = Localization()
-        final class Localization { let language: AppLanguage = .enUS }
-    }
-    enum DispatchQueue {
-        static var main = Queue()
-        static var worker = Queue()
-        static func global(qos: DispatchQoS.QoSClass) -> Queue { worker }
-        final class Queue {
-            var jobs: [() -> Void] = []
-            func async(execute action: @escaping () -> Void) { jobs.append(action) }
-            func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
-        }
-    }
-    final class NotchService {
-        static var shared = NotchService()
-        var presentationWindow: Window? = Window()
-        var acceptsSystemFeedback = true
+
+    /// The island as the import sees it.
+    final class Notch {
+        var window: Window? = Window()
         var acceptsUserInteraction = true
         var expanded = true
         var selected: NotchModule = .music
-        var showingAppPanel = false
-        var selectedMetric: Bool?
-        var captureControls: Bool?
         var pinned = false
-        func open(_ module: NotchModule, feedback: Bool) {
-            selected = module
-            presentationWindow?.focused = true
-            presentationWindow?.focusReturns += 1
+    }
+
+    final class Chooser {
+        static weak var current: Chooser?
+        var level: NSWindow.Level?
+        var focused = false
+        var cancelled = false
+        var url: URL?
+        private var completed: ((NSApplication.ModalResponse, URL?) -> Void)?
+        var chooser: NotchLyricsService.Chooser {
+            .init(begin: { level, _, completion in
+                Self.current = self
+                self.level = level
+                self.completed = completion
+            }, makeKeyAndOrderFront: { self.focused = true },
+            cancel: { self.cancelled = true; self.finish(.cancel) })
+        }
+        func finish(_ response: NSApplication.ModalResponse) {
+            if Self.current === self { Self.current = nil }
+            completed?(response, url)
         }
     }
-    static let NSApp = Application()
-    final class Application {
-        func activate(ignoringOtherApps: Bool) {
-            let notch = NotchService.shared
-            if Panel.current == nil, !notch.pinned { notch.expanded = false }
+
+    final class Session {
+        var enabled = true
+        var online = false
+        var lookups: [Lookup] = []
+        var choosers: [Chooser] = []
+        /// Whether the open chooser already had focus at each activation.
+        var activationsAfterFocus: [Bool] = []
+        let notch = Notch()
+        let main = Queue()
+        let worker = Queue()
+        private(set) lazy var service = NotchLyricsService(environment: .init(
+            isEnabled: { self.enabled },
+            onlineEnabled: { self.enabled && self.online },
+            lookup: { url, answer in
+                let lookup = Lookup(url: url, answer: answer)
+                self.lookups.append(lookup)
+                return { lookup.cancelled = true }
+            },
+            island: {
+                .init(window: self.notch.window, acceptsUserInteraction: self.notch.acceptsUserInteraction,
+                      expanded: self.notch.expanded, selected: self.notch.selected, showingAppPanel: false,
+                      showingMetric: false, showingCaptureControls: false)
+            },
+            makeChooser: {
+                let chooser = Chooser()
+                self.choosers.append(chooser)
+                return chooser.chooser
+            },
+            activate: {
+                // Activating the app collapses an island that is not pinned,
+                // unless the chooser is already up to hold it open.
+                if Chooser.current == nil, !self.notch.pinned { self.notch.expanded = false }
+                self.activationsAfterFocus.append(Chooser.current?.focused == true)
+            },
+            reopenMusic: {
+                self.notch.selected = .music
+                self.notch.window?.focused = true
+                self.notch.window?.focusReturns += 1
+            },
+            main: { [main = self.main] work in main.jobs.append { MainActor.assumeIsolated { work() } } },
+            background: { [worker = self.worker] work in worker.jobs.append(work) }))
+
+        /// Answers a lookup with lyrics for `title` and lets the reply land.
+        func answer(_ lookup: Lookup?, title: String, line: String = "Imported") {
+            let body: [String: Any] = ["trackName": title, "artistName": "Example", "albumName": "Recording",
+                                       "duration": 180.0, "syncedLyrics": "[00:01]\(line)", "plainLyrics": ""]
+            lookup?.answer(try? JSONSerialization.data(withJSONObject: body), false)
+            main.drain()
         }
-    }
-    static func resetPresentation() {
-        NotchService.shared = NotchService()
-        DispatchQueue.main = DispatchQueue.Queue()
-        DispatchQueue.worker = DispatchQueue.Queue()
     }
 }
 
@@ -656,134 +664,179 @@ enum NotchMusicHardeningTests {
     }
 
     private static func lyricLifecycle(_ suite: TestSuite) {
-        NotchLyricsContract.Preferences.enabled = true
-        NotchLyricsContract.Preferences.online = false
-        defer { NotchLyricsContract.Preferences.enabled = true; NotchLyricsContract.Preferences.online = false }
+        let session = NotchLyricsContract.Session()
+        let service = session.service
         let current = playback("current"), next = playback("next")
-        let identity = NotchMusicIdentity(current)
         let imported = NotchLyrics(lines: [NotchLyricLine(time: 1, text: "Imported")], plain: "", instrumental: false)
-        let service = NotchLyricsContract.Service()
+        session.online = true
         service.update(playback: current, visible: true)
-        _ = service.memory.replace(imported, for: identity)
-        service.memory.adjustOffset(by: 0.75)
-        let generation = service.generation
+        session.answer(session.lookups.last, title: "current")
+        service.adjustOffset(by: 0.75)
+        suite.expect(service.state == .ready && service.lyrics == imported, "a found lookup shows its lyrics")
         service.hide()
-        suite.expect(!service.visible && service.generation != generation && service.lyrics == imported
-               && service.memory.offset == 0.75, "the real hide path cancels work without discarding this song's imported lyrics or adjustment")
+        suite.expect(!service.visible && service.lyrics == imported && service.offset == 0.75,
+               "the real hide path keeps this song's lyrics and adjustment")
         service.update(playback: current, visible: true)
-        suite.expect(service.state == .ready && service.lyrics == imported && service.loads.isEmpty
-               && service.memory.offset == 0.75, "returning to the same song reuses its import without a network request")
+        suite.expect(service.state == .ready && service.lyrics == imported && session.lookups.count == 1
+               && service.offset == 0.75, "returning to the same song reuses its lyrics without a network request")
         service.update(playback: current, visible: false)
         service.update(playback: nil, visible: false)
         suite.expect(service.lyrics == imported, "hiding or stopping the metadata consumer is not evidence that the song changed")
         service.playbackChanged(next)
-        suite.expect(service.track == NotchMusicIdentity(next) && service.lyrics == nil && service.memory.offset == 0,
+        suite.expect(service.track == NotchMusicIdentity(next) && service.lyrics == nil && service.offset == 0,
                "an observed track change clears the one-song cache while hidden")
-        suite.expect(!service.memory.replace(imported, for: identity), "a late result cannot replace the new recording's lyrics")
+        service.playbackChanged(current)
+        service.update(playback: current, visible: true)
+        let earlier = session.lookups.last
+        service.playbackChanged(next)
+        session.answer(earlier, title: "current")
+        suite.expect(earlier?.cancelled == true && service.track == NotchMusicIdentity(next) && service.lyrics == nil
+               && service.state == .loading, "a late result cannot replace the new recording's lyrics")
+        service.retry()
+        let replaced = session.lookups.last
+        service.retry()
+        session.answer(replaced, title: "next", line: "Stale")
+        suite.expect(replaced?.cancelled == true && service.lyrics == nil && service.state == .loading,
+               "a retried lookup ignores the answer of the one it replaced")
         service.playbackChanged(nil)
         suite.expect(service.track == nil && service.lyrics == nil, "an actual empty playback snapshot clears the cache")
-        NotchLyricsContract.Preferences.online = true
         service.update(playback: current, visible: true)
-        let download = service.session
-        let panel = NotchLyricsContract.Panel(); service.importPanel = panel
-        let requested = service.generation
+        let download = session.lookups.last
+        service.importLyrics()
+        let panel = session.choosers.last
         service.hide()
-        suite.expect(download?.cancelled == true && panel.cancelled && service.session == nil && service.importPanel == nil
-               && service.generation != requested, "hiding executes the real cancellation path for both remote lookup and file selection")
+        session.answer(download, title: "current")
+        suite.expect(download?.cancelled == true && panel?.cancelled == true && !service.isImporting
+               && service.lyrics == nil, "hiding executes the real cancellation path for both remote lookup and file selection")
+        let lookups = session.lookups.count
         service.update(playback: current, visible: false)
-        suite.expect(service.loads.count == 1, "a hidden song never starts an online lookup")
+        suite.expect(session.lookups.count == lookups, "a hidden song never starts an online lookup")
         service.update(playback: current, visible: true)
-        suite.expect(service.loads.count == 2, "reopening an uncached song starts one fresh lookup")
-        _ = service.memory.replace(imported, for: identity)
-        service.memory.adjustOffset(by: 1)
+        suite.expect(session.lookups.count == lookups + 1, "reopening an uncached song starts one fresh lookup")
+        session.answer(session.lookups.last, title: "current")
+        service.adjustOffset(by: 1)
         service.stop()
-        suite.expect(service.track == nil && service.lyrics == nil && service.memory.offset == 0 && !service.visible,
+        suite.expect(service.track == nil && service.lyrics == nil && service.offset == 0 && !service.visible,
                "explicit shutdown releases the retained song, lyrics and offset")
         service.update(playback: current, visible: true)
-        _ = service.memory.replace(imported, for: identity)
-        NotchLyricsContract.Preferences.enabled = false
+        session.answer(session.lookups.last, title: "current")
+        session.enabled = false
         service.hide()
         suite.expect(service.lyrics == nil && service.track == nil, "feature removal clears the cache even when it arrives through the hide path")
     }
 
     private static func lyricPicker(_ suite: TestSuite) {
         typealias Context = NotchLyricsContract
-        Context.Preferences.enabled = true
-        Context.Preferences.online = false
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("notch-lyrics-picker-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: folder); Context.resetPresentation() }
+        defer { try? FileManager.default.removeItem(at: folder) }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let file = folder.appendingPathComponent("selected.lrc")
             try "[00:01]Selected verse".write(to: file, atomically: true, encoding: .utf8)
+            let existing = folder.appendingPathComponent("existing.lrc")
+            try "[00:01]Existing verse".write(to: existing, atomically: true, encoding: .utf8)
             for pinned in [false, true] {
-                Context.resetPresentation()
-                let service = Context.Service()
-                let notch = Context.NotchService.shared
-                let parent = notch.presentationWindow!
+                let session = Context.Session()
+                let service = session.service
+                let notch = session.notch
+                let parent = notch.window!
                 notch.pinned = pinned
-                notch.acceptsSystemFeedback = false
                 service.update(playback: playback("same-song"), visible: true)
                 service.importLyrics()
-                guard let panel = service.importPanel else { suite.expect(false, "a visible lyrics surface can choose a file"); continue }
-                suite.expect(panel.parent == nil && !parent.attached && panel.focused && panel.level.rawValue > parent.level.rawValue
-                       && !panel.hidesOnDeactivate && notch.expanded && notch.pinned == pinned,
+                guard let panel = session.choosers.last, service.isImporting else {
+                    suite.expect(false, "a visible lyrics surface can choose a file"); continue
+                }
+                suite.expect(panel.focused && (panel.level?.rawValue ?? 0) > parent.level.rawValue
+                       && notch.expanded && notch.pinned == pinned && session.activationsAfterFocus == [false],
                        "lyrics imports focus a standalone chooser above the island without moving it or changing its pin")
                 panel.url = file
                 panel.finish(.OK)
                 suite.expect(!parent.focused && service.lyrics == nil,
                        "the picker waits for native dismissal and imports off the presentation lane")
-                Context.DispatchQueue.main.drain()
+                session.main.drain()
                 suite.expect(parent.focused && parent.focusReturns == 1 && notch.selected == .music && notch.pinned == pinned,
                        "dismissal returns to the same music and lyrics surface without pinning it")
-                Context.DispatchQueue.worker.drain()
-                Context.DispatchQueue.main.drain()
+                session.worker.drain()
+                session.main.drain()
                 suite.expect(service.lyrics?.lines.first?.text == "Selected verse" && service.visible,
                        "the real bounded import and parser retain the chosen lyrics for the unchanged song")
             }
             for interruption in 0..<6 {
-                Context.resetPresentation()
-                let service = Context.Service()
-                let parent = Context.NotchService.shared.presentationWindow!
+                let session = Context.Session()
+                let service = session.service
+                let parent = session.notch.window!
                 service.update(playback: playback("same-song"), visible: true)
                 service.importLyrics()
-                let panel = service.importPanel!
+                let panel = session.choosers.last!
                 panel.url = file
                 switch interruption {
                 case 0: service.hide()
                 case 1: service.playbackChanged(playback("next-song"))
-                case 2: Context.NotchService.shared.acceptsUserInteraction = false
-                case 3: Context.NotchService.shared.selected = .downloads
-                case 4: Context.NotchService.shared.presentationWindow = Context.Window()
-                default: Context.Preferences.enabled = false
+                case 2: session.notch.acceptsUserInteraction = false
+                case 3: session.notch.selected = .downloads
+                case 4: session.notch.window = Context.Window()
+                default: session.enabled = false
                 }
                 panel.finish(.OK)
-                Context.DispatchQueue.worker.drain()
-                Context.DispatchQueue.main.drain()
+                session.worker.drain()
+                session.main.drain()
                 suite.expect(parent.focusReturns == 0 && service.lyrics == nil,
                        "hide, track change, lock, another section, replacement or disable rejects the old import and focus")
-                Context.Preferences.enabled = true
             }
-            Context.resetPresentation()
-            let cancelled = Context.Service()
+            let late = Context.Session()
+            late.service.update(playback: playback("same-song"), visible: true)
+            late.service.importLyrics()
+            let first = late.choosers.last!
+            late.service.hide()
+            late.service.update(playback: playback("same-song"), visible: true)
+            late.service.importLyrics()
+            first.finish(.OK)
+            suite.expect(late.service.isImporting && late.choosers.count == 2,
+                   "a late answer from an earlier chooser leaves the open one in place")
+            let moved = Context.Session()
+            moved.service.update(playback: playback("same-song"), visible: true)
+            moved.service.importLyrics()
+            moved.choosers.last?.finish(.cancel)
+            moved.notch.selected = .downloads
+            moved.main.drain()
+            suite.expect(moved.notch.window?.focusReturns == 0,
+                   "an island that moved on before the next turn is not reopened")
+            let superseded = Context.Session()
+            superseded.service.update(playback: playback("same-song"), visible: true)
+            superseded.service.importLyrics()
+            superseded.choosers.last?.url = file
+            superseded.choosers.last?.finish(.OK)
+            superseded.online = true
+            superseded.service.update(playback: playback("same-song"), visible: true)
+            superseded.worker.drain()
+            superseded.main.drain()
+            suite.expect(superseded.service.lyrics == nil && superseded.service.state == .loading,
+                   "work started after the file was chosen supersedes its late result")
+            let session = Context.Session()
+            let cancelled = session.service
+            let window = session.notch.window!
             cancelled.update(playback: playback("same-song"), visible: true)
-            let old = NotchLyrics(lines: [NotchLyricLine(time: 1, text: "Existing verse")], plain: "", instrumental: false)
-            _ = cancelled.memory.replace(old, for: NotchMusicIdentity(playback("same-song")))
-            cancelled.memory.adjustOffset(by: 0.5)
             cancelled.importLyrics()
-            cancelled.importPanel?.finish(.cancel)
-            Context.DispatchQueue.main.drain()
-            suite.expect(cancelled.lyrics == old && cancelled.memory.offset == 0.5
-                   && Context.DispatchQueue.worker.jobs.isEmpty && Context.NotchService.shared.presentationWindow?.focused == true,
+            session.choosers.last?.url = existing
+            session.choosers.last?.finish(.OK)
+            session.worker.drain()
+            session.main.drain()
+            let old = cancelled.lyrics
+            cancelled.adjustOffset(by: 0.5)
+            cancelled.importLyrics()
+            session.choosers.last?.finish(.cancel)
+            session.main.drain()
+            suite.expect(old?.lines.first?.text == "Existing verse" && cancelled.lyrics == old && cancelled.offset == 0.5
+                   && session.worker.jobs.isEmpty && window.focused,
                    "Cancel keeps the current lyrics and adjustment and returns without reading a file")
             cancelled.importLyrics()
-            cancelled.importPanel?.url = file
-            cancelled.importPanel?.finish(.OK)
-            let returns = Context.NotchService.shared.presentationWindow!.focusReturns
+            session.choosers.last?.url = file
+            session.choosers.last?.finish(.OK)
+            let returns = window.focusReturns
             cancelled.hide()
-            Context.DispatchQueue.worker.drain()
-            Context.DispatchQueue.main.drain()
-            suite.expect(Context.NotchService.shared.presentationWindow!.focusReturns == returns && cancelled.lyrics == old,
+            session.worker.drain()
+            session.main.drain()
+            suite.expect(window.focusReturns == returns && cancelled.lyrics == old,
                    "leaving after dismissal cancels both the queued focus return and a late file result")
         } catch { suite.expect(false, "lyrics picker fixture failed: \(error)") }
     }

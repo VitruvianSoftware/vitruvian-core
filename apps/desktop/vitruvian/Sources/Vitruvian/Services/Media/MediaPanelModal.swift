@@ -132,7 +132,7 @@ package enum MediaPanelModal {
 
 /// The island's window as the dialogs opened over it see it.
 @MainActor
-package protocol IslandWindowing: AnyObject {
+package protocol IslandWindowing: AnyObject, Sendable {
     var isVisible: Bool { get }
     var level: NSWindow.Level { get }
     func makeKey()
