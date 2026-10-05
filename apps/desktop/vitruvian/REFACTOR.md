@@ -2711,6 +2711,21 @@ services it reads, starts, stops and drives through `NotchIslandServices`
   instance, so the five copies stay byte for byte as they were (checked by
   regenerating).
 
+Landed (5q, the aliased readings): the readings the island took through
+a local alias go through `NotchIslandServices` too:
+
+- the calendar's chosen event;
+- the watch's headline and thumbnail;
+- the timer's clock;
+- the artwork and its tint;
+- the scratchpad's tab limits and new tab;
+- the tools page's state and keys.
+
+`NotchService` now names no shared service, except `NSWorkspace` for
+Reduce Motion (in `.system`) and its workspace notifications. The
+presentation copy reads the music service directly instead of through its
+alias, which its stand-in already offers.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
-import Foundation
+import AppKit
 import VitruvianCore
 
 /// The services the island reads, starts, stops and asks to act.
@@ -12,16 +12,26 @@ package protocol NotchIslandServices: AnyObject {
     // MARK: What the island reads
 
     var playback: NotchPlayback? { get }
+    var artwork: NSImage? { get }
+    var artworkTint: NotchArtworkTint? { get }
     var timerSession: NotchTimerSession { get }
+    /// The timer's clock, which its session's readings count against.
+    var timerNow: TimeInterval { get }
     var watchActive: Bool { get }
+    var watchHeadline: String { get }
+    var watchShowsThumbnail: Bool { get }
     var downloads: [NotchDownloadItem] { get }
     var choosingDownloadFolder: Bool { get }
     var agentUsage: AgentUsageSnapshot { get }
     var keepAwakeActive: Bool { get }
     var keepAwakeEndDate: Date? { get }
     var calendarCountdown: NotchCalendarCountdown? { get }
+    /// The person chose to count down to this event.
+    func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool
     var importingLyrics: Bool { get }
     var scratchpadModal: Bool { get }
+    var canCreatePad: Bool { get }
+    var canClosePad: Bool { get }
     var keepsCalendarPrompt: Bool { get }
     var keepsCameraPrompt: Bool { get }
     var activeUtility: QuickLauncherItem? { get }
@@ -71,6 +81,9 @@ package protocol NotchIslandServices: AnyObject {
 
     func rememberPasteTarget()
     func prepareTools()
+    /// Whether the tools page takes a key, after acting on it.
+    func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool
+    func createPad(defaultName: String)
     func showNormalMenuPanel()
     func skipTrack(forward: Bool)
     func openNotification(_ id: UUID,
@@ -92,16 +105,24 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package init() {}
 
     package var playback: NotchPlayback? { NotchMusicService.shared.playback }
+    package var artwork: NSImage? { NotchMusicService.shared.artwork }
+    package var artworkTint: NotchArtworkTint? { NotchMusicService.shared.artworkTint }
     package var timerSession: NotchTimerSession { NotchTimerService.shared.session }
+    package var timerNow: TimeInterval { NotchTimerService.shared.now }
     package var watchActive: Bool { NotchWatchService.shared.isActive }
+    package var watchHeadline: String { NotchWatchService.shared.headline }
+    package var watchShowsThumbnail: Bool { NotchWatchService.shared.showsThumbnail }
     package var downloads: [NotchDownloadItem] { NotchDownloadService.shared.items }
     package var choosingDownloadFolder: Bool { NotchDownloadService.shared.isChoosingFolder }
     package var agentUsage: AgentUsageSnapshot { AgentUsageService.shared.snapshot }
     package var keepAwakeActive: Bool { KeepAwakeManager.shared.isActive }
     package var keepAwakeEndDate: Date? { KeepAwakeManager.shared.endDate }
     package var calendarCountdown: NotchCalendarCountdown? { NotchCalendarService.shared.countdown }
+    package func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool { NotchCalendarService.shared.isChosen(event) }
     package var importingLyrics: Bool { NotchLyricsService.shared.isImporting }
     package var scratchpadModal: Bool { ScratchpadService.shared.modalInteractionActive }
+    package var canCreatePad: Bool { ScratchpadService.shared.canCreatePad }
+    package var canClosePad: Bool { ScratchpadService.shared.canClosePad }
     package var keepsCalendarPrompt: Bool { Permissions.shared.keepsCalendarPrompt }
     package var keepsCameraPrompt: Bool { CameraPreviewService.shared.keepsNotchPermissionPrompt }
     package var activeUtility: QuickLauncherItem? { QuickLauncherService.shared.activeUtility }
@@ -147,6 +168,10 @@ package final class SystemNotchIslandServices: NotchIslandServices {
 
     package func rememberPasteTarget() { ClipboardHistoryService.shared.rememberPasteTarget() }
     package func prepareTools() { QuickLauncherService.shared.prepareForPresentation() }
+    package func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool {
+        QuickLauncherService.shared.takesPanelKey(event, flow: flow)
+    }
+    package func createPad(defaultName: String) { ScratchpadService.shared.createPad(defaultName: defaultName) }
     package func showNormalMenuPanel() { MenuPanelFocus.shared.showNormalPanel() }
     package func skipTrack(forward: Bool) { NotchMusicService.shared.skipFromGesture(forward: forward) }
     package func openNotification(_ id: UUID,

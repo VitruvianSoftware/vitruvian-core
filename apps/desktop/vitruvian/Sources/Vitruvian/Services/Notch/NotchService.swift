@@ -586,10 +586,9 @@ package final class NotchService: ObservableObject {
     }
 
     package var hasCalendarActivity: Bool {
-        let calendar = NotchCalendarService.shared
-        guard let countdown = calendar.countdown,
+        guard let countdown = services.calendarCountdown,
               countdown.ongoing ? NotchCalendarSupport.showsTimeLeft()
-                : NotchCalendarSupport.showsCountdown(chosen: calendar.isChosen(countdown.event))
+                : NotchCalendarSupport.showsCountdown(chosen: services.calendarIsChosen(countdown.event))
         else { return false }
         return countdown.isShown(at: Date())
     }
@@ -730,10 +729,9 @@ package final class NotchService: ObservableObject {
     /// area's own picture when it has no text, with air beside the camera.
     private func watchStripWing(in geometry: NotchGeometry) -> CGFloat {
         let provisional = geometry.compactWatchGeometry(wing: NotchWatchSupport.stripWingRange.lowerBound)
-        let watch = NotchWatchService.shared
         let size = NotchTimerSupport.stripTextSize(height: provisional.compactActivityContentHeight)
-        let reading = watch.showsThumbnail ? NotchWatchSupport.thumbnailWidth
-            : (watch.headline as NSString).size(withAttributes: [
+        let reading = services.watchShowsThumbnail ? NotchWatchSupport.thumbnailWidth
+            : (services.watchHeadline as NSString).size(withAttributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
             ]).width.rounded(.up)
         let inset = provisional.compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)
@@ -786,9 +784,8 @@ package final class NotchService: ObservableObject {
         let provisional = geometry.compactTimerGeometry(showsDownloads: false,
                                                         wing: NotchTimerSupport.stripWingRange.lowerBound)
         let height = provisional.compactActivityContentHeight
-        let timer = NotchTimerService.shared
         let size = NotchTimerSupport.stripTextSize(height: height)
-        let text = NotchTimerSupport.compactText(for: timer.session, at: timer.now,
+        let text = NotchTimerSupport.compactText(for: services.timerSession, at: services.timerNow,
                                                  locale: Locale(identifier: L10n.shared.language.rawValue))
         let reading = (NotchAgentSupport.readingShape(text) as NSString).size(withAttributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
@@ -849,14 +846,13 @@ package final class NotchService: ObservableObject {
             return geometry.sectionPickerSize(count: filteredSections.count)
         }
         let musicExtras = NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
-        let launcher = QuickLauncherService.shared
         return pageSize(in: expandedGeometry, module: showingAppPanel ? .tools : selected,
                         detail: selectedMetric != nil, panel: showingAppPanel,
                         detailHeight: selectedMetric == .fan ? fanDetailHeight : nil,
                         musicExtraHeight: musicExtras && musicDetailVisible ? geometry.musicExtrasHeight : 0,
                         fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable(in: defaults)
                             && services.mediaPresented ? services.mediaContentHeight : nil,
-                        toolCount: launcher.isEditing || launcher.activeUtility != nil ? nil : launcher.visibleItems.count,
+                        toolCount: services.editingTools || services.activeUtility != nil ? nil : services.visibleTools.count,
                         capturePreviewHeight: captureContent == nil ? nil : captureContentHeight)
     }
 
@@ -1056,8 +1052,7 @@ package final class NotchService: ObservableObject {
                                         ? playback?.track.title ?? FeatureStrings.radialMenu(language).mediaNowPlaying : nil,
                                        geometry: geometry)
         case .timer:
-            let timer = NotchTimerService.shared
-            return layout.timerSurface(reading: NotchTimerSupport.compactText(for: timer.session, at: timer.now,
+            return layout.timerSurface(reading: NotchTimerSupport.compactText(for: services.timerSession, at: services.timerNow,
                                                                               locale: Locale(identifier: language.rawValue)),
                                        companion: companion, workingAgents: working,
                                        downloadPercent: download?.fraction != nil, geometry: geometry, language: language)
@@ -1080,8 +1075,8 @@ package final class NotchService: ObservableObject {
                                           time: NotchCalendarSupport.timeText(countdown, locale: language.formattingLocale()),
                                           geometry: geometry)
         case .watch:
-            let watch = NotchWatchService.shared
-            return layout.watchSurface(reading: watch.headline, thumbnail: watch.showsThumbnail, geometry: geometry)
+            return layout.watchSurface(reading: services.watchHeadline, thumbnail: services.watchShowsThumbnail,
+                                       geometry: geometry)
         case .keepAwake:
             let reading = services.keepAwakeEndDate.map {
                 NotchKeepAwakeSupport.compactText(until: $0, now: Date(), locale: Locale(identifier: language.rawValue))
@@ -1691,19 +1686,18 @@ package final class NotchService: ObservableObject {
     /// left, Command-W closes the island the way it hides the pad.
     private func handleScratchpadKey(_ event: NSEvent) -> Bool {
         guard selected == .scratchpad, !showingAppPanel, !showingSections, selectedMetric == nil else { return false }
-        let pad = ScratchpadService.shared
         let commandOnly = event.modifierFlags.intersection([.command, .control, .option]) == .command
         let shift = event.modifierFlags.contains(.shift)
         guard let action = ScratchpadFocusedShortcut.action(charactersIgnoringModifiers: event.charactersIgnoringModifiers,
                                                                commandOnly: commandOnly,
                                                                shift: shift,
-                                                               canCreatePad: pad.canCreatePad,
-                                                               canClosePad: pad.canClosePad) else {
+                                                               canCreatePad: services.canCreatePad,
+                                                               canClosePad: services.canClosePad) else {
             // At the tab limit Command-T still belongs to the pad, not the text.
             return commandOnly && !shift && event.charactersIgnoringModifiers?.lowercased() == "t"
         }
         switch action {
-        case .createPad: pad.createPad(defaultName: FeatureStrings.scratchpad(L10n.shared.language).pageTitle)
+        case .createPad: services.createPad(defaultName: FeatureStrings.scratchpad(L10n.shared.language).pageTitle)
         case .closeSelectedPad: scratchpadCloseSerial += 1
         case .hidePad: collapse()
         case .find: requestScratchpadFind(.showFindInterface)
@@ -2519,8 +2513,7 @@ package final class NotchService: ObservableObject {
                 else { self.toggle() }
             })
         if panel?.isVisible != true { panel?.orderFrontRegardless() }
-        let music = NotchMusicService.shared
-        rememberPresentedMusic(playback: music.playback, artwork: music.artwork, tint: music.artworkTint)
+        rememberPresentedMusic(playback: services.playback, artwork: services.artwork, tint: services.artworkTint)
         if contentTransition == .depart {
             if windowHost?.departsContent == true {
                 let work = DispatchWorkItem { [weak self] in self?.finishMusicDeparture() }
@@ -2883,10 +2876,7 @@ package final class NotchService: ObservableObject {
         showingSections: { [weak self] in self?.showingSections ?? false },
         showingAppPanel: { [weak self] in self?.showingAppPanel ?? false },
         geometry: { [weak self] in self?.expandedGeometry ?? NotchGeometry(screen: .zero, safeAreaTop: 0, cameraWidth: 0) },
-        tools: {
-            let launcher = QuickLauncherService.shared
-            return (launcher.isEditing, launcher.visibleItems.count)
-        },
+        tools: { [services] in (services.editingTools, services.visibleTools.count) },
         ownsWindow: { [weak self] in self?.ownsWindow($0 as? NSWindow) ?? false },
         clickIsAway: { [weak self] in self?.clickIsAway() ?? false },
         toggleSections: { [weak self] in self?.toggleSections() },
@@ -2894,7 +2884,7 @@ package final class NotchService: ObservableObject {
         sectionKey: { [weak self] in self?.handleSectionKey($0) ?? false },
         scratchpadKey: { [weak self] in self?.handleScratchpadKey($0) ?? false },
         clipboardPasteKey: { [weak self] in self?.handleClipboardPasteKey($0) ?? false },
-        toolsKey: { QuickLauncherService.shared.takesPanelKey($0, flow: $1) },
+        toolsKey: { [services] in services.takesToolsKey($0, flow: $1) },
         stepBack: { [weak self] in self?.stepBack() },
         collapse: { [weak self] in self?.collapse() },
         clickedInside: { [weak self] in self?.clickedSinceOpening = true }))

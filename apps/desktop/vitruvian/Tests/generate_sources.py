@@ -39,6 +39,16 @@ _NOTCH_DEFAULTS = [
 # The services the island calls (`NotchIslandServices`), mapped back to the
 # shared instances its copies stand in for.
 _NOTCH_SERVICES = [
+    ('watchShowsThumbnail', 'NotchWatchService.shared.showsThumbnail'),
+    ('calendarIsChosen(', 'NotchCalendarService.shared.isChosen('),
+    ('takesToolsKey(', 'QuickLauncherService.shared.takesPanelKey('),
+    ('watchHeadline', 'NotchWatchService.shared.headline'),
+    ('artworkTint', 'NotchMusicService.shared.artworkTint'),
+    ('canCreatePad', 'ScratchpadService.shared.canCreatePad'),
+    ('canClosePad', 'ScratchpadService.shared.canClosePad'),
+    ('createPad(', 'ScratchpadService.shared.createPad('),
+    ('timerNow', 'NotchTimerService.shared.now'),
+    ('artwork', 'NotchMusicService.shared.artwork'),
     ('choosingDownloadFolder', 'NotchDownloadService.shared.isChoosingFolder'),
     ('setMonitorDetailNeeds(', 'SystemMonitor.shared.setNotchDetailNeeds('),
     ('playLockSound(locking:', 'NotchLockScreenService.shared.playSound(locking:'),
