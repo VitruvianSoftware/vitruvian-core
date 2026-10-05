@@ -372,15 +372,6 @@ def main():
             .replace("CGEvent.tapCreate(", "Tap.create(")
           + "}\n}\n")
 
-    write("CleanerLastRun.swift", "import Foundation\nextension CleanerLastRunContract {\n"
-          + "final class Scheduler: SchedulerState {\n"
-          + declaration("Sources/Vitruvian/Services/Cleaner/CleanerScheduler.swift", "    private func finishRun(")
-            .replace("private func", "func", 1)
-          + "}\nfinal class Card: CardState {\n"
-          + declaration("Sources/Vitruvian/UI/Cleaner/CleanerView.swift", "    private var lastRunLine:")
-            .replace("private var", "var", 1)
-          + "}\n}\n")
-
     updates = "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift"
     loader = "Sources/Vitruvian/Services/AppUpdates/AppUpdateFeedLoader.swift"
     # Only the network configuration, clock and declaration visibility change.

@@ -169,12 +169,17 @@ package final class CleanerScheduler: ObservableObject {
     private func finishRun(freed: Int64, failed: Int) {
         runObserver = nil
         JunkCleaner.shared.reset()
-        let defaults = UserDefaults.standard
-        defaults.set(Date().timeIntervalSince1970, forKey: DefaultsKey.cleanerLastAutoRun)
-        defaults.set(freed, forKey: DefaultsKey.cleanerLastAutoFreed)
-        defaults.set(failed, forKey: DefaultsKey.cleanerLastAutoFailed)
+        Self.recordRun(freed: freed, failed: failed)
         notifyIfWanted(freed: freed, failed: failed)
         scheduleNext()
+    }
+
+    /// Saves a finished automatic pass where the Cleaner card reads it.
+    package static func recordRun(freed: Int64, failed: Int, at date: Date = Date(),
+                                  in defaults: UserDefaults = .standard) {
+        defaults.set(date.timeIntervalSince1970, forKey: DefaultsKey.cleanerLastAutoRun)
+        defaults.set(freed, forKey: DefaultsKey.cleanerLastAutoFreed)
+        defaults.set(failed, forKey: DefaultsKey.cleanerLastAutoFailed)
     }
 
     /// Reports the outcome when the user asked to be told, through the

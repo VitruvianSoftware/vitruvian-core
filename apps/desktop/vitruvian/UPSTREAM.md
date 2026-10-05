@@ -1360,6 +1360,12 @@ is that notice. Add an entry for every change to upstream files.
   `Tests/AgentUsageReadTests.swift` calls; `Tests/generate_sources.py` no
   longer copies the read method. The test's cancelled read now has a new line
   to skip.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Cleaner/CleanerScheduler.swift` saves a finished pass through
+  `recordRun(freed:failed:at:in:)`, and `UI/Cleaner/CleanerView.swift` builds
+  its last-run line in `lastRunLine(ranAt:freed:failed:strings:)`, both called
+  by `Tests/CleanerLastRunContract.swift`; `Tests/generate_sources.py` no
+  longer copies `finishRun` or the card's line.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
