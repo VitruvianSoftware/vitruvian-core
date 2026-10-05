@@ -84,26 +84,6 @@ def main():
               "    private func closePopoverNow("])
           + "var popoverAnchor: PanelAnchor?\nvar lastGoodPanelAnchor: PanelAnchor?\n"
           + "}\n}\n")
-    brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
-    write("DisplayRestoration.swift", "import CoreGraphics\nimport Foundation\n"
-          + "extension DisplayRestorationTests {\nfinal class BrightnessService: Fixture {\n"
-          + "typealias DisplayControlFailure = VitruvianServices.BrightnessService.DisplayControlFailure\n"
-          + "".join(declaration(brightness, prefix).replace("private ", "", 1) for prefix in [
-              "    private static func configureDisplay(", "    private func restoreDisplay(",
-              "    private func syncLidObserver(", "    private func restoreDeferredDisplays(",
-              "    private func restoreManagedDisplays(", "    func restoreDisplaysLeftOff(",
-              "    private func commitDisplayToggle(", "    private func finishDisplayToggle(",
-              "    private func restoreManagedDisplayIfHeadless("])
-          + "}\n}\n")
-    write("BrightnessStep.swift", "import CoreGraphics\nimport Foundation\nimport os\n"
-          + "extension BrightnessStepTests {\n"
-          + "".join(declaration(brightness, prefix).replace("private ", "", 1) for prefix in [
-              "    private struct Route", "    private enum DDCProbe"])
-          + "final class Service: Fixture {\n"
-          + declaration(brightness, "    private func step(").replace("private ", "", 1)
-          + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
-          + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
-          + "}\n}\n")
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
     # The composition root wires the island's collaborators; each contract
@@ -394,41 +374,6 @@ def main():
           + "}\n"
           + declaration(selection, "private final class PassThroughHostingView<")
               .replace("private final class", "final class", 1))
-
-    brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
-    write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
-          + "extension SoftwareDimmingRouteContract {\n"
-          + "final class Service {\nlet stateLock = NSLock()\nlet workQueue = Queue()\n"
-          + "static let log = Log()\n"
-          + "var routes: [CGDirectDisplayID: Route] = [:]\n"
-          + "var lastApplied: [CGDirectDisplayID: Double] = [:]\n"
-          + "var levelKnownAt: [CGDirectDisplayID: Foundation.Date] = [:]\n"
-          + "var pendingLevels: [CGDirectDisplayID: Double] = [:]\n"
-          + "var softwareDims: [(id: CGDirectDisplayID, value: Double)] = []\n"
-          + "struct GammaTable { var red: [CGGammaValue] = [1]; var green: [CGGammaValue] = [1]; "
-          + "var blue: [CGGammaValue] = [1]; var count: UInt32 = 1; var fingerprint: String }\n"
-          + "var gammaBaselines: [CGDirectDisplayID: GammaTable] = [:]\n"
-          + "var dimmedDisplays = Set<CGDirectDisplayID>()\n"
-          + "var softwareSucceeds = true\nvar ddcSucceeds = true\nvar events: [String] = []\n"
-          + "var forgottenWriteOnlyPaths: [String] = []\nvar refreshes = 0\n"
-          + "static func displayFingerprint(_ id: CGDirectDisplayID) -> String { \"display-\\(id)\" }\n"
-          + "func CGSetDisplayTransferByTable(_ id: CGDirectDisplayID, _ count: UInt32, "
-          + "_ red: [CGGammaValue], _ green: [CGGammaValue], _ blue: [CGGammaValue]) { "
-          + "events.append(\"restore:\\(id)\") }\n"
-          + "func forgetWriteOnlyDDCPath(_ path: String?) { forgottenWriteOnlyPaths.append(path ?? \"\") }\n"
-          + "@discardableResult func applySoftwareDim(_ id: CGDirectDisplayID, value: Double) -> Bool {\n"
-          + "softwareDims.append((id, value)); events.append(\"picture:\\(value)\")\n"
-          + "if softwareSucceeds { if value >= 0.999 { dimmedDisplays.remove(id) } else { dimmedDisplays.insert(id) } }\n"
-          + "return softwareSucceeds\n}\n"
-          + "func ddcSend(to id: CGDirectDisplayID, service: CFTypeRef, packet: [UInt8]) -> Bool {\n"
-          + "let value = UInt16(packet[3]) << 8 | UInt16(packet[4])\n"
-          + "events.append(\"ddc:\\(value)\"); return ddcSucceeds\n}\n"
-          + "func refresh(force: Bool = false) { refreshes += 1 }\n"
-          + declaration(brightness, "    func setSoftwareDimmingPreferred(")
-          + declaration(brightness, "    func setExtendedDimmingPreferred(")
-          + declaration(brightness, "    private func restoreAllGamma(").replace("private func", "func", 1)
-          + declaration(brightness, "    private func writeExtendedBrightness(").replace("private func", "func", 1)
-          + "}\n}\n")
 
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"

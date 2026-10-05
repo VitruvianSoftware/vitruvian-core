@@ -1730,6 +1730,18 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Finder/FinderCutPaste.swift` takes an `Automation`.
   - `Tests/UninstallerFlowTests.swift` drives them, and
     `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - `Services/Display/BrightnessService.swift` takes an injected
+    `Environment`. Its display-side platform calls go through it: queues,
+    preferences, clock, displays, system brightness, DDC, gamma, the
+    reconfiguration call and the lid.
+  - The lid's IOKit subscription moves into a nested `LidObservation`.
+  - `start()` and `step` become package-visible.
+  - `Tests/DisplayRestorationTests.swift`, `Tests/BrightnessStepTests.swift`
+    and `Tests/SoftwareDimmingRouteTests.swift` drive the service over the
+    new `Tests/BrightnessRig.swift`, and `Tests/generate_sources.py` no
+    longer copies its members.
+  - `Tests/RecorderExportRenderingTests.swift` names the export failure.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
