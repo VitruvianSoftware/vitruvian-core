@@ -141,23 +141,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    # Entire input/mute services retain their production control flow. Only
-    # visibility, scheduling, defaults and HAL transport are replaced by fixtures.
-    input_source = "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift"
-    mute_source = "Sources/Vitruvian/Services/QuickTools/MicMuteService.swift"
-    input_bodies = (declaration(input_source, "struct MixerInputDevice:")
-                    + declaration(input_source, "final class AudioInputDeviceManager:")
-                    + declaration(mute_source, "final class MicMuteService:"))
-    input_bodies = (input_bodies.replace("fileprivate ", "")
-                   .replace("private(set) ", "").replace("private ", "")
-                   .replace("static let shared =", "static var shared ="))
-    for operation in ("HasProperty", "IsPropertySettable", "GetPropertyDataSize",
-                      "GetPropertyData", "SetPropertyData", "AddPropertyListener",
-                      "RemovePropertyListener"):
-        input_bodies = input_bodies.replace("AudioObject" + operation + "(", "HAL." + operation + "(")
-    write("MixerInputVolume.swift", "import Foundation\nimport Combine\nimport CoreAudio\nimport AudioToolbox\n"
-          + "extension MixerInputVolumeContract {\n" + input_bodies + "}\n")
-
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
     adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
     # Only the clock changes, so tests drive the wait for a chosen source's track.

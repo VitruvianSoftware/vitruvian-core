@@ -1777,6 +1777,56 @@ which leaves 24.
   The mixer's host wiring type-checks against stubs; the HAL itself needs
   macOS CI.
 
+Landed (4b, the microphone's gain and mute): one more generated file goes,
+which leaves 23.
+
+- **Injected:** `AudioHAL` (new) is the seven CoreAudio property calls both
+  services make; `live` is CoreAudio. `AudioInputDeviceManager` and
+  `MicMuteService` take an `Environment`:
+  - the HAL and its serial queue (`AudioWorkQueue`, new);
+  - the main queue;
+  - the settings.
+
+  The manager's also has delayed work, the clock and the mute it waits
+  behind. The mute's also has the island's microphone notice and the HUD.
+  Their static HAL helpers become instance methods that use the injected
+  HAL, so every CoreAudio call either service makes goes through it.
+- **Test:** the input volume test drives both real services over the
+  in-memory HAL it already had. That HAL now also calls the listeners the
+  services register, the way CoreAudio does. It used to run a copy of both
+  whole classes, with private members opened up and called directly. New
+  checks:
+  - a second start refreshes, and a restart removes each listener once;
+  - a read-only control and an old device keep no listener;
+  - the slider shows the clamped level at once;
+  - a change made elsewhere reaches the slider;
+  - a sweep from before a drag cannot pull it back;
+  - a gain change never reaches an object whose identity changed;
+  - a device without input streams is neither listed nor muted;
+  - a notification after stop changes no input;
+  - priority keeps its pick over an earlier preferred microphone, and its
+    pick becomes what quitting goes back to;
+  - the mute is saved for the next launch, and that saved mute blocks gain
+    changes until it is applied again;
+  - a double press announces once;
+  - a teardown outlasts a mute in flight;
+  - a mute that reached nothing is dropped;
+  - a sync during an unmute does not mute again;
+  - a driver that ignores the level or the switch is not recorded as muted;
+  - a read-only switch falls back to the level;
+  - an arriving microphone is muted;
+  - the user's own mute survives an unmute;
+  - switching the feature off gives every level back.
+- **Verification:** a Linux Swift 6.4 model of both services and their
+  support files runs the test, 90 checks, and 58 mutants. Two survive, each
+  equivalent:
+  - the gain write's first lifetime check, which the one after the identity
+    read repeats;
+  - the sweep's priority check, which `MixerRoutingSupport` makes when it
+    resolves the input.
+
+  CoreAudio itself needs macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
