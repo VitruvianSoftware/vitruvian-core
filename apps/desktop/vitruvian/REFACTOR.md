@@ -649,6 +649,18 @@ generated files go, which leaves 87.
   now also checks that only Escape cancels, that an idle field ignores it,
   and that a press outside the field's window never asks the input method.
 
+Landed (4b, the dimming choice): one more generated file goes, which leaves
+86.
+
+- **Injected:** `SoftwareDimmingButton.offersChoice(isActive:isBuiltIn:canChooseDimming:isDDC:readable:chosen:compact:)`
+  is the rule every display row uses to offer the dimming choice. The test
+  keeps all eleven of its checks with a plain row.
+- **What is left:** most of the 86 remaining copies stand in for several
+  collaborators at once. They cover the app delegate, which the tests cannot
+  import, the notch and command bar services, and window and panel hosts. Each
+  needs a step 5 style extraction or a seam per collaborator, not a one-line
+  overload, so later slices will be fewer copies each.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
