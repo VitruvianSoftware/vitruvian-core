@@ -1395,6 +1395,11 @@ is that notice. Add an entry for every change to upstream files.
   loops over the categories in the same order. `Tests/CleanerEligibilityTests.swift`
   and `Tests/CleanerScanFlowTests.swift` call the module, and
   `Tests/generate_sources.py` no longer copies the cleaner.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/CommandBar/CommandBarCatalog.swift` routes the bar's brightness
+  command through an injected `BrightnessRoute`, which
+  `Tests/CommandBarFeatureTests.swift` passes; `Tests/generate_sources.py` no
+  longer copies `applyBrightness`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

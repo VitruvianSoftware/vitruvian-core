@@ -1836,23 +1836,59 @@ package enum CommandBarCatalog {
     /// one refresh when the panel or Settings never opened this session, and
     /// the retry looks for that same display wherever the pointer went since.
     @MainActor
-    private static func applyBrightness(percent: Int, display: CGDirectDisplayID? = nil) {
-        let service = BrightnessService.shared
+    package static func applyBrightness(percent: Int, display: CGDirectDisplayID? = nil,
+                                        route: BrightnessRoute = .system) {
         let value = Double(percent) / 100
-        let pointer = NSEvent.mouseLocation
-        let target = display ?? NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
-            .flatMap { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value }
-        if let id = target, service.displays.contains(where: { $0.id == id }) {
-            service.setBrightness(value, for: id, showOSD: true)
+        let target = display ?? route.pointerDisplay()
+        if let id = target, route.drivable().contains(id) {
+            route.set(value, id)
             return
         }
         guard display == nil, let target else {
-            NSSound.beep()
+            route.refuse()
             return
         }
-        service.refresh()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            applyBrightness(percent: percent, display: target)
+        route.refresh()
+        route.retry {
+            applyBrightness(percent: percent, display: target, route: route)
+        }
+    }
+
+    /// What the bar's brightness command reaches: the display under the
+    /// pointer, the displays the brightness service drives, and the service.
+    @MainActor
+    package struct BrightnessRoute {
+        package var pointerDisplay: () -> CGDirectDisplayID?
+        package var drivable: () -> [CGDirectDisplayID]
+        package var set: (Double, CGDirectDisplayID) -> Void
+        package var refresh: () -> Void
+        package var refuse: () -> Void
+        package var retry: (@escaping @MainActor () -> Void) -> Void
+
+        package init(pointerDisplay: @escaping () -> CGDirectDisplayID?, drivable: @escaping () -> [CGDirectDisplayID],
+                     set: @escaping (Double, CGDirectDisplayID) -> Void, refresh: @escaping () -> Void,
+                     refuse: @escaping () -> Void, retry: @escaping (@escaping @MainActor () -> Void) -> Void) {
+            self.pointerDisplay = pointerDisplay
+            self.drivable = drivable
+            self.set = set
+            self.refresh = refresh
+            self.refuse = refuse
+            self.retry = retry
+        }
+
+        package static var system: BrightnessRoute {
+            BrightnessRoute(
+                pointerDisplay: {
+                    let pointer = NSEvent.mouseLocation
+                    let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
+                    let number = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+                    return number?.uint32Value
+                },
+                drivable: { BrightnessService.shared.displays.map(\.id) },
+                set: { BrightnessService.shared.setBrightness($0, for: $1, showOSD: true) },
+                refresh: { BrightnessService.shared.refresh() },
+                refuse: { NSSound.beep() },
+                retry: { work in DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { work() } })
         }
     }
 }

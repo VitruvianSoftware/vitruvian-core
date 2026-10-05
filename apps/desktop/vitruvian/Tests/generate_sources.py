@@ -225,11 +225,6 @@ def main():
           + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
-    write("CommandBarBrightness.swift", "import AppKit\n"
-          + "extension CommandBarFeatureTests.BrightnessHost {\n"
-          + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-                        "    private static func applyBrightness(").replace("private static", "static", 1)
-          + "}\n")
     write("CommandBarEmojiBodies.swift", "import Foundation\n"
           + "extension CommandBarEmojiContract.Catalog {\n"
           + declaration("Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",

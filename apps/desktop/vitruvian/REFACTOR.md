@@ -771,6 +771,17 @@ Landed (4b, the Cleaner's scans, grouped by owning file): both copies of
 - **Source text:** the anchors in `AppManagementFeatureTests` follow the
   new signatures.
 
+Landed (4b, the command bar's brightness command): one more generated
+file goes, which leaves 74.
+
+- **Injected:** `CommandBarCatalog.applyBrightness(percent:display:route:)`
+  takes a `BrightnessRoute`: the display under the pointer, the displays
+  the brightness service drives, the set, refresh and refusal, and how the
+  retry is scheduled. `system` keeps the AppKit lookups, the service and
+  the 0.7 s retry.
+- **Test:** the test passes a route of its own instead of shadowing
+  `NSScreen`, `NSEvent`, `NSSound`, the service and the queue.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
