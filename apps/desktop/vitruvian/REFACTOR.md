@@ -1548,6 +1548,55 @@ goes, which leaves 30.
   runs the test (41 checks) and 25 mutants, all killed. The service needs
   macOS CI.
 
+Landed (4b, sharing a screenshot's link): two more generated files go,
+which leaves 28.
+
+- **Injected:** `ScreenshotLinkActions` (new) is what a screenshot surface
+  does with a shared link outside itself:
+  - list the live ones;
+  - copy one;
+  - revoke one;
+  - announce how it went, and beep.
+
+  `live` is `ScreenshotShareService`, the HUD and the system beep. The quick
+  preview takes one, and exposes its view model, so a preview runs without
+  the sharing service or the clipboard.
+- **Moved:** the latest capture leaves `ScreenshotService` for
+  `ScreenshotLatestCapture` (new):
+  - the editors open;
+  - the upload shortcut's pending upload;
+  - a link whose copy failed;
+  - whether the kept capture may still be published.
+
+  It is generic over the capture and the editor. Its `Host` is the
+  settings, the open preview, the kept capture, the upload and the link
+  actions. The service builds it and forwards to it.
+- **Test:** the share test drives a real preview and a real latest capture,
+  over recorded links, a clock it advances by hand and a private defaults
+  suite, instead of copies of four preview members and eight service
+  members. New checks:
+  - copies and failed copies are announced;
+  - a press with nothing kept says so;
+  - the shortcut turned off ignores a press, even over a preview;
+  - a link the service no longer lists is uploaded again;
+  - a copy that fails again keeps its dismissal;
+  - a leaving pointer cannot dismiss a sharing preview;
+  - a second close does nothing;
+  - teardown leaves no editor to block the shortcut.
+- **Kept as text:** `ScreenshotFeatureTests` still reads the service's
+  wiring (teardown invalidates, a capture begins as the latest, discard
+  withholds it) from the source, now naming the new calls. The mutation
+  fixture for an edited capture moves to `ScreenshotLatestCapture`.
+- **Verification:** a Linux Swift 6.4 model of both types and the preview's
+  share members, extracted from the production files, runs the test (81
+  checks) and 52 mutants. Three survive, all equivalent:
+  - clearing the copy retry when the capture changes, since the retry is
+    keyed by the old capture;
+  - the copy's capture check, since every caller passes the current one;
+  - `shareLink`'s closed check, since both paths it takes check again.
+
+  The panel and the island need macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
