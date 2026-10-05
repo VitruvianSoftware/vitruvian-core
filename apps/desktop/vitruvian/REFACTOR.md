@@ -3039,6 +3039,30 @@ the mouse in a `NotchWindowInputPolicy` (`Services/Notch/NotchWindowInputPolicy.
   mouse methods to test this. They now drive the policy, through a test
   host that applies it as the real one does.
 
+Landed (5x, the notice queue): `NotchNoticeQueue`
+(`Services/Notch/NotchNoticeQueue.swift`) holds the island's notice:
+- the one on screen;
+- whether its message is open in place;
+- the one still drawn while the island closes around it.
+
+- **What moved:** the rules the island spelled out at each use:
+  - which notice may take the screen (a held message gives way only to
+    its own kind or a more urgent one);
+  - how one arrives (reveal, replace or a value update, and whether an
+    open message stays open);
+  - the width a burst of banners keeps;
+  - how one leaves (departing, closing with the island, or at once);
+  - whether the pointer can hold it;
+  - whether it survives a preference change.
+- **What stayed:** `NotchService` still owns the timers, the hover, the
+  animation and what each notice says. It publishes the queue and reads
+  `notice`, `noticeExpanded` and `departingNotice` from it. The seven
+  places that cleared the notice by hand now call `clear()`.
+- **Tested directly:** `NotchNoticeQueueTests` checks each rule on the value
+  itself, including that the pointer is read only when an open message
+  could stay open. The island suites (hover, destinations) still drive the
+  same rules through a real island.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

@@ -1962,6 +1962,11 @@ is that notice. Add an entry for every change to upstream files.
     a compiled copy over shadowed AppKit types.
   - `Tests/generate_sources.py` copies nothing any more; it writes the
     localization registry.
+- **2026-10-05**: Refactor step 5x (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` keeps its notice in the new
+    `NotchNoticeQueue` (`Services/Notch/NotchNoticeQueue.swift`), which decides
+    which notice may show and how it arrives and leaves.
+  - `Tests/NotchTests.swift` runs the new `Tests/NotchNoticeQueueTests.swift`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

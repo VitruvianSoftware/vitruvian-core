@@ -261,10 +261,12 @@ package final class NotchService: ObservableObject {
     /// The gallery's first visible row; the rows above it have stepped away.
     @Published package private(set) var sectionRow = 0
     @Published package private(set) var modules: [NotchModule] = []
-    @Published package private(set) var notice: NotchNotice?
-    @Published package private(set) var noticeExpanded = false
+    /// The notice on screen, its open message and the one leaving.
+    @Published package private(set) var noticeQueue = NotchNoticeQueue()
+    package var notice: NotchNotice? { noticeQueue.notice }
+    package var noticeExpanded: Bool { noticeQueue.expanded }
     /// A compact notice stays drawn while the island closes around it.
-    @Published package private(set) var departingNotice: NotchNotice?
+    package var departingNotice: NotchNotice? { noticeQueue.departing }
     @Published package private(set) var departingMusic: NotchCompactMusicSnapshot?
     /// The compact track on screen when a new song arrives, kept while the
     /// song's notice waits for playback to settle, so the notice rather than
@@ -613,8 +615,7 @@ package final class NotchService: ObservableObject {
                 guard let self else { return }
                 self.noticeWork?.cancel(); self.noticeWork = nil
                 self.endDeparture()
-                self.notice = nil
-                self.noticeExpanded = false
+                self.noticeQueue.clear()
             },
             collapse: { [weak self] in self?.collapse() },
             feedbackRoutingDidChange: { Self.collaborators.feedbackRoutingDidChange() },
@@ -1384,8 +1385,7 @@ package final class NotchService: ObservableObject {
         heldDrag = false
         selectedMetric = nil
         pinned = false
-        notice = nil
-        noticeExpanded = false
+        noticeQueue.clear()
         showingAppPanel = false
         showingSections = false
         sectionQuery = ""
@@ -1497,7 +1497,7 @@ package final class NotchService: ObservableObject {
             expanded = true
             // The open island covers a mirrored banner, and the inbox keeps
             // the message; a held one must not reappear after collapsing.
-            if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; notice = nil; noticeExpanded = false }
+            if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; noticeQueue.clear() }
         }
         inside = windowHost?.containsHover(pointer()) == true
         installEventMonitors()
@@ -1514,7 +1514,7 @@ package final class NotchService: ObservableObject {
         hoverWork?.cancel(); hoverWork = nil
         if noticeExpanded { noticeWork?.cancel(); noticeWork = nil }
         mutatePresentation(transitionContent: expanded || peeking || noticeExpanded ? .dismiss : .none) {
-            if noticeExpanded { notice = nil; noticeExpanded = false }
+            if noticeExpanded { noticeQueue.clear() }
             expanded = false
             openedByHover = false
             peeking = false
@@ -1660,7 +1660,7 @@ package final class NotchService: ObservableObject {
     /// A mirrored banner the pointer can hold: on screen and not covered.
     /// Hidden mode keeps its notices out of reach, as the surface is not shown.
     private var holdsNotification: Bool {
-        notice?.notificationID != nil && noticeCanPresent && !hiddenUntilHover
+        noticeQueue.holdable(canPresent: noticeCanPresent, hidden: hiddenUntilHover)
     }
 
     /// A mirrored banner waits under the pointer, as the native one does, and
@@ -1676,7 +1676,7 @@ package final class NotchService: ObservableObject {
                   !self.keepsWorkingSurface, self.holdsNotification, self.notice?.notificationID == id, !self.noticeExpanded,
                   self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
                   self.geometry.contains(self.pointer(), in: self.surfaceSize) else { return }
-            self.mutatePresentation(transitionContent: .reveal) { self.peeking = false; self.noticeExpanded = true }
+            self.mutatePresentation(transitionContent: .reveal) { self.peeking = false; self.noticeQueue.open() }
             self.provideHapticFeedback()
         }
         hoverWork = work
@@ -1693,10 +1693,9 @@ package final class NotchService: ObservableObject {
     }
 
     private func syncNoticeWithPreferences() {
-        guard let notice else { return }
-        if !NotchSupport.routes(notice.event, in: defaults) || (notice.notificationID != nil && hiddenUntilHover) {
-            dismissNotice()
-        }
+        guard !noticeQueue.survives(routes: { [defaults] in NotchSupport.routes($0, in: defaults) },
+                                    hidden: hiddenUntilHover) else { return }
+        dismissNotice()
     }
 
     private func scheduleNoticeDismissal(after duration: TimeInterval) {
@@ -1997,8 +1996,7 @@ package final class NotchService: ObservableObject {
         expanded = false
         showingSections = false
         peeking = false
-        notice = nil
-        noticeExpanded = false
+        noticeQueue.clear()
         hoverWork?.cancel()
         removeEventMonitors()
         panel?.acceptsKeyFocus = true
@@ -2218,21 +2216,12 @@ package final class NotchService: ObservableObject {
     @discardableResult
     package func show(_ incoming: NotchNotice) -> Bool {
         guard showsSystemFeedback, NotchSupport.routes(incoming.event, in: defaults),
-              NotchSupport.shouldReplace(notice?.event, with: incoming.event, held: noticeExpanded) else { return false }
+              noticeQueue.admits(incoming.event) else { return false }
         noticeWork?.cancel(); noticeWork = nil
-        var incoming = incoming
-        if incoming.notification != nil, let shown = notice, shown.notification != nil, noticeCanPresent, !noticeExpanded {
-            incoming.minimumWingWidth = shown.preferredWingWidth
-        }
-        let keepsPreview = noticeExpanded && incoming.notificationID != nil
-            && windowHost?.containsHover(pointer()) == true
-        // Slider and key bursts only replace the displayed value. They never
-        // restart a window resize or enqueue another layout animation.
-        let transition: NotchContentTransition = !noticeCanPresent ? .none
-            : notice == nil ? .reveal : notice?.event != incoming.event || noticeExpanded ? .replace : .none
-        mutatePresentation(transitionContent: transition) {
-            notice = incoming
-            noticeExpanded = keepsPreview
+        let arrival = noticeQueue.arrival(of: incoming, canPresent: noticeCanPresent,
+                                          pointerOver: windowHost?.containsHover(pointer()) == true)
+        mutatePresentation(transitionContent: arrival.transition) {
+            noticeQueue.show(arrival)
         }
         // A banner arriving under the pointer is held at once, whether the
         // pointer was already inside or an opening was pending.
@@ -2365,13 +2354,9 @@ package final class NotchService: ObservableObject {
     private func dismissNotice() {
         noticeWork?.cancel(); noticeWork = nil
         endDeparture()
-        let transition: NotchContentTransition = notice == nil || !noticeCanPresent ? .none
-            : noticeExpanded ? .dismiss : .depart
-        let departing = transition == .depart ? notice : nil
-        mutatePresentation(transitionContent: transition) {
-            departingNotice = departing
-            notice = nil
-            noticeExpanded = false
+        let departure = noticeQueue.departure(canPresent: noticeCanPresent)
+        mutatePresentation(transitionContent: departure.transition) {
+            noticeQueue.leave(departure)
         }
         guard departingNotice != nil else { return }
         // Without motion the host hides the content at once; so does the view.
@@ -2383,8 +2368,7 @@ package final class NotchService: ObservableObject {
 
     private func endDeparture() {
         departureWork?.cancel(); departureWork = nil
-        guard departingNotice != nil else { return }
-        departingNotice = nil
+        guard noticeQueue.finishDeparture() else { return }
         windowHost?.finishDeparture()
     }
 
