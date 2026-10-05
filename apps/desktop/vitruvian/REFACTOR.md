@@ -807,6 +807,20 @@ leaves 72.
 - **What stayed:** the tap keeps its re-arm branch and its lock.
 - **Test:** the test calls the rule with a state of its own.
 
+Landed (4b, Port Manager's refresh): one more generated file goes, which
+leaves 71.
+
+- **Injected:** `PortManagerService` takes a `Scanning`:
+  - the process list and each process's start time;
+  - the lsof listing;
+  - where the work runs and where its result is published.
+
+  `system` keeps `proc_listallpids`, the kill service's start time, lsof
+  and the dispatch queues. `snapshot(_:)` is `package`.
+- **Test:** the test passes inert process data and a manual queue instead
+  of shadowing `DispatchQueue`, `Shell`, the kill service and
+  `proc_listallpids`.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

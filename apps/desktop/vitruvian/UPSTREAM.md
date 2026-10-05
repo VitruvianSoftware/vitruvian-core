@@ -1410,6 +1410,11 @@ is that notice. Add an entry for every change to upstream files.
   event in `suppresses(_:event:state:config:)`, which
   `Tests/KeyboardDebounceTapTests.swift` calls; `Tests/generate_sources.py` no
   longer copies the tap handler.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/PortManager/PortManagerService.swift` reads processes, the lsof
+  listing and its queues through an injected `Scanning`, and `snapshot(_:)` is
+  `package`; `Tests/PortManagerRefreshTests.swift` passes inert ones, and
+  `Tests/generate_sources.py` no longer copies the refresh.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

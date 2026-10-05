@@ -216,13 +216,6 @@ def main():
           + "extension CommandBarTerminationContract {\nfinal class Host: Fixture {\n"
           + declaration("Sources/Vitruvian/App/AppDelegate.swift", "    func applicationShouldTerminate(")
           + "}\n}\n")
-    ports = "Sources/Vitruvian/Services/PortManager/PortManagerService.swift"
-    write("PortManagerRefresh.swift", "import Darwin\nimport Foundation\n"
-          + "extension PortManagerRefreshTests {\nfinal class Service: Fixture {\n"
-          + declaration(ports, "    func refresh(")
-          + declaration(ports, "    nonisolated private static func snapshot(").replace("nonisolated private static", "static", 1)
-          + declaration(ports, "    nonisolated private static func startTimes(").replace("nonisolated private static", "static", 1)
-          + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
     write("CommandBarEmojiBodies.swift", "import Foundation\n"

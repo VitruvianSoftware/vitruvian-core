@@ -341,7 +341,6 @@ GENERATED_TEST_SOURCES = [
     "NowPlayingOpen.swift",
     "PointerDisplayLookups.swift",
     "PointerOnDisplay.swift",
-    "PortManagerRefresh.swift",
     "PostUpdateStatusItemRecovery.swift",
     "QuickLauncherBodies.swift",
     "QuitProtectionHUDBodies.swift",
