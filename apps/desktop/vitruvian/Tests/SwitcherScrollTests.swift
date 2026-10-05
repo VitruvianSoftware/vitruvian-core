@@ -8,27 +8,25 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The generated strips, reveal method and search pipeline come from production.
-/// Synthetic entries and same-sized empty tiles isolate native scrolling. Windows
-/// stay unordered; no screenshots, key events, capture or real app actions occur.
+/// The module's own window strips and search run over synthetic entries,
+/// with same-sized empty tiles in place of previews and titles to isolate
+/// native scrolling. Windows stay unordered; no screenshots, key events,
+/// capture or real app actions occur.
 enum SwitcherScrollContract {
-    typealias SwitcherItem = Item
-
-    struct Item: Identifiable {
+    // A plain value: its `Identifiable` conformance must not be isolated to
+    // the main actor, which the tests default to.
+    nonisolated struct Item: Identifiable {
         let id: String
         let pid: Int
-        var previewWindowID: Int? { nil }
         var title: String { pid == 0 && id.hasSuffix("-7") ? "discard" : "keep" }
         var appName: String { pid == 0 ? "Alpha" : "Other" }
     }
-    final class Model: ObservableObject {
+    final class Model: SwitcherStripModel {
         @Published var windows: [Item] = []
         @Published var selectedIndex = 0
         @Published var iconRowLayout: SwitcherIconRowLayout = .empty
         @Published var simple = false
-        @Published var previews: [Int: Int] = [:]
         var sessionItems: [Item] = []
-        var searchQuery = ""
         var screenWidth: CGFloat = 1440
         var sessionScope: SwitcherSessionScope = .allApps
         func seed(_ counts: [Int], selected: Int, simple: Bool = false) {
@@ -45,9 +43,18 @@ enum SwitcherScrollContract {
                                     sessionScope: sessionScope,
                                     screenVisibleFrame: CGRect(x: 0, y: 0, width: screenWidth, height: 900))
         }
-        func recomputeLayouts(for items: [Item]) { recompute() }
-        func resizePanel() {}
         func select(index: Int) { selectedIndex = index; recompute() }
+        /// Searching the session as `AppSwitcher` does: the selection stays
+        /// on the selected window while the search still shows it.
+        func search(_ query: String) {
+            let preferredID = windows.indices.contains(selectedIndex) ? windows[selectedIndex].id : nil
+            let result = SwitcherSupport.searchResult(sessionItems, query: query, record: { item in
+                SwitcherSearchRecord(id: item.id, title: item.title, appName: item.appName)
+            }, preferredID: preferredID, previousIndex: selectedIndex)
+            windows = result.items
+            selectedIndex = result.selectedIndex
+            recompute()
+        }
         func closeWindow(_ item: Item) {
             let state = SwitcherSupport.closeState(afterRemoving: item.id, itemIDs: windows.map(\.id), selectedIndex: selectedIndex)
             sessionItems.removeAll { $0.id == item.id }
@@ -55,25 +62,42 @@ enum SwitcherScrollContract {
             selectedIndex = state.selectedIndex
             recompute()
         }
-        func commitSession() {}
-        func hoverSelect(index: Int) {}
-        func hoverSelectEnded(index: Int) {}
     }
-    struct SwitcherWindowPreviewTile: View {
-        let window: Item
-        let preview: Int?
-        let isSelected: Bool
-        let instantSelection: Bool
-        let onCommit: () -> Void
-        let onClose: () -> Void
-        var body: some View { Color.clear.frame(width: SwitcherIconRowLayout.previewCardWidth, height: SwitcherIconRowLayout.previewCardHeight) }
-    }
-    struct SwitcherWindowTitleChip: View {
-        let window: Item
-        let isSelected: Bool
-        let onSelect: () -> Void
-        let onHover: (Bool) -> Void
-        var body: some View { Color.clear.frame(width: SwitcherIconRowLayout.simpleTitleChipMaxWidth, height: 25 * SwitcherIconRowLayout.scale) }
+    /// The selected app's strip, framed the way `SwitcherView` frames it.
+    struct Strip: View {
+        @ObservedObject var switcher: Model
+        var instantSelection = false
+
+        var body: some View {
+            if switcher.windows.indices.contains(switcher.selectedIndex) {
+                let selected = switcher.windows[switcher.selectedIndex]
+                let appWindows = Array(switcher.windows.enumerated()).filter { $0.element.pid == selected.pid }
+                if switcher.simple {
+                    SwitcherWindowStrip(
+                        switcher: switcher, windows: appWindows, spacing: SwitcherIconRowLayout.simpleTitleSpacing,
+                        padding: SwitcherIconRowLayout.simpleTitleScrollPadding, instantSelection: instantSelection
+                    ) { _, _ in
+                        Color.clear.frame(width: SwitcherIconRowLayout.simpleTitleChipMaxWidth,
+                                          height: 25 * SwitcherIconRowLayout.scale)
+                    }
+                    .frame(width: switcher.iconRowLayout.contentWidth(simpleMode: true, windowRow: false)
+                               - 2 * SwitcherIconRowLayout.simpleTitlePanelPadding,
+                           height: 25 * SwitcherIconRowLayout.scale)
+                } else {
+                    SwitcherWindowStrip(
+                        switcher: switcher, windows: appWindows, spacing: SwitcherIconRowLayout.spacing,
+                        rowHeight: SwitcherIconRowLayout.previewCardHeight,
+                        scrollDisabled: switcher.iconRowLayout.previewFitsWithoutScrolling(cardCount: appWindows.count),
+                        size: CGSize(width: switcher.iconRowLayout.previewContentWidth,
+                                     height: SwitcherIconRowLayout.previewCardHeight),
+                        instantSelection: instantSelection
+                    ) { _, _ in
+                        Color.clear.frame(width: SwitcherIconRowLayout.previewCardWidth,
+                                          height: SwitcherIconRowLayout.previewCardHeight)
+                    }
+                }
+            }
+        }
     }
     static func run(_ suite: TestSuite) {
         MainActor.assumeIsolated { runOnMain(suite) }

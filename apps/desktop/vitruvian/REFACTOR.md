@@ -2325,6 +2325,68 @@ which the next slice takes, so 9 remain.
   shelf's wiring of it and the scripted shelf against stand-ins, and runs
   the routing and dock checks. The suite itself runs on macOS CI.
 
+Landed (4b, the media tools as a drop destination): the shelf-drop
+contract's generated file goes, which leaves 8.
+
+- **`NotchMediaDrop`** (new, `Services/Notch/`) decides what the island's
+  media tools take:
+  - nothing unless they are offered and not already working;
+  - only a drop whose every item is a file one tool optimizes, with
+    nothing promised, so mixed drops keep their companions on the shelf;
+  - opening the tool reports whether the tool took its inputs.
+- **`NotchFileToolsService`** takes an injected `Environment`: whether the
+  island shows its files with the tools and the shelf available, and the
+  shelf switch (`.system`).
+  - Its drop members forward to a `NotchMediaDrop`. That drop is busy while
+    a media job or an archive runs.
+  - Its own switch checks (preference sync, opening a tool, archiving) read
+    the same environment.
+- **Tests:** `ShelfDropRoutingContract.FileTools` holds a real service over
+  the contract's switches, and a `NotchMediaDrop` wired the way the service
+  wires it. Two things are scripted instead: whether the tools are busy, and
+  whether a tool takes its inputs. A real job's running state only arrives
+  asynchronously.
+  - Before, the suite compiled copies of seven service members. Every check
+    is kept.
+  - The two running-work revocations (media, archive) become one busy case,
+    since the drop sees one fact.
+  - `MediaWorkspaceLayoutTests` measures the real service, opened on a
+    scratch video.
+- **Verification:** a Linux Swift 6.4 model type-checks the drop, the
+  service's wiring and the scripted tools against stand-ins. It runs the
+  gate, mixed, promised, refusal and busy checks. The suites themselves run
+  on macOS CI.
+
+Landed (4b, the switcher's window strips): one more generated file goes,
+which leaves 7. Of those, six are copies and `LocalizationCatalog.swift`
+is the registry kept on purpose.
+
+- **`SwitcherWindowStrip`** (new, `UI/Switcher/`) is the scrolling row of
+  one app's windows that the switcher's previews and titles each built
+  inline. It keeps the selection in view:
+  - when it appears;
+  - when the selection or the app's windows change;
+  - after the viewport resizes.
+
+  It reads the selection from the switcher at reveal time, so a reveal
+  queued behind a resize finds the current selection.
+  - It is generic over `SwitcherStripModel`: the windows and the selected
+    index. `AppSwitcher` conforms.
+  - Each caller gives the tile and the frame.
+- **`SwitcherSupport.searchResult`** is what a search shows: the matching
+  session items in order, and the selection kept on the preferred item
+  while it is still shown. `AppSwitcher` applies it and then resizes as
+  before.
+- **Tests:** `SwitcherScrollContract` draws the module's own strip over
+  synthetic windows, with empty tiles of the real sizes, and searches
+  through the module's own helper. Before, it compiled copies of both
+  strips, the reveal and the search filter. Every check is kept.
+- **Mutation checks:** the two switcher mutations (no reveal after a
+  resize, reveal keyed on the window count) now edit the new file.
+- **Verification:** a Linux Swift 6.4 model type-checks and runs the search
+  helper. SwiftUI does not build on Linux, so the strip and the suite are
+  proven on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
@@ -2564,6 +2626,106 @@ to the services whose state it shows.
   while it plays, that the system's banner hides only for a notification
   the island stands in for, and that unbinding stops everything.
 
+Landed (5m, the island's preferences): `NotchService` reads its
+preferences from the `UserDefaults` it is built with. This is the first
+part of the island's own environment.
+
+- **Why:** five generated tests still copy the island's core, its hover,
+  notices, capture controls, presentation and destinations. Each needs
+  only one fact to drive the real `NotchService`: a test can build one.
+  Building one is harmless, since every collaborator it holds is lazy, so
+  what is left is what it reads and calls.
+- **What changed:**
+  - `NotchService.Environment` carries the preferences, and `.shared` is
+    built with `.system`, the standard defaults.
+  - Its 24 direct reads use them, and so do its 42 `NotchSupport` queries
+    through their `in:` forms. So do its eight feature checks and the lock
+    screen's sound check.
+  - The escaping closures capture the preferences rather than the island.
+- **What is next:** the window host behind a protocol, then the pointer,
+  the main-queue timers and the services it calls, one PR each. After
+  that, the five tests can build the island instead of copying it.
+- **Generated copies:** `Tests/generate_sources.py` reads the island's text
+  with the preferences argument taken out again. So the five copies are
+  byte for byte what they were (checked by regenerating before and after),
+  and their stand-ins still apply. One mutation check names the new text.
+
+Landed (5n, the island's window): `NotchService` asks for its window
+through `NotchIslandHost` (`Services/Notch/NotchIslandHost.swift`), and its
+environment builds it.
+
+- **The protocol** is the 21 things the island asks of its window:
+  - its panel, the size it heads to, whether content departs, and Mission
+    Control's concealment;
+  - its hit tests;
+  - presenting and hiding;
+  - settling and closing;
+  - its file drop, outline, hover and activation hooks.
+
+  `NotchWindowHost` conforms as it is.
+- **`Environment.makeHost`** builds the window from the island, its
+  geometry and size. `.system` builds the `NotchWindowHost` with the views
+  the island always had. The mirror windows on other displays still build
+  their own, through `NotchMirrors`' protocol.
+- **One call spelled out:** a protocol method has no defaults, so the
+  island's one `present` now passes `hideWhenSettled: false`, the value it
+  took by default. The presentation test's stand-in window takes that
+  argument too.
+
+Landed (5o, the pointer, motion and timers): `NotchService` reads the
+pointer and Reduce Motion, and starts its timers, through its environment.
+
+- **`Environment.pointer`** answers the 25 places that read
+  `NSEvent.mouseLocation`.
+- **`Environment.reducesMotion`** answers its four Reduce Motion checks.
+- **`Environment.schedule`** runs its ten delayed pieces of work. These
+  are hover openings and closings, notice dismissals, departures, the
+  track notice, capture controls and the music title.
+- `.system` passes the same system calls as before, so nothing runs
+  differently. A test can now place the pointer and step the clock.
+- **Generated copies:** the generator maps the three back to the system
+  calls when it reads the island, so the five copies stay as they were.
+
+Landed (5p, the services the island calls): `NotchService` reaches the
+services it reads, starts, stops and drives through `NotchIslandServices`
+(`Services/Notch/NotchIslandServices.swift`), in its environment.
+
+- **The protocol** names what the island uses, by what it means to it:
+  - 22 readings, such as the playing track, the timer's session, the
+    downloads, the agents' usage and the calendar countdown;
+  - 30 starts, stops and syncs of the services that follow it;
+  - 14 requests, such as the paste target, opening a notification and
+    the quick controls' actions.
+- **`SystemNotchIslandServices`** forwards each one to the shared instance
+  the island named before, so the app runs exactly as it did. The direct
+  calls in `NotchService` go from 66 to 0.
+- **Still named:**
+  - the local key route's tools key;
+  - a few readings the island takes through a local alias, such as the
+    watch's headline, the timer's clock, the artwork and the scratchpad's
+    tab limits;
+  - two `NSWorkspace` calls.
+
+  The next slice takes the aliases.
+- **Generated copies:** the generator maps each member back to the shared
+  instance, so the five copies stay byte for byte as they were (checked by
+  regenerating).
+
+Landed (5q, the aliased readings): the readings the island took through
+a local alias go through `NotchIslandServices` too:
+
+- the calendar's chosen event;
+- the watch's headline and thumbnail;
+- the timer's clock;
+- the artwork and its tint;
+- the scratchpad's tab limits and new tab;
+- the tools page's state and keys.
+
+`NotchService` now names no shared service, except `NSWorkspace` for
+Reduce Motion (in `.system`) and its workspace notifications. The
+presentation copy reads the music service directly instead of through its
+alias, which its stand-in already offers.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
@@ -2756,6 +2918,36 @@ and a service can read `UserDefaults.standard[Preferences.x]`.
     bar metric switches and the panel orders. Registering them would change
     what code that checks `object(forKey:) == nil` sees, so each needs a
     look first.
+
+Landed (6zzo, the unregistered switches): 12 of the `@AppStorage` keys that
+nothing registered are now `Preference`s, registered with their declared
+default. Their 21 `@AppStorage` properties take the `Preference`.
+
+- **Which:**
+  - the Auto Quit, cut-and-paste and shelf switches;
+  - the six menu bar metric switches (CPU, GPU, memory, network, battery,
+    power);
+  - the onboarding step;
+  - the command bar's links and row shortcuts.
+- **Why registering them changes nothing:** every view declared the type's
+  empty value (`false`, `0`, `""`, empty data), and every service read them
+  with `bool`, `integer`, `string` or `data(forKey:)`. The two decoders
+  return nothing for empty text or data, as for none. No code checks
+  `object(forKey:) == nil` for them.
+  - What a backup exports now includes them. It exports through
+    `object(forKey:)` on purpose, so that a backup is a complete snapshot.
+  - What "never switched on" counts reads the saved domain, not
+    registration, so it is unchanged.
+- **Kept unregistered on purpose:** the eight menu panel orders. An empty
+  order means the default one. The utility order's two migrations run
+  after registration and test `object(forKey:)`, so a registered `""` would
+  rewrite it. A test already pins the utility and toggle orders as
+  unregistered.
+- **Tests:** `PreferenceTests` checks each of the 12 the way it checks the
+  rest:
+  - it is registered with its declared default;
+  - it reads as that default through `UserDefaults` and `@AppStorage`,
+    before registration and after.
 
 Landed (6f, the first services on the main actor): six of Services' 97
 `ObservableObject`s are `@MainActor`. They are `AgentCodexResetService`,

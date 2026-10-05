@@ -836,4 +836,21 @@ package enum Preferences {
         DefaultsKey.menuBarUsageBarMediumThreshold, default: MenuBarUsageBarSupport.defaultMediumThreshold)
     package static let menuBarUsageBarHighThreshold = Preference(
         DefaultsKey.menuBarUsageBarHighThreshold, default: MenuBarUsageBarSupport.defaultHighThreshold)
+
+    // MARK: Off, zero or empty until set
+
+    /// Read as their type's empty value before these were registered, by
+    /// views and services alike, so registering them changed no reading.
+    package static let autoQuitEnabled = Preference(DefaultsKey.autoQuitEnabled, default: false)
+    package static let finderCutPasteEnabled = Preference(DefaultsKey.finderCutPasteEnabled, default: false)
+    package static let shelfEnabled = Preference(DefaultsKey.shelfEnabled, default: false)
+    package static let menuBarCPU = Preference(DefaultsKey.menuBarCPU, default: false)
+    package static let menuBarGPU = Preference(DefaultsKey.menuBarGPU, default: false)
+    package static let menuBarMemory = Preference(DefaultsKey.menuBarMemory, default: false)
+    package static let menuBarNetwork = Preference(DefaultsKey.menuBarNetwork, default: false)
+    package static let menuBarBattery = Preference(DefaultsKey.menuBarBattery, default: false)
+    package static let menuBarPower = Preference(DefaultsKey.menuBarPower, default: false)
+    package static let onboardingStep = Preference(DefaultsKey.onboardingStep, default: 0)
+    package static let commandBarLinks = Preference(DefaultsKey.commandBarLinks, default: Data())
+    package static let commandBarRowShortcuts = Preference(DefaultsKey.commandBarRowShortcuts, default: "")
 }

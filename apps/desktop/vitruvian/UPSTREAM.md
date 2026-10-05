@@ -1803,6 +1803,67 @@ is that notice. Add an entry for every change to upstream files.
     in `Core/Shelf/ShelfSupport.swift`, and `ShelfService` forwards to it.
   - `Tests/ShelfDropRoutingTests.swift` drives the intake, and
     `Tests/generate_sources.py` no longer copies the shelf's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - What the island's media tools take as a drop goes from
+    `Services/Notch/NotchFileToolsService.swift` to the new
+    `Services/Notch/NotchMediaDrop.swift`. The service forwards to it.
+  - The service takes an injected `Environment` for its switches.
+  - `Tests/ShelfDropRoutingTests.swift` and
+    `Tests/MediaWorkspaceLayoutTests.swift` drive the module's own types,
+    and `Tests/generate_sources.py` no longer writes `ShelfDropRouting.swift`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The preview and title strips in `UI/Switcher/SwitcherView.swift` use
+    the new `UI/Switcher/SwitcherWindowStrip.swift`, which holds their
+    scroll view and selection reveal.
+  - The search filter in `Services/Switcher/AppSwitcher.swift` moves to
+    `SwitcherSupport.searchResult` in `Core/Switcher/SwitcherSupport.swift`.
+  - `Tests/SwitcherScrollTests.swift` drives both, `Tests/mutation_checks.py`
+    points its two switcher mutations at the new file, and
+    `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 6zzo (`REFACTOR.md`):
+  - `Core/Defaults.swift` registers 12 more preferences:
+    - the Auto Quit, cut-and-paste and shelf switches;
+    - the six menu bar metric switches;
+    - the onboarding step;
+    - the command bar's links and row shortcuts.
+
+    Each is registered with the empty value its views already assumed.
+  - Their `@AppStorage` properties take the `Preference`, in:
+    - `UI/MenuBarMetricsPreview.swift`;
+    - `UI/MenuPanel/MenuPanelView.swift`;
+    - `UI/Onboarding/OnboardingView.swift`;
+    - the Auto Quit, command bar, cut-and-paste, monitor and shelf
+      settings views.
+- **2026-10-05**: Refactor step 5m (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` takes a `NotchService.Environment`
+    with the preferences it reads; `.shared` passes the standard ones. Its
+    defaults reads, `NotchSupport` queries, feature checks and the lock
+    screen's sound check go through them.
+  - `Tests/generate_sources.py` reads the island's text with that argument
+    taken out, so its copies are unchanged, and `Tests/mutation_checks.py`
+    names the new text in one mutation.
+- **2026-10-05**: Refactor step 5n (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` holds its window as the new
+    `NotchIslandHost` (`Services/Notch/NotchIslandHost.swift`), built by
+    `Environment.makeHost`; `.system` builds the `NotchWindowHost` as before.
+  - Its one `present` call passes `hideWhenSettled: false`, the default it
+    used, and `Tests/NotchPresentationRefreshTests.swift`'s stand-in window
+    takes that argument.
+- **2026-10-05**: Refactor step 5o (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` reads the pointer and Reduce Motion,
+    and schedules its main-queue timers, through `NotchService.Environment`;
+    `.system` passes the system calls it used.
+  - `Tests/generate_sources.py` maps those back when it copies the island.
+- **2026-10-05**: Refactor step 5p (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` calls the services it uses through
+    the new `NotchIslandServices` (`Services/Notch/NotchIslandServices.swift`),
+    whose `SystemNotchIslandServices` forwards to the shared instances.
+  - `Tests/generate_sources.py` maps the members back when it copies the
+    island.
+- **2026-10-05**: Refactor step 5q (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` takes its last shared-service
+    readings through `NotchIslandServices`: the calendar, the watch, the
+    timer's clock, the artwork, the scratchpad and the tools page.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

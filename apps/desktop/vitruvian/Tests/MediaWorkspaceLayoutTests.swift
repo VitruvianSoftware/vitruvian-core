@@ -23,17 +23,18 @@ enum MediaWorkspaceLayoutTests {
     }
 
     final class Presentation {
-        let archives: ShelfDropRoutingContract.NotchFileToolsService
+        let archives: NotchFileToolsService
         var heights: [CGFloat] = []
-        init(_ archives: ShelfDropRoutingContract.NotchFileToolsService) { self.archives = archives }
+        init(_ archives: NotchFileToolsService) { self.archives = archives }
         func refreshPresentation() {
             if let height = archives.mediaContentHeight { heights.append(height) }
         }
     }
 
-    /// The island's media sizing, over the shelf contract's file tools.
+    /// The island's media sizing, over the module's own file tools with
+    /// every switch on.
     final class FileView {
-        let archives = ShelfDropRoutingContract.NotchFileToolsService()
+        let archives = NotchFileToolsService(environment: .init(available: { true }, shelfEnabled: { true }))
         lazy var service = Presentation(archives)
         func mediaHeightChanged(_ height: CGFloat, id: UUID) {
             NotchFilesView.mediaHeightChanged(height, id: id, in: archives) { service.refreshPresentation() }
@@ -65,8 +66,15 @@ enum MediaWorkspaceLayoutTests {
         }
         let fixture = Fixture()
         let fileView = FileView()
-        _ = fileView.archives.openMedia(.videoCompressor, inputs: [])
-        let sessionID = fileView.archives.mediaSession!.id
+        // The tools open only on a file they take; nothing reads it.
+        let clip = FileManager.default.temporaryDirectory.appendingPathComponent("vitru-media-layout-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: clip) }
+        try? Data([0]).write(to: clip)
+        guard fileView.archives.openMedia(.videoCompressor, inputs: [clip]),
+              let sessionID = fileView.archives.mediaSession?.id else {
+            suite.expect(false, "the media workspace opens on a video")
+            return
+        }
         var measured: CGFloat = 0
         let host = NSHostingView(rootView: Workspace(fixture: fixture, onContentHeightChange: {
             measured = $0
@@ -131,5 +139,3 @@ enum MediaWorkspaceLayoutTests {
         }
     }
 }
-
-extension ShelfDropRoutingContract.NotchFileToolsService: NotchMediaHeightTracking {}

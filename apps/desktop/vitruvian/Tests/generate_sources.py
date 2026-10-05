@@ -21,11 +21,115 @@ OUTPUT = ROOT / "build/generated-tests"
 _PACKAGE_MODIFIER = re.compile(r"^( *(?:@[\w.]+(?:\([^()\n]*\))? +)*)package ", re.M)
 
 
+# The island reads its preferences, the pointer, Reduce Motion and the main
+# queue's timers through the environment it was built with
+# (`NotchService.Environment`). Its copies here still stand in for the
+# process-wide ones, so they read the text as it was before those seams.
+_NOTCH = "Sources/Vitruvian/Services/Notch/NotchService.swift"
+_NOTCH_DEFAULTS = [
+    (re.compile(r"\[defaults\] in "), ""),
+    (re.compile(r"\.isAvailable\(in: defaults\)"), ".isAvailable"),
+    (re.compile(r", in: defaults\)"), ")"),
+    (re.compile(r"\(in: defaults\)"), "()"),
+    (re.compile(r"(?<![\w.])(?:self\.)?defaults\."), "UserDefaults.standard."),
+    (re.compile(r"(?<![\w.])(?:self\.)?pointer\(\)"), "NSEvent.mouseLocation"),
+    (re.compile(r"(?<![\w.])reducesMotion\(\)"), "NSWorkspace.shared.accessibilityDisplayShouldReduceMotion"),
+    (re.compile(r"(?<![\w.])schedule\((.+), work\)"), r"DispatchQueue.main.asyncAfter(deadline: .now() + \1, execute: work)"),
+]
+# The services the island calls (`NotchIslandServices`), mapped back to the
+# shared instances its copies stand in for.
+_NOTCH_SERVICES = [
+    ('watchShowsThumbnail', 'NotchWatchService.shared.showsThumbnail'),
+    ('calendarIsChosen(', 'NotchCalendarService.shared.isChosen('),
+    ('takesToolsKey(', 'QuickLauncherService.shared.takesPanelKey('),
+    ('watchHeadline', 'NotchWatchService.shared.headline'),
+    ('artworkTint', 'NotchMusicService.shared.artworkTint'),
+    ('canCreatePad', 'ScratchpadService.shared.canCreatePad'),
+    ('canClosePad', 'ScratchpadService.shared.canClosePad'),
+    ('createPad(', 'ScratchpadService.shared.createPad('),
+    ('timerNow', 'NotchTimerService.shared.now'),
+    ('artwork', 'NotchMusicService.shared.artwork'),
+    ('choosingDownloadFolder', 'NotchDownloadService.shared.isChoosingFolder'),
+    ('setMonitorDetailNeeds(', 'SystemMonitor.shared.setNotchDetailNeeds('),
+    ('playLockSound(locking:', 'NotchLockScreenService.shared.playSound(locking:'),
+    ('rememberPasteTarget()', 'ClipboardHistoryService.shared.rememberPasteTarget()'),
+    ('showNormalMenuPanel()', 'MenuPanelFocus.shared.showNormalPanel()'),
+    ('suspendAccessories()', 'NotchAccessoryService.shared.suspend()'),
+    ('dismissNotification(', 'NotchNotificationService.shared.dismiss('),
+    ('keepsCalendarPrompt', 'Permissions.shared.keepsCalendarPrompt'),
+    ('openingNotification', 'NotchNotificationService.shared.openingID'),
+    ('syncNotifications()', 'NotchNotificationService.shared.syncWithPreferences()'),
+    ('stopNotifications()', 'NotchNotificationService.shared.stop()'),
+    ('captureScreenshot()', 'ScreenshotService.shared.capture()'),
+    ('openNotchSettings()', 'SettingsRouter.shared.request(FeatureSettingsDestination(.notch))'),
+    ('mediaContentHeight', 'NotchFileToolsService.shared.mediaContentHeight'),
+    ('setMonitorVisible(', 'SystemMonitor.shared.setNotchVisible('),
+    ('skipTrack(forward:', 'NotchMusicService.shared.skipFromGesture(forward:'),
+    ('toggleMicrophone()', 'MicMuteService.shared.toggle()'),
+    ('calendarCountdown', 'NotchCalendarService.shared.countdown'),
+    ('keepsCameraPrompt', 'CameraPreviewService.shared.keepsNotchPermissionPrompt'),
+    ('pauseAgentUsage()', 'AgentUsageService.shared.pause()'),
+    ('syncAccessories()', 'NotchAccessoryService.shared.syncWithPreferences()'),
+    ('stopAccessories()', 'NotchAccessoryService.shared.stop()'),
+    ('closeLockScreen()', 'NotchLockScreenService.shared.close()'),
+    ('openNotification(', 'NotchNotificationService.shared.open('),
+    ('toggleKeepAwake()', 'KeepAwakeManager.shared.toggle()'),
+    ('toggleRecording()', 'ScreenRecorderService.shared.toggle()'),
+    ('keepAwakeEndDate', 'KeepAwakeManager.shared.endDate'),
+    ('syncAudioLevel()', 'NotchAudioLevelService.shared.syncWithPreferences()'),
+    ('stopAudioLevel()', 'NotchAudioLevelService.shared.stop()'),
+    ('syncAgentUsage()', 'AgentUsageService.shared.syncWithPreferences()'),
+    ('stopAgentUsage()', 'AgentUsageService.shared.stop()'),
+    ('showCommandBar()', 'CommandBarService.shared.show()'),
+    ('showScratchpad()', 'ScratchpadService.shared.show()'),
+    ('keepAwakeActive', 'KeepAwakeManager.shared.isActive'),
+    ('importingLyrics', 'NotchLyricsService.shared.isImporting'),
+    ('scratchpadModal', 'ScratchpadService.shared.modalInteractionActive'),
+    ('offersMediaDrop', 'NotchFileToolsService.shared.offersMediaDrop'),
+    ('syncDownloads()', 'NotchDownloadService.shared.syncWithPreferences()'),
+    ('stopDownloads()', 'NotchDownloadService.shared.stop()'),
+    ('syncFileTools()', 'NotchFileToolsService.shared.syncWithPreferences()'),
+    ('stopFileTools()', 'NotchFileToolsService.shared.stop()'),
+    ('syncLockScreen(', 'NotchLockScreenService.shared.sync('),
+    ('mediaPresented', 'NotchFileToolsService.shared.mediaPresented'),
+    ('systemSnapshot', 'SystemMonitor.shared.snapshot'),
+    ('suspendTimer()', 'NotchTimerService.shared.suspend()'),
+    ('syncCalendar()', 'NotchCalendarService.shared.syncWithPreferences()'),
+    ('stopCalendar()', 'NotchCalendarService.shared.stop()'),
+    ('prepareTools()', 'QuickLauncherService.shared.prepareForPresentation()'),
+    ('activeUtility', 'QuickLauncherService.shared.activeUtility'),
+    ('updateOffered', 'UpdateService.shared.state.isOffer'),
+    ('timerSession', 'NotchTimerService.shared.session'),
+    ('editingTools', 'QuickLauncherService.shared.isEditing'),
+    ('visibleTools', 'QuickLauncherService.shared.visibleItems'),
+    ('startMusic()', 'NotchMusicService.shared.start()'),
+    ('stopLyrics()', 'NotchLyricsService.shared.stop()'),
+    ('hideCamera()', 'CameraPreviewService.shared.hideEmbedded()'),
+    ('watchActive', 'NotchWatchService.shared.isActive'),
+    ('stopMusic()', 'NotchMusicService.shared.stop()'),
+    ('syncTimer()', 'NotchTimerService.shared.syncWithPreferences()'),
+    ('stopTimer()', 'NotchTimerService.shared.stop()'),
+    ('syncWatch()', 'NotchWatchService.shared.syncWithPreferences()'),
+    ('stopWatch()', 'NotchWatchService.shared.stop()'),
+    ('agentUsage', 'AgentUsageService.shared.snapshot'),
+    ('downloads', 'NotchDownloadService.shared.items'),
+    ('playback', 'NotchMusicService.shared.playback'),
+    ("showSettingsModule(module)", "SettingsRouter.shared.notchModule = module"),
+]
+_NOTCH_DEFAULTS += [(re.compile(r"\[services\] in "), "")] + [
+    (re.compile(r"(?<![\w.])(?:self\.)?services\." + re.escape(member)), old.replace("\\", "\\\\"))
+    for member, old in _NOTCH_SERVICES]
+
+
 def _source(path):
     """A production file's text as the extractions here expect it: without the
     `package` modifiers that its module needs and these copies do not. Each line
     keeps its number, so `#sourceLocation` still points at the right line."""
-    return _PACKAGE_MODIFIER.sub(r"\1", (ROOT / path).read_text())
+    text = _PACKAGE_MODIFIER.sub(r"\1", (ROOT / path).read_text())
+    if path == _NOTCH:
+        for pattern, replacement in _NOTCH_DEFAULTS:
+            text = pattern.sub(replacement, text)
+    return text
 
 
 def declaration(path, prefix, scope=None, keep_nonisolated=False):
@@ -229,39 +333,6 @@ def main():
           + declaration(notch, "    private func updateSession(").replace("private func", "func", 1)
               .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
           + "}\n}\n")
-    write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
-          + "final class NotchFileToolsService: FileToolsState {\nstatic var shared = NotchFileToolsService()\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var offersMediaDrop:")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func openMediaDrop(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func updateMediaHeight(",
-                        scope="final class NotchFileToolsService:")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func hideMedia(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
-          + "}\n}\n")
-    switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
-    switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"
-    write("SwitcherScroll.swift", "import AppKit\nimport SwiftUI\n"
-          + "extension SwitcherScrollContract {\nstruct Strip: View {\n"
-          + "@ObservedObject var switcher: Model\n"
-          + "var instantSelection = false\n"
-          + "var iconRowContentWidth: CGFloat { switcher.iconRowLayout.contentWidth(simpleMode: true, windowRow: false) }\n"
-          + "var body: some View {\nif selectedWindow != nil {\nlet appWindows = selectedAppWindows\n"
-          + "if switcher.simple {\nGroup {\n"
-          + declaration(switcher, "                ScrollViewReader { proxy in")
-          + "}\n.frame(width: iconRowContentWidth - 2 * SwitcherIconRowLayout.simpleTitlePanelPadding, "
-          + "height: 25 * SwitcherIconRowLayout.scale)\n} else {\n"
-          + declaration(switcher, "                    ScrollViewReader { proxy in")
-          + "}\n}\n}\n"
-          + declaration(switcher, "    private var selectedWindow:")
-          + declaration(switcher, "    private var selectedAppWindows:")
-          + declaration(switcher, "    private func revealSelection(")
-          + "}\n}\nextension SwitcherScrollContract.Model {\n"
-          + "func search(_ query: String) { searchQuery = query; applySearchFilter(preferredItemID: selectedItemID) }\n"
-          + declaration(switcher_service, "    private var selectedItemID:")
-          + declaration(switcher_service, "    private func applySearchFilter(")
-          + "}\n")
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):

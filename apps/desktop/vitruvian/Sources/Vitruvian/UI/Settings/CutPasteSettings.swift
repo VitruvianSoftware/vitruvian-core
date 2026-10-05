@@ -10,7 +10,7 @@ package struct CutPasteSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = FinderCutPaste.shared
-    @AppStorage(DefaultsKey.finderCutPasteEnabled) private var enabled = false
+    @AppStorage(Preferences.finderCutPasteEnabled) private var enabled: Bool
     @AppStorage(Preferences.finderCutPasteShowHUD) private var showHUD: Bool
     @AppStorage(Preferences.finderRenameEnabled) private var renameEnabled: Bool
     @AppStorage(Preferences.finderRenameShortcut) private var renameShortcutRaw: String

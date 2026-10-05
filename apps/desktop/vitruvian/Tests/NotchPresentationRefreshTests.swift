@@ -130,7 +130,7 @@ enum NotchPresentationRefreshContract {
         }
         func present(size: CGSize, geometry: NotchGeometry, animated: Bool,
                      transitionContent: NotchContentTransition, quickAccess: NotchQuickAccessConfiguration?,
-                     revealFromHidden: Bool, usesGlass: Bool) {
+                     revealFromHidden: Bool, hideWhenSettled: Bool, usesGlass: Bool) {
             transitions.append(transitionContent)
             departsContent = transitionContent == .depart
             self.usesGlass = usesGlass

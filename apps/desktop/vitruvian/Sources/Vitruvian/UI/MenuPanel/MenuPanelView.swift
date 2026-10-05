@@ -1138,9 +1138,9 @@ package struct QuickControlsSection: View {
     @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode: Bool
     @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode: Bool
     @AppStorage(Preferences.dockPreviewEnabled) private var dockPreviewEnabled: Bool
-    @AppStorage(DefaultsKey.finderCutPasteEnabled) private var cutPasteEnabled = false
-    @AppStorage(DefaultsKey.autoQuitEnabled) private var autoQuitEnabled = false
-    @AppStorage(DefaultsKey.shelfEnabled) private var shelfEnabled = false
+    @AppStorage(Preferences.finderCutPasteEnabled) private var cutPasteEnabled: Bool
+    @AppStorage(Preferences.autoQuitEnabled) private var autoQuitEnabled: Bool
+    @AppStorage(Preferences.shelfEnabled) private var shelfEnabled: Bool
     @AppStorage(Preferences.windowMaximizeEnabled) private var windowMaximizeEnabled: Bool
     @AppStorage(Preferences.keyboardDebounceEnabled) private var keyDebounceEnabled: Bool
     @AppStorage(Preferences.keyboardDebounceWindowMs) private var keyDebounceWindow: Int
