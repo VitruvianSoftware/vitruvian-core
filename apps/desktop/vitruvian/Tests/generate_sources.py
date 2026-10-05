@@ -39,6 +39,7 @@ _NOTCH_DEFAULTS = [
     (re.compile(r"windowHost\?\.takeKeyboard\(\)"), "panel?.makeKey()"),
     (re.compile(r"windowHost\?\.releaseKeyboard\(\)"), "panel?.resignKey()"),
     (re.compile(r"windowHost\?\.hasKeyboard"), "panel?.isKeyWindow"),
+    (re.compile(r"(?<![\w.])hasBattery\(\)"), "PowerSampler.hasInternalBattery"),
 ]
 # The services the island calls (`NotchIslandServices`), mapped back to the
 # shared instances its copies stand in for.

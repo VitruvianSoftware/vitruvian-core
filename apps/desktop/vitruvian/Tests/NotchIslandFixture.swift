@@ -33,12 +33,15 @@ final class NotchIslandFixture {
     let events = Events()
     var pointer = NotchIslandFixture.awayFromIsland
     var displays = [NotchIslandFixture.display]
-    /// The island's display shows a full-screen Space.
+    /// Every display shows a full-screen Space.
     var fullscreen = false
+    var hasBattery = true
     var currentSession = NotchSessionState()
     /// Each window the island built, the current one last.
     private(set) var hosts: [RecordingIslandHost] = []
     var host: RecordingIslandHost? { hosts.last }
+    /// Each copy's window the island built, in order.
+    private(set) var mirrors: [RecordingMirrorHost] = []
     /// Work the island scheduled, with its delay, in order.
     private(set) var scheduled: [(delay: TimeInterval, work: DispatchWorkItem)] = []
     /// The open island's monitors, while it has them.
@@ -103,6 +106,11 @@ final class NotchIslandFixture {
                 self.hosts.append(host)
                 return host
             },
+            makeMirror: { [unowned self] _, _, geometry, size in
+                let mirror = RecordingMirrorHost(frame: geometry.frame(for: size))
+                self.mirrors.append(mirror)
+                return mirror
+            },
             pointer: { [unowned self] in self.pointer },
             reducesMotion: { false },
             schedule: { [unowned self] delay, work in self.scheduled.append((delay: delay, work: work)) },
@@ -110,6 +118,7 @@ final class NotchIslandFixture {
             displays: { [unowned self] in self.displays },
             separateSpaces: { true },
             statusBarThickness: { 24 },
+            hasBattery: { [unowned self] in self.hasBattery },
             parts: parts)
     }
 
@@ -146,6 +155,7 @@ final class NotchIslandFixture {
                 self.clickElsewhere = nil
                 self.localEvent = nil
             }),
+            fullscreenDisplays: { [unowned self] ids in self.fullscreen ? Set(ids) : [] },
             notifications: notifications, workspaceNotifications: workspace, sessionNotifications: session,
             currentSession: { [unowned self] in self.currentSession })
     }
@@ -249,6 +259,34 @@ final class RecordingIslandHost: NotchIslandHost {
     func setHoverHandler(_ handler: @escaping (Bool) -> Void) { hoverHandler = handler }
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
                            activate: @escaping () -> Void) { self.activate = activate }
+}
+
+/// A copy of the closed island on another display, drawing nothing.
+nonisolated final class RecordingMirrorHost: NotchMirrorHost {
+    private(set) var frame: CGRect
+    var panelSharingType: NSWindow.SharingType = .readOnly
+    private(set) var panelIsVisible = false
+    var visibleWindowID: CGWindowID? { nil }
+    private(set) var closed = false
+
+    init(frame: CGRect) {
+        self.frame = frame
+    }
+
+    func orderPanelFront() { panelIsVisible = true }
+    func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
+                     transitionContent: NotchContentTransition) {
+        frame = geometry.frame(for: size)
+        panelIsVisible = true
+    }
+    func hideCopy() { panelIsVisible = false }
+    func close() {
+        closed = true
+        panelIsVisible = false
+    }
+    func setOutline(enabled: Bool, color: NSColor) {}
+    func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
+                           activate: @escaping () -> Void) {}
 }
 
 /// The island's services as readings a test sets, and a log of what the

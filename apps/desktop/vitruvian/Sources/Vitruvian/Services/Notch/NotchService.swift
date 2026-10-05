@@ -78,6 +78,8 @@ package final class NotchService: ObservableObject {
         package var defaults: UserDefaults
         /// Builds the window that draws the island, at its geometry and size.
         package var makeHost: @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost
+        /// Builds the window that draws a copy of the closed island on another display.
+        package var makeMirror: @MainActor (NotchService, NotchMirrorModel, NotchGeometry, CGSize) -> any NotchMirrorHost
         /// Where the pointer is, in screen coordinates.
         package var pointer: @MainActor () -> CGPoint
         /// The Reduce Motion accessibility setting.
@@ -92,6 +94,8 @@ package final class NotchService: ObservableObject {
         package var separateSpaces: @MainActor () -> Bool
         /// The menu bar's thickness, as the status bar reports it.
         package var statusBarThickness: @MainActor () -> CGFloat
+        /// The Mac has a battery of its own, whose charge the island can show.
+        package var hasBattery: @MainActor () -> Bool
         /// The environments of the island's own parts.
         package var parts: Parts
 
@@ -110,6 +114,8 @@ package final class NotchService: ObservableObject {
             package var fileDrop: @MainActor (_ shelfAccept: @escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment
             /// The clicks and keys the open island hears.
             package var openEvents: NotchOpenEvents
+            /// Which of these displays show a full-screen Space now.
+            package var fullscreenDisplays: @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
             /// The app's own notifications: menus, windows, screens and preferences.
             package var notifications: NotificationCenter
             /// The workspace's: Spaces, the app in front and accessibility.
@@ -128,6 +134,7 @@ package final class NotchService: ObservableObject {
                          screenEdges: @escaping @MainActor (@escaping () -> NSWindow?) -> NotchScreenEdgeClicks.Environment,
                          fileDrop: @escaping @MainActor (@escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment,
                          openEvents: NotchOpenEvents,
+                         fullscreenDisplays: @escaping @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
                          notifications: NotificationCenter, workspaceNotifications: NotificationCenter,
                          sessionNotifications: NotificationCenter,
                          currentSession: @escaping @MainActor () -> NotchSessionState) {
@@ -141,6 +148,7 @@ package final class NotchService: ObservableObject {
                 self.screenEdges = screenEdges
                 self.fileDrop = fileDrop
                 self.openEvents = openEvents
+                self.fullscreenDisplays = fullscreenDisplays
                 self.notifications = notifications
                 self.workspaceNotifications = workspaceNotifications
                 self.sessionNotifications = sessionNotifications
@@ -155,6 +163,11 @@ package final class NotchService: ObservableObject {
                       screenEdges: { NotchScreenEdgeClicks.Environment.system(islandWindow: $0) },
                       fileDrop: { NotchFileDrop.Environment.system(shelfAccept: $0) },
                       openEvents: .system,
+                      fullscreenDisplays: { ids in
+                          guard let topology = SpaceWindowBridge.topology() else { return [] }
+                          let separate = NSScreen.screensHaveSeparateSpaces
+                          return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
+                      },
                       notifications: .default, workspaceNotifications: NSWorkspace.shared.notificationCenter,
                       sessionNotifications: DistributedNotificationCenter.default(),
                       currentSession: { NotchSessionTracker.current() })
@@ -163,6 +176,8 @@ package final class NotchService: ObservableObject {
 
         package init(defaults: UserDefaults,
                      makeHost: @escaping @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost,
+                     makeMirror: @escaping @MainActor (NotchService, NotchMirrorModel, NotchGeometry, CGSize)
+                         -> any NotchMirrorHost,
                      pointer: @escaping @MainActor () -> CGPoint,
                      reducesMotion: @escaping @MainActor () -> Bool,
                      schedule: @escaping @MainActor (TimeInterval, DispatchWorkItem) -> Void,
@@ -170,9 +185,11 @@ package final class NotchService: ObservableObject {
                      displays: @escaping @MainActor () -> [NotchDisplayInfo],
                      separateSpaces: @escaping @MainActor () -> Bool,
                      statusBarThickness: @escaping @MainActor () -> CGFloat,
+                     hasBattery: @escaping @MainActor () -> Bool,
                      parts: Parts) {
             self.defaults = defaults
             self.makeHost = makeHost
+            self.makeMirror = makeMirror
             self.pointer = pointer
             self.reducesMotion = reducesMotion
             self.schedule = schedule
@@ -180,6 +197,7 @@ package final class NotchService: ObservableObject {
             self.displays = displays
             self.separateSpaces = separateSpaces
             self.statusBarThickness = statusBarThickness
+            self.hasBattery = hasBattery
             self.parts = parts
         }
 
@@ -191,6 +209,13 @@ package final class NotchService: ObservableObject {
                                     background: { ServiceViews.factory.notchBackground($0) },
                                     quickAccess: { ServiceViews.factory.notchQuickAccess(island, motion: $0, backdrop: $1) })
                 },
+                makeMirror: { island, model, geometry, size in
+                    let host = NotchWindowHost(content: ServiceViews.factory.notchMirror(island, mirror: model),
+                                               geometry: geometry, size: size,
+                                               background: { ServiceViews.factory.notchBackground($0) })
+                    host.panel.title = FeatureStrings.notch(L10n.shared.language).title
+                    return host
+                },
                 pointer: { NSEvent.mouseLocation },
                 reducesMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion },
                 schedule: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) },
@@ -198,6 +223,7 @@ package final class NotchService: ObservableObject {
                 displays: { NSScreen.screens.map { NotchDisplayInfo(screen: $0) } },
                 separateSpaces: { NSScreen.screensHaveSeparateSpaces },
                 statusBarThickness: { NSStatusBar.system.thickness },
+                hasBattery: { PowerSampler.hasInternalBattery },
                 parts: .system)
         }
     }
@@ -444,7 +470,7 @@ package final class NotchService: ObservableObject {
     @Published package private(set) var capsuleMusicTitleShown = false
     private var musicTitleWork: DispatchWorkItem?
     private static let musicTitleDuration: TimeInterval = 4
-    private typealias Mirrors = NotchMirrors<NotchWindowHost>
+    private typealias Mirrors = NotchMirrors<AnyNotchMirrorHost>
     /// The closed island as the other displays draw it (`NotchMirrors`).
     private lazy var mirrors: Mirrors = Mirrors(
         environment: Mirrors.Environment(
@@ -457,11 +483,7 @@ package final class NotchService: ObservableObject {
                 guard let self, let display = self.displays().first(where: { $0.id == id }) else { return nil }
                 return self.baseGeometry(for: display)
             },
-            fullscreenDisplays: { [separateSpaces] ids in
-                guard let topology = SpaceWindowBridge.topology() else { return [] }
-                let separate = separateSpaces()
-                return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
-            },
+            fullscreenDisplays: { [parts] ids in parts.fullscreenDisplays(ids) },
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
             coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
             showsInCaptures: { [defaults] in NotchSupport.showsInCaptures(in: defaults) },
@@ -480,11 +502,7 @@ package final class NotchService: ObservableObject {
             self?.compactGeometry(for: activity, companion: companion, base: base) ?? base
         },
         makeHost: { [unowned self] model, geometry, size in
-            let host = NotchWindowHost(content: ServiceViews.factory.notchMirror(self, mirror: model),
-                                       geometry: geometry, size: size,
-                                       background: { ServiceViews.factory.notchBackground($0) })
-            host.panel.title = FeatureStrings.notch(L10n.shared.language).title
-            return host
+            AnyNotchMirrorHost(self.makeMirror(self, model, geometry, size))
         },
         activate: { [weak self] id in self?.summons.bring(to: id) })
     /// A click on a copy bringing the island to its display (`NotchIslandSummons`).
@@ -610,6 +628,7 @@ package final class NotchService: ObservableObject {
     private let defaults: UserDefaults
     /// Builds the island's window (`Environment.makeHost`).
     private let makeHost: @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost
+    private let makeMirror: @MainActor (NotchService, NotchMirrorModel, NotchGeometry, CGSize) -> any NotchMirrorHost
     /// The pointer, Reduce Motion and the main queue's timers (`Environment`).
     private let pointer: @MainActor () -> CGPoint
     private let reducesMotion: @MainActor () -> Bool
@@ -620,12 +639,14 @@ package final class NotchService: ObservableObject {
     private let displays: @MainActor () -> [NotchDisplayInfo]
     private let separateSpaces: @MainActor () -> Bool
     private let statusBarThickness: @MainActor () -> CGFloat
+    private let hasBattery: @MainActor () -> Bool
     /// The environments of the island's parts (`Environment.parts`).
     private let parts: Environment.Parts
 
     package init(environment: Environment) {
         defaults = environment.defaults
         makeHost = environment.makeHost
+        makeMirror = environment.makeMirror
         pointer = environment.pointer
         reducesMotion = environment.reducesMotion
         schedule = environment.schedule
@@ -633,6 +654,7 @@ package final class NotchService: ObservableObject {
         displays = environment.displays
         separateSpaces = environment.separateSpaces
         statusBarThickness = environment.statusBarThickness
+        hasBattery = environment.hasBattery
         parts = environment.parts
     }
 
@@ -657,7 +679,7 @@ package final class NotchService: ObservableObject {
     /// choice rests empty there; playing music still shows as before.
     package var idleContent: NotchIdleContent {
         let content = NotchSupport.visibleIdleContent(isPlaying: !awaitsTrackNotice && services.playback?.isPlaying == true, in: defaults)
-        return content == .battery && !PowerSampler.hasInternalBattery ? .none : content
+        return content == .battery && !hasBattery() ? .none : content
     }
 
     package var hasTimerActivity: Bool {
@@ -999,7 +1021,7 @@ package final class NotchService: ObservableObject {
                                      sliderCount: sliders, controlsHaveMusic: controls.contains(.music), musicHasContent: services.playback != nil,
                                      musicHasControlsRow: AppFeature.mixer.isAvailable(in: defaults) || musicExtras,
                                      musicExtraHeight: musicExtraHeight, fileMediaHeight: fileMediaHeight,
-                                     systemCards: NotchSupport.systemCardCount(hasBattery: PowerSampler.hasInternalBattery,
+                                     systemCards: NotchSupport.systemCardCount(hasBattery: hasBattery(),
                                                                                fans: services.systemSnapshot.fanSpeeds.count, in: defaults),
                                      toolCount: toolCount, capturePreviewHeight: capturePreviewHeight,
                                      timerHasSession: services.timerSession.hasSession,
@@ -3135,7 +3157,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func startPower() {
-        guard PowerSampler.hasInternalBattery else { return }
+        guard hasBattery() else { return }
         powerSampler = PowerSampler(smc: nil)
         power = powerSampler?.sample() ?? PowerReading()
         let callback: IOPowerSourceCallbackType = { context in

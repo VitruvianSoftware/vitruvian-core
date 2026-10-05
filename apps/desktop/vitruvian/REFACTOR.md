@@ -2836,6 +2836,22 @@ things a test could not stand in for.
 - The generator maps the keyboard calls back for its copies, which stay as
   they were.
 
+Landed (5v, the copies' windows and the battery):
+
+- **Copies:** the island builds each copy's window on another display
+  through `Environment.makeMirror`, as it builds its own through
+  `makeHost`. `NotchMirrors` keeps its host type; the island's copies hold
+  an `AnyNotchMirrorHost` around whatever was built. `.system` builds the
+  same `NotchWindowHost`.
+- **Full screen:** which displays show a full-screen Space comes from
+  `Environment.Parts.fullscreenDisplays`. `.system` reads the Spaces as
+  the copies did.
+- **The battery:** whether the Mac has its own comes from
+  `Environment.hasBattery`. `.system` asks `PowerSampler`.
+- A test's island can now show copies on other displays and rest on a Mac
+  without a battery. The generator maps the battery back for its copies,
+  which stay as they were.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

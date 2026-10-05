@@ -37,6 +37,35 @@ extension NotchWindowHost: @preconcurrency NotchMirrorHost {
     package func hideCopy() { hide(animated: false) }
 }
 
+/// A copy's window, whatever built it: the island's copies take theirs from
+/// its environment.
+package final class AnyNotchMirrorHost: NotchMirrorHost {
+    private let host: any NotchMirrorHost
+
+    package init(_ host: any NotchMirrorHost) {
+        self.host = host
+    }
+
+    package var panelSharingType: NSWindow.SharingType {
+        get { host.panelSharingType }
+        set { host.panelSharingType = newValue }
+    }
+    package var panelIsVisible: Bool { host.panelIsVisible }
+    package var visibleWindowID: CGWindowID? { host.visibleWindowID }
+    package func orderPanelFront() { host.orderPanelFront() }
+    package func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
+                             transitionContent: NotchContentTransition) {
+        host.presentCopy(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent)
+    }
+    package func hideCopy() { host.hideCopy() }
+    package func close() { host.close() }
+    package func setOutline(enabled: Bool, color: NSColor) { host.setOutline(enabled: enabled, color: color) }
+    package func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
+                                   activate: @escaping () -> Void) {
+        host.setActivationArea(rect, title: title, willPress: willPress, activate: activate)
+    }
+}
+
 /// The closed island as every other display draws it, each copy in a window
 /// of its own. With the island on every display, it follows the pointer as
 /// it does when it only follows it, and each other display shows a copy of

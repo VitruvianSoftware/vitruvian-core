@@ -1888,6 +1888,13 @@ is that notice. Add an entry for every change to upstream files.
     passes the panel's own calls and `NSEvent`'s monitors.
   - `Tests/generate_sources.py` maps the keyboard calls back when it copies
     the island.
+- **2026-10-05**: Refactor step 5v (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` builds its copies' windows through
+    `Environment.makeMirror`, reads full-screen displays through
+    `Environment.Parts.fullscreenDisplays` and the battery through
+    `Environment.hasBattery`; `.system` passes what it used before.
+  - `Tests/generate_sources.py` maps the battery back when it copies the
+    island.
 - **2026-10-05**: Refactor step 4b, the island's destinations (`REFACTOR.md`):
   - `Tests/NotchDestinationTests.swift` drives a real island built by the
     new `Tests/NotchIslandFixture.swift`, not compiled copies of its
