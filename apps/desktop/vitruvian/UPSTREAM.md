@@ -1874,6 +1874,11 @@ is that notice. Add an entry for every change to upstream files.
     refresh, full-screen visibility, screen-edge clicks, file drop and
     session tracker from `Environment.Parts`, and observes and posts through
     the notification centers there; `.system` passes the system's.
+- **2026-10-05**: Refactor step 5t (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` reads its remaining preferences
+    through the defaults it was built with, and asks `NotchIslandServices`
+    for the modal window, the status item, the Accessibility Keyboard, the
+    popover, settings and the update preview.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

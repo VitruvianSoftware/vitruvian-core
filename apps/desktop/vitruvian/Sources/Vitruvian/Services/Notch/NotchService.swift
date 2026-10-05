@@ -381,7 +381,7 @@ package final class NotchService: ObservableObject {
     /// every layout pass, which would decode them each time.
     private var headerShowsSectionsButton = false
     private var keepsWorkingSurface: Bool {
-        pinned || trackingMenu || NSApp.modalWindow != nil || panel?.attachedSheet != nil
+        pinned || trackingMenu || services.hasModalWindow || panel?.attachedSheet != nil
             || services.importingLyrics
             // Like the lyrics chooser, these panels stand beside the island
             // instead of hanging from it; a click in them is not a click away.
@@ -656,11 +656,11 @@ package final class NotchService: ObservableObject {
     }
 
     package var hasTimerActivity: Bool {
-        NotchTimerSupport.isEnabled() && services.timerSession.hasSession
+        NotchTimerSupport.isEnabled(in: defaults) && services.timerSession.hasSession
     }
 
     package var hasWatchActivity: Bool {
-        NotchWatchSupport.isEnabled() && services.watchActive
+        NotchWatchSupport.isEnabled(in: defaults) && services.watchActive
     }
 
     package var hasDownloadActivity: Bool {
@@ -673,19 +673,19 @@ package final class NotchService: ObservableObject {
     }
 
     package var hasAgentActivity: Bool {
-        NotchAgentSupport.showsLiveActivity() && !services.agentUsage.live.isEmpty
+        NotchAgentSupport.showsLiveActivity(in: defaults) && !services.agentUsage.live.isEmpty
     }
 
     package var hasCalendarActivity: Bool {
         guard let countdown = services.calendarCountdown,
-              countdown.ongoing ? NotchCalendarSupport.showsTimeLeft()
+              countdown.ongoing ? NotchCalendarSupport.showsTimeLeft(in: defaults)
                 : NotchCalendarSupport.showsCountdown(chosen: services.calendarIsChosen(countdown.event))
         else { return false }
         return countdown.isShown(at: Date())
     }
 
     package var hasKeepAwakeActivity: Bool {
-        NotchKeepAwakeSupport.showsActivity() && services.keepAwakeActive
+        NotchKeepAwakeSupport.showsActivity(in: defaults) && services.keepAwakeActive
     }
 
     package var compactActivity: NotchCompactActivity? {
@@ -920,8 +920,8 @@ package final class NotchService: ObservableObject {
         let provisional = geometry.compactAgentGeometry(wing: NotchAgentSupport.stripWingRange.lowerBound)
         let size = NotchAgentSupport.stripTextSize(height: provisional.compactActivityContentHeight)
         let shape = NotchAgentSupport.readingShape(NotchAgentSupport.stripReading(
-            services.agentUsage, readout: NotchAgentSupport.readout(),
-            display: NotchAgentSupport.limitDisplay(), focus: NotchAgentSupport.limitFocus(), now: Date()))
+            services.agentUsage, readout: NotchAgentSupport.readout(in: defaults),
+            display: NotchAgentSupport.limitDisplay(in: defaults), focus: NotchAgentSupport.limitFocus(in: defaults), now: Date()))
         let width = (shape as NSString).size(withAttributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
         ]).width
@@ -936,7 +936,7 @@ package final class NotchService: ObservableObject {
         if showingSections {
             return geometry.sectionPickerSize(count: filteredSections.count)
         }
-        let musicExtras = NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
+        let musicExtras = NotchLyricsSupport.isEnabled(in: defaults) || NotchQueueSupport.isEnabled(in: defaults)
         return pageSize(in: expandedGeometry, module: showingAppPanel ? .tools : selected,
                         detail: selectedMetric != nil, panel: showingAppPanel,
                         detailHeight: selectedMetric == .fan ? fanDetailHeight : nil,
@@ -969,7 +969,7 @@ package final class NotchService: ObservableObject {
     /// Settings previews the island while it is off too, when the floating
     /// buttons are not read for it, so a preview reads them as it draws.
     private var previewShowsSectionsButton: Bool {
-        !NotchQuickAccessConfiguration.current().actions.contains(.explore)
+        !NotchQuickAccessConfiguration.current(in: defaults).actions.contains(.explore)
     }
 
     /// The tallest island a preview can show: a page that fills the budget,
@@ -988,7 +988,7 @@ package final class NotchService: ObservableObject {
         let controls = NotchSupport.controls(in: defaults)
         let sliders = controls.filter { $0 == .volume || $0 == .brightness }.count
         let shortcuts = controls.filter { $0 != .volume && $0 != .brightness && $0 != .music }.count
-        let musicExtras = NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
+        let musicExtras = NotchLyricsSupport.isEnabled(in: defaults) || NotchQueueSupport.isEnabled(in: defaults)
         return geometry.expandedSize(module: module, detail: detail, panel: panel, detailHeight: detailHeight,
                                      shortcutCount: shortcuts,
                                      sliderCount: sliders, controlsHaveMusic: controls.contains(.music), musicHasContent: services.playback != nil,
@@ -999,7 +999,7 @@ package final class NotchService: ObservableObject {
                                      toolCount: toolCount, capturePreviewHeight: capturePreviewHeight,
                                      timerHasSession: services.timerSession.hasSession,
                                      timerMode: services.timerSession.hasSession
-                                        ? services.timerSession.mode : NotchTimerSupport.savedMode(),
+                                        ? services.timerSession.mode : NotchTimerSupport.savedMode(in: defaults),
                                      agentsHeight: module == .agents && !detail && !panel
                                         ? agentsContentHeight(width: geometry.contentWidth) : nil)
     }
@@ -1009,10 +1009,10 @@ package final class NotchService: ObservableObject {
     private func agentsContentHeight(width: CGFloat) -> CGFloat? {
         let usage = services.agentUsage
         guard usage.loaded else { return nil }
-        let providers = NotchAgentSupport.providers().filter(usage.seen.contains)
+        let providers = NotchAgentSupport.providers(in: defaults).filter(usage.seen.contains)
         guard !providers.isEmpty else { return 0 }
         return NotchAgentSupport.contentHeight(NotchAgentSupport.rows(
-            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers), width: width))
+            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(in: defaults), providers: providers), width: width))
     }
     package var expandedGeometry: NotchGeometry {
         var result = geometry
@@ -1151,9 +1151,9 @@ package final class NotchService: ObservableObject {
             return layout.downloadSurface(name: download?.name ?? FeatureStrings.notchFiles(language).downloadsTitle,
                                           hasProgress: download?.fraction != nil, geometry: geometry, language: language)
         case .agents:
-            let reading = NotchAgentSupport.stripReading(services.agentUsage, readout: NotchAgentSupport.readout(),
-                                                         display: NotchAgentSupport.limitDisplay(),
-                                                         focus: NotchAgentSupport.limitFocus(), now: Date())
+            let reading = NotchAgentSupport.stripReading(services.agentUsage, readout: NotchAgentSupport.readout(in: defaults),
+                                                         display: NotchAgentSupport.limitDisplay(in: defaults),
+                                                         focus: NotchAgentSupport.limitFocus(in: defaults), now: Date())
             return layout.agentSurface(reading: reading, working: working, geometry: geometry)
         case .calendar:
             guard let countdown = services.calendarCountdown else { return geometry.restingSize(showsContent: false) }
@@ -1219,7 +1219,7 @@ package final class NotchService: ObservableObject {
             running = true
             installObservers()
         }
-        if !NotchTimerSupport.isEnabled() { services.stopTimer() }
+        if !NotchTimerSupport.isEnabled(in: defaults) { services.stopTimer() }
         // A watch keeps reading while the island is away, as on the lock
         // screen, and says so with a notification if it cannot show itself.
         services.syncWatch()
@@ -1229,7 +1229,7 @@ package final class NotchService: ObservableObject {
         if !services.offersMediaDrop { endFileDrop() }
         // Paused while the island is away, the section still stops at once
         // when it is turned off.
-        if !NotchAgentSupport.isEnabled() { services.stopAgentUsage() }
+        if !NotchAgentSupport.isEnabled(in: defaults) { services.stopAgentUsage() }
         guard !suspended else {
             if session.canRunTimer { services.syncTimer() }
             else { services.suspendTimer() }
@@ -1255,7 +1255,7 @@ package final class NotchService: ObservableObject {
         services.syncAccessories()
         let signature = NotchEvent.allCases.map { String(NotchSupport.routes($0, in: defaults)) }.joined()
             + NotchSupport.idleContent(in: defaults).rawValue + String(NotchSupport.watchesMusicActivity(in: defaults))
-            + String(NotchKeepAwakeSupport.showsActivity())
+            + String(NotchKeepAwakeSupport.showsActivity(in: defaults))
             + modules.map(\.rawValue).joined()
             + String(AppFeature.fanControl.isAvailable(in: defaults))
             + String(NotchSupport.routesShelf(in: defaults)) + String(NotchSupport.revealsShelfDrag(in: defaults))
@@ -1446,7 +1446,7 @@ package final class NotchService: ObservableObject {
         if changesPresentation, destination == .tools, !appPanel, !sections, metric == nil {
             services.prepareTools()
         }
-        MainActor.assumeIsolated { appShell()?.closePopover(preservingNotch: true) }
+        MainActor.assumeIsolated { services.closeMenuPopover() }
         if !expanded, modules.contains(.clipboard) { services.rememberPasteTarget() }
         panel.acceptsKeyFocus = true
         hoverState.open()
@@ -1593,7 +1593,7 @@ package final class NotchService: ObservableObject {
                       !self.pointerOverChildWindow(self.pointer()) else { return }
                 self.releaseNotification()
                 guard !self.pinned, !self.heldDrag, !self.keepsWorkingSurface, self.captureControls == nil,
-                      !AssistiveKeyboard.ownsCocoaPoint(self.pointer()),
+                      !self.services.assistiveKeyboardOwns(self.pointer()),
                       NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, openedByHover: self.openedByHover) else { return }
                 self.collapse()
             }
@@ -2136,7 +2136,7 @@ package final class NotchService: ObservableObject {
     package func openSettings() {
         collapse()
         services.openNotchSettings()
-        MainActor.assumeIsolated { appShell()?.openSettingsWindow() }
+        MainActor.assumeIsolated { services.openSettingsWindow() }
     }
 
     /// Opens the Dynamic Island settings on one section's options.
@@ -2549,7 +2549,7 @@ package final class NotchService: ObservableObject {
             removeScreenEdgeClickMonitors()
             return
         }
-        let access = NotchQuickAccessConfiguration.current()
+        let access = NotchQuickAccessConfiguration.current(in: defaults)
         let size = surfaceSize
         let contentTransition = compactMusicTransition(transitionContent, animated: animated)
         if captureControls == nil {
@@ -2778,7 +2778,7 @@ package final class NotchService: ObservableObject {
         var next = baseGeometry(for: screen)
         let sameMenuBar = next.hasSameMenuBar(as: geometry)
         if sameMenuBar { next.compactSideRoom = geometry.compactSideRoom }
-        let access = NotchQuickAccessConfiguration.current()
+        let access = NotchQuickAccessConfiguration.current(in: defaults)
         next.quickAccessBottomInset = access.hasBottom ? NotchQuickAccessLayout.gutter : 0
         headerShowsSectionsButton = !access.actions.contains(.explore)
         if next != geometry { menuSpace.invalidate(); geometry = next }
@@ -2820,8 +2820,8 @@ package final class NotchService: ObservableObject {
                          statusBarThickness: statusBarThickness()),
                       customWidth: defaults.double(forKey: DefaultsKey.notchCustomWidth),
                       customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
-                      cameraFit: NotchCameraFit.current(), silhouette: NotchSilhouette.current(),
-                      capsuleFit: NotchCapsuleFit.current(),
+                      cameraFit: NotchCameraFit.current(in: defaults), silhouette: NotchSilhouette.current(in: defaults),
+                      capsuleFit: NotchCapsuleFit.current(in: defaults),
                       outline: defaults.bool(forKey: DefaultsKey.notchOutlineEnabled))
     }
 
@@ -2944,8 +2944,8 @@ package final class NotchService: ObservableObject {
     private func clickIsAway() -> Bool {
         !keepsWorkingSurface
             && windowHost?.contains(pointer()) != true
-            && appShell()?.isOverStatusItem(pointer()) != true
-            && !AssistiveKeyboard.ownsCocoaPoint(pointer())
+            && !services.isOverStatusItem(pointer())
+            && !services.assistiveKeyboardOwns(pointer())
     }
 
     /// The island's own keys and the clicks that close it (`NotchLocalEventRoute`).
@@ -2988,7 +2988,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func syncGestures() {
-        if !NotchGestureSupport.isEnabled() { gesture = NotchGestureSupport() }
+        if !NotchGestureSupport.isEnabled(in: defaults) { gesture = NotchGestureSupport() }
         panel?.handleScroll = { [weak self] event in self?.handleScroll(event) ?? false }
     }
 
@@ -3012,7 +3012,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func handleGesture(_ event: NSEvent) -> Bool {
-        guard running, !suspended, NotchGestureSupport.isEnabled(), let panel,
+        guard running, !suspended, NotchGestureSupport.isEnabled(in: defaults), let panel,
               !trackingMenu, captureControls == nil, !heldDrag,
               event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else {
             gesture = NotchGestureSupport()
@@ -3069,14 +3069,14 @@ package final class NotchService: ObservableObject {
         guard Self.opensUpdatePreview(offered: offered, running: running, suspended: suspended,
                                       expanded: expanded) else { return }
         collapse()
-        MainActor.assumeIsolated { appShell()?.showUpdatePreview() }
+        MainActor.assumeIsolated { services.showUpdatePreview() }
     }
 
     private func bindEvents() {
         subscriptions.removeAll()
         eventBindings.bind(NotchEventBindings.Settings(modules: modules,
                                                        routes: { [defaults] in NotchSupport.routes($0, in: defaults) },
-                                                       keepAwakeActivity: NotchKeepAwakeSupport.showsActivity(),
+                                                       keepAwakeActivity: NotchKeepAwakeSupport.showsActivity(in: defaults),
                                                        fanControl: AppFeature.fanControl.isAvailable(in: defaults)),
                            heldSongTitles: $heldMusic.map { $0?.playback.track.title }.eraseToAnyPublisher())
         stopPower()
@@ -3089,7 +3089,7 @@ package final class NotchService: ObservableObject {
     private func showAgentEvent(_ event: AgentUsageEvent) {
         let text = FeatureStrings.notchAgents(L10n.shared.language)
         let locale = L10n.shared.language.formattingLocale()
-        let remaining = NotchAgentSupport.limitDisplay() == .remaining
+        let remaining = NotchAgentSupport.limitDisplay(in: defaults) == .remaining
         func window(_ window: AgentLimitWindow) -> String {
             switch window.kind {
             case .session: return text.session

@@ -97,6 +97,18 @@ package protocol NotchIslandServices: AnyObject {
     func showScratchpad()
     func openNotchSettings()
     func showSettingsModule(_ module: NotchModule)
+
+    // MARK: The app around the island
+
+    /// A modal window, such as an open or save panel, is up.
+    var hasModalWindow: Bool { get }
+    func isOverStatusItem(_ point: CGPoint) -> Bool
+    /// The Accessibility Keyboard covers a point on screen.
+    func assistiveKeyboardOwns(_ point: CGPoint) -> Bool
+    /// Closes the menu panel's popover, keeping the island open.
+    func closeMenuPopover()
+    func openSettingsWindow()
+    func showUpdatePreview()
 }
 
 /// The shared instances, as the app runs them.
@@ -187,4 +199,11 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package func showScratchpad() { ScratchpadService.shared.show() }
     package func openNotchSettings() { SettingsRouter.shared.request(FeatureSettingsDestination(.notch)) }
     package func showSettingsModule(_ module: NotchModule) { SettingsRouter.shared.notchModule = module }
+
+    package var hasModalWindow: Bool { NSApp.modalWindow != nil }
+    package func isOverStatusItem(_ point: CGPoint) -> Bool { appShell()?.isOverStatusItem(point) == true }
+    package func assistiveKeyboardOwns(_ point: CGPoint) -> Bool { AssistiveKeyboard.ownsCocoaPoint(point) }
+    package func closeMenuPopover() { appShell()?.closePopover(preservingNotch: true) }
+    package func openSettingsWindow() { appShell()?.openSettingsWindow() }
+    package func showUpdatePreview() { appShell()?.showUpdatePreview() }
 }

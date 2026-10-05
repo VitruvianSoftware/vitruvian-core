@@ -2767,6 +2767,23 @@ its own parts from its environment.
   - the remaining preference readers in the geometry, such as the camera
     fit.
 
+Landed (5t, the last preference reads and the app around the island):
+
+- **Preferences:** the island's other 31 reads go through the preferences it
+  was built with, using their `in:` forms. These cover the activities' and
+  modules' switches, the agents' readout, the timer's saved mode, the
+  quick-access layout and the camera, capsule and silhouette fits.
+- **The app around it:** `NotchIslandServices` also answers:
+  - whether a modal window is up;
+  - whether a point is over the status item or the Accessibility Keyboard;
+  - closing the menu panel's popover;
+  - opening settings and the update preview.
+
+  `SystemNotchIslandServices` asks the app shell, as the island did.
+- The generator maps them back for its copies, which stay as they were.
+- **Left:** the mirror windows still build their own `NotchWindowHost`;
+  they appear only with a copy on every display.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

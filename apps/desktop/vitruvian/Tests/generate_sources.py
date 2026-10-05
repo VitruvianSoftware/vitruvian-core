@@ -39,6 +39,11 @@ _NOTCH_DEFAULTS = [
 # The services the island calls (`NotchIslandServices`), mapped back to the
 # shared instances its copies stand in for.
 _NOTCH_SERVICES = [
+    ('assistiveKeyboardOwns(', 'AssistiveKeyboard.ownsCocoaPoint('),
+    ('closeMenuPopover()', 'appShell()?.closePopover(preservingNotch: true)'),
+    ('openSettingsWindow()', 'appShell()?.openSettingsWindow()'),
+    ('showUpdatePreview()', 'appShell()?.showUpdatePreview()'),
+    ('hasModalWindow', 'NSApp.modalWindow != nil'),
     ('watchShowsThumbnail', 'NotchWatchService.shared.showsThumbnail'),
     ('calendarIsChosen(', 'NotchCalendarService.shared.isChosen('),
     ('takesToolsKey(', 'QuickLauncherService.shared.takesPanelKey('),
