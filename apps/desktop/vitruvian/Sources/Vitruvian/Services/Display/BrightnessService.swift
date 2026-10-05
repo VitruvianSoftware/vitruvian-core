@@ -2364,7 +2364,7 @@ package final class BrightnessService: ObservableObject {
         guard !stale else { return }
         for display in resolved where display.isActive {
             let route = display.method.map { String(describing: $0) } ?? "none"
-            Self.log.log("display \(display.id) [\(displayFingerprint(display.id), privacy: .public)] route \(route, privacy: .public) level \(display.brightness)")
+            Self.log.log("display \(display.id) [\(self.displayFingerprint(display.id), privacy: .public)] route \(route, privacy: .public) level \(display.brightness)")
         }
         environment.main { [weak self] in
             guard let self, self.running, generation == self.rebuildGeneration else { return }
