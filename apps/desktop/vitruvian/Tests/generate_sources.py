@@ -173,11 +173,6 @@ def main():
                         "    func syncWithPreferences(", "    private func start(", "    func stop(",
                         "    private func handleLaunch(", "    private func handleMediaKeyEvent("])
           + "}\n}\n")
-    write("NotchAudioLevelLifecycle.swift", "import Combine\nimport Foundation\n"
-          + "extension NotchAudioLevelLifecycleContract {\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchAudioLevelService.swift",
-                        "final class NotchAudioLevelService:")
-          + "}\n")
     clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
     write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
           + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"

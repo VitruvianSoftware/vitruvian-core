@@ -98,31 +98,10 @@ enum NotchAudioLevelTests {
 }
 
 
-/// The production service is extracted here; only its preference inputs,
-/// playback publisher and asynchronous hardware reader are replaced.
-typealias NotchAudioTestSilenceMemory = NotchAudioLevelSupport.SilenceMemory
-
+/// The production service runs on its own playback and with readers that
+/// only record what they are told; no audio device is created.
 enum NotchAudioLevelLifecycleContract {
-    final class NSWorkspace {
-        static let shared = NSWorkspace()
-        var accessibilityDisplayShouldReduceMotion = false
-    }
-    enum AppFeature {
-        case notchLiveEqualizer
-        var isAvailable: Bool { true }
-    }
-    enum NotchSupport { static func isEnabled() -> Bool { true } }
-    enum NotchAudioLevelSupport {
-        typealias SilenceMemory = NotchAudioTestSilenceMemory
-        static let isSupported = true
-        static var enabled = false
-        static func isEnabled() -> Bool { enabled }
-    }
-    final class NotchMusicService {
-        static let shared = NotchMusicService()
-        @Published var playback: NotchPlayback?
-    }
-    final class NotchAudioLevelReader {
+    final class NotchAudioLevelReader: NotchAudioLevelReading {
         static var instances: [NotchAudioLevelReader] = []
         let onLevels: ([Double]) -> Void
         let onSilence: () -> Void
@@ -130,23 +109,32 @@ enum NotchAudioLevelLifecycleContract {
         let onProcessesLeft: () -> Void
         private(set) var stopped = false
 
-        init(pid: pid_t, onLevels: @escaping ([Double]) -> Void,
-             onSilence: @escaping () -> Void, onUnavailable: @escaping () -> Void,
-             onProcessesLeft: @escaping () -> Void) {
-            self.onLevels = onLevels
-            self.onSilence = onSilence
-            self.onUnavailable = onUnavailable
-            self.onProcessesLeft = onProcessesLeft
+        init(_ events: NotchAudioLevelService.ReaderEvents) {
+            onLevels = events.levels
+            onSilence = events.silence
+            onUnavailable = events.unavailable
+            onProcessesLeft = events.processesLeft
             Self.instances.append(self)
         }
         func start() {}
         func stop() { stopped = true }
     }
 
+    /// The preference and Reduce Motion as the service reads them.
+    final class Settings {
+        var chosen = false
+        var reducesMotion = false
+    }
+
     static func run(expect: (Bool, String) -> Void) {
         typealias Reader = NotchAudioLevelReader
-        let service = NotchAudioLevelService.shared
-        let music = NotchMusicService.shared
+        let settings = Settings()
+        let music = CurrentValueSubject<NotchPlayback?, Never>(nil)
+        let service = NotchAudioLevelService(environment: .init(
+            isChosen: { settings.chosen },
+            reducesMotion: { settings.reducesMotion },
+            playback: { music.eraseToAnyPublisher() },
+            makeReader: { _, events in Reader(events) }))
         func playback(playing: Bool = true) -> NotchPlayback {
             let track = RadialNowPlayingSnapshot(title: "Track", artist: "Artist", album: "Album",
                                                 artworkData: nil, appBundleIdentifier: "org.example.player",
@@ -167,18 +155,18 @@ enum NotchAudioLevelLifecycleContract {
             expect(reached, "the audio lifecycle fixture drains its callback queue")
         }
         func enable(_ value: Bool) {
-            NotchAudioLevelSupport.enabled = value
+            settings.chosen = value
             service.syncWithPreferences()
             drain()
         }
         defer {
             enable(false)
-            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
-            music.playback = nil
+            settings.reducesMotion = false
+            music.value = nil
             Reader.instances.removeAll()
             drain()
         }
-        music.playback = playback()
+        music.value = playback()
         enable(true)
         guard let first = Reader.instances.last else {
             expect(false, "playing starts an audio reader")
@@ -244,23 +232,23 @@ enum NotchAudioLevelLifecycleContract {
         current.onSilence()
         drain()
         let afterSilence = Reader.instances.count
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(current.stopped && service.levels == nil && Reader.instances.count == afterSilence,
                "a silent current reader falls back for this play without immediately retrying")
-        music.playback = playback(playing: false)
+        music.value = playback(playing: false)
         drain()
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(Reader.instances.count == afterSilence + 1,
                "pausing and playing rearms the same track after silence")
         guard let resumed = Reader.instances.last else { return }
-        music.playback = playback(playing: false)
+        music.value = playback(playing: false)
         drain()
         resumed.onSilence()
         drain()
         let afterPausedSilence = Reader.instances.count
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(resumed.stopped && Reader.instances.count == afterPausedSilence + 1,
                "silence heard during the pause grace does not write the next play off")
@@ -268,15 +256,15 @@ enum NotchAudioLevelLifecycleContract {
         replayed.onUnavailable()
         drain()
         let afterFailure = Reader.instances.count
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(replayed.stopped && Reader.instances.count == afterFailure + 1,
                "a current device failure releases the reader but permits the next playback update to retry")
 
         guard let waiting = Reader.instances.last else { return }
-        music.playback = playback(playing: false)
+        music.value = playback(playing: false)
         drain()
-        music.playback = playback()
+        music.value = playback()
         drain()
         guard let fresh = Reader.instances.last else { return }
         let afterResume = Reader.instances.count
@@ -291,36 +279,36 @@ enum NotchAudioLevelLifecycleContract {
                "a delayed silence report from the pause cannot write off the resumed play")
         fresh.onSilence()
         drain()
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(fresh.stopped && Reader.instances.count == afterResume,
                "the resumed play can still give up once if its fresh reader also stays silent")
 
-        music.playback = playback(playing: false)
+        music.value = playback(playing: false)
         drain()
-        music.playback = playback()
+        music.value = playback()
         drain()
         guard let audible = Reader.instances.last else { return }
         audible.onLevels([0.8])
         drain()
         let beforeAudiblePause = Reader.instances.count
-        music.playback = playback(playing: false)
+        music.value = playback(playing: false)
         drain()
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(!audible.stopped && Reader.instances.count == beforeAudiblePause && service.levels == [0.8],
                "a short pause preserves a reader that already delivered sound")
 
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
+        settings.reducesMotion = true
         service.syncWithPreferences()
         drain()
         expect(audible.stopped && service.levels == nil,
                "Reduce Motion stops audio analysis because the bars cannot use its levels")
-        music.playback = playback()
+        music.value = playback()
         drain()
         expect(Reader.instances.count == beforeAudiblePause,
                "playback updates do not restart the live equalizer while motion is reduced")
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
+        settings.reducesMotion = false
         service.syncWithPreferences()
         drain()
         expect(Reader.instances.count == beforeAudiblePause + 1 && Reader.instances.last?.stopped == false,

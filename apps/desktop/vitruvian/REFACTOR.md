@@ -838,6 +838,22 @@ leaves 70.
   panel closed does nothing, and a control that stopped cooling is not kept.
   Mutants of each of these passed the old test.
 
+Landed (4b, the island's live equalizer): one more generated file goes,
+which leaves 69.
+
+- **Injected:** `NotchAudioLevelService` takes an `Environment`:
+  - whether the equalizer is chosen, and whether Reduce Motion is on;
+  - the playback it follows;
+  - how a reader is built.
+
+  `system` keeps the preferences, the music service and the Core Audio
+  reader. Readers conform to `NotchAudioLevelReading`.
+- **Test:** the test runs its own service on a playback subject, with
+  readers that only record what they are told, instead of a copy of the
+  whole class.
+- **Mutation suite:** its two fixtures on this file now act on the code the
+  test runs.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -1421,6 +1421,11 @@ is that notice. Add an entry for every change to upstream files.
   `Services/FanControl/FanControlService.swift` forwards to;
   `Tests/FanControlResumeTests.swift` drives it with a recording host, and
   `Tests/generate_sources.py` no longer copies the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchAudioLevelService.swift` reads its preferences, playback
+  and readers through an injected `Environment`, with readers behind
+  `NotchAudioLevelReading`; `Tests/NotchAudioLevelTests.swift` passes its own,
+  and `Tests/generate_sources.py` no longer copies the service.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
