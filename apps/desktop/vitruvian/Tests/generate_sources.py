@@ -562,46 +562,6 @@ def main():
           + declaration(canvas, "    override func draggingExited(").replace("override func", "func", 1)
           + declaration(canvas, "    override func performDragOperation(").replace("override func", "func", 1)
           + "}\n}\n")
-    settings_card = "Sources/Vitruvian/UI/Settings/SettingsCard.swift"
-    text_inset = next(line for line in _source(settings_card).splitlines()
-                      if line.startswith("let settingsRowTextInset:"))
-    write("NotchSettingsChoice.swift", "import SwiftUI\n" + text_inset + "\n\nextension NotchSettingsChoiceTests {\n"
-          + "struct MenuBarGlyph: View { var body: some View { EmptyView() } }\n"
-          + declaration(settings_card, "struct SettingsCard<")
-          + declaration(settings_card, "struct SettingsRow<")
-          + declaration(settings_card, "struct SettingsChoiceRow<")
-          + declaration(settings_card, "struct SettingsMenuRow<")
-          + "struct Destination: View {\nlet language: AppLanguage\nlet title: String\n"
-          + "var text: NotchStrings { FeatureStrings.notch(language) }\n"
-          + "var editor: NotchEditorStrings { FeatureStrings.notchEditor(language) }\n"
-          + 'var body: some View { destination(title, symbol: "tray.full", value: .constant(true)) }\n'
-          + declaration("Sources/Vitruvian/UI/Settings/NotchSettings.swift", "    private func destination(")
-          + "}\nstruct Limits: View {\nlet language: AppLanguage\n"
-          + "@State var limitDisplay = NotchAgentLimitDisplay.remaining.rawValue\n"
-          + "var text: NotchAgentStrings { FeatureStrings.notchAgents(language) }\n"
-          + "var body: some View {\n"
-          + declaration("Sources/Vitruvian/UI/Settings/NotchAgentsSettings.swift",
-                        "            SettingsChoiceRow(symbol: NotchAgentCard.limits.symbol")
-          + "}\n}\n"
-          # The AI agents card's menu rows, each with the indent it has there.
-          + "".join(f"struct {name}: View {{\nlet language: AppLanguage\n"
-                    + "@State var readout = NotchAgentReadout.elapsed.rawValue\n"
-                    + "@State var finishMinimum = NotchAgentSupport.defaultFinishMinimum\n"
-                    + "@State var limitThreshold = NotchAgentSupport.defaultLimitThreshold\n"
-                    + "@State var dailyBudget = 0.0\n"
-                    + "@State var limitFocus = NotchAgentLimitFocus.mostUsed.rawValue\n"
-                    + "var text: NotchAgentStrings { FeatureStrings.notchAgents(language) }\n"
-                    + "var locale: Locale { language.formattingLocale() }\n"
-                    + "var body: some View {\nGroup {\n"
-                    + declaration("Sources/Vitruvian/UI/Settings/NotchAgentsSettings.swift", prefix)
-                    + "}\n" + (".padding(.leading, settingsRowTextInset)\n" if indented else "") + "}\n}\n"
-                    for name, prefix, indented in [
-                        ("Readout", '                SettingsMenuRow(symbol: "camera.metering.center.weighted"', True),
-                        ("FinishAfter", '                SettingsMenuRow(symbol: "timer"', True),
-                        ("LimitAt", '                SettingsMenuRow(symbol: "gauge.with.dots.needle.67percent"', True),
-                        ("Budget", '            SettingsMenuRow(symbol: "dollarsign.circle"', False),
-                        ("LimitFocus", '            SettingsMenuRow(symbol: "rectangle.topthird.inset.filled"', False)])
-          + "}\n")
     media_workspace = "Sources/Vitruvian/UI/Media/MediaWorkspaceView.swift"
     write("MediaWorkspaceLayout.swift", "import AppKit\nimport SwiftUI\nimport UniformTypeIdentifiers\n"
           + "extension MediaWorkspaceLayoutTests {\n"

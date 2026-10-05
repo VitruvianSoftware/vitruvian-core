@@ -1151,6 +1151,21 @@ leaves 52.
   shell.
 - **Verification:** SwiftUI, so macOS CI only.
 
+Landed (4b, the Dynamic Island settings rows): one more generated file goes,
+which leaves 51.
+
+- **Extracted:** `NotchSettingsRows.swift` (new, `UI/Settings`) holds the rows
+  the layout test measures, as `package` views:
+  - `NotchDestinationRow`, island or window for one kind of content;
+  - `NotchAgentRows`: `Limits`, `LimitFocus`, `Readout`, `FinishAfter`,
+    `LimitAt` and `Budget`.
+
+  `NotchSettings` and `NotchAgentsSettingsControls` draw them where the
+  inline rows were, with the same indents.
+- **Test:** the test measures the real rows in the real `SettingsCard`,
+  instead of copies of the card primitives and of the page fragments.
+- **Verification:** SwiftUI, so macOS CI only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -759,10 +759,7 @@ package struct NotchSettings: View {
     }
 
     private func destination(_ title: String, symbol: String, value: Binding<Bool>, available: Bool = true) -> some View {
-        SettingsChoiceRow(symbol: symbol, title: title, selection: value) {
-            Text(text.title).tag(true)
-            Text(editor.separate).tag(false)
-        }.disabled(!available)
+        NotchDestinationRow(title, symbol: symbol, value: value, language: l10n.language, available: available)
     }
 
     /// An option with its icon, one line and a switch, like every other page.
