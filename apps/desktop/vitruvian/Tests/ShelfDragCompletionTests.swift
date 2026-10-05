@@ -7,44 +7,58 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production drag completion runs with isolated windows and preferences.
+/// The production drag completion runs with stand-in windows, a recording
+/// shelf and island, and preferences of its own.
 enum ShelfDragCompletionContract {
     final class Window {}
-    typealias NSWindow = Window
 
-    enum UserDefaults {
-        static var standard = Store()
-        struct Store {
-            var closeAfterDrop = true
-            var removeAfterDrop = true
-            func bool(forKey key: String) -> Bool {
-                key == DefaultsKey.shelfCloseAfterDrop ? closeAfterDrop
-                    : key == DefaultsKey.shelfRemoveAfterDrop && removeAfterDrop
-            }
-        }
-    }
-
-    final class NotchService {
-        static var shared = NotchService()
-        var presentationWindow: Window? = Window()
+    final class Session {
+        let defaults: UserDefaults
+        var islandWindow: Window? = Window()
         var expanded = true
         var selected: NotchModule = .files
         var showingAppPanel = false
         var showingSections = false
-        var pinned = false
+        var islandPinned = false
         var heldDrag = false
-        var closures = 0
-        func fileDragChanged(_ active: Bool, internalDrag: Bool) { heldDrag = active && internalDrag }
-        func collapse() {
-            precondition(!heldDrag, "release the drag before trying to collapse")
-            closures += 1
-            expanded = false
-        }
-    }
+        var islandClosures = 0
+        var panel: Window?
+        var dockedPanel: Window?
+        var isPinned = false
+        var isVisible = false
+        var dockedVisible = false
+        var protectedIDs: Set<UUID> = []
+        var removed: [UUID] = []
+        var floatingClosures = 0
+        var dockedClosures = 0
+        private(set) lazy var drag = ShelfInternalDrag(host: .init(
+            defaults: defaults,
+            island: {
+                .init(window: self.islandWindow, expanded: self.expanded, selected: self.selected,
+                      showingAppPanel: self.showingAppPanel, showingSections: self.showingSections,
+                      pinned: self.islandPinned)
+            },
+            holdIsland: { self.heldDrag = $0 },
+            collapseIsland: {
+                precondition(!self.heldDrag, "release the drag before trying to collapse")
+                self.islandClosures += 1
+                self.expanded = false
+            },
+            floating: { .init(window: self.panel, isVisible: self.isVisible) },
+            floatingIsPinned: { self.isPinned },
+            hideFloating: { self.floatingClosures += 1; self.isVisible = false },
+            docked: { .init(window: self.dockedPanel, isVisible: self.dockedVisible) },
+            collapseDocked: { self.dockedClosures += 1; self.dockedVisible = false },
+            endInteraction: {},
+            protectedIDs: { self.protectedIDs },
+            removeItems: { self.removed += $0 }))
 
-    static func reset() {
-        UserDefaults.standard = UserDefaults.Store()
-        NotchService.shared = NotchService()
+        init(closeAfterDrop: Bool = true, removeAfterDrop: Bool = true) {
+            let domain = "com.vitruviansoftware.vitruvian.tests.shelf-drag.\(UUID().uuidString)"
+            defaults = UserDefaults(suiteName: domain)!
+            defaults.set(closeAfterDrop, forKey: DefaultsKey.shelfCloseAfterDrop)
+            defaults.set(removeAfterDrop, forKey: DefaultsKey.shelfRemoveAfterDrop)
+        }
     }
 }
 
@@ -56,24 +70,21 @@ enum ShelfDragCompletionTests {
             for close in [false, true] {
                 for accepted in [false, true] {
                     for merged in [false, true] {
-                        Context.reset()
-                        let service = Context.Service()
-                        let notch = Context.NotchService.shared
-                        notch.pinned = pinned
-                        service.isPinned = !pinned
-                        Context.UserDefaults.standard.closeAfterDrop = close
+                        let session = Context.Session(closeAfterDrop: close)
+                        session.islandPinned = pinned
+                        session.isPinned = !pinned
                         let id = UUID()
-                        service.beginInternalDrag(ids: [id], from: notch.presentationWindow)
-                        service.internalDragWasMerged = merged
-                        suite.expect(notch.heldDrag, "a drag from the notch holds its working surface")
-                        service.completeInternalDrag(dropAccepted: accepted)
+                        session.drag.begin(ids: [id], from: session.islandWindow)
+                        session.drag.wasMerged = merged
+                        suite.expect(session.heldDrag, "a drag from the notch holds its working surface")
+                        session.drag.complete(dropAccepted: accepted)
                         let transferred = accepted && !merged
-                        suite.expect(notch.closures == (transferred && close && !pinned ? 1 : 0),
+                        suite.expect(session.islandClosures == (transferred && close && !pinned ? 1 : 0),
                                "notch completion honors accepted drops, local merges, its pin and the close preference")
-                        suite.expect(service.removed == (transferred ? [id] : []) && !notch.heldDrag
-                               && service.internalDragWindow == nil && service.activeInternalDragIDs.isEmpty,
+                        suite.expect(session.removed == (transferred ? [id] : []) && !session.heldDrag
+                               && !session.drag.isActive && !session.drag.wasMerged,
                                "completion preserves removal policy and always releases the drag's source")
-                        suite.expect(service.floatingClosures == 0 && service.dockedClosures == 0,
+                        suite.expect(session.floatingClosures == 0 && session.dockedClosures == 0,
                                "closing an embedded shelf leaves the separate presentations alone")
                     }
                 }
@@ -81,49 +92,43 @@ enum ShelfDragCompletionTests {
         }
 
         for docked in [false, true] {
-            Context.reset()
-            let service = Context.Service()
-            let notch = Context.NotchService.shared
+            let session = Context.Session(removeAfterDrop: false)
             let source = Context.Window()
-            if docked { service.dockedPanel = source } else { service.panel = source }
-            service.isVisible = !docked
-            service.dockedVisible = docked
-            notch.pinned = true
-            Context.UserDefaults.standard.removeAfterDrop = false
-            service.beginInternalDrag(ids: [UUID()], from: source)
-            suite.expect(!notch.heldDrag, "a separate shelf cannot hold an unrelated notch open")
-            service.completeInternalDrag(dropAccepted: true)
-            suite.expect(service.floatingClosures == (docked ? 0 : 1) && service.dockedClosures == (docked ? 1 : 0)
-                   && notch.closures == 0 && service.removed.isEmpty,
+            if docked { session.dockedPanel = source } else { session.panel = source }
+            session.isVisible = !docked
+            session.dockedVisible = docked
+            session.islandPinned = true
+            session.drag.begin(ids: [UUID()], from: source)
+            suite.expect(!session.heldDrag, "a separate shelf cannot hold an unrelated notch open")
+            session.drag.complete(dropAccepted: true)
+            suite.expect(session.floatingClosures == (docked ? 0 : 1) && session.dockedClosures == (docked ? 1 : 0)
+                   && session.islandClosures == 0 && session.removed.isEmpty,
                    "separate shelf completion retains its own close, pin and removal behavior")
         }
 
-        Context.reset()
-        let pinnedService = Context.Service()
+        let pinnedSession = Context.Session()
         let pinnedID = UUID(), looseID = UUID()
-        pinnedService.protectedIDs = [pinnedID]
-        pinnedService.beginInternalDrag(ids: [pinnedID, looseID], from: Context.Window())
-        pinnedService.completeInternalDrag(dropAccepted: true)
-        suite.expect(pinnedService.removed == [looseID],
+        pinnedSession.protectedIDs = [pinnedID]
+        pinnedSession.drag.begin(ids: [pinnedID, looseID], from: Context.Window())
+        pinnedSession.drag.complete(dropAccepted: true)
+        suite.expect(pinnedSession.removed == [looseID],
                "a pinned shelf item survives a drag-out that removes the rest")
 
         for changedSurface in 0..<5 {
-            Context.reset()
-            let service = Context.Service()
-            let notch = Context.NotchService.shared
-            let source = notch.presentationWindow!
-            service.panel = Context.Window()
-            service.isVisible = true
-            service.beginInternalDrag(ids: [UUID()], from: source)
+            let session = Context.Session()
+            let source = session.islandWindow!
+            session.panel = Context.Window()
+            session.isVisible = true
+            session.drag.begin(ids: [UUID()], from: source)
             switch changedSurface {
-            case 0: notch.selected = .music
-            case 1: notch.showingSections = true
-            case 2: notch.showingAppPanel = true
-            case 3: notch.expanded = false
-            default: notch.presentationWindow = Context.Window(); notch.heldDrag = false
+            case 0: session.selected = .music
+            case 1: session.showingSections = true
+            case 2: session.showingAppPanel = true
+            case 3: session.expanded = false
+            default: session.islandWindow = Context.Window(); session.heldDrag = false
             }
-            service.completeInternalDrag(dropAccepted: true)
-            suite.expect(notch.closures == 0 && service.floatingClosures == 0,
+            session.drag.complete(dropAccepted: true)
+            suite.expect(session.islandClosures == 0 && session.floatingClosures == 0,
                    "an old drag cannot close a different destination or a replacement notch window")
         }
     }

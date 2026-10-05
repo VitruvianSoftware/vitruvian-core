@@ -1484,6 +1484,11 @@ is that notice. Add an entry for every change to upstream files.
   `adjustWheel(_:state:defaults:ownProcessID:targets:)`, which
   `Tests/LinearScrollTapTests.swift` calls with real events;
   `Tests/generate_sources.py` no longer copies the tap handler.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Shelf/ShelfInternalDrag.swift` (new) holds the drag out of a shelf
+  that `Services/Shelf/ShelfService.swift` forwards to;
+  `Tests/ShelfDragCompletionTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the service's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -1055,6 +1055,20 @@ Landed (4b, the raw wheel tap): one more generated file goes, which leaves
 - **Verification:** this slice uses Core Graphics events, which the Linux
   model cannot build. It relies on macOS CI.
 
+Landed (4b, dragging items out of the shelf): one more generated file goes,
+which leaves 57.
+
+- **Extracted:** `ShelfInternalDrag` (new, `Services/Shelf`) holds a drag out
+  of a shelf:
+  - the dragged items, and whether a drop inside merged them;
+  - holding the island open while the drag lasts;
+  - what the shelf it came from does once the items land.
+
+  `ShelfService` owns it, reads its items and merge flag, and passes the
+  island, its two shelf windows, the interaction end and item removal.
+- **Test:** the test drives the real drag with stand-in windows instead of a
+  copy of three service members.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
