@@ -264,6 +264,18 @@ package enum NotchAgentSupport {
         }
     }
 
+    /// The agents the AI page shows: only those that left something on this
+    /// Mac get cards. The island's size and the page both ask here.
+    package static func pageProviders(seen: Set<AgentProvider>, in defaults: UserDefaults = .standard) -> [AgentProvider] {
+        providers(in: defaults).filter(seen.contains)
+    }
+
+    /// The AI page's rows for `providers` across `width`.
+    package static func pageRows(providers: [AgentProvider], width: CGFloat,
+                                 in defaults: UserDefaults = .standard) -> [[NotchAgentTile]] {
+        rows(tiles(cards: cards(in: defaults), providers: providers), width: width)
+    }
+
     /// Cards pair up in reading order; a chart, or a card left without a
     /// partner, takes the whole row.
     package static func rows(_ tiles: [NotchAgentTile], width: CGFloat) -> [[NotchAgentTile]] {

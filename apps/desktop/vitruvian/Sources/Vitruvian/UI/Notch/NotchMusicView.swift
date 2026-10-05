@@ -438,9 +438,9 @@ package struct NotchMusicControlsView: View {
     private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
 
     package var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: NotchLayout.musicCardSpacing) {
             Button { notch.select(.music) } label: {
-                NotchArtwork(image: music.artwork, size: max(40, height - 24))
+                NotchArtwork(image: music.artwork, size: NotchLayout.musicCardArtworkSide(height: height))
             }
             .buttonStyle(NotchButtonStyle(cornerRadius: 16))
             .accessibilityLabel(text.mediaNowPlaying)
@@ -470,7 +470,7 @@ package struct NotchMusicControlsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, NotchLayout.musicCardPadding)
         .frame(maxWidth: .infinity)
         .frame(height: height)
         .modifier(NotchControlSurface(cornerRadius: 18))

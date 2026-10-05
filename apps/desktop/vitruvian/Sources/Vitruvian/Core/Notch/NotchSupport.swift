@@ -482,10 +482,22 @@ package enum NotchLayout {
         CGFloat(columns) * itemWidth + CGFloat(max(0, columns - 1)) * spacing <= width
     }
 
+    /// The home page's music card: its padding, which also sets the artwork
+    /// in from the card's top and bottom, and the gap beside the artwork.
+    package static let musicCardPadding: CGFloat = 12
+    package static let musicCardSpacing: CGFloat = 12
+    /// The three compact transport buttons.
+    package static let musicCardTransportWidth: CGFloat = 120
+
+    /// The card's square artwork, never smaller than 40pt.
+    package static func musicCardArtworkSide(height: CGFloat) -> CGFloat {
+        max(40, height - musicCardPadding * 2)
+    }
+
     /// Square artwork, its gap, the three compact transport buttons, and
     /// horizontal padding. Track titles truncate within the remaining space.
     package static func musicCardMinimumWidth(height: CGFloat) -> CGFloat {
-        max(40, height - 24) + 12 + 120 + 24
+        musicCardArtworkSide(height: height) + musicCardSpacing + musicCardTransportWidth + musicCardPadding * 2
     }
 
     /// The home page: one row of cards (playback and levels) over a rail of
@@ -504,13 +516,23 @@ package enum NotchLayout {
         return NotchControlsLayout(cardRow: cardRow, shortcutRows: rows)
     }
 
+    /// A running timer: its row of controls and reading, and for the
+    /// Pomodoro the line of progress below it, with the room that line keeps.
+    package static let timerActiveRowHeight: CGFloat = 96
+    package static let timerActiveLineSpacing: CGFloat = 4
+    package static let timerActiveProgressHeight: CGFloat = 18
+    package static func timerActiveHeight(mode: NotchTimerMode) -> CGFloat {
+        mode == .pomodoro ? timerActiveRowHeight + timerActiveLineSpacing + timerActiveProgressHeight
+            : timerActiveRowHeight
+    }
+
     /// Setup is the mode row over the ruler's row, the same for every
     /// mode: the timer and the Pomodoro's focus on the ruler, the stopwatch's
     /// clock alone in it. The Pomodoro adds a line of readouts; a narrow
     /// island gives Start the last row, which those readouts share, and lets
     /// the ruler give up height before anything is cut.
     package static func timer(mode: NotchTimerMode, hasSession: Bool, width: CGFloat, height: CGFloat) -> CGFloat {
-        if hasSession { return mode == .pomodoro ? 118 : 96 }
+        if hasSession { return timerActiveHeight(mode: mode) }
         let top = timerTopRowHeight + timerRowSpacing
         return top + timerRulerHeight(mode: mode, width: width, height: height)
             + timerBottomRowHeight(mode: mode, width: width)
@@ -1004,6 +1026,13 @@ package struct NotchActivityPickerLayout {
     package static let horizontalInset: CGFloat = 24
     package static let verticalInset: CGFloat = 12
     package static let combinationHeight: CGFloat = 24
+    /// A choice's label, measured in the font it is drawn in.
+    package static let labelSize: CGFloat = 12
+    // NSFont is immutable once made, so any thread may share it.
+    nonisolated(unsafe) package static let labelFont = NSFont.systemFont(ofSize: labelSize, weight: .medium)
+    /// What a choice adds around its label: the symbol, its gap and the
+    /// button's padding.
+    package static let choiceChrome: CGFloat = 48
     package let columns: Int
     package let headerHeight: CGFloat
     package let size: CGSize
@@ -1013,11 +1042,12 @@ package struct NotchActivityPickerLayout {
         columns = min(3, max(1, count))
         headerHeight = stripSize.height
         let rows = (max(1, count) + columns - 1) / columns
-        let width = CGFloat(columns) * (labelWidth + 48)
+        let width = CGFloat(columns) * (labelWidth + Self.choiceChrome)
             + CGFloat(columns - 1) * Self.spacing + Self.horizontalInset * 2
         // The taller picker has deeper shoulders than a compact strip. Keep
         // the entire original strip inside those shoulders, not at its edge.
-        size = CGSize(width: min(max(stripSize.width + Self.horizontalInset * 2, width), max(1, screenWidth - 24)),
+        size = CGSize(width: min(max(stripSize.width + Self.horizontalInset * 2, width),
+                                 max(1, screenWidth - NotchLayout.displaySideMargins)),
                       height: headerHeight + CGFloat(rows) * Self.rowHeight
                         + CGFloat(rows - 1) * Self.spacing + Self.verticalInset * 2
                         + (hasCombinations ? Self.combinationHeight + Self.spacing : 0))

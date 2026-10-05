@@ -2595,7 +2595,7 @@ compiles a copy of production code.
 - **Generator:** with no copy left, `Tests/generate_sources.py` loses its
   extraction helpers.
 
-## Step 5: decompose NotchService (in progress)
+## Step 5: decompose NotchService (done)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
 outbound singletons and 119 inbound call sites. View-layout math is duplicated
@@ -3192,6 +3192,37 @@ card rows and hover inset, and `NotchSystemView` added the same rows and
 inset to decide whether to scroll. `NotchLayout.systemGridHeight(count:width:)`
 is now both, and `NotchGeometry.systemRows(cards:)`, which only the sizing
 used, is gone.
+
+Landed (5zj, the survey's last five): each of these now has one rule, or
+named sizes, that the island's sizing and its views share:
+- **The running timer page:** `NotchLayout.timerActiveHeight(mode:)`, from
+  the row of controls (96), the gap (4), and the Pomodoro's progress line
+  (18). `NotchTimerView` draws the row and the gap with the same names.
+- **The Files page's minimum:** a shelf tile, its insets and the footer.
+  The tile's size, spacing and inset move from `ShelfTilesView` into
+  `ShelfTileLayout` in Core. The footer's trash button is
+  `NotchLayout.iconButtonSide`.
+- **The home page's music card:** `musicCardArtworkSide(height:)`, its
+  padding, spacing and transport width give the minimum width and the
+  drawing alike.
+- **The activity picker:** the label's size and font, and the chrome a
+  choice adds around it (`choiceChrome`). Its width limit takes the
+  display's margins from `NotchLayout.displaySideMargins`.
+- **The AI page:** `NotchAgentSupport.pageProviders(seen:)` and
+  `pageRows(providers:width:)` give the island's size and `NotchAgentsView`
+  the same agents and rows.
+- **A misleading comment:** `watchStripWing`'s said it weighed the eye. It
+  does not: the eye fits the wing's floor, which the island applies to both
+  sides. The comment now says so.
+
+With this, every duplicate the survey found reads from one place, and each
+responsibility the step listed has its own type. `NotchService` is 3,216
+lines, down from 3,400. Its only remaining `.shared` references are:
+- the language (`L10n.shared`);
+- `NSWorkspace.shared` in its live environment.
+
+Every service it uses comes through its `Environment`, as
+`AgentUsageService` set the pattern.
 
 ## Step 6: typed preferences and explicit concurrency (in progress)
 

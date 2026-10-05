@@ -736,7 +736,7 @@ package final class NotchService: ObservableObject {
 
     package var compactActivityPickerLayout: NotchActivityPickerLayout {
         let activities = compactActivities
-        let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let font = NotchActivityPickerLayout.labelFont
         let labelWidth = activities.map {
             ($0.title(L10n.shared.language) as NSString).size(withAttributes: [.font: font]).width
         }.max() ?? 0
@@ -845,8 +845,10 @@ package final class NotchService: ObservableObject {
         }
     }
 
-    /// The wider side: the eye at the left end, or the reading, or the
-    /// area's own picture when it has no text, with air beside the camera.
+    /// The reading's side: the reading, or the area's own picture when it
+    /// has no text, with air beside the camera. The eye at the other end is
+    /// never wider than the wing's floor (`NotchWatchSupport.stripWingRange`),
+    /// which the island applies to both sides.
     private func watchStripWing(in geometry: NotchGeometry) -> CGFloat {
         let provisional = geometry.compactWatchGeometry(wing: NotchWatchSupport.stripWingRange.lowerBound)
         let size = NotchTimerSupport.stripTextSize(height: provisional.compactActivityContentHeight)
@@ -1035,10 +1037,9 @@ package final class NotchService: ObservableObject {
     private func agentsContentHeight(width: CGFloat) -> CGFloat? {
         let usage = services.agentUsage
         guard usage.loaded else { return nil }
-        let providers = NotchAgentSupport.providers(in: defaults).filter(usage.seen.contains)
+        let providers = NotchAgentSupport.pageProviders(seen: usage.seen, in: defaults)
         guard !providers.isEmpty else { return 0 }
-        return NotchAgentSupport.contentHeight(NotchAgentSupport.rows(
-            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(in: defaults), providers: providers), width: width))
+        return NotchAgentSupport.contentHeight(NotchAgentSupport.pageRows(providers: providers, width: width, in: defaults))
     }
     package var expandedGeometry: NotchGeometry {
         var result = geometry

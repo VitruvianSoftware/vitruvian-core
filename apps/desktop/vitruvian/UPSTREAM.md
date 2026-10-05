@@ -2083,6 +2083,16 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/PointerInputFeatureTests.swift` no longer reads the three views;
     `Tests/MouseButtonCaptureTests.swift` (run from `Tests/MetricsTests.swift`)
     checks the rules.
+- **2026-10-05**: Refactor step 5zj (`REFACTOR.md`):
+  - `Sources/Vitruvian/Core/Notch/NotchSupport.swift` names the running
+    timer's sizes, the music card's and the activity picker's label and
+    chrome.
+  - `Core/Notch/NotchAgentSupport.swift` adds `pageProviders(seen:)` and
+    `pageRows(providers:width:)`.
+  - `Core/Shelf/ShelfSupport.swift` holds the shelf tile's size, spacing and
+    inset, which `UI/Shelf/ShelfTilesView.swift` now reads.
+  - `Core/Notch/NotchPageSize.swift`, `Services/Notch/NotchService.swift` and
+    the timer, music, files, agents and island views (`UI/Notch/`) use them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -26,14 +26,13 @@ package struct NotchAgentsView: View {
     private var providers: [AgentProvider] {
         // The switches are read here so a change in Settings redraws the page.
         _ = (claude, codex, opencode)
-        return NotchAgentSupport.providers().filter(usage.snapshot.seen.contains)
+        return NotchAgentSupport.pageProviders(seen: usage.snapshot.seen)
     }
 
     private var rows: [[NotchAgentTile]] {
         // The strings are read here so a change in Settings redraws the page.
         _ = (cardOrder, hiddenCards)
-        return NotchAgentSupport.rows(NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers),
-                                      width: size.width)
+        return NotchAgentSupport.pageRows(providers: providers, width: size.width)
     }
 
     package var body: some View {

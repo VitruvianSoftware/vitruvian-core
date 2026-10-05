@@ -144,7 +144,7 @@ package struct NotchTimerView: View {
     }
 
     private var activeTimer: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: NotchLayout.timerActiveLineSpacing) {
             activeControls
             if service.session.mode == .pomodoro {
                 Text(String(format: text.sessionProgress, service.session.sessionNumber, service.session.configuration.totalSessions))
@@ -177,7 +177,7 @@ package struct NotchTimerView: View {
                 reading
             }
         }
-        .frame(height: 96)
+        .frame(height: NotchLayout.timerActiveRowHeight)
     }
 
     private var reading: some View {

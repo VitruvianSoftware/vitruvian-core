@@ -159,7 +159,7 @@ package struct NotchFilesView: View {
             Image(systemName: "trash")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.55))
-                .frame(width: 28, height: 28)
+                .frame(width: NotchLayout.iconButtonSide, height: NotchLayout.iconButtonSide)
                 .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .menuStyle(.borderlessButton)

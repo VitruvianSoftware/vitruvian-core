@@ -114,6 +114,12 @@ package enum ShelfRevealSupport {
 }
 
 package enum ShelfTileLayout {
+    /// A tile, the space between tiles, and the inset around them, for the
+    /// shelf and the island's Files page alike.
+    package static let tileSize = CGSize(width: 78, height: 88)
+    package static let spacing: CGFloat = 10
+    package static let inset: CGFloat = 4
+
     /// How many tile columns fit a given width, never fewer than one so a
     /// narrow panel still lays out.
     package static func columnCount(contentWidth: CGFloat,

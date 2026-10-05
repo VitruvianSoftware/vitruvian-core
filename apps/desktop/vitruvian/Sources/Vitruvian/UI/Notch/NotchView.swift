@@ -694,7 +694,7 @@ package struct NotchActivityPicker: View {
                         Image(systemName: activity.symbol)
                         Text(activity.title(language)).lineLimit(1).minimumScaleFactor(0.8)
                     }
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: NotchActivityPickerLayout.labelSize, weight: .medium))
                     .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity)
                     .frame(height: NotchActivityPickerLayout.rowHeight)

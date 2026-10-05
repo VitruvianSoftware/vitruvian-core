@@ -48,7 +48,8 @@ extension NotchLayout {
             size.height = max(size.height, player + controlsRow)
         case .files:
             // One shelf tile, its vertical insets, the footer and their gap.
-            size.height = max(size.height, 88 + 8 + 28 + NotchLayout.rowSpacing)
+            size.height = max(size.height, ShelfTileLayout.tileSize.height + ShelfTileLayout.inset * 2
+                              + NotchLayout.iconButtonSide + NotchLayout.rowSpacing)
         default: break
         }
         return size
