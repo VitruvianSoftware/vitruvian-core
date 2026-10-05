@@ -9,8 +9,8 @@ import VitruvianServices
 /// A real island, the module's `NotchService`, built over test doubles: a
 /// window host that draws nothing, services that record what the island asks
 /// of them, one notched built-in display, and notification centers of its
-/// own. Its timers wait in `scheduled` until a test runs them, and its open
-/// monitors hand their handlers to the test instead of the system.
+/// own. Its timers run on a clock the test advances, and its monitors hand
+/// their handlers to the test instead of the system.
 final class NotchIslandFixture {
     /// A 14-inch built-in display with a camera housing.
     static let display = NotchDisplayInfo(
@@ -40,8 +40,10 @@ final class NotchIslandFixture {
     var displays = [NotchIslandFixture.display]
     /// The displays showing a full-screen Space.
     var fullscreen: Set<CGDirectDisplayID> = []
-    /// The room the menus leave beside the camera, as the menu reader
-    /// measures it with Accessibility granted; nil grants nothing.
+    /// Accessibility is granted, so the menu reader measures the menus.
+    var menusReadable = false
+    /// The room the menus leave beside the camera, as the reader measures it;
+    /// nil when they cover the center.
     var menuRoom: CGFloat?
     var hasBattery = true
     var currentSession = NotchSessionState()
@@ -50,11 +52,20 @@ final class NotchIslandFixture {
     var host: RecordingIslandHost? { hosts.last }
     /// Each copy's window the island built, in order.
     private(set) var mirrors: [RecordingMirrorHost] = []
-    /// Work the island scheduled, with its delay, in order.
-    private(set) var scheduled: [(delay: TimeInterval, work: DispatchWorkItem)] = []
+    /// The island's clock, in seconds, which only `advance` moves.
+    private(set) var now: TimeInterval = 0
+    /// Work the island scheduled, with when it is due, in order.
+    private(set) var scheduled: [(due: TimeInterval, work: DispatchWorkItem)] = []
     /// The open island's monitors, while it has them.
     private(set) var clickElsewhere: (() -> Void)?
     private(set) var localEvent: ((NSEvent) -> Bool)?
+    /// The pointer watches installed now, each with what a move runs.
+    private var movementWatches: [Int: () -> Void] = [:]
+    private var nextWatch = 0
+    var watchesMovement: Bool { !movementWatches.isEmpty }
+    /// The screen-edge click monitors installed now.
+    private(set) var edgeMonitors = 0
+    private var menuTick: (() -> Void)?
     private(set) lazy var island = NotchService(environment: environment)
 
     init(defaults: UserDefaults) {
@@ -71,13 +82,40 @@ final class NotchIslandFixture {
         return island
     }
 
-    /// Runs scheduled work that is still due, earliest first, until none is.
+    /// Moves the clock on, running the work that falls due, earliest first.
+    func advance(_ seconds: TimeInterval) {
+        let end = now + seconds
+        while let next = scheduled.indices.filter({ !scheduled[$0].work.isCancelled && scheduled[$0].due <= end })
+                .min(by: { scheduled[$0].due < scheduled[$1].due }) {
+            let item = scheduled.remove(at: next)
+            now = max(now, item.due)
+            item.work.perform()
+        }
+        now = end
+        scheduled.removeAll { $0.work.isCancelled }
+    }
+
+    /// Runs everything scheduled, and what that schedules, in order.
     func runScheduled() {
-        while let index = scheduled.firstIndex(where: { !$0.work.isCancelled }) {
-            let work = scheduled.remove(at: index).work
-            work.perform()
+        while scheduled.contains(where: { !$0.work.isCancelled }) {
+            advance(scheduled.filter { !$0.work.isCancelled }.map(\.due).max()! - now)
         }
     }
+
+    /// Work still waiting to run.
+    var pendingWork: Int { scheduled.filter { !$0.work.isCancelled }.count }
+
+    /// Moves the pointer as the mouse would: the island's window reports
+    /// entering or leaving it, then each pointer watch sees the move.
+    func move(to point: CGPoint) {
+        let wasOver = host?.containsHover(pointer) == true
+        pointer = point
+        if let host, host.containsHover(point) != wasOver { host.hoverHandler?(!wasOver) }
+        for moved in movementWatches.values { moved() }
+    }
+
+    /// The menu reader's next timed reading.
+    func measureMenus() { menuTick?() }
 
     /// Lets the main queue deliver anything posted to it.
     func settle() {
@@ -121,7 +159,7 @@ final class NotchIslandFixture {
             },
             pointer: { [unowned self] in self.pointer },
             reducesMotion: { false },
-            schedule: { [unowned self] delay, work in self.scheduled.append((delay: delay, work: work)) },
+            schedule: { [unowned self] delay, work in self.scheduled.append((due: self.now + delay, work: work)) },
             services: services,
             displays: { [unowned self] in self.displays },
             separateSpaces: { true },
@@ -132,28 +170,43 @@ final class NotchIslandFixture {
 
     private var parts: NotchService.Environment.Parts {
         let events = self.events
-        let silentMovement = NotchMovementWatch.Environment(addMonitors: { _ in [] }, removeMonitor: { _ in })
+        let movement = NotchMovementWatch.Environment(addMonitors: { [unowned self] moved in
+            self.nextWatch += 1
+            self.movementWatches[self.nextWatch] = moved
+            return [self.nextWatch]
+        }, removeMonitor: { [unowned self] token in
+            if let id = token as? Int { self.movementWatches[id] = nil }
+        })
         return NotchService.Environment.Parts(
-            movement: { _, _ in silentMovement },
+            movement: { _, _ in movement },
             events: { events.sources },
             volume: NotchVolumeFeedback.Output(volume: { 0.5 }, muted: { false }, deviceUID: { nil },
                                                changes: { Empty(completeImmediately: false).eraseToAnyPublisher() }),
             menuSpace: NotchMenuSpaceReader.Environment(
-                menuBarOwner: { [unowned self] in self.menuRoom == nil ? nil : 1 },
+                menuBarOwner: { [unowned self] in self.menusReadable ? 1 : nil },
                 measure: { [unowned self] _, _ in self.menuRoom },
-                background: { $0() }, main: { $0() }, ticks: { _ in {} }),
+                background: { $0() }, main: { $0() },
+                ticks: { [unowned self] tick in
+                    self.menuTick = tick
+                    return { [unowned self] in self.menuTick = nil }
+                }),
             pointerFollower: NotchPointerFollower.Environment(
                 addMonitors: { _ in [] }, removeMonitor: { _ in }, mouseLocation: { [unowned self] in self.pointer },
                 displayCount: { [unowned self] in self.displays.count }, displayWithMouse: { nil },
                 schedule: { _, _ in {} }),
             screenRefresh: NotchScreenRefresh.Environment(
-                schedule: { _, _ in }, accessibilityGranted: { [unowned self] in self.menuRoom != nil },
+                schedule: { _, _ in }, accessibilityGranted: { [unowned self] in self.menusReadable },
                 coversMenus: { [unowned self] in NotchSupport.coversMenus(in: self.defaults) },
                 frontmostBundleID: { nil }, ownBundleID: nil, mouseLocation: { [unowned self] in self.pointer }),
             fullscreen: NotchFullscreenVisibility.Environment(
                 hidesInFullscreen: { [unowned self] in self.defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },
                 showsFullscreen: { [unowned self] in self.fullscreen.contains($0) }),
-            screenEdges: { _ in NotchScreenEdgeClicks.Environment(addMonitors: { _ in [] }, removeMonitor: { _ in }) },
+            screenEdges: { [unowned self] _ in
+                NotchScreenEdgeClicks.Environment(addMonitors: { [unowned self] _ in
+                    self.edgeMonitors += 1
+                    return ["edge"]
+                }, removeMonitor: { [unowned self] _ in self.edgeMonitors -= 1 })
+            },
             fileDrop: { shelfAccept in
                 NotchFileDrop.Environment(offersMedia: { _ in false }, mediaAccepts: { false }, openMedia: { _ in false },
                                           hideMedia: {}, shelfEnabled: { false }, shelfAccept: shelfAccept)
@@ -209,22 +262,35 @@ final class NotchIslandFixture {
 }
 
 /// The island's window as the island sees it, drawing nothing. Its panel is
-/// real but transparent and ignores the mouse; the pointer is over the island
-/// when it is inside the frame last presented.
+/// real but transparent; the pointer is over the island when it is inside the
+/// frame last presented, and a hide orders the panel out at once.
 final class RecordingIslandHost: NotchIslandHost {
     let panel: NotchPanel
     private(set) var targetSize: CGSize
     private(set) var frame: CGRect
+    /// The frame a resize is still animating away from, which keeps its hits.
+    var animatingFrame: CGRect?
+    /// Further rects that count as over the island, as floating controls do.
+    var hoverExtras: [CGRect] = []
     var departsContent = false
     var isConcealedForMissionControl = false
     var missionControlDidRestore: (() -> Void)?
     var hasKeyboard = false
     private(set) var presents = 0
-    private(set) var hides = 0
+    /// Whether each hide was animated, in order.
+    private(set) var hideAnimations: [Bool] = []
+    private(set) var transitions: [NotchContentTransition] = []
+    private(set) var usesGlass = false
+    private(set) var revealFromHidden = false
+    private(set) var outlineEnabled = false
+    private(set) var outlineColor = NSColor.white
+    private(set) var activationRect = CGRect.zero
     private(set) var closed = false
     private(set) var hoverHandler: ((Bool) -> Void)?
     private(set) var activate: (() -> Void)?
     private(set) var fileDropActions: NotchFileDropActions?
+    /// Runs as each present arrives, with its size.
+    var onPresent: ((CGSize) -> Void)?
 
     init(geometry: NotchGeometry, size: CGSize) {
         frame = geometry.frame(for: size)
@@ -232,15 +298,20 @@ final class RecordingIslandHost: NotchIslandHost {
         panel = NotchPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
                            backing: .buffered, defer: false)
         panel.alphaValue = 0
-        panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
     }
 
-    func containsHover(_ screenPoint: CGPoint) -> Bool { contains(screenPoint) }
+    /// The top edge belongs to the island, as the flipped native view has it.
+    private static func holds(_ rect: CGRect, _ point: CGPoint) -> Bool {
+        rect.insetBy(dx: 0, dy: -1).contains(point)
+    }
+    func containsHover(_ screenPoint: CGPoint) -> Bool {
+        !isConcealedForMissionControl
+            && (Self.holds(frame, screenPoint) || hoverExtras.contains { $0.contains(screenPoint) })
+    }
     func contains(_ screenPoint: CGPoint) -> Bool {
-        // The top edge belongs to the island, as the flipped native view has it.
-        frame.insetBy(dx: 0, dy: -1).contains(screenPoint)
+        !isConcealedForMissionControl && Self.holds(animatingFrame ?? frame, screenPoint)
     }
     func containsDestination(_ screenPoint: CGPoint) -> Bool { contains(screenPoint) }
     func containsSurface(_ screenPoint: CGPoint) -> Bool { contains(screenPoint) }
@@ -250,10 +321,17 @@ final class RecordingIslandHost: NotchIslandHost {
                  quickAccess: NotchQuickAccessConfiguration?, revealFromHidden: Bool,
                  hideWhenSettled: Bool, usesGlass: Bool) {
         presents += 1
+        transitions.append(transitionContent)
+        self.usesGlass = usesGlass
+        self.revealFromHidden = revealFromHidden
+        onPresent?(size)
         targetSize = size
         frame = geometry.frame(for: size)
     }
-    func hide(animated: Bool, transitionContent: NotchContentTransition) { hides += 1 }
+    func hide(animated: Bool, transitionContent: NotchContentTransition) {
+        hideAnimations.append(animated)
+        panel.orderOut(nil)
+    }
     func finishDeparture() {}
     func whenSettled(_ action: @escaping @MainActor () -> Void) { action() }
     func close() {
@@ -264,12 +342,20 @@ final class RecordingIslandHost: NotchIslandHost {
     func takeKeyboard() { if panel.acceptsKeyFocus { hasKeyboard = true } }
     func releaseKeyboard() { hasKeyboard = false }
 
-    func setMouseEventsIgnored(_ ignored: Bool) {}
+    func setMouseEventsIgnored(_ ignored: Bool) {
+        if panel.ignoresMouseEvents != ignored { panel.ignoresMouseEvents = ignored }
+    }
     func setFileDropActions(_ actions: NotchFileDropActions?) { fileDropActions = actions }
-    func setOutline(enabled: Bool, color: NSColor) {}
+    func setOutline(enabled: Bool, color: NSColor) {
+        outlineEnabled = enabled
+        outlineColor = color
+    }
     func setHoverHandler(_ handler: @escaping (Bool) -> Void) { hoverHandler = handler }
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
-                           activate: @escaping () -> Void) { self.activate = activate }
+                           activate: @escaping () -> Void) {
+        activationRect = rect
+        self.activate = activate
+    }
 }
 
 /// A copy of the closed island on another display, drawing nothing.

@@ -51,6 +51,7 @@ enum NotchMusicVisibilityTests {
         func island(physical: Bool = true, playing: Bool? = nil) -> NotchIslandFixture {
             let fixture = NotchIslandFixture(defaults: defaults)
             fixture.displays = [display(physical: physical)]
+            fixture.menusReadable = true
             fixture.menuRoom = 100
             if let playing { fixture.services.playback = playback(playing) }
             fixture.start()
