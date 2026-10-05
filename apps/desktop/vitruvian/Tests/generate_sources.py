@@ -67,14 +67,6 @@ def availability_declaration(path, prefix):
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
-    write("UpdateIntroFlow.swift", "import AppKit\nimport Foundation\n"
-          + "extension UpdateIntroFlowTests {\nfinal class Host: Fixture {\n"
-          + "".join(declaration(panel, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func presentUpdateIntros()", "    private func showUpdateHighlightsIfNeeded()",
-              "    private func markUpdateHighlightsSeen()", "    private func showSupportUpdateIntroIfNeeded()",
-              "    func windowShouldClose(", "    func windowWillClose(", "    private func markOnboardingComplete()",
-              "    private func markSupportUpdateIntroSeenIfCurrentUpdate()", "    private func markSupportUpdateIntroSeen()"])
-          + "}\n}\n")
     write("MenuPanelRecovery.swift", "import AppKit\nimport Foundation\n"
           + "extension MenuPanelRecoveryTests {\nfinal class Host: Fixture {\n"
           + "".join(declaration(panel, prefix).replace("private ", "") for prefix in [

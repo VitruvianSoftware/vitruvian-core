@@ -43,9 +43,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var onboardingWindow: NSWindow?
     private var supportIntroWindow: NSWindow?
     private var updateHighlightsWindow: NSWindow?
-    private var supportIntroCanClose = false
-    private var supportIntroIsReview = false
-    private var updateHighlightsIsReview = false
+    /// Which update intro comes next, and what closing one means.
+    private lazy var introSequence = UpdateIntroSequence(host: .init(
+        defaults: .standard,
+        version: { AppInfo.version },
+        isBeta: { AppInfo.isBeta },
+        isTerminating: { [unowned self] in self.isTerminating },
+        open: { [unowned self] intro in self.openIntroWindow(intro) },
+        cleanupShowcaseCache: { UpdateShowcaseInfo.cleanupCache() },
+        finish: { [unowned self] in self.showBrightnessUpdatePromptIfNeeded() },
+        later: { work in DispatchQueue.main.async { work() } }))
     private var updateShowcaseWindow: NSWindow?
     private var updatePreviewWindow: NSWindow?
 
@@ -212,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 defaults.set(AppInfo.version, forKey: DefaultsKey.lastUpdateIntroVersion)
                 guard !skipStartupWindows else { return }
                 self.recoverStatusItemAfterUpdate(previousVersion: previousVersion)
-                self.presentUpdateIntros()
+                self.introSequence.present()
             }
         }
     }
@@ -1882,7 +1889,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             return
         }
         let host = NSHostingController(rootView: OnboardingView(mode: mode) { [weak self] in
-            self?.markOnboardingComplete()
+            self?.introSequence.markOnboardingComplete()
             self?.onboardingWindow?.close()
         })
         host.sizingOptions = .preferredContentSize
@@ -1907,17 +1914,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             guard let self, let window, window === self.onboardingWindow else { return }
             self.centerIntroWindow(window)
         }
-    }
-
-    /// Beta updates only introduce their new feature; other update surfaces
-    /// retain their own release gates.
-    private func presentUpdateIntros() {
-        if showUpdateHighlightsIfNeeded() { return }
-        if !AppInfo.isBeta {
-            if showSupportUpdateIntroIfNeeded() { return }
-            if showUpdateShowcaseIntroIfNeeded() { return }
-        }
-        showBrightnessUpdatePromptIfNeeded()
     }
 
     private func brightnessSetupNeeded() -> Bool {
@@ -1967,22 +1963,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
     }
 
-    private func showUpdateHighlightsIfNeeded() -> Bool {
-        guard UpdateHighlightsInfo.shouldShow(
-            appVersion: AppInfo.version,
-            lastSeenVersion: UserDefaults.standard.string(forKey: DefaultsKey.updateHighlightsSeenVersion)
-        ) else { return false }
-        showUpdateHighlights()
-        return true
+    func showUpdateHighlights(isReview: Bool = false) {
+        introSequence.showHighlights(isReview: isReview)
     }
 
-    func showUpdateHighlights(isReview: Bool = false) {
+    /// The window `introSequence` asks for; true when it opened a new one.
+    private func openIntroWindow(_ intro: UpdateIntroSequence.Intro) -> Bool {
+        switch intro {
+        case .highlights: return openUpdateHighlightsWindow()
+        case .support: return openSupportIntroWindow()
+        case .showcase: return openUpdateShowcaseWindow()
+        }
+    }
+
+    private func openUpdateHighlightsWindow() -> Bool {
         closePopover()
         if let window = updateHighlightsWindow {
             centerIntroWindow(window)
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
-            return
+            return false
         }
         let host = NSHostingController(rootView: UpdateHighlightsView(
             onFinish: { [weak self] in self?.updateHighlightsWindow?.close() }
@@ -2001,7 +2001,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         window.hidesOnDeactivate = false
         window.delegate = self
         centerIntroWindow(window)
-        updateHighlightsIsReview = isReview
         updateHighlightsWindow = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -2009,6 +2008,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             guard let self, let window, window === self.updateHighlightsWindow else { return }
             self.centerIntroWindow(window)
         }
+        return true
     }
 
     func openSettingsFromHighlights() {
@@ -2031,36 +2031,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         tour.setFrameOrigin(placement.tour.origin)
     }
 
-    private func markUpdateHighlightsSeen() {
-        guard let marker = UpdateHighlightsInfo.seenVersion(for: AppInfo.version) else { return }
-        UserDefaults.standard.set(marker,
-                                  forKey: DefaultsKey.updateHighlightsSeenVersion)
-    }
-
-    private func showUpdateShowcaseIntroIfNeeded() -> Bool {
-        guard AppInfo.version == UpdateShowcaseInfo.releaseVersion else {
-            UpdateShowcaseInfo.cleanupCache()
-            return false
-        }
-        guard UserDefaults.standard.string(forKey: DefaultsKey.updateShowcaseIntroVersion)
-                != UpdateShowcaseInfo.releaseVersion else {
-            UpdateShowcaseInfo.cleanupCache()
-            return false
-        }
-        showUpdateShowcaseIntro()
-        return true
-    }
-
-    private func showUpdateShowcaseIntro() {
+    private func openUpdateShowcaseWindow() -> Bool {
         closePopover()
         if let window = updateShowcaseWindow {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
-            return
+            return false
         }
         let host = NSHostingController(rootView: UpdateShowcaseIntroView(
             onClose: { [weak self] in
-                self?.markUpdateShowcaseIntroSeen()
+                self?.introSequence.markShowcaseSeen()
                 self?.updateShowcaseWindow?.close()
             }
         ))
@@ -2082,31 +2062,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             guard let self, let window, window === self.updateShowcaseWindow else { return }
             self.centerIntroWindow(window)
         }
-    }
-
-    private func showSupportUpdateIntroIfNeeded() -> Bool {
-        // Stable patches share one invitation, even if the first installed
-        // version in this release series is a hotfix.
-        guard SupportUpdateIntroInfo.shouldShow(
-            appVersion: AppInfo.version,
-            lastSeenVersion: UserDefaults.standard.string(forKey: DefaultsKey.supportUpdateIntroVersion)
-        ) else { return false }
-        showSupportUpdateIntro()
         return true
     }
 
-    private func showSupportUpdateIntro(isReview: Bool = false) {
-        guard SupportUpdateIntroInfo.isOffered else { return }
-        guard !isTerminating, isReview || !AppInfo.isBeta else { return }
+    private func openSupportIntroWindow() -> Bool {
         closePopover()
         if let window = supportIntroWindow {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
-            return
+            return false
         }
         let host = NSHostingController(rootView: UpdateSupportIntroView(
             onFinish: { [weak self] in
-                self?.supportIntroCanClose = true
+                self?.introSequence.allowSupportToClose()
                 self?.supportIntroWindow?.close()
             }
         ))
@@ -2124,8 +2092,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         window.level = .floating
         window.hidesOnDeactivate = false
         window.delegate = self
-        supportIntroCanClose = false
-        supportIntroIsReview = isReview
         centerIntroWindow(window)
         supportIntroWindow = window
         NSApp.activate(ignoringOtherApps: true)
@@ -2135,6 +2101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             self.centerIntroWindow(window)
             self.positionTourBesideSettings(window)
         }
+        return true
     }
 
     /// Centers one of the windows whose content decides its own size (the
@@ -2236,7 +2203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === supportIntroWindow else { return true }
-        return supportIntroCanClose || isTerminating
+        return introSequence.shouldCloseSupport()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -2262,77 +2229,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             // A system relaunch while granting access must not mark the flow
             // complete, so it resumes at the same step.
             guard !isTerminating else { return }
-            markOnboardingComplete()
+            introSequence.markOnboardingComplete()
         }
-        var finishedUpdateIntro = false
         if window === supportIntroWindow {
             supportIntroWindow = nil
-            supportIntroCanClose = false
-            let isReview = supportIntroIsReview
-            supportIntroIsReview = false
-            guard !isTerminating, !isReview else { return }
-            markSupportUpdateIntroSeen()
-            finishedUpdateIntro = true
+            introSequence.closed(.support)
         }
         if window === updateShowcaseWindow {
             updateShowcaseWindow = nil
-            guard !isTerminating else { return }
-            markUpdateShowcaseIntroSeen()
-            finishedUpdateIntro = true
+            introSequence.closed(.showcase)
         }
         if window === updateHighlightsWindow {
             updateHighlightsWindow = nil
-            let isReview = updateHighlightsIsReview
-            updateHighlightsIsReview = false
-            guard !isTerminating else { return }
-            if isReview {
-                DispatchQueue.main.async { [weak self] in self?.showSupportUpdateIntro(isReview: true) }
-                return
-            }
-            markUpdateHighlightsSeen()
-            finishedUpdateIntro = true
+            introSequence.closed(.highlights)
         }
         if window === updatePreviewWindow {
             updatePreviewWindow = nil
         }
-        if finishedUpdateIntro {
-            DispatchQueue.main.async { [weak self] in self?.presentUpdateIntros() }
-        }
-    }
-
-    /// Marks both the first run and this version's feature tour as seen, so
-    /// neither reappears on the next launch.
-    private func markOnboardingComplete() {
-        UserDefaults.standard.set(true, forKey: DefaultsKey.hasOnboarded)
-        UserDefaults.standard.set(OnboardingInfo.currentFeatureSet, forKey: DefaultsKey.featuresOnboardingVersion)
-        UserDefaults.standard.set(AppInfo.version, forKey: DefaultsKey.lastUpdateIntroVersion)
-        UserDefaults.standard.set(BrightnessUpdatePromptInfo.handled,
-                                  forKey: DefaultsKey.brightnessUpdatePromptState)
-        markSupportUpdateIntroSeenIfCurrentUpdate()
-        markUpdateShowcaseIntroSeenIfCurrentUpdate()
-        // A clean install that just saw everything in onboarding should not
-        // then get the update tour; only people who updated get it.
-        markUpdateHighlightsSeen()
-    }
-
-    private func markSupportUpdateIntroSeenIfCurrentUpdate() {
-        guard SupportUpdateIntroInfo.matchesRelease(AppInfo.version) else { return }
-        markSupportUpdateIntroSeen()
-    }
-
-    private func markSupportUpdateIntroSeen() {
-        UserDefaults.standard.set(SupportUpdateIntroInfo.seenVersion,
-                                  forKey: DefaultsKey.supportUpdateIntroVersion)
-    }
-
-    private func markUpdateShowcaseIntroSeenIfCurrentUpdate() {
-        guard AppInfo.version == UpdateShowcaseInfo.releaseVersion else { return }
-        markUpdateShowcaseIntroSeen()
-    }
-
-    private func markUpdateShowcaseIntroSeen() {
-        UserDefaults.standard.set(UpdateShowcaseInfo.releaseVersion,
-                                  forKey: DefaultsKey.updateShowcaseIntroVersion)
     }
 }
 

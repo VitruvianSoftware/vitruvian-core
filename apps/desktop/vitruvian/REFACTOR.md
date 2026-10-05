@@ -1979,6 +1979,43 @@ which leaves 19.
 - **Verification:** a Linux Swift 6.4 model of the functions runs the test,
   71 checks, and 27 mutants, none surviving.
 
+Landed (4b, the update intros): one more generated file goes, which leaves
+18.
+
+- **Extracted:** `UpdateIntroSequence` (`Services/Update/`, new) takes from
+  `AppDelegate`:
+  - which intro an update shows next: the tour, the support page, the
+    showcase, then the brightness prompt;
+  - what closing one means, and the review flags;
+  - the rule that the support page waits for its Done action;
+  - the seen markers, and what onboarding marks.
+
+  Its `Host` is the settings, the version, quitting, the window the shell
+  opens for an intro, the showcase's cache, the last step and the next turn
+  of the main queue. `AppDelegate` keeps the windows and reports their
+  close. `AppInfo.isPrerelease` names the beta rule `isBeta` already used.
+- **Test:** the intro test drives the real sequence through a shell that
+  only notes the windows it was asked for. Before, it compiled copies of
+  nine `AppDelegate` members over a fixture with a stubbed showcase. New
+  checks:
+  - onboarding writes every first-run marker;
+  - a beta that has seen its tour asks for nothing else;
+  - asking for an open tour or support page keeps its mode;
+  - quitting may close the support page without Done, and nothing opens
+    while quitting;
+  - the next intro waits for the closing window to go;
+  - the showcase: once on its release, never on another, its cache
+    cleared otherwise, and quitting does not consume it;
+  - onboarding marks the showcase and the support page only on their own
+    releases.
+- **Verification:** a Linux Swift 6.4 model of the sequence, with the real
+  version rules from Core, runs the test, 167 checks, and 45 mutants. Three
+  survive, each equivalent:
+  - asking a beta for the support page or showcase, which their own
+    release gates refuse;
+  - resetting Done when the support page opens, and the review flag when
+    the tour closes: the close and the open reset each again.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

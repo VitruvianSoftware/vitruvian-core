@@ -311,7 +311,6 @@ GENERATED_TEST_SOURCES = [
     "SoftwareDimmingRoute.swift",
     "SwitcherScroll.swift",
     "UninstallerFlow.swift",
-    "UpdateIntroFlow.swift",
 ]
 
 # Sources of the privileged fan-control helper.
