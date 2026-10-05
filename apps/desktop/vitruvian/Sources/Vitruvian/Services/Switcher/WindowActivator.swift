@@ -432,35 +432,74 @@ package enum WindowActivator {
         }
     }
 
-    /// Prefer the selected window, but retain cooperative activation when the
-    /// private request or the Accessibility raise cannot be delivered. An
-    /// accessory window owner cannot supply its regular host's menu bar.
+    /// What activating an app asks of the system. `live` activates real apps
+    /// and windows; tests pass doubles that activate and post nothing.
+    package struct ActivationCalls<App: SwitcherActivatableApp> {
+        package var running: (pid_t) -> App?
+        /// Hands activation to the app, as macOS 14 asks.
+        package var yield: (App) -> Void
+        package var frontWindow: (_ windowID: CGWindowID, _ ownerPID: pid_t) -> Bool
+        package var focusWindow: (_ windowID: CGWindowID, _ pid: pid_t, _ makeAppFrontmost: Bool) -> Bool
+        package var prepareWindow: (_ windowID: CGWindowID, _ pid: pid_t) -> Bool
+
+        package init(running: @escaping (pid_t) -> App?,
+                     yield: @escaping (App) -> Void,
+                     frontWindow: @escaping (_ windowID: CGWindowID, _ ownerPID: pid_t) -> Bool,
+                     focusWindow: @escaping (_ windowID: CGWindowID, _ pid: pid_t, _ makeAppFrontmost: Bool) -> Bool,
+                     prepareWindow: @escaping (_ windowID: CGWindowID, _ pid: pid_t) -> Bool) {
+            self.running = running
+            self.yield = yield
+            self.frontWindow = frontWindow
+            self.focusWindow = focusWindow
+            self.prepareWindow = prepareWindow
+        }
+    }
+
+    private static var liveActivation: ActivationCalls<NSRunningApplication> {
+        ActivationCalls(running: { NSRunningApplication(processIdentifier: $0) },
+                        yield: { ActivationHandoff.yield(to: $0) },
+                        frontWindow: { SpaceWindowBridge.frontWindow($0, ownerPID: $1) },
+                        focusWindow: { focusWindow(windowID: $0, pid: $1, makeAppFrontmost: $2) },
+                        prepareWindow: { prepareWindowForActivation(windowID: $0, pid: $1) })
+    }
+
     private static func activateApp(_ app: NSRunningApplication,
                                     plan: SwitcherActivationPlan,
                                     windowID: CGWindowID? = nil,
                                     windowOwnerPID: pid_t? = nil) {
+        activateApp(app, plan: plan, windowID: windowID, windowOwnerPID: windowOwnerPID, calls: liveActivation)
+    }
+
+    /// Prefer the selected window, but retain cooperative activation when the
+    /// private request or the Accessibility raise cannot be delivered. An
+    /// accessory window owner cannot supply its regular host's menu bar.
+    package static func activateApp<App: SwitcherActivatableApp>(_ app: App,
+                                                                 plan: SwitcherActivationPlan,
+                                                                 windowID: CGWindowID? = nil,
+                                                                 windowOwnerPID: pid_t? = nil,
+                                                                 calls: ActivationCalls<App>) {
         if case .exactWindow(let windowID) = SwitcherSupport.appActivationRoute(plan: plan, windowID: windowID) {
             let ownerPID = windowOwnerPID ?? app.processIdentifier
             if ownerPID != app.processIdentifier {
-                activateAppCooperatively(app, allWindows: false)
+                activateAppCooperatively(app, allWindows: false, calls: calls)
             }
-            if SpaceWindowBridge.frontWindow(windowID, ownerPID: ownerPID),
-               focusWindow(windowID: windowID, pid: ownerPID, makeAppFrontmost: false) {
+            if calls.frontWindow(windowID, ownerPID),
+               calls.focusWindow(windowID, ownerPID, false) {
                 return
             }
         }
-        activateAppCooperatively(app, allWindows: plan.activateAllWindows)
+        activateAppCooperatively(app, allWindows: plan.activateAllWindows, calls: calls)
         if let windowID {
-            focusWindow(windowID: windowID,
-                        pid: windowOwnerPID ?? app.processIdentifier,
-                        makeAppFrontmost: false)
+            _ = calls.focusWindow(windowID, windowOwnerPID ?? app.processIdentifier, false)
         }
     }
 
-    private static func activateAppCooperatively(_ app: NSRunningApplication, allWindows: Bool) {
+    private static func activateAppCooperatively<App: SwitcherActivatableApp>(_ app: App,
+                                                                              allWindows: Bool,
+                                                                              calls: ActivationCalls<App>) {
         let options: NSApplication.ActivationOptions = allWindows ? [.activateAllWindows] : []
-        ActivationHandoff.yield(to: app)
-        if !app.activate(from: NSRunningApplication.current, options: options) {
+        calls.yield(app)
+        if !app.activateFromCurrent(options: options) {
             app.activate(options: options)
         }
     }
@@ -697,19 +736,28 @@ package enum WindowActivator {
     private static func activateSource(pid: pid_t,
                                        windowID: CGWindowID?,
                                        windowOwnerPID: pid_t?) -> Bool {
-        guard let sourceApp = NSRunningApplication(processIdentifier: pid),
+        activateSource(pid: pid, windowID: windowID, windowOwnerPID: windowOwnerPID, calls: liveActivation)
+    }
+
+    @discardableResult
+    package static func activateSource<App: SwitcherActivatableApp>(pid: pid_t,
+                                                                    windowID: CGWindowID?,
+                                                                    windowOwnerPID: pid_t?,
+                                                                    calls: ActivationCalls<App>) -> Bool {
+        guard let sourceApp = calls.running(pid),
               !sourceApp.isTerminated else { return false }
 
         sourceApp.unhide()
         if let windowID {
-            prepareWindowForActivation(windowID: windowID, pid: windowOwnerPID ?? pid)
+            _ = calls.prepareWindow(windowID, windowOwnerPID ?? pid)
         }
         // A missing source window (including a fullscreen source) is still a
         // return gesture, not a request to raise every window of that app.
         activateApp(sourceApp,
                     plan: SwitcherSupport.activationPlan(targetsSpecificWindow: true),
                     windowID: windowID,
-                    windowOwnerPID: windowOwnerPID ?? pid)
+                    windowOwnerPID: windowOwnerPID ?? pid,
+                    calls: calls)
         return true
     }
 
@@ -1261,4 +1309,21 @@ private func switcherWindowMinimizeRestoreCallback(_ observer: AXObserver,
     guard let refcon else { return }
     let restore = Unmanaged<SwitcherWindowMinimizeRestore>.fromOpaque(refcon).takeUnretainedValue()
     restore.handle(notification: notification as String)
+}
+
+/// The running-app calls activation makes. `NSRunningApplication` is the real
+/// one; tests pass apps that log instead of activating.
+package protocol SwitcherActivatableApp: AnyObject {
+    var processIdentifier: pid_t { get }
+    var isTerminated: Bool { get }
+    @discardableResult func unhide() -> Bool
+    /// Activation the current app hands over, as macOS 14 asks.
+    @discardableResult func activateFromCurrent(options: NSApplication.ActivationOptions) -> Bool
+    @discardableResult func activate(options: NSApplication.ActivationOptions) -> Bool
+}
+
+extension NSRunningApplication: SwitcherActivatableApp {
+    package func activateFromCurrent(options: NSApplication.ActivationOptions) -> Bool {
+        activate(from: NSRunningApplication.current, options: options)
+    }
 }

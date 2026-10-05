@@ -343,7 +343,6 @@ GENERATED_TEST_SOURCES = [
     "ShelfDropRouting.swift",
     "SoftwareDimmingRoute.swift",
     "SuperKeyTap.swift",
-    "SwitcherActivationBodies.swift",
     "SwitcherScroll.swift",
     "UninstallerFlow.swift",
     "UpdateHighlights.swift",

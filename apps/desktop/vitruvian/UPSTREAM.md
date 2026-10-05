@@ -1499,6 +1499,12 @@ is that notice. Add an entry for every change to upstream files.
   layout borrowing that `Services/CommandBar/CommandBarService.swift` forwards to;
   `Tests/CommandBarFeatureTests.swift` drives it, and `Tests/generate_sources.py`
   no longer copies the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Switcher/WindowActivator.swift` activates apps through injected
+  `ActivationCalls` over `SwitcherActivatableApp`, and
+  `Services/Switcher/SpaceWindowBridge.swift` fronts windows through injected
+  `FrontingCalls`; `Tests/SwitcherActivationTests.swift` drives both, and
+  `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

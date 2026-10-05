@@ -1103,6 +1103,27 @@ file goes, which leaves 55.
   one it captured. It is unreachable through the service: each open starts a
   new presentation first.
 
+Landed (4b, switcher app activation and window fronting): one more generated
+file goes, which leaves 54.
+
+- **Injected:** `WindowActivator.activateApp(_:plan:windowID:windowOwnerPID:calls:)`
+  and `activateSource(pid:windowID:windowOwnerPID:calls:)` are generic over
+  `SwitcherActivatableApp`, which `NSRunningApplication` adopts. They take
+  `ActivationCalls`: finding a running app, handing activation over, fronting,
+  focusing and preparing a window. The private callers pass the live calls.
+- **Injected:** `SpaceWindowBridge.frontWindow(_:ownerPID:calls:)` takes
+  `FrontingCalls`, the window server's three private calls. `live` resolves
+  the symbols as before.
+- **Test:** the activation test drives the real activation and fronting with
+  apps that log and calls that post nothing, instead of copies of four
+  members.
+- **Checks added:**
+  - cooperative recovery still raises the selected window afterwards;
+  - a source that is quitting is not restored.
+- **Not covered:** `activateSource` passing the pid as the window owner when
+  none is given. `activateApp` falls back to the same pid, so the mutant is
+  equivalent.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

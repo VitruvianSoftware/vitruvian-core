@@ -131,16 +131,6 @@ def main():
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
           + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
           + "}\n}\n")
-    activator = "Sources/Vitruvian/Services/Switcher/WindowActivator.swift"
-    write("SwitcherActivationBodies.swift", "import AppKit\nimport ApplicationServices\n"
-          + "extension SwitcherActivationTests.Activator {\n"
-          + "".join(declaration(activator, prefix).replace("private static", "static", 1)
-                    for prefix in ["    private static func activateApp(",
-                                   "    private static func activateAppCooperatively(",
-                                   "    private static func activateSource("])
-          + "}\nextension SwitcherActivationTests.Bridge {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift",
-                        "    static func frontWindow(") + "}\n")
     write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
           + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
