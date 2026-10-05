@@ -55,8 +55,8 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
 
     /// What the pad reads and drives outside itself. `live` is the app's:
     /// its private container, the HUD, the main queue, a save panel, the
-    /// island and the application. Tests pass a store over a directory of
-    /// their own and doubles for the rest.
+    /// island, the application and the user's preferences. Tests pass a
+    /// store over a directory of their own and doubles for the rest.
     @MainActor
     package struct Environment {
         package var makeStore: () -> ScratchpadStore
@@ -68,6 +68,8 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         package var islandWindow: () -> (any IslandWindowing)?
         package var activate: () -> Void
         package var main: (@escaping @MainActor () -> Void) -> Void
+        /// Where the pad reads whether it is available and its own settings.
+        package var defaults: UserDefaults
 
         package init(makeStore: @escaping () -> ScratchpadStore,
                      showWarning: @escaping (String) -> Void,
@@ -75,7 +77,8 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
                      makeExportDialog: @escaping (String) -> ExportDialog,
                      islandWindow: @escaping () -> (any IslandWindowing)?,
                      activate: @escaping () -> Void,
-                     main: @escaping (@escaping @MainActor () -> Void) -> Void) {
+                     main: @escaping (@escaping @MainActor () -> Void) -> Void,
+                     defaults: UserDefaults) {
             self.makeStore = makeStore
             self.showWarning = showWarning
             self.schedule = schedule
@@ -83,6 +86,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
             self.islandWindow = islandWindow
             self.activate = activate
             self.main = main
+            self.defaults = defaults
         }
 
         package static var live: Environment {
@@ -93,7 +97,8 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
                 makeExportDialog: { ExportDialog(NSSavePanel(), suggestedName: $0) },
                 islandWindow: { NotchService.shared.presentationWindow },
                 activate: { NSApp.activate(ignoringOtherApps: true) },
-                main: { work in DispatchQueue.main.async { work() } })
+                main: { work in DispatchQueue.main.async { work() } },
+                defaults: .standard)
         }
     }
 
@@ -144,9 +149,9 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     }
 
     package func syncWithPreferences() {
-        let available = AppFeature.scratchpad.isAvailable
+        let available = AppFeature.scratchpad.isAvailable(in: environment.defaults)
         let enabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.scratchpadShortcutEnabled)
+            && environment.defaults.bool(forKey: DefaultsKey.scratchpadShortcutEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.scratchpadShortcut,
                                             fallback: .scratchpadDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
@@ -186,7 +191,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// The island's own open action passes false: it moves the document out
     /// to the floating pad instead of routing it back into the island.
     package func show(allowsIsland: Bool = true) {
-        guard AppFeature.scratchpad.isAvailable, !modalInteractionActive else { return }
+        guard AppFeature.scratchpad.isAvailable(in: environment.defaults), !modalInteractionActive else { return }
         if allowsIsland, NotchService.shared.showScratchpad() {
             if isVisible { hide() }
             return
@@ -221,7 +226,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// The island edits the same document in place: load it (or the current
     /// copy) without showing the floating pad, and commit when it leaves.
     package func loadForEmbedding() -> Bool {
-        guard AppFeature.scratchpad.isAvailable else { return false }
+        guard AppFeature.scratchpad.isAvailable(in: environment.defaults) else { return false }
         marksExpanded = false
         return loadApplyingRetention()
     }
@@ -253,7 +258,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
             flushSave()
             return true
         }
-        let defaults = UserDefaults.standard
+        let defaults = environment.defaults
         let defaultName = FeatureStrings.scratchpad(L10n.shared.language).pageTitle
         let retention = ScratchpadRetention.sanitized(
             defaults.string(forKey: DefaultsKey.scratchpadRetention))
@@ -492,15 +497,9 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// Document actions keep focus in their host. Only an explicit show may
     /// bring the floating pad forward while the island or another app is key.
     private func focusText(requiresKeyWindow: Bool = true) {
-        guard let panel, panel.isVisible, !requiresKeyWindow || panel.isKeyWindow else { return }
-        panel.makeKey()
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let panel = self.panel, panel.isVisible, panel.isKeyWindow,
-                  let textView = self.textView else { return }
-            panel.makeFirstResponder(textView)
-            let end = NSRange(location: (textView.string as NSString).length, length: 0)
-            textView.setSelectedRange(end)
-            textView.scrollRangeToVisible(end)
+        ScratchpadFocus.bringForward(panel, requiresKeyWindow: requiresKeyWindow,
+                                     later: { work in DispatchQueue.main.async { work() } }) { [weak self] in
+            (window: self?.panel, editor: self?.textView)
         }
     }
 
@@ -569,7 +568,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// apps. The choice is read at click time, so flipping it in Settings
     /// takes effect on an open pad.
     private var closesOnClickOutside: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.scratchpadCloseOnClickOutside)
+        environment.defaults.bool(forKey: DefaultsKey.scratchpadCloseOnClickOutside)
     }
 
     /// The export dialog is a click outside the pad by geometry, so saving to

@@ -2532,6 +2532,32 @@ copy loses `NotchCameraView` and `NotchView.pageSize`.
   layout" now uses a page that would grow without the detail. The old one
   used a page that never grows, so it could not fail.
 
+Landed (4b, the compact scratchpad): the `NotchCompact` copy is gone. That
+leaves 2 generated files: one copy (`MenuPanelRecovery`) and the registry
+kept on purpose.
+
+- **Editor:** `NotchScratchpadView` and `ScratchpadFormatBar` take their pad,
+  and the app's is the shared one. The test renders the real island page
+  over a real pad in a directory of its own (`ScratchpadHarness`), on a
+  real island from `NotchIslandFixture`. Preview turns on and off through
+  `togglePreview()`, as its button does.
+- **Preferences:** `ScratchpadService.Environment` carries the `defaults` the
+  pad reads its availability, shortcut, retention and click-outside settings
+  from. `.live` passes `.standard`, and the harness passes a suite of its
+  own.
+- **Focus:** `ScratchpadFocus` (`Services/QuickTools/ScratchpadFocus.swift`)
+  holds both pads' focus rules over `ScratchpadFocusWindow`, which `NSWindow`
+  adopts:
+  - `bringForward` is the floating pad's: only an explicit show takes the
+    keyboard from another window, and a queued caret move is dropped once
+    another window is key;
+  - `placeCaret` is the island page's.
+
+  The test drives both over windows whose key status it sets. AppKit gives
+  key status only to an active app, which the test runner is not.
+- **Mutations:** "floating scratchpad takes another host's focus" now
+  mutates the guard in `ScratchpadFocus.swift`.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

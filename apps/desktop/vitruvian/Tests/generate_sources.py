@@ -70,19 +70,6 @@ def main():
               "    private func closePopoverNow("])
           + "var popoverAnchor: PanelAnchor?\nvar lastGoodPanelAnchor: PanelAnchor?\n"
           + "}\n}\n")
-    scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
-    scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
-    write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"
-          + declaration("Sources/Vitruvian/Design/PlainTextEditor.swift", "struct PlainTextEditor:")
-          + declaration(scratchpad_view, "struct NotchScratchpadView:")
-          + "}\n"
-          + "extension NotchCompactTests.ScratchpadService {\n"
-          + declaration(scratchpad_service, "    func clear(")
-          + "}\nextension NotchCompactTests.Floating {\n"
-          + declaration(scratchpad_service, "    private func focusText(").replace("private func", "func", 1)
-          + "}\nextension NotchCompactTests.Embedded {\n"
-          + declaration(scratchpad_view, "    private func focusEditor(").replace("private func", "func", 1)
-          + "}\n")
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):

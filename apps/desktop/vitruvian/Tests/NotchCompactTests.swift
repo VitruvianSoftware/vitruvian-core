@@ -8,7 +8,8 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production rail, editor, and focus bodies with inert services. Windows stay
+/// The compact pages' real views and rules: the camera page, calendar rows,
+/// the rail, the scratchpad's editor and focus, and page sizing. Windows stay
 /// hidden; these contracts neither capture pixels nor send input events.
 enum NotchCompactTests {
     /// A camera that records what the camera page asks of it.
@@ -24,104 +25,17 @@ enum NotchCompactTests {
             isEmbeddedPresented = false
         }
     }
-    final class NotchService: ObservableObject {
-        var presentationWindow: NSWindow?
-        @Published var scratchpadCloseSerial = 0
-        @Published var scratchpadFindSerial = 0
-        var scratchpadFindAction = NSTextFinder.Action.showFindInterface
-        func perform(_ action: () -> Void) { action() }
-    }
-    final class ScratchpadService: ObservableObject {
-        static let shared = ScratchpadService()
-        @Published var text = "original note"
-        @Published var isPreviewing = false
-        @Published var pads: [ScratchpadPad] = []
-        @Published var selectedPadID: UUID?
-        @Published var saveFailed = false
-        var canCreatePad: Bool { true }
-        var canClosePad: Bool { false }
-        var selectedPadName: String { "pad" }
-        var panel: NSPanel?
-        weak var textView: NSTextView?
-        func flushSave() {}
-        func focusText() {}
-        func loadForEmbedding() -> Bool { true }
-        func commitEdits() {}
-        func createPad(defaultName: String) {}
-        func closePad(_ id: UUID) -> Bool { true }
-        func renamePad(_ id: UUID, to name: String) {}
-        func selectPad(_ id: UUID) {}
-        func copyAll() {}
-        func apply(_ mark: ScratchpadMark, through editor: NSTextView? = nil) {}
-        @Published var marksExpanded = false
-        func toggleMarks() { marksExpanded.toggle() }
-        func performFind(_ action: NSTextFinder.Action, in editor: NSTextView? = nil) {}
-        func hideFindBar(in editor: NSTextView) {}
-        func togglePreview() { isPreviewing.toggle() }
-        func show(allowsIsland: Bool = true) {}
-        func exportText(suggestedName: String, from window: NSWindow? = nil) {}
-    }
-    struct NotchEmptyView: View {
-        let symbol: String
-        let message: String
-        var body: some View { Text(message) }
-    }
-    struct NotchControlSurface: ViewModifier {
-        let cornerRadius: CGFloat
-        var interactive = true
-        func body(content: Content) -> some View { content }
-    }
-    struct NotchButtonStyle: ButtonStyle {
-        var cornerRadius: CGFloat = 10
-        var lifts = true
-        func makeBody(configuration: Configuration) -> some View { configuration.label }
-    }
-    struct NotchIconButton: View {
-        let symbol: String
-        let title: String
-        var selected = false
-        let action: () -> Void
-        var body: some View { Button(title, action: action) }
-    }
-    struct ScratchpadFormatBar: View {
-        enum Style { case pad, island }
-        let style: Style
-        var editor: NSTextView?
-        var body: some View { Color.clear }
-    }
-    struct MarkdownPreview: View {
-        let blocks: [ScratchpadMarkdownBlock]
-        var baseSize: CGFloat = 13
-        var body: some View { Color.clear }
-    }
-    final class Window {
+    /// A window as the scratchpad's focus sees it, key when the test says so.
+    final class Window: ScratchpadFocusWindow {
         static var key: Window?
         var isVisible = true
         var isKeyWindow: Bool { Self.key === self }
         var responderChanges = 0
         func makeKey() { Self.key = self }
-        func makeFirstResponder(_ view: TextView?) { responderChanges += 1 }
-    }
-    /// Not named ScrollView: inside this namespace that would shadow SwiftUI's
-    /// own, which the notch views use for their rows.
-    final class EditorScrollView {
-        var isFindBarVisible = false
-    }
-    final class TextView {
-        var window: Window?
-        var string = "note"
-        var enclosingScrollView: EditorScrollView? = EditorScrollView()
-        func setSelectedRange(_ range: NSRange) {}
-        func scrollRangeToVisible(_ range: NSRange) {}
-    }
-    final class Floating {
-        var panel: Window? = Window()
-        var textView: TextView? = TextView()
-    }
-    final class Embedded {
-        class Handle { var view: TextView? = TextView() }
-        var editor = Handle()
-        var pad = ScratchpadService.shared
+        func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+            responderChanges += 1
+            return true
+        }
     }
     struct Entry: Identifiable { let id: Int }
     final class RailState: ObservableObject {
@@ -283,23 +197,46 @@ enum NotchCompactTests {
                "a short last row keeps the cell width and sits centered under the row above")
     }
     private static func scratchpad(_ suite: TestSuite) {
-        let pad = ScratchpadService.shared
-        pad.text = "original note"
-        pad.isPreviewing = false
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-compact"
+        let defaults = UserDefaults(suiteName: domain)!
+        // A real pad over a directory of its own, on a real island's page.
+        let harness = ScratchpadHarness(root: root)
+        let fixture = NotchIslandFixture(defaults: defaults)
+        defer {
+            withExtendedLifetime(fixture) {}
+            harness.cleanUp()
+            try? manager.removeItem(at: root)
+            defaults.removePersistentDomain(forName: domain)
+        }
+        harness.defaults.set(true, forKey: AppFeature.scratchpad.availabilityKey)
+        let pad: ScratchpadService = harness.service
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 424, height: 180),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: NotchScratchpadView(service: NotchService()))
+        let host = NSHostingView(rootView: NotchScratchpadView(service: fixture.island, pad: pad))
         window.contentView = host
+        // The page saves as it leaves, while the pad's harness is still there.
+        defer {
+            window.contentView = nil
+            settle()
+        }
         host.frame = NSRect(x: 0, y: 0, width: 424, height: 180)
+        settle(host)
+        pad.text = "original note"
         settle(host)
         guard let editor = descendants(host).compactMap({ $0 as? NSTextView }).first else {
             suite.expect(false, "the embedded scratchpad creates its native editor")
             return
         }
-        for preview in [true, false] {
-            pad.isPreviewing = preview
+        /// Preview on or off, as its button turns it.
+        func preview(_ on: Bool) {
+            if pad.isPreviewing != on { pad.togglePreview() }
             settle(host)
+        }
+        for previewing in [true, false] {
+            preview(previewing)
             suite.expect(descendants(host).contains { $0 === editor },
                          "preview preserves the same editor and undo history")
             pad.clear(through: editor)
@@ -315,44 +252,56 @@ enum NotchCompactTests {
             settle(host)
             suite.expect(pad.text == "original note", "committing the restored text updates the shared document")
         }
-        pad.isPreviewing = true
-        settle(host)
+        preview(true)
         pad.text = "another pad"
         settle(host)
-        pad.isPreviewing = false
-        settle(host)
+        preview(false)
         suite.expect(editor.string == "another pad" && editor.undoManager?.canUndo != true,
                      "switching documents while previewing cannot undo into the previous document")
-        window.contentView = nil
     }
     private static func focus(_ suite: TestSuite) {
-        let floating = Floating()
-        let embedded = Embedded()
+        let floating = Window()
         let island = Window()
-        embedded.editor.view?.window = island
-        floating.textView?.window = floating.panel
+        let floatingEditor = NSTextView()
+        let islandEditor = NSTextView()
+        var queued: [@MainActor () -> Void] = []
+        /// What the floating pad does for a document action, or for an explicit show.
+        func focusFloating(requiresKeyWindow: Bool = true) {
+            ScratchpadFocus.bringForward(floating, requiresKeyWindow: requiresKeyWindow,
+                                         later: { queued.append($0) }) { (window: floating, editor: floatingEditor) }
+        }
+        /// What the island's page does when its pad changes.
+        func focusEmbedded() {
+            ScratchpadFocus.placeCaret(in: islandEditor, window: island)
+        }
+        /// The main queue runs what was queued for it.
+        func runQueued() {
+            let work = queued
+            queued.removeAll()
+            work.forEach { $0() }
+        }
         defer { Window.key = nil }
         for visible in [true, false] {
-            floating.panel?.isVisible = visible
+            floating.isVisible = visible
             Window.key = island
-            floating.focusText()
-            embedded.focusEditor()
-            settle()
-            suite.expect(Window.key === island && floating.panel?.responderChanges == 0,
+            focusFloating()
+            focusEmbedded()
+            runQueued()
+            suite.expect(Window.key === island && floating.responderChanges == 0,
                          "document actions preserve island focus with the floating host visible or hidden")
         }
-        floating.panel?.isVisible = true
-        floating.focusText(requiresKeyWindow: false)
-        settle()
-        suite.expect(Window.key === floating.panel && floating.panel?.responderChanges == 1,
+        floating.isVisible = true
+        focusFloating(requiresKeyWindow: false)
+        runQueued()
+        suite.expect(Window.key === floating && floating.responderChanges == 1,
                      "explicitly opening the floating pad still gives its editor the keyboard")
         let before = island.responderChanges
-        embedded.focusEditor()
+        focusEmbedded()
         suite.expect(island.responderChanges == before, "an island observer cannot change the nonkey editor selection")
-        floating.focusText()
+        focusFloating()
         Window.key = island
-        settle()
-        suite.expect(floating.panel?.responderChanges == 1,
+        runQueued()
+        suite.expect(floating.responderChanges == 1,
                      "a queued floating focus request is discarded after the user changes hosts")
     }
     private static func sizing(_ suite: TestSuite) {

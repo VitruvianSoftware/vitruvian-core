@@ -295,7 +295,6 @@ TEST_PRODUCTION_SOURCES = [
 GENERATED_TEST_SOURCES = [
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
-    "NotchCompact.swift",
 ]
 
 # Sources of the privileged fan-control helper.

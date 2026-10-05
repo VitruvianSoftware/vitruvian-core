@@ -1938,6 +1938,19 @@ is that notice. Add an entry for every change to upstream files.
     the rule it held.
   - `Tests/NotchCompactTests.swift` tests both on the real code;
     `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b, the compact scratchpad (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift`: its
+    `Environment` carries the `defaults` it reads its preferences from.
+    `focusText` goes through the new `ScratchpadFocus`
+    (`Services/QuickTools/ScratchpadFocus.swift`).
+  - `Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift` and
+    `Sources/Vitruvian/UI/Scratchpad/ScratchpadFormatBar.swift` take their pad,
+    defaulting to the shared one. The island page places its caret through
+    `ScratchpadFocus`.
+  - `Tests/NotchCompactTests.swift` tests the real page and focus rules;
+    `Tests/ScratchpadStoreContractTests.swift`'s harness passes its own
+    defaults; `Tests/mutation_checks.py` mutates the focus guard where it
+    now lives; `Tests/generate_sources.py` no longer copies any of it.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
