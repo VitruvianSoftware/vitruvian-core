@@ -14,10 +14,10 @@ package struct NotchAgentsSettingsControls: View {
     @AppStorage(Preferences.notchAgentsClaude) private var claude: Bool
     @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
-    @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
-    @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
+    @AppStorage(Preferences.notchAgentsCardOrder) private var cardOrder: String
+    @AppStorage(Preferences.notchAgentsHiddenCards) private var hiddenCards: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var limitDisplay: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var limitFocus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var limitFocus: String
     @AppStorage(Preferences.notchAgentsLiveActivity) private var liveActivity: Bool
     @AppStorage(Preferences.notchAgentsReadout) private var readout: String
     @AppStorage(Preferences.notchAgentsFinishAlert) private var finishAlert: Bool

@@ -2060,6 +2060,15 @@ is that notice. Add an entry for every change to upstream files.
   `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
   `NotchLayout.systemGridHeight(count:width:)` in place of
   `NotchGeometry.systemRows(cards:)`; `UI/Notch/NotchSystemView.swift` uses it.
+- **2026-10-05**: Refactor step 6zzp (`REFACTOR.md`): 30 `@AppStorage`
+  properties take their `Preference` instead of `DefaultsKey` and a written
+  default, in `UI/MenuBarMetricsPreview.swift`, `UI/MenuPanel/PanelClipboardView.swift`,
+  `UI/MenuPanel/PanelWindowLayoutView.swift`, `UI/Notch/NotchAgentStrip.swift`,
+  `UI/Notch/NotchAgentsView.swift`, `UI/Notch/NotchCapsuleViews.swift`,
+  `UI/Notch/NotchClipboardView.swift`, `UI/Notch/NotchLockScreenView.swift`,
+  `UI/QuickLauncher/QuickLauncherView.swift` and the Clipboard, Keyboard
+  Debounce, Monitor, Notch Agents, Notch, Screenshot, Shelf and Switcher
+  settings (`UI/Settings/`).
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

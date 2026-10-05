@@ -4891,6 +4891,25 @@ now.
   with the Linux toolchain, shows the error without the default and none with
   it.
 
+Landed (6zzp, the views' last written-out defaults): 30 `@AppStorage`
+properties in 17 views still wrote a default beside `DefaultsKey`. They now
+take their `Preference`, and the default comes from where it is
+registered.
+- **Which:** the Clipboard, Notch, Agents, Shelf, Screenshot, Monitor,
+  Switcher and keyboard debounce settings, and the island's agent strip,
+  capsule, lock screen and clipboard pages. Also the menu panel's clipboard
+  and window layout views, the quick launcher, and the metrics preview.
+- **Why they could move now:** every one wrote the registered default
+  word for word. No test reads their source any more, since step 7 turned
+  those reads into behavior.
+- **Left on purpose:**
+  - the eight menu panel orders, which stay unregistered (see 6zzo);
+  - `notchTimerMode`, which its view reads as an enum;
+  - `includeBetaUpdates`, whose view starts from `AppInfo.isBeta`.
+- **Left for step 7:** 14 properties in six files that tests still read as
+  text: the menu panel, mouse, mouse button, window layout and Command Bar
+  settings, and the switcher. They move with those reads.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

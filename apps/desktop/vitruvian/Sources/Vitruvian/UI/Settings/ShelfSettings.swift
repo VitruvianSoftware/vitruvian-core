@@ -14,12 +14,12 @@ package struct ShelfSettings: View {
     @AppStorage(Preferences.shelfShortcutAddsFinderSelection) private var shortcutAddsFinderSelection: Bool
     @AppStorage(Preferences.shelfShakeToOpen) private var shake: Bool
     @AppStorage(Preferences.shelfDropZoneEnabled) private var dropZone: Bool
-    @AppStorage(DefaultsKey.shelfDockPlacement) private var dockPlacement = ShelfDockPlacement.menuBar.rawValue
+    @AppStorage(Preferences.shelfDockPlacement) private var dockPlacement: String
     @AppStorage(Preferences.notchEnabled) private var islandEnabled: Bool
     @AppStorage(Preferences.shelfEdgeDragEnabled) private var edgeDrag: Bool
     @AppStorage(Preferences.shelfCloseAfterDrop) private var closeAfterDrop: Bool
     @AppStorage(Preferences.shelfRemoveAfterDrop) private var removeAfterDrop: Bool
-    @AppStorage(DefaultsKey.shelfClearOnClose) private var clearOnClose = false
+    @AppStorage(Preferences.shelfClearOnClose) private var clearOnClose: Bool
     @AppStorage(Preferences.notchShelf) private var opensInIsland: Bool
     @State private var showingAppPicker = false
     @State private var islandShowsFiles = NotchSupport.showsFiles()

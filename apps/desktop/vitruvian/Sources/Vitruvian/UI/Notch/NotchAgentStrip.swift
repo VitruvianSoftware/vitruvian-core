@@ -17,7 +17,7 @@ package struct NotchAgentStrip: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsReadout) private var readout: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     private var live: [AgentLiveSession] { usage.snapshot.live }
     private var working: [AgentProvider] {
@@ -120,7 +120,7 @@ package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
+    @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     package var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in

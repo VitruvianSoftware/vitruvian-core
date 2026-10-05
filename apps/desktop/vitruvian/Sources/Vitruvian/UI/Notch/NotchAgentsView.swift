@@ -13,8 +13,8 @@ package struct NotchAgentsView: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsPeriod) private var period: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
-    @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
-    @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
+    @AppStorage(Preferences.notchAgentsCardOrder) private var cardOrder: String
+    @AppStorage(Preferences.notchAgentsHiddenCards) private var hiddenCards: String
     @AppStorage(Preferences.notchAgentsClaude) private var claude: Bool
     @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool

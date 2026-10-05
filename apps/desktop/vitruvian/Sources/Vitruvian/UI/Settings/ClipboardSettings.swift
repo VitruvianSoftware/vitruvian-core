@@ -13,7 +13,7 @@ package struct ClipboardSettings: View {
     @ObservedObject private var pastePlain = PastePlainService.shared
     @ObservedObject private var permissions = Permissions.shared
     @AppStorage(Preferences.pastePlainEnabled) private var pastePlainEnabled: Bool
-    @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var enabled = false
+    @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var limit: Int
     @AppStorage(Preferences.clipboardHistorySkipSensitive) private var skipSensitive: Bool
     @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles: Bool
