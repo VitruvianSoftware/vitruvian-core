@@ -5049,6 +5049,30 @@ Landed (7d, the Features hub's runtime): the three reads of
   - Uninstalling media tools cancels their work, and switching WhatsApp
     downloads off resets them.
 - **Left:** 135 source reads in 26 test files, over 83 production files.
+
+Landed (7e, the ledger of source pins): 133 reads of source files as text
+remain, in 26 test files. They are now counted in `Tests/source_pins.txt`,
+which `SourcePinLedgerTests` recounts on every run, so the number can only
+change on purpose:
+- a new source-text check fails until its line is added, in review;
+- a check turned behavioral fails until its line comes down.
+
+Also in this slice, the Features hub's "undo" of the never-used offer moves
+into `FeatureRuntime.reinstallKept(_:)`. `FeatureRuntimeTests` checks that
+it reinstalls without switching anything on, and keeps the features out of
+the offer. The read of `FeatureHubSettings.swift` that pinned it goes.
+
+- **What remains, and why it stays for now:** most of the 133 pin one of
+  three things:
+  - a SwiftUI view's structure (a lazy stack's nesting, a row's alignment,
+    a call a view must make), which only rendering could check;
+  - a service's live wiring to the system (event taps, the window server,
+    run loops), where the behavior is the operating system's;
+  - resources and build files (`Info.plist`, `build.sh`, localized strings),
+    which are data, not code.
+
+  Each converts when its code moves behind a seam, as 7b–7e did. The ledger
+  keeps the rest from growing meanwhile.
 ## Not in scope
 
 Product decisions remain open:

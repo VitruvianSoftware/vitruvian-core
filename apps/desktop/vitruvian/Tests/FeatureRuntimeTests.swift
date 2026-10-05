@@ -61,6 +61,15 @@ enum FeatureRuntimeContract {
         suite.expect(!defaults.bool(forKey: DefaultsKey.middleClickEnabled),
                      "a reinstall keeps the switch the person saved")
 
+        // Undoing the never-used offer.
+        defaults.set(false, forKey: DefaultsKey.middleClickEnabled)
+        hub.setAvailable([.middleClick], false)
+        hub.reinstallKept([.middleClick])
+        suite.expect(defaults.bool(forKey: AppFeature.middleClick.availabilityKey)
+                     && !defaults.bool(forKey: DefaultsKey.middleClickEnabled)
+                     && hub.neverSwitchedOnFeatures().allSatisfy { $0 != .middleClick },
+                     "undoing the offer reinstalls without switching on what was never on, and keeps the feature")
+
         // Which services each feature drives.
         suite.expect(actions(.mouseClickDebounce) == [.mouseClickDebounce],
                      "the Features hub owns the click debounce runtime lifecycle")

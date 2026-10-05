@@ -237,6 +237,15 @@ package final class FeatureRuntime: ObservableObject {
             .filter { offerableThisSession.contains($0) && !kept.contains($0) }
     }
 
+    /// Brings back features just uninstalled as never used, when the person
+    /// changes their mind. That is also an answer to the offer, so they are
+    /// kept and never offered again; none of them was ever on, and the
+    /// reinstall leaves their switches off too.
+    package func reinstallKept(_ features: [AppFeature]) {
+        keep(features)
+        setAvailable(features, true, enablingFirstInstalls: false)
+    }
+
     /// Stops offering these features as unused. A later one that turns out
     /// never used is still offered, on its own merits.
     package func keep(_ features: [AppFeature]) {

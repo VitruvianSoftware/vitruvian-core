@@ -651,10 +651,6 @@ enum FeatureCatalogTests {
         }
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.featureHubKeptFeatures),
                "features someone chose to keep travel in backups, so a restored Mac never offers them again")
-        let hubUndoSource = (try? String(contentsOfFile: "Sources/Vitruvian/UI/Settings/FeatureHubSettings.swift",
-                                         encoding: .utf8)) ?? ""
-        suite.expect(hubUndoSource.contains("setAvailable(batch, true, enablingFirstInstalls: false)"),
-               "undoing the offer reinstalls without switching on what was never on")
         suite.expect(FeatureGroup.allCases.map { AppFeature.features(in: $0).count }.reduce(0, +)
                 == AppFeature.allCases.count,
                "every feature belongs to exactly one group")

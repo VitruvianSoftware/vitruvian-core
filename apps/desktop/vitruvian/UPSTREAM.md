@@ -2103,6 +2103,15 @@ is that notice. Add an entry for every change to upstream files.
     and `Tests/ScreenshotFeatureTests.swift` no longer read it. The new
     `Tests/FeatureRuntimeTests.swift`, run from `Tests/MetricsTests.swift`,
     checks the runtime on its own defaults.
+- **2026-10-05**: Refactor step 7e (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Settings/FeatureHubSettings.swift` undoes the
+    never-used offer through the new `FeatureRuntime.reinstallKept(_:)`
+    (`Services/FeatureRuntime.swift`).
+  - The new `Tests/source_pins.txt` counts the tests' reads of source files,
+    which the new `Tests/SourcePinLedgerTests.swift` (run from
+    `Tests/MetricsTests.swift`) recounts.
+  - `Tests/FeatureCatalogTests.swift` drops the undo's source read, and
+    `Tests/FeatureRuntimeTests.swift` checks it instead.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

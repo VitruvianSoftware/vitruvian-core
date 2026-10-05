@@ -70,7 +70,10 @@ struct MetricsTests {
                 UpdateHighlightsTests.run(suite)
                 UpdateIntroFlowTests.run(suite)
             }),
-            ("repository", { RepositoryFeatureTests.run(suite) }),
+            ("repository", {
+                RepositoryFeatureTests.run(suite)
+                SourcePinLedgerContract.run(suite)
+            }),
             ("screenshots", {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
