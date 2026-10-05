@@ -390,7 +390,20 @@ package final class AgentUsageService: ObservableObject {
     @discardableResult
     nonisolated
     private func read(_ path: String, provider: AgentProvider) -> Bool {
-        guard let cancellation = readerCancellation, !cancellation.isCancelled else { return false }
+        guard let cancellation = readerCancellation else { return false }
+        return Self.read(path, provider: provider, cursors: &cursors, store: store,
+                         isCancelled: { cancellation.isCancelled }, report: { self.report($0) })
+    }
+
+    /// Applies what a log gained since the last read to `store`, line by
+    /// line, and reports the turns that ended. `lines` reads the log; the
+    /// closures it calls back into must be escaping to be handed to it.
+    nonisolated package static func read(_ path: String, provider: AgentProvider,
+                                         cursors: inout [String: AgentLogCursor], store: AgentUsageStore,
+                                         isCancelled: @escaping () -> Bool, report: @escaping (AgentUsageEvent) -> Void,
+                                         lines: (AgentLogCursor, Date, () -> Bool, (Data) -> Void) -> Void
+                                             = AgentLogReader.readAppended) -> Bool {
+        guard !isCancelled() else { return false }
         guard FileManager.default.fileExists(atPath: path) else {
             cursors[path] = nil
             return store.forget(file: path)
@@ -399,8 +412,7 @@ package final class AgentUsageService: ObservableObject {
         cursors[path] = cursor
         var changed = false
         let now = Date()
-        AgentLogReader.readAppended(cursor, since: now.addingTimeInterval(-Self.horizon),
-                                    shouldContinue: { !cancellation.isCancelled }) { line in
+        lines(cursor, now.addingTimeInterval(-horizon), { !isCancelled() }) { line in
             // Apply in log order while the chunk is alive instead of retaining
             // every parsed entry until a potentially multi-gigabyte file ends.
             let entries: [AgentLogEntry]
