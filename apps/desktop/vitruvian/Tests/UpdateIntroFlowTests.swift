@@ -73,7 +73,7 @@ enum UpdateIntroFlowTests {
             return IntroShell(defaults, version: version)
         }
         func close(_ intro: Intro, in shell: IntroShell) {
-            suite.expect(shell.close(intro), "the \(Shell.name(intro)) is open, and closing it settles without a loop")
+            suite.expect(shell.close(intro), "the \(IntroShell.name(intro)) is open, and closing it settles without a loop")
         }
         for version in ["3.4.0", "3.4.1", "3.4.2"] {
             for previous in [nil, "3.3.2", "3.4.0-beta.1"] as [String?] {
