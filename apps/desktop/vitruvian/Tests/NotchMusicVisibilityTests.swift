@@ -101,7 +101,8 @@ enum NotchMusicVisibilityTests {
                          "fullscreen keeps a black cutout and stops the automatic playback reader")
             defaults.set(true, forKey: DefaultsKey.notchOutlineEnabled)
             service.syncWithPreferences()
-            suite.expect(service.geometry.outline == true && service.surfaceSize == closed,
+            // Only a physical camera has outline room; a simulated cutout never does.
+            suite.expect((!physical || service.geometry.outlineRoom > 0) && service.surfaceSize == closed,
                          "fullscreen draws no outline, so its cutout keeps to the camera without the outline's room")
             defaults.set(false, forKey: DefaultsKey.notchOutlineEnabled)
             service.syncWithPreferences()
