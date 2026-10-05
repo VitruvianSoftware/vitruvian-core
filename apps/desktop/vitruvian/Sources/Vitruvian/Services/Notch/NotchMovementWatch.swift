@@ -27,12 +27,20 @@ package final class NotchMovementWatch {
                 if inOtherApps, let token = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { _ in moved() }) {
                     tokens.append(token)
                 }
-                if let token = NSEvent.addLocalMonitorForEvents(matching: events, handler: { event in
-                    moved()
-                    return event
-                }) { tokens.append(token) }
+                if let token = NSEvent.addLocalMonitorForEvents(matching: events, handler: passingThrough(moved)) {
+                    tokens.append(token)
+                }
                 return tokens
             }, removeMonitor: NSEvent.removeMonitor)
+        }
+
+        /// The handler for this app's own movement: it runs `moved` and hands
+        /// the event on, so watching never takes a move from the app.
+        package static func passingThrough(_ moved: @escaping () -> Void) -> (NSEvent) -> NSEvent? {
+            { event in
+                moved()
+                return event
+            }
         }
     }
 

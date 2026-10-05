@@ -2387,6 +2387,123 @@ is the registry kept on purpose.
   helper. SwiftUI does not build on Linux, so the strip and the suite are
   proven on macOS CI.
 
+Landed (4b, the island's destinations): one more generated file goes,
+which leaves 6. Of those, five are copies and `LocalizationCatalog.swift`
+is the registry kept on purpose.
+
+- **`NotchIslandFixture`** (new, `Tests/`) builds a real `NotchService`
+  over test doubles:
+  - a window host that draws nothing, with a real but transparent panel;
+  - services that record what the island asks of them;
+  - one notched built-in display;
+  - notification centers of its own, so the session changes the test
+    announces are the only ones the island hears;
+  - timers that wait until the test runs them, and open-island monitors
+    whose handlers the test holds.
+- **Tests:** `NotchDestinationContract` drives that island. Before, it
+  compiled copies of 14 island members and two metric mappings over a
+  hand-written state class. Every
+  check is kept, and each now reaches the island the way the app does:
+  - Escape arrives as the open island's own key, not a call to the
+    private `stepBack()`.
+  - Lock, sleep, the console and the screen saver arrive as the
+    notifications the session tracker hears.
+  - An activity under way, a banner and system feedback come from the
+    services' readings and the island's own `show(_:)`.
+  - A closing island is `collapse()`, or capture controls where the check
+    is about them.
+  - Teardowns and returns are read from what the island asks of its
+    services, in order.
+- **Changed checks:**
+  - During a capture, Escape now never reaches the island: the controls
+    take its keys. The check says so, and that closing still leaves the
+    island as it is.
+  - The held banner is held for real, by the pointer resting on it.
+- **Verification:** the suite runs on macOS CI; AppKit does not build on
+  Linux.
+
+Landed (4b, the island's music reader): one more generated file goes,
+which leaves 5: four copies and the registry kept on purpose.
+
+- **Tests:** `NotchMusicVisibilityTests` drives a real island from
+  `NotchIslandFixture` instead of compiled copies of its presentation and
+  consumer members over a state class. Every check is kept, each reached as
+  the app reaches it:
+  - a physical or simulated camera is a described display, and the room
+    beside it what the menu reader measures;
+  - full screen, the outline, copies on another display and a Mac without
+    a battery come from the fixture and the island's preferences;
+  - opening, sections and the app panel go through `open(...)`, and capture
+    controls through `presentCaptureControls`;
+  - a song waiting for its notice is a track change sent through the
+    island's events, released by its scheduled notice;
+  - the activity picker goes through `selectCompactActivity` and
+    `selectCompactCombination`.
+- **Changed checks:**
+  - The reader is the fixture's services, which record the island's starts
+    and stops; their playback survives a stop as the old reader's did.
+  - Copies are read after the island's next sync: they appear as it
+    presents, after it has synced its consumers.
+  - The Keep Awake strip is compared with the timer's geometry built from
+    the room it took, since its measured wing is private.
+  - The calendar wing check calls `NotchGeometry.compactCalendarGeometry`
+    directly: that is what the old check exercised with its stubbed wing.
+- The fixture gained a second display, per-display full screen, a measured
+  menu room and the playback reader's state.
+
+Landed (4b, the island's presentation and capture controls): one more
+generated file goes, which leaves 4: three copies (`NotchHover`,
+`NotchCompact`, `MenuPanelRecovery`) and the registry kept on purpose.
+
+- **Tests:** `NotchPresentationRefreshContract` and its capture-controls
+  checks drive a real island from `NotchIslandFixture` instead of compiled
+  copies of the island's refresh, capture and music-departure members and
+  the window host's restore. Every check is kept:
+  - The recording host keeps what each present and hide asked for: the
+    transition, glass, the reveal, the outline, the activation area. It
+    applies the module's `NotchWindowInputPolicy` to its panel.
+  - Hover, the capture controls' click-through and their deadlines run on
+    pointer moves and the fixture's clock.
+  - The menus' room is what the menu reader measures. A center collision
+    is a measurement of none.
+  - The music strip's departure follows playback, covers and track
+    changes sent to the island.
+- **Changed checks:**
+  - The page-title width checks call `NotchGeometry` directly; the title's
+    width is measured from its text, so a test cannot choose it.
+  - "Recent captures" is compared with the island's own expanded size.
+  - The hidden island's input policy is checked on the policy itself.
+- The fixture gained Reduce Motion and a host that keeps departing content
+  until it finishes.
+
+Landed (4b, the island's hover): one more generated file goes, which
+leaves 3: two copies (`NotchCompact`, `MenuPanelRecovery`) and the registry
+kept on purpose. No copy of `NotchService` is left, so the generator drops
+its whole map of the island's preferences, pointer, clock and services.
+
+- **Tests:** `NotchHoverTests` drives a real island from
+  `NotchIslandFixture` instead of compiled copies of 21 island members over
+  a state class. Every check is kept, each read from what the island shows
+  rather than its private state:
+  - opening and peeking are `expanded` and `peeking`, the hover deadlines
+    the fixture's pending work and its delays;
+  - the hover emphasis is the island's `surfaceSize`;
+  - the pointer observers are the fixture's movement watches, one per pair
+    of monitors;
+  - a departure that must not happen is a host transition that never
+    dismisses.
+- **Changed checks:**
+  - "Never consumes the local event" is checked on
+    `NotchMovementWatch.Environment.passingThrough(_:)`, the handler both
+    hidden hover and pointer following install. The island no longer sees
+    the event, so it cannot consume it.
+  - Local and global movement are one watch in the fixture, so the reveal
+    check no longer runs once for each.
+- **Production:** `NotchMovementWatch` names its local-monitor handler
+  (`passingThrough(_:)`) so that the check above can reach it.
+- **Generator:** it deletes generated files it no longer writes, so
+  `build.sh`'s glob cannot compile a stale copy.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
@@ -2725,6 +2842,111 @@ a local alias go through `NotchIslandServices` too:
 Reduce Motion (in `.system`) and its workspace notifications. The
 presentation copy reads the music service directly instead of through its
 alias, which its stand-in already offers.
+
+Landed (5r, displays as values): `NotchService` reads the displays as
+`NotchDisplayInfo` (`Services/Notch/NotchDisplayInfo.swift`) values
+through its environment, not as `NSScreen`s.
+
+- **A display** is what the island reads from a screen:
+  - its id, frames, safe area and backing scale;
+  - the camera housing's width;
+  - whether it is built in and whether it carries the menu bar.
+- **`Environment.displays`**, **`separateSpaces`** and
+  **`statusBarThickness`** answer the island's ten screen reads: choosing
+  its display, its geometry, the mirrors' displays, the menu reader's top,
+  and moves to a display. `.system` builds them from `NSScreen`, so
+  nothing reads differently.
+- **Why:** a test cannot make an `NSScreen`. It can now describe the
+  displays the island chooses between.
+- None of the generated copies read a screen, so they are unchanged.
+
+Landed (5s, the island's parts and notifications): `NotchService` builds
+its own parts from its environment.
+
+- **`Environment.Parts`** holds the environments of its parts:
+  - the movement watches and the screen-edge clicks;
+  - the services the island listens to, and the volume output;
+  - the menu reader;
+  - the pointer follower, the screen refresh and full-screen visibility;
+  - the file drop.
+
+  `.system` gives each the system's, as before.
+- **Notifications:** where the island hears from the app, the workspace and
+  the session is in its environment too: the three notification centers,
+  and the session as the system reports it now. Its full-screen
+  notification is posted there. `.system` passes the default, workspace and
+  distributed centers. A test's island then hears only what the test posts.
+- None of the generated copies build a part, so they are unchanged.
+- **What is left before a test builds an island:**
+  - `appShell()`, for the popover, settings and update preview;
+  - the modal window check;
+  - the mirror windows on other displays;
+  - the remaining preference readers in the geometry, such as the camera
+    fit.
+
+Landed (5t, the last preference reads and the app around the island):
+
+- **Preferences:** the island's other 31 reads go through the preferences it
+  was built with, using their `in:` forms. These cover the activities' and
+  modules' switches, the agents' readout, the timer's saved mode, the
+  quick-access layout and the camera, capsule and silhouette fits.
+- **The app around it:** `NotchIslandServices` also answers:
+  - whether a modal window is up;
+  - whether a point is over the status item or the Accessibility Keyboard;
+  - closing the menu panel's popover;
+  - opening settings and the update preview.
+
+  `SystemNotchIslandServices` asks the app shell, as the island did.
+- The generator maps them back for its copies, which stay as they were.
+- **Left:** the mirror windows still build their own `NotchWindowHost`;
+  they appear only with a copy on every display.
+
+Landed (5u, the keyboard and the open island's monitors): the last two
+things a test could not stand in for.
+
+- **The keyboard:** the island asks its window for it through
+  `NotchIslandHost`: `hasKeyboard`, `takeKeyboard()` and
+  `releaseKeyboard()`. `NotchWindowHost` answers from its panel, as the
+  island did. A test process cannot make a real window key, so a test's
+  host decides.
+- **The open island's monitors:** the click in another app that closes it,
+  and this app's clicks and keys that it takes, come from
+  `Environment.Parts.openEvents`, a `NotchOpenEvents`
+  (`Services/Notch/NotchOpenEvents.swift`). `.system` installs the same
+  `NSEvent` monitors. A test's island hands its handlers to the test, which
+  can then press Escape as the island's own key.
+- The generator maps the keyboard calls back for its copies, which stay as
+  they were.
+
+Landed (5v, the copies' windows and the battery):
+
+- **Copies:** the island builds each copy's window on another display
+  through `Environment.makeMirror`, as it builds its own through
+  `makeHost`. `NotchMirrors` keeps its host type; the island's copies hold
+  an `AnyNotchMirrorHost` around whatever was built. `.system` builds the
+  same `NotchWindowHost`.
+- **Full screen:** which displays show a full-screen Space comes from
+  `Environment.Parts.fullscreenDisplays`. `.system` reads the Spaces as
+  the copies did.
+- **The battery:** whether the Mac has its own comes from
+  `Environment.hasBattery`. `.system` asks `PowerSampler`.
+- A test's island can now show copies on other displays and rest on a Mac
+  without a battery. The generator maps the battery back for its copies,
+  which stay as they were.
+
+Landed (5w, the window's mouse policy): `NotchWindowHost` keeps who takes
+the mouse in a `NotchWindowInputPolicy` (`Services/Notch/NotchWindowInputPolicy.swift`).
+
+- The island asks to ignore the mouse or take it. Mission Control and a
+  settling hide each hold the window click-through for a while, and the
+  island's latest ask is kept for when they end.
+- The host's five flags for this (concealed, the ask kept through Mission
+  Control, the hide, the ask kept through it, restoring) are the policy's,
+  and its four steps (asking, presenting, concealing, restoring) return
+  what the panel does. Nothing reads differently.
+- **Why:** the capture-controls checks compiled the host's restore and
+  mouse methods to test this. They now drive the policy, through a test
+  host that applies it as the real one does.
 
 ## Step 6: typed preferences and explicit concurrency (in progress)
 

@@ -2,411 +2,269 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import Foundation
 import Combine
+import Foundation
+import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The production refresh runs against a window double, without showing UI or
-/// starting the island's hardware consumers. Mode changes model AppStorage:
-/// they alter computed geometry without publishing a service property.
+/// The module's island (`NotchIslandFixture`) presents through a recording
+/// window host, without showing UI or starting the island's hardware
+/// consumers. Mode changes model AppStorage: they alter computed geometry
+/// without publishing a service property.
 enum NotchPresentationRefreshContract {
-    typealias DispatchQueue = NotchScreenRefreshContract.DispatchQueue
-    enum NSEvent {
-        static var mouseLocation = CGPoint.zero
-        static var monitorRemovals = 0
-        static func removeMonitor(_ token: Any) { monitorRemovals += 1 }
+    static var defaults: UserDefaults!
+    private static var islands: [NotchIslandFixture] = []
+
+    /// A 13-inch display with a camera housing, or the same without one.
+    static func display(physical: Bool = true) -> NotchDisplayInfo {
+        NotchDisplayInfo(id: NotchIslandFixture.display.id, frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+                         visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 868),
+                         safeAreaTop: physical ? 32 : 0, cameraWidth: physical ? 210 : 0,
+                         backingScale: 2, isBuiltIn: physical, hasMenuBar: true)
     }
-    enum NSWorkspace {
-        static var shared = Accessibility()
-        struct Accessibility { var accessibilityDisplayShouldReduceMotion = false }
+
+    /// A point on the island, just below the top edge of the display.
+    static let onIsland = CGPoint(x: 720, y: 899)
+    static let away = CGPoint(x: 720, y: 450)
+
+    /// A started island over this suite's preferences, whose menus leave
+    /// `room` beside the camera; nil leaves them unmeasured.
+    static func island(physical: Bool = true, room: CGFloat? = 100,
+                       before: (NotchIslandFixture) -> Void = { _ in }) -> NotchIslandFixture {
+        let fixture = NotchIslandFixture(defaults: defaults)
+        fixture.displays = [display(physical: physical)]
+        fixture.pointer = away
+        fixture.menusReadable = room != nil
+        fixture.menuRoom = room
+        before(fixture)
+        fixture.start()
+        islands.append(fixture)
+        return fixture
     }
-    enum NotchPanel { static let normalLevel = 1, fullscreenLevel = 0 }
-    final class CaptureOptions: ObservableObject {
-        enum Tool { case screenshot, text }
-        @Published var selectedTool: Tool = .screenshot
-        var hasFocusedControl = false
-        var onSelectionProgressChange: ((Bool) -> Void)?
-        var onCaptureControlsSurfaceChange: ((CGRect, CGFloat) -> Void)?
+
+    static func playback(_ title: String, playing: Bool = true) -> NotchPlayback {
+        NotchPlayback(track: RadialNowPlayingSnapshot(title: title, artist: "Artist", album: nil, artworkData: nil,
+                                                      appBundleIdentifier: "org.example.player", appPID: 42),
+                      isPlaying: playing, elapsed: 0, duration: 200, rate: 1, sampledAt: Date(), canSeek: false)
     }
-    enum UserDefaults {
-        static var standard = Preferences()
-        struct Preferences {
-            var hides = false
-            var outline = false
-            var coversMenus = true
-            func bool(forKey key: String) -> Bool {
-                switch key {
-                case DefaultsKey.notchHideUntilHover: return hides
-                case DefaultsKey.notchOutlineEnabled: return outline
-                default: return true
-                }
-            }
-        }
+
+    /// A timer counting down in the island's services.
+    static func runTimer(_ fixture: NotchIslandFixture) {
+        fixture.services.timerSession = NotchTimerSession(anchor: fixture.services.timerNow + 300)
     }
-    enum NotchContentTransition { case none, reveal, depart, replace }
-    struct NotchPlayback { let track: Int }
-    struct NotchArtworkTint { let value: Int }
-    final class NotchMusicService {
-        static let shared = NotchMusicService()
-        var playback: NotchPlayback?
-        var artwork: NSImage?
-        var artworkTint: NotchArtworkTint?
-    }
-    struct NotchCompactMusicSnapshot {
-        let playback: NotchPlayback
-        let artwork: NSImage?
-        let tint: NotchArtworkTint?
-        var track: Int { playback.track }
-        init(track: Int) { playback = NotchPlayback(track: track); artwork = nil; tint = nil }
-        init(playback: NotchPlayback, artwork: NSImage?, tint: NotchArtworkTint?, geometry: NotchGeometry) {
-            self.playback = playback; self.artwork = artwork; self.tint = tint
-        }
-    }
-    struct NotchQuickAccessConfiguration {
-        let buttons: [Int] = []
-        static func current() -> Self { Self() }
-    }
-    enum FeatureStrings {
-        static func notch(_ language: Int) -> (collapse: String, open: String) { ("Close", "Open") }
-    }
-    enum L10n {
-        static let shared = SelfValue()
-        struct SelfValue { let language = 0 }
-    }
-    final class Panel {
-        var isVisible = true
-        var alphaValue: CGFloat = 1
-        var ignoresMouseEvents = false, acceptsKeyFocus = true, acceptsMouseMovedEvents = false
-        var attachedSheet: Bool?
-        var level = 1, keyRequests = 0
-        func makeKey() { keyRequests += 1 }
-        func resignKey() {}
-        func orderOut(_ sender: Any?) { isVisible = false }
-        func orderFrontRegardless() { isVisible = true }
-    }
-    final class Host {
-        let panel = Panel()
-        var departsContent = false
-        func finishDeparture() { departsContent = false }
-        var concealedForMissionControl = false
-        var isConcealedForMissionControl: Bool { concealedForMissionControl }
-        var missionControlDidRestore: (() -> Void)?
-        var missionControlAlpha: CGFloat = 1
-        var missionControlMouseEvents = false
-        var desktopReadings = 0
-        var mouseEventsBeforeHide: Bool?
-        var hidesWhenSettled = false
-        var restoringFromMissionControl = false
-        var fadeCompletion: (() -> Void)?
-        func fadeMissionControl(to alpha: CGFloat, completion: (() -> Void)? = nil) {
-            panel.alphaValue = alpha
-            fadeCompletion = completion
-        }
-        func syncMissionControlMonitoring() {}
-        var hideAnimations: [Bool] = []
-        func hide(animated: Bool, transitionContent: NotchContentTransition = .none) {
-            hideAnimations.append(animated)
-            panel.orderOut(nil)
-        }
-        var targetSize: CGSize = .zero
-        var frame: CGRect = .zero
-        var animatingFrame: CGRect?
-        var activationRect = CGRect.zero
-        var activate: (() -> Void)?
-        func containsHover(_ point: CGPoint) -> Bool { !concealedForMissionControl && frame.contains(point) }
-        func contains(_ point: CGPoint) -> Bool { !concealedForMissionControl && (animatingFrame ?? frame).contains(point) }
-        var onPresent: ((CGSize) -> Void)?
-        var usesGlass = false
-        var revealFromHidden = false
-        var outlineEnabled = false
-        var outlineColor = NSColor.white
-        var transitions: [NotchContentTransition] = []
-        func setOutline(enabled: Bool, color: NSColor) {
-            outlineEnabled = enabled
-            outlineColor = color
-        }
-        func present(size: CGSize, geometry: NotchGeometry, animated: Bool,
-                     transitionContent: NotchContentTransition, quickAccess: NotchQuickAccessConfiguration?,
-                     revealFromHidden: Bool, hideWhenSettled: Bool, usesGlass: Bool) {
-            transitions.append(transitionContent)
-            departsContent = transitionContent == .depart
-            self.usesGlass = usesGlass
-            self.revealFromHidden = revealFromHidden
-            onPresent?(size)
-            targetSize = size
-            frame = geometry.frame(for: size)
-        }
-        func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void) {
-            activationRect = rect
-            self.activate = activate
-        }
-    }
-    class State: ObservableObject {
-        var activitySelection = NotchActivitySelection()
-        var compactActivities: [NotchCompactActivity] = []
-        func compactCompanions(of primary: NotchCompactActivity) -> [NotchCompactActivity] { [] }
-        var showsCompactActivityPicker = false
-        var hiddenInFullscreen = false
-        var fullscreenCompact: Bool { hiddenInFullscreen && !expanded && !peeking }
-        let objectWillChange = ObservableObjectPublisher()
-        var running = true, suspended = false
-        var mode = NotchTimerMode.timer
-        var session = NotchTimerSession()
-        var selected = NotchModule.timer
-        var captureID: UUID?
-        var captureActions: Bool?
-        var captureContent: Bool?
-        var captureContentHeight: CGFloat?
-        var captureFallback: (() -> Void)?
-        var captureClose: (() -> Void)?
-        var captureHover: ((Bool) -> Void)?
-        var captureClosesOnCollapse = false
-        var routesCaptures = true
-        var openedPages: [(module: NotchModule, takeFocus: Bool)] = []
-        func open(_ module: NotchModule, pinned: Bool, takeFocus: Bool, feedback: Bool) {
-            openedPages.append((module, takeFocus))
-        }
-        var pinned = false
-        var showingSections = false
-        var showingAppPanel = false
-        var selectedMetric: Bool?
-        var expanded = true
-        var peeking = false, dragPlaceholder = false, compactActivityIsVisible = false
-        var compactActivityOverride: NotchCompactActivity?
-        var compactActivity: NotchCompactActivity? {
-            get { compactActivityOverride ?? (compactActivityIsVisible ? .timer : nil) }
-            set { compactActivityOverride = newValue }
-        }
-        var compactMusicIsVisible: Bool { compactActivityIsVisible && compactActivity == .music }
-        var presentedMusic: NotchCompactMusicSnapshot?
-        var heldMusic: NotchCompactMusicSnapshot?
-        var departingMusic: NotchCompactMusicSnapshot?
-        var musicDepartureWork: DispatchWorkItem?
-        var noticeExpanded = false
-        var notice: Bool?
-        var captureControls: CaptureOptions?
-        var captureControlsCollapsed = false, captureSelectionInProgress = false
-        var inside = false, trackingMenu = false
-        var captureControlsWork: DispatchWorkItem?
-        var captureControlsSubscription: AnyCancellable?
-        var captureControlsCancel: (() -> Void)?
-        /// The module's own watch, through a monitor that `NSEvent` here removes.
-        lazy var captureControlsWatch = NotchMovementWatch(
-            environment: NotchMovementWatch.Environment(addMonitors: { _ in [1] },
-                                                        removeMonitor: { NSEvent.removeMonitor($0) }),
-            moved: {})
-        func installCaptureControlsClickThrough() { captureControlsWatch.start() }
-        func removeEventMonitors() {}
-        func syncVisibleConsumers() {}
-        var hoverWork: DispatchWorkItem?
-        var hoverState = NotchHoverState()
-        var windowHost: Host? = Host()
-        var panel: Panel? { windowHost?.panel }
-        var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900),
-                                     safeAreaTop: 32, cameraWidth: 210)
-        var headerTitleWidth: CGFloat = 0
-        var expandedGeometry: NotchGeometry { geometry }
-        var compactActivityGeometry: NotchGeometry { geometry.compactTimerGeometry(showsDownloads: false) }
-        var surfaceSize: CGSize {
-            if fullscreenCompact { return geometry.restingSize(showsContent: false) }
-            if captureControls != nil { return captureControlsCollapsed ? geometry.collapsed : geometry.peek }
-            if !expanded, compactActivityIsVisible { return compactActivityGeometry.compactActivitySize }
-            if !expanded { return geometry.collapsed }
-            return expandedGeometry.expandedSize(module: selected, capturePreviewHeight: captureContent == nil ? nil : captureContentHeight,
-                                         timerHasSession: session.hasSession,
-                                         timerMode: session.hasSession ? session.mode : mode)
-        }
-        func syncHiddenHoverMonitoring() {}
-        func schedulePointerFollow() {}
-        func syncMirrors() {}
-        func finishMusicDeparture() {
-            musicDepartureWork?.cancel(); musicDepartureWork = nil
-            departingMusic = nil
-            windowHost?.finishDeparture()
-        }
-        func removeHiddenHoverMonitors() {}
-        func toggle() { expanded.toggle() }
-        func collapse() { expanded = false }
-        var edgeClicksEnabled = false
-        func syncScreenEdgeClicks() { edgeClicksEnabled = true }
-        func removeScreenEdgeClickMonitors() { edgeClicksEnabled = false }
+
+    static func captureOptions() -> ScreenCaptureSelectionOptions {
+        ScreenCaptureSelectionOptions(availableTools: [.screenshot], selectedTool: .screenshot, showsCaptureMenu: false)
     }
 
     static func run(_ suite: TestSuite) {
-        compactMusicDepartureChecks(suite)
-        UserDefaults.standard.hides = false
-        UserDefaults.standard.outline = false
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-presentation-refresh"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        Self.defaults = defaults
         defer {
-            UserDefaults.standard.hides = false
-            UserDefaults.standard.outline = false
+            islands.forEach { $0.island.stop() }
+            islands.removeAll()
+            Self.defaults = nil
+            defaults.removePersistentDomain(forName: domain)
         }
-        let outlined = Service()
-        outlined.expanded = false
-        UserDefaults.standard.outline = true
-        outlined.refreshPresentation(animated: false)
-        suite.expect(outlined.windowHost?.outlineEnabled == true && outlined.windowHost?.outlineColor == .white,
+        for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
+        for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
+        defaults.set(true, forKey: DefaultsKey.notchEnabled)
+        defaults.set(NotchSize.spacious.rawValue, forKey: DefaultsKey.notchSize)
+        // The cutout these checks measure, rather than the floating capsule.
+        defaults.set(NotchSilhouette.notch.rawValue, forKey: DefaultsKey.notchSilhouette)
+        defaults.set(NotchTimerMode.timer.rawValue, forKey: DefaultsKey.notchTimerMode)
+        for event in [NotchEvent.capture, .volume, .systemNotification] { defaults.set(true, forKey: event.preferenceKey) }
+        for key in [DefaultsKey.notchNotificationsEnabled, DefaultsKey.notchShelf, DefaultsKey.notchDragReveal] {
+            defaults.set(true, forKey: key)
+        }
+        defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
+        defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+        defaults.set(false, forKey: DefaultsKey.notchCoversMenus)
+        compactMusicDepartureChecks(suite)
+
+        let outlined = island()
+        defaults.set(true, forKey: DefaultsKey.notchOutlineEnabled)
+        outlined.island.refreshPresentation(animated: false)
+        suite.expect(outlined.host?.outlineEnabled == true && outlined.host?.outlineColor == .white,
                      "the optional outline reaches the resting island")
-        outlined.compactActivityIsVisible = true
-        outlined.refreshPresentation(animated: false)
-        suite.expect(outlined.windowHost?.outlineColor == .systemOrange,
+        runTimer(outlined)
+        outlined.island.refreshPresentation(animated: false)
+        suite.expect(outlined.host?.outlineColor == .systemOrange,
                      "the compact timer tints the optional outline orange")
-        UserDefaults.standard.outline = false
-        outlined.refreshPresentation(animated: false)
-        suite.expect(outlined.windowHost?.outlineEnabled == false,
+        defaults.set(false, forKey: DefaultsKey.notchOutlineEnabled)
+        outlined.island.refreshPresentation(animated: false)
+        suite.expect(outlined.host?.outlineEnabled == false,
                      "turning the outline off updates the existing island")
-        let toolbar = Service()
-        toolbar.geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900),
-                                          safeAreaTop: 32, cameraWidth: 210, layout: .spacious)
-        suite.expect(toolbar.expandedGeometry.headerCameraGap == 210,
+
+        let toolbar = island()
+        suite.expect(toolbar.island.expandedGeometry.headerCameraGap == 210,
                      "a standard wide page puts its header beside the camera")
-        toolbar.selected = .captures
-        toolbar.captureActions = true
-        toolbar.captureContent = true
-        toolbar.captureContentHeight = 150
-        toolbar.refreshPresentation(animated: false)
-        suite.expect(toolbar.expandedGeometry.headerCameraGap == 0
-                     && toolbar.expandedGeometry.headerTopInset == 42
-                     && toolbar.windowHost?.activationRect.height == 42,
+        let toolbarShown = toolbar.island.presentCapture(
+            id: UUID(), content: AnyView(EmptyView()), actions: AnyView(EmptyView()), height: 150, takeFocus: false,
+            closeOnCollapse: false, fallback: {}, close: {}, hover: { _ in })
+        suite.expect(toolbarShown && toolbar.island.expandedGeometry.headerCameraGap == 0
+                     && toolbar.island.expandedGeometry.headerTopInset == 42
+                     && toolbar.host?.activationRect.height == 42,
                      "a capture toolbar keeps a full row below the camera without losing actions to the cutout")
-        toolbar.showingSections = true
-        suite.expect(toolbar.expandedGeometry.headerCameraGap == 210,
+        toolbar.island.toggleSections()
+        suite.expect(toolbar.island.expandedGeometry.headerCameraGap == 210,
                      "leaving capture editing restores the compact header layout")
-        let titled = Service()
+        var titled = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 32, cameraWidth: 210)
         titled.headerTitleWidth = 108
-        suite.expect(titled.expandedGeometry.headerCameraGap == 0 && titled.expandedGeometry.headerTopInset == 42,
+        suite.expect(titled.headerCameraGap == 0 && titled.headerTopInset == 42,
                      "a page title wider than the camera's side takes the full row below it")
         titled.headerTitleWidth = 107
-        suite.expect(titled.expandedGeometry.headerCameraGap == 210 && titled.expandedGeometry.headerTopInset == 0,
+        suite.expect(titled.headerCameraGap == 210 && titled.headerTopInset == 0,
                      "a page title that fits keeps its place beside the camera")
         captureControlsChecks(suite)
-        let picker = Service()
-        picker.expanded = false
-        picker.compactActivityIsVisible = true
-        picker.showsCompactActivityPicker = true
-        picker.compactActivities = [.timer, .music]
-        picker.activitySelection.select(.music, available: picker.compactActivities)
-        picker.refreshPresentation(animated: false)
-        suite.expect(picker.windowHost!.activationRect.maxY
-                     <= picker.compactActivityGeometry.compactActivitySize.height,
+
+        // A timer and a song compete, and the pointer rests on the strip.
+        defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
+        defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
+        let picker = island {
+            runTimer($0)
+            $0.services.playback = playback("Song")
+        }
+        picker.move(to: onIsland)
+        picker.island.selectCompactActivity(.music)
+        picker.island.refreshPresentation(animated: false)
+        suite.expect(picker.island.showsCompactActivityPicker && picker.island.compactActivity == .music
+                     && picker.host!.activationRect.maxY <= picker.island.compactActivityGeometry.compactActivitySize.height,
                      "the native open button never covers the activity choices below the strip")
         // A song changing leaves the timer alone on the island for a moment.
-        picker.compactActivities = [.timer]
-        picker.refreshPresentation(animated: false)
-        suite.expect(picker.activitySelection.preferred == .music
-                     && picker.activitySelection.current(available: picker.compactActivities) == .timer,
+        picker.services.playback = nil
+        picker.island.refreshPresentation(animated: false)
+        suite.expect(picker.island.compactActivity == .timer,
                      "production refresh keeps a chosen activity through a gap and shows what remains")
-        picker.compactActivities = [.timer, .music]
-        picker.refreshPresentation(animated: false)
-        suite.expect(picker.activitySelection.current(available: picker.compactActivities) == .music,
-                     "the chosen activity comes back instead of the timer")
-        picker.compactActivities = []
-        picker.refreshPresentation(animated: false)
-        suite.expect(picker.activitySelection.preferred == nil,
+        picker.services.playback = playback("Song")
+        picker.island.refreshPresentation(animated: false)
+        suite.expect(picker.island.compactActivity == .music, "the chosen activity comes back instead of the timer")
+        picker.services.playback = nil
+        picker.services.timerSession = NotchTimerSession()
+        picker.island.refreshPresentation(animated: false)
+        runTimer(picker)
+        picker.services.playback = playback("Song")
+        suite.expect(picker.island.compactActivity == .timer,
                      "production refresh forgets the choice once nothing is left to show")
-        let fullscreen = Service()
-        fullscreen.pinned = true
-        fullscreen.expanded = false
-        fullscreen.compactActivityIsVisible = true
-        fullscreen.hiddenInFullscreen = true
-        fullscreen.refreshPresentation()
-        suite.expect(fullscreen.panel?.isVisible == true && !fullscreen.acceptsSystemFeedback
-                     && fullscreen.acceptsUserInteraction && fullscreen.panel?.level == NotchPanel.normalLevel
-                     && fullscreen.edgeClicksEnabled && fullscreen.windowHost?.targetSize == fullscreen.geometry.restingSize(showsContent: false)
-                     && fullscreen.windowHost?.activationRect.size == fullscreen.geometry.restingSize(showsContent: false),
+        defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
+
+        defaults.set(true, forKey: DefaultsKey.notchHideInFullscreen)
+        let fullscreen = island(before: { runTimer($0) })
+        fullscreen.fullscreen = [NotchIslandFixture.display.id]
+        fullscreen.island.syncWithPreferences()
+        fullscreen.island.pinned = true
+        fullscreen.island.refreshPresentation()
+        let cutout = fullscreen.island.geometry.restingSize(showsContent: false)
+        suite.expect(fullscreen.host?.panel.isVisible == true && !fullscreen.island.acceptsSystemFeedback
+                     && fullscreen.island.acceptsUserInteraction && fullscreen.host?.panel.level == NotchPanel.normalLevel
+                     && fullscreen.edgeMonitors > 0 && fullscreen.host?.targetSize == cutout
+                     && fullscreen.host?.activationRect.size == cutout,
                      "fullscreen keeps a black, clickable cutout without automatic feedback or activity wings")
-        fullscreen.windowHost?.activate?()
-        fullscreen.refreshPresentation()
-        suite.expect(fullscreen.expanded && fullscreen.panel?.isVisible == true
-                     && fullscreen.acceptsUserInteraction && !fullscreen.acceptsSystemFeedback
-                     && fullscreen.windowHost?.targetSize == fullscreen.surfaceSize,
+        fullscreen.host?.activate?()
+        fullscreen.island.refreshPresentation()
+        suite.expect(fullscreen.island.expanded && fullscreen.host?.panel.isVisible == true
+                     && fullscreen.island.acceptsUserInteraction && !fullscreen.island.acceptsSystemFeedback
+                     && fullscreen.host?.targetSize == fullscreen.island.surfaceSize,
                      "clicking the fullscreen cutout opens the island")
-        fullscreen.collapse()
-        fullscreen.refreshPresentation()
-        suite.expect(fullscreen.panel?.isVisible == true && fullscreen.windowHost?.targetSize == fullscreen.geometry.restingSize(showsContent: false),
+        fullscreen.island.collapse()
+        fullscreen.island.refreshPresentation()
+        suite.expect(fullscreen.host?.panel.isVisible == true && fullscreen.host?.targetSize == cutout,
                      "closing in fullscreen returns to the clickable black cutout")
-        fullscreen.hiddenInFullscreen = false
-        fullscreen.refreshPresentation()
-        suite.expect(fullscreen.panel?.isVisible == true && fullscreen.acceptsSystemFeedback,
+        fullscreen.fullscreen = []
+        fullscreen.island.syncWithPreferences()
+        suite.expect(fullscreen.host?.panel.isVisible == true && fullscreen.island.acceptsSystemFeedback,
                      "leaving fullscreen restores ordinary content and feedback routing")
-        let fullscreenSimulated = Service()
-        fullscreenSimulated.expanded = false
-        fullscreenSimulated.geometry = NotchGeometry(screen: fullscreenSimulated.geometry.screen, safeAreaTop: 0, cameraWidth: 0,
-                                                     compactSideRoom: 64)
-        fullscreenSimulated.hiddenInFullscreen = true
-        UserDefaults.standard.coversMenus = false
-        fullscreenSimulated.refreshPresentation(animated: false)
-        suite.expect(fullscreenSimulated.panel?.isVisible == false && !fullscreenSimulated.edgeClicksEnabled
-                     && fullscreenSimulated.acceptsUserInteraction,
+
+        let simulatedFullscreen = island(physical: false, room: 64)
+        simulatedFullscreen.fullscreen = [NotchIslandFixture.display.id]
+        simulatedFullscreen.island.syncWithPreferences()
+        suite.expect(simulatedFullscreen.host?.panel.isVisible == false && simulatedFullscreen.edgeMonitors == 0
+                     && simulatedFullscreen.island.acceptsUserInteraction,
                      "a simulated cutout with no camera to cover stays out of full-screen content")
-        fullscreenSimulated.expanded = true
-        fullscreenSimulated.refreshPresentation(animated: false)
-        suite.expect(fullscreenSimulated.panel?.isVisible == true
-                     && fullscreenSimulated.panel?.level == NotchPanel.fullscreenLevel,
+        simulatedFullscreen.island.open()
+        suite.expect(simulatedFullscreen.host?.panel.isVisible == true
+                     && simulatedFullscreen.host?.panel.level == NotchPanel.fullscreenLevel,
                      "a simulated island opened by a shortcut yields to the menu bar in fullscreen")
-        fullscreenSimulated.collapse()
-        fullscreenSimulated.refreshPresentation(animated: false)
-        suite.expect(fullscreenSimulated.panel?.isVisible == false,
+        simulatedFullscreen.island.collapse()
+        suite.expect(simulatedFullscreen.host?.panel.isVisible == false,
                      "closing a simulated island in fullscreen hides it again")
-        fullscreenSimulated.expanded = true
-        fullscreenSimulated.hiddenInFullscreen = false
-        fullscreenSimulated.refreshPresentation(animated: false)
-        suite.expect(fullscreenSimulated.panel?.level == NotchPanel.normalLevel,
+        simulatedFullscreen.island.open()
+        simulatedFullscreen.fullscreen = []
+        simulatedFullscreen.island.syncWithPreferences()
+        suite.expect(simulatedFullscreen.host?.panel.level == NotchPanel.normalLevel,
                      "leaving fullscreen restores the usual panel level")
-        UserDefaults.standard.coversMenus = true
-        fullscreenSimulated.hiddenInFullscreen = true
-        fullscreenSimulated.refreshPresentation(animated: false)
-        suite.expect(fullscreenSimulated.panel?.level == NotchPanel.normalLevel,
+        defaults.set(true, forKey: DefaultsKey.notchCoversMenus)
+        simulatedFullscreen.fullscreen = [NotchIslandFixture.display.id]
+        simulatedFullscreen.island.syncWithPreferences()
+        simulatedFullscreen.island.open()
+        suite.expect(simulatedFullscreen.host?.panel.level == NotchPanel.normalLevel,
                      "the explicit cover-menus preference keeps the usual panel level")
-        let missionControl = Service()
-        missionControl.windowHost?.concealedForMissionControl = true
-        suite.expect(!missionControl.acceptsSystemFeedback && !missionControl.acceptsUserInteraction
-                     && !missionControl.showsSystemFeedback,
+        defaults.set(false, forKey: DefaultsKey.notchCoversMenus)
+        defaults.set(false, forKey: DefaultsKey.notchHideInFullscreen)
+
+        let missionControl = island()
+        missionControl.host?.concealForMissionControl()
+        suite.expect(!missionControl.island.acceptsSystemFeedback && !missionControl.island.acceptsUserInteraction
+                     && !missionControl.island.showsSystemFeedback,
                      "a concealed island leaves system feedback available to its other presenters")
-        missionControl.windowHost?.concealedForMissionControl = false
-        suite.expect(missionControl.acceptsSystemFeedback && missionControl.showsSystemFeedback,
+        missionControl.host?.restoreFromMissionControl()
+        suite.expect(missionControl.island.acceptsSystemFeedback && missionControl.island.showsSystemFeedback,
                      "leaving Mission Control restores island feedback routing")
 
-        let material = Service()
-        material.expanded = false
-        material.geometry = NotchGeometry(screen: material.geometry.screen, safeAreaTop: 38,
-                                          cameraWidth: 210, compactSideRoom: 0)
-        material.refreshPresentation(animated: false)
-        suite.expect(!material.usesGlassSurface && material.windowHost?.usesGlass == false,
+        let material = island(room: 0)
+        material.island.refreshPresentation(animated: false)
+        suite.expect(!material.island.usesGlassSurface && material.host?.usesGlass == false,
                      "compact presentation remains opaque regardless of camera or footer height")
-        material.peeking = true
-        material.refreshPresentation(animated: false)
-        suite.expect(material.windowHost?.usesGlass == true, "peek requests the glass backdrop")
-        material.peeking = false
-        material.expanded = true
-        material.refreshPresentation(animated: false)
-        suite.expect(material.windowHost?.usesGlass == true, "expanded content requests the glass backdrop")
-        material.expanded = false
-        material.noticeExpanded = true
-        material.refreshPresentation(animated: false)
-        suite.expect(material.windowHost?.usesGlass == true, "expanded notification requests the glass backdrop")
+        defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
+        defaults.set(false, forKey: DefaultsKey.notchHoverExpands)
+        material.move(to: onIsland)
+        material.advance(2)
+        suite.expect(material.island.peeking && material.host?.usesGlass == true, "peek requests the glass backdrop")
+        material.island.open()
+        suite.expect(material.host?.usesGlass == true, "expanded content requests the glass backdrop")
+        material.island.collapse()
+        // A banner that arrives while the pointer is away, then held by it.
+        material.move(to: away)
+        let banner = NotchNotice(event: .systemNotification, title: "Alex", detail: "Hello", symbol: "bell.fill",
+                                 notification: NotchNotificationContent(app: "Chat", title: "Alex", subtitle: "", body: "Hello"),
+                                 notificationID: UUID())
+        let bannerShown = material.island.show(banner)
+        material.move(to: onIsland)
+        material.advance(2)
+        suite.expect(bannerShown && material.island.noticeExpanded && material.host?.usesGlass == true,
+                     "expanded notification requests the glass backdrop")
+        defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
 
-        let closing = Service()
-        closing.refreshPresentation(animated: false)
-        let open = closing.windowHost?.frame ?? .zero
-        for (point, stillOver) in [(CGPoint(x: open.midX, y: open.minY + 4), false), (CGPoint(x: open.midX, y: open.maxY - 1), true)] {
-            closing.expanded = true
-            closing.refreshPresentation(animated: false)
-            NSEvent.mouseLocation = point
-            closing.hoverState.close(pointerInside: closing.windowHost?.containsHover(point) == true)
-            closing.expanded = false
-            closing.refreshPresentation()
-            suite.expect(closing.hoverState.suppressed == stillOver, stillOver
+        let closing = island()
+        closing.island.open()
+        let open = closing.host?.frame ?? .zero
+        let closedFrame = closing.island.geometry.frame(for: closing.island.geometry.collapsed)
+        for (point, stillOver) in [(CGPoint(x: open.midX, y: open.minY + 4), false),
+                                   (CGPoint(x: closedFrame.midX, y: closedFrame.maxY - 1), true)] {
+            closing.island.open()
+            closing.pointer = point
+            closing.island.collapse()
+            closing.island.refreshPresentation()
+            // A pointer that has not moved: the window reports it over the
+            // closed island, or it arrives there afterwards.
+            if stillOver { closing.island.hover(true) } else { closing.move(to: onIsland) }
+            closing.advance(2)
+            suite.expect(closing.island.expanded == !stillOver, stillOver
                 ? "a pointer still over the closed island keeps it from reopening until it leaves"
                 : "closing away from a pointer that has not moved lets its next approach open the island")
+            closing.move(to: away)
         }
-        NSEvent.mouseLocation = .zero
+        defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
 
-        let service = Service()
+        let fixture = island()
+        let service = fixture.island
+        service.open(.timer)
         var contentSize = service.surfaceSize
-        service.windowHost?.targetSize = contentSize
         var invalidations = 0
         let subscription = service.objectWillChange.sink {
             invalidations += 1
@@ -414,7 +272,7 @@ enum NotchPresentationRefreshContract {
         }
         defer { subscription.cancel() }
         var mismatches = 0
-        service.windowHost?.onPresent = { size in
+        fixture.host?.onPresent = { size in
             if contentSize != size { mismatches += 1 }
         }
         // The timer and the stopwatch share one height, so only a change
@@ -422,7 +280,7 @@ enum NotchPresentationRefreshContract {
         var resizes = 0
         for mode in [NotchTimerMode.pomodoro, .timer, .stopwatch, .pomodoro, .stopwatch, .timer] {
             let before = service.surfaceSize
-            service.mode = mode
+            defaults.set(mode.rawValue, forKey: DefaultsKey.notchTimerMode)
             service.refreshPresentation(animated: false)
             if service.surfaceSize != before { resizes += 1 }
             suite.expect(contentSize == service.surfaceSize,
@@ -434,232 +292,234 @@ enum NotchPresentationRefreshContract {
         for _ in 0..<1000 { service.refreshPresentation() }
         suite.expect(invalidations == resizes, "unchanged presentations do not repeatedly invalidate SwiftUI layout")
 
-        service.session.start(mode: .timer, minutes: 15, now: 0)
+        var session = NotchTimerSession()
+        session.start(mode: .timer, minutes: 15, now: fixture.services.timerNow)
+        fixture.services.timerSession = session
         service.refreshPresentation()
         let activeSize = contentSize
         let beforeModeChange = invalidations
-        service.mode = .pomodoro
+        defaults.set(NotchTimerMode.pomodoro.rawValue, forKey: DefaultsKey.notchTimerMode)
         service.refreshPresentation()
         suite.expect(contentSize == activeSize && invalidations == beforeModeChange,
                "changing the saved setup mode preserves an active timer's layout")
-        service.session.cancel()
+        fixture.services.timerSession = NotchTimerSession()
         service.refreshPresentation()
         suite.expect(contentSize == service.surfaceSize && contentSize.height > activeSize.height && mismatches == 0,
                "canceling returns to the newly selected setup with synchronized content and window sizes")
+        defaults.set(NotchTimerMode.timer.rawValue, forKey: DefaultsKey.notchTimerMode)
 
         let captureID = UUID()
-        service.selected = .captures
-        service.captureID = captureID
-        service.captureContent = true
-        service.captureContentHeight = 210
-        service.refreshPresentation()
+        _ = service.presentCapture(id: captureID, content: AnyView(EmptyView()), height: 210, takeFocus: false,
+                                   closeOnCollapse: false, fallback: {}, close: {}, hover: { _ in })
         let previewSize = contentSize
         service.updateCaptureHeight(id: captureID, height: 268)
-        suite.expect(contentSize.height == previewSize.height + 58 && service.windowHost?.targetSize == contentSize,
+        suite.expect(contentSize.height == previewSize.height + 58 && fixture.host?.targetSize == contentSize,
                "an embedded shared link expands both the capture content and its native window")
         service.updateCaptureHeight(id: captureID, height: 210)
         suite.expect(contentSize == previewSize, "removing a shared link restores the original preview height")
         service.updateCaptureHeight(id: UUID(), height: 268)
         suite.expect(contentSize == previewSize, "a replaced capture cannot resize its successor")
-        service.selected = .timer
-        service.refreshPresentation()
+        service.open(.timer)
         let timerSize = contentSize
         service.updateCaptureHeight(id: captureID, height: 268)
         suite.expect(contentSize == timerSize, "sharing completion in a hidden preview does not resize the visible timer")
-        service.selected = .captures
-        service.refreshPresentation()
+        service.open(.captures)
         service.pinned = true
         service.removeCapture(id: captureID)
-        suite.expect(service.expanded && service.captureContentHeight == nil && service.captureContent == nil
-               && contentSize == service.geometry.expandedSize(module: .captures)
-               && service.windowHost?.targetSize == contentSize,
+        suite.expect(service.expanded && service.captureContent == nil && contentSize == service.expandedSize
+               && fixture.host?.targetSize == contentSize,
                "dismissing a pinned capture clears the preview size and restores the full recent-captures area")
 
-        let simulated = Service()
-        simulated.expanded = false
-        simulated.panel?.isVisible = false
-        simulated.geometry = NotchGeometry(screen: CGRect(x: -1440, y: 900, width: 1440, height: 900),
-                                          safeAreaTop: 0, cameraWidth: 0)
-        simulated.refreshPresentation(animated: false)
-        suite.expect(simulated.panel?.isVisible == false && !simulated.edgeClicksEnabled,
+        let simulated = island(physical: false, room: nil)
+        suite.expect(simulated.host?.panel.isVisible == false && simulated.edgeMonitors == 0,
                "an unmeasured simulated cutout does not cover a menu or receive screen-edge clicks")
-        simulated.applyMenuSpace(0)
-        suite.expect(simulated.panel?.isVisible == true && simulated.edgeClicksEnabled
-               && simulated.windowHost?.frame == simulated.geometry.frame(for: simulated.surfaceSize),
+        simulated.menusReadable = true
+        simulated.menuRoom = 0
+        simulated.island.syncWithPreferences()
+        suite.expect(simulated.host?.panel.isVisible == true && simulated.edgeMonitors > 0
+               && simulated.host?.frame == simulated.island.geometry.frame(for: simulated.island.surfaceSize),
                "a confirmed free center can show the simulated cutout without side room")
-        let bareSize = simulated.surfaceSize
-        let occupied = [CGRect(x: simulated.geometry.screen.midX - 15, y: simulated.geometry.screen.maxY - 24,
-                               width: 90, height: 24)]
-        let blocked = NotchMenuBarLayout.sideRoom(screen: simulated.geometry.screen, cameraWidth: simulated.geometry.cameraWidth,
-                                                 barHeight: simulated.geometry.menuBarHeight, occupied: occupied)
+        let bareSize = simulated.island.surfaceSize
+        let geometry = simulated.island.geometry
+        let occupied = [CGRect(x: geometry.screen.midX - 15, y: geometry.screen.maxY - 24, width: 90, height: 24)]
+        let blocked = NotchMenuBarLayout.sideRoom(screen: geometry.screen, cameraWidth: geometry.cameraWidth,
+                                                 barHeight: geometry.menuBarHeight, occupied: occupied)
         suite.expect(blocked == nil, "a real center collision is distinct from zero-width free wings")
-        simulated.applyMenuSpace(blocked)
-        suite.expect(simulated.surfaceSize == bareSize && simulated.panel?.isVisible == false && !simulated.edgeClicksEnabled,
+        simulated.menuRoom = blocked
+        simulated.measureMenus()
+        suite.expect(simulated.island.surfaceSize == bareSize && simulated.host?.panel.isVisible == false
+               && simulated.edgeMonitors == 0,
                "a center collision hides even an unchanged bare simulated cutout")
         for active in [false, true] {
-            simulated.compactActivityIsVisible = active
-            simulated.applyMenuSpace(64)
-            suite.expect(simulated.panel?.isVisible == true && simulated.edgeClicksEnabled,
+            if active { runTimer(simulated) }
+            simulated.menuRoom = 64
+            simulated.measureMenus()
+            suite.expect(simulated.host?.panel.isVisible == true && simulated.edgeMonitors > 0,
                    "free menu space restores idle and active simulated content")
-            simulated.applyMenuSpace(nil)
-            suite.expect(simulated.panel?.isVisible == false && !simulated.edgeClicksEnabled,
+            simulated.menuRoom = nil
+            simulated.measureMenus()
+            suite.expect(simulated.host?.panel.isVisible == false && simulated.edgeMonitors == 0,
                    "idle and active simulated content both release menus when clearance is lost")
-            simulated.refreshPresentation(animated: false)
-            suite.expect(simulated.panel?.isVisible == false,
+            simulated.island.refreshPresentation(animated: false)
+            suite.expect(simulated.host?.panel.isVisible == false,
                    "a later refresh cannot redisplay compact activity over an occupied center")
         }
-        simulated.expanded = true
-        simulated.refreshPresentation()
-        suite.expect(simulated.panel?.isVisible == true && simulated.windowHost?.frame.maxY == simulated.geometry.screen.maxY,
+        simulated.island.open()
+        suite.expect(simulated.host?.panel.isVisible == true
+               && simulated.host?.frame.maxY == simulated.island.geometry.screen.maxY,
                "explicitly opening tools remains available without a menu measurement")
-        suite.expect(simulated.windowHost?.revealFromHidden == false,
+        suite.expect(simulated.host?.revealFromHidden == false,
                "ordinary openings keep their existing presentation behavior")
-        simulated.expanded = false
-        simulated.refreshPresentation()
-        suite.expect(simulated.windowHost?.hideAnimations.last == true,
+        simulated.island.collapse()
+        suite.expect(simulated.host?.hideAnimations.last == true,
                "closing an expanded island without safe menu space animates its withdrawal")
-        suite.expect(simulated.panel?.isVisible == false,
+        suite.expect(simulated.host?.panel.isVisible == false,
                "closing tools withdraws their simulated cutout if the center is still unverified")
 
-        UserDefaults.standard.hides = true
         for isPhysical in [false, true] {
-            let hidden = Service()
-            if !isPhysical { hidden.geometry = simulated.geometry }
-            hidden.expanded = false
-            hidden.compactActivityIsVisible = true
-            hidden.notice = true
-            hidden.refreshPresentation()
-            suite.expect(hidden.panel?.isVisible == false && !hidden.edgeClicksEnabled && !hidden.showsSystemFeedback,
+            // An activity and a notice are showing before the island hides.
+            let hidden = island(physical: isPhysical, room: isPhysical ? 100 : 0, before: { runTimer($0) })
+            let noticeShown = hidden.island.show(NotchNotice(event: .volume, title: "Volume", detail: "50%",
+                                                             symbol: "speaker.wave.2.fill", level: 0.5))
+            defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
+            defaults.set(true, forKey: DefaultsKey.notchHideUntilHover)
+            hidden.island.syncWithPreferences()
+            hidden.island.refreshPresentation()
+            suite.expect(noticeShown && hidden.island.notice != nil && hidden.host?.panel.isVisible == false
+                   && hidden.edgeMonitors == 0 && !hidden.island.showsSystemFeedback,
                    "hidden mode withdraws the entire window, including compact activity and an existing notice")
-            suite.expect(hidden.windowHost?.hideAnimations.last == true,
+            suite.expect(hidden.host?.hideAnimations.last == true,
                    "closing a hidden-until-hover island requests an animated withdrawal")
-            hidden.refreshPresentation(animated: false)
-            suite.expect(hidden.windowHost?.hideAnimations.last == false,
+            hidden.island.refreshPresentation(animated: false)
+            suite.expect(hidden.host?.hideAnimations.last == false,
                    "a nonanimated refresh preserves immediate withdrawal")
-            hidden.expanded = true
-            hidden.refreshPresentation()
-            suite.expect(hidden.panel?.isVisible == true && hidden.showsSystemFeedback, "explicit openings remain visible in hidden mode")
-            suite.expect(hidden.windowHost?.revealFromHidden == true,
+            hidden.island.open()
+            suite.expect(hidden.host?.panel.isVisible == true && hidden.island.showsSystemFeedback,
+                         "explicit openings remain visible in hidden mode")
+            suite.expect(hidden.host?.revealFromHidden == true,
                    "opening a hidden island requests a reveal from the screen edge")
-            hidden.expanded = false
-            hidden.captureControls = CaptureOptions()
-            hidden.refreshPresentation()
-            suite.expect(hidden.panel?.isVisible == true, "capture controls remain visible until dismissed")
-            suite.expect(hidden.windowHost?.revealFromHidden == false,
+            hidden.island.collapse()
+            hidden.island.presentCaptureControls(captureOptions(), cancel: {})
+            suite.expect(hidden.host?.panel.isVisible == true, "capture controls remain visible until dismissed")
+            suite.expect(hidden.host?.revealFromHidden == false,
                    "capture controls keep their own presentation in hidden-until-hover mode")
-            hidden.captureControls = nil
-            hidden.dragPlaceholder = true
-            hidden.refreshPresentation()
-            suite.expect(hidden.panel?.isVisible == true, "an explicit file drag can still reveal its destination")
-            hidden.dragPlaceholder = false
-            hidden.refreshPresentation()
-            suite.expect(hidden.panel?.isVisible == false, "ending the interaction hides the window again")
+            hidden.island.endCaptureControls()
+            hidden.island.fileDragChanged(true)
+            suite.expect(hidden.host?.panel.isVisible == true, "an explicit file drag can still reveal its destination")
+            hidden.island.fileDragChanged(false)
+            suite.expect(hidden.host?.panel.isVisible == false, "ending the interaction hides the window again")
+            defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
         }
-        UserDefaults.standard.hides = false
-        let physical = Service()
-        physical.expanded = false
-        physical.compactActivityIsVisible = true
-        physical.refreshPresentation(animated: false)
-        suite.expect(physical.panel?.isVisible == true && !physical.compactActivityGeometry.compactActivityUsesFooter
-               && physical.compactActivityGeometry.compactActivityWingWidth == 0
-               && physical.windowHost?.targetSize.height == physical.geometry.menuBarHeight,
+        let physical = island(room: nil, before: { runTimer($0) })
+        physical.island.refreshPresentation(animated: false)
+        let strip = physical.island.compactActivityGeometry
+        suite.expect(physical.host?.panel.isVisible == true && !strip.compactActivityUsesFooter
+               && strip.compactActivityWingWidth == 0
+               && physical.host?.targetSize.height == physical.island.geometry.menuBarHeight,
                "an active timer on a physical camera retracts its wings and stays at menu-bar height without a menu measurement")
     }
 
     private static func compactMusicDepartureChecks(_ suite: TestSuite) {
-        let changed = Service()
-        changed.expanded = false
-        changed.compactActivity = .music
-        changed.compactActivityIsVisible = true
+        defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
+        defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
+        defer {
+            defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
+            defaults.set(false, forKey: DefaultsKey.notchTrackChange)
+        }
         let oldCover = NSImage(size: NSSize(width: 1, height: 1))
         let newCover = NSImage(size: NSSize(width: 2, height: 2))
-        changed.rememberPresentedMusic(playback: NotchPlayback(track: 1), artwork: oldCover, tint: nil)
-        changed.rememberPresentedMusic(playback: NotchPlayback(track: 2), artwork: oldCover, tint: nil)
-        changed.rememberPresentedMusic(playback: NotchPlayback(track: 2), artwork: newCover,
-                                       tint: NotchArtworkTint(value: 2))
-        changed.compactActivity = nil
-        changed.compactActivityIsVisible = false
-        suite.expect(changed.compactMusicTransition(.none, animated: true) == .depart
-                     && changed.departingMusic?.track == 2 && changed.departingMusic?.artwork === newCover
-                     && changed.departingMusic?.tint?.value == 2,
+        let tint = NotchArtworkTint(red: 0.2, green: 0.4, blue: 0.8)
+        let playing = { (title: String) in { (fixture: NotchIslandFixture) in fixture.services.playback = playback(title) } }
+
+        let changed = island {
+            $0.services.playback = playback("One")
+            $0.services.artwork = oldCover
+        }
+        changed.services.playback = playback("Two")
+        changed.island.refreshPresentation(animated: false)
+        changed.services.artwork = newCover
+        changed.services.artworkTint = tint
+        changed.island.refreshPresentation(animated: false)
+        changed.services.playback = playback("Two", playing: false)
+        changed.island.refreshPresentation()
+        let departing = changed.island.departingMusic
+        suite.expect(changed.host?.transitions.last == .depart && departing?.playback.track.title == "Two"
+                     && departing?.artwork === newCover && departing?.tint == tint,
                      "a track and cover changed during playback remain current through departure")
 
-        let closing = Service()
-        closing.expanded = false
-        closing.presentedMusic = NotchCompactMusicSnapshot(track: 1)
-        suite.expect(closing.compactMusicTransition(.none, animated: true) == .depart
-                     && closing.departingMusic?.track == 1,
+        let closing = island(before: playing("One"))
+        closing.services.playback = playback("One", playing: false)
+        closing.island.refreshPresentation()
+        suite.expect(closing.host?.transitions.last == .depart && closing.island.departingMusic?.playback.track.title == "One",
                      "closing the last playing source keeps its compact track for the departure")
-        closing.compactActivity = .music
-        closing.compactActivityIsVisible = true
-        suite.expect(closing.compactMusicTransition(.none, animated: true) == .reveal
-                     && closing.departingMusic == nil,
+        closing.services.playback = playback("One")
+        closing.island.refreshPresentation()
+        suite.expect(closing.host?.transitions.last == .reveal && closing.island.departingMusic == nil,
                      "new playback interrupts a departing track and reveals its replacement")
 
-        let held = Service()
-        held.expanded = false
-        held.presentedMusic = NotchCompactMusicSnapshot(track: 2)
-        held.heldMusic = NotchCompactMusicSnapshot(track: 1)
-        suite.expect(held.compactMusicTransition(.none, animated: true) == .depart && held.departingMusic?.track == 1,
+        // A new song waits for its notice; the strip keeps the one it shows.
+        defaults.set(true, forKey: DefaultsKey.notchTrackChange)
+        let held = island(before: playing("One"))
+        held.events.trackChanges.send()
+        held.services.playback = playback("Two")
+        held.island.refreshPresentation(animated: false)
+        held.services.playback = playback("Two", playing: false)
+        held.island.refreshPresentation()
+        suite.expect(held.host?.transitions.last == .depart && held.island.departingMusic?.playback.track.title == "One",
                      "music that stops before a new song's notice departs as the song still on screen")
-        held.rememberPresentedMusic(playback: NotchPlayback(track: 2), artwork: nil, tint: nil)
-        suite.expect(held.heldMusic == nil && held.presentedMusic == nil,
+        held.island.refreshPresentation(animated: false)
+        suite.expect(held.island.heldMusic == nil,
                      "a strip hidden for another reason ends the hold, so it returns with the live song")
-        let holding = Service()
-        holding.expanded = false
-        holding.compactActivity = .music
-        holding.compactActivityIsVisible = true
-        holding.heldMusic = NotchCompactMusicSnapshot(track: 1)
-        holding.rememberPresentedMusic(playback: NotchPlayback(track: 2), artwork: nil, tint: nil)
-        suite.expect(holding.heldMusic?.track == 1 && holding.presentedMusic?.track == 2,
+        let holding = island(before: playing("One"))
+        holding.events.trackChanges.send()
+        holding.services.playback = playback("Two")
+        holding.island.refreshPresentation(animated: false)
+        suite.expect(holding.island.heldMusic?.playback.track.title == "One",
                      "while the strip stays on screen, a new reading keeps the song it shows")
         // A song held as it ended is released by the refresh that follows,
         // even one that hides the island before it reads the strip again.
-        UserDefaults.standard.hides = true
-        let hiding = Service()
-        hiding.expanded = false
-        hiding.presentedMusic = NotchCompactMusicSnapshot(track: 1)
-        hiding.heldMusic = NotchCompactMusicSnapshot(track: 1)
-        hiding.refreshPresentation(animated: false)
-        UserDefaults.standard.hides = false
-        let unmeasured = Service()
-        unmeasured.expanded = false
-        unmeasured.geometry = NotchGeometry(screen: CGRect(x: -1440, y: 900, width: 1440, height: 900),
-                                            safeAreaTop: 0, cameraWidth: 0)
-        unmeasured.presentedMusic = NotchCompactMusicSnapshot(track: 1)
-        unmeasured.heldMusic = NotchCompactMusicSnapshot(track: 1)
-        unmeasured.refreshPresentation(animated: false)
-        suite.expect([hiding, unmeasured].allSatisfy { $0.heldMusic == nil && $0.presentedMusic == nil
-                                                       && $0.panel?.isVisible == false },
+        let hiding = island(before: playing("One"))
+        hiding.events.trackChanges.send()
+        defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
+        defaults.set(true, forKey: DefaultsKey.notchHideUntilHover)
+        hiding.island.refreshPresentation(animated: false)
+        defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+        defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
+        let unmeasured = island(physical: false, before: playing("One"))
+        unmeasured.events.trackChanges.send()
+        unmeasured.menuRoom = nil
+        unmeasured.measureMenus()
+        suite.expect([hiding, unmeasured].allSatisfy { $0.island.heldMusic == nil && $0.host?.panel.isVisible == false },
                      "hiding the island ends a hold, so the strip comes back with the live song")
+        defaults.set(false, forKey: DefaultsKey.notchTrackChange)
 
-        let replacement = Service()
-        replacement.expanded = false
-        replacement.presentedMusic = NotchCompactMusicSnapshot(track: 2)
-        replacement.compactActivity = .timer
-        replacement.compactActivityIsVisible = true
-        suite.expect(replacement.compactMusicTransition(.none, animated: true) == .replace,
+        let replacement = island(before: playing("One"))
+        replacement.services.playback = playback("One", playing: false)
+        runTimer(replacement)
+        replacement.island.refreshPresentation()
+        suite.expect(replacement.host?.transitions.last == .replace,
                      "a compact timer replaces the disappearing music with a fade")
 
         // The picker changes the strip inside its surface, so the song chosen
         // away is no departure for the host to fade through every choice.
-        let chosen = Service()
-        chosen.expanded = false
-        chosen.showsCompactActivityPicker = true
-        chosen.compactActivity = .music
-        chosen.compactActivityIsVisible = true
-        chosen.presentedMusic = NotchCompactMusicSnapshot(track: 2)
-        chosen.switchCompactSelection { chosen.compactActivity = .timer }
-        suite.expect(chosen.windowHost?.transitions == [NotchContentTransition.none],
+        let chosen = island {
+            $0.services.playback = playback("Two")
+            runTimer($0)
+        }
+        chosen.move(to: onIsland)
+        chosen.island.selectCompactActivity(.music)
+        let presented = chosen.host?.transitions.count ?? 0
+        chosen.island.selectCompactActivity(.timer)
+        suite.expect(chosen.island.showsCompactActivityPicker && chosen.island.compactActivity == .timer
+                     && chosen.host.map { Array($0.transitions.dropFirst(presented)) } == [NotchContentTransition.none],
                      "choosing another activity over a song changes the strip in place, without the host's fade")
 
-        let reduced = Service()
-        reduced.expanded = false
-        reduced.presentedMusic = NotchCompactMusicSnapshot(track: 3)
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = true
-        suite.expect(reduced.compactMusicTransition(.none, animated: true) == .none
-                     && reduced.departingMusic == nil,
+        let reduced = island(before: playing("Three"))
+        reduced.reducesMotion = true
+        reduced.services.playback = playback("Three", playing: false)
+        reduced.island.refreshPresentation()
+        suite.expect(reduced.host?.transitions.last == NotchContentTransition.none && reduced.island.departingMusic == nil,
                      "Reduce Motion removes the music strip immediately")
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion = false
     }
 }

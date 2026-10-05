@@ -44,13 +44,9 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     private var appliedFrame = CGRect.zero
     private var animationGeneration = 0
     private var isAnimating = false
-    private var hidesWhenSettled = false
     private var targetUsesGlass = false
-    private var mouseEventsBeforeHide: Bool?
     private var frameProbe: NotchFrameProbe?
-    private var concealedForMissionControl = false
     private var missionControlAlpha: CGFloat = 1
-    private var missionControlMouseEvents = false
     private var desktopReadings = 0
     private lazy var missionControlPolling = NotchMissionControlPolling(inputs: .init(
         panelIsVisible: { [weak self] in self?.panel.isVisible ?? false },
@@ -61,7 +57,11 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         },
         uptime: { ProcessInfo.processInfo.systemUptime },
         sample: { [weak self] in self?.sampleMissionControl() }))
-    private var restoringFromMissionControl = false
+    /// Who takes the mouse, kept through Mission Control and a settling hide.
+    private var input = NotchWindowInputPolicy()
+    private var hidesWhenSettled: Bool { input.hidesWhenSettled }
+    private var concealedForMissionControl: Bool { input.concealed }
+    private var restoringFromMissionControl: Bool { input.restoring }
     package var missionControlDidRestore: (() -> Void)?
     private let overlaySpace = NotchOverlaySpace()
     private var concealedForFrameChange = false
@@ -138,11 +138,7 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     }
 
     package func setMouseEventsIgnored(_ ignored: Bool) {
-        // Capture controls can change their click-through policy while the
-        // island is concealed or on its way out. Keep that policy for restore.
-        if concealedForMissionControl { missionControlMouseEvents = ignored }
-        if mouseEventsBeforeHide != nil { mouseEventsBeforeHide = ignored }
-        let effective = ignored || concealedForMissionControl || hidesWhenSettled
+        let effective = input.ask(ignored: ignored)
         if panel.ignoresMouseEvents != effective { panel.ignoresMouseEvents = effective }
     }
 
@@ -165,18 +161,8 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         // Choosing the capsule or the notch redraws the island at once, even
         // at a size it already has.
         canvas.setFloatingGap(geometry.floatingGap)
-        hidesWhenSettled = hideWhenSettled
-        if hideWhenSettled {
-            if mouseEventsBeforeHide == nil {
-                mouseEventsBeforeHide = concealedForMissionControl ? missionControlMouseEvents : panel.ignoresMouseEvents
-            }
-            // The departing surface must already release the menu bar below it.
-            panel.ignoresMouseEvents = true
-        } else if let previous = mouseEventsBeforeHide {
-            panel.ignoresMouseEvents = previous
-            mouseEventsBeforeHide = nil
-        }
-        if concealedForMissionControl { panel.ignoresMouseEvents = true }
+        let ignoresMouse = input.present(hidingWhenSettled: hideWhenSettled, panelIgnores: panel.ignoresMouseEvents)
+        if panel.ignoresMouseEvents != ignoresMouse { panel.ignoresMouseEvents = ignoresMouse }
         canvas.updateContrast()
         let revealing = revealFromHidden && !isPresented
         if isPresented || revealing {
@@ -508,12 +494,10 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         if probe.serverAnimatesFrames(level: panel.level, screen: currentGeometry.screen) {
             desktopReadings = 0
             guard !concealedForMissionControl else { panel.ignoresMouseEvents = true; return }
-            concealedForMissionControl = true
             // Reopened during the fade back in, the panel is still on its way
             // to the alpha kept from the first entry.
             if !restoringFromMissionControl { missionControlAlpha = panel.alphaValue }
-            missionControlMouseEvents = mouseEventsBeforeHide ?? panel.ignoresMouseEvents
-            panel.ignoresMouseEvents = true
+            panel.ignoresMouseEvents = input.conceal(panelIgnores: panel.ignoresMouseEvents)
             if panel.isVisible { fadeMissionControl(to: 0) }
             else {
                 panel.alphaValue = 0
@@ -527,12 +511,10 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     }
 
     private func restoreFromMissionControl() {
-        concealedForMissionControl = false
         desktopReadings = 0
-        panel.ignoresMouseEvents = hidesWhenSettled ? true : missionControlMouseEvents
+        panel.ignoresMouseEvents = input.restore(panelVisible: panel.isVisible)
         if panel.isVisible {
-            restoringFromMissionControl = true
-            fadeMissionControl(to: missionControlAlpha) { [weak self] in self?.restoringFromMissionControl = false }
+            fadeMissionControl(to: missionControlAlpha) { [weak self] in self?.input.finishRestore() }
         } else {
             panel.alphaValue = missionControlAlpha
             syncMissionControlMonitoring()
