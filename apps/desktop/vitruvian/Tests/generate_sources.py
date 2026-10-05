@@ -245,19 +245,6 @@ def main():
                         scope="final class NotchFileToolsService:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func hideMedia(")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
-          + "}\nfinal class Notch: NotchState {\n"
-          + "struct Collaborators { var shelfAccept: (NSPasteboard) -> Bool = { ShelfService.shared.acceptDrop(pasteboard: $0) } }\n"
-          + "static var collaborators = Collaborators()\n"
-          + "lazy var fileDrop = ShelfDropRoutingContract.fileDrop(for: self)\n"
-          + declaration(notch, "    var choosingFileDropDestination:")
-          + declaration(notch, "    var targetsMediaDrop:")
-          + declaration(notch, "    var canAcceptFileDrop:")
-          + declaration(notch, "    private var mediaDropArea:").replace("private var", "var", 1)
-          + declaration(notch, "    func beginFileDrop(")
-          + declaration(notch, "    func updateFileDrop(")
-          + declaration(notch, "    func endFileDrop(")
-          + declaration(notch, "    func accept(_ pasteboard:")
-          + declaration(notch, "    private func fileDropLanded(").replace("private func", "func", 1)
           + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"

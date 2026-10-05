@@ -2278,6 +2278,23 @@ island members, which the next slices take one owner at a time, so 9 remain.
 - **Verification:** a Linux Swift 6.4 model type-checks and runs the new
   type against stand-ins. The suite itself runs on macOS CI.
 
+Landed (4b, the island's file-drop gate): the shelf-drop contract stops
+copying the island. Its generated file stays for the shelf and file-tools
+members, so 9 remain.
+
+- **`NotchFileDrop`** now decides whether the island takes files: it is
+  interactive, not holding the capture controls, showing its files, and
+  the shelf is available and switched on. Its environment gains the shelf
+  switch, and its island gives the three island facts in place of the one
+  answer. `NotchService.canAcceptFileDrop` forwards to it.
+- **Tests:** `ShelfDropRoutingContract.Notch` is a scripted island that
+  holds the module's own `NotchFileDrop` and keeps the island's names for
+  it. Before, the suite compiled copies of nine island members. Every
+  check is kept.
+- **Verification:** a Linux Swift 6.4 model type-checks the type and the
+  scripted island against stand-ins, and runs the revoked-destination
+  checks. The suite itself runs on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

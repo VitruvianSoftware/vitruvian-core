@@ -55,7 +55,10 @@ enum ShelfDropRoutingContract {
         func dockDidAccept() { dockCompletions += 1 }
         init() {}
     }
-    class NotchState {
+    /// The island, holding the module's own `NotchFileDrop` wired the way
+    /// `NotchService` wires it, to this contract's shelf and media tools. It
+    /// keeps the island's names for the drop, as `NotchService` forwards them.
+    final class Notch {
         var acceptsUserInteraction = true
         var captureControls: Int?
         var modules: [NotchModule] = [.files]
@@ -63,36 +66,46 @@ enum ShelfDropRoutingContract {
         var dragPlaceholder = true
         var pinned = false
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 32, cameraWidth: 180)
-        var expandedGeometry: NotchGeometry { geometry }
         var surfaceSize: CGSize { geometry.expandedSize(module: .files) }
         var opened: [NotchModule] = []
         /// Announcements that the drop's destinations change, as `objectWillChange`.
         var changes = 0
-        func refreshPresentation() {}
-        func open(_ module: NotchModule, pinned: Bool = false, takeFocus: Bool = true) {
-            opened.append(module)
-            if pinned { self.pinned = true }
-        }
-        init() {}
-    }
-    /// The module's own `NotchFileDrop`, wired the way `NotchService` wires
-    /// it, to this contract's shelf and media tools.
-    static func fileDrop(for notch: Notch) -> NotchFileDrop {
-        NotchFileDrop(
+
+        lazy var fileDrop = NotchFileDrop(
             environment: NotchFileDrop.Environment(
                 offersMedia: { NotchFileToolsService.shared.mediaDropContent(for: $0) != nil },
                 mediaAccepts: { NotchFileToolsService.shared.canAcceptMediaDrop },
                 openMedia: { NotchFileToolsService.shared.openMediaDrop($0) },
                 hideMedia: { NotchFileToolsService.shared.hideMedia() },
-                shelfAccept: { Notch.collaborators.shelfAccept($0) }),
+                shelfEnabled: { AppFeature.shelf.isAvailable && UserDefaults.standard.enabled },
+                shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) }),
             island: NotchFileDrop.Island(
-                canAccept: { [unowned notch] in notch.canAcceptFileDrop },
-                acceptsUserInteraction: { [unowned notch] in notch.acceptsUserInteraction },
-                mediaArea: { [unowned notch] in notch.mediaDropArea },
-                willChange: { [unowned notch] in notch.changes += 1 },
-                openFiles: { [unowned notch] in notch.open(.files, takeFocus: $0) },
-                refreshPresentation: { [unowned notch] in notch.refreshPresentation() },
-                landed: { [unowned notch] in notch.fileDropLanded() }))
+                acceptsUserInteraction: { [unowned self] in self.acceptsUserInteraction },
+                capturing: { [unowned self] in self.captureControls != nil },
+                showsFiles: { [unowned self] in self.modules.contains(.files) },
+                mediaArea: { [unowned self] in
+                    NotchFileToolsSupport.mediaDropArea(in: self.geometry, size: self.surfaceSize)
+                },
+                willChange: { [unowned self] in self.changes += 1 },
+                openFiles: { [unowned self] in self.open(.files, takeFocus: $0) },
+                refreshPresentation: {},
+                landed: { [unowned self] in
+                    self.heldDrag = false
+                    self.dragPlaceholder = false
+                }))
+
+        var choosingFileDropDestination: Bool { fileDrop.choosingDestination }
+        var targetsMediaDrop: Bool { fileDrop.targetsMedia }
+        var canAcceptFileDrop: Bool { fileDrop.canAccept }
+        func beginFileDrop(_ pasteboard: NSPasteboard) { fileDrop.begin(pasteboard) }
+        @discardableResult
+        func updateFileDrop(at point: CGPoint) -> Bool { fileDrop.update(at: point) }
+        func endFileDrop() { fileDrop.end() }
+        func accept(_ pasteboard: NSPasteboard) -> Bool { fileDrop.accept(pasteboard) }
+
+        func open(_ module: NotchModule, takeFocus: Bool = true) {
+            opened.append(module)
+        }
     }
     class FileToolsState {
         enum MediaState { case idle, running }

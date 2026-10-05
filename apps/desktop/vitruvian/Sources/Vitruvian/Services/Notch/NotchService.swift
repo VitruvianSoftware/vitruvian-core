@@ -159,8 +159,9 @@ package final class NotchService: ObservableObject {
     private lazy var fileDrop: NotchFileDrop = NotchFileDrop(
         environment: .system(shelfAccept: { Self.collaborators.shelfAccept($0) }),
         island: NotchFileDrop.Island(
-            canAccept: { [weak self] in self?.canAcceptFileDrop ?? false },
             acceptsUserInteraction: { [weak self] in self?.acceptsUserInteraction ?? false },
+            capturing: { [weak self] in self?.captureControls != nil },
+            showsFiles: { [weak self] in self?.modules.contains(.files) == true },
             mediaArea: { [weak self] in self?.mediaDropArea ?? .null },
             willChange: { [weak self] in self?.objectWillChange.send() },
             openFiles: { [weak self] in self?.open(.files, takeFocus: $0) },
@@ -2004,9 +2005,7 @@ package final class NotchService: ObservableObject {
     }
 
     package var canAcceptFileDrop: Bool {
-        acceptsUserInteraction && captureControls == nil && modules.contains(.files)
-            && AppFeature.shelf.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
+        fileDrop.canAccept
     }
 
     /// Where on the open island the media tools take a drop.
@@ -2014,7 +2013,6 @@ package final class NotchService: ObservableObject {
         NotchFileToolsSupport.mediaDropArea(in: expandedGeometry, size: surfaceSize)
     }
 
-    // Each forward spans lines so the shelf-drop contract can copy it.
     package func beginFileDrop(_ pasteboard: NSPasteboard) {
         fileDrop.begin(pasteboard)
     }
