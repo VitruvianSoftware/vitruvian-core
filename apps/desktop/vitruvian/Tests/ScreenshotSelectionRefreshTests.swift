@@ -113,6 +113,9 @@ enum ScreenshotSelectionRefreshContract {
                 environment: environment)
             let session = Session(controller: controller, options: options)
             sessions.append(session)
+            // A refresh another chooser queued must ask before this one does,
+            // or this one's first picture would answer it.
+            await drain()
             let first = requests.count
             controller.begin { [weak session] in session?.outcome = $0 }
             await drain()
