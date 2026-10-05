@@ -26,8 +26,104 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
         case cancelled
     }
 
+    /// What the editor reads from outside itself: the preferences, the
+    /// recording's own facts once it opens, and the composed picture the
+    /// preview shows. `live` is AVFoundation and the standard defaults.
+    package struct Environment {
+        /// The recording as it opens: its length, its picture's upright size
+        /// (zero without a picture) and frame rate, and its audio by source.
+        package struct Source {
+            package var duration: Double
+            package var size: CGSize
+            package var frameRate: Int
+            package var audioTracks: [RecorderAudioSource: AVAssetTrack]
+
+            package init(duration: Double, size: CGSize, frameRate: Int,
+                         audioTracks: [RecorderAudioSource: AVAssetTrack]) {
+                self.duration = duration
+                self.size = size
+                self.frameRate = frameRate
+                self.audioTracks = audioTracks
+            }
+        }
+
+        /// One frame plan, to be turned into what the player draws. Sent,
+        /// because composing hands the composer to AVFoundation's queues.
+        package struct Preview {
+            package let asset: AVAsset
+            package let composer: RecorderComposer
+            package let duration: Double
+            package let frameRate: Int
+            package let sourceSize: CGSize
+        }
+
+        package enum Composed {
+            /// The asset has no picture to compose; the preview stays as it was.
+            case noPicture
+            /// What the player draws. Nil when the plan could not be composed,
+            /// which leaves the recording as captured.
+            case composition(AVVideoComposition?)
+        }
+
+        package var defaults: UserDefaults
+        /// Nil when the recording cannot even say how long it is.
+        package var loadSource: @MainActor (AVURLAsset) async -> Source?
+        /// How long a preview change waits, so dragging a slider does not
+        /// thrash the composition.
+        package var previewDelay: UInt64
+        package var composePreview: @MainActor (sending Preview) async -> Composed
+
+        package init(defaults: UserDefaults,
+                     loadSource: @escaping @MainActor (AVURLAsset) async -> Source?,
+                     previewDelay: UInt64,
+                     composePreview: @escaping @MainActor (sending Preview) async -> Composed) {
+            self.defaults = defaults
+            self.loadSource = loadSource
+            self.previewDelay = previewDelay
+            self.composePreview = composePreview
+        }
+
+        @MainActor package static var live: Environment {
+            Environment(defaults: .standard, loadSource: liveSource,
+                        previewDelay: 120_000_000, composePreview: livePreview)
+        }
+
+        @MainActor private static func liveSource(_ asset: AVURLAsset) async -> Source? {
+            guard let seconds = try? await asset.load(.duration) else { return nil }
+            var size = CGSize.zero
+            var frameRate = 60
+            if let track = try? await asset.loadTracks(withMediaType: .video).first {
+                let naturalSize = (try? await track.load(.naturalSize)) ?? .zero
+                let preferredTransform = (try? await track.load(.preferredTransform)) ?? .identity
+                size = RecorderSupport.videoGeometry(
+                    naturalSize: naturalSize,
+                    preferredTransform: preferredTransform).size
+                let rate = (try? await track.load(.nominalFrameRate)) ?? 60
+                frameRate = RecorderSupport.sanitizedFrameRate(Int(rate.rounded()))
+            }
+            return Source(duration: max(0, CMTimeGetSeconds(seconds)), size: size,
+                          frameRate: frameRate,
+                          audioTracks: await RecorderAudioSource.tracks(in: asset))
+        }
+
+        @MainActor private static func livePreview(_ preview: sending Preview) async -> Composed {
+            guard let videoTrack = try? await preview.asset.loadTracks(withMediaType: .video).first,
+                  !Task.isCancelled
+            else { return .noPicture }
+            return .composition(await RecorderComposer.videoComposition(
+                track: videoTrack,
+                asset: preview.asset,
+                duration: CMTime(seconds: preview.duration, preferredTimescale: 600),
+                frameRate: preview.frameRate,
+                composer: preview.composer,
+                sourceSize: preview.sourceSize,
+                outputSize: preview.composer.canvasSize))
+        }
+    }
+
     package let take: RecorderTakeStore.Take
     package let player: AVPlayer
+    private let environment: Environment
 
     @Published package private(set) var duration: Double = 0
     @Published package private(set) var currentTime: Double = 0
@@ -83,8 +179,9 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
         document.trim(duration: duration)
     }
 
-    package init(take: RecorderTakeStore.Take) {
+    package init(take: RecorderTakeStore.Take, environment: Environment = .live) {
         self.take = take
+        self.environment = environment
         let item = AVPlayerItem(url: take.videoURL)
         player = AVPlayer(playerItem: item)
         player.actionAtItemEnd = .pause
@@ -94,7 +191,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
         if let saved = try? Data(contentsOf: take.editURL) {
             document = RecorderEditDocument.decoded(saved)
         } else {
-            let defaults = UserDefaults.standard
+            let defaults = environment.defaults
             document = RecorderEditDocument(
                 quality: RecorderSupport.sanitizedQuality(
                     defaults.string(forKey: DefaultsKey.recorderQuality)).rawValue,
@@ -129,21 +226,13 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     private func load() {
         Task { @MainActor [weak self] in
             guard let self,
-                  let seconds = try? await self.sourceAsset.load(.duration)
+                  let source = await self.environment.loadSource(self.sourceAsset)
             else { return }
-            self.duration = max(0, CMTimeGetSeconds(seconds))
-            if let track = try? await self.sourceAsset.loadTracks(withMediaType: .video).first {
-                let naturalSize = (try? await track.load(.naturalSize)) ?? .zero
-                let preferredTransform = (try? await track.load(.preferredTransform)) ?? .identity
-                self.sourceSize = RecorderSupport.videoGeometry(
-                    naturalSize: naturalSize,
-                    preferredTransform: preferredTransform).size
-                let rate = (try? await track.load(.nominalFrameRate)) ?? 60
-                self.sourceFrameRate = RecorderSupport.sanitizedFrameRate(Int(rate.rounded()))
-            }
-            let audioTracks = await RecorderAudioSource.tracks(in: self.sourceAsset)
-            self.audioSources = Set(audioTracks.keys)
-            self.loadAudioWaveforms(audioTracks)
+            self.duration = source.duration
+            self.sourceSize = source.size
+            self.sourceFrameRate = source.frameRate
+            self.audioSources = Set(source.audioTracks.keys)
+            self.loadAudioWaveforms(source.audioTracks)
             self.document = self.document.sanitized(duration: self.duration)
             self.generateZoomsIfNeeded()
             self.loadThumbnails()
@@ -398,8 +487,9 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
         let sourceSize = sourceSize
         let frameRate = sourceFrameRate
         let duration = duration
+        let delay = environment.previewDelay
         previewTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled, let self, let item = self.player.currentItem else { return }
             guard let plan = RecorderComposer.makePlan(document: document,
                                                        track: track,
@@ -409,20 +499,13 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
                 item.videoComposition = nil
                 return
             }
-            let composer = RecorderComposer(plan: plan)
-            let asset = item.asset
-            guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first,
+            let preview = Environment.Preview(asset: item.asset,
+                                              composer: RecorderComposer(plan: plan),
+                                              duration: duration, frameRate: frameRate,
+                                              sourceSize: sourceSize)
+            guard case .composition(let composition) = await self.environment.composePreview(preview),
                   !Task.isCancelled
             else { return }
-            let composition = await RecorderComposer.videoComposition(
-                track: videoTrack,
-                asset: asset,
-                duration: CMTime(seconds: duration, preferredTimescale: 600),
-                frameRate: frameRate,
-                composer: composer,
-                sourceSize: sourceSize,
-                outputSize: composer.canvasSize)
-            guard !Task.isCancelled else { return }
             item.videoComposition = composition
         }
     }
@@ -550,7 +633,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     private func loadEditPresets() {
-        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.recorderEditorPresets),
+        guard let data = environment.defaults.data(forKey: DefaultsKey.recorderEditorPresets),
               let presets = try? JSONDecoder().decode([RecorderEditPreset].self, from: data)
         else { return }
         editPresets = Array(presets.suffix(12))
@@ -558,7 +641,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     private func persistEditPresets(_ presets: [RecorderEditPreset]) -> Bool {
         guard let data = try? JSONEncoder().encode(presets) else { return false }
-        UserDefaults.standard.set(data, forKey: DefaultsKey.recorderEditorPresets)
+        environment.defaults.set(data, forKey: DefaultsKey.recorderEditorPresets)
         let retainedPaths = Set(presets.flatMap { $0.images ?? [] }.map(\.path))
         let retiredImages = editPresets.flatMap { $0.images ?? [] }
             .filter { !retainedPaths.contains($0.path) }
@@ -1281,7 +1364,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     package func loadBackdropPresets() {
         backdropPresets = ScreenshotSupport.decodedBackdropPresets(
-            UserDefaults.standard.string(forKey: DefaultsKey.screenshotBackdropPresets))
+            environment.defaults.string(forKey: DefaultsKey.screenshotBackdropPresets))
     }
 
     package func saveCurrentBackdropAsPreset() {
@@ -1311,7 +1394,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     private func persistPresets() {
-        UserDefaults.standard.set(ScreenshotSupport.encodedBackdropPresets(backdropPresets),
+        environment.defaults.set(ScreenshotSupport.encodedBackdropPresets(backdropPresets),
                                   forKey: DefaultsKey.screenshotBackdropPresets)
     }
 

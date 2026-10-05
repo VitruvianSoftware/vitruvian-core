@@ -103,18 +103,6 @@ def main():
           + "static let shared = PreciseVolumeRollerService()\n"
           + declaration("Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift", "    func syncWithPreferences()")
           + "}\n}\n")
-    recorder = "Sources/Vitruvian/Services/Recorder/RecorderEditorController.swift"
-    write("RecorderZoomAiming.swift", "import Foundation\nimport Combine\n"
-          + "extension RecorderZoomAimingTests {\nfinal class Model: State {\n"
-          + declaration(recorder, "    @Published var document:").replace("@Published var", "override var", 1)
-          + declaration(recorder, "    @Published var selectedZoomID:")
-          + "".join(declaration(recorder, prefix) for prefix in [
-              "    private func documentDidChange(", "    func undo()", "    func redo()",
-              "    private func apply(_ next:", "    func zoom(_ id:",
-              "    func beginAiming(", "    func endAiming(", "    func aim(",
-              "    func setSelectedZoomFocus(", "    private func applyDuringInteraction(",
-              "    func beginPickingBlurArea(", "    func endPickingBlurArea("])
-          + "}\n}\n")
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
     write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"

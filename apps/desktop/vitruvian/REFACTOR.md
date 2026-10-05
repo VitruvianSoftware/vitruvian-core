@@ -2153,6 +2153,30 @@ go, which leaves 13.
   All 49 hand-written mutants of the production file fail them, one at
   compile time.
 
+Landed (4b, the recorder editor's zoom aiming): one more generated file
+goes, which leaves 12.
+
+- **`RecorderEditorModel.Environment`** (new) is what the editor model
+  reaches outside the app: the preferences; `loadSource`, which reads the
+  recording's length, picture size, frame rate and audio tracks once it
+  opens; and `composePreview` with its delay, which turns a frame plan
+  into the player's composition. `live` is the AVFoundation code that was
+  inline. The controller still makes the model with `live`.
+- **Tests:** `RecorderZoomAimingTests` opens the real model over a take
+  with no file behind it. The recording opens as five seconds of
+  1000×500, and the preview composer counts what it is asked for. Before,
+  the suite compiled copies of twelve model members over a stand-in
+  player.
+  - The checks now follow the real undo stack and the real preview task.
+    New checks: a preview still on its way is dropped when aiming begins;
+    a drag sets a blur's area in the picture's own space, and one undo
+    takes it back.
+  - A source-text check in `RecorderFeatureTests` (a redrawn blur keeps
+    its strength) becomes a behavioral check here.
+- **Verification:** a Linux Swift 6.4 model type-checks the environment,
+  the load and the preview rebuild over AVFoundation stand-ins, and the
+  test's environment against them. The suite itself runs on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

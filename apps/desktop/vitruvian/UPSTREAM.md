@@ -1745,6 +1745,15 @@ is that notice. Add an entry for every change to upstream files.
     `configureDisplay`, where the main-thread, built-in and lid guards now
     sit in front of the environment's transaction.
   - `Tests/RecorderExportRenderingTests.swift` names the export failure.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - `RecorderEditorModel` in
+    `Services/Recorder/RecorderEditorController.swift` takes an injected
+    `Environment`: its preferences, how the recording's facts are read
+    when it opens, and how the preview's composition is made.
+  - `Tests/RecorderZoomAimingTests.swift` drives the model, and
+    `Tests/generate_sources.py` no longer copies its members.
+  - A source-text check in `Tests/RecorderFeatureTests.swift` (a redrawn
+    blur keeps its strength) becomes a behavioral check there.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
