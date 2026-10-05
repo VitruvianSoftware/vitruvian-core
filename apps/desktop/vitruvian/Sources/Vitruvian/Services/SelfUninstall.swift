@@ -331,17 +331,26 @@ package enum SelfUninstall {
     private static func removePreferences() {
         let id = bundleID
         UserDefaults.standard.removePersistentDomain(forName: id)
-        let home = NSHomeDirectory()
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Preferences/\(id).plist")
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Saved Application State/\(id).savedState")
-        // Clipboard images and any other app-owned data live here.
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Application Support/\(id)")
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Caches/\(id)")
-        // URLSession writes these on our behalf whenever the app talks to the
-        // network, so they exist without the app ever choosing the path.
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/HTTPStorages/\(id)")
-        try? FileManager.default.removeItem(
-            atPath: "\(home)/Library/HTTPStorages/\(id).binarycookies")
+        for path in ownedPaths(home: NSHomeDirectory(), bundleID: id) {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    /// The files and folders of the app's own under a home folder, which a
+    /// full uninstall removes once its preferences domain is gone.
+    /// `Tools/uninstall.sh` removes the same ones.
+    package static func ownedPaths(home: String, bundleID id: String) -> [String] {
+        [
+            "\(home)/Library/Preferences/\(id).plist",
+            "\(home)/Library/Saved Application State/\(id).savedState",
+            // Clipboard images and any other app-owned data live here.
+            "\(home)/Library/Application Support/\(id)",
+            "\(home)/Library/Caches/\(id)",
+            // URLSession writes these on our behalf whenever the app talks to the
+            // network, so they exist without the app ever choosing the path.
+            "\(home)/Library/HTTPStorages/\(id)",
+            "\(home)/Library/HTTPStorages/\(id).binarycookies",
+        ]
     }
 
     /// Moves the app's own bundle to the Trash after it quits, then quits. The

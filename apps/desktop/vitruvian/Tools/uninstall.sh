@@ -11,6 +11,45 @@ set -uo pipefail
 BUNDLE="com.vitruviansoftware.vitruvian"
 APP="/Applications/Vitruvian.app"
 
+# What the app keeps under a home folder, for its bundle id: preferences, saved
+# state and stored data, the same files the in-app uninstall removes. The tests
+# run this over a scratch home.
+remove_user_state() {
+    local home="$1" bundle="$2"
+    rm -f "$home/Library/Preferences/$bundle.plist"
+    rm -rf "$home/Library/Saved Application State/$bundle.savedState"
+    # Clipboard history, shelf files, captures and the share delete tokens live
+    # here; the in-app uninstall takes them, so this path must not keep them.
+    rm -rf "$home/Library/Application Support/$bundle"
+    rm -rf "$home/Library/Caches/$bundle"
+    # Written by URLSession on the app's behalf, so they exist without the app ever
+    # naming the path; `defaults delete` does not reach them either.
+    rm -rf "$home/Library/HTTPStorages/$bundle" "$home/Library/HTTPStorages/$bundle.binarycookies"
+    # `defaults delete` does not reach ByHost. The (N) qualifier is load-bearing:
+    # without it zsh aborts the command on an unmatched pattern, which is the
+    # ordinary case, and prints an error over a successful uninstall.
+    rm -f "$home/Library/Preferences/ByHost/$bundle".*.plist(N)
+}
+
+# The closed-lid rule under its current name and the two earlier ones, the
+# same files the app looks for. Each path is checked on its own. zsh passes an
+# unquoted string to a command as a single word, and one `ls` over all three
+# fails as soon as any of them is missing. Collects the ones present in
+# `found_rules`; the root is empty here, and a scratch folder in the tests.
+find_closed_lid_rules() {
+    local root="$1" rule
+    found_rules=()
+    for rule in /etc/sudoers.d/vitruvian-clamshell /etc/sudoers.d/vitruvian-utils-clamshell /etc/sudoers.d/vitru-clamshell; do
+        [[ -e "$root$rule" ]] && found_rules+=("$rule")
+    done
+}
+
+# What `pmset -g` reports for SleepDisabled: 1, 0, or nothing when it does not
+# answer.
+read_sleep_disabled() {
+    pmset -g 2>/dev/null | awk '/SleepDisabled/ { print $2 }'
+}
+
 echo "▸ Quitting…"
 pkill -x Vitruvian 2>/dev/null || true
 sleep 0.5
@@ -54,29 +93,9 @@ tccutil reset All "$BUNDLE" >/dev/null 2>&1 || true
 echo "▸ Removing app, preferences, saved state and stored data (clipboard history, shelf files, share links)…"
 rm -rf "$APP"
 defaults delete "$BUNDLE" >/dev/null 2>&1 || true
-rm -f "$HOME/Library/Preferences/$BUNDLE.plist"
-rm -rf "$HOME/Library/Saved Application State/$BUNDLE.savedState"
-# Clipboard history, shelf files, captures and the share delete tokens live
-# here; the in-app uninstall takes them, so this path must not keep them.
-rm -rf "$HOME/Library/Application Support/$BUNDLE"
-rm -rf "$HOME/Library/Caches/$BUNDLE"
-# Written by URLSession on the app's behalf, so they exist without the app ever
-# naming the path; `defaults delete` does not reach them either.
-rm -rf "$HOME/Library/HTTPStorages/$BUNDLE" "$HOME/Library/HTTPStorages/$BUNDLE.binarycookies"
-# `defaults delete` does not reach ByHost. The (N) qualifier is load-bearing:
-# without it zsh aborts the command on an unmatched pattern, which is the
-# ordinary case, and prints an error over a successful uninstall.
-rm -f "$HOME/Library/Preferences/ByHost/$BUNDLE".*.plist(N)
+remove_user_state "$HOME" "$BUNDLE"
 
-# The closed-lid rule under its current name and the two earlier ones, the
-# same files the app looks for. Each path is checked on its own. zsh passes an
-# unquoted string to a command as a single word, and one `ls` over all three
-# fails as soon as any of them is missing.
-RULES=(/etc/sudoers.d/vitruvian-clamshell /etc/sudoers.d/vitruvian-utils-clamshell /etc/sudoers.d/vitru-clamshell)
-found_rules=()
-for rule in "${RULES[@]}"; do
-    [[ -e "$rule" ]] && found_rules+=("$rule")
-done
+find_closed_lid_rules ""
 if (( ${#found_rules} )); then
     echo "▸ Removing closed-lid sudoers rule (asks for your admin password)…"
     osascript -e "do shell script \"rm -f $found_rules\" with administrator privileges with prompt \"Vitruvian uninstaller\"" || true
@@ -91,7 +110,7 @@ fi
 sleep_stuck=0
 sleep_unknown=0
 if (( sleep_was_ours )); then
-    sleep_state="$(pmset -g 2>/dev/null | awk '/SleepDisabled/ { print $2 }')"
+    sleep_state="$(read_sleep_disabled)"
     # "0" is the only answer that proves sleep came back, and "1" the only one
     # that proves it did not. Anything else is pmset not answering: it must not
     # pass as success, and it must not be reported as a failed restore either.
