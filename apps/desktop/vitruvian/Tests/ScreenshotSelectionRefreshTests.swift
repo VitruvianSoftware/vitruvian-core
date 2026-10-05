@@ -120,6 +120,8 @@ enum ScreenshotSelectionRefreshContract {
                 complete(first, displays: [1, 2])
                 await drain()
             }
+            session.start = "\(tool) freeze \(policy.freeze), \(requests.count - first) captures, "
+                + "\(controller.panels.count) panels, over \(controller.isOver), outcome \(String(describing: session.outcome))"
             return session
         }
 
@@ -155,6 +157,8 @@ enum ScreenshotSelectionRefreshContract {
         let controller: Controller
         let options: ScreenCaptureSelectionOptions
         var outcome: Controller.Outcome?
+        /// How the chooser came up, for a check that finds it without panels.
+        var start = ""
         var panels: [ScreenshotOverlayPanel] { controller.panels }
 
         init(controller: Controller, options: ScreenCaptureSelectionOptions) {
@@ -198,13 +202,22 @@ enum ScreenshotSelectionRefreshContract {
         func expect(_ condition: Bool, _ message: String) { suite.expect(condition, message) }
         _ = NSApplication.shared
         let desk = Desk()
+        /// A chooser with a panel on each display, or a failed check saying why not.
+        func started(_ tool: ScreenCaptureTool) async -> Session? {
+            let session = await desk.session(tool)
+            guard session.panels.count == 2 else {
+                expect(false, "a started chooser covers both displays: \(session.start)")
+                return nil
+            }
+            return session
+        }
         defer { desk.tearDown() }
         let previousRegion = Controller.lastRegion
         defer { Controller.lastRegion = previousRegion }
 
         for tool in ScreenCaptureTool.allCases {
             for display in [nil, 1, 2, 3] as [CGDirectDisplayID?] {
-                let c = await desk.session(tool)
+                guard let c = await started(tool) else { return }
                 Controller.lastRegion = display.map { ($0, CGRect(x: 0, y: 0, width: 20, height: 20)) }
                 let available = display == 1 || display == 2
                 expect(c.controller.offersRepeatLastRegion == (available && tool != .color),
@@ -217,7 +230,7 @@ enum ScreenshotSelectionRefreshContract {
             }
         }
 
-        let fullScreenScreenshot = await desk.session(.screenshot)
+        guard let fullScreenScreenshot = await started(.screenshot) else { return }
         fullScreenScreenshot.controller.captureFullScreenFromControl(on: fullScreenScreenshot.panels[0])
         if case .captured? = fullScreenScreenshot.outcome {
             expect(true, "the full-screen control runs the screenshot capture path")
@@ -225,18 +238,18 @@ enum ScreenshotSelectionRefreshContract {
             expect(false, "the full-screen control runs the screenshot capture path")
         }
         for tool in [ScreenCaptureTool.recording, .text, .color] {
-            let other = await desk.session(tool)
+            guard let other = await started(tool) else { return }
             other.controller.captureFullScreenFromControl(on: other.panels[0])
             expect(other.outcome == nil,
                    "the full-screen control stays unavailable outside screenshot mode")
         }
-        let scrolling = await desk.session(.screenshot)
+        guard let scrolling = await started(.screenshot) else { return }
         scrolling.controller.toggleScrollingCapture()
         scrolling.controller.captureFullScreenFromControl(on: scrolling.panels[0])
         expect(scrolling.outcome == nil,
                "scrolling capture keeps its region workflow instead of taking a full-screen capture")
 
-        let placement = await desk.session(.screenshot)
+        guard let placement = await started(.screenshot) else { return }
         placement.controller.placeFullScreenControlBelowNotch(
             screenFrame: placement.panels[1].screenFrame, surfaceHeight: 72)
         expect(placement.panels[0].overlayView.notchCaptureControlsHeight == nil
@@ -248,7 +261,7 @@ enum ScreenshotSelectionRefreshContract {
                 && placement.panels[1].overlayView.notchCaptureControlsHeight == nil,
                "moving capture controls to another display clears the old pill offset")
 
-        let surface = await desk.session(.screenshot)
+        guard let surface = await started(.screenshot) else { return }
         let current = Box(true)
         ScreenCaptureService.connectCaptureControlsSurface(surface.options, controller: surface.controller) { _, _ in
             current.value
@@ -263,7 +276,7 @@ enum ScreenshotSelectionRefreshContract {
                 && surface.panels[0].overlayView.notchCaptureControlsHeight == nil,
                "a stale island geometry callback cannot move a replacement selection")
 
-        let visibility = await desk.session(.screenshot)
+        guard let visibility = await started(.screenshot) else { return }
         let progressChanges = Box<[Bool]>([])
         visibility.options.onSelectionProgressChange = { progressChanges.value.append($0) }
         visibility.controller.setSelectionInProgress(true)
@@ -275,7 +288,7 @@ enum ScreenshotSelectionRefreshContract {
                 && progressChanges.value == [true, false],
                "selection progress refreshes both chooser surfaces and notifies the island")
 
-        let hover = await desk.session(.screenshot)
+        guard let hover = await started(.screenshot) else { return }
         let hoverView = hover.panels[0].overlayView
         hoverView.layoutSubtreeIfNeeded()
         hoverView.refreshFullScreenControlVisibility()
@@ -297,7 +310,7 @@ enum ScreenshotSelectionRefreshContract {
         expect(hoverView.notchCaptureControlsHeight == 40 && !hoverView.hasDeferredNotchCaptureControlsHeight,
                "the latest island geometry is applied as soon as the pointer leaves the action")
 
-        let hiddenHover = await desk.session(.screenshot)
+        guard let hiddenHover = await started(.screenshot) else { return }
         let hiddenHoverView = hiddenHover.panels[0].overlayView
         hiddenHoverView.refreshFullScreenControlVisibility()
         hiddenHoverView.fullScreenControlHoverChanged(true)
@@ -311,7 +324,7 @@ enum ScreenshotSelectionRefreshContract {
 
         for other in [ScreenCaptureTool.screenshot, .text, .color] {
             for (from, to) in [(ScreenCaptureTool.recording, other), (other, ScreenCaptureTool.recording)] {
-                let c = await desk.session(from)
+                guard let c = await started(from) else { return }
                 let request = desk.requests.count
                 c.select(to)
                 expect(c.panels.allSatisfy { !$0.overlayView.showsFullScreenControl },
@@ -352,7 +365,7 @@ enum ScreenshotSelectionRefreshContract {
         }
 
         for available: [CGDirectDisplayID] in [[], [1]] {
-            let failed = await desk.session(.recording)
+            guard let failed = await started(.recording) else { return }
             let panel = failed.panels[0]
             let r = desk.requests.count
             failed.select(.screenshot)
@@ -374,7 +387,7 @@ enum ScreenshotSelectionRefreshContract {
             }
         }
 
-        let rapid = await desk.session(.recording)
+        guard let rapid = await started(.recording) else { return }
         let r3 = desk.requests.count
         rapid.select(.screenshot)
         await drain()
@@ -390,7 +403,7 @@ enum ScreenshotSelectionRefreshContract {
             desk.excluded($0.frozenImage)?.contains(Desk.window) == true && $0.overlayView.windows.isEmpty
         }, "latest source restores input with current visibility")
 
-        let reverse = await desk.session(.recording)
+        guard let reverse = await started(.recording) else { return }
         let rr = desk.requests.count
         reverse.select(.screenshot)
         await drain()
@@ -403,7 +416,7 @@ enum ScreenshotSelectionRefreshContract {
         expect(reverse.panels.allSatisfy { desk.excluded($0.frozenImage)?.contains(Desk.window) == true },
                "old success arriving last cannot overwrite current pixels")
 
-        let cancelled = await desk.session(.recording)
+        guard let cancelled = await started(.recording) else { return }
         let cancelledPanel = cancelled.panels[0]
         let r4 = desk.requests.count
         cancelled.select(.screenshot)
@@ -415,7 +428,7 @@ enum ScreenshotSelectionRefreshContract {
                 && desk.excluded(cancelledPanel.frozenImage)?.contains(Desk.window) == true,
                "cancelled selection ignores delayed refresh")
 
-        let same = await desk.session(.screenshot)
+        guard let same = await started(.screenshot) else { return }
         let count = desk.requests.count
         same.select(.text)
         same.select(.color)
@@ -423,7 +436,7 @@ enum ScreenshotSelectionRefreshContract {
         expect(desk.requests.count == count && same.controller.acceptsCaptureInput,
                "equal source tools reuse pixels without pausing capture")
 
-        let follow = await desk.session(.screenshot)
+        guard let follow = await started(.screenshot) else { return }
         let rf = desk.requests.count
         follow.select(.recording)
         await drain()
@@ -447,7 +460,7 @@ enum ScreenshotSelectionRefreshContract {
             desk.excluded($0.frozenImage)?.contains(Desk.window) == false && !$0.overlayView.windows.isEmpty
         }, "showing windows again restores editor visibility")
 
-        let live = await desk.session(.recording)
+        guard let live = await started(.recording) else { return }
         let rl = desk.requests.count
         live.select(.text)
         await drain()
@@ -462,7 +475,7 @@ enum ScreenshotSelectionRefreshContract {
                "an old frozen result cannot replace live capture")
         desk.defaults.set(true, forKey: DefaultsKey.screenshotFreeze)
 
-        let loupe = await desk.session(.screenshot)
+        guard let loupe = await started(.screenshot) else { return }
         let loupeRequest = desk.requests.count
         loupe.controller.loadLiveLoupeImages()
         await drain()

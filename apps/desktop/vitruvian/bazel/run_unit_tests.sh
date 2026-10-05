@@ -46,6 +46,12 @@ discard_test_preferences() {
   ' zsh "$real_home/Library/Preferences"
 }
 
+# A crash prints where it happened, when the toolchain ships the backtracer.
+backtracer="$(dirname "$(xcrun --find swift 2>/dev/null || echo /nonexistent)")/../libexec/swift/macosx/swift-backtrace"
+if [[ -x "$backtracer" ]]; then
+	export SWIFT_BACKTRACE="enable=yes,interactive=no,swift-backtrace=$backtracer"
+fi
+
 status=0
 "$binary" "$@" || status=$?
 if [[ $# -eq 0 ]]; then
