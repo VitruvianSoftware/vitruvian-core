@@ -683,6 +683,17 @@ generated files go, which leaves 82.
   restart, or past the person's choices. The test reads those choices from a
   test defaults domain instead of a stand-in `NotchAgentSupport`.
 
+Landed (4b, the agent usage service's log read): one more generated file
+goes, which leaves 81.
+
+- **Injected:** `AgentUsageService.read(_:provider:cursors:store:isCancelled:report:lines:)`
+  applies a log's new lines to the store as they arrive. `lines` defaults to
+  `AgentLogReader.readAppended`; the test wraps it to see each line arrive
+  instead of shadowing the reader.
+- **Check tightened:** the test now appends a line before its cancelled read,
+  so "a cancelled reading consumes no more entries" fails when cancellation
+  is ignored. Before, the file was unchanged and the check passed either way.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

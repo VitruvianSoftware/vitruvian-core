@@ -7,41 +7,12 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-typealias AgentUsageProductionLogReader = AgentLogReader
-
 /// Runs the service's production read method, parser, cursor and store. The
-/// reader wrapper only observes when a complete line is handed to the service.
+/// reader passed in only observes when a complete line is handed over.
 enum AgentUsageReadTests {
-    enum AgentLogReader {
-        static var beforeLine: (() -> Void)?
-        static func readAppended(_ cursor: AgentLogCursor, since horizon: Date, shouldContinue: () -> Bool,
-                                 line: (Data) -> Void) {
-            AgentUsageProductionLogReader.readAppended(cursor, since: horizon, shouldContinue: shouldContinue) {
-                beforeLine?()
-                line($0)
-            }
-        }
-    }
-
-    final class Cancellation {
-        var isCancelled = false
-    }
-
-    class Fixture {
-        static let horizon = TimeInterval(AgentUsageSnapshot.dayCount) * 86_400
-        var readerCancellation: Cancellation? = Cancellation()
-        var cursors: [String: AgentLogCursor] = [:]
-        let store = AgentUsageStore()
-        var events: [AgentUsageEvent] = []
-        func report(_ event: AgentUsageEvent) { events.append(event) }
-    }
-
     static func run(_ suite: TestSuite) {
         let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-streaming-\(UUID().uuidString)")
-        defer {
-            AgentLogReader.beforeLine = nil
-            try? FileManager.default.removeItem(at: folder)
-        }
+        defer { try? FileManager.default.removeItem(at: folder) }
         do { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
         catch { suite.expect(false, "the streaming fixture creates its folder: \(error)"); return }
         let now = Date()
@@ -71,7 +42,7 @@ enum AgentUsageReadTests {
 
             let cursor = AgentLogCursor(path: file.path, provider: provider)
             var entries: [AgentLogEntry] = []
-            AgentUsageProductionLogReader.readAppended(cursor) { line in
+            AgentLogReader.readAppended(cursor) { line in
                 switch provider {
                 case .claude: entries += AgentLogParser.parseClaude(line, state: &cursor.state, now: now)
                 case .codex: entries += AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
@@ -83,24 +54,42 @@ enum AgentUsageReadTests {
             let expectedEvents = reference.apply(entries, file: file.path, provider: provider,
                                                  tracksTurns: cursor.tracksTurns, parent: cursor.parent,
                                                  modified: cursor.modified, now: now)
-            let host = Host()
-            host.store.reportsTransitions = true
+            let store = AgentUsageStore()
+            store.reportsTransitions = true
+            var cursors: [String: AgentLogCursor] = [:]
+            var events: [AgentUsageEvent] = []
+            var cancelled = false
             var counts: [Int] = []
-            AgentLogReader.beforeLine = { counts.append(host.store.records.count) }
-            suite.expect(host.read(file.path, provider: provider), "a \(provider.rawValue) log reports parsed entries")
-            AgentLogReader.beforeLine = nil
+            func read() -> Bool {
+                AgentUsageService.read(file.path, provider: provider, cursors: &cursors, store: store,
+                                       isCancelled: { cancelled }, report: { events.append($0) }) {
+                    logCursor, horizon, shouldContinue, line in
+                    AgentLogReader.readAppended(logCursor, since: horizon, shouldContinue: shouldContinue) {
+                        counts.append(store.records.count)
+                        line($0)
+                    }
+                }
+            }
+            suite.expect(read(), "a \(provider.rawValue) log reports parsed entries")
             suite.expect(counts.contains(where: { $0 > 0 }),
                          "\(provider.rawValue) records are applied before the rest of the log is read")
-            suite.expect(host.store.records == reference.records && host.store.turns == reference.turns
-                            && host.store.waiting == reference.waiting && host.store.limits == reference.limits
-                            && host.store.codexPlan == reference.codexPlan && host.events == expectedEvents,
+            suite.expect(store.records == reference.records && store.turns == reference.turns
+                            && store.waiting == reference.waiting && store.limits == reference.limits
+                            && store.codexPlan == reference.codexPlan && events == expectedEvents,
                          "streaming \(provider.rawValue) preserves duplicate merging, usage, turns, limits, plans and event order")
-            suite.expect(!expectedEvents.isEmpty && host.cursors[file.path]?.state == cursor.state,
+            suite.expect(!expectedEvents.isEmpty && cursors[file.path]?.state == cursor.state,
                          "\(provider.rawValue) finishes the same turn and retains the same parser context")
-            suite.expect(!host.read(file.path, provider: provider) && host.events == expectedEvents,
+            suite.expect(!read() && events == expectedEvents,
                          "an unchanged \(provider.rawValue) file neither changes the store nor replays events")
-            host.readerCancellation?.isCancelled = true
-            suite.expect(!host.read(file.path, provider: provider), "a cancelled reading consumes no more entries")
+            // Something to read, so only the cancellation stops it.
+            if let handle = try? FileHandle(forWritingTo: file) {
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: Data((lines[0] + "\n").utf8))
+                try? handle.close()
+            }
+            cancelled = true
+            let delivered = counts.count
+            suite.expect(!read() && counts.count == delivered, "a cancelled reading consumes no more entries")
         }
     }
 }

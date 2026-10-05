@@ -1243,12 +1243,6 @@ def main():
           + declaration(dock, "    func endWindowDrag(")
           + "}\n")
 
-    write("AgentUsageRead.swift", "import Foundation\n"
-          + "extension AgentUsageReadTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
-                        "    private func read(").replace("private func", "func", 1)
-          + "}\n}\n")
-
     # Same-file extensions can exercise the private AppKit content view without
     # widening the production interface or presenting an application window.
     hud = "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift"
