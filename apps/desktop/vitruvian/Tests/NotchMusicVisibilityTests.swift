@@ -114,10 +114,12 @@ enum NotchMusicVisibilityTests {
             service.syncWithPreferences()
             suite.expect(!fixture.mirrors.isEmpty && reader.musicRunning,
                          "copies on other displays keep the song while the island rests in fullscreen")
+            // The other display goes first: it has a camera housing, so the
+            // automatic choice would move a simulated island onto it.
+            fixture.displays.removeLast()
             defaults.set(NotchDisplay.automatic.rawValue, forKey: DefaultsKey.notchDisplay)
             service.syncWithPreferences()
             service.syncWithPreferences()
-            fixture.displays.removeLast()
             suite.expect(!reader.musicRunning, "without copies fullscreen stops the reader again")
             service.open(.music)
             suite.expect(reader.musicRunning && service.surfaceSize == service.expandedSize,

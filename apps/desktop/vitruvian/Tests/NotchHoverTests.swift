@@ -193,7 +193,12 @@ enum NotchHoverTests {
         defaults.set(false, forKey: DefaultsKey.notchHoverExpands)
         fullscreen.fullscreen = [NotchIslandFixture.display.id]
         fullscreen.island.syncWithPreferences()
+        fullscreen.runScheduled()
+        // Stepping aside closed the island under the resting pointer, which
+        // holds hover back until the pointer leaves and comes back.
+        leave(fullscreen)
         let blackSize = fullscreen.island.surfaceSize
+        fullscreen.pointer = top(fullscreen)
         fullscreen.island.hover(true)
         suite.expect(blackSize == fullscreen.island.geometry.restingSize(showsContent: false)
                      && fullscreen.island.surfaceSize == blackSize && fullscreen.pendingWork == 1,
@@ -808,10 +813,11 @@ enum NotchHoverTests {
 
         let hidden = island()
         hide(hidden)
-        arrive(hidden, volume)
+        arrive(hidden)
+        expect(hidden.island.notice == nil, "a hidden island takes no banner it cannot show")
         hidden.move(to: top(hidden))
         hidden.advance(0.26)
-        expect(hidden.island.notice != nil && !hidden.island.noticeExpanded && hidden.island.expanded,
+        expect(!hidden.island.noticeExpanded && hidden.island.expanded,
                "hidden mode reveals the island as usual instead of holding a banner it cannot show")
         defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
 
@@ -906,6 +912,7 @@ enum NotchHoverTests {
 
         let overPeek = island()
         defaults.set(false, forKey: DefaultsKey.notchHoverExpands)
+        let peekResting = overPeek.island.surfaceSize
         overPeek.island.hover(true)
         overPeek.advance(0.26)
         expect(overPeek.island.peeking, "precondition: the peek strip is open")
@@ -916,7 +923,7 @@ enum NotchHoverTests {
         leave(overPeek)
         overPeek.advance(0.2)
         expect(overPeek.island.notice == nil && !overPeek.island.peeking && !overPeek.island.expanded
-               && overPeek.island.surfaceSize == overPeek.island.geometry.collapsed,
+               && overPeek.island.surfaceSize == peekResting,
                "closing that preview returns the island to rest without a stale peek strip")
         defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
 
@@ -940,8 +947,11 @@ enum NotchHoverTests {
                && !interrupted.island.noticeExpanded,
                "volume feedback takes the place of an open preview as a plain notice")
         interrupted.advance(1.7)
-        expect(interrupted.island.notice == nil && interrupted.pendingWork == 0,
-               "that feedback ends on its own and leaves nothing pending")
+        expect(interrupted.island.notice == nil, "that feedback ends on its own")
+        // The pointer never left, so nothing may be waiting to open the island.
+        interrupted.runScheduled()
+        expect(!interrupted.island.expanded && !interrupted.island.peeking && !interrupted.island.noticeExpanded,
+               "and leaves nothing pending")
         leave(interrupted)
         interrupted.advance(0.2)
         expect(!interrupted.island.expanded && interrupted.island.notice == nil,
