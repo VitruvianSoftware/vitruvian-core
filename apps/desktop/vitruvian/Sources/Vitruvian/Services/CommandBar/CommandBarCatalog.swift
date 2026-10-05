@@ -223,15 +223,17 @@ package enum CommandBarCatalog {
     @MainActor
     package static func toggleEntries(_ s: Strings,
                               language: AppLanguage,
-                              bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
+                              bar: CommandBarFeatureStrings,
+                              defaults: UserDefaults = .standard,
+                              accessible: Bool = Permissions.shared.accessibility) -> [CommandBarEntry] {
         let hub = FeatureStrings.hub(language)
         func entry(for feature: AppFeature,
                    key: String,
                    name: String,
                    id: String) -> CommandBarEntry {
-            let isOn = UserDefaults.standard.bool(forKey: key)
+            let isOn = defaults.bool(forKey: key)
             let needsAccessibility = feature.permissions.contains(.accessibility)
-                && !Permissions.shared.accessibility
+                && !accessible
             return CommandBarEntry(
                 id: id,
                 title: String(format: isOn ? bar.turnOffFormat : bar.turnOnFormat, name),
@@ -241,14 +243,14 @@ package enum CommandBarCatalog {
                 isActive: isOn,
                 trouble: needsAccessibility ? .needsPermission : nil,
                 run: { _ in
-                    UserDefaults.standard.set(!isOn, forKey: key)
+                    defaults.set(!isOn, forKey: key)
                     FeatureRuntime.shared.sync([feature])
                     QuickToolHUD.show(icon: feature.symbolName, message: name)
                 })
         }
 
         return AppFeature.allCases.flatMap { feature -> [CommandBarEntry] in
-            guard feature.isAvailable else { return [] }
+            guard feature.isAvailable(in: defaults) else { return [] }
             if feature == .scrollInverter {
                 return [
                     entry(for: feature,
@@ -395,17 +397,10 @@ package enum CommandBarCatalog {
                 trouble: canUseHistory ? nil
                     : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
                 run: { _ in afterBeat(0.1) { ClipboardHistoryService.shared.showHistoryWindow() } }))
-            entries.append(CommandBarEntry(
-                id: "action.clipboardClearRecent",
-                title: clipboard.clearRecent,
-                subtitle: area(.clipboardHistory),
-                keywords: [clipboard.title, ClipboardFeatureStrings.enUS.title,
-                           ClipboardFeatureStrings.enUS.clearRecent].joined(separator: " "),
-                icon: .symbol("trash"),
-                trouble: canUseHistory ? nil
-                    : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
-                confirmationPrompt: clipboard.clearRecent,
-                run: { _ in ClipboardHistoryService.shared.clearRecent() }))
+            entries.append(clipboardClearEntry(
+                clipboard, subtitle: area(.clipboardHistory),
+                trouble: canUseHistory ? nil : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
+                clear: { ClipboardHistoryService.shared.clearRecent() }))
         }
         if AppFeature.textSnippets.isAvailable {
             entries.append(CommandBarEntry(
@@ -467,36 +462,11 @@ package enum CommandBarCatalog {
         }
 
         if AppFeature.keepAwake.isAvailable {
-            let awake = KeepAwakeManager.shared
-            entries.append(CommandBarEntry(
-                id: "action.keepAwake",
-                title: awake.isActive ? s.menuDisableAwake : s.menuEnableAwake,
-                subtitle: area(.keepAwake),
-                keywords: s.keepAwakeTitle,
-                icon: .symbol(awake.isActive ? "bolt.fill" : "bolt"),
-                shortcut: roleShortcut(.keepAwake),
-                isActive: awake.isActive,
-                // Keep awake only honours the preset durations and turns any
-                // other number into an indefinite session, so the plain row
-                // takes no number and each preset has a row of its own.
-                run: { _ in KeepAwakeManager.shared.toggle() }))
-            let durations: [(String, String, Int)] = [
-                ("action.keepAwake.15", s.minutes15, 15),
-                ("action.keepAwake.30", s.minutes30, 30),
-                ("action.keepAwake.60", s.hour1, 60),
-                ("action.keepAwake.120", s.hours2, 120),
-                ("action.keepAwake.240", s.hours4, 240),
-                ("action.keepAwake.480", s.hours8, 480),
-            ]
-            for (id, label, minutes) in durations {
-                entries.append(CommandBarEntry(
-                    id: id,
-                    title: String(format: bar.keepAwakeForFormat, label),
-                    subtitle: area(.keepAwake),
-                    keywords: s.keepAwakeTitle,
-                    icon: .symbol("bolt.badge.clock"),
-                    run: { _ in KeepAwakeManager.shared.activate(minutes: minutes) }))
-            }
+            entries += keepAwakeEntries(s, bar: bar, subtitle: area(.keepAwake),
+                                        shortcut: roleShortcut(.keepAwake),
+                                        isActive: KeepAwakeManager.shared.isActive,
+                                        toggle: { KeepAwakeManager.shared.toggle() },
+                                        activate: { KeepAwakeManager.shared.activate(minutes: $0) })
         }
 
         if AppFeature.micMute.isAvailable {
@@ -547,11 +517,9 @@ package enum CommandBarCatalog {
                     NSSound.beep()
                     return
                 }
-                // Dynamic Island shows the level itself, and a floating copy
-                // would sit right below it.
-                if NotchSupport.routes(.volume), NotchService.shared.showVolume(level) { return }
-                QuickToolHUD.show(icon: "speaker.wave.2",
-                                  message: "\(FeatureStrings.commandBar(L10n.shared.language).volumeTitle) \(value)%")
+                confirmVolume(level, percent: value,
+                              island: { NotchSupport.routes(.volume) && NotchService.shared.showVolume($0) },
+                              float: { QuickToolHUD.show(icon: $0, message: $1) })
             }))
         }
 
@@ -774,12 +742,7 @@ package enum CommandBarCatalog {
             subtitle: feedback.commandSubtitle,
             icon: .symbol("lightbulb"),
             run: { _ in afterBeat { appShell()?.openFeedbackWindow(kind: .feature) } }))
-        entries.append(CommandBarEntry(
-            id: "action.restartApp",
-            title: String(format: bar.restartAppFormat, AppInfo.name),
-            subtitle: bar.sourceActions,
-            icon: .symbol("arrow.clockwise"),
-            run: { _ in FeatureRuntime.shared.relaunchApp() }))
+        entries.append(restartAppEntry(bar: bar, relaunch: { FeatureRuntime.shared.relaunchApp() }))
         // What people try on day one: put the Mac to sleep, restart it, turn
         // Wi-Fi off. Everything but sleep confirms on the row first.
         for action in CommandBarExtras.PowerAction.allCases {
@@ -1106,9 +1069,10 @@ package enum CommandBarCatalog {
     /// accepted during the background scan.
     package static func uninstallEntries(_ apps: [InstalledApps.InstalledApp],
                                  uninstallable: Set<String>,
-                                 bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
-        guard AppFeature.uninstaller.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled)
+                                 bar: CommandBarFeatureStrings,
+                                 defaults: UserDefaults = .standard) -> [CommandBarEntry] {
+        guard AppFeature.uninstaller.isAvailable(in: defaults),
+              defaults.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled)
         else { return [] }
         let ownBundleID = Bundle.main.bundleIdentifier
         return apps.filter {
@@ -1130,13 +1094,17 @@ package enum CommandBarCatalog {
     /// One row for whatever single app is selected in Finder's Applications
     /// folder, so uninstalling it never needs the bar's own picker first.
     /// An app the uninstaller would refuse gets no row.
-    package static func uninstallSelectionEntries(urls: [URL], automationDenied: Bool) -> [CommandBarEntry] {
-        guard AppFeature.uninstaller.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled),
+    package static func uninstallSelectionEntries(
+        urls: [URL], automationDenied: Bool, defaults: UserDefaults = .standard,
+        isInApplications: (URL) -> Bool = { InstalledApps.isInApplicationsFolder($0) },
+        uninstallerTakes: (URL) -> Bool = { UninstallerSupport.selection(for: $0) != nil }
+    ) -> [CommandBarEntry] {
+        guard AppFeature.uninstaller.isAvailable(in: defaults),
+              defaults.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled),
               urls.count == 1, let url = urls.first,
               url.pathExtension.lowercased() == "app",
-              InstalledApps.isInApplicationsFolder(url),
-              UninstallerSupport.selection(for: url) != nil
+              isInApplications(url),
+              uninstallerTakes(url)
         else { return [] }
         let bar = FeatureStrings.commandBar(L10n.shared.language)
         var name = FileManager.default.displayName(atPath: url.path)
@@ -1152,12 +1120,91 @@ package enum CommandBarCatalog {
             run: { _ in })]
     }
 
+    /// The keep awake rows. Keep awake only honours the preset durations and
+    /// turns any other number into an indefinite session, so the plain row
+    /// takes no number and each preset has a row of its own.
+    package static func keepAwakeEntries(_ s: Strings, bar: CommandBarFeatureStrings, subtitle: String,
+                                         shortcut: GlobalShortcut?, isActive: Bool,
+                                         toggle: @escaping @MainActor () -> Void,
+                                         activate: @escaping @MainActor (_ minutes: Int) -> Void) -> [CommandBarEntry] {
+        let plain = CommandBarEntry(
+            id: "action.keepAwake",
+            title: isActive ? s.menuDisableAwake : s.menuEnableAwake,
+            subtitle: subtitle,
+            keywords: s.keepAwakeTitle,
+            icon: .symbol(isActive ? "bolt.fill" : "bolt"),
+            shortcut: shortcut,
+            isActive: isActive,
+            run: { _ in toggle() })
+        let durations: [(String, String, Int)] = [
+            ("action.keepAwake.15", s.minutes15, 15),
+            ("action.keepAwake.30", s.minutes30, 30),
+            ("action.keepAwake.60", s.hour1, 60),
+            ("action.keepAwake.120", s.hours2, 120),
+            ("action.keepAwake.240", s.hours4, 240),
+            ("action.keepAwake.480", s.hours8, 480),
+        ]
+        return [plain] + durations.map { id, label, minutes in
+            CommandBarEntry(
+                id: id,
+                title: String(format: bar.keepAwakeForFormat, label),
+                subtitle: subtitle,
+                keywords: s.keepAwakeTitle,
+                icon: .symbol("bolt.badge.clock"),
+                run: { _ in activate(minutes) })
+        }
+    }
+
+    /// The row that clears the clipboard history's unpinned items, once the
+    /// person confirms.
+    package static func clipboardClearEntry(_ clipboard: ClipboardFeatureStrings, subtitle: String,
+                                            trouble: CommandBarEntry.Trouble?,
+                                            clear: @escaping @MainActor () -> Void) -> CommandBarEntry {
+        CommandBarEntry(
+            id: "action.clipboardClearRecent",
+            title: clipboard.clearRecent,
+            subtitle: subtitle,
+            keywords: [clipboard.title, ClipboardFeatureStrings.enUS.title,
+                       ClipboardFeatureStrings.enUS.clearRecent].joined(separator: " "),
+            icon: .symbol("trash"),
+            trouble: trouble,
+            confirmationPrompt: clipboard.clearRecent,
+            run: { _ in clear() })
+    }
+
+    /// The row that relaunches Vitruvian, named for it in the person's language.
+    package static func restartAppEntry(bar: CommandBarFeatureStrings,
+                                        relaunch: @escaping @MainActor () -> Void) -> CommandBarEntry {
+        CommandBarEntry(
+            id: "action.restartApp",
+            title: String(format: bar.restartAppFormat, AppInfo.name),
+            subtitle: bar.sourceActions,
+            icon: .symbol("arrow.clockwise"),
+            run: { _ in relaunch() })
+    }
+
+    /// Confirms a volume set from the bar. Dynamic Island shows the level
+    /// itself when it takes volume, and a floating copy would sit right below
+    /// it, so the floating one appears only otherwise.
+    package static func confirmVolume(_ level: Double, percent: Int, island: (Double) -> Bool,
+                                      float: (_ icon: String, _ message: String) -> Void) {
+        if island(level) { return }
+        float("speaker.wave.2", "\(FeatureStrings.commandBar(L10n.shared.language).volumeTitle) \(percent)%")
+    }
+
     /// One row per open window, so a person with six windows of the same app
     /// can name the one they want. Titles come from the window server, which
     /// only fills them in with Screen Recording granted; without it there is
     /// nothing honest to show and the caller skips this entirely.
-    package static func windowEntries(_ windows: [SwitcherItem],
-                              bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
+    package static func windowEntries(
+        _ windows: [SwitcherItem], bar: CommandBarFeatureStrings,
+        frontmost: @escaping @MainActor () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+        later: @escaping @MainActor (_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) -> Void
+            = { afterBeat($0, $1) },
+        activate: @escaping @MainActor (_ pid: pid_t, _ windowID: CGWindowID?, _ appName: String,
+                                        _ handoffSourcePID: pid_t?) -> Void
+            = { WindowActivator.activate(pid: $0, windowID: $1, appName: $2, handoffSourcePID: $3) }
+    ) -> [CommandBarEntry] {
         windows.compactMap { window in
             let title = window.title.trimmingCharacters(in: .whitespacesAndNewlines)
             // A window whose only name is its app repeats the app row.
@@ -1178,12 +1225,9 @@ package enum CommandBarCatalog {
                     // Capture before the beat: the bar never activates, so this
                     // is still the app in front, and a switch during the delay
                     // must not become the handoff source for a later reclaim.
-                    let handoffSourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-                    afterBeat(0.1) {
-                        WindowActivator.activate(pid: pid,
-                                                 windowID: windowID,
-                                                 appName: appName,
-                                                 handoffSourcePID: handoffSourcePID)
+                    let handoffSourcePID = frontmost()
+                    later(0.1) {
+                        activate(pid, windowID, appName, handoffSourcePID)
                     }
                 })
         }
@@ -1784,7 +1828,7 @@ package enum CommandBarCatalog {
     /// The pause every surface gives a non-activating panel to leave the
     /// screen before the action captures, presents or resolves focus. The
     /// action then runs on the main queue, so it is main-actor code.
-    private static func afterBeat(_ delay: TimeInterval = 0.15, _ work: @escaping @MainActor () -> Void) {
+    package static func afterBeat(_ delay: TimeInterval = 0.15, _ work: @escaping @MainActor () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() }
     }
 

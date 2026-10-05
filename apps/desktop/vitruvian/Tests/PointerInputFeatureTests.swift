@@ -1851,49 +1851,6 @@ enum PointerInputFeatureTests {
             !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
         }
 
-        let commandBarCatalogLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-        for (constructor, eligibility) in [
-            ("killProcessEntries", "false"),
-            ("windowEntries", "false"),
-            ("quitEntries", "app.bundleIdentifier != nil"),
-        ] {
-            let constructorCode = commandBarCatalogLines.firstIndex {
-                isCodeLine($0) && $0.contains("static func \(constructor)(")
-            }.map {
-                commandBarCatalogLines[($0 + 1)...]
-                    .prefix { !$0.contains("static func ") }
-                    .filter(isCodeLine).joined(separator: "\n")
-            } ?? ""
-            suite.expect(constructorCode.contains("countsUsage: \(eligibility)"),
-                   "\(constructor) excludes recycled process and window IDs from learning")
-        }
-        let mouseButtonToggleCode = commandBarCatalogLines.firstIndex {
-            isCodeLine($0) && $0.contains("if feature == .mouseButtonShortcuts {")
-        }.map {
-            commandBarCatalogLines[$0...].prefix(18).filter(isCodeLine).joined(separator: "\n")
-        } ?? ""
-        let mouseButtonToggleID = "toggle.\(AppFeature.mouseButtonShortcuts.rawValue)"
-        suite.expect(mouseButtonToggleCode.contains("DefaultsKey.mouseButtonShortcutsEnabled")
-                && mouseButtonToggleCode.contains("feature.hubTitle(s, hub: hub)")
-                && mouseButtonToggleCode.contains("id: \"\(mouseButtonToggleID)\""),
-               "the Command Bar keeps the mouse-button shortcut row's key, title and stable id")
-        suite.expect(mouseButtonToggleCode.contains("FeatureStrings.mouseButtons(language)")
-                && mouseButtonToggleCode.contains("DefaultsKey.mouseSpacesGestureEnabled")
-                && mouseButtonToggleCode.contains("spacesEnableLabel")
-                && mouseButtonToggleCode.contains("id: \"\(mouseButtonToggleID).spacesGesture\""),
-               "the Command Bar exposes the Spaces gesture as its own localized toggle row")
-
-        let restartAppCode = commandBarCatalogLines.firstIndex {
-            isCodeLine($0) && $0.contains("id: \"action.restartApp\"")
-        }.map {
-            commandBarCatalogLines[$0...].prefix(8).filter(isCodeLine).joined(separator: "\n")
-        } ?? ""
-        suite.expect(restartAppCode.contains("bar.restartAppFormat")
-                && restartAppCode.contains("AppInfo.name")
-                && restartAppCode.contains("FeatureRuntime.shared.relaunchApp()"),
-               "the Command Bar exposes its own localized relaunch action")
 
         func appStorageProperty(_ key: String, in lines: [String]) -> String? {
             guard let line = lines.first(where: {

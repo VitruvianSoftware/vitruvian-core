@@ -27,12 +27,7 @@ enum CommandBarFeatureTests {
         CommandBarInputSourceContract.run(suite)
         CommandBarTerminationContract.run(suite)
         CommandBarAppSortContract.run(suite)
-        let isCodeLine: (String) -> Bool = {
-            !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
-        }
-        let commandBarCatalogLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
+        CommandBarCatalogRowContract.run(suite)
         func pageVisible(_ page: SettingsPage, available: Set<AppFeature>) -> Bool {
             FeatureVisibilitySupport.isPageVisible(page) { available.contains($0) }
         }
@@ -196,19 +191,6 @@ enum CommandBarFeatureTests {
                                         keywords: clipboardClearKeywords,
                                         query: "clear clipboard"),
                "the clipboard clear action stays findable by its English name in a non-Latin locale")
-        let clipboardActionsCode = commandBarCatalogLines.firstIndex {
-            isCodeLine($0) && $0.contains("if AppFeature.clipboardHistory.isAvailable {")
-        }.map {
-            commandBarCatalogLines[$0...]
-                .prefix { !$0.contains("if AppFeature.textSnippets.isAvailable {") }
-                .filter(isCodeLine)
-                .joined(separator: "\n")
-        } ?? ""
-        suite.expect(clipboardActionsCode.contains("id: \"action.clipboardClearRecent\"")
-                && clipboardActionsCode.contains("title: clipboard.clearRecent")
-                && clipboardActionsCode.contains("confirmationPrompt: clipboard.clearRecent")
-                && clipboardActionsCode.contains("ClipboardHistoryService.shared.clearRecent()"),
-               "the Command Bar clears only unpinned clipboard items after confirmation")
         for accepts in [true, false] {
             let hud = CopyAnswerHUD()
             CommandBarCatalog.copyAnswer("42", copy: { value, then in
@@ -258,18 +240,6 @@ enum CommandBarFeatureTests {
             suite.expect(set == expected && beeps == expectedBeeps,
                    "the retry after a refresh looks for the display the command started on, found \(set) and \(beeps) beeps")
         }
-        let volumeActionCode = commandBarCatalogLines.firstIndex {
-            isCodeLine($0) && $0.contains("id: \"action.volume\"")
-        }.map {
-            commandBarCatalogLines[$0...]
-                .prefix { !$0.contains("id: \"action.soundMute\"") }
-                .filter(isCodeLine)
-                .joined(separator: "\n")
-        } ?? ""
-        suite.expect(volumeActionCode.contains("QuickToolHUD.show(")
-                && volumeActionCode.components(separatedBy: "QuickToolHUD.show(")[0]
-                    .contains("NotchSupport.routes(.volume), NotchService.shared.showVolume(level) { return }"),
-               "volume from the bar reports in Dynamic Island when it can, and floats its confirmation only otherwise")
 
         // MARK: Compact mode, what an empty field shows
         suite.expect(CommandBarHome.showsBrowseList(compact: false, hasCategory: false, isPeeking: false),
@@ -514,12 +484,6 @@ enum CommandBarFeatureTests {
         suite.expect(commandBarServiceSource.contains("UninstallerSupport.acceptedApplicationIDs(apps)")
                 && commandBarServiceSource.contains("uninstallable: uninstallableAppIDs"),
                "the uninstall browse lists only the apps the background scan saw the uninstaller accept")
-        let uninstallCatalogSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(uninstallCatalogSource.contains("uninstallable.contains($0.id)")
-                && uninstallCatalogSource.contains("UninstallerSupport.selection(for: url) != nil"),
-               "the uninstall browse and the Finder selection row offer only apps the uninstaller will take")
         let asciiSettingsSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/UI/Settings/CommandBarSettings.swift",
             encoding: .utf8)) ?? ""
@@ -939,12 +903,6 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarPreferences.emojiIdentity(fromRowID: "app.finder") == nil
                 && CommandBarPreferences.emojiIdentity(fromRowID: "emoji.") == nil,
                "a row of another kind, and an id with no emoji left in it, answer with nothing")
-        let catalogSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(catalogSource.contains(
-            "CommandBarPreferences.emojiRowID(identity: emoji.identity)"),
-               "the emoji rows take their id from the seam above, not from the toned character")
         suite.expect(CommandBarSearch.emojiQuery(from: "fire") == nil,
                "an ordinary search never opens the emoji index")
         suite.expect(CommandBarSearch.emojiQuery(from: ":fire") == "fire"

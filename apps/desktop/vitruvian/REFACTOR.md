@@ -4809,6 +4809,23 @@ stopped working when `build.sh` stopped building the app.
   waits on it. A red run files or refreshes one tracking issue.
 - **Fixtures:** all 56 still apply. One needed `package func toggle()`.
 
+Landed (7b, the Command Bar catalog): the six reads of `CommandBarCatalog.swift`
+became behavioral checks in `Tests/CommandBarCatalogRowTests.swift`.
+
+- **Seams:** the rows those reads pinned are built by functions that take
+  their actions: the clipboard clear, keep awake, restart, volume
+  confirmation and window rows, plus the uninstall rows and the feature
+  switches, which take their `defaults`. The catalog passes the live
+  services.
+- **What the checks run:** each row's id, title and confirmation, the
+  number it takes, and what it calls. They cover the keep awake presets, the
+  uninstall rows offering only apps the uninstaller takes, the rows for
+  process and window ids not learning habits, and a window row capturing
+  its focus source before the beat.
+- **Dropped:** the emoji id read. `Tests/CommandBarEmojiTests.swift`
+  already builds those rows and checks their ids for every skin tone.
+- **Left:** 141 source reads in 26 test files, over 86 production files.
+
 ## Not in scope
 
 Product decisions remain open:

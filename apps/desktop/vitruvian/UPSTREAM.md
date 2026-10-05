@@ -1973,6 +1973,22 @@ is that notice. Add an entry for every change to upstream files.
     which decides the clicks they take and what the pointer does to them.
   - `Tests/NotchTests.swift` runs the new
     `Tests/NotchCaptureControlsStateTests.swift`.
+- **2026-10-05**: Refactor step 7b, the Command Bar catalog (`REFACTOR.md`):
+  - `Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift`: the
+    clipboard clear, keep awake, restart and volume confirmation rows come
+    from their own builders (`clipboardClearEntry`, `keepAwakeEntries`,
+    `restartAppEntry`, `confirmVolume`) with their actions passed in.
+    `toggleEntries` and the uninstall rows read the `defaults` they are
+    given; the Finder selection row is told whether the app is in
+    Applications and whether the uninstaller takes it; `windowEntries` is
+    given the frontmost app, the beat and the activation. `afterBeat` is
+    package. Every caller passes the live values, so the bar behaves as before.
+  - `Tests/CommandBarFeatureTests.swift`, `Tests/PointerInputFeatureTests.swift`
+    and `Tests/SwitcherModelFeatureTests.swift` no longer read the catalog's
+    source; the new `Tests/CommandBarCatalogRowTests.swift` builds the rows and
+    runs them. `Tests/KeepAwakeCatalogTests.swift` is gone with its
+    registration in `Tests/MetricsTests.swift`; its checks are among the new
+    ones.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
