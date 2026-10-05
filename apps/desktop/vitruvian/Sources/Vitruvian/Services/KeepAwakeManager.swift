@@ -649,21 +649,39 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func continueAutomaticallyAfterTimerIfNeeded() -> Bool {
-        guard sessionTrigger == .manual,
-              AppFeature.keepAwake.isAvailable,
-              !automationSuppressedUntilConditionsClear,
-              automaticSessionAllowedByBatteryProtection() else { return false }
-        // The same full match the automation itself would need to start a
-        // session: under All, a timed session must not be handed over on one
-        // condition the automation would never have acted on (issue #1587).
-        let matches = currentMatchingAutomationConditions()
-        guard KeepAwakeAutomationSupport.conditionsSatisfied(
-                matching: matches,
-                enabled: currentEnabledAutomationConditions(),
-                requireAll: automationRequiresAllConditions()) else { return false }
+        guard let matches = Self.timerHandoff(
+                trigger: sessionTrigger, suppressed: automationSuppressedUntilConditionsClear,
+                batteryAllows: { automaticSessionAllowedByBatteryProtection() },
+                matching: { currentMatchingAutomationConditions() },
+                enabled: { currentEnabledAutomationConditions() },
+                requireAll: { automationRequiresAllConditions() }) else { return false }
         activeAutomationConditions = matches
         activate(end: nil, trigger: .automation)
         return true
+    }
+
+    /// The conditions a timed session that ran out carries on with as an
+    /// automatic one, or nil when it ends. The conditions are read only once
+    /// the session, the feature, a manual stop and the battery allow it.
+    package static func timerHandoff(trigger: SessionTrigger?, suppressed: Bool,
+                                     in defaults: UserDefaults = .standard,
+                                     batteryAllows: () -> Bool,
+                                     matching: () -> Set<KeepAwakeAutomationCondition>,
+                                     enabled: () -> Set<KeepAwakeAutomationCondition>,
+                                     requireAll: () -> Bool) -> Set<KeepAwakeAutomationCondition>? {
+        guard trigger == .manual,
+              AppFeature.keepAwake.isAvailable(in: defaults),
+              !suppressed,
+              batteryAllows() else { return nil }
+        // The same full match the automation itself would need to start a
+        // session: under All, a timed session must not be handed over on one
+        // condition the automation would never have acted on (issue #1587).
+        let matches = matching()
+        guard KeepAwakeAutomationSupport.conditionsSatisfied(
+                matching: matches,
+                enabled: enabled(),
+                requireAll: requireAll()) else { return nil }
+        return matches
     }
 
     private func scheduleEnd(at date: Date) {

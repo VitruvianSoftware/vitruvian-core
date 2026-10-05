@@ -310,7 +310,6 @@ GENERATED_TEST_SOURCES = [
     "DockPreviewScope.swift",
     "FanControlResume.swift",
     "KeepAwakeLidSleep.swift",
-    "KeepAwakeTimerHandoff.swift",
     "KeyboardDebounceTap.swift",
     "LinearScrollTap.swift",
     "LocalizationCatalog.swift",

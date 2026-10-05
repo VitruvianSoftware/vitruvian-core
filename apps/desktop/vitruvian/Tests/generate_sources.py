@@ -1136,22 +1136,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func isConfigured()")
           + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func restoreSleepWithAuthorization(")
           + "}\n")
-    write("KeepAwakeTimerHandoff.swift", "import Foundation\n\nextension KeepAwakeTimerHandoffContract {\n"
-          + "final class Service {\nvar sessionTrigger = SessionTrigger.manual\n"
-          + "var automationSuppressedUntilConditionsClear = false\n"
-          + "var activeAutomationConditions: Set<KeepAwakeAutomationCondition> = []\n"
-          + "var enabled: Set<KeepAwakeAutomationCondition> = []\n"
-          + "var matching: Set<KeepAwakeAutomationCondition> = []\n"
-          + "var requireAll = false\nvar batteryAllows = true\n"
-          + "var activations: [(end: Date?, trigger: SessionTrigger)] = []\n"
-          + "func automaticSessionAllowedByBatteryProtection() -> Bool { batteryAllows }\n"
-          + "func currentMatchingAutomationConditions() -> Set<KeepAwakeAutomationCondition> { matching }\n"
-          + "func currentEnabledAutomationConditions() -> Set<KeepAwakeAutomationCondition> { enabled }\n"
-          + "func automationRequiresAllConditions() -> Bool { requireAll }\n"
-          + "func activate(end: Date?, trigger: SessionTrigger) { activations.append((end, trigger)) }\n"
-          + declaration(keep_awake, "    private func continueAutomaticallyAfterTimerIfNeeded()")
-            .replace("private func", "func", 1)
-          + "}\n}\n")
 
     self_uninstall = "Sources/Vitruvian/Services/SelfUninstall.swift"
     write("SelfUninstallRemoval.swift", "import Foundation\n\nextension SelfUninstallContract {\nenum Host {\n"
