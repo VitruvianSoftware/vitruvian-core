@@ -1124,6 +1124,21 @@ file goes, which leaves 54.
   none is given. `activateApp` falls back to the same pid, so the mutant is
   equivalent.
 
+Landed (4b, the scrolling screenshot's capture loop): one more generated file
+goes, which leaves 53.
+
+- **Injected:** `ScreenshotScrollingCapture.capture(region:finishSignal:onProgress:prepare:)`
+  is the capture loop over a `FrameSource` that `prepare` resolves once. The
+  existing `capture(region:includePointer:...)` resolves it through the
+  capture engine as before. `stitch(_:)` is `package`.
+- **Test:** the test runs the real loop and stitching over frames it supplies,
+  instead of a copy of the whole enum with stand-ins for the region and the
+  engine.
+- **Check added:** a region that cannot be captured reports a failure.
+- **Verification:** the loop draws through Core Graphics, which the Linux
+  model cannot build. The model type-checks the new signatures and the test's
+  calls in Swift 6; the loop itself relies on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

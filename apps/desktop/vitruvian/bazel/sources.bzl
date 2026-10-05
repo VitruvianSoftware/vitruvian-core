@@ -339,7 +339,6 @@ GENERATED_TEST_SOURCES = [
     "ScreenshotSelectionRefresh.swift",
     "ScreenshotShareCompletion.swift",
     "ScreenshotShortcutCompletion.swift",
-    "ScrollingCaptureLoop.swift",
     "ShelfDropRouting.swift",
     "SoftwareDimmingRoute.swift",
     "SuperKeyTap.swift",

@@ -10,44 +10,22 @@ import VitruvianUI
 /// Runs the production capture loop and pixel stitching with an isolated image
 /// source. No screen permissions, global input or application windows are used.
 enum ScreenshotScrollingCaptureTests {
-    enum RecorderSupport {
-        struct Region {
-            let displayID: CGDirectDisplayID = 1
-            let pixelRect = CGRect(x: 0, y: 0, width: 32, height: 120)
-            let anchorRect = CGRect(x: 10, y: 20, width: 16, height: 60)
-            let scale: CGFloat = 2
+    /// The frames a session takes, in order; it asks to finish once the last
+    /// one is taken. Only the capture under test touches it, one call at a time.
+    nonisolated final class Source: @unchecked Sendable {
+        let images: [CGImage?]
+        let finish: ScreenshotScrollingCapture.FinishSignal
+        var calls = 0
+        var preparations = 0
+        init(_ images: [CGImage?], finish: ScreenshotScrollingCapture.FinishSignal) {
+            self.images = images
+            self.finish = finish
         }
-    }
-    enum ScreenshotSelectionController {
-        struct Capture {
-            let image: CGImage
-            let scale: CGFloat
-            let anchorRect: CGRect
-        }
-    }
-    @MainActor enum ScreenshotCaptureEngine {
-        static var source: Source!
-        static var preparations = 0
-        static func prepareDisplayRegion(displayID: CGDirectDisplayID, pixelRect: CGRect,
-                                         includePointer: Bool, hideVitruvianWindows: Bool,
-                                         protectedWindowIDs: Set<CGWindowID>) async -> Source? {
-            preparations += 1
-            return source
-        }
-        final class Source {
-            let images: [CGImage?]
-            let finish: ScreenshotScrollingCapture.FinishSignal
-            var calls = 0
-            init(_ images: [CGImage?], finish: ScreenshotScrollingCapture.FinishSignal) {
-                self.images = images
-                self.finish = finish
-            }
-            func image() async -> CGImage? {
-                let index = min(calls, images.count - 1)
-                calls += 1
-                if calls >= images.count { finish.request() }
-                return images[index]
-            }
+        func image() async -> CGImage? {
+            let index = min(calls, images.count - 1)
+            calls += 1
+            if calls >= images.count { finish.request() }
+            return images[index]
         }
     }
 
@@ -153,16 +131,19 @@ enum ScreenshotScrollingCaptureTests {
         suite.expect(matchingDuration < 1,
                      "Retina matching must not stall the capture for a second (\(matchingDuration)s)")
 
-        let region = RecorderSupport.Region()
-        defer { ScreenshotCaptureEngine.source = nil }
+        let region = RecorderSupport.Region(displayID: 1, windowID: nil,
+                                            pixelRect: CGRect(x: 0, y: 0, width: 32, height: 120),
+                                            anchorRect: CGRect(x: 10, y: 20, width: 16, height: 60),
+                                            scale: 2)
         func capture(_ frames: [CGImage?]) async -> ScreenshotScrollingCapture.Result {
             let signal = ScreenshotScrollingCapture.FinishSignal()
-            ScreenshotCaptureEngine.source = .init(frames, finish: signal)
-            ScreenshotCaptureEngine.preparations = 0
+            let source = Source(frames, finish: signal)
             let result = await ScreenshotScrollingCapture.capture(
-                region: region, includePointer: false, hideVitruvianWindows: true,
-                protectedWindowIDs: [], finishSignal: signal, onProgress: { _ in })
-            suite.expect(ScreenshotCaptureEngine.preparations == 1,
+                region: region, finishSignal: signal, onProgress: { _ in }) {
+                    source.preparations += 1
+                    return .init { await source.image() }
+                }
+            suite.expect(source.preparations == 1,
                          "scrolling session resolves its capture configuration only once")
             return result
         }
@@ -210,13 +191,19 @@ enum ScreenshotScrollingCaptureTests {
         if case .failed = await capture([nil]) {} else {
             suite.expect(false, "failure before any frame is reported as failed")
         }
+        let unavailable = await ScreenshotScrollingCapture.capture(
+            region: region, finishSignal: .init(), onProgress: { _ in }) { nil }
+        if case .failed = unavailable {} else {
+            suite.expect(false, "a region that cannot be captured is reported as failed")
+        }
 
         let signal = ScreenshotScrollingCapture.FinishSignal()
-        ScreenshotCaptureEngine.source = .init([frame(offset: 0)], finish: signal)
+        let source = Source([frame(offset: 0)], finish: signal)
         let cancelled = Task {
             await ScreenshotScrollingCapture.capture(
-                region: region, includePointer: false, hideVitruvianWindows: true,
-                protectedWindowIDs: [], finishSignal: signal, onProgress: { _ in })
+                region: region, finishSignal: signal, onProgress: { _ in }) {
+                    .init { await source.image() }
+                }
         }
         cancelled.cancel()
         if case .cancelled = await cancelled.value {} else {

@@ -39,17 +39,40 @@ package enum ScreenshotScrollingCapture {
     private static let settleInterval: TimeInterval = 0.22
     private static let finishGraceInterval: TimeInterval = 0.85
 
+    /// Takes one frame of the region on each call.
+    package struct FrameSource: Sendable {
+        package var image: @Sendable () async -> CGImage?
+
+        package init(image: @escaping @Sendable () async -> CGImage?) {
+            self.image = image
+        }
+    }
+
     package static func capture(region: RecorderSupport.Region,
                         includePointer: Bool,
                         hideVitruvianWindows: Bool,
                         protectedWindowIDs: Set<CGWindowID>,
                         finishSignal: FinishSignal,
                         onProgress: @escaping @MainActor (Int) -> Void) async -> Result {
-        do {
+        let displayID = region.displayID
+        let pixelRect = region.pixelRect
+        return await capture(region: region, finishSignal: finishSignal, onProgress: onProgress) {
             guard let source = await ScreenshotCaptureEngine.prepareDisplayRegion(
-                displayID: region.displayID, pixelRect: region.pixelRect,
+                displayID: displayID, pixelRect: pixelRect,
                 includePointer: includePointer, hideVitruvianWindows: hideVitruvianWindows,
-                protectedWindowIDs: protectedWindowIDs),
+                protectedWindowIDs: protectedWindowIDs) else { return nil }
+            return FrameSource { await source.image() }
+        }
+    }
+
+    /// The capture loop over the frames `prepare` resolves once, or nil when
+    /// the region cannot be captured. Tests pass frames of their own.
+    package static func capture(region: RecorderSupport.Region,
+                                finishSignal: FinishSignal,
+                                onProgress: @escaping @MainActor (Int) -> Void,
+                                prepare: @Sendable () async -> FrameSource?) async -> Result {
+        do {
+            guard let source = await prepare(),
                   let firstFrame = await source.image(),
                   let first = contentFrame(firstFrame)
             else { return Task.isCancelled ? .cancelled : .failed }
@@ -382,7 +405,7 @@ package enum ScreenshotScrollingCapture {
         return context.makeImage()
     }
 
-    private static func stitch(_ slices: [CGImage]) -> CGImage? {
+    package static func stitch(_ slices: [CGImage]) -> CGImage? {
         guard !Task.isCancelled else { return nil }
         guard let first = slices.first else { return nil }
         guard slices.count > 1 else { return first }

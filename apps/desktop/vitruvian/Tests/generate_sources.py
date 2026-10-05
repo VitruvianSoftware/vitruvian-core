@@ -66,12 +66,6 @@ def availability_declaration(path, prefix):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    write("ScrollingCaptureLoop.swift", "import AppKit\nimport CoreGraphics\n"
-          + "extension ScreenshotScrollingCaptureTests {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotScrollingCapture.swift",
-                        "enum ScreenshotScrollingCapture {").replace(
-                            "    private static func stitch(", "    static func stitch(")
-          + "}\n")
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
     write("UpdateIntroFlow.swift", "import AppKit\nimport Foundation\n"
           + "extension UpdateIntroFlowTests {\nfinal class Host: Fixture {\n"
