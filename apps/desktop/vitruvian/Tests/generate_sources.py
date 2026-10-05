@@ -141,15 +141,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    write("DockAutohideInput.swift", "import CoreGraphics\nimport Foundation\nextension DockAutohideHoldTests.Service {\n"
-          + "".join(declaration(dock, prefix, scope="final class DockPreviewService:")
-                    .replace("private func", "func", 1)
-                    for prefix in ["    private func beginDockAutohideHold()",
-                                   "    private func releaseDockAutohideHold()",
-                                   "    private func handleDockHoldInput(type:",
-                                   "    private func handle(type:",
-                                   "    func commit("])
-          + "}\n")
     # The raw wheel tap runs as shipped: linear scrolling's cap, carry and
     # write-back, then the direction change. Only the services it asks and
     # the defaults it reads are fixtures.

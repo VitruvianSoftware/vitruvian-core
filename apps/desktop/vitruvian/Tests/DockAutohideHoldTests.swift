@@ -9,72 +9,58 @@ import VitruvianServices
 import VitruvianUI
 
 enum DockAutohideHoldTests {
-    // Session methods are extracted from production on every test build. Only
-    // event-tap installation and workspace notifications are replaced here.
-    enum Workspace {
-        static let shared = WorkspaceCenter()
-        static let activeSpaceDidChangeNotification = Notification.Name("hold.space")
-        static let willSleepNotification = Notification.Name("hold.sleep")
-        static let sessionDidResignActiveNotification = Notification.Name("hold.session")
-    }
-    final class WorkspaceCenter {
-        let notificationCenter = NotificationCenter()
-        var frontmostApplication: App? = App()
-    }
-    struct App { var processIdentifier: Int32 = 20 }
-    static var activationEvents: [String] = []
-    struct FrameRestoration {
-        func restoration(for item: Int, isCurrent: @escaping () -> Bool) -> (() -> Void)? {
-            activationEvents.append("capture")
-            return { if isCurrent() { activationEvents.append("restore") } }
-        }
-    }
-    enum WindowEnumerator {
-        static var mayActivate = true
-        static func dockPreviewMayActivate(_ item: Int) -> Bool { mayActivate }
-    }
-    enum WindowActivator {
-        static func activate(_ item: Int, handoffSourcePID: Int32? = nil) {
-            activationEvents.append("activate")
-        }
-    }
-    final class Service {
-        typealias SwitcherItem = Int
-        typealias NSWorkspace = Workspace
-        typealias DockPreviewFrameRestoration = FrameRestoration
-        typealias WindowEnumerator = DockAutohideHoldTests.WindowEnumerator
-        typealias WindowActivator = DockAutohideHoldTests.WindowActivator
-        let dockAutohideHold: DockAutohideHold
-        var dockFrameRestoration: FrameRestoration?
-        var dockFrameRestorationGeneration = 0
-        var windows = [1]
-        var isRunning = true
-        var dockHoldObservers: [NSObjectProtocol] = []
+    /// The preview service's side of a held session, recorded. No event tap
+    /// is installed and the workspace notifications go to a private center.
+    final class Preview {
+        var events: [String] = []
         var acceptsInputTap = true
         var inputTapActive = false
         var stoppedWhileHolding = false
-        var pendingMove = false
-        var pointerEventGeneration = 0
-        var tap: CFMachPort?
-        var deliveredMoves = 0
-        func discardFarMouseMove(axPoint: CGPoint) -> Bool { false }
-        func admitMouseMove(axPoint: CGPoint) -> Bool { true }
-        func handleOnMain(type: CGEventType, axPoint: CGPoint) { deliveredMoves += 1 }
-        var sessionEnds = 0
-        init(_ hold: DockAutohideHold) { dockAutohideHold = hold }
-        func startDockHoldInputTap() -> Bool {
-            inputTapActive = acceptsInputTap
-            return acceptsInputTap
+        var mayActivate = true
+        var isRunning = true
+        var captures = 0
+        /// Whether each restore handed out would still run, asked later.
+        var restores: [@MainActor @Sendable () -> Bool] = []
+        let center = NotificationCenter()
+        var session: DockHoldSession<Int>!
+
+        init(_ hold: DockAutohideHold) {
+            session = DockHoldSession(hold: hold, host: .init(
+                startInputTap: { [unowned self] in
+                    inputTapActive = acceptsInputTap
+                    return acceptsInputTap
+                },
+                stopInputTap: { [unowned self] in
+                    stoppedWhileHolding = stoppedWhileHolding || session.hold.isHolding
+                    inputTapActive = false
+                },
+                captureFrames: { [unowned self] in
+                    captures += 1
+                    return { [unowned self] _, isCurrent in
+                        events.append("capture")
+                        return { [unowned self] in
+                            events.append("restore")
+                            restores.append(isCurrent)
+                        }
+                    }
+                },
+                isRunning: { [unowned self] in isRunning },
+                dropQueuedPointer: { [unowned self] in events.append("drop") },
+                endSession: { [unowned self] in
+                    events.append("end")
+                    session.release()
+                },
+                mayActivate: { [unowned self] _ in mayActivate },
+                activate: { [unowned self] _ in events.append("activate") },
+                notificationCenter: center))
         }
-        func stopDockHoldInputTap() {
-            stoppedWhileHolding = stoppedWhileHolding || dockAutohideHold.isHolding
-            inputTapActive = false
-        }
-        func cancelPendingMove() { pendingMove = false }
-        func endSession() {
-            activationEvents.append("end")
-            sessionEnds += 1
-            releaseDockAutohideHold()
+
+        /// Whether the session's key tap and workspace observers are live.
+        func watches() -> Bool {
+            let before = events.count
+            center.post(name: DockHoldSession<Int>.endingNotifications[0], object: nil)
+            let watched = events.count > before
+            return watched
         }
     }
 
@@ -161,105 +147,101 @@ enum DockAutohideHoldTests {
         })
         suite.expect(writes == [true], "launch recovery without a marker never changes the Dock")
 
-        let service = Service(makeHold())
+        let preview = Preview(makeHold())
+        let session = preview.session!
         autohide = true
-        service.acceptsInputTap = false
+        preview.acceptsInputTap = false
         let beforeRejectedTap = writes.count
-        service.beginDockAutohideHold()
-        suite.expect(autohide == true && writes.count == beforeRejectedTap
-                     && service.dockHoldObservers.isEmpty,
+        session.begin()
+        suite.expect(autohide == true && writes.count == beforeRejectedTap && !preview.watches(),
                      "without input protection the normal preview never changes auto-hide")
-        service.acceptsInputTap = true
+        preview.acceptsInputTap = true
         autohide = false
-        service.beginDockAutohideHold()
-        suite.expect(!service.inputTapActive && service.dockHoldObservers.isEmpty,
+        session.begin()
+        suite.expect(!preview.inputTapActive && !preview.watches(),
                      "a Dock already visible leaves no input tap or observers")
         autohide = true
-        service.beginDockAutohideHold()
-        let generation = service.dockFrameRestorationGeneration
-        service.beginDockAutohideHold()
-        service.pendingMove = true
-        suite.expect(service.inputTapActive && service.dockHoldObservers.count == 3,
-                     "switching apps keeps exactly one set of hold observers")
-        suite.expect(service.dockFrameRestoration != nil && service.dockFrameRestorationGeneration == generation,
-                     "switching Dock icons retains the window geometry from before the hold")
-        service.handleDockHoldInput(type: .mouseMoved)
-        suite.expect(autohide == false && service.sessionEnds == 0,
+        let captured = preview.captures
+        session.begin()
+        session.begin()
+        suite.expect(preview.inputTapActive && preview.captures == captured + 1,
+                     "switching Dock icons keeps the hold and the window geometry from before it")
+        preview.events = []
+        session.handleInput(type: .mouseMoved)
+        suite.expect(autohide == false && preview.events.isEmpty,
                      "moving through previews keeps the Dock held")
-        // Model the system receiving the unmodified key after the synchronous
-        // production handler returns. No event is posted to this Mac.
-        let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
-                           mouseCursorPosition: .zero, mouseButton: .left)!
-        _ = service.handle(type: .mouseMoved, event: move)
-        service.handleDockHoldInput(type: .keyDown)
-        _ = service.handle(type: .mouseMoved, event: move)
-        var queueDrained = false
-        DispatchQueue.main.async { queueDrained = true }
-        let deadline = Date().addingTimeInterval(3)
-        while !queueDrained && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
-        }
-        suite.expect(queueDrained && service.deliveredMoves == 1,
-                     "only fresh pointer input survives keyboard dismissal, not an already queued move")
-        suite.expect(!service.stoppedWhileHolding,
+        session.handleInput(type: .keyDown)
+        suite.expect(preview.events == ["drop", "end"],
+                     "a key drops the queued pointer move before it ends the preview")
+        suite.expect(!preview.stoppedWhileHolding,
                      "auto-hide is restored before the input tap can release its pending key")
-        suite.expect(autohide == true && !service.pendingMove
-                     && !service.inputTapActive && service.dockHoldObservers.isEmpty,
-                     "keyboard input restores before delivery and cancels a queued hover move")
-        suite.expect(service.dockFrameRestoration == nil, "ending a hold discards its saved window geometry")
+        suite.expect(autohide == true && !preview.inputTapActive && !preview.watches(),
+                     "keyboard input restores the Dock and stops watching")
+        preview.events = []
+        session.commit(1)
+        suite.expect(preview.events == ["end", "activate"], "ending a hold discards its saved window geometry")
         autohide?.toggle() // Native shortcut chooses a permanently visible Dock.
-        service.releaseDockAutohideHold() // A later close or preference sync.
+        session.release() // A later close or preference sync.
         suite.expect(autohide == false && !defaults.bool(forKey: marker),
                      "later session cleanup cannot undo the user's shortcut choice")
         autohide?.toggle()
         autohide?.toggle()
-        service.releaseDockAutohideHold()
+        session.release()
         suite.expect(autohide == false,
                      "further Dock changes after keyboard dismissal remain untouched")
-        let ended = service.sessionEnds
-        service.handleDockHoldInput(type: .keyDown)
-        suite.expect(service.sessionEnds == ended,
+        preview.events = []
+        session.handleInput(type: .keyDown)
+        suite.expect(preview.events.isEmpty,
                      "input outside a hold does not dismiss the normal preview")
         for event in [CGEventType.tapDisabledByTimeout, .tapDisabledByUserInput] {
             autohide = true
-            service.beginDockAutohideHold()
-            service.handleDockHoldInput(type: event)
-            suite.expect(autohide == true && !service.inputTapActive,
+            session.begin()
+            session.handleInput(type: event)
+            suite.expect(autohide == true && !preview.inputTapActive,
                          "losing input protection immediately releases the hold")
         }
-        for event in [Workspace.activeSpaceDidChangeNotification, Workspace.willSleepNotification,
-                      Workspace.sessionDidResignActiveNotification] {
+        for name in DockHoldSession<Int>.endingNotifications {
             autohide = true
-            service.beginDockAutohideHold()
-            Workspace.shared.notificationCenter.post(name: event, object: nil)
-            suite.expect(autohide == true && !service.inputTapActive && service.dockHoldObservers.isEmpty,
-                         "leaving the workspace releases both the Dock and input protection")
+            session.begin()
+            preview.events = []
+            preview.center.post(name: name, object: nil)
+            preview.center.post(name: name, object: nil)
+            suite.expect(autohide == true && !preview.inputTapActive && preview.events == ["end"],
+                         "leaving the workspace releases both the Dock and input protection, once")
         }
         autohide = true
         acceptsWrites = false
-        service.beginDockAutohideHold()
-        suite.expect(!service.inputTapActive && service.dockHoldObservers.isEmpty,
+        session.begin()
+        suite.expect(!preview.inputTapActive && !preview.watches(),
                      "a rejected system write removes input protection immediately")
         acceptsWrites = true
-        service.releaseDockAutohideHold()
+        session.release()
 
         autohide = true
-        service.beginDockAutohideHold()
-        activationEvents = []
-        service.commit(1)
-        suite.expect(activationEvents == ["capture", "end", "activate", "restore"],
+        session.begin()
+        preview.events = []
+        session.commit(1)
+        suite.expect(preview.events == ["capture", "end", "activate", "restore"],
                      "selection captures geometry before release and repairs only after activating the window")
-        service.beginDockAutohideHold()
-        activationEvents = []
-        WindowEnumerator.mayActivate = false
-        service.commit(1)
-        suite.expect(activationEvents == ["capture", "end"],
+        suite.expect(preview.restores.last?() == true, "the repair stays current after the preview closes")
+        autohide = true
+        session.begin()
+        suite.expect(preview.restores.last?() == false, "a newer hold makes an older repair stale")
+        preview.events = []
+        preview.mayActivate = false
+        session.commit(1)
+        suite.expect(preview.events == ["capture", "end"],
                      "a selection rejected by the Space policy never restores a window")
-        WindowEnumerator.mayActivate = true
-        activationEvents = []
-        service.commit(1)
-        suite.expect(activationEvents == ["end", "activate"],
+        preview.mayActivate = true
+        preview.events = []
+        session.commit(1)
+        suite.expect(preview.events == ["end", "activate"],
                      "normal previews never schedule a frame restoration")
+        autohide = true
+        session.begin()
+        session.commit(1)
+        preview.isRunning = false
+        suite.expect(preview.restores.last?() == false, "a stopped Dock preview repairs nothing")
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.dockPreviewKeepDockVisible] as? Bool == false,
                      "the experiment is disabled by default")

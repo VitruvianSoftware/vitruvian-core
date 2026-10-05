@@ -1520,6 +1520,34 @@ leaves 31.
   mutants, all killed. A Swift 6 type-check of `live` over stubs. The
   AppKit paths need macOS CI.
 
+Landed (4b, the Dock preview's auto-hide hold): one more generated file
+goes, which leaves 30.
+
+- **Moved:** the hold's session leaves `DockPreviewService` for
+  `DockHoldSession` (`Services/DockPreview/DockHoldSession.swift`):
+  - the `DockAutohideHold`;
+  - the window geometry captured before it;
+  - the workspace observers;
+  - what a key or a lost tap does;
+  - how choosing a window repairs its frame.
+
+  It is generic over the item, and its `Host` is the key tap, the frame
+  capture, the pointer queue, the preview's end, the Space policy, the
+  activation and the notification center. The service builds it with its
+  own members and forwards to it.
+- **Test:** the hold test drives a real session over a recorded preview and
+  a private notification center, instead of copies of five service members.
+  New checks:
+  - a key drops the queued pointer move before ending the preview;
+  - each workspace change ends the preview once;
+  - a frame repair goes stale after a newer hold or once the preview stops.
+
+  The service's own pointer filter, which the dropped move invalidates,
+  stays untested here.
+- **Verification:** a Linux Swift 6.4 model of the session and the hold
+  runs the test (41 checks) and 25 mutants, all killed. The service needs
+  macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
