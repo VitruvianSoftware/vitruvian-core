@@ -421,6 +421,7 @@ swift_binary(
         ":VMStatisticsCompat",
         ":VitruvianCore",
         ":VitruvianDesign",
+        ":VitruvianNowPlayingLib",
         ":VitruvianServices",
         ":VitruvianUI",
     ],

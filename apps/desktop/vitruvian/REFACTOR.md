@@ -1827,6 +1827,60 @@ which leaves 23.
 
   CoreAudio itself needs macOS CI.
 
+Landed (4b, Now Playing routing): one more generated file goes, which
+leaves 22.
+
+- **Injected:** `NotchNativePlayback` in the Now Playing adapter gets a
+  `Platform`, and `live` is the system's:
+  - MediaRemote's functions and string constants, by name;
+  - the running applications, as `NowPlayingApplication` (new);
+  - the system uptime;
+  - the reply line to the app, the session refresh, and the queue.
+
+  The adapter's command switch moves into `NotchNativePlayback.perform`,
+  and what the test needs becomes `package`.
+- **Test:** the routing test links the adapter's module and drives the
+  real selection over a recording MediaRemote. Before, it compiled a copy
+  of fifteen members with a stand-in target and a stored running flag.
+  Only that file imports the module, because it carries a second copy of
+  the app's playback types. The music hardening test reaches the adapter
+  the way the app does: a reply for the context, and a request line through
+  the real framer. New checks:
+  - a quit app, or one without a bundle, gets no player path;
+  - another app on the same process, or a quit one, is never read;
+  - artwork is copied in;
+  - a failure answer is not delivery;
+  - each command reaches the player with its own number, and a seek with
+    its position;
+  - a system without the position option refuses the seek;
+  - a refused gesture still answers, and the new player is not read;
+  - a recording in another process is a new revision;
+  - a path or recording that changes during validation refuses;
+  - a validation of an old recording answers no;
+  - an untitled player publishes no controls;
+  - an empty item ID is none, and the adapter's own item key counts;
+  - a helper process shows its own name and its owner, and routes to
+    itself;
+  - rows arrive in a stable order;
+  - a blank title is no track, and choosing the waiting row again does
+    not restart its wait;
+  - the selected app quitting releases the choice;
+  - the music app on screen stays when another takes the session.
+- **Verification:** a Linux Swift 6.4 model of the selection runs the
+  test, 107 checks, and 80 mutants. The model swaps blocks and C function
+  pointers for closures, and the player path for a plain object. Three
+  survive, each equivalent:
+  - a released choice that keeps its timer, since every new choice resets
+    it;
+  - an untitled player that keeps its old context, which cannot validate
+    without an identity;
+  - validation's first running check, since the read it guards refuses a
+    player that is not running.
+
+  The system-player check needs a real system player, so the model does
+  not reach it. MediaRemote's player paths and the bridge into the
+  hardening test need macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

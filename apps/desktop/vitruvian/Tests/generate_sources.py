@@ -141,28 +141,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
-    adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
-    # Only the clock changes, so tests drive the wait for a chosen source's track.
-    write("NotchPlaybackRouting.swift", "import Foundation\nimport ObjectiveC\nextension NotchPlaybackRoutingContract {\n"
-          + declaration(playback_adapter, "    private struct Identity:").replace("private struct", "struct", 1)
-          + declaration(playback_adapter, "    private static func playPauseCommand(")
-          + declaration(playback_adapter, "    static var target:")
-          + declaration(playback_adapter, "    static var sourceReply:")
-          + declaration(playback_adapter, "    static func choose(")
-          + declaration(playback_adapter, "    static func select()")
-            .replace("ProcessInfo.processInfo.systemUptime", "uptime")
-          + declaration(playback_adapter, "    static func publish(").replace("    static func", "    @discardableResult\n    static func", 1)
-          + declaration(playback_adapter, "    static func updatePlayPauseCommand(")
-          + declaration(playback_adapter, "    static func validatedTarget(")
-          + declaration(playback_adapter, "    static func readInfo(")
-          + declaration(playback_adapter, "    static func supportedCommands(")
-          + declaration(playback_adapter, "    private static func currentPlayerPID(").replace("private static", "static", 1)
-          + declaration(playback_adapter, "    static func send(")
-          + declaration(playback_adapter, "    private static func makeTarget(").replace("private static", "static", 1)
-          + declaration(adapter_entry, "private func sendPlaybackCommand(").replace("private func", "static func", 1)
-          + declaration(adapter_entry, "func encodedReply(").replace("func encodedReply", "static func encodedReply", 1)
-          + "}\n")
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
     # The composition root wires the island's collaborators; each contract

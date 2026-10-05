@@ -1670,6 +1670,16 @@ is that notice. Add an entry for every change to upstream files.
   (CoreAudio through the new `Services/Audio/AudioHAL.swift`, their queues,
   settings and feedback); `Tests/MixerInputVolumeTests.swift` drives both,
   and `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `NowPlayingAdapter/NowPlayingSelection.swift` takes an injected platform
+  (MediaRemote, the running applications, the uptime, the reply line, the
+  refresh and the queue). The command switch moves there from
+  `NowPlayingAdapter/NowPlayingAdapter.swift` as `perform`, and both files
+  open what the test needs as `package`.
+  - `Tests/NotchPlaybackRoutingTests.swift` drives the adapter's module
+    (`BUILD` adds it to the test binary), and `Tests/NotchMusicHardeningTests.swift`
+    reaches it through reply and request lines.
+  - `Tests/generate_sources.py` no longer copies the selection.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

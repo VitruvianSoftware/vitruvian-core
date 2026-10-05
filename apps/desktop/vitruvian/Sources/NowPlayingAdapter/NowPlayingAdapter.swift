@@ -49,7 +49,7 @@ private let emissionLock = NSLock()
 /// JSONSerialization raises an Objective-C exception on NaN or infinity,
 /// which `try?` cannot catch. A player can report either for a live stream,
 /// so such a number is left out; any other invalid value reads as an error.
-func encodedReply(_ reply: [String: Any]) -> Data {
+package func encodedReply(_ reply: [String: Any]) -> Data {
     let finite = reply.filter { ($0.value as? Double)?.isFinite != false }
     guard JSONSerialization.isValidJSONObject(finite),
           let data = try? JSONSerialization.data(withJSONObject: finite) else {
@@ -270,46 +270,10 @@ public func vitruvianNowPlayingWatch() {
         DispatchQueue.main.async {
             for command in commandFramer.append(data) {
                 guard let command else { emit(["sent": false]); continue }
-                reader.async { sendPlaybackCommand(command) }
+                reader.async { NotchNativePlayback.perform(command) }
             }
         }
     }
     reader.async { vitruvianNowPlayingGet() }
     withExtendedLifetime((observers, termination)) { RunLoop.main.run() }
-}
-
-private func sendPlaybackCommand(_ request: NotchPlaybackRequest) {
-    let command = request.command
-    switch command {
-    case .source(let selection):
-        NotchNativeQueue.configure(nil)
-        NotchNativePlayback.choose(selection)
-        vitruvianNowPlayingGet()
-        return
-    case .validate(let id, let context):
-        emit(["validationRequest": id.uuidString,
-              "validationOK": NotchNativePlayback.validatedTarget(for: context) != nil])
-        return
-    case .queue(let request): NotchNativeQueue.configure(request); return
-    case .queueStop: NotchNativeQueue.configure(nil); return
-    case .queuePlay(let selected): NotchNativeQueue.play(selected); return
-    default: break
-    }
-    guard let context = request.context,
-          let target = NotchNativePlayback.validatedTarget(for: context) else { emit(["sent": false]); return }
-    let identifier: Int32
-    var options: CFDictionary?
-    switch command {
-    case .toggle: identifier = target.playPauseCommand
-    case .next: identifier = 4
-    case .previous: identifier = 5
-    case .seek(let position):
-        guard let key = NotchNativePlayback.stringConstant("kMRMediaRemoteOptionPlaybackPosition") else {
-            emit(["sent": false]); return
-        }
-        identifier = 24
-        options = [key: position] as CFDictionary
-    case .queue, .queueStop, .queuePlay, .validate, .source: return
-    }
-    emit(["sent": NotchNativePlayback.send(identifier, options: options, to: target)])
 }

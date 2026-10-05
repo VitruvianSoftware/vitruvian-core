@@ -1148,19 +1148,17 @@ enum NotchMusicHardeningTests {
     }
 
     private static func controlLifecycle(_ suite: TestSuite) {
+        // The adapter, behind the same lines the app writes and reads.
         typealias Adapter = NotchPlaybackRoutingContract
-        defer {
-            Adapter.metadata = [:]
-            Adapter.publish(nil)
-        }
+        Adapter.install(runningPIDs: [42])
+        defer { Adapter.restore() }
         let harness = NotchMusicCommandContract.Harness()
         let service = harness.service
         let nativePath = NSObject()
-        let native = Adapter.Target(pid: 42, path: nativePath)
         var metadata: [String: Any] = ["kMRMediaRemoteNowPlayingInfoTitle": "same-title",
                                       "kMRMediaRemoteNowPlayingInfoContentItemIdentifier": "A"]
         Adapter.metadata[ObjectIdentifier(nativePath)] = metadata
-        let context = Adapter.publish(native, info: metadata)!
+        let context = NotchPlaybackContext(reply: Adapter.publish(pid: 42, path: nativePath, info: metadata))!
         var current = playback("same-title")
         current.commandContext = context
         current.canSendCommandsDirectly = true
@@ -1183,15 +1181,15 @@ enum NotchMusicHardeningTests {
         suite.expect(!service.send(.toggle), "a command to an adapter that already exited is refused")
         harness.links.last?.running = true
         Adapter.command = nil
-        Adapter.sendPlaybackCommand(NotchPlaybackRequest(command: .seek(75), context: context))
+        Adapter.deliver(NotchPlaybackRequest(command: .seek(75), context: context).message)
         suite.expect(Adapter.command == 24 && Adapter.destination === nativePath,
                "a stable gesture traverses the real writer, decoder, validation and native dispatch")
         var changed = current
         metadata["kMRMediaRemoteNowPlayingInfoContentItemIdentifier"] = "B"
         Adapter.metadata[ObjectIdentifier(nativePath)] = metadata
-        changed.commandContext = Adapter.publish(native, info: metadata)
+        changed.commandContext = NotchPlaybackContext(reply: Adapter.publish(pid: 42, path: nativePath, info: metadata))
         Adapter.command = nil
-        Adapter.sendPlaybackCommand(NotchPlaybackRequest(command: .seek(75), context: context))
+        Adapter.deliver(NotchPlaybackRequest(command: .seek(75), context: context).message)
         suite.expect(Adapter.command == nil,
                "a written gesture from the old recording is rejected when native playback changes before dispatch")
         let shownTrack = service.playback!.track
