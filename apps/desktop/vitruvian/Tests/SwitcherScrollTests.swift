@@ -13,7 +13,9 @@ import VitruvianUI
 /// native scrolling. Windows stay unordered; no screenshots, key events,
 /// capture or real app actions occur.
 enum SwitcherScrollContract {
-    struct Item: Identifiable {
+    // A plain value: its `Identifiable` conformance must not be isolated to
+    // the main actor, which the tests default to.
+    nonisolated struct Item: Identifiable {
         let id: String
         let pid: Int
         var title: String { pid == 0 && id.hasSuffix("-7") ? "discard" : "keep" }
