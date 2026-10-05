@@ -66,12 +66,6 @@ def availability_declaration(path, prefix):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    # The tests default to the main actor; the Design module, and so
-    # the shape's conformance, is nonisolated.
-    write("NotchActivityPicker.swift", "import SwiftUI\n"
-          + declaration("Sources/Vitruvian/Design/NotchShape.swift", "struct NotchShape: Shape {")
-            .replace("struct NotchShape:", "nonisolated struct NotchShape:", 1)
-          + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "struct NotchActivityPicker: View {"))
     write("ScrollingCaptureLoop.swift", "import AppKit\nimport CoreGraphics\n"
           + "extension ScreenshotScrollingCaptureTests {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotScrollingCapture.swift",
@@ -349,11 +343,6 @@ def main():
               "    private func applyQueuedOutputSteps(",
               "    private func isCurrentOutputAdjustment(", "    private var hasCurrentOutputAdjustment:",
               "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
-          + "}\n}\n")
-    mixer_section = "Sources/Vitruvian/UI/MenuPanel/MixerSection.swift"
-    write("MixerPercentKey.swift", "import Foundation\nextension MixerPercentKeyTests {\nfinal class Coordinator: Fixture {\n"
-          + "".join(declaration(mixer_section, prefix).replace("private func", "func", 1) for prefix in [
-              "        private func startMonitoringEscape()", "        private func finish("])
           + "}\n}\n")
     cleaner = "Sources/Vitruvian/Services/Cleaner/JunkCleaner.swift"
     write("CleanerEligibilityBodies.swift", "import Foundation\nextension CleanerEligibilityTests {\n"
