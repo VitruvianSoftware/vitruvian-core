@@ -13,6 +13,39 @@ import VitruvianDesign
 package final class UpdateService: ObservableObject {
     package static let shared = UpdateService()
 
+    /// What the administrator install does around its prompt. `system` is the
+    /// in-process authorization, the Extra Brightness overlay, the main queue
+    /// and quitting; tests pass doubles.
+    package struct AdminInstall: Sendable {
+        /// Asks for administrator rights to run `command`, then reports
+        /// whether they were granted, off the main queue.
+        package var authorize: @Sendable (_ command: String, _ prompt: String,
+                                          _ completion: @escaping (Bool) -> Void) -> Void
+        package var hideOverlay: @MainActor @Sendable () -> Void
+        package var restoreOverlay: @MainActor @Sendable () -> Void
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var quit: @MainActor @Sendable () -> Void
+
+        package init(authorize: @escaping @Sendable (String, String, @escaping (Bool) -> Void) -> Void,
+                     hideOverlay: @escaping @MainActor @Sendable () -> Void,
+                     restoreOverlay: @escaping @MainActor @Sendable () -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     quit: @escaping @MainActor @Sendable () -> Void) {
+            self.authorize = authorize
+            self.hideOverlay = hideOverlay
+            self.restoreOverlay = restoreOverlay
+            self.main = main
+            self.quit = quit
+        }
+
+        package static let system = AdminInstall(
+            authorize: { AdminShell.runInProcess($0, prompt: $1, completion: $2) },
+            hideOverlay: { ExtraBrightnessService.shared.stop() },
+            restoreOverlay: { ExtraBrightnessService.shared.syncWithPreferences() },
+            main: { work in DispatchQueue.main.async { work() } },
+            quit: { NSApp.terminate(nil) })
+    }
+
     package enum State: Equatable {
         case idle
         case checking
@@ -39,8 +72,11 @@ package final class UpdateService: ObservableObject {
     private var refreshTimer: Timer?
     private var notifiedVersion: String?   // last release we posted a notification for
     private var downloadSession: URLSession?
+    private let adminInstall: AdminInstall
 
-    private init() {}
+    package init(adminInstall: AdminInstall = .system) {
+        self.adminInstall = adminInstall
+    }
 
     package var autoCheckEnabled: Bool {
         get { UserDefaults.standard.object(forKey: DefaultsKey.autoCheckUpdates) as? Bool ?? true }
@@ -385,8 +421,7 @@ package final class UpdateService: ObservableObject {
     /// elevated command (never a user-writable file run as root), started in
     /// its own session so the prompt returns while the installer waits for our
     /// exit — and so it survives that exit.
-    @MainActor
-    private func launchAdminInstaller(appPath: String, dmgPath: String, pid: Int32,
+    package func launchAdminInstaller(appPath: String, dmgPath: String, pid: Int32,
                                       resultPath: String, expectedVersion: String) {
         let command = UpdateInstallerSupport.elevatedInstallCommand(appPath: appPath,
                                                                     dmgPath: dmgPath,
@@ -400,14 +435,15 @@ package final class UpdateService: ObservableObject {
         // nothing can take the overlay down, not even the menu, so it
         // leaves first and returns if the prompt is declined; an approved
         // install quits.
-        ExtraBrightnessService.shared.stop()
-        AdminShell.runInProcess(command, prompt: L10n.shared.s.adminPromptUpdate) { [weak self] granted in
-            DispatchQueue.main.async {
+        let install = adminInstall
+        install.hideOverlay()
+        install.authorize(command, L10n.shared.s.adminPromptUpdate) { [weak self] granted in
+            install.main {
                 guard let self else { return }
                 if granted {
-                    NSApp.terminate(nil)
+                    install.quit()
                 } else {
-                    ExtraBrightnessService.shared.syncWithPreferences()
+                    install.restoreOverlay()
                     // The user dismissed the admin prompt: keep the offer so
                     // the button simply works again.
                     self.abortInstall(dmgPath: dmgPath, offered: expectedVersion)

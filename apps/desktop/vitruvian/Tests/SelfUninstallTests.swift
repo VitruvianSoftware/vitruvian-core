@@ -7,214 +7,181 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Runs the production clear and uninstall bodies with the password request,
+/// Runs the production clear and uninstall flows with the password request,
 /// tccutil and every removal step replaced by doubles that log what ran.
 enum SelfUninstallContract {
-    static var events: [String] = []
-    static var suspensionAllowed = true
-    static var sleepRestoreAllowed = true
-    static var detachAllowed = true
-    static var ruleRemovalAllowed = true
-    static var tccResetAllowed = true
-    static var fanHelperWasRegistered = true
-    static var fanRegistrationRestored = true
+    /// What ran, what each step answers, and the queue every hop waits on.
+    /// Only the test's own thread touches it.
+    nonisolated final class Record: @unchecked Sendable {
+        var events: [String] = []
+        var suspensionAllowed = true
+        var sleepRestoreAllowed = true
+        var detachAllowed = true
+        var ruleRemovalAllowed = true
+        var tccResetAllowed = true
+        var fanHelperWasRegistered = true
+        var fanRegistrationRestored = true
+        var pending: [() -> Void] = []
+        func flush() {
+            while !pending.isEmpty { pending.removeFirst()() }
+        }
+    }
 
-    enum DispatchQueue {
-        static let main = Queue()
-        enum QoS { case userInitiated }
-        static func global(qos: QoS) -> Queue { main }
-        final class Queue {
-            var pending: [() -> Void] = []
-            func async(execute: @escaping () -> Void) { pending.append(execute) }
-            func flush() {
-                while !pending.isEmpty { pending.removeFirst()() }
-            }
-        }
-    }
-    enum Sudoers {
-        static var ruleFilesPresent: Bool { true }
-        static func isConfigured() -> Bool { true }
-        static func remove(completion: @escaping (Bool) -> Void) {
-            events.append("rule")
-            DispatchQueue.main.async { completion(ruleRemovalAllowed) }
-        }
-    }
-    enum Shell {
-        static func run(_ path: String, _ args: [String]) -> (status: Int32, output: String) {
-            events.append("tccutil")
-            return (tccResetAllowed ? 0 : 1, "")
-        }
-    }
-    struct Permissions {
-        static let shared = Permissions()
-        func refresh() { events.append("refresh permissions") }
-    }
-    struct BrightnessService {
-        static let shared = BrightnessService()
-        func resumeInputTaps() { events.append("resume brightness") }
-    }
-    enum AppFeature: CaseIterable { case any }
-    struct FeatureRuntime {
-        static let shared = FeatureRuntime()
-        func sync(_ features: [AppFeature]) { events.append("resume features") }
-    }
-    struct KeepAwakeManager {
-        static let shared = KeepAwakeManager()
-        func resumeAfterSystemTeardown() { events.append("restore keep awake") }
-    }
-    struct L10n {
-        struct Text {
-            let advancedUninstallFailedBody = "stopped"
-            let advancedClearFailed = "rule kept"
-        }
-        static let shared = L10n()
-        let s = Text()
-        let language = "en"
-    }
-    enum FanControlService {
-        static var hasRegisteredHelperForRemoval: Bool {
-            events.append("fan registration")
-            return fanHelperWasRegistered
-        }
-        static func restoreRegistrationAfterFailedRemoval() -> Bool {
-            events.append("restore fan registration")
-            return fanRegistrationRestored
-        }
-    }
-    enum FeatureStrings {
-        struct FanStrings { let helperUnavailable = "fan unavailable" }
-        static func fanControl(_ language: String) -> FanStrings { FanStrings() }
+    static func steps(_ record: Record) -> SelfUninstall.Steps {
+        .init(suspendInputInterceptors: { record.events.append("suspend"); return record.suspensionAllowed },
+              restoreSleepBeforeRemoval: { record.events.append("sleep"); return record.sleepRestoreAllowed },
+              detachFanControl: { record.events.append("fan"); return record.detachAllowed },
+              detachLoginItem: { record.events.append("login") },
+              removeSudoersRule: { then in
+                  record.events.append("rule")
+                  record.pending.append { then(record.ruleRemovalAllowed) }
+              },
+              resetTCC: { record.events.append("tccutil"); return record.tccResetAllowed },
+              removePreferences: { record.events.append("preferences") },
+              trashOwnBundleAndQuit: { record.events.append("trash") },
+              fanHelperIsRegistered: {
+                  record.events.append("fan registration")
+                  return record.fanHelperWasRegistered
+              },
+              restoreFanRegistration: {
+                  record.events.append("restore fan registration")
+                  return record.fanRegistrationRestored
+              },
+              refreshPermissions: { record.events.append("refresh permissions") },
+              resumeKeepAwake: { record.events.append("restore keep awake") },
+              resumeFeatures: { record.events.append("resume features") },
+              resumeBrightness: { record.events.append("resume brightness") },
+              main: { work in record.pending.append { MainActor.assumeIsolated { work() } } },
+              background: { work in record.pending.append(work) })
     }
 
     static func run(_ suite: TestSuite) {
+        var record = Record()
         func reset(allowRule: Bool) {
-            events = []
-            suspensionAllowed = true
-            sleepRestoreAllowed = true
-            detachAllowed = true
-            ruleRemovalAllowed = allowRule
-            tccResetAllowed = true
-            fanHelperWasRegistered = true
-            fanRegistrationRestored = true
+            record = Record()
+            record.ruleRemovalAllowed = allowRule
         }
+        let stopped = L10n.shared.s.advancedUninstallFailedBody
+        let ruleKept = L10n.shared.s.advancedClearFailed
+        let fanUnavailable = FeatureStrings.fanControl(L10n.shared.language).helperUnavailable
 
         reset(allowRule: true)
-        suspensionAllowed = false
+        record.suspensionAllowed = false
         var cleared: Bool?
-        Host.clearPermissions { cleared = $0 }
-        DispatchQueue.main.flush()
+        SelfUninstall.clearPermissions(steps: steps(record)) { cleared = $0 }
+        record.flush()
         suite.expect(cleared == true
-                        && events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume brightness"],
-                     "a mouse journal kept for a disconnected device does not block clearing permissions, found \(events)")
+                        && record.events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume brightness"],
+                     "a mouse journal kept for a disconnected device does not block clearing permissions, found \(record.events)")
 
         reset(allowRule: true)
-        sleepRestoreAllowed = false
-        Host.clearPermissions { cleared = $0 }
-        DispatchQueue.main.flush()
+        record.sleepRestoreAllowed = false
+        SelfUninstall.clearPermissions(steps: steps(record)) { cleared = $0 }
+        record.flush()
         suite.expect(cleared == false
-                        && events == ["suspend", "sleep", "refresh permissions", "resume features", "resume brightness"],
-                     "failed sleep restoration keeps the recovery rule and permissions, found \(events)")
+                        && record.events == ["suspend", "sleep", "refresh permissions", "resume features", "resume brightness"],
+                     "failed sleep restoration keeps the recovery rule and permissions, found \(record.events)")
 
         reset(allowRule: true)
-        detachAllowed = false
-        Host.clearPermissions { cleared = $0 }
-        DispatchQueue.main.flush()
+        record.detachAllowed = false
+        SelfUninstall.clearPermissions(steps: steps(record)) { cleared = $0 }
+        record.flush()
         suite.expect(cleared == false
-                        && events == ["suspend", "sleep", "fan", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
-                     "failed system detach keeps the recovery rule and rearms closed-lid mode, found \(events)")
+                        && record.events == ["suspend", "sleep", "fan", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "failed system detach keeps the recovery rule and rearms closed-lid mode, found \(record.events)")
 
         reset(allowRule: false)
-        Host.clearPermissions { cleared = $0 }
-        DispatchQueue.main.flush()
+        SelfUninstall.clearPermissions(steps: steps(record)) { cleared = $0 }
+        record.flush()
         suite.expect(cleared == false
-                        && events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume features", "resume brightness"],
-                     "a refused password request reports partial clear and restores closed-lid mode, found \(events)")
+                        && record.events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume features", "resume brightness"],
+                     "a refused password request reports partial clear and restores closed-lid mode, found \(record.events)")
 
         reset(allowRule: true)
-        tccResetAllowed = false
-        Host.clearPermissions { cleared = $0 }
-        DispatchQueue.main.flush()
+        record.tccResetAllowed = false
+        SelfUninstall.clearPermissions(steps: steps(record)) { cleared = $0 }
+        record.flush()
         suite.expect(cleared == false
-                        && events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume features", "resume brightness"],
-                     "a failed TCC reset reports partial clear and restores closed-lid mode, found \(events)")
+                        && record.events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume features", "resume brightness"],
+                     "a failed TCC reset reports partial clear and restores closed-lid mode, found \(record.events)")
 
         reset(allowRule: true)
-        Host.clearPermissions { cleared = $0 }
-        DispatchQueue.main.flush()
+        SelfUninstall.clearPermissions(steps: steps(record)) { cleared = $0 }
+        record.flush()
         suite.expect(cleared == true
-                        && events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume brightness"],
-                     "clear permissions succeeds when the rule and permissions are removed, found \(events)")
+                        && record.events == ["suspend", "sleep", "fan", "login", "rule", "tccutil", "refresh permissions", "restore keep awake", "resume brightness"],
+                     "clear permissions succeeds when the rule and permissions are removed, found \(record.events)")
 
         reset(allowRule: false)
         var failure: String?
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "rule kept"
-                        && events == ["suspend", "sleep", "rule", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
-                     "a refused password request stops a full uninstall before anything is removed, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == ruleKept
+                        && record.events == ["suspend", "sleep", "rule", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "a refused password request stops a full uninstall before anything is removed, found \(record.events)")
 
         reset(allowRule: true)
-        sleepRestoreAllowed = false
+        record.sleepRestoreAllowed = false
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "stopped"
-                        && events == ["suspend", "sleep", "refresh permissions", "resume features", "resume brightness"],
-                     "failed sleep restoration does not reset the closed-lid session, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == stopped
+                        && record.events == ["suspend", "sleep", "refresh permissions", "resume features", "resume brightness"],
+                     "failed sleep restoration does not reset the closed-lid session, found \(record.events)")
 
         reset(allowRule: true)
-        tccResetAllowed = false
+        record.tccResetAllowed = false
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "rule kept"
-                        && events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
-                     "a failed permission reset restores the prior fan helper and keeps login, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == ruleKept
+                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "a failed permission reset restores the prior fan helper and keeps login, found \(record.events)")
 
         reset(allowRule: true)
-        tccResetAllowed = false
-        fanRegistrationRestored = false
+        record.tccResetAllowed = false
+        record.fanRegistrationRestored = false
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "rule kept\nfan unavailable"
-                        && events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
-                     "failed fan registration tells the user the helper is unavailable, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == "\(ruleKept)\n\(fanUnavailable)"
+                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "failed fan registration tells the user the helper is unavailable, found \(record.events)")
 
         reset(allowRule: true)
-        tccResetAllowed = false
-        fanHelperWasRegistered = false
+        record.tccResetAllowed = false
+        record.fanHelperWasRegistered = false
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "rule kept"
-                        && events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
-                     "a failed reset does not register a helper the user never had, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == ruleKept
+                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "a failed reset does not register a helper the user never had, found \(record.events)")
 
         reset(allowRule: true)
-        detachAllowed = false
+        record.detachAllowed = false
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "stopped"
-                        && events == ["suspend", "sleep", "rule", "fan registration", "fan", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
-                     "a failed fan-helper detach keeps permissions and login intact, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == stopped
+                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "a failed fan-helper detach keeps permissions and login intact, found \(record.events)")
 
         reset(allowRule: true)
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
         suite.expect(failure == nil
-                        && events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "login", "preferences", "trash"],
-                     "a full uninstall detaches the fan helper before permission reset and login afterward, found \(events)")
+                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "login", "preferences", "trash"],
+                     "a full uninstall detaches the fan helper before permission reset and login afterward, found \(record.events)")
 
         reset(allowRule: true)
-        suspensionAllowed = false
+        record.suspensionAllowed = false
         failure = nil
-        Host.uninstallCompletely { failure = $0 }
-        DispatchQueue.main.flush()
-        suite.expect(failure == "stopped"
-                        && events == ["suspend", "refresh permissions", "resume features", "resume brightness"],
-                     "a full uninstall still waits for mouse acceleration before deleting its journal, found \(events)")
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == stopped
+                        && record.events == ["suspend", "refresh permissions", "resume features", "resume brightness"],
+                     "a full uninstall still waits for mouse acceleration before deleting its journal, found \(record.events)")
     }
 }

@@ -17,17 +17,94 @@ import VitruvianDesign
 package enum SelfUninstall {
     private static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian" }
 
+    /// What clearing and uninstalling do, step by step, and the queues they
+    /// run on. `system` is the real teardown; tests pass doubles that log
+    /// what ran.
+    package struct Steps: Sendable {
+        package var suspendInputInterceptors: @MainActor @Sendable () -> Bool
+        package var restoreSleepBeforeRemoval: @Sendable () -> Bool
+        package var detachFanControl: @Sendable () -> Bool
+        package var detachLoginItem: @Sendable () -> Void
+        /// Removes the closed-lid sudoers rule if present, which may ask for
+        /// a password, then reports whether it is gone.
+        package var removeSudoersRule: @Sendable (_ then: @escaping @Sendable (Bool) -> Void) -> Void
+        package var resetTCC: @Sendable () -> Bool
+        package var removePreferences: @Sendable () -> Void
+        package var trashOwnBundleAndQuit: @MainActor @Sendable () -> Void
+        package var fanHelperIsRegistered: @Sendable () -> Bool
+        package var restoreFanRegistration: @Sendable () -> Bool
+        package var refreshPermissions: @MainActor @Sendable () -> Void
+        package var resumeKeepAwake: @MainActor @Sendable () -> Void
+        package var resumeFeatures: @MainActor @Sendable () -> Void
+        package var resumeBrightness: @MainActor @Sendable () -> Void
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var background: @Sendable (@escaping @Sendable () -> Void) -> Void
+
+        package init(suspendInputInterceptors: @escaping @MainActor @Sendable () -> Bool,
+                     restoreSleepBeforeRemoval: @escaping @Sendable () -> Bool,
+                     detachFanControl: @escaping @Sendable () -> Bool,
+                     detachLoginItem: @escaping @Sendable () -> Void,
+                     removeSudoersRule: @escaping @Sendable (@escaping @Sendable (Bool) -> Void) -> Void,
+                     resetTCC: @escaping @Sendable () -> Bool,
+                     removePreferences: @escaping @Sendable () -> Void,
+                     trashOwnBundleAndQuit: @escaping @MainActor @Sendable () -> Void,
+                     fanHelperIsRegistered: @escaping @Sendable () -> Bool,
+                     restoreFanRegistration: @escaping @Sendable () -> Bool,
+                     refreshPermissions: @escaping @MainActor @Sendable () -> Void,
+                     resumeKeepAwake: @escaping @MainActor @Sendable () -> Void,
+                     resumeFeatures: @escaping @MainActor @Sendable () -> Void,
+                     resumeBrightness: @escaping @MainActor @Sendable () -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     background: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void) {
+            self.suspendInputInterceptors = suspendInputInterceptors
+            self.restoreSleepBeforeRemoval = restoreSleepBeforeRemoval
+            self.detachFanControl = detachFanControl
+            self.detachLoginItem = detachLoginItem
+            self.removeSudoersRule = removeSudoersRule
+            self.resetTCC = resetTCC
+            self.removePreferences = removePreferences
+            self.trashOwnBundleAndQuit = trashOwnBundleAndQuit
+            self.fanHelperIsRegistered = fanHelperIsRegistered
+            self.restoreFanRegistration = restoreFanRegistration
+            self.refreshPermissions = refreshPermissions
+            self.resumeKeepAwake = resumeKeepAwake
+            self.resumeFeatures = resumeFeatures
+            self.resumeBrightness = resumeBrightness
+            self.main = main
+            self.background = background
+        }
+
+        package static let system = Steps(
+            suspendInputInterceptors: { SelfUninstall.suspendInputInterceptors() },
+            restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() },
+            detachFanControl: { SelfUninstall.detachFanControl() },
+            detachLoginItem: { SelfUninstall.detachLoginItem() },
+            removeSudoersRule: { SelfUninstall.removeSudoersRuleIfPresent(then: $0) },
+            resetTCC: { SelfUninstall.resetTCC() },
+            removePreferences: { SelfUninstall.removePreferences() },
+            trashOwnBundleAndQuit: { SelfUninstall.trashOwnBundleAndQuit() },
+            fanHelperIsRegistered: { FanControlService.hasRegisteredHelperForRemoval },
+            restoreFanRegistration: { FanControlService.restoreRegistrationAfterFailedRemoval() },
+            refreshPermissions: { Permissions.shared.refresh() },
+            resumeKeepAwake: { KeepAwakeManager.shared.resumeAfterSystemTeardown() },
+            resumeFeatures: { FeatureRuntime.shared.sync(AppFeature.allCases) },
+            resumeBrightness: { BrightnessService.shared.resumeInputTaps() },
+            main: { work in DispatchQueue.main.async { work() } },
+            background: { work in DispatchQueue.global(qos: .userInitiated).async { work() } })
+    }
+
     /// Resets every TCC permission the app holds, drops the login item and the
     /// optional closed-lid sudoers rule, and leaves the app in place. Calls back
     /// on the main queue with whether the rule and permissions were removed.
     /// Used by "Clear all permissions".
-    package static func clearPermissions(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        func stop(sleepRestored: Bool = false) {
-            DispatchQueue.main.async {
-                if sleepRestored { KeepAwakeManager.shared.resumeAfterSystemTeardown() }
-                Permissions.shared.refresh()
-                FeatureRuntime.shared.sync(AppFeature.allCases)
-                BrightnessService.shared.resumeInputTaps()
+    package static func clearPermissions(steps: Steps = .system,
+                                         completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        @Sendable func stop(sleepRestored: Bool = false) {
+            steps.main {
+                if sleepRestored { steps.resumeKeepAwake() }
+                steps.refreshPermissions()
+                steps.resumeFeatures()
+                steps.resumeBrightness()
                 completion(false)
             }
         }
@@ -35,31 +112,31 @@ package enum SelfUninstall {
         // Revoking Accessibility while a tap is live makes the tap callback hang
         // on an AX call and freezes the whole machine's input — see the note on
         // `suspendInputInterceptors`.
-        DispatchQueue.main.async {
+        steps.main {
             // Mouse acceleration keeps its recovery journal and guard here.
             // Only a full uninstall deletes that journal, so only it must wait
             // for a disconnected device to be restored.
-            _ = suspendInputInterceptors()
-            DispatchQueue.global(qos: .userInitiated).async {
-                guard restoreSleepBeforeRemoval() else { stop(); return }
-                guard detachFromSystem() else {
+            _ = steps.suspendInputInterceptors()
+            steps.background {
+                guard steps.restoreSleepBeforeRemoval() else { stop(); return }
+                guard detachFromSystem(steps) else {
                     stop(sleepRestored: true)
                     return
                 }
-                removeSudoersRuleIfPresent { ruleRemoved in    // may show one admin prompt
-                    let reset = resetTCC()
-                    DispatchQueue.main.async {
+                steps.removeSudoersRule { ruleRemoved in    // may show one admin prompt
+                    let reset = steps.resetTCC()
+                    steps.main {
                         // The published permissions still say granted. Read the
                         // reset state now, or a grant made before the next poll
                         // looks unchanged and the suspended taps never resume.
-                        Permissions.shared.refresh()
+                        steps.refreshPermissions()
                         // Sleep was restored directly, so the closed-lid session
                         // state is stale whether or not the reset finished.
-                        KeepAwakeManager.shared.resumeAfterSystemTeardown()
+                        steps.resumeKeepAwake()
                         if !ruleRemoved || !reset {
-                            FeatureRuntime.shared.sync(AppFeature.allCases)
+                            steps.resumeFeatures()
                         }
-                        BrightnessService.shared.resumeInputTaps()
+                        steps.resumeBrightness()
                         completion(ruleRemoved && reset)
                     }
                 }
@@ -70,47 +147,47 @@ package enum SelfUninstall {
     /// Clears permissions, removes preferences and saved state, sends the app
     /// bundle to the Trash and quits. Used by "Uninstall Vitruvian completely".
     /// A failure passes the message explaining what stopped it.
-    package static func uninstallCompletely(onFailure: @escaping @MainActor @Sendable (String) -> Void) {
+    package static func uninstallCompletely(steps: Steps = .system,
+                                            onFailure: @escaping @MainActor @Sendable (String) -> Void) {
         // A failed reset may have changed some grants. Recheck them before
         // rearming services in the app that remains installed.
-        func stop(_ body: String, sleepRestored: Bool = false) {
-            DispatchQueue.main.async {
-                if sleepRestored { KeepAwakeManager.shared.resumeAfterSystemTeardown() }
-                Permissions.shared.refresh()
-                FeatureRuntime.shared.sync(AppFeature.allCases)
-                BrightnessService.shared.resumeInputTaps()
+        @Sendable func stop(_ body: String, sleepRestored: Bool = false) {
+            steps.main {
+                if sleepRestored { steps.resumeKeepAwake() }
+                steps.refreshPermissions()
+                steps.resumeFeatures()
+                steps.resumeBrightness()
                 onFailure(body)
             }
         }
-        DispatchQueue.main.async {
-            guard suspendInputInterceptors() else {
+        steps.main {
+            guard steps.suspendInputInterceptors() else {
                 stop(L10n.shared.s.advancedUninstallFailedBody)
                 return
             }
-            DispatchQueue.global(qos: .userInitiated).async {
+            steps.background {
                 // Sleep may still be restored through the rule, and a refused
                 // rule removal must stop before anything else is removed.
-                guard restoreSleepBeforeRemoval() else {
+                guard steps.restoreSleepBeforeRemoval() else {
                     stop(L10n.shared.s.advancedUninstallFailedBody)
                     return
                 }
-                removeSudoersRuleIfPresent { ruleRemoved in
+                steps.removeSudoersRule { ruleRemoved in
                     guard ruleRemoved else {
                         stop(L10n.shared.s.advancedClearFailed, sleepRestored: true)
                         return
                     }
                     // The helper must be safely removed before permissions go;
                     // a failure here keeps the app's existing grants intact.
-                    let fanHelperWasRegistered = FanControlService.hasRegisteredHelperForRemoval
-                    guard detachFanControl() else {
+                    let fanHelperWasRegistered = steps.fanHelperIsRegistered()
+                    guard steps.detachFanControl() else {
                         stop(L10n.shared.s.advancedUninstallFailedBody, sleepRestored: true)
                         return
                     }
-                    guard resetTCC() else {
+                    guard steps.resetTCC() else {
                         // The app stays installed, so restore a helper that was
                         // registered before the attempted uninstall.
-                        let fanReady = !fanHelperWasRegistered
-                            || FanControlService.restoreRegistrationAfterFailedRemoval()
+                        let fanReady = !fanHelperWasRegistered || steps.restoreFanRegistration()
                         if fanReady {
                             stop(L10n.shared.s.advancedClearFailed, sleepRestored: true)
                         } else {
@@ -121,9 +198,9 @@ package enum SelfUninstall {
                     }
                     // Do not clear the launch choice while a failed reset
                     // could still leave this app installed.
-                    detachLoginItem()
-                    removePreferences()
-                    DispatchQueue.main.async { trashOwnBundleAndQuit() }
+                    steps.detachLoginItem()
+                    steps.removePreferences()
+                    steps.main { steps.trashOwnBundleAndQuit() }
                 }
             }
         }
@@ -190,9 +267,9 @@ package enum SelfUninstall {
     }
 
     @discardableResult
-    private static func detachFromSystem() -> Bool {
-        guard detachFanControl() else { return false }
-        detachLoginItem()
+    private static func detachFromSystem(_ steps: Steps) -> Bool {
+        guard steps.detachFanControl() else { return false }
+        steps.detachLoginItem()
         return true
     }
 

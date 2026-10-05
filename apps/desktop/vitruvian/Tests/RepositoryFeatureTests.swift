@@ -1478,10 +1478,14 @@ enum RepositoryFeatureTests {
         suite.expect(!selfUninstallSource.contains("_ = Sudoers.pmsetDisableSleep")
                 && !uninstallerSource.contains("_ = Sudoers.pmsetDisableSleep"),
                "neither uninstall path discards the result of restoring sleep")
-        suite.expect(selfUninstallSource.contains("guard restoreSleepBeforeRemoval() else")
-                && selfUninstallSource.contains("guard detachFromSystem() else")
+        // The flows run through injected steps; the system's steps are the
+        // real restores, and SelfUninstallTests checks the order they run in.
+        suite.expect(selfUninstallSource.contains("guard steps.restoreSleepBeforeRemoval() else")
+                && selfUninstallSource.contains("guard detachFromSystem(steps) else")
                 && selfUninstallSource.contains("restoreSleepBeforeRemoval() -> Bool")
-                && selfUninstallSource.contains("guard detachFanControl() else")
+                && selfUninstallSource.contains("guard steps.detachFanControl() else")
+                && selfUninstallSource.contains("restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() }")
+                && selfUninstallSource.contains("detachFanControl: { SelfUninstall.detachFanControl() }")
                 && selfUninstallSource.contains("FanControlService.restoreAndUnregisterForRemoval()")
                 && selfUninstallSource.contains("adminPromptRecover")
                 && selfUninstallSource.contains("verification.status == 0"),

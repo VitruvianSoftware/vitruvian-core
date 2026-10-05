@@ -11,30 +11,20 @@ import VitruvianUI
 /// Lays out the production export chip inside a band like the editor's top
 /// band, without a window or any input, and reads the size the chip settles at.
 enum RecorderExportChipTests {
-    enum Phase { case saving, compressing, uploading }
-    final class Model: ObservableObject {
-        @Published var exportPhase = Phase.saving
-        @Published var exportProgress = 0.4
-        func cancelExport() {}
-    }
-    struct Strings {
-        let exportingLabel = "Saving…"
-        let cancelButton = "Cancel"
-    }
-
     private struct Band: View {
-        @ObservedObject var model: Model
         let report: (CGSize) -> Void
 
         var body: some View {
             HStack(spacing: 8) {
                 Color.clear.frame(width: 60, height: 20)
                 Spacer(minLength: 10)
-                Chip(model: model).background(GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { report(proxy.size) }
-                        .onChange(of: proxy.size) { report(proxy.size) }
-                })
+                RecorderExportProgressChip(uploading: false, progress: 0.4, label: "Saving…",
+                                           cancelTitle: "Cancel", cancel: {})
+                    .background(GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { report(proxy.size) }
+                            .onChange(of: proxy.size) { report(proxy.size) }
+                    })
                 Color.clear.frame(width: 60, height: 20)
             }
         }
@@ -42,7 +32,7 @@ enum RecorderExportChipTests {
 
     private static func chipSize(bandWidth: CGFloat) -> CGSize {
         var reported = CGSize.zero
-        let host = NSHostingView(rootView: Band(model: Model(), report: { reported = $0 }))
+        let host = NSHostingView(rootView: Band(report: { reported = $0 }))
         host.sizingOptions = []
         host.frame = CGRect(x: 0, y: 0, width: bandWidth, height: 60)
         host.layoutSubtreeIfNeeded()

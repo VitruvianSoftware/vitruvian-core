@@ -16,6 +16,51 @@ import VitruvianDesign
 /// stores or sends audio.
 @MainActor
 package final class NotchAudioLevelService: ObservableObject {
+    /// What a reader reports, on its own queue.
+    package struct ReaderEvents {
+        package var levels: ([Double]) -> Void
+        package var silence: () -> Void
+        package var unavailable: () -> Void
+        package var processesLeft: () -> Void
+    }
+
+    /// What the service reads and builds. `system` reads the preferences and
+    /// the music service and taps the player's audio; tests pass their own
+    /// playback and readers that never touch a device.
+    @MainActor
+    package struct Environment {
+        /// The live equalizer is available, chosen and supported.
+        package var isChosen: () -> Bool
+        package var reducesMotion: () -> Bool
+        package var playback: () -> AnyPublisher<NotchPlayback?, Never>
+        package var makeReader: (pid_t, ReaderEvents) -> any NotchAudioLevelReading
+
+        package init(isChosen: @escaping () -> Bool,
+                     reducesMotion: @escaping () -> Bool,
+                     playback: @escaping () -> AnyPublisher<NotchPlayback?, Never>,
+                     makeReader: @escaping (pid_t, ReaderEvents) -> any NotchAudioLevelReading) {
+            self.isChosen = isChosen
+            self.reducesMotion = reducesMotion
+            self.playback = playback
+            self.makeReader = makeReader
+        }
+
+        package static var system: Environment {
+            Environment(
+                isChosen: {
+                    AppFeature.notchLiveEqualizer.isAvailable && NotchSupport.isEnabled()
+                        && NotchAudioLevelSupport.isSupported && NotchAudioLevelSupport.isEnabled()
+                },
+                reducesMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion },
+                playback: { NotchMusicService.shared.$playback.eraseToAnyPublisher() },
+                makeReader: { pid, events in
+                    NotchAudioLevelReader(pid: pid, onLevels: events.levels, onSilence: events.silence,
+                                          onUnavailable: events.unavailable,
+                                          onProcessesLeft: events.processesLeft)
+                })
+        }
+    }
+
     package static let shared = NotchAudioLevelService()
 
     /// Band levels from 0 to 1 while a player is being read, nil otherwise.
@@ -23,22 +68,23 @@ package final class NotchAudioLevelService: ObservableObject {
 
     private var enabled = false
     private var subscription: AnyCancellable?
-    private var reader: NotchAudioLevelReader?
+    private var reader: (any NotchAudioLevelReading)?
     private var readerPID: pid_t = 0
     private var readerID: UUID?
     private var silence = NotchAudioLevelSupport.SilenceMemory()
     private var stopWork: DispatchWorkItem?
+    private let environment: Environment
 
-    private init() {}
+    package init(environment: Environment = .system) {
+        self.environment = environment
+    }
 
     package func syncWithPreferences() {
-        enabled = AppFeature.notchLiveEqualizer.isAvailable && NotchSupport.isEnabled()
-            && NotchAudioLevelSupport.isSupported && NotchAudioLevelSupport.isEnabled()
-            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        enabled = environment.isChosen() && !environment.reducesMotion()
         if enabled {
             if subscription == nil {
                 silence.rearm()
-                subscription = NotchMusicService.shared.$playback
+                subscription = environment.playback()
                     .receive(on: DispatchQueue.main)
                     .sink { [weak self] playback in self?.playbackChanged(playback) }
             }
@@ -85,27 +131,27 @@ package final class NotchAudioLevelService: ObservableObject {
         // has started for the same player. Only this reading may publish.
         let id = UUID()
         readerID = id
-        let created = NotchAudioLevelReader(pid: pid, onLevels: { [weak self] next in
+        let created = environment.makeReader(pid, ReaderEvents(levels: { [weak self] next in
             DispatchQueue.main.async {
                 guard let self, self.readerID == id else { return }
                 self.receive(next, from: pid)
             }
-        }, onSilence: { [weak self] in
+        }, silence: { [weak self] in
             DispatchQueue.main.async {
                 guard let self, self.readerID == id else { return }
                 self.giveUp(pid, on: identity)
             }
-        }, onUnavailable: { [weak self] in
+        }, unavailable: { [weak self] in
             DispatchQueue.main.async {
                 guard let self, self.readerID == id else { return }
                 self.release(pid)
             }
-        }, onProcessesLeft: { [weak self] in
+        }, processesLeft: { [weak self] in
             DispatchQueue.main.async {
                 guard let self, self.readerID == id else { return }
                 self.restart(pid, on: identity)
             }
-        })
+        }))
         reader = created
         created.start()
     }
@@ -208,6 +254,13 @@ private enum NotchAudioLevelListeners {
     }
 }
 
+/// A reading of one player's audio. Both calls return at once; the reader
+/// reports through the events it was built with.
+package protocol NotchAudioLevelReading: AnyObject {
+    func start()
+    func stop()
+}
+
 /// The player's process taps, read through a private aggregate device on the
 /// default output, the same shape the recorder uses, feeding a ring of mono
 /// samples that a timer analyses off the audio thread.
@@ -215,7 +268,7 @@ private enum NotchAudioLevelListeners {
 /// Every Core Audio call runs on this object's own queue. Creating a tap or
 /// starting a device can block for as long as a Bluetooth or USB device takes
 /// to reconnect, and the island must never wait on that.
-private final class NotchAudioLevelReader {
+private final class NotchAudioLevelReader: NotchAudioLevelReading {
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels", qos: .utility)
     private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels.teardown", qos: .utility)
     private let pid: pid_t

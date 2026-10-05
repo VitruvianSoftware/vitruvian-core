@@ -48,14 +48,19 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     private var targetUsesGlass = false
     private var mouseEventsBeforeHide: Bool?
     private var frameProbe: NotchFrameProbe?
-    private var missionControlTimer: Timer?
     private var concealedForMissionControl = false
     private var missionControlAlpha: CGFloat = 1
     private var missionControlMouseEvents = false
     private var desktopReadings = 0
-    private var lastMissionControlCheck: TimeInterval = -.infinity
-    private var lastMissionControlProbe: TimeInterval = -.infinity
-    private var overviewWasVisible = false
+    private lazy var missionControlPolling = NotchMissionControlPolling(inputs: .init(
+        panelIsVisible: { [weak self] in self?.panel.isVisible ?? false },
+        concealed: { [weak self] in self?.concealedForMissionControl ?? false },
+        overviewIsVisible: { [weak self] in
+            guard let self else { return false }
+            return NotchFrameProbe.overviewIsVisible(on: self.currentGeometry.screen)
+        },
+        uptime: { ProcessInfo.processInfo.systemUptime },
+        sample: { [weak self] in self?.sampleMissionControl() }))
     private var restoringFromMissionControl = false
     package var missionControlDidRestore: (() -> Void)?
     private let overlaySpace = NotchOverlaySpace()
@@ -489,52 +494,11 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     /// is the cheap hint, and the frame probe, which waits on the window
     /// server, runs only while one is up or the island is concealed.
     private func syncMissionControlMonitoring() {
-        updateMissionControlTimer()
-        if panel.isVisible { refreshMissionControlState(now: true) }
-    }
-
-    private var missionControlCheckInterval: TimeInterval {
-        overviewWasVisible || concealedForMissionControl ? 0.08 : 0.25
-    }
-
-    private func updateMissionControlTimer() {
-        guard panel.isVisible || concealedForMissionControl else {
-            missionControlTimer?.invalidate()
-            missionControlTimer = nil
-            return
-        }
-        let interval = missionControlCheckInterval
-        if missionControlTimer?.timeInterval != interval {
-            missionControlTimer?.invalidate()
-            let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-                // Added to the main run loop below, so it fires on the main thread.
-                MainActor.assumeIsolated { self?.refreshMissionControlState() }
-            }
-            timer.tolerance = interval / 2
-            missionControlTimer = timer
-            RunLoop.main.add(timer, forMode: .common)
-        }
+        missionControlPolling.sync()
     }
 
     private func refreshMissionControlState(now immediate: Bool = false) {
-        let now = ProcessInfo.processInfo.systemUptime
-        guard immediate || now - lastMissionControlCheck >= missionControlCheckInterval else { return }
-        lastMissionControlCheck = now
-        // Most of the time no overview is up. Poll less often then, but keep
-        // the original restore cadence and immediate checks before revealing.
-        defer { updateMissionControlTimer() }
-        let overview = NotchFrameProbe.overviewIsVisible(on: currentGeometry.screen)
-        let appeared = overview && !overviewWasVisible
-        overviewWasVisible = overview
-        // The window list costs a fraction of a millisecond; a probe reading
-        // waits up to a frame for the window server. Without an overview the
-        // desktop needs no reading at all. While one stays up the reading is
-        // repeated slowly, and once it closes the desktop is confirmed promptly.
-        guard overview || concealedForMissionControl else { return }
-        let interval = concealedForMissionControl && !overview ? 0.08 : 0.5
-        guard immediate || appeared || now - lastMissionControlProbe >= interval else { return }
-        lastMissionControlProbe = now
-        sampleMissionControl()
+        missionControlPolling.refresh(now: immediate)
     }
 
     private func sampleMissionControl() {
@@ -695,8 +659,7 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     }
 
     package func close() {
-        missionControlTimer?.invalidate()
-        missionControlTimer = nil
+        missionControlPolling.stop()
         panel.visibilityDidChange = nil
         animationGeneration += 1
         isAnimating = false

@@ -53,11 +53,10 @@ package final class NotchDownloadService: ObservableObject {
     private var generation = UUID()
     private var scanning = false
     private var rescan = false
-    private var chooser: NSOpenPanel?
-    package var isChoosingFolder: Bool { chooser != nil }
-    private var chooserID = UUID()
-    /// The pending chooser was begun from the island's Downloads page.
-    private var chooserInNotch = false
+    private lazy var folderChoice: NotchDownloadFolderChoice = NotchDownloadFolderChoice(environment: .system(
+        adopt: { [weak self] in self?.adoptFolder(bookmark: $0) },
+        markUnavailable: { [weak self] in self?.folderUnavailable = true }))
+    package var isChoosingFolder: Bool { folderChoice.isChoosing }
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch.downloads", qos: .utility)
 
     private init() {}
@@ -83,75 +82,15 @@ package final class NotchDownloadService: ObservableObject {
     }
 
     package func chooseFolder() {
-        guard chooser == nil, AppFeature.notchDownloads.isAvailable else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        panel.message = FeatureStrings.notchFiles(L10n.shared.language).downloadsHint
-        let parent = folderPickerParent()
-        let beganInNotch = parent != nil
-        let requested = UUID()
-        chooserID = requested
-        chooser = panel
-        chooserInNotch = beganInNotch
-        let completed: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel, weak parent] response in
-            guard let self, let panel, self.chooser === panel, self.chooserID == requested else { return }
-            self.chooser = nil
-            self.chooserInNotch = false
-            guard !beganInNotch || parent.map(self.canReturnToDownloads) == true else { return }
-            if response == .OK, let url = panel.url, AppFeature.notchDownloads.isAvailable {
-                do {
-                    let data = try url.bookmarkData(options: .withSecurityScope,
-                                                    includingResourceValuesForKeys: nil, relativeTo: nil)
-                    self.stop()
-                    UserDefaults.standard.set(data, forKey: DefaultsKey.notchDownloadsFolderBookmark)
-                    UserDefaults.standard.set(true, forKey: DefaultsKey.notchDownloadsEnabled)
-                    self.syncWithPreferences()
-                    NotchService.shared.syncWithPreferences()
-                } catch { self.folderUnavailable = true }
-            }
-            guard let parent else { return }
-            let returnID = self.chooserID
-            // Native panel dismissal restores its previous key window after the
-            // completion callback. Return on the next turn without changing pin.
-            DispatchQueue.main.async { [weak self, weak parent] in
-                guard let self, let parent, self.chooserID == returnID, self.chooser == nil,
-                      self.canReturnToDownloads(parent) else { return }
-                NotchService.shared.open(.downloads, feedback: false)
-            }
-        }
-        if let parent {
-            // An attached sheet moves/reskins a borderless island. Keep the
-            // chooser independent and above its parent instead, without
-            // changing the pin; isChoosingFolder keeps the surface alive.
-            panel.level = NSWindow.Level(rawValue: parent.level.rawValue + 1)
-            // Like the sheet it replaces, it stays up while another app is active.
-            panel.hidesOnDeactivate = false
-            panel.begin(completionHandler: completed)
-            NSApp.activate(ignoringOtherApps: true)
-            // Activation alone can leave the nonactivating island holding focus.
-            panel.makeKeyAndOrderFront(nil)
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-            panel.begin(completionHandler: completed)
-        }
+        folderChoice.choose()
     }
 
-    private func folderPickerParent() -> NSWindow? {
-        guard let window = NotchService.shared.presentationWindow, canReturnToDownloads(window),
-              NSApp.currentEvent?.window === window || NSApp.keyWindow === window else { return nil }
-        return window
-    }
-
-    private func canReturnToDownloads(_ window: NSWindow) -> Bool {
-        let notch = NotchService.shared
-        return AppFeature.notchDownloads.isAvailable && NotchSupport.isEnabled()
-            && NotchSupport.modules().contains(.downloads) && notch.acceptsUserInteraction
-            && notch.presentationWindow === window && window.isVisible
-            && notch.expanded && notch.selected == .downloads && !notch.showingAppPanel
-            && notch.selectedMetric == nil && notch.captureControls == nil
+    private func adoptFolder(bookmark: Data) {
+        stop()
+        UserDefaults.standard.set(bookmark, forKey: DefaultsKey.notchDownloadsFolderBookmark)
+        UserDefaults.standard.set(true, forKey: DefaultsKey.notchDownloadsEnabled)
+        syncWithPreferences()
+        NotchService.shared.syncWithPreferences()
     }
 
     package func forgetFolder() {
@@ -162,23 +101,15 @@ package final class NotchDownloadService: ObservableObject {
         folderUnavailable = false
     }
 
-    private func cancelFolderChoice() {
-        chooserID = UUID()
-        chooserInNotch = false
-        chooser?.cancel(nil)
-        chooser = nil
-    }
-
     /// The island's Downloads page went away: a folder chosen now could no
     /// longer return to it and would be dropped in silence, so its chooser
     /// ends with it. One begun in Settings stays up.
     package func cancelNotchFolderChoice() {
-        guard chooserInNotch, chooser != nil else { return }
-        cancelFolderChoice()
+        folderChoice.cancelNotchChoice()
     }
 
     package func stop() {
-        cancelFolderChoice()
+        folderChoice.cancel()
         generation = UUID()
         scanWork?.cancel(); scanWork = nil
         expiry?.cancel(); expiry = nil

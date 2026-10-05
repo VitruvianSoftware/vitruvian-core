@@ -807,6 +807,234 @@ leaves 72.
 - **What stayed:** the tap keeps its re-arm branch and its lock.
 - **Test:** the test calls the rule with a state of its own.
 
+Landed (4b, Port Manager's refresh): one more generated file goes, which
+leaves 71.
+
+- **Injected:** `PortManagerService` takes a `Scanning`:
+  - the process list and each process's start time;
+  - the lsof listing;
+  - where the work runs and where its result is published.
+
+  `system` keeps `proc_listallpids`, the kill service's start time, lsof
+  and the dispatch queues. `snapshot(_:)` is `package`.
+- **Test:** the test passes inert process data and a manual queue instead
+  of shadowing `DispatchQueue`, `Shell`, the kill service and
+  `proc_listallpids`.
+
+Landed (4b, Fan Control's resume): one more generated file goes, which
+leaves 70.
+
+- **Extracted:** `FanControlLifecycle` (new, `Services/FanControl`) holds
+  what fan control does on its own:
+  - resuming after a launch or wake;
+  - keeping or forgetting the resumed control as the preferences change;
+  - winding down idle work.
+
+  It reads the defaults it is given. `FanControlService` owns it and passes
+  in its access state, snapshot, panel state and the helper requests.
+- **Test:** the test drives the lifecycle with a recording host and a
+  defaults domain of its own instead of a copy of ten service members.
+- **Checks added:** an open panel keeps its updates running, waking with the
+  panel closed does nothing, and a control that stopped cooling is not kept.
+  Mutants of each of these passed the old test.
+
+Landed (4b, the island's live equalizer): one more generated file goes,
+which leaves 69.
+
+- **Injected:** `NotchAudioLevelService` takes an `Environment`:
+  - whether the equalizer is chosen, and whether Reduce Motion is on;
+  - the playback it follows;
+  - how a reader is built.
+
+  `system` keeps the preferences, the music service and the Core Audio
+  reader. Readers conform to `NotchAudioLevelReading`.
+- **Test:** the test runs its own service on a playback subject, with
+  readers that only record what they are told, instead of a copy of the
+  whole class.
+- **Mutation suite:** its two fixtures on this file now act on the code the
+  test runs.
+
+Landed (4b, the music-app launch blocker): one more generated file goes,
+which leaves 68.
+
+- **Injected:** `MusicLaunchBlocker` takes a `System`:
+  - defaults, Accessibility and the clock;
+  - the time since the last deliberate gesture, and which players run;
+  - the launch notifications, the media-key tap and the replacement app.
+
+  `system` keeps AppKit, Core Graphics and the workspace. The tap sits
+  behind `MusicLaunchKeyTap`. A launch reaches the blocker as a
+  `LaunchedApp`, and a key as a `MediaKey`.
+- **What moved:** the tap callback only reads the key and hands it to
+  `observeMediaKey(type:key:)`, and it always passes the event on. The tap
+  is listen-only, so it could not swallow a key anyway. That is why the old
+  per-key "passes the event through" check goes.
+- **Test:** the test drives the real blocker with a session of doubles
+  instead of a copy of five methods.
+- **Check added:** a did-launch never re-judges a launch its will-launch
+  let through, even after another key. A mutant without that guard passed
+  the old test.
+- **Known gap:** a second observer pair added on a repeated sync is still not
+  seen by any check.
+
+Landed (4b, opening the player from the island or the radial card): one
+more generated file goes, which leaves 67.
+
+- **Injected:** `RadialNowPlayingApplication.open(_:using:)` takes an
+  `Opening`:
+  - the running player, as an `OpenablePlayer`: its policy, its hidden
+    state, unhiding, the activation handoff and both activation requests;
+  - whether it has a window on screen;
+  - where it is installed, and how an app is opened.
+
+  `system` keeps `NSRunningApplication`, the window list and the
+  workspace.
+- **Test:** the test passes recording doubles instead of shadowing the
+  AppKit types.
+- **No longer checked:** that the cooperative request names Vitruvian as its
+  source. That now sits in `system`'s one-line closure.
+
+Landed (4b, the updater's administrator install): one more generated file
+goes, which leaves 66.
+
+- **Injected:** `UpdateService` takes an `AdminInstall`:
+  - the authorization;
+  - hiding and restoring the Extra Brightness overlay;
+  - the main-queue hop;
+  - quitting.
+
+  `system` keeps `AdminShell`, the overlay service, the main queue and
+  `NSApp`. `launchAdminInstaller` is `package`.
+- **Test:** the test runs its own service.
+- **Checks added:** the answer waits for the main queue, and a declined
+  prompt leaves the service offering the update. Before, a double logged the
+  offer.
+
+Landed (4b, the media workspace's file dialogs): one more generated file
+goes, which leaves 65.
+
+- **Injected:** `MediaPanelModal.run(_:host:completion:)` takes:
+  - a `Dialog`: begin above a level, focus, run modal;
+  - a `Host`: the island, the event and key windows, whether the island
+    is expanded, activation, the main queue and the launcher's refocus.
+
+  `runPanelModal` keeps its signature and passes the panel and `system`.
+  The island is an `IslandWindowing`, which `NSWindow` adopts.
+- **Test:** the test drives `run` with doubles instead of a copy.
+- **No longer checked:** that the panel stays up while another app is
+  active. That now sits in the panel wrapper. A dialog can no longer
+  be attached as a sheet: `Dialog` has no way to do it.
+
+Landed (4b, the island's lyrics): one more generated file goes, which
+leaves 64.
+
+- **Injected:** `NotchLyricsService` takes an `Environment`:
+  - the preferences;
+  - lookups, which return their cancellation;
+  - the island's state;
+  - a `Chooser` (begin above a level, focus, cancel);
+  - activation, reopening the music section, and both queues.
+
+  `system` keeps the lyrics download, NotchService, an `NSOpenPanel`, `NSApp`
+  and the dispatch queues.
+- **What changed:**
+  - A token, not panel identity, names the open chooser.
+  - `visible` and `track` are readable.
+  - `IslandWindowing` is now `Sendable`, so the reopen hop can capture the
+    window weakly.
+- **Test:** the lifecycle and picker tests drive the real service on a
+  session of doubles. Lyrics now come from answered lookups or chosen files,
+  where before the test wrote them straight into the cache.
+- **Checks added:** six mutants passed the old test, and each now fails one
+  of these:
+  - a late answer from an earlier chooser;
+  - a retried lookup's predecessor answering;
+  - work that supersedes a chosen file's late read;
+  - an island that moved on before the reopen;
+  - focus taken before activation.
+
+Landed (4b, the island's download folder choice): one more generated file
+goes, which leaves 63.
+
+- **Extracted:** `NotchDownloadFolderChoice` (new, `Services/Notch`) holds:
+  - choosing the watched folder, from the Downloads page or from Settings;
+  - returning to the page it came from;
+  - the chooser's cancellation.
+
+  `NotchDownloadService` owns it and adopts what is chosen: it stops, saves
+  the bookmark, enables watching and syncs.
+- **Injected:** the chooser (above the island or as an ordinary window),
+  the feature and page settings, the island, the event and key windows,
+  activation, the reopen, the main queue and the bookmark.
+- **Shared:** `NotchIslandSurface` (new) is the island state that a chooser
+  returns to, with `shows(_:in:)`. The lyrics importer uses it too.
+- **Test:** the test drives the real choice on a session of doubles instead
+  of copies of five service members.
+- **Checks added:** two mutants passed the old test, and each now fails one
+  of these:
+  - a Settings chooser answered after the feature was removed saves
+    nothing;
+  - a click on the island opens the picker over it, even while another
+    window is key.
+
+Landed (4b, the recorder's export chip): one more generated file goes,
+which leaves 62.
+
+- **Extracted:** `RecorderExportProgressChip` (new, `UI/Recorder`) is the
+  chip. `RecorderEditorView` passes it the phase, progress, label, cancel
+  title and action.
+- **Test:** the layout test renders the real view instead of a copy of its
+  body.
+
+Landed (4b, clearing permissions and uninstalling): one more generated
+file goes, which leaves 61.
+
+- **Injected:** `SelfUninstall.clearPermissions` and `uninstallCompletely`
+  take `Steps`:
+  - every teardown step: input interceptors, sleep, fan helper, login item,
+    sudoers rule, TCC, preferences and the bundle;
+  - the fan helper's registration;
+  - the aftermath on success or failure;
+  - the main and background queues.
+
+  `system` is the real teardown. The local `stop` functions are marked
+  `@Sendable`.
+- **Test:** the test logs a run of doubles instead of a copy of five
+  functions. Its messages now come from the real strings.
+- **Generated registry kept:** `LocalizationCatalog.swift` stays. It lists
+  every `FeatureStrings` factory and copies no production code, so it is a
+  generated registry, not a copy.
+
+Landed (4b, editing a history image): one more generated file goes, which
+leaves 60.
+
+- **Injected:** `ClipboardHistoryService.editImage(_:editing:)` is static and
+  takes an `ImageEditing`:
+  - the feature, the image store and both queues;
+  - the beep;
+  - putting the history away, and opening the editor.
+
+  The instance method passes `system`, with the service's own dismissal.
+- **Test:** the test runs the real handoff on the real queues. It also uses
+  the real `ScreenshotService.imageCapture(from:)` instead of a copy.
+- **Still to do:** `ClipboardPreview` is the service's other copy. It reaches
+  into the history's editing, pinning and search caches, so it waits for
+  those to move into their own type.
+
+Landed (4b, the island's Mission Control polling): one more generated file
+goes, which leaves 59.
+
+- **Extracted:** `NotchMissionControlPolling` (new, `Services/Notch`) owns:
+  - the polling timer and its cadence;
+  - when a check is worth a frame probe.
+
+  `NotchWindowHost` owns it and passes the panel's visibility, the conceal
+  state, the window-list reading, the clock and its frame probe.
+- **Test:** the test drives the real polling instead of a copy of four host
+  members.
+- **Check added:** an overview that opens again is probed at once, sooner
+  than a lasting one. A mutant without that passed the old test.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

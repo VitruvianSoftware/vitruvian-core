@@ -1410,6 +1410,75 @@ is that notice. Add an entry for every change to upstream files.
   event in `suppresses(_:event:state:config:)`, which
   `Tests/KeyboardDebounceTapTests.swift` calls; `Tests/generate_sources.py` no
   longer copies the tap handler.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/PortManager/PortManagerService.swift` reads processes, the lsof
+  listing and its queues through an injected `Scanning`, and `snapshot(_:)` is
+  `package`; `Tests/PortManagerRefreshTests.swift` passes inert ones, and
+  `Tests/generate_sources.py` no longer copies the refresh.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/FanControl/FanControlLifecycle.swift` (new) holds fan control's
+  resume, preference and idle-work decisions, which
+  `Services/FanControl/FanControlService.swift` forwards to;
+  `Tests/FanControlResumeTests.swift` drives it with a recording host, and
+  `Tests/generate_sources.py` no longer copies the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchAudioLevelService.swift` reads its preferences, playback
+  and readers through an injected `Environment`, with readers behind
+  `NotchAudioLevelReading`; `Tests/NotchAudioLevelTests.swift` passes its own,
+  and `Tests/generate_sources.py` no longer copies the service.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Audio/MusicLaunchBlocker.swift` reads its defaults, permission,
+  clock, running players, notifications, key tap and replacement launcher
+  through an injected `System`; the tap callback hands keys to
+  `observeMediaKey(type:key:)`. `Tests/FeatureCatalogTests.swift` drives it
+  with doubles, and `Tests/generate_sources.py` no longer copies its methods.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/RadialMenu/RadialNowPlayingService.swift` opens the player through an
+  injected `Opening` (`open(_:using:)`); `Tests/NowPlayingOpenContract.swift`
+  passes recording doubles, and `Tests/generate_sources.py` no longer copies
+  `open`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Update/UpdateService.swift` runs its administrator install through
+  an injected `AdminInstall`; `Tests/UpdateAdminInstallTests.swift` passes
+  doubles to its own service, and `Tests/generate_sources.py` no longer copies
+  `launchAdminInstaller`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Media/MediaPanelModal.swift` runs dialogs through
+  `run(_:host:completion:)` with an injected `Dialog` and `Host`, and the island
+  window behind `IslandWindowing`; `Tests/MediaDialogHostTests.swift` drives it
+  with doubles, and `Tests/generate_sources.py` no longer copies
+  `runPanelModal`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchLyricsService.swift` reads its preferences, lookups, island,
+  file chooser, activation and queues through an injected `Environment`;
+  `Services/Media/MediaPanelModal.swift`'s `IslandWindowing` is `Sendable`.
+  `Tests/NotchMusicHardeningTests.swift` drives the real service with doubles,
+  and `Tests/generate_sources.py` no longer copies its lifecycle.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchDownloadFolderChoice.swift` (new) holds the download
+  folder chooser that `Services/Notch/NotchDownloadService.swift` forwards to,
+  and `Services/Notch/NotchIslandSurface.swift` (new) the island state it and
+  `Services/Notch/NotchLyricsService.swift` return to.
+  `Tests/NotchDownloadFolderChoiceTests.swift` drives the choice with doubles,
+  and `Tests/generate_sources.py` no longer copies the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/Recorder/RecorderExportProgressChip.swift` (new) is the export chip that
+  `UI/Recorder/RecorderEditorView.swift` shows; `Tests/RecorderExportChipTests.swift`
+  lays it out, and `Tests/generate_sources.py` no longer copies its body.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/SelfUninstall.swift` runs its clear and uninstall flows through
+  injected `Steps`; `Tests/SelfUninstallTests.swift` passes logging doubles,
+  and `Tests/generate_sources.py` no longer copies the flows.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Clipboard/ClipboardHistoryService.swift` hands a history image to the
+  screenshot editor through a static `editImage(_:editing:)` with an injected
+  `ImageEditing`; `Tests/ClipboardHistoryImageEditorTests.swift` runs it, and
+  `Tests/generate_sources.py` no longer copies it or `imageCapture(from:)`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchMissionControlPolling.swift` (new) holds the Mission Control
+  polling that `Services/Notch/NotchWindowHost.swift` forwards to;
+  `Tests/NotchMissionControlPollingTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the host's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

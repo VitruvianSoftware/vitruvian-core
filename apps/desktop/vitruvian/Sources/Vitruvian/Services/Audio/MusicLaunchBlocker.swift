@@ -12,20 +12,100 @@ import VitruvianDesign
 /// Nothing runs while the option, feature or required permission is off.
 @MainActor
 package final class MusicLaunchBlocker: ObservableObject {
-    package static let shared = MusicLaunchBlocker()
+    /// A media key as the tap reads it.
+    package struct MediaKey {
+        package var subtype: Int
+        package var data1: Int
+        /// When the key was pressed, in seconds of uptime.
+        package var timestamp: TimeInterval
+
+        package init(subtype: Int, data1: Int, timestamp: TimeInterval) {
+            self.subtype = subtype
+            self.data1 = data1
+            self.timestamp = timestamp
+        }
+    }
+
+    /// A launch of an app that may be blocked.
+    package struct LaunchedApp {
+        package var bundleID: String?
+        package var pid: pid_t
+        package var forceTerminate: () -> Bool
+        package var terminate: () -> Bool
+
+        package init(bundleID: String?, pid: pid_t,
+                     forceTerminate: @escaping () -> Bool, terminate: @escaping () -> Bool) {
+            self.bundleID = bundleID
+            self.pid = pid
+            self.forceTerminate = forceTerminate
+            self.terminate = terminate
+        }
+
+        init(_ app: NSRunningApplication) {
+            self.init(bundleID: app.bundleIdentifier, pid: app.processIdentifier,
+                      forceTerminate: { app.forceTerminate() }, terminate: { app.terminate() })
+        }
+    }
+
+    /// What the blocker reads and drives. `system` is the signed-in user's
+    /// defaults, Accessibility, the session's event state, the workspace and a
+    /// Core Graphics event tap; tests pass their own.
+    package struct System {
+        package var defaults: UserDefaults
+        package var isTrusted: () -> Bool
+        package var uptime: () -> TimeInterval
+        package var secondsSinceUserGesture: () -> TimeInterval
+        package var isRunning: (_ bundleID: String) -> Bool
+        package var notificationCenter: NotificationCenter
+        /// A tap that hands each media key to the blocker, or nil when none
+        /// could be created.
+        package var makeTap: (MusicLaunchBlocker) -> (any MusicLaunchKeyTap)?
+        package var openReplacement: (_ startingPlayback: Bool) -> Void
+
+        package init(defaults: UserDefaults,
+                     isTrusted: @escaping () -> Bool,
+                     uptime: @escaping () -> TimeInterval,
+                     secondsSinceUserGesture: @escaping () -> TimeInterval,
+                     isRunning: @escaping (String) -> Bool,
+                     notificationCenter: NotificationCenter,
+                     makeTap: @escaping (MusicLaunchBlocker) -> (any MusicLaunchKeyTap)?,
+                     openReplacement: @escaping (Bool) -> Void) {
+            self.defaults = defaults
+            self.isTrusted = isTrusted
+            self.uptime = uptime
+            self.secondsSinceUserGesture = secondsSinceUserGesture
+            self.isRunning = isRunning
+            self.notificationCenter = notificationCenter
+            self.makeTap = makeTap
+            self.openReplacement = openReplacement
+        }
+
+        @MainActor
+        static var live: System {
+            let replacement = MusicReplacementLauncher()
+            return System(
+                defaults: .standard,
+                isTrusted: { AXIsProcessTrusted() },
+                uptime: { ProcessInfo.processInfo.systemUptime },
+                secondsSinceUserGesture: { MusicLaunchBlocker.secondsSinceUserGesture },
+                isRunning: { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty },
+                notificationCenter: NSWorkspace.shared.notificationCenter,
+                makeTap: { MusicLaunchEventTap(handingKeysTo: $0) },
+                openReplacement: { replacement.open(startingPlayback: $0) })
+        }
+    }
+
+    package static let shared = MusicLaunchBlocker(system: .live)
 
     /// The current and the legacy identifier of the system music app.
     package static let blockedBundleIDs: Set<String> = ["com.apple.Music", "com.apple.iTunes"]
 
     @Published package private(set) var isMonitoring = false
 
+    private let system: System
     private var observers: [NSObjectProtocol] = []
-    private var mediaKeyTap: CFMachPort?
-    private var mediaKeyTapSource: CFRunLoopSource?
-    /// One media key press produces both a will-launch and a did-launch
-    /// notification; the replacement should open once, not twice.
-    private var lastReplacementLaunch: TimeInterval = 0
-    private var lastMediaKeyAt: TimeInterval?
+    private var mediaKeyTap: (any MusicLaunchKeyTap)?
+    package private(set) var lastMediaKeyAt: TimeInterval?
     /// Only Play/Pause asks the replacement to play; the other keys open it.
     private var lastMediaKeyCode: UInt16?
     /// The launch already judged at will-launch. Did-launch for the same
@@ -34,10 +114,16 @@ package final class MusicLaunchBlocker: ObservableObject {
     /// judging it again would terminate a launch the user asked for.
     private var judgedLaunchPID: pid_t?
 
-    private init() {}
+    package init(system: System) {
+        self.system = system
+    }
+
+    /// The launch observers installed; two while monitoring.
+    package var launchObserverCount: Int { observers.count }
+    package var hasMediaKeyTap: Bool { mediaKeyTap != nil }
 
     package func syncWithPreferences() {
-        if isEnabled, AXIsProcessTrusted() {
+        if isEnabled, system.isTrusted() {
             start()
         } else {
             stop()
@@ -45,18 +131,19 @@ package final class MusicLaunchBlocker: ObservableObject {
     }
 
     private var isEnabled: Bool {
-        AppFeature.musicBlock.isAvailable && UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockEnabled)
+        AppFeature.musicBlock.isAvailable(in: system.defaults)
+            && system.defaults.bool(forKey: DefaultsKey.musicBlockEnabled)
     }
 
     private func start() {
-        installMediaKeyTap()
-        guard let mediaKeyTap, CGEvent.tapIsEnabled(tap: mediaKeyTap) else {
+        if mediaKeyTap == nil { mediaKeyTap = system.makeTap(self) }
+        guard let mediaKeyTap, mediaKeyTap.isEnabled else {
             stop()
             return
         }
         isMonitoring = true
         guard observers.isEmpty else { return }
-        let center = NSWorkspace.shared.notificationCenter
+        let center = system.notificationCenter
         // Will-launch usually wins the race before any window shows;
         // did-launch catches the rare launch that slips past it.
         observers = [NSWorkspace.willLaunchApplicationNotification,
@@ -64,49 +151,53 @@ package final class MusicLaunchBlocker: ObservableObject {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
                 // Delivered on the main queue, which alone reads it.
                 nonisolated(unsafe) let note = note
-                MainActor.assumeIsolated { self?.handleLaunch(note) }
+                MainActor.assumeIsolated {
+                    let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                    self?.handleLaunch(app.map(LaunchedApp.init))
+                }
             }
         }
     }
 
     package func stop() {
         isMonitoring = false
-        removeMediaKeyTap()
+        mediaKeyTap?.remove()
+        mediaKeyTap = nil
         lastMediaKeyAt = nil
         judgedLaunchPID = nil
         guard !observers.isEmpty else { return }
-        let center = NSWorkspace.shared.notificationCenter
+        let center = system.notificationCenter
         for observer in observers { center.removeObserver(observer) }
         observers = []
     }
 
-    private func handleLaunch(_ note: Notification) {
-        guard isEnabled, AXIsProcessTrusted(), !observers.isEmpty else {
+    package func handleLaunch(_ launched: LaunchedApp?) {
+        guard isEnabled, system.isTrusted(), !observers.isEmpty else {
             stop()
             return
         }
-        guard let mediaKeyTap, CGEvent.tapIsEnabled(tap: mediaKeyTap) else {
+        guard let mediaKeyTap, mediaKeyTap.isEnabled else {
             lastMediaKeyAt = nil
             isMonitoring = false
             return
         }
-        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              let bundleID = app.bundleIdentifier,
+        guard let app = launched,
+              let bundleID = app.bundleID,
               Self.blockedBundleIDs.contains(bundleID),
-              app.processIdentifier != judgedLaunchPID else { return }
-        judgedLaunchPID = app.processIdentifier
+              app.pid != judgedLaunchPID else { return }
+        judgedLaunchPID = app.pid
         // One observed key may explain one launch, never a second app process
         // or a relaunch requested while that key is still recent.
         let trigger = lastMediaKeyAt
         lastMediaKeyAt = nil
         guard MusicLaunchSupport.shouldBlockLaunch(
-            now: ProcessInfo.processInfo.systemUptime,
+            now: system.uptime(),
             lastTriggerAt: trigger,
-            secondsSinceUserGesture: Self.secondsSinceUserGesture
+            secondsSinceUserGesture: system.secondsSinceUserGesture()
         ) else { return }
         guard app.forceTerminate() || app.terminate() else { return }
-        openReplacementIfConfigured(startingPlayback: lastMediaKeyCode == MusicLaunchSupport.playPauseKeyCode
-            && UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement))
+        system.openReplacement(lastMediaKeyCode == MusicLaunchSupport.playPauseKeyCode
+            && system.defaults.bool(forKey: DefaultsKey.musicBlockPlayReplacement))
     }
 
     /// Pointer buttons and ordinary keys can ask to open an app. Modifier
@@ -124,38 +215,74 @@ package final class MusicLaunchBlocker: ObservableObject {
         }.min() ?? .infinity
     }
 
-    private func openReplacementIfConfigured(startingPlayback: Bool) {
-        let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastReplacementLaunch > 1.0 else { return }
-        lastReplacementLaunch = now
-
-        let path = UserDefaults.standard.string(forKey: DefaultsKey.musicBlockReplacementPath) ?? ""
-        guard !path.isEmpty else { return }
-        let url = URL(fileURLWithPath: path)
-        // The replacement must never be the app being blocked, or the two
-        // settings would chase each other in a launch-and-kill loop.
-        guard let replacementID = Bundle(url: url)?.bundleIdentifier,
-              !Self.blockedBundleIDs.contains(replacementID),
-              FileManager.default.fileExists(atPath: url.path) else { return }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { app, _ in
-            // Called on a background queue; the setting is read on the main one.
-            DispatchQueue.main.async {
-                // Play/Pause asked for music, not just a window.
-                guard startingPlayback, self.isEnabled,
-                      UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement),
-                      let app else { return }
-                MusicReplacementPlayback.start(app)
-            }
+    /// What the tap saw: `key` reads a media key from a system-defined event
+    /// and is asked only once the tap is known to be healthy.
+    package func observeMediaKey(type: CGEventType, key: () -> MediaKey?) {
+        guard isEnabled, system.isTrusted(), let mediaKeyTap else {
+            stop()
+            return
         }
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            // A gap in observation invalidates the pending launch decision.
+            lastMediaKeyAt = nil
+            mediaKeyTap.enable()
+            isMonitoring = mediaKeyTap.isEnabled
+            return
+        }
+        guard mediaKeyTap.isEnabled else {
+            lastMediaKeyAt = nil
+            isMonitoring = false
+            return
+        }
+        guard type.rawValue == MusicLaunchSupport.systemDefinedEventTypeRawValue,
+              let key = key(),
+              MusicLaunchSupport.isMusicLaunchTrigger(subtype: key.subtype, data1: key.data1)
+        else { return }
+        // A key sent to an existing player cannot explain a later new launch.
+        // A race with startup errs on the side of leaving the app alone.
+        guard !Self.blockedBundleIDs.contains(where: system.isRunning) else {
+            lastMediaKeyAt = nil
+            return
+        }
+        // Use the event's time, not delivery time: a delayed callback must
+        // not turn an old key press into fresh launch evidence.
+        lastMediaKeyAt = key.timestamp
+        lastMediaKeyCode = MusicLaunchSupport.keyCode(data1: key.data1)
     }
+}
 
-    private func installMediaKeyTap() {
-        guard mediaKeyTap == nil else { return }
+/// The tap that watches media keys for the blocker. It listens only, so the
+/// keys always reach the app they were meant for.
+@MainActor
+package protocol MusicLaunchKeyTap: AnyObject {
+    var isEnabled: Bool { get }
+    func enable()
+    /// Stops the tap for good.
+    func remove()
+}
+
+/// A listen-only Core Graphics tap on system-defined events, on the main run
+/// loop.
+@MainActor
+private final class MusicLaunchEventTap: MusicLaunchKeyTap {
+    private let tap: CFMachPort
+    private let source: CFRunLoopSource
+
+    init?(handingKeysTo blocker: MusicLaunchBlocker) {
         let systemDefined = CGEventType(rawValue: MusicLaunchSupport.systemDefinedEventTypeRawValue)!
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else { return Unmanaged.passUnretained(event) }
             let blocker = Unmanaged<MusicLaunchBlocker>.fromOpaque(userInfo).takeUnretainedValue()
-            return blocker.handleMediaKeyEvent(type: type, event: event)
+            // Taps on the main run loop are called on the main thread.
+            MainActor.assumeIsolated {
+                blocker.observeMediaKey(type: type) {
+                    NSEvent(cgEvent: event).map {
+                        MusicLaunchBlocker.MediaKey(subtype: Int($0.subtype.rawValue), data1: $0.data1,
+                                                    timestamp: $0.timestamp)
+                    }
+                }
+            }
+            return Unmanaged.passUnretained(event)
         }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -163,64 +290,60 @@ package final class MusicLaunchBlocker: ObservableObject {
             options: .listenOnly,
             eventsOfInterest: CGEventMask(1 << systemDefined.rawValue),
             callback: callback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return }
+            userInfo: Unmanaged.passUnretained(blocker).toOpaque()
+        ) else { return nil }
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
             CFMachPortInvalidate(tap)
-            return
+            return nil
         }
-        mediaKeyTap = tap
-        mediaKeyTapSource = source
+        self.tap = tap
+        self.source = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
-    private func removeMediaKeyTap() {
-        guard let tap = mediaKeyTap else { return }
-        CGEvent.tapEnable(tap: tap, enable: false)
-        if let mediaKeyTapSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), mediaKeyTapSource, .commonModes)
-        }
-        CFMachPortInvalidate(tap)
-        mediaKeyTapSource = nil
-        mediaKeyTap = nil
-    }
+    var isEnabled: Bool { CGEvent.tapIsEnabled(tap: tap) }
 
-    private func handleMediaKeyEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard isEnabled, AXIsProcessTrusted(), let mediaKeyTap else {
-            stop()
-            return Unmanaged.passUnretained(event)
+    func enable() { CGEvent.tapEnable(tap: tap, enable: true) }
+
+    func remove() {
+        CGEvent.tapEnable(tap: tap, enable: false)
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        CFMachPortInvalidate(tap)
+    }
+}
+
+/// Opens the replacement app chosen in place of the music app, at most once
+/// a second: one media key press produces both a will-launch and a
+/// did-launch notification.
+@MainActor
+private final class MusicReplacementLauncher {
+    private var lastLaunch: TimeInterval = 0
+
+    func open(startingPlayback: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastLaunch > 1.0 else { return }
+        lastLaunch = now
+
+        let path = UserDefaults.standard.string(forKey: DefaultsKey.musicBlockReplacementPath) ?? ""
+        guard !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        // The replacement must never be the app being blocked, or the two
+        // settings would chase each other in a launch-and-kill loop.
+        guard let replacementID = Bundle(url: url)?.bundleIdentifier,
+              !MusicLaunchBlocker.blockedBundleIDs.contains(replacementID),
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { app, _ in
+            // Called on a background queue; the setting is read on the main one.
+            DispatchQueue.main.async {
+                // Play/Pause asked for music, not just a window.
+                guard startingPlayback, AppFeature.musicBlock.isAvailable,
+                      UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockEnabled),
+                      UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement),
+                      let app else { return }
+                MusicReplacementPlayback.start(app)
+            }
         }
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // A gap in observation invalidates the pending launch decision.
-            lastMediaKeyAt = nil
-            CGEvent.tapEnable(tap: mediaKeyTap, enable: true)
-            isMonitoring = CGEvent.tapIsEnabled(tap: mediaKeyTap)
-            return Unmanaged.passUnretained(event)
-        }
-        guard CGEvent.tapIsEnabled(tap: mediaKeyTap) else {
-            lastMediaKeyAt = nil
-            isMonitoring = false
-            return Unmanaged.passUnretained(event)
-        }
-        guard type.rawValue == MusicLaunchSupport.systemDefinedEventTypeRawValue,
-              let nsEvent = NSEvent(cgEvent: event),
-              MusicLaunchSupport.isMusicLaunchTrigger(subtype: Int(nsEvent.subtype.rawValue),
-                                                      data1: nsEvent.data1)
-        else { return Unmanaged.passUnretained(event) }
-        // A key sent to an existing player cannot explain a later new launch.
-        // A race with startup errs on the side of leaving the app alone.
-        guard !Self.blockedBundleIDs.contains(where: {
-            !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty
-        }) else {
-            lastMediaKeyAt = nil
-            return Unmanaged.passUnretained(event)
-        }
-        // Use the event's time, not delivery time: a delayed callback must
-        // not turn an old key press into fresh launch evidence.
-        lastMediaKeyAt = nsEvent.timestamp
-        lastMediaKeyCode = MusicLaunchSupport.keyCode(data1: nsEvent.data1)
-        return Unmanaged.passUnretained(event)
     }
 }
 

@@ -7,72 +7,52 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Runs the updater's administrator install body with the authorization, the
+/// Runs the updater's administrator install with the authorization, the
 /// Extra Brightness overlay, the main queue and quitting replaced by doubles
 /// that log what ran. The real authorization holds the main thread until it
 /// is answered, so anything the prompt needs off the screen must go first.
 enum UpdateAdminInstallContract {
-    static var events: [String] = []
-
-    final class ExtraBrightnessService {
-        static let shared = ExtraBrightnessService()
-        var onScreen = true
-        func stop() { onScreen = false }
-        func syncWithPreferences() { onScreen = true; events.append("overlay") }
-    }
-    enum AdminShell {
-        static var answer: ((Bool) -> Void)?
-        static func runInProcess(_ command: String, prompt: String,
-                                 completion: @escaping (Bool) -> Void) {
-            events.append(ExtraBrightnessService.shared.onScreen ? "prompt under overlay" : "prompt")
-            answer = completion
+    /// What ran, the overlay's state, the pending answer and the main queue.
+    /// Only the test's own thread touches it.
+    nonisolated final class Record: @unchecked Sendable {
+        var events: [String] = []
+        var overlayOnScreen = true
+        var answer: ((Bool) -> Void)?
+        var main: [() -> Void] = []
+        func flush() {
+            while !main.isEmpty { main.removeFirst()() }
         }
-    }
-    enum DispatchQueue {
-        static let main = Queue()
-        final class Queue {
-            var pending: [() -> Void] = []
-            func async(execute: @escaping () -> Void) { pending.append(execute) }
-            func flush() {
-                while !pending.isEmpty { pending.removeFirst()() }
-            }
-        }
-    }
-    final class Application {
-        func terminate(_ sender: Any?) { events.append("quit") }
-    }
-    static let NSApp = Application()
-    struct L10n {
-        struct Text { let adminPromptUpdate = "update" }
-        static let shared = L10n()
-        let s = Text()
-    }
-    class Fixture {
-        func abortInstall(dmgPath: String, offered: String?) { events.append("offer \(offered ?? "")") }
-        init() {}
     }
 
     static func run(_ suite: TestSuite) {
+        let dmg = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-admin-install-\(UUID().uuidString).dmg").path
         for granted in [false, true] {
-            events = []
-            ExtraBrightnessService.shared.onScreen = true
-            AdminShell.answer = nil
-            let service = Service()
-            service.launchAdminInstaller(appPath: "/Applications/Vitruvian.app", dmgPath: "/tmp/update.dmg",
+            let record = Record()
+            let service = UpdateService(adminInstall: .init(
+                authorize: { _, _, completion in
+                    record.events.append(record.overlayOnScreen ? "prompt under overlay" : "prompt")
+                    record.answer = completion
+                },
+                hideOverlay: { record.overlayOnScreen = false },
+                restoreOverlay: { record.overlayOnScreen = true; record.events.append("overlay") },
+                main: { work in record.main.append { MainActor.assumeIsolated { work() } } },
+                quit: { record.events.append("quit") }))
+            service.launchAdminInstaller(appPath: "/Applications/Vitruvian.app", dmgPath: dmg,
                                          pid: 42, resultPath: "/tmp/update-result", expectedVersion: "9.9.9")
-            suite.expect(events == ["prompt"],
+            suite.expect(record.events == ["prompt"],
                          "the brightness overlay leaves the screen before the prompt holds the main thread")
-            AdminShell.answer?(granted)
-            DispatchQueue.main.flush()
+            record.answer?(granted)
+            suite.expect(record.events == ["prompt"], "the answer is acted on from the main queue")
+            record.flush()
             if granted {
-                suite.expect(events == ["prompt", "quit"] && !ExtraBrightnessService.shared.onScreen,
+                suite.expect(record.events == ["prompt", "quit"] && !record.overlayOnScreen,
                              "an approved install quits without bringing the overlay back")
             } else {
-                suite.expect(events == ["prompt", "overlay", "offer 9.9.9"]
-                                 && ExtraBrightnessService.shared.onScreen,
+                suite.expect(record.events == ["prompt", "overlay"] && record.overlayOnScreen
+                                 && service.state == .available(version: "9.9.9"),
                              "a declined prompt brings the overlay back and keeps the update offer")
             }
-            withExtendedLifetime(service) {}
         }
     }
 }

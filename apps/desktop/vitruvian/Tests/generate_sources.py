@@ -72,14 +72,6 @@ def main():
                         "enum ScreenshotScrollingCapture {").replace(
                             "    private static func stitch(", "    static func stitch(")
           + "}\n")
-    write("ClipboardHistoryImageEditor.swift", "import AppKit\n"
-          + "extension ClipboardHistoryImageEditorTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift",
-                        "    func editImage(")
-          + "}\n}\nextension ClipboardHistoryImageEditorTests.ScreenshotService {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
-                        "    static func imageCapture(")
-          + "}\n")
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
     write("UpdateIntroFlow.swift", "import AppKit\nimport Foundation\n"
           + "extension UpdateIntroFlowTests {\nfinal class Host: Fixture {\n"
@@ -149,11 +141,6 @@ def main():
           + "}\nextension SwitcherActivationTests.Bridge {\n"
           + declaration("Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift",
                         "    static func frontWindow(") + "}\n")
-    write("NowPlayingOpen.swift", "import AppKit\n"
-          + "extension NowPlayingOpenContract.Application {\n"
-          + declaration("Sources/Vitruvian/Services/RadialMenu/RadialNowPlayingService.swift",
-                        "    static func open(", scope="enum RadialNowPlayingApplication {")
-          + "}\n")
     write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
           + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
@@ -166,32 +153,6 @@ def main():
                         "    func commitEdits(", "    private func flushSave(", "    private func save(",
                         "    func createPad("])
           + "}\n}\n")
-    write("MusicLaunchBlockerLifecycle.swift", "import AppKit\nimport Foundation\n"
-          + "extension MusicLaunchBlockerContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration("Sources/Vitruvian/Services/Audio/MusicLaunchBlocker.swift", prefix)
-                    .replace("private ", "", 1) for prefix in [
-                        "    func syncWithPreferences(", "    private func start(", "    func stop(",
-                        "    private func handleLaunch(", "    private func handleMediaKeyEvent("])
-          + "}\n}\n")
-    fan_control = "Sources/Vitruvian/Services/FanControl/FanControlService.swift"
-    write("FanControlResume.swift", "import Foundation\n"
-          + "extension FanControlResumeContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration(fan_control, prefix)
-                    .replace("@objc private func", "func", 1)
-                    .replace("private static var", "static var", 1)
-                    .replace("private func", "func", 1) for prefix in [
-                        "    static func recoverIfNeeded(", "    func syncWithPreferences(",
-                        "    func returnToSystem(", "    func resumePreferenceDidChange(",
-                        "    private static var resumableConfiguration:", "    private func resume(",
-                        "    private static var helperAwaitsRegistration:",
-                        "    private func rememberForResume(", "    private func stopIdleWorkIfPossible(",
-                        "    @objc private func workspaceDidWake("])
-          + "}\n}\n")
-    write("NotchAudioLevelLifecycle.swift", "import Combine\nimport Foundation\n"
-          + "extension NotchAudioLevelLifecycleContract {\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchAudioLevelService.swift",
-                        "final class NotchAudioLevelService:")
-          + "}\n")
     clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
     write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
           + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"
@@ -215,13 +176,6 @@ def main():
     write("CommandBarTermination.swift", "import AppKit\nimport Foundation\n"
           + "extension CommandBarTerminationContract {\nfinal class Host: Fixture {\n"
           + declaration("Sources/Vitruvian/App/AppDelegate.swift", "    func applicationShouldTerminate(")
-          + "}\n}\n")
-    ports = "Sources/Vitruvian/Services/PortManager/PortManagerService.swift"
-    write("PortManagerRefresh.swift", "import Darwin\nimport Foundation\n"
-          + "extension PortManagerRefreshTests {\nfinal class Service: Fixture {\n"
-          + declaration(ports, "    func refresh(")
-          + declaration(ports, "    nonisolated private static func snapshot(").replace("nonisolated private static", "static", 1)
-          + declaration(ports, "    nonisolated private static func startTimes(").replace("nonisolated private static", "static", 1)
           + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
@@ -458,7 +412,6 @@ def main():
               .replace("private var", "var", 1).replace("NotchSupport.controls()", "controls")
               .replace("NotchTimerService.shared", "NotchCompactTests.NotchTimerService.shared")
           + "}\n")
-    update = "Sources/Vitruvian/Services/Update/UpdateService.swift"
     update_view = "Sources/Vitruvian/UI/Notch/NotchUpdateControl.swift"
     write("NotchUpdate.swift", "import AppKit\nimport SwiftUI\nimport Combine\nextension NotchUpdateTests {\n"
           + "final class UpdateService: ObservableObject {\nstatic let shared = UpdateService()\n"
@@ -471,10 +424,6 @@ def main():
           + "}\n"
           + declaration(update_view, "struct NotchUpdateControl:")
           + "}\n")
-    write("UpdateAdminInstall.swift", "import Foundation\n\nextension UpdateAdminInstallContract {\n"
-          + "final class Service: Fixture {\n"
-          + declaration(update, "    private func launchAdminInstaller(").replace("private ", "", 1)
-          + "}\n}\n")
     highlights = "Sources/Vitruvian/UI/UpdateHighlightsView.swift"
     write("UpdateHighlights.swift", "import AppKit\nimport SwiftUI\nextension UpdateHighlightsTests {\n"
           + "".join(declaration(highlights, prefix) for prefix in [
@@ -482,12 +431,6 @@ def main():
               .replace("private struct UpdateHighlightsGIF", "struct UpdateHighlightsGIF")
           + "}\n")
     canvas = "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift"
-    write("NotchMissionControlPolling.swift", "import Foundation\n"
-          + "extension NotchMissionControlPollingTests {\nfinal class Host: State {\n"
-          + "".join(declaration(canvas, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func syncMissionControlMonitoring()", "    private var missionControlCheckInterval:",
-              "    private func updateMissionControlTimer()", "    private func refreshMissionControlState("])
-          + "}\n}\n")
     write("NotchHover.swift", "import AppKit\nextension NotchHoverTests {\nfinal class Service: State {\n"
           + declaration(notch, "    func show(_ incoming:").replace("NotchSupport.routes(incoming.event)", "true")
             .replace("    func", "    @discardableResult\n    func", 1)
@@ -733,16 +676,6 @@ def main():
           + "}\nfinal class FileView: HeightState {\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchFilesView.swift", "    private func mediaHeightChanged(").replace("private func", "func", 1)
           + "}\n}\n")
-    write("MediaDialogHost.swift", "import AppKit\n\nextension MediaDialogHostContract {\nenum Dialogs {\n"
-          + "static var panelModalActive = false\n"
-          + declaration("Sources/Vitruvian/Services/Media/MediaPanelModal.swift", "    static func runPanelModal(")
-          + "}\n}\n")
-    write("RecorderExportChip.swift", "import AppKit\nimport SwiftUI\n\nextension RecorderExportChipTests {\n"
-          + "struct Chip: View {\n@ObservedObject var model: Model\nlet strings = Strings()\n"
-          + "var exportProgressLabel: String { strings.exportingLabel }\n"
-          + "var body: some View { exportProgressChip }\n"
-          + declaration("Sources/Vitruvian/UI/Recorder/RecorderEditorView.swift", "    private var exportProgressChip:")
-          + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"
     write("SwitcherScroll.swift", "import AppKit\nimport SwiftUI\n"
@@ -906,22 +839,6 @@ def main():
           + "}\nextension PointerOnDisplayContract.Dock {\n"
           + declaration(dock, "    private func isNearDock(").replace("private func", "func", 1)
           + "}\n")
-
-    lyrics = "Sources/Vitruvian/Services/Notch/NotchLyricsService.swift"
-    write("NotchLyricsLifecycle.swift", "import Foundation\nimport UniformTypeIdentifiers\n\nextension NotchLyricsContract {\n"
-          + "final class Service {\nvar memory = NotchLyricsMemory()\n"
-          + "var lyrics: NotchLyrics? { memory.lyrics }\nvar track: NotchMusicIdentity? { memory.track }\n"
-          + "var visible = false\nvar online = false\nvar generation = UUID()\nvar state: State = .idle\n"
-          + "var session: Session?\nvar importPanel: Panel?\nvar loads: [NotchMusicIdentity] = []\n"
-          + "func load(_ track: NotchMusicIdentity) { loads.append(track); state = .loading; session = Session() }\n"
-          + declaration(lyrics, "    func update(playback:")
-          + declaration(lyrics, "    func playbackChanged(")
-          + declaration(lyrics, "    func hide()")
-          + declaration(lyrics, "    func stop()")
-          + declaration(lyrics, "    private func cancel()")
-          + declaration(lyrics, "    func importLyrics()")
-          + declaration(lyrics, "    private func canReturnToLyrics(")
-          + "}\n}\n")
 
     music = "Sources/Vitruvian/Services/Notch/NotchMusicService.swift"
     write("NotchMusicControls.swift", "import AppKit\n\nextension NotchMusicCommandContract {\n"
@@ -1097,37 +1014,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func isConfigured()")
           + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func restoreSleepWithAuthorization(")
           + "}\n")
-
-    self_uninstall = "Sources/Vitruvian/Services/SelfUninstall.swift"
-    write("SelfUninstallRemoval.swift", "import Foundation\n\nextension SelfUninstallContract {\nenum Host {\n"
-          + "static let bundleID = \"test\"\n"
-          + "static func suspendInputInterceptors() -> Bool { events.append(\"suspend\"); return suspensionAllowed }\n"
-          + "static func restoreSleepBeforeRemoval() -> Bool { events.append(\"sleep\"); return sleepRestoreAllowed }\n"
-          + "static func detachFanControl() -> Bool { events.append(\"fan\"); return detachAllowed }\n"
-          + "static func detachLoginItem() { events.append(\"login\") }\n"
-          + "static func removePreferences() { events.append(\"preferences\") }\n"
-          + "static func trashOwnBundleAndQuit() { events.append(\"trash\") }\n"
-          + declaration(self_uninstall, "    private static func detachFromSystem()")
-            .replace("private static", "static", 1)
-          + declaration(self_uninstall, "    static func clearPermissions(")
-          + declaration(self_uninstall, "    static func uninstallCompletely(")
-          + declaration(self_uninstall, "    private static func removeSudoersRuleIfPresent(")
-          + declaration(self_uninstall, "    private static func resetTCC(")
-            .replace("private static", "@discardableResult static", 1)
-          + "}\n}\n")
-
-    downloads = "Sources/Vitruvian/Services/Notch/NotchDownloadService.swift"
-    write("NotchDownloadFolderChoice.swift", "import Foundation\n\nextension NotchDownloadFolderChoiceContract {\n"
-          + "final class Service {\nvar chooser: NSOpenPanel?\nvar chooserID = UUID()\nvar chooserInNotch = false\n"
-          + "var folderUnavailable = false\nvar syncs = 0\nvar stops = 0\n"
-          + "func syncWithPreferences() { syncs += 1 }\n"
-          + "func stop() { stops += 1; cancelFolderChoice() }\n"
-          + declaration(downloads, "    func chooseFolder()")
-          + declaration(downloads, "    private func folderPickerParent()")
-          + declaration(downloads, "    private func canReturnToDownloads(")
-          + declaration(downloads, "    private func cancelFolderChoice()")
-          + declaration(downloads, "    func cancelNotchFolderChoice()")
-          + "}\n}\n")
 
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
