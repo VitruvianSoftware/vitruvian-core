@@ -78,19 +78,36 @@ package final class NotchService: ObservableObject {
         package var defaults: UserDefaults
         /// Builds the window that draws the island, at its geometry and size.
         package var makeHost: @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost
+        /// Where the pointer is, in screen coordinates.
+        package var pointer: @MainActor () -> CGPoint
+        /// The Reduce Motion accessibility setting.
+        package var reducesMotion: @MainActor () -> Bool
+        /// Runs work on the main queue after a delay, in seconds.
+        package var schedule: @MainActor (TimeInterval, DispatchWorkItem) -> Void
 
         package init(defaults: UserDefaults,
-                     makeHost: @escaping @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost) {
+                     makeHost: @escaping @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost,
+                     pointer: @escaping @MainActor () -> CGPoint,
+                     reducesMotion: @escaping @MainActor () -> Bool,
+                     schedule: @escaping @MainActor (TimeInterval, DispatchWorkItem) -> Void) {
             self.defaults = defaults
             self.makeHost = makeHost
+            self.pointer = pointer
+            self.reducesMotion = reducesMotion
+            self.schedule = schedule
         }
 
         package static var system: Environment {
-            Environment(defaults: .standard, makeHost: { island, geometry, size in
-                NotchWindowHost(content: ServiceViews.factory.notch(island), geometry: geometry, size: size,
-                                background: { ServiceViews.factory.notchBackground($0) },
-                                quickAccess: { ServiceViews.factory.notchQuickAccess(island, motion: $0, backdrop: $1) })
-            })
+            Environment(
+                defaults: .standard,
+                makeHost: { island, geometry, size in
+                    NotchWindowHost(content: ServiceViews.factory.notch(island), geometry: geometry, size: size,
+                                    background: { ServiceViews.factory.notchBackground($0) },
+                                    quickAccess: { ServiceViews.factory.notchQuickAccess(island, motion: $0, backdrop: $1) })
+                },
+                pointer: { NSEvent.mouseLocation },
+                reducesMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion },
+                schedule: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) })
         }
     }
 
@@ -502,10 +519,17 @@ package final class NotchService: ObservableObject {
     private let defaults: UserDefaults
     /// Builds the island's window (`Environment.makeHost`).
     private let makeHost: @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost
+    /// The pointer, Reduce Motion and the main queue's timers (`Environment`).
+    private let pointer: @MainActor () -> CGPoint
+    private let reducesMotion: @MainActor () -> Bool
+    private let schedule: @MainActor (TimeInterval, DispatchWorkItem) -> Void
 
     package init(environment: Environment) {
         defaults = environment.defaults
         makeHost = environment.makeHost
+        pointer = environment.pointer
+        reducesMotion = environment.reducesMotion
+        schedule = environment.schedule
     }
 
     private var hiddenUntilHover: Bool {
@@ -612,7 +636,7 @@ package final class NotchService: ObservableObject {
     /// the surface, the highlight sliding and the strip changing in place,
     /// instead of the whole content fading through the host.
     private func switchCompactSelection(_ change: () -> Void) {
-        let animation: Animation? = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let animation: Animation? = reducesMotion()
             ? nil : .smooth(duration: 0.26)
         withAnimation(animation) {
             objectWillChange.send()
@@ -1354,7 +1378,7 @@ package final class NotchService: ObservableObject {
             // the message; a held one must not reappear after collapsing.
             if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; notice = nil; noticeExpanded = false }
         }
-        inside = windowHost?.containsHover(NSEvent.mouseLocation) == true
+        inside = windowHost?.containsHover(pointer()) == true
         installEventMonitors()
         syncVisibleConsumers()
         if takeFocus { panel.makeKey() }
@@ -1364,7 +1388,7 @@ package final class NotchService: ObservableObject {
     package func collapse() {
         guard captureControls == nil, !heldDrag else { return }
         let closeCapture = detachCaptureIfClosingOnCollapse()
-        hoverState.close(pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true)
+        hoverState.close(pointerInside: windowHost?.containsHover(pointer()) == true)
         pinned = false
         hoverWork?.cancel(); hoverWork = nil
         if noticeExpanded { noticeWork?.cancel(); noticeWork = nil }
@@ -1404,7 +1428,7 @@ package final class NotchService: ObservableObject {
 
     package func hover(_ entered: Bool) {
         guard running, !suspended, !hiddenAtRestInFullscreen else { removeHoverExitMonitors(); return }
-        let point = NSEvent.mouseLocation
+        let point = pointer()
         let wasInside = inside
         let showedPicker = showsCompactActivityPicker
         inside = hiddenUntilHover ? geometry.contains(point, in: geometry.collapsed)
@@ -1413,7 +1437,7 @@ package final class NotchService: ObservableObject {
         hoverState.update(pointerInside: inside)
         let emphasize = inside && !hiddenInFullscreen && !hiddenUntilHover && !expanded && !peeking && !dragPlaceholder
             && notice == nil && captureControls == nil
-            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            && !reducesMotion()
         if hoverEmphasized != emphasize || showedPicker != showsCompactActivityPicker {
             hoverEmphasized = emphasize
             refreshPresentation()
@@ -1452,7 +1476,7 @@ package final class NotchService: ObservableObject {
                       self.captureControls == nil, (self.notice == nil || self.hiddenUntilHover), !self.dragPlaceholder,
                       self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
                       self.windowHost?.blocksHoverReveal() == false,
-                      self.geometry.contains(NSEvent.mouseLocation, in: self.hiddenUntilHover ? self.geometry.collapsed : self.surfaceSize) else { return }
+                      self.geometry.contains(self.pointer(), in: self.hiddenUntilHover ? self.geometry.collapsed : self.surfaceSize) else { return }
                 // Following the closed island ends as it opens or peeks.
                 self.removeHoverExitMonitors()
                 if self.defaults.bool(forKey: DefaultsKey.notchHoverExpands) {
@@ -1464,23 +1488,23 @@ package final class NotchService: ObservableObject {
             }
             hoverWork = work
             let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            schedule(delay, work)
         } else if holdsNotification
                     || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
                 guard self.running, !self.suspended, !self.inside,
-                      self.windowHost?.containsHover(NSEvent.mouseLocation) != true,
-                      !self.pointerOverChildWindow(NSEvent.mouseLocation) else { return }
+                      self.windowHost?.containsHover(self.pointer()) != true,
+                      !self.pointerOverChildWindow(self.pointer()) else { return }
                 self.releaseNotification()
                 guard !self.pinned, !self.heldDrag, !self.keepsWorkingSurface, self.captureControls == nil,
-                      !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation),
+                      !AssistiveKeyboard.ownsCocoaPoint(self.pointer()),
                       NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, openedByHover: self.openedByHover) else { return }
                 self.collapse()
             }
             hoverWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + (expanded || noticeExpanded ? NotchQuickAccessLayout.hoverExitDelay : 0.12), execute: work)
+            schedule((expanded || noticeExpanded ? NotchQuickAccessLayout.hoverExitDelay : 0.12), work)
         }
     }
 
@@ -1530,13 +1554,13 @@ package final class NotchService: ObservableObject {
             guard self.running, !self.suspended, self.inside, !self.hoverState.suppressed, !self.pinned, !self.heldDrag,
                   !self.keepsWorkingSurface, self.holdsNotification, self.notice?.notificationID == id, !self.noticeExpanded,
                   self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
-                  self.geometry.contains(NSEvent.mouseLocation, in: self.surfaceSize) else { return }
+                  self.geometry.contains(self.pointer(), in: self.surfaceSize) else { return }
             self.mutatePresentation(transitionContent: .reveal) { self.peeking = false; self.noticeExpanded = true }
             self.provideHapticFeedback()
         }
         hoverWork = work
         let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        schedule(delay, work)
     }
 
     /// Leaving closes an opened preview; a banner that was only held gets its
@@ -1558,7 +1582,7 @@ package final class NotchService: ObservableObject {
         noticeWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.dismissNotice() }
         noticeWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+        schedule(duration, work)
     }
 
     package var filteredSections: [NotchModule] {
@@ -1824,7 +1848,7 @@ package final class NotchService: ObservableObject {
             mutatePresentation { dragPlaceholder = true; peeking = false }
         } else if !active {
             mutatePresentation { dragPlaceholder = false }
-            inside = windowHost?.containsHover(NSEvent.mouseLocation) == true
+            inside = windowHost?.containsHover(pointer()) == true
             if !inside, !pinned { hover(false) }
         }
     }
@@ -1862,7 +1886,7 @@ package final class NotchService: ObservableObject {
         refreshPresentation()
         // A pointer already resting there has not hovered them; it leaves and
         // comes back before they open.
-        hoverState.close(pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true)
+        hoverState.close(pointerInside: windowHost?.containsHover(pointer()) == true)
         panel?.orderFrontRegardless()
         panel?.makeKey()
         installCaptureControlsClickThrough()
@@ -1874,7 +1898,7 @@ package final class NotchService: ObservableObject {
         guard captureControls != nil else { return }
         captureControlsWork?.cancel(); captureControlsWork = nil
         hoverWork?.cancel(); hoverWork = nil
-        hoverState.close(pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true)
+        hoverState.close(pointerInside: windowHost?.containsHover(pointer()) == true)
         captureControls?.hasFocusedControl = false
         captureControlsCollapsed = true
         refreshPresentation(animated: !captureSelectionInProgress)
@@ -1914,11 +1938,11 @@ package final class NotchService: ObservableObject {
             guard !self.captureControlsCollapsed, !self.captureSelectionInProgress,
                   !options.hasFocusedControl, !self.trackingMenu,
                   self.panel?.attachedSheet == nil,
-                  self.windowHost?.containsHover(NSEvent.mouseLocation) != true else { return }
+                  self.windowHost?.containsHover(self.pointer()) != true else { return }
             self.collapseCaptureControls()
         }
         captureControlsWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        schedule(delay, work)
     }
 
     private func updateCaptureControlsHover(wasInside: Bool) {
@@ -1942,11 +1966,11 @@ package final class NotchService: ObservableObject {
             self.hoverWork = nil
             guard self.captureControlsCollapsed, !self.captureSelectionInProgress,
                   !self.hoverState.suppressed,
-                  self.windowHost?.containsHover(NSEvent.mouseLocation) == true else { return }
+                  self.windowHost?.containsHover(self.pointer()) == true else { return }
             self.expandCaptureControls()
         }
         hoverWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        schedule(0.25, work)
     }
 
     /// The capture-controls window covers the top center of the screen, over
@@ -1955,7 +1979,7 @@ package final class NotchService: ObservableObject {
     /// so a region under the notch can still be dragged or a window clicked.
     private func updateCaptureControlsClickThrough() {
         guard let panel, captureControls != nil else { return }
-        let point = NSEvent.mouseLocation
+        let point = pointer()
         // A collapsing animation still reserves the old window frame. Only
         // the compact target should own clicks while that space is released.
         let overControls = !captureSelectionInProgress && windowHost?.contains(point) == true
@@ -1990,7 +2014,7 @@ package final class NotchService: ObservableObject {
 
     private func missionControlDidRestore() {
         if captureControls != nil { updateCaptureControlsClickThrough() }
-        else { hover(windowHost?.containsHover(NSEvent.mouseLocation) == true) }
+        else { hover(windowHost?.containsHover(pointer()) == true) }
         // A pointer that crossed displays during Mission Control is followed now.
         schedulePointerFollow()
     }
@@ -2081,7 +2105,7 @@ package final class NotchService: ObservableObject {
             incoming.minimumWingWidth = shown.preferredWingWidth
         }
         let keepsPreview = noticeExpanded && incoming.notificationID != nil
-            && windowHost?.containsHover(NSEvent.mouseLocation) == true
+            && windowHost?.containsHover(pointer()) == true
         // Slider and key bursts only replace the displayed value. They never
         // restart a window resize or enqueue another layout animation.
         let transition: NotchContentTransition = !noticeCanPresent ? .none
@@ -2092,7 +2116,7 @@ package final class NotchService: ObservableObject {
         }
         // A banner arriving under the pointer is held at once, whether the
         // pointer was already inside or an opening was pending.
-        if let id = incoming.notificationID, holdsNotification, windowHost?.containsHover(NSEvent.mouseLocation) == true {
+        if let id = incoming.notificationID, holdsNotification, windowHost?.containsHover(pointer()) == true {
             hoverWork?.cancel(); hoverWork = nil
             inside = true
             holdNotification(id)
@@ -2146,7 +2170,7 @@ package final class NotchService: ObservableObject {
                                   symbol: "music.note"))
         }
         trackWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        schedule(0.5, work)
     }
 
     /// The reading that ends the song names nothing, another player's song or
@@ -2215,7 +2239,7 @@ package final class NotchService: ObservableObject {
 
     private func settleNotificationHover() {
         hoverWork?.cancel(); hoverWork = nil
-        hoverState.close(pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true)
+        hoverState.close(pointerInside: windowHost?.containsHover(pointer()) == true)
     }
 
     private func dismissNotice() {
@@ -2234,7 +2258,7 @@ package final class NotchService: ObservableObject {
         guard windowHost?.departsContent == true else { endDeparture(); return }
         let work = DispatchWorkItem { [weak self] in self?.endDeparture() }
         departureWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + NotchMotion.departureHidden, execute: work)
+        schedule(NotchMotion.departureHidden, work)
     }
 
     private func endDeparture() {
@@ -2370,13 +2394,13 @@ package final class NotchService: ObservableObject {
             && notice == nil && !dragPlaceholder && captureControls == nil
         if departingMusic != nil {
             if canKeepDeparting && requested == .none && animated
-                && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return .none }
+                && !reducesMotion() { return .none }
             musicDepartureWork?.cancel(); musicDepartureWork = nil
             departingMusic = nil
             // A new presentation must replace the departure's forward-filled mask.
             return requested == .none ? (animated ? .reveal : .replace) : requested
         }
-        guard requested == .none, animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+        guard requested == .none, animated, !reducesMotion(),
               panel?.isVisible == true, let presentedMusic, !musicVisible else { return requested }
         if canKeepDeparting {
             // A held track is the one on screen.
@@ -2461,7 +2485,7 @@ package final class NotchService: ObservableObject {
         // Closing can shrink the island away from a pointer that has not moved,
         // with no boundary crossing to report it. Only a pointer still over the
         // island may keep its next approach from opening it.
-        if windowHost?.containsHover(NSEvent.mouseLocation) != true { hoverState.update(pointerInside: false) }
+        if windowHost?.containsHover(pointer()) != true { hoverState.update(pointerInside: false) }
         let activationRect: CGRect
         if captureControls != nil {
             activationRect = captureControlsCollapsed ? CGRect(origin: .zero, size: size) : .zero
@@ -2493,7 +2517,7 @@ package final class NotchService: ObservableObject {
             if windowHost?.departsContent == true {
                 let work = DispatchWorkItem { [weak self] in self?.finishMusicDeparture() }
                 musicDepartureWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + NotchMotion.departureHidden, execute: work)
+                schedule(NotchMotion.departureHidden, work)
             } else { finishMusicDeparture() }
         }
         syncScreenEdgeClicks()
@@ -2544,7 +2568,7 @@ package final class NotchService: ObservableObject {
             self.refreshCapsuleMusic()
         }
         musicTitleWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.musicTitleDuration, execute: work)
+        schedule(Self.musicTitleDuration, work)
     }
 
     /// A capsule is as wide as what it shows of the song, here or on another display.
@@ -2623,7 +2647,7 @@ package final class NotchService: ObservableObject {
         var pointer: Int?
         if preference == .pointer || preference == .all {
             // The island stays on its display until it can follow the pointer.
-            let mouse = NSEvent.mouseLocation
+            let mouse = pointer()
             pointer = screens.firstIndex { $0.notchDisplayID == displayID }
                 ?? screens.firstIndex { NSMouseInRect(mouse, $0.frame, false) }
         }
@@ -2685,7 +2709,7 @@ package final class NotchService: ObservableObject {
                 exit: { [weak self] in
                     guard let self else { return }
                     self.endFileDrop()
-                    self.hover(self.windowHost?.contains(NSEvent.mouseLocation) == true)
+                    self.hover(self.windowHost?.contains(self.pointer()) == true)
                 },
                 update: { [weak self] in self?.updateFileDrop(at: $0) == true }))
         } else { windowHost?.setFileDropActions(nil) }
@@ -2732,7 +2756,7 @@ package final class NotchService: ObservableObject {
             guard let self else { return }
             self.trackingMenu = false
             self.activityPickerMenuOpen = false
-            self.hover(self.windowHost?.contains(NSEvent.mouseLocation) == true)
+            self.hover(self.windowHost?.contains(self.pointer()) == true)
             self.refreshPresentation()
         }
         observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] in
@@ -2831,9 +2855,9 @@ package final class NotchService: ObservableObject {
     /// Accessibility Keyboard, while nothing keeps its working surface open.
     private func clickIsAway() -> Bool {
         !keepsWorkingSurface
-            && windowHost?.contains(NSEvent.mouseLocation) != true
-            && appShell()?.isOverStatusItem(NSEvent.mouseLocation) != true
-            && !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation)
+            && windowHost?.contains(pointer()) != true
+            && appShell()?.isOverStatusItem(pointer()) != true
+            && !AssistiveKeyboard.ownsCocoaPoint(pointer())
     }
 
     /// The island's own keys and the clicks that close it (`NotchLocalEventRoute`).

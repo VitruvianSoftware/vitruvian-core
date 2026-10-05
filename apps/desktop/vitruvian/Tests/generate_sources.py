@@ -21,9 +21,10 @@ OUTPUT = ROOT / "build/generated-tests"
 _PACKAGE_MODIFIER = re.compile(r"^( *(?:@[\w.]+(?:\([^()\n]*\))? +)*)package ", re.M)
 
 
-# The island reads its preferences from the `UserDefaults` it was built with
+# The island reads its preferences, the pointer, Reduce Motion and the main
+# queue's timers through the environment it was built with
 # (`NotchService.Environment`). Its copies here still stand in for the
-# process-wide preferences, so they read the text as it was before that seam.
+# process-wide ones, so they read the text as it was before those seams.
 _NOTCH = "Sources/Vitruvian/Services/Notch/NotchService.swift"
 _NOTCH_DEFAULTS = [
     (re.compile(r"\[defaults\] in "), ""),
@@ -31,6 +32,9 @@ _NOTCH_DEFAULTS = [
     (re.compile(r", in: defaults\)"), ")"),
     (re.compile(r"\(in: defaults\)"), "()"),
     (re.compile(r"(?<![\w.])(?:self\.)?defaults\."), "UserDefaults.standard."),
+    (re.compile(r"(?<![\w.])(?:self\.)?pointer\(\)"), "NSEvent.mouseLocation"),
+    (re.compile(r"(?<![\w.])reducesMotion\(\)"), "NSWorkspace.shared.accessibilityDisplayShouldReduceMotion"),
+    (re.compile(r"(?<![\w.])schedule\((.+), work\)"), r"DispatchQueue.main.asyncAfter(deadline: .now() + \1, execute: work)"),
 ]
 
 

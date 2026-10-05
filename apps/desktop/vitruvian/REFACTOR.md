@@ -2672,6 +2672,20 @@ environment builds it.
   took by default. The presentation test's stand-in window takes that
   argument too.
 
+Landed (5o, the pointer, motion and timers): `NotchService` reads the
+pointer and Reduce Motion, and starts its timers, through its environment.
+
+- **`Environment.pointer`** answers the 25 places that read
+  `NSEvent.mouseLocation`.
+- **`Environment.reducesMotion`** answers its four Reduce Motion checks.
+- **`Environment.schedule`** runs its ten delayed pieces of work. These
+  are hover openings and closings, notice dismissals, departures, the
+  track notice, capture controls and the music title.
+- `.system` passes the same system calls as before, so nothing runs
+  differently. A test can now place the pointer and step the clock.
+- **Generated copies:** the generator maps the three back to the system
+  calls when it reads the island, so the five copies stay as they were.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
