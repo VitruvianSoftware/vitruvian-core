@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-// generate_sources.py appends these checks to the real HUD source. No panel is
-// created: layout and animation configuration run on an offscreen content view.
+import AppKit
+import QuartzCore
+import VitruvianCore
+import VitruvianDesign
+import VitruvianServices
+import VitruvianUI
+
+// No panel is created: layout and animation configuration run on the real
+// HUD's content view, offscreen.
 extension QuitProtectionHUD {
     static func progressChecks(_ suite: TestSuite) {
         let content = ContentView(frame: CGRect(origin: .zero, size: minimumSize))

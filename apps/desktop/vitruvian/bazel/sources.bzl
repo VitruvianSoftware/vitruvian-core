@@ -330,7 +330,6 @@ GENERATED_TEST_SOURCES = [
     "PointerOnDisplay.swift",
     "PostUpdateStatusItemRecovery.swift",
     "QuickLauncherBodies.swift",
-    "QuitProtectionHUDBodies.swift",
     "RecorderZoomAiming.swift",
     "ScratchpadExport.swift",
     "ScratchpadSave.swift",

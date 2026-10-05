@@ -386,7 +386,6 @@ genrule(
         "build.sh",
     ] + glob([
         "Sources/**/*.swift",
-        "Tests/Fixtures/**",
     ]),
     outs = ["generated-tests/" + f for f in GENERATED_TEST_SOURCES],
     cmd = "$(execpath :sync_sources) --app-dir " + package_name() + " --emit-generated $(RULEDIR)/generated-tests",
@@ -499,7 +498,6 @@ py_test(
         "build.sh",
     ] + glob([
         "Sources/**/*.swift",
-        "Tests/Fixtures/**",
     ]),
     main = "bazel/sync_sources.py",
 )

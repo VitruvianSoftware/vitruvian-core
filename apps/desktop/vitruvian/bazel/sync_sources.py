@@ -91,7 +91,6 @@ def run_test_generator(app_dir, out_dir):
             root / "Tests" / "generate_sources.py",
         )
         os.symlink(app_dir / "Sources", root / "Sources")
-        os.symlink(app_dir / "Tests" / "Fixtures", root / "Tests" / "Fixtures")
         subprocess.run(
             [sys.executable, str(root / "Tests" / "generate_sources.py")], check=True
         )

@@ -1187,6 +1187,18 @@ leaves 50.
 - **Verification:** a Linux Swift 6 model runs the height and tool rules with
   these fixtures. The views rely on macOS CI.
 
+Landed (4b, the quit-protection HUD): one more generated file goes, which
+leaves 49.
+
+- **Opened:** `QuitProtectionHUD` is `package`, with its `ContentView`,
+  `minimumSize` and `fittingSize(_:)`.
+- **Test:** the progress checks move from `Tests/Fixtures` into
+  `Tests/QuitProtectionHUDTests.swift`, as an extension of the real HUD. They
+  are no longer appended to a copy of the whole HUD file.
+- **Removed:** `Tests/Fixtures` held only those checks. It leaves `BUILD`'s
+  globs and `sync_sources.py`'s staging with them.
+- **Verification:** AppKit and Core Animation, so macOS CI only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
