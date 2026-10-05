@@ -219,7 +219,6 @@ def main():
               .replace("private var", "var", 1).replace("NotchSupport.controls()", "controls")
               .replace("NotchTimerService.shared", "NotchCompactTests.NotchTimerService.shared")
           + "}\n")
-    canvas = "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift"
     write("NotchHover.swift", "import AppKit\nextension NotchHoverTests {\nfinal class Service: State {\n"
           + declaration(notch, "    func show(_ incoming:").replace("NotchSupport.routes(incoming.event)", "true")
             .replace("    func", "    @discardableResult\n    func", 1)
@@ -237,45 +236,6 @@ def main():
               "    private func holdEndingTrack("])
           .replace("NotchSupport.routes(notice.event)", "routesNotices")
           + "}\n}\n")
-    write("NotchPresentationRefresh.swift", "import AppKit\nimport Foundation\nimport Combine\nimport SwiftUI\n"
-          + "extension NotchPresentationRefreshContract {\nfinal class Service: State {\n"
-          + "func hover(_ entered: Bool) {\nlet wasInside = inside\n"
-          + "inside = windowHost?.containsHover(NSEvent.mouseLocation) == true\n"
-          + "hoverState.update(pointerInside: inside)\nupdateCaptureControlsHover(wasInside: wasInside)\n}\n"
-          + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    func collapseCaptureControls()", "    func expandCaptureControls()",
-              "    private func setCaptureSelectionInProgress(", "    func scheduleCaptureControlsCollapse(",
-              "    private func updateCaptureControlsHover(", "    private func updateCaptureControlsClickThrough()",
-              "    private func removeCaptureControlsClickThrough()", "    private func missionControlDidRestore()",
-              "    func endCaptureControls()"])
-          + declaration(notch, "    func presentCaptureControls(")
-              .replace("ScreenCaptureSelectionOptions", "CaptureOptions")
-              .replace(".receive(on: DispatchQueue.main)", "")
-              .replace("panel?.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)", "panel?.level = 2")
-          + declaration(notch, "    private var hiddenUntilHover:").replace("private var", "var", 1)
-          + declaration(notch, "    private var hiddenAtRestInFullscreen:").replace("private var", "var", 1)
-          + declaration(notch, "    var acceptsUserInteraction:")
-          + declaration(notch, "    var acceptsSystemFeedback:")
-          + declaration(notch, "    var showsSystemFeedback:")
-          + declaration(notch, "    var usesGlassSurface:")
-          + declaration(notch, "    var expandedGeometry:").replace("var expandedGeometry", "override var expandedGeometry", 1)
-          + declaration(notch, "    private func compactMusicTransition(").replace("private func", "func", 1)
-          + declaration(notch, "    private func rememberPresentedMusic(").replace("private func", "func", 1)
-          + declaration(notch, "    private func switchCompactSelection(").replace("private func", "func", 1)
-          + declaration(notch, "    func refreshPresentation(")
-              .replace("NotchSupport.coversMenus()", "UserDefaults.standard.coversMenus")
-          + declaration(notch, "    private func applyMenuSpace(").replace("private func", "func", 1)
-          + declaration(notch, "    func presentCapture(")
-              .replace("content: AnyView, actions: AnyView? = nil", "content: Bool, actions: Bool? = nil")
-              .replace("NotchSupport.routes(.capture)", "routesCaptures")
-          + declaration(notch, "    func updateCaptureHeight(")
-          + declaration(notch, "    func removeCapture(")
-          + declaration(notch, "    private func clearCapture(")
-          + declaration(notch, "    private func detachCaptureIfClosingOnCollapse(")
-          + "}\n}\nextension NotchPresentationRefreshContract.Host {\n"
-          + declaration(canvas, "    func setMouseEventsIgnored(")
-          + declaration(canvas, "    private func restoreFromMissionControl(").replace("private func", "func", 1)
-          + "}\n")
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):

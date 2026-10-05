@@ -306,7 +306,7 @@ enum NotchDestinationContract {
         suite.expect(service.hiddenInFullscreen && service.showScratchpad() && service.expanded,
                      "a full-screen user shortcut opens Scratchpad despite hidden automatic feedback")
         service.collapse()
-        fixture.host?.isConcealedForMissionControl = true
+        fixture.host?.concealForMissionControl()
         suite.expect(!service.showScratchpad() && !service.expanded,
                      "an unavailable island hands Scratchpad opening back to its ordinary window")
     }

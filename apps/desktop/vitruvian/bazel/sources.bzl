@@ -297,7 +297,6 @@ GENERATED_TEST_SOURCES = [
     "MenuPanelRecovery.swift",
     "NotchCompact.swift",
     "NotchHover.swift",
-    "NotchPresentationRefresh.swift",
 ]
 
 # Sources of the privileged fan-control helper.

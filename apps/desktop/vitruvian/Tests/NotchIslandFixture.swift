@@ -46,6 +46,7 @@ final class NotchIslandFixture {
     /// nil when they cover the center.
     var menuRoom: CGFloat?
     var hasBattery = true
+    var reducesMotion = false
     var currentSession = NotchSessionState()
     /// Each window the island built, the current one last.
     private(set) var hosts: [RecordingIslandHost] = []
@@ -158,7 +159,7 @@ final class NotchIslandFixture {
                 return mirror
             },
             pointer: { [unowned self] in self.pointer },
-            reducesMotion: { false },
+            reducesMotion: { [unowned self] in self.reducesMotion },
             schedule: { [unowned self] delay, work in self.scheduled.append((due: self.now + delay, work: work)) },
             services: services,
             displays: { [unowned self] in self.displays },
@@ -273,9 +274,12 @@ final class RecordingIslandHost: NotchIslandHost {
     /// Further rects that count as over the island, as floating controls do.
     var hoverExtras: [CGRect] = []
     var departsContent = false
-    var isConcealedForMissionControl = false
+    /// Who takes the mouse, by the host's own rules.
+    private(set) var input = NotchWindowInputPolicy()
+    var isConcealedForMissionControl: Bool { input.concealed }
     var missionControlDidRestore: (() -> Void)?
     var hasKeyboard = false
+    private(set) var keyboardRequests = 0
     private(set) var presents = 0
     /// Whether each hide was animated, in order.
     private(set) var hideAnimations: [Bool] = []
@@ -321,7 +325,11 @@ final class RecordingIslandHost: NotchIslandHost {
                  quickAccess: NotchQuickAccessConfiguration?, revealFromHidden: Bool,
                  hideWhenSettled: Bool, usesGlass: Bool) {
         presents += 1
+        let ignoresMouse = input.present(hidingWhenSettled: hideWhenSettled, panelIgnores: panel.ignoresMouseEvents)
+        if panel.ignoresMouseEvents != ignoresMouse { panel.ignoresMouseEvents = ignoresMouse }
         transitions.append(transitionContent)
+        // Departing content stays on screen while the shape closes around it.
+        departsContent = transitionContent == .depart
         self.usesGlass = usesGlass
         self.revealFromHidden = revealFromHidden
         onPresent?(size)
@@ -332,19 +340,36 @@ final class RecordingIslandHost: NotchIslandHost {
         hideAnimations.append(animated)
         panel.orderOut(nil)
     }
-    func finishDeparture() {}
+    func finishDeparture() { departsContent = false }
     func whenSettled(_ action: @escaping @MainActor () -> Void) { action() }
     func close() {
         closed = true
         panel.orderOut(nil)
     }
 
-    func takeKeyboard() { if panel.acceptsKeyFocus { hasKeyboard = true } }
+    func takeKeyboard() {
+        keyboardRequests += 1
+        if panel.acceptsKeyFocus { hasKeyboard = true }
+    }
     func releaseKeyboard() { hasKeyboard = false }
 
     func setMouseEventsIgnored(_ ignored: Bool) {
-        if panel.ignoresMouseEvents != ignored { panel.ignoresMouseEvents = ignored }
+        let effective = input.ask(ignored: ignored)
+        if panel.ignoresMouseEvents != effective { panel.ignoresMouseEvents = effective }
     }
+
+    /// Mission Control starts, as the real host's sampling finds it.
+    func concealForMissionControl() {
+        panel.ignoresMouseEvents = input.conceal(panelIgnores: panel.ignoresMouseEvents)
+    }
+
+    /// Mission Control ends; a visible island fades back in until `finishMissionControlFade()`.
+    func restoreFromMissionControl() {
+        panel.ignoresMouseEvents = input.restore(panelVisible: panel.isVisible)
+        missionControlDidRestore?()
+    }
+
+    func finishMissionControlFade() { input.finishRestore() }
     func setFileDropActions(_ actions: NotchFileDropActions?) { fileDropActions = actions }
     func setOutline(enabled: Bool, color: NSColor) {
         outlineEnabled = enabled

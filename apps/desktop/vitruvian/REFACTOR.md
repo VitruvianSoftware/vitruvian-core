@@ -2451,6 +2451,31 @@ which leaves 5: four copies and the registry kept on purpose.
 - The fixture gained a second display, per-display full screen, a measured
   menu room and the playback reader's state.
 
+Landed (4b, the island's presentation and capture controls): one more
+generated file goes, which leaves 4: three copies (`NotchHover`,
+`NotchCompact`, `MenuPanelRecovery`) and the registry kept on purpose.
+
+- **Tests:** `NotchPresentationRefreshContract` and its capture-controls
+  checks drive a real island from `NotchIslandFixture` instead of compiled
+  copies of the island's refresh, capture and music-departure members and
+  the window host's restore. Every check is kept:
+  - The recording host keeps what each present and hide asked for: the
+    transition, glass, the reveal, the outline, the activation area. It
+    applies the module's `NotchWindowInputPolicy` to its panel.
+  - Hover, the capture controls' click-through and their deadlines run on
+    pointer moves and the fixture's clock.
+  - The menus' room is what the menu reader measures. A center collision
+    is a measurement of none.
+  - The music strip's departure follows playback, covers and track
+    changes sent to the island.
+- **Changed checks:**
+  - The page-title width checks call `NotchGeometry` directly; the title's
+    width is measured from its text, so a test cannot choose it.
+  - "Recent captures" is compared with the island's own expanded size.
+  - The hidden island's input policy is checked on the policy itself.
+- The fixture gained Reduce Motion and a host that keeps departing content
+  until it finishes.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
@@ -2880,6 +2905,20 @@ Landed (5v, the copies' windows and the battery):
 - A test's island can now show copies on other displays and rest on a Mac
   without a battery. The generator maps the battery back for its copies,
   which stay as they were.
+
+Landed (5w, the window's mouse policy): `NotchWindowHost` keeps who takes
+the mouse in a `NotchWindowInputPolicy` (`Services/Notch/NotchWindowInputPolicy.swift`).
+
+- The island asks to ignore the mouse or take it. Mission Control and a
+  settling hide each hold the window click-through for a while, and the
+  island's latest ask is kept for when they end.
+- The host's five flags for this (concealed, the ask kept through Mission
+  Control, the hide, the ask kept through it, restoring) are the policy's,
+  and its four steps (asking, presenting, concealing, restoring) return
+  what the panel does. Nothing reads differently.
+- **Why:** the capture-controls checks compiled the host's restore and
+  mouse methods to test this. They now drive the policy, through a test
+  host that applies it as the real one does.
 
 ## Step 6: typed preferences and explicit concurrency (in progress)
 

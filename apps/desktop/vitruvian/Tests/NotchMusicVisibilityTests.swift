@@ -44,6 +44,8 @@ enum NotchMusicVisibilityTests {
         for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
         defaults.set(false, forKey: DefaultsKey.notchTrackChange)
+        // The cutout these checks measure, rather than the floating capsule.
+        defaults.set(NotchSilhouette.notch.rawValue, forKey: DefaultsKey.notchSilhouette)
         for event in [NotchEvent.capture, .accessory, .download] { defaults.set(true, forKey: event.preferenceKey) }
         defaults.set(true, forKey: DefaultsKey.notchKeepAwakeActivity)
         defaults.set(true, forKey: DefaultsKey.notchAccessoriesEnabled)

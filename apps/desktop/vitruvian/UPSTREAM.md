@@ -1905,6 +1905,16 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/NotchIslandFixture.swift`, not compiled copies of its
     presentation and consumer members.
   - `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 5w (`REFACTOR.md`):
+  - `Services/Notch/NotchWindowHost.swift` keeps whether its panel takes the
+    mouse, through Mission Control and a settling hide, in the new
+    `NotchWindowInputPolicy` (`Services/Notch/NotchWindowInputPolicy.swift`).
+- **2026-10-05**: Refactor step 4b, the island's presentation (`REFACTOR.md`):
+  - `Tests/NotchPresentationRefreshTests.swift` and
+    `Tests/NotchCaptureControlsTests.swift` drive a real island from
+    `Tests/NotchIslandFixture.swift`, not compiled copies of its refresh,
+    capture and departure members or the window host's restore.
+  - `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
