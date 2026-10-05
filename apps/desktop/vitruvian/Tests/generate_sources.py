@@ -237,31 +237,6 @@ def main():
               "    private func holdEndingTrack("])
           .replace("NotchSupport.routes(notice.event)", "routesNotices")
           + "}\n}\n")
-    music_visibility = "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-        "    private var hiddenUntilHover:", "    var fullscreenCompact:", "    var idleContent:", "    var hasMusicActivity:", "    var compactActivity:",
-        "    var compactActivityGeometry:", "    private func compactGeometry(", "    var compactActivities:",
-        "    var compactCompanion:",
-        "    var surfaceSize:", "    func collapse(",
-        "    private func detachCaptureIfClosingOnCollapse(", "    func endCaptureControls(",
-        "    private func syncVisibleConsumers(", "    private func releaseMonitor("])
-    for call in ["NotchSupport.controls", "NotchSupport.watchesMusicActivity", "NotchSupport.idleContent"]:
-        music_visibility = music_visibility.replace(call + "()", call + "(in: ReviewDefaults.current)")
-    music_visibility = music_visibility.replace("NotchSupport.routes(.track)",
-                                                "NotchSupport.routes(.track, in: ReviewDefaults.current)")
-    music_visibility = music_visibility.replace("UserDefaults.standard", "ReviewDefaults.current!")
-    music_visibility = music_visibility.replace("calendar: hasCalendarActivity", "calendar: false")
-    music_visibility = music_visibility.replace("playback?.isPlaying == true)",
-                                                "playback?.isPlaying == true, in: ReviewDefaults.current)")
-    music_visibility = music_visibility.replace("captureControls: captureControls != nil)",
-                                                "captureControls: captureControls != nil, in: ReviewDefaults.current)")
-    music_visibility = music_visibility.replace(
-        "NotchDownloadService.shared.items.first { $0.active && !$0.completed }?.name", "downloadName")
-    music_visibility = music_visibility.replace("AppFeature.monitorDisk.isAvailable",
-                                                "AppFeature.monitorDisk.isAvailable(in: ReviewDefaults.current)")
-    music_visibility = music_visibility.replace("AppFeature.fanControl.isAvailable",
-                                                "AppFeature.fanControl.isAvailable(in: ReviewDefaults.current)")
-    write("NotchMusicVisibility.swift", "import Foundation\nextension NotchMusicVisibilityTests {\n"
-          + "final class Service: State {\n" + music_visibility + "}\n}\n")
     write("NotchPresentationRefresh.swift", "import AppKit\nimport Foundation\nimport Combine\nimport SwiftUI\n"
           + "extension NotchPresentationRefreshContract {\nfinal class Service: State {\n"
           + "func hover(_ entered: Bool) {\nlet wasInside = inside\n"

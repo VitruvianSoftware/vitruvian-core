@@ -301,7 +301,7 @@ enum NotchDestinationContract {
         let hidesInFullscreen = defaults.bool(forKey: DefaultsKey.notchHideInFullscreen)
         defaults.set(true, forKey: DefaultsKey.notchHideInFullscreen)
         defer { defaults.set(hidesInFullscreen, forKey: DefaultsKey.notchHideInFullscreen) }
-        fixture.fullscreen = true
+        fixture.fullscreen = [NotchIslandFixture.display.id]
         service.syncWithPreferences()
         suite.expect(service.hiddenInFullscreen && service.showScratchpad() && service.expanded,
                      "a full-screen user shortcut opens Scratchpad despite hidden automatic feedback")

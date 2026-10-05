@@ -1,371 +1,288 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-import Foundation
+import AppKit
+import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production presentation and consumer methods run against a controlled
-/// playback reader. Its last reply deliberately survives stop, so cached music
-/// cannot make the assertions pass merely because a test double cleared it.
+/// The module's island (`NotchIslandFixture`) starts and stops its playback
+/// reader as it presents. The services keep their last playback after every
+/// stop, so cached music cannot make the assertions pass merely because a
+/// test double cleared it.
 enum NotchMusicVisibilityTests {
-    enum ReviewDefaults { static var current: UserDefaults! }
-    final class NotchMusicService {
-        static var shared = NotchMusicService()
-        struct Playback { var isPlaying: Bool }
-        var playback: Playback?
-        var running = false
-        func start() { running = true }
-        func stop() { running = false }
+    /// A display with the camera housing a physical notch has, or none.
+    private static func display(physical: Bool) -> NotchDisplayInfo {
+        NotchDisplayInfo(id: NotchIslandFixture.display.id, frame: CGRect(x: 0, y: 0, width: 1470, height: 956),
+                         visibleFrame: CGRect(x: 0, y: 0, width: 1470, height: 924),
+                         safeAreaTop: physical ? 32 : 0, cameraWidth: physical ? 180 : 0,
+                         backingScale: 2, isBuiltIn: physical, hasMenuBar: true)
     }
-    enum PowerSampler { static var hasInternalBattery = true }
-    struct MonitorNeeds {
-        var disk = false
-        var fanSpeed = false
-        static let none = Self()
-    }
-    struct Metric { let monitorNeeds = MonitorNeeds.none }
-    final class SystemMonitor {
-        static let shared = SystemMonitor()
-        func setNotchDetailNeeds(_ needs: MonitorNeeds) {}
-        func setNotchVisible(_ visible: Bool) {}
-    }
-    final class CameraPreviewService {
-        static let shared = CameraPreviewService()
-        func hideEmbedded() {}
-    }
-    struct CaptureControls {
-        struct Tool { let capturesAudio = false }
-        let selectedTool = Tool()
-        var onSelectionProgressChange: ((Bool) -> Void)?
-    }
-    enum NotchContentTransition { case none, dismiss }
-    struct Host { func containsHover(_ point: CGPoint) -> Bool { false } }
-    struct Panel {
-        var acceptsKeyFocus = false
-        var level = 0
-        func resignKey() {}
-    }
-    enum NotchPanel { static let normalLevel = 0 }
-    enum NSEvent { static let mouseLocation = CGPoint.zero }
 
-    class State {
-        var activitySelection = NotchActivitySelection()
-        var timerCompanions: [NotchCompactActivity] = []
-        func compactCompanions(of primary: NotchCompactActivity) -> [NotchCompactActivity] {
-            primary == .timer ? timerCompanions : []
-        }
-        var showsCompactActivityPicker = false
-        var compactActivityPickerLayout = NotchActivityPickerLayout(
-            count: 2, labelWidth: 80, stripSize: CGSize(width: 300, height: 32), screenWidth: 1440)
-        var hiddenInFullscreen = false
-        var running = true
-        var suspended = false
-        var expanded = false
-        var peeking = false
-        var showingAppPanel = false
-        var showingSections = false
-        var selected: NotchModule = .controls
-        var selectedMetric: Metric?
-        var modules: [NotchModule] = []
-        var captureControls: CaptureControls?
-        var captureControlsCollapsed = false
-        var captureSelectionInProgress = false
-        var captureControlsWork: DispatchWorkItem?
-        var captureControlsSubscription: Bool?
-        var captureControlsCancel: (() -> Void)?
-        var captureClose: (() -> Void)?
-        var captureClosesOnCollapse = false
-        var notice: NotchNotice?
-        var noticeExpanded = false
-        var noticeWork: DispatchWorkItem?
-        var dragPlaceholder = false
-        var hasTimerActivity = false
-        var hasWatchActivity = false
-        var hasDownloadActivity = false
-        var downloadName: String?
-        var hasAgentActivity = false
-        var hasKeepAwakeActivity = false
-        var awaitsTrackNotice = false
-        var timerStripWing: CGFloat = 44
-        func timerStripWing(for companion: NotchCompactActivity?, in geometry: NotchGeometry) -> CGFloat { timerStripWing }
-        var agentStripWing: CGFloat = 58
-        func agentStripWing(in geometry: NotchGeometry) -> CGFloat { agentStripWing }
-        var watchStripWing: CGFloat = 60
-        func watchStripWing(in geometry: NotchGeometry) -> CGFloat { watchStripWing }
-        var calendarStripWing: CGFloat = 120
-        func calendarStripWing(for companion: NotchCompactActivity?, in geometry: NotchGeometry) -> CGFloat { calendarStripWing }
-        var keepAwakeStripWing: CGFloat = 44
-        func keepAwakeStripWing(in geometry: NotchGeometry) -> CGFloat { keepAwakeStripWing }
-        var notchNeedsMonitor = false
-        var heldDrag = false
-        var pinned = false
-        var openedByHover = false
-        var sectionQuery = ""
-        var highlightedSection: NotchModule?
-        var sectionRow = 0
-        var hoverState = NotchHoverState()
-        var hoverEmphasized = false
-        var hoverWork: DispatchWorkItem?
-        var windowHost: Host?
-        var panel: Panel? = Panel()
-        var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
-                                     safeAreaTop: 32, cameraWidth: 180, compactSideRoom: 100)
-        var expandedSize: CGSize { geometry.expanded }
-        var capsuleSurfaceSize: CGSize? { nil }
-        var showsCopies = false
-        var captureControlsLayout: NotchCaptureControlsLayout {
-            NotchCaptureControlsLayout(geometry: geometry, titleWidth: 90, capturesAudio: false)
-        }
-        func syncMenuSpaceMonitoring() {}
-        func removeCaptureControlsClickThrough() {}
-        func refreshPresentation() {}
-        func removeEventMonitors() {}
-        func clearCapture() {
-            captureClose = nil
-            captureClosesOnCollapse = false
-        }
-        func mutatePresentation(transitionContent: NotchContentTransition, _ change: () -> Void) { change() }
+    private static func playback(_ playing: Bool) -> NotchPlayback {
+        NotchPlayback(track: RadialNowPlayingSnapshot(title: "Song", artist: "Artist", album: nil, artworkData: nil,
+                                                      appBundleIdentifier: "org.example.player", appPID: 42),
+                      isPlaying: playing, elapsed: 0, duration: 200, rate: 1, sampledAt: Date(), canSeek: false)
+    }
+
+    private static func captureOptions() -> ScreenCaptureSelectionOptions {
+        ScreenCaptureSelectionOptions(availableTools: [.screenshot], selectedTool: .screenshot, showsCaptureMenu: false)
     }
 
     static func run(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-visibility"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
-        ReviewDefaults.current = defaults
+        var islands: [NotchIslandFixture] = []
         defer {
-            ReviewDefaults.current = nil
-            NotchMusicService.shared = NotchMusicService()
+            islands.forEach { $0.island.stop() }
             defaults.removePersistentDomain(forName: domain)
         }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
         for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
         defaults.set(false, forKey: DefaultsKey.notchTrackChange)
-        let service = Service()
-        let reader = NotchMusicService.shared
-        service.modules = NotchSupport.modules(in: defaults)
+        for event in [NotchEvent.capture, .accessory, .download] { defaults.set(true, forKey: event.preferenceKey) }
+        defaults.set(true, forKey: DefaultsKey.notchKeepAwakeActivity)
+        defaults.set(true, forKey: DefaultsKey.notchAccessoriesEnabled)
+        /// A started island on one display, whose menus leave it room.
+        func island(physical: Bool = true, playing: Bool? = nil) -> NotchIslandFixture {
+            let fixture = NotchIslandFixture(defaults: defaults)
+            fixture.displays = [display(physical: physical)]
+            fixture.menuRoom = 100
+            if let playing { fixture.services.playback = playback(playing) }
+            fixture.start()
+            islands.append(fixture)
+            return fixture
+        }
 
-        let persistentCapture = Service()
-        var persistentCloseCount = 0
-        persistentCapture.expanded = true
-        persistentCapture.captureClose = { persistentCloseCount += 1 }
-        persistentCapture.captureClosesOnCollapse = true
-        persistentCapture.collapse()
-        persistentCapture.collapse()
-        suite.expect(persistentCloseCount == 1 && persistentCapture.captureClose == nil
-                     && !persistentCapture.captureClosesOnCollapse,
+        let persistent = island()
+        var persistentCloses = 0
+        let persistentID = UUID()
+        let persistentShown = persistent.island.presentCapture(
+            id: persistentID, content: AnyView(EmptyView()), height: 120, takeFocus: false, closeOnCollapse: true,
+            fallback: {}, close: { persistentCloses += 1 }, hover: { _ in })
+        persistent.island.collapse()
+        persistent.island.collapse()
+        suite.expect(persistentShown && persistentCloses == 1 && persistent.island.captureContent == nil
+                     && !persistent.island.isCaptureVisible(id: persistentID),
                      "collapsing a persistent capture closes and detaches it exactly once")
 
-        let timedCapture = Service()
-        var timedCloseCount = 0
-        timedCapture.expanded = true
-        timedCapture.captureClose = { timedCloseCount += 1 }
-        timedCapture.collapse()
-        suite.expect(timedCloseCount == 0 && timedCapture.captureClose != nil,
+        let timed = island()
+        var timedCloses = 0
+        let timedShown = timed.island.presentCapture(
+            id: UUID(), content: AnyView(EmptyView()), height: 120, takeFocus: false, closeOnCollapse: false,
+            fallback: {}, close: { timedCloses += 1 }, hover: { _ in })
+        timed.island.collapse()
+        suite.expect(timedShown && timedCloses == 0 && timed.island.captureContent != nil,
                      "collapsing a timed capture leaves its timer-owned close path intact")
 
+        let hidesInFullscreen = defaults.object(forKey: DefaultsKey.notchHideInFullscreen)
+        defer { defaults.set(hidesInFullscreen, forKey: DefaultsKey.notchHideInFullscreen) }
         for physical in [true, false] {
-            service.geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
-                                            safeAreaTop: physical ? 32 : 0, cameraWidth: physical ? 180 : 0,
-                                            menuBarHeight: 32, compactSideRoom: 100)
-            let closed = service.geometry.restingSize(showsContent: false)
             defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
             defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
-            reader.playback = .init(isPlaying: true)
-            service.syncVisibleConsumers()
-            suite.expect(reader.running && service.compactActivity == .music && service.surfaceSize.width > closed.width,
+            let fixture = island(physical: physical, playing: true)
+            let service = fixture.island
+            let reader = fixture.services
+            let closed = service.geometry.restingSize(showsContent: false)
+            suite.expect(reader.musicRunning && service.compactActivity == .music && service.surfaceSize.width > closed.width,
                    "enabled playback first appears beside both physical and simulated cameras")
 
-            service.hiddenInFullscreen = true
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running && service.surfaceSize == closed,
+            defaults.set(true, forKey: DefaultsKey.notchHideInFullscreen)
+            fixture.fullscreen = [NotchIslandFixture.display.id]
+            service.syncWithPreferences()
+            suite.expect(service.hiddenInFullscreen && !reader.musicRunning && service.surfaceSize == closed,
                          "fullscreen keeps a black cutout and stops the automatic playback reader")
-            let plain = service.geometry
-            service.geometry = NotchGeometry(screen: plain.screen, safeAreaTop: physical ? 32 : 0,
-                                             cameraWidth: physical ? 180 : 0, menuBarHeight: 32,
-                                             compactSideRoom: 100, outline: true)
-            suite.expect(service.surfaceSize == closed,
+            defaults.set(true, forKey: DefaultsKey.notchOutlineEnabled)
+            service.syncWithPreferences()
+            suite.expect(service.geometry.outline == true && service.surfaceSize == closed,
                          "fullscreen draws no outline, so its cutout keeps to the camera without the outline's room")
-            service.geometry = plain
-            service.showsCopies = true
-            service.syncVisibleConsumers()
-            suite.expect(reader.running, "copies on other displays keep the song while the island rests in fullscreen")
-            service.showsCopies = false
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running, "without copies fullscreen stops the reader again")
-            service.expanded = true
-            service.selected = .music
-            service.syncVisibleConsumers()
-            suite.expect(reader.running && service.surfaceSize == service.expandedSize,
+            defaults.set(false, forKey: DefaultsKey.notchOutlineEnabled)
+            service.syncWithPreferences()
+            // A copy on another display, which is not in full screen. The
+            // copies appear as the island presents, and its next sync reads them.
+            fixture.displays.append(NotchIslandFixture.secondDisplay)
+            defaults.set(NotchDisplay.all.rawValue, forKey: DefaultsKey.notchDisplay)
+            service.syncWithPreferences()
+            service.syncWithPreferences()
+            suite.expect(!fixture.mirrors.isEmpty && reader.musicRunning,
+                         "copies on other displays keep the song while the island rests in fullscreen")
+            defaults.set(NotchDisplay.automatic.rawValue, forKey: DefaultsKey.notchDisplay)
+            service.syncWithPreferences()
+            service.syncWithPreferences()
+            fixture.displays.removeLast()
+            suite.expect(!reader.musicRunning, "without copies fullscreen stops the reader again")
+            service.open(.music)
+            suite.expect(reader.musicRunning && service.surfaceSize == service.expandedSize,
                          "manually opening Music in fullscreen starts its reader")
             service.collapse()
-            suite.expect(!reader.running && service.surfaceSize == closed,
+            suite.expect(!reader.musicRunning && service.surfaceSize == closed,
                          "closing Music in fullscreen stops its reader and restores the black cutout")
-            service.hiddenInFullscreen = false
-            service.syncVisibleConsumers()
-            suite.expect(reader.running, "leaving fullscreen restarts the playback reader when music is enabled")
+            fixture.fullscreen = []
+            service.syncWithPreferences()
+            suite.expect(reader.musicRunning, "leaving fullscreen restarts the playback reader when music is enabled")
 
             defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running && service.compactActivity == nil && service.idleContent == .none
+            service.syncWithPreferences()
+            suite.expect(!reader.musicRunning && service.compactActivity == nil && service.idleContent == .none
                    && service.surfaceSize == closed,
                    "selecting Nothing retracts already visible music and stops its reader with cached playback still present")
-            let reopened = Service()
-            reopened.modules = service.modules
-            reopened.geometry = service.geometry
-            reopened.syncVisibleConsumers()
-            suite.expect(!reader.running && reopened.compactActivity == nil && reopened.surfaceSize == closed,
+            let reopened = island(physical: physical, playing: true)
+            suite.expect(!reopened.services.musicRunning && reopened.island.compactActivity == nil
+                   && reopened.island.surfaceSize == closed,
                    "a fresh island honors saved Nothing while playback metadata is still available")
             defaults.set(true, forKey: DefaultsKey.notchTrackChange)
-            service.syncVisibleConsumers()
-            suite.expect(reader.running && service.compactActivity == nil && service.surfaceSize == closed,
+            service.syncWithPreferences()
+            suite.expect(reader.musicRunning && service.compactActivity == nil && service.surfaceSize == closed,
                    "announcing new songs keeps the reader on with Nothing at rest, without a music strip")
             defaults.set(false, forKey: DefaultsKey.notchTrackChange)
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running, "turning new song notices off stops that reader again")
+            service.syncWithPreferences()
+            suite.expect(!reader.musicRunning, "turning new song notices off stops that reader again")
             for automatic in [false, true] {
                 defaults.set(automatic, forKey: DefaultsKey.notchShowPlayingMusic)
                 for module in [NotchModule.music, .controls] {
-                    service.selected = module
-                    service.expanded = true
-                    service.syncVisibleConsumers()
-                    suite.expect(reader.running && service.surfaceSize == service.expandedSize,
+                    service.open(module)
+                    suite.expect(reader.musicRunning && service.surfaceSize == service.expandedSize,
                            "Nothing still starts the music reader when its explicit controls open")
                     for playing in [true, false, true] {
-                        reader.playback = .init(isPlaying: playing)
-                        service.syncVisibleConsumers()
-                        suite.expect(reader.running && service.compactActivity == nil,
+                        reader.playback = playback(playing)
+                        service.syncWithPreferences()
+                        suite.expect(reader.musicRunning && service.compactActivity == nil,
                                "playback updates keep manually opened controls usable without enabling automatic music")
                     }
                     service.collapse()
-                    suite.expect(!reader.running && !service.expanded && service.surfaceSize == closed,
+                    suite.expect(!reader.musicRunning && !service.expanded && service.surfaceSize == closed,
                            "closing manually opened controls stops the reader and never leaves a music strip behind")
                 }
             }
 
             defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
             defaults.set(false, forKey: DefaultsKey.notchShowPlayingMusic)
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running && service.idleContent == .none && service.compactActivity == nil
+            service.syncWithPreferences()
+            suite.expect(!reader.musicRunning && service.idleContent == .none && service.compactActivity == nil
                    && service.surfaceSize == closed,
                    "disabled automatic music stops the reader even when resting content is Music")
             defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
             for playing in [true, false, true] {
-                reader.playback = .init(isPlaying: playing)
-                service.syncVisibleConsumers()
-                suite.expect(reader.running && (service.compactActivity == .music) == playing
+                reader.playback = playback(playing)
+                service.syncWithPreferences()
+                suite.expect(reader.musicRunning && (service.compactActivity == .music) == playing
                        && (service.surfaceSize == closed) == !playing,
                        "re-enabling music detects resume while paused playback occupies no wings")
             }
-            service.awaitsTrackNotice = true
+            // A song that starts while none is on the strip waits for its notice.
+            defaults.set(true, forKey: DefaultsKey.notchTrackChange)
+            reader.playback = playback(false)
+            service.syncWithPreferences()
+            reader.playback = playback(true)
+            fixture.events.trackChanges.send()
             suite.expect(service.compactActivity == nil && service.idleContent == .none && service.surfaceSize == closed,
                    "a new song waiting for its notice leaves the closed island at rest, cover included")
-            service.awaitsTrackNotice = false
+            fixture.runScheduled()
             suite.expect(service.compactActivity == .music, "once released, the playing song takes the strip")
+            defaults.set(false, forKey: DefaultsKey.notchTrackChange)
             defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
             defaults.set(true, forKey: DefaultsKey.notchHideUntilHover)
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running && service.hiddenUntilHover,
+            service.syncWithPreferences()
+            // Hidden until hover: the island takes feedback but shows none at rest.
+            suite.expect(!reader.musicRunning && service.acceptsSystemFeedback && !service.showsSystemFeedback,
                    "hidden mode stops the resting music reader even with cached playing metadata")
-            service.selected = .music
-            service.expanded = true
-            service.syncVisibleConsumers()
-            suite.expect(reader.running, "revealing hidden music controls starts their reader on demand")
+            service.open(.music)
+            suite.expect(reader.musicRunning, "revealing hidden music controls starts their reader on demand")
             service.collapse()
-            suite.expect(!reader.running && service.hiddenUntilHover,
+            suite.expect(!reader.musicRunning && service.acceptsSystemFeedback && !service.showsSystemFeedback,
                    "closing hidden music controls releases their reader again")
-            // The capture presenter sets this state and synchronizes consumers;
-            // cancellation below executes the production teardown method.
-            service.captureControls = CaptureControls()
-            service.syncVisibleConsumers()
-            suite.expect(reader.running, "visible capture controls can retain enabled resting music")
+            service.presentCaptureControls(captureOptions(), cancel: {})
+            suite.expect(reader.musicRunning, "visible capture controls can retain enabled resting music")
             service.endCaptureControls()
-            suite.expect(service.captureControls == nil && service.hiddenUntilHover && !reader.running,
+            suite.expect(service.captureControls == nil && !service.showsSystemFeedback && !reader.musicRunning,
                    "canceling capture returns hidden mode to rest without retaining the music reader")
             service.endCaptureControls()
-            suite.expect(!reader.running, "a repeated capture cleanup cannot restart hidden music")
+            suite.expect(!reader.musicRunning, "a repeated capture cleanup cannot restart hidden music")
             defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
-            service.syncVisibleConsumers()
-            suite.expect(reader.running, "returning to a visible mode resumes the resting music reader")
-            service.captureControls = CaptureControls()
-            service.syncVisibleConsumers()
+            service.syncWithPreferences()
+            suite.expect(reader.musicRunning, "returning to a visible mode resumes the resting music reader")
+            service.presentCaptureControls(captureOptions(), cancel: {})
             service.endCaptureControls()
-            suite.expect(reader.running, "ending capture in a visible mode preserves enabled resting music")
+            suite.expect(reader.musicRunning, "ending capture in a visible mode preserves enabled resting music")
             defaults.set(NotchIdleContent.battery.rawValue, forKey: DefaultsKey.notchIdleContent)
             defaults.set(false, forKey: DefaultsKey.notchShowPlayingMusic)
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running && service.idleContent == .battery && service.compactActivity == nil
+            service.syncWithPreferences()
+            suite.expect(!reader.musicRunning && service.idleContent == .battery && service.compactActivity == nil
                    && service.surfaceSize == service.geometry.restingSize(showsContent: true),
                    "hiding music preserves the chosen battery indicator during active playback")
-            PowerSampler.hasInternalBattery = false
-            service.syncVisibleConsumers()
+            fixture.hasBattery = false
+            service.syncWithPreferences()
             suite.expect(service.idleContent == .none && service.compactActivity == nil && service.surfaceSize == closed,
                    "a Mac without a battery rests empty instead of showing a battery without its charge")
             defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
-            service.syncVisibleConsumers()
-            suite.expect(reader.running && service.compactActivity == .music,
+            service.syncWithPreferences()
+            suite.expect(reader.musicRunning && service.compactActivity == .music,
                    "a saved battery choice keeps showing playing music on a Mac without a battery")
-            PowerSampler.hasInternalBattery = true
+            defaults.set(false, forKey: DefaultsKey.notchHideInFullscreen)
         }
 
         defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
-        service.selected = .music
-        service.expanded = true
+        let fixture = island(playing: true)
+        let service = fixture.island
+        let reader = fixture.services
         for surface in ["sections", "appPanel", "unrelated", "hiddenModule", "hiddenControl"] {
-            service.showingSections = surface == "sections"
-            service.showingAppPanel = surface == "appPanel"
-            service.selected = surface == "unrelated" ? .files : surface == "hiddenControl" ? .controls : .music
             defaults.set(surface == "hiddenModule" ? "music" : "", forKey: DefaultsKey.notchHiddenModules)
             defaults.set(surface == "hiddenControl" ? "music" : "", forKey: DefaultsKey.notchHiddenControls)
-            service.modules = NotchSupport.modules(in: defaults)
-            service.syncVisibleConsumers()
-            suite.expect(!reader.running, "\(surface) cannot retain an invisible on-demand music reader")
+            service.syncWithPreferences()
+            switch surface {
+            case "sections": service.open(.music, sections: true)
+            case "appPanel": service.open(.music, appPanel: true)
+            case "unrelated": service.open(.files)
+            case "hiddenModule": service.open(.music)
+            default: service.open(.controls)
+            }
+            suite.expect(!reader.musicRunning, "\(surface) cannot retain an invisible on-demand music reader")
         }
         defaults.set("", forKey: DefaultsKey.notchHiddenModules)
         defaults.set("", forKey: DefaultsKey.notchHiddenControls)
-        service.modules = NotchSupport.modules(in: defaults)
+        service.syncWithPreferences()
         service.collapse()
-        service.hasTimerActivity = true
-        service.hasDownloadActivity = true
+        reader.timerSession = NotchTimerSession(anchor: reader.timerNow + 300)
+        reader.downloads = [NotchDownloadItem(id: "archive", url: URL(fileURLWithPath: "/tmp/archive.zip"),
+                                              name: "archive.zip", receivedBytes: 512, fraction: 0.5, completed: false)]
         suite.expect(service.compactActivity == .timer, "Nothing for resting music preserves a running timer")
-        service.timerCompanions = [.downloads]
-        service.activitySelection.select(.timer, available: service.compactActivities)
-        suite.expect(service.compactCompanion == nil,
+        service.selectCompactActivity(.timer)
+        suite.expect(service.compactCompanions(of: .timer).contains(.downloads) && service.compactCompanion == nil,
                      "the production Timer selection does not borrow the active download wing")
-        service.activitySelection.select(.timer, companion: .downloads,
-                                         available: service.compactActivities, companions: [.downloads])
+        service.selectCompactCombination(NotchActivityCombination(primary: .timer, companion: .downloads))
         suite.expect(service.compactCompanion == .downloads,
                      "the production strip shows only the explicitly selected companion")
-        service.activitySelection.select(.timer, available: service.compactActivities)
+        service.selectCompactActivity(.timer)
         suite.expect(service.compactCompanion == nil,
                      "choosing Timer again removes the explicit pair in the production strip")
-        service.activitySelection = NotchActivitySelection()
-        service.hasTimerActivity = false
+        reader.timerSession = NotchTimerSession()
         suite.expect(service.compactActivity == .downloads, "Nothing for resting music preserves active downloads")
         let notice = NotchNotice(event: .accessory, title: "Wireless Headphones", detail: "Connected", symbol: "headphones")
-        service.notice = notice
-        suite.expect(service.surfaceSize == service.geometry.noticeSize(wingWidth: notice.preferredWingWidth)
+        let noticeShown = service.show(notice)
+        suite.expect(noticeShown && service.surfaceSize == service.geometry.noticeSize(wingWidth: notice.preferredWingWidth)
                && service.surfaceSize.width > service.geometry.notice.width,
                "a device notice widens the actual presentation beyond the compact level indicator")
-        service.notice = nil
-        suite.expect(service.surfaceSize == service.compactActivityGeometry.compactActivitySize,
+        fixture.runScheduled()
+        suite.expect(service.notice == nil && service.surfaceSize == service.compactActivityGeometry.compactActivitySize,
                "dismissing a device notice restores the underlying activity's width")
-        service.hasKeepAwakeActivity = true
+        reader.keepAwakeActive = true
         suite.expect(service.compactActivity == .downloads, "a download outranks a running Keep Awake session")
-        service.hasDownloadActivity = false
+        reader.downloads = []
+        // The timer's wings, rebuilt from the room they took beside the camera.
+        let keepAwake = service.compactActivityGeometry
         suite.expect(service.compactActivity == .keepAwake
-                     && service.compactActivityGeometry == service.geometry.compactTimerGeometry(
-                        showsDownloads: false, wing: service.keepAwakeStripWing)
-                     && service.surfaceSize == service.compactActivityGeometry.compactActivitySize,
+                     && keepAwake == service.geometry.compactTimerGeometry(showsDownloads: false,
+                                                                          wing: keepAwake.compactSideRoom ?? 0)
+                     && service.surfaceSize == keepAwake.compactActivitySize,
                      "a running Keep Awake session takes the timer's wings in the closed island")
-        service.geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956), safeAreaTop: 32,
-                                         cameraWidth: 180, menuBarHeight: 32, compactSideRoom: 100)
-        service.calendarStripWing = 66
-        suite.expect(service.compactGeometry(for: .calendar, companion: .music).compactActivityWingWidth == 66
-                     && service.compactGeometry(for: .calendar).compactActivityWingWidth == 72,
+        let geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956), safeAreaTop: 32,
+                                     cameraWidth: 180, menuBarHeight: 32, compactSideRoom: 100)
+        suite.expect(geometry.compactCalendarGeometry(wing: 66, paired: true).compactActivityWingWidth == 66
+                     && geometry.compactCalendarGeometry(wing: 66).compactActivityWingWidth == 72,
                      "an event beside music takes the wings its pair needs, and alone keeps room for its title")
     }
 }

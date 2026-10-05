@@ -17,6 +17,11 @@ final class NotchIslandFixture {
         id: 1, frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
         visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 944), safeAreaTop: 38, cameraWidth: 200,
         backingScale: 2, isBuiltIn: true, hasMenuBar: true)
+    /// An external display to the right, with a camera housing of its own.
+    static let secondDisplay = NotchDisplayInfo(
+        id: 2, frame: CGRect(x: 1512, y: 0, width: 1512, height: 982),
+        visibleFrame: CGRect(x: 1512, y: 0, width: 1512, height: 944), safeAreaTop: 38, cameraWidth: 200,
+        backingScale: 2, isBuiltIn: false, hasMenuBar: false)
     /// A point on the island, just below the top edge of its display.
     static let onIsland = CGPoint(x: display.frame.midX, y: display.frame.maxY - 1)
     /// A point well away from the island.
@@ -33,8 +38,11 @@ final class NotchIslandFixture {
     let events = Events()
     var pointer = NotchIslandFixture.awayFromIsland
     var displays = [NotchIslandFixture.display]
-    /// Every display shows a full-screen Space.
-    var fullscreen = false
+    /// The displays showing a full-screen Space.
+    var fullscreen: Set<CGDirectDisplayID> = []
+    /// The room the menus leave beside the camera, as the menu reader
+    /// measures it with Accessibility granted; nil grants nothing.
+    var menuRoom: CGFloat?
     var hasBattery = true
     var currentSession = NotchSessionState()
     /// Each window the island built, the current one last.
@@ -130,18 +138,21 @@ final class NotchIslandFixture {
             events: { events.sources },
             volume: NotchVolumeFeedback.Output(volume: { 0.5 }, muted: { false }, deviceUID: { nil },
                                                changes: { Empty(completeImmediately: false).eraseToAnyPublisher() }),
-            menuSpace: NotchMenuSpaceReader.Environment(menuBarOwner: { nil }, measure: { _, _ in nil },
-                                                        background: { $0() }, main: { $0() }, ticks: { _ in {} }),
+            menuSpace: NotchMenuSpaceReader.Environment(
+                menuBarOwner: { [unowned self] in self.menuRoom == nil ? nil : 1 },
+                measure: { [unowned self] _, _ in self.menuRoom },
+                background: { $0() }, main: { $0() }, ticks: { _ in {} }),
             pointerFollower: NotchPointerFollower.Environment(
                 addMonitors: { _ in [] }, removeMonitor: { _ in }, mouseLocation: { [unowned self] in self.pointer },
                 displayCount: { [unowned self] in self.displays.count }, displayWithMouse: { nil },
                 schedule: { _, _ in {} }),
             screenRefresh: NotchScreenRefresh.Environment(
-                schedule: { _, _ in }, accessibilityGranted: { false }, coversMenus: { false },
+                schedule: { _, _ in }, accessibilityGranted: { [unowned self] in self.menuRoom != nil },
+                coversMenus: { [unowned self] in NotchSupport.coversMenus(in: self.defaults) },
                 frontmostBundleID: { nil }, ownBundleID: nil, mouseLocation: { [unowned self] in self.pointer }),
             fullscreen: NotchFullscreenVisibility.Environment(
                 hidesInFullscreen: { [unowned self] in self.defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },
-                showsFullscreen: { [unowned self] _ in self.fullscreen }),
+                showsFullscreen: { [unowned self] in self.fullscreen.contains($0) }),
             screenEdges: { _ in NotchScreenEdgeClicks.Environment(addMonitors: { _ in [] }, removeMonitor: { _ in }) },
             fileDrop: { shelfAccept in
                 NotchFileDrop.Environment(offersMedia: { _ in false }, mediaAccepts: { false }, openMedia: { _ in false },
@@ -155,7 +166,7 @@ final class NotchIslandFixture {
                 self.clickElsewhere = nil
                 self.localEvent = nil
             }),
-            fullscreenDisplays: { [unowned self] ids in self.fullscreen ? Set(ids) : [] },
+            fullscreenDisplays: { [unowned self] ids in Set(ids).intersection(self.fullscreen) },
             notifications: notifications, workspaceNotifications: workspace, sessionNotifications: session,
             currentSession: { [unowned self] in self.currentSession })
     }
@@ -295,6 +306,8 @@ final class RecordingIslandServices: NotchIslandServices {
     private(set) var calls: [String] = []
     /// The timer runs until the island suspends it, and again once synced.
     private(set) var timerRunning = true
+    /// The playback reader runs between the island's start and stop.
+    private(set) var musicRunning = false
     private(set) var lockScreenSyncs: [NotchSessionState] = []
     private(set) var lockSounds: [Bool] = []
     private(set) var monitorDetailNeeds = SystemMonitorPanelNeeds.none
@@ -349,8 +362,8 @@ final class RecordingIslandServices: NotchIslandServices {
 
     // MARK: Starting and stopping
 
-    func startMusic() { log("startMusic") }
-    func stopMusic() { log("stopMusic") }
+    func startMusic() { musicRunning = true; log("startMusic") }
+    func stopMusic() { musicRunning = false; log("stopMusic") }
     func syncTimer() { timerRunning = true; log("syncTimer") }
     func suspendTimer() { timerRunning = false; log("suspendTimer") }
     func stopTimer() { log("stopTimer") }

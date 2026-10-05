@@ -2422,6 +2422,35 @@ is the registry kept on purpose.
 - **Verification:** the suite runs on macOS CI; AppKit does not build on
   Linux.
 
+Landed (4b, the island's music reader): one more generated file goes,
+which leaves 5: four copies and the registry kept on purpose.
+
+- **Tests:** `NotchMusicVisibilityTests` drives a real island from
+  `NotchIslandFixture` instead of compiled copies of its presentation and
+  consumer members over a state class. Every check is kept, each reached as
+  the app reaches it:
+  - a physical or simulated camera is a described display, and the room
+    beside it what the menu reader measures;
+  - full screen, the outline, copies on another display and a Mac without
+    a battery come from the fixture and the island's preferences;
+  - opening, sections and the app panel go through `open(...)`, and capture
+    controls through `presentCaptureControls`;
+  - a song waiting for its notice is a track change sent through the
+    island's events, released by its scheduled notice;
+  - the activity picker goes through `selectCompactActivity` and
+    `selectCompactCombination`.
+- **Changed checks:**
+  - The reader is the fixture's services, which record the island's starts
+    and stops; their playback survives a stop as the old reader's did.
+  - Copies are read after the island's next sync: they appear as it
+    presents, after it has synced its consumers.
+  - The Keep Awake strip is compared with the timer's geometry built from
+    the room it took, since its measured wing is private.
+  - The calendar wing check calls `NotchGeometry.compactCalendarGeometry`
+    directly: that is what the old check exercised with its stubbed wing.
+- The fixture gained a second display, per-display full screen, a measured
+  menu room and the playback reader's state.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
