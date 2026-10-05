@@ -1868,6 +1868,12 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Notch/NotchService.swift` reads displays as the new
     `NotchDisplayInfo` (`Services/Notch/NotchDisplayInfo.swift`) through its
     environment; `.system` builds them from `NSScreen`.
+- **2026-10-05**: Refactor step 5s (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` builds its movement watches, event
+    bindings, volume feedback, menu reader, pointer follower, screen
+    refresh, full-screen visibility, screen-edge clicks, file drop and
+    session tracker from `Environment.Parts`, and observes and posts through
+    the notification centers there; `.system` passes the system's.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

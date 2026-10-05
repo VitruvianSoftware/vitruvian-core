@@ -2743,6 +2743,30 @@ through its environment, not as `NSScreen`s.
   displays the island chooses between.
 - None of the generated copies read a screen, so they are unchanged.
 
+Landed (5s, the island's parts and notifications): `NotchService` builds
+its own parts from its environment.
+
+- **`Environment.Parts`** holds the environments of its parts:
+  - the movement watches and the screen-edge clicks;
+  - the services the island listens to, and the volume output;
+  - the menu reader;
+  - the pointer follower, the screen refresh and full-screen visibility;
+  - the file drop.
+
+  `.system` gives each the system's, as before.
+- **Notifications:** where the island hears from the app, the workspace and
+  the session is in its environment too: the three notification centers,
+  and the session as the system reports it now. Its full-screen
+  notification is posted there. `.system` passes the default, workspace and
+  distributed centers. A test's island then hears only what the test posts.
+- None of the generated copies build a part, so they are unchanged.
+- **What is left before a test builds an island:**
+  - `appShell()`, for the popover, settings and update preview;
+  - the modal window check;
+  - the mirror windows on other displays;
+  - the remaining preference readers in the geometry, such as the camera
+    fit.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
