@@ -806,10 +806,37 @@ package final class FinderCutPaste: ObservableObject {
 package enum FinderBridge {
     private static let finderBundleID = "com.apple.finder"
 
-    package static func selectionURLs(requestPermission: Bool = true) -> [URL] {
+    /// What a selection read asks and sends, so the consent boundary can be
+    /// driven without Finder.
+    package struct Automation: Sendable {
+        /// Asks for consent when it is undetermined; true once it is granted.
+        package var consent: @Sendable (_ bundleID: String) -> Bool
+        /// Finder's consent as it stands, without asking.
+        package var status: @Sendable () -> Permissions.AutomationStatus
+        package var run: @Sendable (_ source: String) -> (ok: Bool, output: String)
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(consent: @escaping @Sendable (String) -> Bool,
+                     status: @escaping @Sendable () -> Permissions.AutomationStatus,
+                     run: @escaping @Sendable (String) -> (ok: Bool, output: String)) {
+            self.consent = consent
+            self.status = status
+            self.run = run
+        }
+
+        package static let live = Automation(
+            consent: { AppleScriptRunner.consentToAutomate(bundleID: $0) },
+            status: { Permissions.automationStatus(for: .finder) },
+            run: { AppleScriptRunner.run($0) })
+    }
+
+    /// `requestPermission` false is a passive read: missing consent is
+    /// never asked for, only an explicit action may ask.
+    package static func selectionURLs(requestPermission: Bool = true,
+                                      automation: Automation = .live) -> [URL] {
         let allowed = requestPermission
-            ? AppleScriptRunner.consentToAutomate(bundleID: finderBundleID)
-            : Permissions.automationStatus(for: .finder) == .granted
+            ? automation.consent(finderBundleID)
+            : automation.status() == .granted
         guard allowed else { return [] }
         let script = """
         tell application "Finder"
@@ -820,7 +847,7 @@ package enum FinderBridge {
             return out
         end tell
         """
-        let result = AppleScriptRunner.run(script)
+        let result = automation.run(script)
         guard result.ok else { return [] }
         return result.output.split(whereSeparator: \.isNewline)
             .map { URL(fileURLWithPath: String($0)) }

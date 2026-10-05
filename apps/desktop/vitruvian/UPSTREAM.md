@@ -1718,6 +1718,18 @@ is that notice. Add an entry for every change to upstream files.
   `Services/Notch/NotchService.swift` gains `CaptureFocus` behind
   `isCaptureVisible(id:)`. `Tests/NotchCaptureKeyboardTests.swift` calls
   them, and `Tests/generate_sources.py` no longer copies the monitors.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - `Services/Uninstall/AppUninstaller.swift` gains an injected
+    `Environment` and a `PackageManager` protocol (`HomebrewManager`
+    adopts it). Its scan and removal bodies move unchanged into
+    `scan(_:)` and `remove(_:)`.
+  - The command bar's uninstall review moves from
+    `Services/CommandBar/CommandBarService.swift` to the new
+    `Services/CommandBar/CommandBarUninstallReview.swift`.
+  - `FinderBridge.selectionURLs` in
+    `Services/Finder/FinderCutPaste.swift` takes an `Automation`.
+  - `Tests/UninstallerFlowTests.swift` drives them, and
+    `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
