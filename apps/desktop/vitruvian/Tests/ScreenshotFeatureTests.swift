@@ -1200,15 +1200,15 @@ enum ScreenshotFeatureTests {
         let routeStatements = serviceBody("    private func route(_ capture:")
             .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        suite.expect(serviceBody("    private func teardownSurfaces() {").contains("invalidateLatestCaptureUploads()")
-                && routeStatements.dropFirst().first == "beginLatestCapture(capture)",
+        suite.expect(serviceBody("    private func teardownSurfaces() {").contains("latest.invalidate()")
+                && routeStatements.dropFirst().first == "latest.begin(capture)",
                "turning screenshots off invalidates pending shortcut uploads, and every capture starts as the latest one")
         suite.expect(serviceBody("    package func syncWithPreferences() {")
                     .contains("enabled: ScreenshotSharingSupport.uploadShortcutEnabled(in: defaults),"),
                "the upload shortcut is registered only while it and temporary links are both on")
-        suite.expect(serviceBody("    private func route(_ capture:").contains("latestCapture: latestCaptureID)")
+        suite.expect(serviceBody("    private func route(_ capture:").contains("latestCapture: latest.id)")
                 && serviceBody("    package func restorePreview(").contains("latestCapture: nil)")
-                && screenshotServiceCode.contains("self.discardLatestCapture(latestCapture)\n                    return [.discard]"),
+                && screenshotServiceCode.contains("self.latest.discard(latestCapture)\n                    return [.discard]"),
                "discarding the preview of the latest capture withholds it, while a preview reopened from history does not")
         // In the island the menu arrow is hidden, so a click there must open
         // the durations rather than publish at once.

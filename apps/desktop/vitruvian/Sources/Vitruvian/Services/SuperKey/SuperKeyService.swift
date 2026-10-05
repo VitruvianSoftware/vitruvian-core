@@ -23,7 +23,53 @@ import VitruvianDesign
 /// either, so the source is never left as a key that does nothing.
 @MainActor
 package final class SuperKeyService: ObservableObject {
-    package static let shared = SuperKeyService()
+    /// What the key reaches outside itself: the settings, the event taps and
+    /// the thread they run on, the main queue that thread reports back to,
+    /// Accessibility, and hidutil. `live` is the system's; tests pass
+    /// doubles, so no tap, thread or key mapping is made.
+    package struct System: @unchecked Sendable {
+        /// Sendable by hand only for `defaults`: UserDefaults is thread-safe.
+        package var defaults: UserDefaults
+        package var createTap: @Sendable (CGEventTapLocation, CGEventTapPlacement, CGEventTapOptions,
+                                          CGEventMask, CGEventTapCallBack, UnsafeMutableRawPointer?) -> CFMachPort?
+        /// Starts the tap thread.
+        package var runThread: @Sendable (Thread) -> Void
+        /// Where a refused or restarting tap thread reports back.
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var isTrusted: @Sendable () -> Bool
+        /// Runs hidutil with these arguments and answers its status and output.
+        package var hidutil: @Sendable ([String]) -> (status: Int32, output: String)
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(defaults: UserDefaults,
+                     createTap: @escaping @Sendable (CGEventTapLocation, CGEventTapPlacement, CGEventTapOptions,
+                                                     CGEventMask, CGEventTapCallBack,
+                                                     UnsafeMutableRawPointer?) -> CFMachPort?,
+                     runThread: @escaping @Sendable (Thread) -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     isTrusted: @escaping @Sendable () -> Bool,
+                     hidutil: @escaping @Sendable ([String]) -> (status: Int32, output: String)) {
+            self.defaults = defaults
+            self.createTap = createTap
+            self.runThread = runThread
+            self.main = main
+            self.isTrusted = isTrusted
+            self.hidutil = hidutil
+        }
+
+        package static var live: System {
+            System(defaults: .standard,
+                   createTap: { CGEvent.tapCreate(tap: $0, place: $1, options: $2, eventsOfInterest: $3,
+                                                  callback: $4, userInfo: $5) },
+                   runThread: { $0.start() },
+                   main: { work in DispatchQueue.main.async { work() } },
+                   isTrusted: { AXIsProcessTrusted() },
+                   hidutil: { Shell.run("/usr/bin/hidutil", $0) })
+        }
+    }
+
+    package static let shared = SuperKeyService(system: .live)
+    nonisolated private let system: System
 
     /// True while the key is actually working: tap up and mapping applied.
     @Published package private(set) var isRunning = false
@@ -44,7 +90,6 @@ package final class SuperKeyService: ObservableObject {
     package var onHoldEnded: ((_ released: Bool) -> Void)?
     package var isHeld: Bool { stateLock.withLock { state.isHeld } }
 
-    private let hidutilPath = "/usr/bin/hidutil"
     /// Matches every keyboard, including one plugged in later.
     private let keyboardMatch = "keyboard"
 
@@ -119,12 +164,13 @@ package final class SuperKeyService: ObservableObject {
         return min(30, max(3, firstRepeat * 2))
     }
 
-    private init() {
+    package init(system: System) {
+        self.system = system
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
     package func syncWithPreferences() {
-        let defaults = UserDefaults.standard
+        let defaults = system.defaults
         let action = SuperKeySoloAction.sanitized(
             defaults.string(forKey: DefaultsKey.superKeySoloAction)
         )
@@ -145,7 +191,7 @@ package final class SuperKeyService: ObservableObject {
         let enabled = AppFeature.superKey.isAvailable
             && defaults.bool(forKey: DefaultsKey.superKeyEnabled)
             && SessionActivity.shared.isActive
-        syncExceptionMonitoring(enabled: enabled && AXIsProcessTrusted())
+        syncExceptionMonitoring(enabled: enabled && system.isTrusted())
         guard enabled, !isPausedForApplication else {
             stop()
             return
@@ -193,14 +239,14 @@ package final class SuperKeyService: ObservableObject {
         if isPausedForApplication != paused { isPausedForApplication = paused }
     }
 
-    private func start() {
+    package func start() {
         let tapExists = lifecycleLock.withLock { tap != nil && !shouldStopTapThread }
         guard !tapExists else { return }
         // Without Accessibility the tap cannot add the modifiers, and a
         // mapping alone would turn its source into a dead key. One left by a
         // run that was killed comes out here too: with the feature still
         // enabled, the launch-time stop() that normally clears it never runs.
-        guard AXIsProcessTrusted() else {
+        guard system.isTrusted() else {
             clearLeftoverMapping()
             isRunning = false
             return
@@ -219,7 +265,7 @@ package final class SuperKeyService: ObservableObject {
             tapThread = thread
             return thread
         }
-        thread?.start()
+        if let thread { system.runThread(thread) }
     }
 
     private func stop(synchronously: Bool = false) {
@@ -264,21 +310,21 @@ package final class SuperKeyService: ObservableObject {
             let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
                 | (CGEventMask(1) << CGEventType.keyUp.rawValue)
                 | (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
-            guard let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: mask,
-                callback: { _, type, event, userInfo in
+            guard let tap = system.createTap(
+                .cgSessionEventTap,
+                .headInsertEventTap,
+                .defaultTap,
+                mask,
+                { _, type, event, userInfo in
                     guard let userInfo else { return Unmanaged.passUnretained(event) }
                     let service = Unmanaged<SuperKeyService>.fromOpaque(userInfo)
                         .takeUnretainedValue()
                     return service.handle(type: type, event: event)
                 },
-                userInfo: Unmanaged.passUnretained(self).toOpaque()
+                Unmanaged.passUnretained(self).toOpaque()
             ) else {
                 _ = clearEventTapThread()
-                DispatchQueue.main.async { [weak self] in
+                system.main { [weak self] in
                     guard let self else { return }
                     let stillStopped = self.lifecycleLock.withLock {
                         self.tap == nil && self.tapThread == nil
@@ -312,18 +358,18 @@ package final class SuperKeyService: ObservableObject {
             let mouseMask = Self.mouseDownTypes.reduce(CGEventMask(0)) {
                 $0 | (CGEventMask(1) << $1.rawValue)
             }
-            let mouseTap = CGEvent.tapCreate(
-                tap: .cghidEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: mouseMask,
-                callback: { _, type, event, userInfo in
+            let mouseTap = system.createTap(
+                .cghidEventTap,
+                .headInsertEventTap,
+                .defaultTap,
+                mouseMask,
+                { _, type, event, userInfo in
                     guard let userInfo else { return Unmanaged.passUnretained(event) }
                     let service = Unmanaged<SuperKeyService>.fromOpaque(userInfo)
                         .takeUnretainedValue()
                     return service.handle(type: type, event: event)
                 },
-                userInfo: Unmanaged.passUnretained(self).toOpaque()
+                Unmanaged.passUnretained(self).toOpaque()
             )
             var mouseSource: CFRunLoopSource?
             lifecycleLock.withLock {
@@ -373,7 +419,7 @@ package final class SuperKeyService: ObservableObject {
     }
 
     nonisolated private func startOnMain() {
-        DispatchQueue.main.async { [weak self] in self?.syncWithPreferences() }
+        system.main { [weak self] in self?.syncWithPreferences() }
     }
 
     private func tapDidStart(_ startedTap: CFMachPort) {
@@ -390,7 +436,7 @@ package final class SuperKeyService: ObservableObject {
     /// every path that ends without a live tap takes it out, so the source is
     /// never left as a key that does nothing.
     private func clearLeftoverMapping(synchronously: Bool = false) {
-        let mappingMayBeApplied = UserDefaults.standard.bool(
+        let mappingMayBeApplied = system.defaults.bool(
             forKey: DefaultsKey.superKeyMappingApplied
         ) || stateLock.withLock { pendingMappingEnableCount > 0 }
         if mappingMayBeApplied {
@@ -447,7 +493,7 @@ package final class SuperKeyService: ObservableObject {
                       })
                 else { return }
             }
-            let defaults = UserDefaults.standard
+            let defaults = self.system.defaults
             let previousMarker = defaults.bool(forKey: DefaultsKey.superKeyMappingApplied)
             let ownedSource = previousMarker ? SuperKeySource.sanitized(
                 defaults.string(forKey: DefaultsKey.superKeyMappedSource)
@@ -487,8 +533,7 @@ package final class SuperKeyService: ObservableObject {
     nonisolated private func performMapping(_ enabled: Bool,
                                 source: SuperKeySource,
                                 ownedSource: SuperKeySource?) -> SuperKeyMappingFailure? {
-        let report = Shell.run(
-            hidutilPath,
+        let report = system.hidutil(
             ["property", "--matching", keyboardMatch,
              "--get", SuperKeySupport.userMappingProperty]
         )
@@ -529,27 +574,25 @@ package final class SuperKeyService: ObservableObject {
             // Recovery is write-ahead only after every external-mapping check
             // passed. A crash after the command starts must leave the next
             // launch authorized to remove a possibly partial application.
-            UserDefaults.standard.set(true, forKey: DefaultsKey.superKeyMappingApplied)
-            UserDefaults.standard.set(source.rawValue, forKey: DefaultsKey.superKeyMappedSource)
+            system.defaults.set(true, forKey: DefaultsKey.superKeyMappingApplied)
+            system.defaults.set(source.rawValue, forKey: DefaultsKey.superKeyMappedSource)
         }
         defer {
             if startedGuard, !mappingConfirmed {
                 let cleared = mappingGuard?.stop() ?? false
                 mappingGuard = nil
                 if cleared {
-                    UserDefaults.standard.set(false, forKey: DefaultsKey.superKeyMappingApplied)
-                    UserDefaults.standard.removeObject(forKey: DefaultsKey.superKeyMappedSource)
+                    system.defaults.set(false, forKey: DefaultsKey.superKeyMappingApplied)
+                    system.defaults.removeObject(forKey: DefaultsKey.superKeyMappedSource)
                 }
             }
         }
-        let write = Shell.run(
-            hidutilPath,
+        let write = system.hidutil(
             ["property", "--matching", keyboardMatch,
              "--set", SuperKeySupport.mappingArgument(wanted)]
         )
         guard write.status == 0 else { return .systemRefused }
-        let readback = Shell.run(
-            hidutilPath,
+        let readback = system.hidutil(
             ["property", "--matching", keyboardMatch,
              "--get", SuperKeySupport.userMappingProperty]
         )
@@ -627,7 +670,7 @@ package final class SuperKeyService: ObservableObject {
             let currentTaps = lifecycleLock.withLock {
                 shouldStopTapThread ? (nil, nil) : (tap, mouseTap)
             }
-            if SessionActivity.shared.isActive, AXIsProcessTrusted() {
+            if SessionActivity.shared.isActive, system.isTrusted() {
                 if let currentTap = currentTaps.0 { CGEvent.tapEnable(tap: currentTap, enable: true) }
                 if let currentMouseTap = currentTaps.1 { CGEvent.tapEnable(tap: currentMouseTap, enable: true) }
             } else {

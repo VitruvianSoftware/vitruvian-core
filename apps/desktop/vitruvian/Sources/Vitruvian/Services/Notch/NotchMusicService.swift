@@ -7,9 +7,135 @@ import Combine
 import VitruvianCore
 import VitruvianDesign
 
+/// A running Now Playing adapter: whether it still runs, the pipe its
+/// commands go into, and ending it.
+package struct NotchMusicAdapterLink {
+    package var isRunning: () -> Bool
+    /// Runs on the command queue.
+    package var write: (Data) throws -> Void
+    package var end: () -> Void
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(isRunning: @escaping () -> Bool, write: @escaping (Data) throws -> Void,
+                 end: @escaping () -> Void) {
+        self.isRunning = isRunning
+        self.write = write
+        self.end = end
+    }
+}
+
 @MainActor
 package final class NotchMusicService: ObservableObject {
-    package static let shared = NotchMusicService()
+    /// What the service reaches outside itself: the adapter, the main queue
+    /// its replies come back on, delayed work and the clock, the queue
+    /// commands are written on, the settings, the lyrics and the Apple Event
+    /// system. `live` runs the bundled adapter; tests pass one they feed by
+    /// hand.
+    @MainActor
+    package struct Environment {
+        /// Starts the adapter, following every player or only music apps. It
+        /// hands each chunk it prints to `read`, off the main thread, and
+        /// calls `ended` once it exits. Nil when it cannot start.
+        package var launch: (_ watchAll: Bool, _ read: @escaping @Sendable (Data) -> Void,
+                             _ ended: @escaping @Sendable () -> Void) -> NotchMusicAdapterLink?
+        package var main: @Sendable (sending @escaping @MainActor () -> Void) -> Void
+        /// Runs `work` on the main queue after `delay` unless it is cancelled first.
+        package var after: (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void
+        package var uptime: () -> TimeInterval
+        /// The serial queue the adapter's commands are written on.
+        package var commands: (@escaping () -> Void) -> Void
+        package var defaults: UserDefaults
+        package var lyricsChanged: (NotchPlayback?) -> Void
+        package var hideLyrics: () -> Void
+        package var automation: NotchMusicAutomationFlow.Environment
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(launch: @escaping (_ watchAll: Bool, _ read: @escaping @Sendable (Data) -> Void,
+                                        _ ended: @escaping @Sendable () -> Void) -> NotchMusicAdapterLink?,
+                     main: @escaping @Sendable (sending @escaping @MainActor () -> Void) -> Void,
+                     after: @escaping (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void,
+                     uptime: @escaping () -> TimeInterval,
+                     commands: @escaping (@escaping () -> Void) -> Void,
+                     defaults: UserDefaults,
+                     lyricsChanged: @escaping (NotchPlayback?) -> Void,
+                     hideLyrics: @escaping () -> Void,
+                     automation: NotchMusicAutomationFlow.Environment) {
+            self.launch = launch
+            self.main = main
+            self.after = after
+            self.uptime = uptime
+            self.commands = commands
+            self.defaults = defaults
+            self.lyricsChanged = lyricsChanged
+            self.hideLyrics = hideLyrics
+            self.automation = automation
+        }
+
+        package static var live: Environment {
+            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music", qos: .utility)
+            return Environment(
+                launch: { watchAll, read, ended in launchAdapter(watchAll: watchAll, read: read, ended: ended) },
+                main: { work in DispatchQueue.main.async { work() } },
+                after: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) },
+                uptime: { ProcessInfo.processInfo.systemUptime },
+                commands: { queue.async(execute: $0) },
+                defaults: .standard,
+                lyricsChanged: { NotchLyricsService.shared.playbackChanged($0) },
+                hideLyrics: { NotchLyricsService.shared.hide() },
+                automation: .live(queue: queue))
+        }
+
+        private static var adapter: [String]? {
+            guard let script = Bundle.main.url(forResource: "now-playing", withExtension: "pl"),
+                  let library = Bundle.main.privateFrameworksURL?.appendingPathComponent("libVitruvianNowPlaying.dylib"),
+                  FileManager.default.fileExists(atPath: library.path) else { return nil }
+            return [script.path, library.path]
+        }
+
+        private static func launchAdapter(watchAll: Bool, read: @escaping @Sendable (Data) -> Void,
+                                          ended: @escaping @Sendable () -> Void) -> NotchMusicAdapterLink? {
+            guard let arguments = adapter else { return nil }
+            let process = Process()
+            let output = Pipe()
+            let input = Pipe()
+            // A child can exit between checking isRunning and writing a command.
+            // Keep that race an error, never a SIGPIPE that terminates the app.
+            guard fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) != -1 else { return nil }
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+            process.arguments = arguments + [watchAll ? "watch_all" : "watch"]
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            process.standardInput = input
+            output.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty { handle.readabilityHandler = nil }
+                else { read(data) }
+            }
+            process.terminationHandler = { _ in ended() }
+            do {
+                try process.run()
+            } catch {
+                output.fileHandleForReading.readabilityHandler = nil
+                return nil
+            }
+            return NotchMusicAdapterLink(
+                isRunning: { process.isRunning },
+                write: { try input.fileHandleForWriting.write(contentsOf: $0) },
+                end: {
+                    output.fileHandleForReading.readabilityHandler = nil
+                    try? input.fileHandleForWriting.close()
+                    if process.isRunning {
+                        process.terminate()
+                        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
+                            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                        }
+                    }
+                })
+        }
+    }
+
+    package static let shared = NotchMusicService(environment: .live)
+    private let environment: Environment
     @Published package private(set) var playback: NotchPlayback?
     @Published package private(set) var sources: [NotchPlaybackSource] = []
     @Published package private(set) var sourceIsAutomatic = true
@@ -66,9 +192,7 @@ package final class NotchMusicService: ObservableObject {
     private var queueVisible = false
     private var queueRequest: UUID?
     private var queueReply: [String: Any]?
-    private var process: Process?
-    private var output: Pipe?
-    private var input: Pipe?
+    private var link: NotchMusicAdapterLink?
     private var generation = UUID()
     private var wantsPlayback = false
     private var includeOtherPlayers = false
@@ -82,8 +206,7 @@ package final class NotchMusicService: ObservableObject {
     private var restoringSource = false
     private var artworkCache = NotchArtworkCache<(image: NSImage, tint: NotchArtworkTint?)>()
     private var artworkWork: DispatchWorkItem?
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music", qos: .utility)
-    private lazy var commandWriter = NotchMusicCommandWriter { [queue = self.queue] action in queue.async(execute: action) }
+    private lazy var commandWriter = NotchMusicCommandWriter(schedule: environment.commands)
     /// Control through Apple Events for players whose own commands do not
     /// reach them (`NotchMusicAutomationFlow`).
     private lazy var automation: NotchMusicAutomationFlow = NotchMusicAutomationFlow(
@@ -94,19 +217,14 @@ package final class NotchMusicService: ObservableObject {
                     setCommandFailed: { [weak self] in self?.commandFailed = $0 },
                     validate: { [weak self] id, context in self?.send(.validate(id, context)) ?? false },
                     willChange: { [weak self] in self?.objectWillChange.send() }),
-        environment: .live(queue: queue))
+        environment: environment.automation)
 
-    private init() {}
-
-    private static var adapter: [String]? {
-        guard let script = Bundle.main.url(forResource: "now-playing", withExtension: "pl"),
-              let library = Bundle.main.privateFrameworksURL?.appendingPathComponent("libVitruvianNowPlaying.dylib"),
-              FileManager.default.fileExists(atPath: library.path) else { return nil }
-        return [script.path, library.path]
+    package init(environment: Environment) {
+        self.environment = environment
     }
 
     package func start() {
-        let includeOtherPlayers = UserDefaults.standard.bool(forKey: DefaultsKey.notchIncludeOtherPlayers)
+        let includeOtherPlayers = environment.defaults.bool(forKey: DefaultsKey.notchIncludeOtherPlayers)
         if wantsPlayback {
             guard self.includeOtherPlayers != includeOtherPlayers else { return }
             stop()
@@ -119,28 +237,17 @@ package final class NotchMusicService: ObservableObject {
     }
 
     private func launch() {
-        guard wantsPlayback, process == nil else { return }
-        guard let arguments = Self.adapter else { connectionEnded(); return }
-        let process = Process()
-        let output = Pipe()
-        let input = Pipe()
-        // A child can exit between checking isRunning and writing a command.
-        // Keep that race an error, never a SIGPIPE that terminates the app.
-        guard fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) != -1 else { connectionEnded(); return }
+        guard wantsPlayback, link == nil else { return }
         let requested = UUID()
         generation = requested
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = arguments + [includeOtherPlayers ? "watch_all" : "watch"]
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = input
+        let main = environment.main
         var cachedArtwork: Data?
         var cachedImage: NSImage?
         var cachedTint: NotchArtworkTint?
         let reader = NotchMusicPipeReader { [weak self] data in
             let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             if let reply, reply["validationRequest"] != nil {
-                DispatchQueue.main.async {
+                main {
                     guard let self, self.generation == requested else { return }
                     self.receiveValidation(reply)
                 }
@@ -148,14 +255,14 @@ package final class NotchMusicService: ObservableObject {
             }
             if let reply,
                reply["queueRequest"] != nil || reply["queueAction"] != nil {
-                DispatchQueue.main.async {
+                main {
                     guard let self, self.generation == requested else { return }
                     self.receiveQueue(reply)
                 }
                 return
             }
             if let sent = reply?["sent"] as? Bool {
-                DispatchQueue.main.async {
+                main {
                     guard let self, self.generation == requested else { return }
                     self.commandFailed = !sent
                 }
@@ -174,36 +281,24 @@ package final class NotchMusicService: ObservableObject {
             let automatic = reply?["sourceIsAutomatic"] as? Bool
             let selectedPID = automatic == false ? NotchPlaybackSource.decodePID(reply?["selectedPID"]) : nil
             let sources = NotchPlaybackSource.decode(reply?["sources"], selectedPID: selectedPID)
-            DispatchQueue.main.async {
+            main {
                 guard let self, self.generation == requested,
                       self.acceptsSourceReply(automatic: automatic, sources: sources) else { return }
                 self.receive(Reading(playback: next, artwork: image, tint: tint, sources: sources,
                                      automatic: automatic, selectedPID: selectedPID))
             }
         }
-        output.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { handle.readabilityHandler = nil }
-            else { reader.append(data) }
-        }
-        process.terminationHandler = { [weak self] _ in
-            DispatchQueue.main.async {
+        let link = environment.launch(includeOtherPlayers, { reader.append($0) }, { [weak self] in
+            main {
                 guard let self, self.generation == requested else { return }
                 self.connectionEnded()
             }
-        }
-        do {
-            try process.run()
-            commandWriter.start()
-            self.process = process
-            self.output = output
-            self.input = input
-            launchedAt = ProcessInfo.processInfo.systemUptime
-            restoreSource()
-        } catch {
-            output.fileHandleForReading.readabilityHandler = nil
-            connectionEnded()
-        }
+        })
+        guard let link else { connectionEnded(); return }
+        commandWriter.start()
+        self.link = link
+        launchedAt = environment.uptime()
+        restoreSource()
     }
 
     /// A new adapter starts in Automatic. It finishes its first discovery
@@ -250,7 +345,7 @@ package final class NotchMusicService: ObservableObject {
                 self.apply(reading)
             }
             gapWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + NotchPlayback.gapGracePeriod, execute: work)
+            environment.after(NotchPlayback.gapGracePeriod, work)
             return
         }
         endPlaybackGap()
@@ -276,14 +371,14 @@ package final class NotchMusicService: ObservableObject {
         selectedSourcePID = reading.selectedPID
         awaitingPlayback = false
         updateAutomation(for: reading.playback)
-        NotchLyricsService.shared.playbackChanged(reading.playback)
+        environment.lyricsChanged(reading.playback)
         updateQueue()
     }
 
     private func connectionEnded() {
         // An adapter that ran for over a minute is not crash looping, so its
         // exit gets a fresh budget instead of leaving music off until a restart.
-        if let launchedAt, ProcessInfo.processInfo.systemUptime - launchedAt > 60 { restartCount = 0 }
+        if let launchedAt, environment.uptime() - launchedAt > 60 { restartCount = 0 }
         launchedAt = nil
         disconnect()
         guard wantsPlayback, restartCount < 2 else { awaitingPlayback = false; return }
@@ -295,7 +390,7 @@ package final class NotchMusicService: ObservableObject {
             self.launch()
         }
         restartWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(restartCount), execute: work)
+        environment.after(Double(restartCount), work)
     }
 
     private func updateArtwork(_ image: NSImage?, tint: NotchArtworkTint?, playback: NotchPlayback?) {
@@ -314,7 +409,7 @@ package final class NotchMusicService: ObservableObject {
             self.artworkWork = nil
         }
         artworkWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline.timeIntervalSinceNow), execute: work)
+        environment.after(max(0, deadline.timeIntervalSinceNow), work)
     }
 
     /// One averaged pixel is all a halo needs, and it costs nothing next to
@@ -358,7 +453,7 @@ package final class NotchMusicService: ObservableObject {
         automation.reset()
         commandWriter.stop()
         queueVisible = false
-        NotchLyricsService.shared.hide()
+        environment.hideLyrics()
         queueRequest = nil
         queueReply = nil
         upcomingQueue.show(nil)
@@ -367,17 +462,8 @@ package final class NotchMusicService: ObservableObject {
         queueActionPending = false
         queueActionFailed = false
         generation = UUID()
-        output?.fileHandleForReading.readabilityHandler = nil
-        try? input?.fileHandleForWriting.close()
-        if let process, process.isRunning {
-            process.terminate()
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
-        }
-        process = nil
-        input = nil
-        output = nil
+        link?.end()
+        link = nil
         playback = nil
         sources = []
         sourceIsAutomatic = true
@@ -408,11 +494,11 @@ package final class NotchMusicService: ObservableObject {
         artworkTint = nil
         awaitingPlayback = true
         updateAutomation(for: nil)
-        NotchLyricsService.shared.playbackChanged(nil)
+        environment.lyricsChanged(nil)
     }
 
     package func setQueueVisible(_ visible: Bool) {
-        queueVisible = visible && NotchQueueSupport.isEnabled() && playback != nil
+        queueVisible = visible && NotchQueueSupport.isEnabled(in: environment.defaults) && playback != nil
         guard queueVisible else {
             commandWriter.setQueueRequest(nil)
             if queueRequest != nil { send(.queueStop) }
@@ -429,13 +515,13 @@ package final class NotchMusicService: ObservableObject {
     }
 
     package func syncQueuePreference() {
-        guard !NotchQueueSupport.isEnabled() else { return }
+        guard !NotchQueueSupport.isEnabled(in: environment.defaults) else { return }
         setQueueVisible(false)
         upcomingQueue.forgetCovers()
     }
 
     package func refreshQueue() {
-        guard queueVisible, NotchQueueSupport.isEnabled(), playback != nil else { return }
+        guard queueVisible, NotchQueueSupport.isEnabled(in: environment.defaults), playback != nil else { return }
         let request = UUID()
         queueRequest = request
         commandWriter.setQueueRequest(request)
@@ -453,7 +539,7 @@ package final class NotchMusicService: ObservableObject {
 
     package func playQueued(_ item: NotchQueueItem) {
         Self.playQueued(item, visible: queueVisible, request: queueRequest, upcoming: upcoming, playback: playback,
-                        pending: &queueActionPending, failed: &queueActionFailed) { send($0) }
+                        pending: &queueActionPending, failed: &queueActionFailed, in: environment.defaults) { send($0) }
     }
 
     /// Sends a queue row's selection, bound to the process, song and offset
@@ -475,7 +561,7 @@ package final class NotchMusicService: ObservableObject {
     }
 
     private func receiveQueue(_ reply: [String: Any]) {
-        guard let request = queueRequest, NotchQueueSupport.isEnabled() else { return }
+        guard let request = queueRequest, NotchQueueSupport.isEnabled(in: environment.defaults) else { return }
         if reply["queueAction"] as? String == request.uuidString {
             queueActionPending = false
             queueActionFailed = reply["queueActionOK"] as? Bool != true
@@ -487,7 +573,7 @@ package final class NotchMusicService: ObservableObject {
     }
 
     private func updateQueue() {
-        upcomingQueue.receive(queueReply, request: queueRequest, playback: playback, enabled: NotchQueueSupport.isEnabled())
+        upcomingQueue.receive(queueReply, request: queueRequest, playback: playback, enabled: NotchQueueSupport.isEnabled(in: environment.defaults))
     }
 
     package func seek(to position: Double, in track: RadialNowPlayingSnapshot, context: NotchPlaybackContext?) {
@@ -511,14 +597,14 @@ package final class NotchMusicService: ObservableObject {
     @discardableResult
     package func send(_ command: Command, context: NotchPlaybackContext?) -> Bool {
         switch command {
-        case .queue, .queuePlay: guard queueVisible, NotchQueueSupport.isEnabled() else { return false }
+        case .queue, .queuePlay: guard queueVisible, NotchQueueSupport.isEnabled(in: environment.defaults) else { return false }
         default: break
         }
         switch command {
         case .source, .queueStop: break
         default: guard playback != nil else { return false }
         }
-        guard process?.isRunning == true, let input else { return false }
+        guard let link, link.isRunning() else { return false }
         if command.requiresPlaybackContext {
             // A song held through a gap has no player left to reach, and a
             // command would come back as a failure.
@@ -529,10 +615,11 @@ package final class NotchMusicService: ObservableObject {
         let requested = generation
         let requestedQueue = command.queueRequest
         commandFailed = false
+        let main = environment.main
         return commandWriter.submit(command, context: context, write: { data in
-            try input.fileHandleForWriting.write(contentsOf: data)
+            try link.write(data)
         }, failed: { [weak self] in
-            DispatchQueue.main.async {
+            main {
                 guard let self, self.generation == requested,
                       requestedQueue == nil || self.queueRequest == requestedQueue else { return }
                 self.commandFailed = true

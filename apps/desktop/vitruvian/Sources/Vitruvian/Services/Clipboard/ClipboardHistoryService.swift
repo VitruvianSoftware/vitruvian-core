@@ -22,7 +22,74 @@ package enum ClipboardHistoryMoveDirection {
 /// secret-looking strings by default.
 @MainActor
 package final class ClipboardHistoryService: ObservableObject {
-    package static let shared = ClipboardHistoryService()
+    /// What the history reaches outside itself: the settings, where it is
+    /// saved, the stored images, the pasteboard and the search folding. A
+    /// contract runs a real history over a temporary file and a pasteboard
+    /// of its own.
+    @MainActor package struct Environment {
+        /// The settings, and the legacy blob the history used to live in.
+        package var defaults: UserDefaults
+        /// The history file. Entries used to live as one blob inside the
+        /// defaults, but the preferences plist is rewritten whole on every
+        /// copy and macOS pushes back past a few megabytes, which a large
+        /// history of long texts can reach. Without a resolvable home the
+        /// blob stays in the defaults.
+        package var storeURL: URL?
+        /// What the saved file holds. Pins and edits that would push the
+        /// pinned items past it are refused.
+        package var encodedHistoryByteLimit: Int
+        /// A stored image's PNG, or nil when it is gone.
+        package var imageData: (_ name: String) -> Data?
+        /// Deletes the stored images and file icons that no entry keeps.
+        package var sweepImages: (_ imageFiles: Set<String>, _ filePaths: Set<String>) -> Void
+        /// Puts a planned copy on the pasteboard. `then` answers the copy,
+        /// with nil when it failed or expired; `didFinish` runs once the
+        /// pasteboard is done with it, even after the answer expired.
+        package var writePasteboard: (_ write: ClipboardHistoryWrite,
+                                      _ then: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void,
+                                      _ didFinish: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void) -> Void
+        /// Folds an entry's text for search.
+        package var fold: (String) -> String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(defaults: UserDefaults, storeURL: URL?, encodedHistoryByteLimit: Int,
+                     imageData: @escaping (_ name: String) -> Data?,
+                     sweepImages: @escaping (_ imageFiles: Set<String>, _ filePaths: Set<String>) -> Void,
+                     writePasteboard: @escaping (_ write: ClipboardHistoryWrite,
+                                                 _ then: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void,
+                                                 _ didFinish: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void)
+                         -> Void,
+                     fold: @escaping (String) -> String) {
+            self.defaults = defaults
+            self.storeURL = storeURL
+            self.encodedHistoryByteLimit = encodedHistoryByteLimit
+            self.imageData = imageData
+            self.sweepImages = sweepImages
+            self.writePasteboard = writePasteboard
+            self.fold = fold
+        }
+
+        package static var live: Environment {
+            Environment(
+                defaults: .standard,
+                storeURL: PrivateFileStore.containerURL?.appendingPathComponent("ClipboardHistory.json"),
+                encodedHistoryByteLimit: ClipboardHistoryEditing.maxEncodedHistoryBytes,
+                imageData: { ClipboardImageStore.imageData(named: $0) },
+                sweepImages: { ClipboardImageStore.cleanup(keeping: $0, filePaths: $1) },
+                writePasteboard: { planned, then, didFinish in
+                    // Handed to the pasteboard lane, which alone reads it.
+                    nonisolated(unsafe) let write = planned
+                    GeneralPasteboardAccess.shared.async(timeout: ClipboardHistoryService.pasteboardTimeout,
+                                                         { isExpired in
+                        write.write(to: NSPasteboard.general, isExpired: isExpired)
+                    }, then: then, didFinish: didFinish)
+                },
+                fold: { ClipboardHistorySearch.normalized($0) })
+        }
+    }
+
+    package static let shared = ClipboardHistoryService(environment: .live)
+    private let environment: Environment
 
     @Published package private(set) var entries: [ClipboardHistoryEntry] = [] {
         didSet {
@@ -63,9 +130,7 @@ package final class ClipboardHistoryService: ObservableObject {
     @Published package private(set) var quickSelectionIndex = 0
     @Published package private(set) var quickSelectionIsVisible = false
     @Published package private(set) var quickWindowPresentationID = UUID()
-    @Published package private(set) var quickPreviewPresented = UserDefaults.standard.bool(
-        forKey: DefaultsKey.clipboardHistoryQuickPreview
-    )
+    @Published package private(set) var quickPreviewPresented: Bool
 
     private var timer: Timer?
     private var lastChangeCount = 0
@@ -103,14 +168,16 @@ package final class ClipboardHistoryService: ObservableObject {
     /// crash mid-migration never loses entries.
     private var migrateLegacyBlob = false
 
-    private init() {
+    package init(environment: Environment) {
+        self.environment = environment
+        quickPreviewPresented = environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryQuickPreview)
         load()
     }
 
     @MainActor
     package func syncWithPreferences() {
         if AppFeature.clipboardHistory.isAvailable,
-           UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled) {
+           environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled) {
             start()
             syncHotkey()
         } else {
@@ -168,18 +235,14 @@ package final class ClipboardHistoryService: ObservableObject {
     /// admission stays occupied until the underlying operation actually ends.
     private func writeToPasteboard(_ list: [ClipboardHistoryEntry],
                                    completion: @escaping (Bool) -> Void) {
-        guard !copyInFlight, let planned = Self.plannedWrite(for: list) else {
+        guard !copyInFlight, let planned = Self.plannedWrite(for: list, imageData: environment.imageData) else {
             completion(false)
             return
         }
         copyInFlight = true
-        // Handed to the pasteboard lane, which alone reads it.
-        nonisolated(unsafe) let write = planned
-        GeneralPasteboardAccess.shared.async(timeout: Self.pasteboardTimeout, { isExpired in
-            write.write(to: NSPasteboard.general, isExpired: isExpired)
-        }, then: { result in
+        environment.writePasteboard(planned, { result in
             completion(result?.succeeded == true)
-        }, didFinish: { [weak self] result in
+        }, { [weak self] result in
             guard let self else { return }
             self.copyInFlight = false
             // Consume our mutation even if result delivery already expired.
@@ -196,7 +259,8 @@ package final class ClipboardHistoryService: ObservableObject {
     /// intact. Resolving on the caller's thread also keeps the AppKit work a
     /// write may need — RTFD attachments, TIFF rendering — on the main thread
     /// it has always run on; only the pasteboard calls move to the lane.
-    private static func plannedWrite(for list: [ClipboardHistoryEntry])
+    private static func plannedWrite(for list: [ClipboardHistoryEntry],
+                                     imageData: (_ name: String) -> Data?)
         -> ClipboardHistoryWrite? {
         if list.count == 1, let entry = list.first {
             switch entry.kind {
@@ -204,7 +268,7 @@ package final class ClipboardHistoryService: ObservableObject {
                 return .text(entry.text)
             case .image:
                 guard let name = entry.imageFile,
-                      let data = ClipboardImageStore.imageData(named: name) else { return nil }
+                      let data = imageData(name) else { return nil }
                 // TIFF alongside PNG: some paste targets only take TIFF.
                 let tiff = NSBitmapImageRep(data: data)?.tiffRepresentation
                 return .image(png: data, tiff: tiff)
@@ -229,12 +293,12 @@ package final class ClipboardHistoryService: ObservableObject {
         case let .text(combined):
             return .text(combined)
         case let .rich(parts):
-            guard let rich = richBatchAttributedString(parts) else { return nil }
+            guard let rich = richBatchAttributedString(parts, imageData: imageData) else { return nil }
             let plain = ClipboardHistoryBatch.richPlainText(parts)
             return .rich(rich, plain: plain)
         case nil:
             guard let first = list.first else { return nil }
-            return plannedWrite(for: [first])
+            return plannedWrite(for: [first], imageData: imageData)
         }
     }
 
@@ -245,7 +309,8 @@ package final class ClipboardHistoryService: ObservableObject {
     /// (returns nil), keeping the same invariant as the single-entry path:
     /// stale content never silently vanishes from a paste after the user's
     /// clipboard was already overwritten.
-    private static func richBatchAttributedString(_ parts: [ClipboardHistoryBatch.RichPart])
+    private static func richBatchAttributedString(_ parts: [ClipboardHistoryBatch.RichPart],
+                                                  imageData: (_ name: String) -> Data?)
         -> NSAttributedString? {
         let result = NSMutableAttributedString()
         for part in parts {
@@ -253,7 +318,7 @@ package final class ClipboardHistoryService: ObservableObject {
             case let .text(text):
                 result.append(NSAttributedString(string: text + "\n"))
             case let .image(name):
-                guard let data = ClipboardImageStore.imageData(named: name) else { return nil }
+                guard let data = imageData(name) else { return nil }
                 let wrapper = FileWrapper(regularFileWithContents: data)
                 wrapper.preferredFilename = name
                 let attachment = NSTextAttachment(fileWrapper: wrapper)
@@ -484,7 +549,7 @@ package final class ClipboardHistoryService: ObservableObject {
         let candidates = entries.enumerated().map { index, entry in
             ClipboardHistorySearchCandidate(
                 index: index,
-                text: ClipboardHistorySearch.normalized(entry.searchableText(imageLabel: imageLabel)),
+                text: environment.fold(entry.searchableText(imageLabel: imageLabel)),
                 isPinned: entry.isPinned)
         }
         foldedCandidateCache = (imageLabel, candidates)
@@ -724,7 +789,7 @@ package final class ClipboardHistoryService: ObservableObject {
         // fresh baseline before capturing. Old completions cannot consume it.
         let baseline = captureState.needsBaseline
         let sinceChangeCount = lastChangeCount
-        let includeImagesFiles = UserDefaults.standard.bool(
+        let includeImagesFiles = environment.defaults.bool(
             forKey: DefaultsKey.clipboardHistoryIncludeImagesFiles)
         GeneralPasteboardAccess.shared.async(timeout: Self.pasteboardTimeout, { isExpired
             -> (changeCount: Int, content: CapturedContent?)? in
@@ -936,7 +1001,7 @@ package final class ClipboardHistoryService: ObservableObject {
     private func promote(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= ClipboardHistoryEditing.maxCharacters else { return }
-        if UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistorySkipSensitive),
+        if environment.defaults.bool(forKey: DefaultsKey.clipboardHistorySkipSensitive),
            looksSensitive(text) {
             return
         }
@@ -958,7 +1023,7 @@ package final class ClipboardHistoryService: ObservableObject {
 
     package func trimToLimit() {
         let limit = Defaults.sanitizedClipboardHistoryLimit(
-            UserDefaults.standard.integer(forKey: DefaultsKey.clipboardHistoryLimit)
+            environment.defaults.integer(forKey: DefaultsKey.clipboardHistoryLimit)
         )
         let trimmed = ClipboardHistoryEditing.retainedEntries(entries, recentLimit: limit)
         if trimmed != entries {
@@ -969,7 +1034,7 @@ package final class ClipboardHistoryService: ObservableObject {
 
     /// The saved file drops whatever it cannot hold, pinned items included, so
     /// a pin or an edit that would push them past it is refused instead.
-    private var encodedHistoryByteLimit: Int { ClipboardHistoryEditing.maxEncodedHistoryBytes }
+    private var encodedHistoryByteLimit: Int { environment.encodedHistoryByteLimit }
 
     private var firstRecentIndex: Int {
         entries.firstIndex { !$0.isPinned } ?? entries.endIndex
@@ -1012,14 +1077,6 @@ package final class ClipboardHistoryService: ObservableObject {
         ClipboardHistorySensitiveText.looksSensitive(text)
     }
 
-    /// The history file. Entries used to live as one blob inside UserDefaults,
-    /// but the preferences plist is rewritten whole on every copy and macOS
-    /// pushes back past a few megabytes, which a large history of long texts
-    /// can reach. Without a resolvable home the blob stays in UserDefaults.
-    nonisolated private static var storeURL: URL? {
-        PrivateFileStore.containerURL?.appendingPathComponent("ClipboardHistory.json")
-    }
-
     private static func storedHistoryData(at url: URL) -> Data? {
         guard let values = try? url.resourceValues(
             forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]),
@@ -1033,23 +1090,24 @@ package final class ClipboardHistoryService: ObservableObject {
     }
 
     private func load() {
-        let fileData = Self.storeURL.flatMap { Self.storedHistoryData(at: $0) }
+        let defaults = environment.defaults
+        let fileData = environment.storeURL.flatMap { Self.storedHistoryData(at: $0) }
         var data = fileData
         if data == nil,
-           let legacy = UserDefaults.standard.data(forKey: DefaultsKey.clipboardHistoryEntries) {
+           let legacy = defaults.data(forKey: DefaultsKey.clipboardHistoryEntries) {
             data = legacy
-            migrateLegacyBlob = Self.storeURL != nil
+            migrateLegacyBlob = environment.storeURL != nil
         }
         guard let data,
               ClipboardHistoryEditing.canLoadEncodedHistory(byteCount: data.count),
               let decoded = try? JSONDecoder().decode([ClipboardHistoryEntry].self, from: data)
         else { return }
         if fileData != nil,
-           UserDefaults.standard.object(forKey: DefaultsKey.clipboardHistoryEntries) != nil {
+           defaults.object(forKey: DefaultsKey.clipboardHistoryEntries) != nil {
             // The file decoded and is the durable source. A legacy blob still
             // around (a kill inside the migration window, or a downgrade
             // round trip) would sit in the preferences plist forever.
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.clipboardHistoryEntries)
+            defaults.removeObject(forKey: DefaultsKey.clipboardHistoryEntries)
         }
         entries = decoded
         normalizeEntryOrder()
@@ -1064,8 +1122,7 @@ package final class ClipboardHistoryService: ObservableObject {
         // pasteboard's real content against entries and sets this correctly
         // — or leaves it nil when nothing matches.
         // Sweep image files that lost their entry (crash between write and save).
-        ClipboardImageStore.cleanup(keeping: Set(entries.compactMap(\.imageFile)),
-                                    filePaths: Set(entries.flatMap(\.filePaths)))
+        environment.sweepImages(Set(entries.compactMap(\.imageFile)), Set(entries.flatMap(\.filePaths)))
         // A history read from the legacy blob migrates right away instead of
         // waiting for the next copy: launching once is enough to leave
         // UserDefaults behind.
@@ -1090,8 +1147,12 @@ package final class ClipboardHistoryService: ObservableObject {
         let snapshot = entries
         let generation = persistenceGeneration
         let retireLegacyBlob = migrateLegacyBlob
+        let storeURL = environment.storeURL
+        let byteLimit = environment.encodedHistoryByteLimit
+        let blob = LegacyBlob(defaults: environment.defaults)
         Self.persistQueue.async { [weak self] in
-            guard let encoded = ClipboardHistoryEditing.encodedHistory(snapshot) else { return }
+            guard let encoded = ClipboardHistoryEditing.encodedHistory(snapshot, byteLimit: byteLimit)
+            else { return }
             let data = encoded.data
             // The PNG sweep waits for the JSON to land and runs back on the
             // main thread against the list as it is then. Sweeping first
@@ -1106,12 +1167,12 @@ package final class ClipboardHistoryService: ObservableObject {
                        encoded.entries != snapshot {
                         self.entries = encoded.entries
                     }
-                    ClipboardImageStore.cleanup(keeping: Set(self.entries.compactMap(\.imageFile)),
-                                                filePaths: Set(self.entries.flatMap(\.filePaths)))
+                    self.environment.sweepImages(Set(self.entries.compactMap(\.imageFile)),
+                                                 Set(self.entries.flatMap(\.filePaths)))
                 }
             }
-            guard let url = Self.storeURL else {
-                UserDefaults.standard.set(data, forKey: DefaultsKey.clipboardHistoryEntries)
+            guard let url = storeURL else {
+                blob.defaults.set(data, forKey: DefaultsKey.clipboardHistoryEntries)
                 finishPersist()
                 return
             }
@@ -1121,10 +1182,16 @@ package final class ClipboardHistoryService: ObservableObject {
             guard PrivateFileStore.write(data, to: url) else { return }
             finishPersist()
             if retireLegacyBlob {
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.clipboardHistoryEntries)
+                blob.defaults.removeObject(forKey: DefaultsKey.clipboardHistoryEntries)
                 DispatchQueue.main.async { [weak self] in self?.migrateLegacyBlob = false }
             }
         }
+    }
+
+    /// The defaults the persist lane writes the legacy blob to. UserDefaults
+    /// is thread-safe, so it is `@unchecked Sendable`.
+    private struct LegacyBlob: @unchecked Sendable {
+        let defaults: UserDefaults
     }
 
     /// Runs any deferred persist right now and waits for the write to land.
@@ -1142,8 +1209,8 @@ package final class ClipboardHistoryService: ObservableObject {
     // MARK: - Shortcut
 
     package func syncHotkey() {
-        let wanted = UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
-            && UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryShortcutEnabled)
+        let wanted = environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
+            && environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryShortcutEnabled)
         wanted ? registerHotkey() : unregisterHotkey()
     }
 
@@ -1211,7 +1278,7 @@ package final class ClipboardHistoryService: ObservableObject {
     package func setQuickPreviewPresented(_ presented: Bool) {
         guard presented != quickPreviewPresented else { return }
         quickPreviewPresented = presented
-        UserDefaults.standard.set(presented, forKey: DefaultsKey.clipboardHistoryQuickPreview)
+        environment.defaults.set(presented, forKey: DefaultsKey.clipboardHistoryQuickPreview)
         guard let panel, panel.isVisible else { return }
         let previousFrame = panel.frame
         resize(panel, to: preferredPanelSize(visibleFrame: panel.screen?.visibleFrame
@@ -1374,7 +1441,7 @@ package final class ClipboardHistoryService: ObservableObject {
     }
 
     private func preferredPanelSize(visibleFrame: NSRect) -> NSSize {
-        let defaults = UserDefaults.standard
+        let defaults = environment.defaults
         return ClipboardHistoryWindowSizing.contentSize(
             preview: quickPreviewPresented,
             savedWidth: defaults.double(forKey: DefaultsKey.clipboardHistoryWindowWidth),
@@ -1387,8 +1454,8 @@ package final class ClipboardHistoryService: ObservableObject {
             from: panel.contentRect(forFrameRect: panel.frame).size,
             preview: quickPreviewPresented
         ) else { return }
-        UserDefaults.standard.set(Double(size.width), forKey: DefaultsKey.clipboardHistoryWindowWidth)
-        UserDefaults.standard.set(Double(size.height), forKey: DefaultsKey.clipboardHistoryWindowHeight)
+        environment.defaults.set(Double(size.width), forKey: DefaultsKey.clipboardHistoryWindowWidth)
+        environment.defaults.set(Double(size.height), forKey: DefaultsKey.clipboardHistoryWindowHeight)
     }
 
     private func position(_ panel: NSPanel) {

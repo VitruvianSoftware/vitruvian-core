@@ -855,100 +855,262 @@ enum ClipboardFeatureTests {
     }
 }
 
-/// History mutations run their production observer without touching the system
-/// pasteboard. A saved-text edit must not claim that the clipboard changed.
+/// A real history over a temporary file and settings of its own. Its copies
+/// land on a recorded pasteboard, never the system's, and a saved-text edit
+/// must not claim that the clipboard changed.
 enum ClipboardPreviewContract {
-    class Fixture {
-        var latestPasteboardEntry: ClipboardHistoryEntry?
-        var entriesStamp = 0
-        var filterCache: (query: String, stamp: Int, imageLabel: String,
-                          result: [ClipboardHistoryEntry])?
-        var foldedCandidateCache: (imageLabel: String, candidates: [ClipboardHistorySearchCandidate])?
-        var pendingWrite: ((Bool) -> Void)?
-        func writeToPasteboard(_ list: [ClipboardHistoryEntry], completion: @escaping (Bool) -> Void) {
-            pendingWrite = completion
+    /// What the history reached: the pasteboard writes it started, the image
+    /// sweeps and the search folds.
+    final class Recorder {
+        typealias Answer = @MainActor (ClipboardHistoryWriteResult?) -> Void
+        var writes: [ClipboardHistoryWrite] = []
+        var pending: [(then: Answer, didFinish: Answer)] = []
+        var sweeps: [Set<String>] = []
+        var folds = 0
+        private var changeCount = 0
+
+        /// Ends the oldest write the way the pasteboard lane does: the lane
+        /// finishes with it, then the copy hears the answer.
+        func finish(succeeded: Bool = true) {
+            guard !pending.isEmpty else { return }
+            let write = pending.removeFirst()
+            changeCount += 1
+            let result = ClipboardHistoryWriteResult(succeeded: succeeded, changeCount: changeCount)
+            write.didFinish(result)
+            write.then(result)
         }
-        var encodedHistoryByteLimit = ClipboardHistoryEditing.maxEncodedHistoryBytes
-        func trimToLimit() {}
-        func save() {}
+    }
+
+    enum Seed { case file, legacyBlob, fileAndLegacyBlob }
+
+    final class History {
+        let recorder: Recorder
+        let directory: URL
+        let domain: String
+        let defaults: UserDefaults
+        let storeURL: URL?
+        let service: ClipboardHistoryService
+
+        init(_ entries: [ClipboardHistoryEntry], seed: Seed = .file, hasFile: Bool = true,
+             byteLimit: Int = ClipboardHistoryEditing.maxEncodedHistoryBytes, images: [String: Data] = [:]) {
+            let recorder = Recorder()
+            let name = "vitru.tests.clipboard-preview.\(UUID().uuidString)"
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+            let defaults = UserDefaults(suiteName: name)!
+            let storeURL = hasFile ? directory.appendingPathComponent("ClipboardHistory.json") : nil
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let data = ClipboardHistoryEditing.encodedHistory(entries)!.data
+            if seed != .legacyBlob, let storeURL { try? data.write(to: storeURL) }
+            if seed != .file { defaults.set(data, forKey: DefaultsKey.clipboardHistoryEntries) }
+            self.recorder = recorder
+            self.directory = directory
+            self.domain = name
+            self.defaults = defaults
+            self.storeURL = storeURL
+            service = ClipboardHistoryService(environment: .init(
+                defaults: defaults, storeURL: storeURL, encodedHistoryByteLimit: byteLimit,
+                imageData: { images[$0] },
+                sweepImages: { imageFiles, _ in recorder.sweeps.append(imageFiles) },
+                writePasteboard: { write, then, didFinish in
+                    recorder.writes.append(write)
+                    recorder.pending.append((then, didFinish))
+                },
+                fold: {
+                    recorder.folds += 1
+                    return ClipboardHistorySearch.normalized($0)
+                }))
+        }
+
+        deinit {
+            try? FileManager.default.removeItem(at: directory)
+            UserDefaults.standard.removePersistentDomain(forName: domain)
+        }
+
+        /// Copies an entry and lets the write finish.
+        func copy(_ entry: ClipboardHistoryEntry) {
+            service.copy(entry) { _ in }
+            recorder.finish()
+        }
+
+        func entry(_ id: UUID) -> ClipboardHistoryEntry? {
+            service.entries.first { $0.id == id }
+        }
+
+        /// Whether the menu-bar preview shows this entry's content.
+        func previews(_ entry: ClipboardHistoryEntry) -> Bool {
+            service.latestPasteboardEntry?.id == entry.id && service.latestPasteboardEntry?.text == entry.text
+        }
+
+        /// What a quit would leave saved: the file, or the blob without one.
+        func saved() -> [ClipboardHistoryEntry]? {
+            service.flushBeforeTermination()
+            let data = storeURL.map { try? Data(contentsOf: $0) }
+                ?? defaults.data(forKey: DefaultsKey.clipboardHistoryEntries)
+            return data.flatMap { try? JSONDecoder().decode([ClipboardHistoryEntry].self, from: $0) }
+        }
     }
 
     static func run(_ suite: TestSuite) {
+        preview(suite)
+        copies(suite)
+        savedFileLimit(suite)
+        saving(suite)
+        searchFolding(suite)
+    }
+
+    private static func preview(_ suite: TestSuite) {
         let current = ClipboardHistoryEntry(text: "Actual clipboard text")
         let other = ClipboardHistoryEntry(text: "Another saved copy")
-        let service = Service()
-        service.setEntries([current, other])
-        service.latestPasteboardEntry = current
-        suite.expect(service.updateText(other, to: "Edited unrelated item")
-                     && service.latestPasteboardEntry == current,
+        let history = History([current, other])
+        let service = history.service
+        suite.expect(service.latestPasteboardEntry == nil,
+                     "a history read from disk shows no preview before the pasteboard is checked")
+        history.copy(current)
+        suite.expect(history.previews(current), "a finished copy becomes the menu-bar preview")
+        suite.expect(service.updateText(other, to: "Edited unrelated item") && history.previews(current),
                      "editing another history item preserves the actual latest copy")
-        suite.expect(service.updateText(current, to: current.text)
-                     && service.latestPasteboardEntry == current,
+        suite.expect(service.updateText(current, to: current.text) && history.previews(current),
                      "accepting an unchanged history item preserves its clipboard preview")
-        var pinned = current
-        pinned.pinnedAt = Date()
-        service.setEntries([pinned, other])
-        suite.expect(service.latestPasteboardEntry == pinned,
-                     "changing pin metadata retains the preview of identical copied content")
-        suite.expect(service.updateText(pinned, to: "Edited but never copied")
+        service.togglePin(current)
+        suite.expect(history.previews(current) && service.latestPasteboardEntry?.isPinned == true,
+                     "the pin move restores unchanged clipboard content")
+        service.togglePin(history.entry(current.id)!)
+        suite.expect(history.previews(current) && service.latestPasteboardEntry?.isPinned == false,
+                     "the unpin move retains unchanged clipboard content")
+        service.togglePin(history.entry(current.id)!)
+        suite.expect(service.updateText(history.entry(current.id)!, to: "Edited but never copied")
                      && service.entries.first?.text == "Edited but never copied"
                      && service.latestPasteboardEntry == nil,
                      "editing the current saved item cannot advertise text that was never copied")
-        service.setEntries([current, other])
-        service.latestPasteboardEntry = current
-        service.setEntries([other])
-        suite.expect(service.latestPasteboardEntry == nil,
-                     "removing the current entry still clears its menu-bar preview")
-        service.setEntries([current, other])
-        service.latestPasteboardEntry = current
-        service.togglePin(current)
-        suite.expect(service.latestPasteboardEntry?.text == current.text
-                     && service.latestPasteboardEntry?.isPinned == true,
-                     "the production pin move restores unchanged clipboard content")
-        service.togglePin(service.entries.first { $0.id == current.id }!)
-        suite.expect(service.latestPasteboardEntry?.text == current.text
-                     && service.latestPasteboardEntry?.isPinned == false,
-                     "the production unpin move retains unchanged clipboard content")
-        service.latestPasteboardEntry = nil
-        service.copy(current) { _ in }
-        suite.expect(service.updateText(current, to: "Edited while copy was pending"),
-                     "history can be edited while a pasteboard write awaits completion")
-        service.pendingWrite?(true)
-        service.pendingWrite = nil
-        suite.expect(service.latestPasteboardEntry?.text == current.text
-                     && service.entries.first { $0.id == current.id }?.text == "Edited while copy was pending",
-                     "copy completion advertises exactly the older payload actually written")
-        service.togglePin(service.entries.first { $0.id == current.id }!)
-        suite.expect(service.latestPasteboardEntry == nil,
-                     "pinning after a delayed copy cannot replace its preview with an uncopied edit")
-        let image = ClipboardHistoryEntry(text: "", kind: .image, imageFile: "saved.png")
-        service.setEntries([image])
-        service.latestPasteboardEntry = image
-        var pinnedImage = image
-        pinnedImage.pinnedAt = Date()
-        service.setEntries([pinnedImage])
-        suite.expect(service.latestPasteboardEntry == pinnedImage,
-                     "immutable image content keeps its preview even when a legacy entry lacks a hash")
 
-        // Escaped backslashes double in the saved file: two of these pinned
-        // entries fit in 5,000 bytes and three do not.
+        let removal = History([current, other])
+        removal.copy(current)
+        removal.service.remove(current)
+        suite.expect(removal.service.latestPasteboardEntry == nil,
+                     "removing the current entry still clears its menu-bar preview")
+
+        let delayed = History([current, other])
+        var answer: Bool?
+        delayed.service.copy(current) { answer = $0 }
+        suite.expect(delayed.service.updateText(current, to: "Edited while copy was pending"),
+                     "history can be edited while a pasteboard write awaits completion")
+        delayed.recorder.finish()
+        suite.expect(answer == true && delayed.previews(current)
+                     && delayed.entry(current.id)?.text == "Edited while copy was pending",
+                     "copy completion advertises exactly the older payload actually written")
+        delayed.service.togglePin(delayed.entry(current.id)!)
+        suite.expect(delayed.service.latestPasteboardEntry == nil,
+                     "pinning after a delayed copy cannot replace its preview with an uncopied edit")
+
+        let image = ClipboardHistoryEntry(text: "", kind: .image, imageFile: "saved.png")
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let images = History([image], images: ["saved.png": png])
+        images.copy(image)
+        var wrotePNG = false
+        if case let .image(written, _)? = images.recorder.writes.last { wrotePNG = written == png }
+        suite.expect(wrotePNG && images.previews(image), "an image copy writes the stored PNG")
+        images.service.togglePin(image)
+        suite.expect(images.previews(image) && images.service.latestPasteboardEntry?.isPinned == true,
+                     "immutable image content keeps its preview even when a legacy entry lacks a hash")
+    }
+
+    private static func copies(_ suite: TestSuite) {
+        let first = ClipboardHistoryEntry(text: "First")
+        let second = ClipboardHistoryEntry(text: "Second")
+        let history = History([first, second])
+        let service = history.service
+        let loaded = service.entries
+        var answers: [Bool] = []
+        service.copy(first) { answers.append($0) }
+        service.copy(second) { answers.append($0) }
+        suite.expect(answers == [false] && history.recorder.writes.count == 1,
+                     "a copy while another is still on the pasteboard is refused without writing")
+        var wroteText = false
+        if case let .text(text)? = history.recorder.writes.first { wroteText = text == "First" }
+        suite.expect(wroteText, "a text copy writes the entry's text")
+        history.recorder.finish(succeeded: false)
+        suite.expect(answers == [false, false] && service.latestPasteboardEntry == nil
+                     && service.entries == loaded,
+                     "a failed write leaves the preview and the entry's copy time alone")
+        service.copy(second) { answers.append($0) }
+        history.recorder.finish()
+        suite.expect(answers == [false, false, true] && history.previews(second)
+                     && history.entry(second.id)?.copiedAt != loaded[1].copiedAt,
+                     "a finished write frees the pasteboard for the next copy and stamps the entry")
+        service.copy([first, second]) { answers.append($0) }
+        history.recorder.finish()
+        suite.expect(answers.last == true && service.latestPasteboardEntry == nil,
+                     "a batch copy matches no one entry, so the preview goes blank")
+
+        let missing = ClipboardHistoryEntry(text: "", kind: .image, imageFile: "gone.png")
+        let gone = History([missing])
+        gone.service.copy(missing) { answers.append($0) }
+        suite.expect(answers.last == false && gone.recorder.writes.isEmpty,
+                     "an image whose stored file is gone is never written")
+    }
+
+    /// Escaped backslashes double in the saved file: two of these pinned
+    /// entries fit in 5,000 bytes and three do not.
+    private static func savedFileLimit(_ suite: TestSuite) {
         var heavy = (0..<3).map { ClipboardHistoryEntry(text: String(repeating: "\\", count: 1_000 + $0)) }
         heavy[0].pinnedAt = Date()
         heavy[1].pinnedAt = Date()
-        service.setEntries(heavy)
-        service.encodedHistoryByteLimit = 5_000
+        let history = History(heavy, byteLimit: 5_000)
+        let service = history.service
+        let loaded = service.entries
         service.togglePin(heavy[2])
-        suite.expect(service.entries == heavy,
+        suite.expect(loaded.map(\.id) == heavy.map(\.id) && service.entries == loaded,
                      "a pin the saved file cannot hold beside the other pinned items is refused")
         suite.expect(!service.updateText(heavy[0], to: String(repeating: "\\", count: 1_500))
-                     && service.entries == heavy,
+                     && service.entries == loaded,
                      "an edit that makes the pinned items too large for the saved file is refused")
         suite.expect(service.updateText(heavy[2], to: String(repeating: "\\", count: 1_500)),
                      "an unpinned item can still grow, since saving trims it instead")
+        suite.expect(history.saved()?.map(\.id) == [heavy[0].id, heavy[1].id],
+                     "the saved file drops the unpinned item it cannot hold")
         service.togglePin(heavy[0])
-        suite.expect(service.entries.first { $0.id == heavy[0].id }?.isPinned == false,
+        suite.expect(history.entry(heavy[0].id)?.isPinned == false,
                      "unpinning is never refused by the size of the saved file")
-        searchFolding(suite)
+
+        // A history saved under a larger limit can already overflow it.
+        var crowdedEntries = heavy
+        crowdedEntries[2].pinnedAt = Date()
+        let crowded = History(crowdedEntries, byteLimit: 3_000)
+        crowded.service.togglePin(crowdedEntries[0])
+        suite.expect(crowded.entry(crowdedEntries[0].id)?.isPinned == false,
+                     "unpinning is never refused, even while the pinned items overflow the saved file")
+    }
+
+    private static func saving(_ suite: TestSuite) {
+        let first = ClipboardHistoryEntry(text: "First")
+        let second = ClipboardHistoryEntry(text: "Second")
+        let history = History([first, second])
+        history.service.updateText(first, to: "Saved edit")
+        suite.expect(history.saved()?.first { $0.id == first.id }?.text == "Saved edit",
+                     "an edit is saved to the history file")
+        history.service.togglePin(second)
+        let saved = history.saved()
+        suite.expect(saved?.first?.id == second.id && saved?.first?.isPinned == true,
+                     "a pin is saved, pinned items first")
+
+        let legacy = History([first], seed: .legacyBlob)
+        suite.expect(legacy.service.entries.map(\.id) == [first.id], "a history in the legacy blob still loads")
+        suite.expect(legacy.saved()?.map(\.id) == [first.id]
+                     && legacy.defaults.object(forKey: DefaultsKey.clipboardHistoryEntries) == nil,
+                     "launching once moves the legacy blob into the history file and retires the blob")
+        let leftover = History([first], seed: .fileAndLegacyBlob)
+        suite.expect(leftover.service.entries.map(\.id) == [first.id]
+                     && leftover.defaults.object(forKey: DefaultsKey.clipboardHistoryEntries) == nil,
+                     "a history file that loads retires a leftover legacy blob")
+        let homeless = History([first], seed: .legacyBlob, hasFile: false)
+        homeless.service.updateText(first, to: "Kept in the blob")
+        suite.expect(homeless.saved()?.first?.text == "Kept in the blob",
+                     "without a history file the history saves to the blob")
+
+        let image = ClipboardHistoryEntry(text: "", kind: .image, imageFile: "kept.png")
+        let swept = History([image, first])
+        suite.expect(swept.recorder.sweeps == [["kept.png"]],
+                     "launch sweeps the stored images no entry keeps")
     }
 
     /// #1885: typing searches the history once per keystroke, so the folded
@@ -958,9 +1120,18 @@ enum ClipboardPreviewContract {
         var pinned = ClipboardHistoryEntry(text: "Token CLEANUP\tnote")
         pinned.pinnedAt = Date()
         let texts = ["Deploy checklist final", "Final database\ndeploy plan", "Reunião com João"]
-        let entries = [pinned] + texts.map { ClipboardHistoryEntry(text: $0) }
-        let service = Service()
-        service.setEntries(entries)
+        let history = History([pinned] + texts.map { ClipboardHistoryEntry(text: $0) })
+        let service = history.service
+        let entries = service.entries
+
+        _ = service.filteredEntries(matching: "")
+        suite.expect(history.recorder.folds == 0, "an empty search lists the history without folding it")
+        _ = service.filteredEntries(matching: "d")
+        suite.expect(history.recorder.folds == entries.count, "a search folds each entry once")
+        _ = service.filteredEntries(matching: "de")
+        suite.expect(history.recorder.folds == entries.count,
+                     "the next keystroke reuses the folded history instead of folding it again")
+
         let unfolded = entries.enumerated().map { index, entry in
             ClipboardHistorySearchCandidate(index: index, text: entry.text, isPinned: entry.isPinned)
         }
@@ -971,24 +1142,13 @@ enum ClipboardPreviewContract {
                          "searching folded history text ranks \"\(query)\" like a fresh fold")
         }
 
-        service.foldedCandidateCache = nil
-        _ = service.filteredEntries(matching: "")
-        suite.expect(service.foldedCandidateCache == nil,
-                     "an empty search lists the history without folding it")
-
-        _ = service.filteredEntries(matching: "d")
-        guard var cache = service.foldedCandidateCache else {
-            suite.expect(false, "a search keeps the folded history for the next keystroke")
-            return
-        }
-        cache.candidates[0].text = "sentinel only in the cache"
-        service.foldedCandidateCache = cache
-        suite.expect(service.filteredEntries(matching: "sentinel").map(\.id) == [pinned.id],
-                     "the next keystroke reuses the folded history instead of folding it again")
-
-        let added = ClipboardHistoryEntry(text: "Sentinel copied later")
-        service.setEntries(entries + [added])
-        suite.expect(service.filteredEntries(matching: "sentinel").map(\.id) == [added.id],
+        let deploy = service.filteredEntries(matching: "deploy").map(\.id)
+        service.updateText(entries[1], to: "Sentinel copied later")
+        suite.expect(deploy.contains(entries[1].id)
+                     && service.filteredEntries(matching: "deploy").map(\.id) == deploy.filter { $0 != entries[1].id },
+                     "a history change drops the last result for the same query")
+        suite.expect(service.filteredEntries(matching: "sentinel").map(\.id) == [entries[1].id]
+                     && history.recorder.folds == 2 * entries.count,
                      "a history change folds the new text and drops the old fold")
     }
 }

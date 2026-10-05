@@ -112,17 +112,6 @@ def main():
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
           + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
           + "}\n}\n")
-    clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
-    write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
-          + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"
-          + declaration(clipboard, "    @Published private(set) var entries:")
-          + declaration(clipboard, "    func updateText(")
-          + "".join(declaration(clipboard, prefix).replace("private ", "", 1) for prefix in [
-              "    func togglePin(", "    func copy(_ entry:", "    private func touch(",
-              "    private var firstRecentIndex:", "    private func normalizeEntryOrder(",
-              "    func filteredEntries(", "    private func foldedCandidates("])
-          + "func setEntries(_ values: [ClipboardHistoryEntry]) { entries = values }\n"
-          + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
     write("CommandBarEmojiBodies.swift", "import Foundation\n"
@@ -152,15 +141,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    write("DockAutohideInput.swift", "import CoreGraphics\nimport Foundation\nextension DockAutohideHoldTests.Service {\n"
-          + "".join(declaration(dock, prefix, scope="final class DockPreviewService:")
-                    .replace("private func", "func", 1)
-                    for prefix in ["    private func beginDockAutohideHold()",
-                                   "    private func releaseDockAutohideHold()",
-                                   "    private func handleDockHoldInput(type:",
-                                   "    private func handle(type:",
-                                   "    func commit("])
-          + "}\n")
     # The raw wheel tap runs as shipped: linear scrolling's cap, carry and
     # write-back, then the direction change. Only the services it asks and
     # the defaults it reads are fixtures.
@@ -216,14 +196,6 @@ def main():
               "    private func applyQueuedOutputSteps(",
               "    private func isCurrentOutputAdjustment(", "    private var hasCurrentOutputAdjustment:",
               "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
-          + "}\n}\n")
-
-    super_key = "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift"
-    write("SuperKeyTap.swift", "import CoreGraphics\nimport Foundation\n"
-          + "extension SuperKeyTapContract {\nfinal class SuperKeyService: State {\n"
-          + "".join(declaration(super_key, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func runEventTap()", "    private func setMappingFailure("])
-            .replace("CGEvent.tapCreate(", "Tap.create(")
           + "}\n}\n")
 
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
@@ -496,51 +468,7 @@ def main():
           + declaration(switcher_service, "    private var selectedItemID:")
           + declaration(switcher_service, "    private func applySearchFilter(")
           + "}\n")
-    service = "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift"
-    view = "Sources/Vitruvian/UI/QuickLauncher/QuickLauncherView.swift"
-    panel_layout = _source("Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift")
-    protocol = next(line for line in panel_layout.splitlines() if line.startswith("protocol PanelOrderItem:"))
-    write("QuickLauncherBodies.swift", "import Foundation\nimport Carbon.HIToolbox\n" + protocol + "\n\nextension QuickLauncherContract {\n"
-          + declaration(service, "enum QuickLauncherItem:")
-          + "final class Launcher {\nvar isEditing = false\nvar activeUtility: QuickLauncherItem?\n"
-          + "var editingOptionsItem: QuickLauncherItem?\nvar selectedIndex: Int?\nvar keyboardIndex: Int?\nvar presentationID = UUID()\n"
-          + "var candidates: [QuickLauncherItem] = QuickLauncherItem.allCases\n"
-          + "var visibleItems: [QuickLauncherItem] { candidates.filter { $0.feature.isAvailable(in: ReviewDefaults.current) } }\n"
-          + 'func hide() { events.append("hide") }\n'
-          + availability_declaration(service, "    func run(_ item: QuickLauncherItem)")
-          + declaration(service, "    func prepareForPresentation()")
-          + availability_declaration(service, "    func refreshAvailability()")
-          + declaration(service, "    private func clampSelection()")
-          + declaration(service, "    func activateSelection()")
-          + declaration(service, "    func activate(at index:")
-          + declaration(service, "    func moveSelection(")
-          + declaration(service, "    func select(")
-          + declaration(service, "    func handlePanelKey(")
-          + declaration(service, "    private static func digitIndex(")
-          + "}\nstruct Tile {\nvar keepAwake = State()\nvar micMute = State()\nvar recorder = State()\n"
-          + declaration(view, "    private func icon(for item: QuickLauncherItem)")
-          + declaration(view, "    private func isActive(_ item: QuickLauncherItem)")
-          + "func display(_ item: QuickLauncherItem) -> (String, Bool) { (icon(for: item), isActive(item)) }\n}\n}\n")
-
     preview = "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift"
-    write("ScreenshotShareCompletion.swift", "import Foundation\n"
-          + "extension ScreenshotShareCompletionTests {\nfinal class Controller: State {\n"
-          + "".join(declaration(preview, prefix).replace("private func", "func", 1)
-                    for prefix in ["    func shareLink()", "    private func performShare(",
-                                   "    private func copySharedLink()", "    func scheduleAutoDismiss("])
-          + "}\n}\n")
-    screenshot_service = "Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift"
-    write("ScreenshotShortcutCompletion.swift", "import Foundation\n"
-          + "extension ScreenshotShareCompletionTests {\n@MainActor final class Uploader: UploadState {\n"
-          + "".join(declaration(screenshot_service, prefix).replace("private func", "func", 1)
-                    .replace("uploadShortcutEnabled()", "uploadShortcutEnabled(in: defaults)")
-                    .replace("retainsLatestCapture()", "retainsLatestCapture(in: defaults)")
-                    for prefix in ["    private func uploadLastCapture()", "    private func copyUploadedLink(",
-                                   "    func openEditor(with", "    func editorDidClose(",
-                                   "    private func invalidateLatestCaptureUploads()",
-                                   "    private func beginLatestCapture(", "    private func discardLatestCapture(",
-                                   "    private func syncLatestCapture("])
-          + "}\n}\n")
     selection = "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift"
     refresh_methods = [
         "    private func screenCaptureToolDidChange()",
@@ -630,44 +558,6 @@ def main():
           + declaration(dock, "    private func isNearDock(").replace("private func", "func", 1)
           + "}\n")
 
-    music = "Sources/Vitruvian/Services/Notch/NotchMusicService.swift"
-    write("NotchMusicControls.swift", "import AppKit\n\nextension NotchMusicCommandContract {\n"
-          + "final class Service {\ntypealias Command = NotchPlaybackCommand\n"
-          + "var playback: NotchPlayback?\nvar generation = UUID()\nvar queueRequest: UUID?\n"
-          + "var sources: [NotchPlaybackSource] = []\nvar sourceIsAutomatic = true\n"
-          + "var artwork: NSObject?\nvar artworkTint: NotchArtworkTint?\n"
-          + "func updateArtwork(_ image: NSImage?, tint: NotchArtworkTint?, playback: NotchPlayback?) { artwork = image; artworkTint = tint }\n"
-          + "let trackChanges = TrackChanges()\nlet trackEnds = TrackChanges()\nvar gapReading: Reading?\nvar gapWork: DispatchWorkItem?\nfunc updateQueue() {}\n"
-          + "func updateAutomation(for playback: NotchPlayback?) {}\nfunc setQueueVisible(_ visible: Bool) { queueVisible = visible }\n"
-          + "var queueVisible = true\nvar queueLoading = false\nvar queueActionPending = false\n"
-          + "var commandFailed = false\nvar queueActionFailed = false\nvar commandPending = false\n"
-          + "var canSeek: Bool { playback?.canSeek == true }\n"
-          + "func beginAutomation(_ command: Command, playback: NotchPlayback) -> Bool { false }\nfunc cancelAutomationAction() {}\n"
-          + "var process: Process?\nvar input: Pipe?\nlet queue = Scheduler()\n"
-          + "lazy var commandWriter = NotchMusicCommandWriter { [queue = self.queue] in queue.async(execute: $0) }\n"
-          + "enum UserDefaults { static let standard = Preferences()\n"
-          + "final class Preferences { var includeOtherPlayers = false\n"
-          + "func bool(forKey key: String) -> Bool { includeOtherPlayers } } }\n"
-          + "var wantsPlayback = false\nvar includeOtherPlayers = false\nvar awaitingPlayback = false\nvar restartCount = 0\nvar restartWork: DispatchWorkItem?\nvar launches = 0\n"
-          + "var selectedSourcePID: Int32?\nvar chosenSource: NotchPlaybackSource.Selection?\nvar restoringSource = false\n"
-          + "var launchedAt: TimeInterval?\nvar uptime: TimeInterval = 0\nvar trackChange = NotchTrackChange()\n"
-          + "func launch() { guard wantsPlayback, process == nil else { return }; launches += 1; process = Process(); input = Pipe(); commandWriter.start(); launchedAt = uptime; restoreSource() }\n"
-          + "func disconnect() { endPlaybackGap(); generation = UUID(); commandWriter.stop(); process = nil; input = nil; playback = nil }\n"
-          + declaration(music, "    func start()")
-          + declaration(music, "    func stop()")
-          + declaration(music, "    private func connectionEnded()").replace("private func", "func", 1)
-            .replace("ProcessInfo.processInfo.systemUptime", "uptime")
-          + declaration(music, "    private func restoreSource()").replace("private func", "func", 1)
-          + declaration(music, "    private func acceptsSourceReply(").replace("private func", "func", 1)
-          + declaration(music, "    private struct Reading {").replace("private struct", "struct", 1)
-          + declaration(music, "    private func receive(").replace("private func", "func", 1)
-          + declaration(music, "    private func endPlaybackGap()").replace("private func", "func", 1)
-          + declaration(music, "    private func apply(").replace("private func", "func", 1)
-          + declaration(music, "    func seek(")
-          + declaration(music, "    func selectSource(")
-          + declaration(music, "    func send(_ command: Command)").replace("    func", "    @discardableResult\n    func", 1)
-          + declaration(music, "    func send(_ command: Command, context:").replace("    func", "    @discardableResult\n    func", 1)
-          + "}\n}\n")
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
           + "extension SoftwareDimmingRouteContract {\n"

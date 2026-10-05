@@ -38,9 +38,28 @@ package final class DockPreviewService: ObservableObject {
     private var settingsTimer: Timer?
     private var dockVisibilityTimer: Timer?
     private let dockAutohideHold = DockAutohideHold()
-    private var dockFrameRestoration: DockPreviewFrameRestoration?
-    private var dockFrameRestorationGeneration = 0
-    private var dockHoldObservers: [NSObjectProtocol] = []
+    private lazy var dockHold: DockHoldSession<SwitcherItem> = DockHoldSession(hold: dockAutohideHold, host: .init(
+        startInputTap: { [weak self] in self?.startDockHoldInputTap() ?? false },
+        stopInputTap: { [weak self] in self?.stopDockHoldInputTap() },
+        captureFrames: {
+            let frames = DockPreviewFrameRestoration()
+            return { frames.restoration(for: $0, isCurrent: $1) }
+        },
+        isRunning: { [weak self] in self?.isRunning == true },
+        dropQueuedPointer: { [weak self] in
+            // Discard a sampled mouse move that predates the key, so it cannot
+            // reopen the hover immediately after keyboard use ended it.
+            self?.pointerEventGeneration &+= 1
+            self?.cancelPendingMove()
+        },
+        endSession: { [weak self] in self?.endSession() },
+        mayActivate: { WindowEnumerator.dockPreviewMayActivate($0) },
+        activate: {
+            // The app in front keeps the delayed focus handoff settling; it is
+            // not a session source, so minimizing the window later leaves it be.
+            WindowActivator.activate($0, handoffSourcePID: NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        },
+        notificationCenter: NSWorkspace.shared.notificationCenter))
     private var dockHoldInputTap: CFMachPort?
     private var dockHoldInputSource: CFRunLoopSource?
     private var didReattachForSession = false
@@ -193,19 +212,7 @@ package final class DockPreviewService: ObservableObject {
 
     package func commit(_ item: SwitcherItem) {
         guard windows.contains(item) else { return }
-        let generation = dockFrameRestorationGeneration
-        let restoreFrame = dockFrameRestoration?.restoration(for: item) { [weak self] in
-            self?.isRunning == true && self?.dockFrameRestorationGeneration == generation
-        }
-        endSession()
-        guard WindowEnumerator.dockPreviewMayActivate(item) else { return }
-        // The app in front keeps the delayed focus handoff settling; it is
-        // not a session source, so minimizing the window later leaves it be.
-        WindowActivator.activate(
-            item,
-            handoffSourcePID: NSWorkspace.shared.frontmostApplication?.processIdentifier
-        )
-        restoreFrame?()
+        dockHold.commit(item)
     }
 
     package func closePreviewPanel() {
@@ -282,7 +289,7 @@ package final class DockPreviewService: ObservableObject {
         else { return }
 
         isDraggingWindow = true
-        releaseDockAutohideHold()
+        dockHold.release()
         cancelPendingHide()
         cancelPendingHover()
         DockPreviewDragGhost.shared.begin(image: image, at: NSEvent.mouseLocation)
@@ -779,7 +786,7 @@ package final class DockPreviewService: ObservableObject {
 
         if hit.preferences.autohide,
            UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewKeepDockVisible) {
-            beginDockAutohideHold()
+            dockHold.begin()
         }
         showPanel(for: hit, itemCount: list.count)
     }
@@ -796,7 +803,7 @@ package final class DockPreviewService: ObservableObject {
         // Remove the surface before publishing empty content. During a Space
         // transition, an animated dismissal can otherwise carry a blank panel.
         panel?.orderOut(nil)
-        releaseDockAutohideHold()
+        dockHold.release()
         tearDownVisuals()
         isPinned = false
     }
@@ -1005,27 +1012,6 @@ package final class DockPreviewService: ObservableObject {
         panel.contentViewController?.view.layoutSubtreeIfNeeded()
     }
 
-    private func beginDockAutohideHold() {
-        guard dockHoldObservers.isEmpty, startDockHoldInputTap() else { return }
-        dockFrameRestorationGeneration &+= 1
-        let frameRestoration = DockPreviewFrameRestoration()
-        guard dockAutohideHold.begin() else {
-            stopDockHoldInputTap()
-            return
-        }
-        dockFrameRestoration = frameRestoration
-        let workspace = NSWorkspace.shared.notificationCenter
-        let events = [NSWorkspace.activeSpaceDidChangeNotification,
-                      NSWorkspace.willSleepNotification,
-                      NSWorkspace.sessionDidResignActiveNotification]
-        dockHoldObservers = events.map { name in
-            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // Delivered on the main queue.
-                MainActor.assumeIsolated { self?.endSession() }
-            }
-        }
-    }
-
     // An active tap returns the original key only AFTER restoring the Dock.
     // A passive monitor or an async dispatch can restore after a system shortcut
     // has already changed auto-hide, overwriting the user's new choice.
@@ -1040,7 +1026,7 @@ package final class DockPreviewService: ObservableObject {
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<DockPreviewService>.fromOpaque(userInfo).takeUnretainedValue()
                 // The tap's source is on the main run loop (below).
-                MainActor.assumeIsolated { service.handleDockHoldInput(type: type) }
+                MainActor.assumeIsolated { service.dockHold.handleInput(type: type) }
                 return Unmanaged.passUnretained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -1053,17 +1039,6 @@ package final class DockPreviewService: ObservableObject {
         return true
     }
 
-    private func handleDockHoldInput(type: CGEventType) {
-        guard dockAutohideHold.isHolding else { return }
-        if type == .keyDown || type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // Discard a sampled mouse move that predates the key, so it cannot
-            // reopen the hover immediately after keyboard use ended it.
-            pointerEventGeneration &+= 1
-            cancelPendingMove()
-            endSession()
-        }
-    }
-
     private func stopDockHoldInputTap() {
         if let tap = dockHoldInputTap {
             CGEvent.tapEnable(tap: tap, enable: false)
@@ -1074,18 +1049,6 @@ package final class DockPreviewService: ObservableObject {
         }
         dockHoldInputTap = nil
         dockHoldInputSource = nil
-    }
-
-    private func releaseDockAutohideHold() {
-        // Restore before invalidating an active input callback: detaching the
-        // tap must never let its key reach the system ahead of this write.
-        dockAutohideHold.end()
-        dockFrameRestoration = nil
-        stopDockHoldInputTap()
-        for observer in dockHoldObservers {
-            NSWorkspace.shared.notificationCenter.removeObserver(observer)
-        }
-        dockHoldObservers.removeAll()
     }
 
     /// Keep the original fallback even during an experimental hold: if macOS

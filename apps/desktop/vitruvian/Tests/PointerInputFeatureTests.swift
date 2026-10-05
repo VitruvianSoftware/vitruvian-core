@@ -2449,7 +2449,7 @@ enum PointerInputFeatureTests {
         suite.expect(superKeyServiceCode.contains(".leftMouseDown, .rightMouseDown, .otherMouseDown")
                && superKeyServiceCode.contains("mouseDownTypes.reduce(CGEventMask(0))")
                && superKeyServiceCode.contains("mouseDownTypes.contains(type) { return .otherKey }")
-               && superKeyServiceCode.range(of: "tap: .cghidEventTap") != nil,
+               && superKeyServiceCode.contains("let mouseTap = system.createTap(\n                .cghidEventTap,"),
                "every mouse press while the super key is held carries the modifiers, stamped at the HID stage")
         // A mouse event carries no keycode of its own: the field reads back as
         // 0 on one, which is the keycode for A. The read lives inside classify,

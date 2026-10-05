@@ -1460,6 +1460,211 @@ files go, which leaves 33.
   Those locals are now `nonisolated(unsafe)`, since the queues read only the
   item's thread-safe flag, and the model uses the real type.
 
+Landed (4b, the quick launcher): one more generated file goes, which leaves
+32.
+
+- **Injected:** `QuickLauncherService` takes an `Environment`: the feature
+  switches, the saved order, the island's Tools page, the camera's island
+  view, each tool's own action and the main queue. `live` is the app's,
+  including the map from tile to service call that the tile actions used to
+  hold inline. Which tiles hide first, wait and how long, toggle in place or
+  open inside the launcher stays in `run`.
+- **Keys:** `takesPanelKey(_:flow:)` reads a `QuickLauncherKey`, which
+  `NSEvent` adopts with whether an input method is composing in its window.
+  `handlePanelKey` and the island's Tools route both call it.
+- **Tiles:** `QuickLauncherView.icon(for:state:)` and `isActive(_:state:)`
+  take a `QuickLauncherTileState`, so the icons are checked without the
+  services that report them.
+- **Test:** the launcher test and the island's destination test run the real
+  launcher over a world of doubles, instead of copies of eleven members and
+  two view methods. New checks: Keep Awake and a muted microphone look
+  active, digits past the last tile run nothing, modified keys and the
+  grid being edited leave keys alone.
+- **Mutations:** the launcher's two fixtures follow the code: one now runs
+  the recorder before hiding, the other draws a fixed recording icon.
+- **Verification:** AppKit and SwiftUI, so macOS CI only.
+
+Landed (4b, the clipboard history): one more generated file goes, which
+leaves 31.
+
+- **Injected:** `ClipboardHistoryService` takes an `Environment`:
+  - the settings, which hold the legacy blob;
+  - the history file;
+  - the saved file's byte limit;
+  - the stored images it reads and sweeps;
+  - the pasteboard lane its copies go through;
+  - the search folding.
+
+  `live` is the app's: the standard defaults, the private container, the
+  image store, `GeneralPasteboardAccess` over the general pasteboard, and the
+  search's own fold. Every settings read in the service goes through it, so
+  the persist lane writes the blob through a `LegacyBlob` handle instead of
+  `UserDefaults.standard`.
+- **Test:** the preview contract runs a real history over a temporary file,
+  its own defaults suite and a recorded pasteboard, instead of a copy of ten
+  members and stubbed saves. It loads each history from disk and changes it
+  only through the service's own calls. New checks:
+  - a copy while another is in flight is refused;
+  - a failed write changes nothing;
+  - batch copies blank the preview;
+  - an image whose file is gone is never written;
+  - edits, pins and the size trim reach the saved file;
+  - the legacy blob moves to the file and is retired;
+  - without a file the history saves to the blob;
+  - the launch sweep;
+  - an unpin is allowed even while the pinned items already overflow the
+    file;
+  - a history change drops the cached result for the same query.
+- **Verification:** a Linux Swift 6.4 model of the service's history members,
+  extracted from the production file, runs the contract (44 checks) and 34
+  mutants, all killed. A Swift 6 type-check of `live` over stubs. The
+  AppKit paths need macOS CI.
+
+Landed (4b, the Dock preview's auto-hide hold): one more generated file
+goes, which leaves 30.
+
+- **Moved:** the hold's session leaves `DockPreviewService` for
+  `DockHoldSession` (`Services/DockPreview/DockHoldSession.swift`):
+  - the `DockAutohideHold`;
+  - the window geometry captured before it;
+  - the workspace observers;
+  - what a key or a lost tap does;
+  - how choosing a window repairs its frame.
+
+  It is generic over the item, and its `Host` is the key tap, the frame
+  capture, the pointer queue, the preview's end, the Space policy, the
+  activation and the notification center. The service builds it with its
+  own members and forwards to it.
+- **Test:** the hold test drives a real session over a recorded preview and
+  a private notification center, instead of copies of five service members.
+  New checks:
+  - a key drops the queued pointer move before ending the preview;
+  - each workspace change ends the preview once;
+  - a frame repair goes stale after a newer hold or once the preview stops.
+
+  The service's own pointer filter, which the dropped move invalidates,
+  stays untested here.
+- **Verification:** a Linux Swift 6.4 model of the session and the hold
+  runs the test (41 checks) and 25 mutants, all killed. The service needs
+  macOS CI.
+
+Landed (4b, sharing a screenshot's link): two more generated files go,
+which leaves 28.
+
+- **Injected:** `ScreenshotLinkActions` (new) is what a screenshot surface
+  does with a shared link outside itself:
+  - list the live ones;
+  - copy one;
+  - revoke one;
+  - announce how it went, and beep.
+
+  `live` is `ScreenshotShareService`, the HUD and the system beep. The quick
+  preview takes one, and exposes its view model, so a preview runs without
+  the sharing service or the clipboard.
+- **Moved:** the latest capture leaves `ScreenshotService` for
+  `ScreenshotLatestCapture` (new):
+  - the editors open;
+  - the upload shortcut's pending upload;
+  - a link whose copy failed;
+  - whether the kept capture may still be published.
+
+  It is generic over the capture and the editor. Its `Host` is the
+  settings, the open preview, the kept capture, the upload and the link
+  actions. The service builds it and forwards to it.
+- **Test:** the share test drives a real preview and a real latest capture,
+  over recorded links, a clock it advances by hand and a private defaults
+  suite, instead of copies of four preview members and eight service
+  members. New checks:
+  - copies and failed copies are announced;
+  - a press with nothing kept says so;
+  - the shortcut turned off ignores a press, even over a preview;
+  - a link the service no longer lists is uploaded again;
+  - a copy that fails again keeps its dismissal;
+  - a leaving pointer cannot dismiss a sharing preview;
+  - a second close does nothing;
+  - teardown leaves no editor to block the shortcut.
+- **Kept as text:** `ScreenshotFeatureTests` still reads the service's
+  wiring (teardown invalidates, a capture begins as the latest, discard
+  withholds it) from the source, now naming the new calls. The mutation
+  fixture for an edited capture moves to `ScreenshotLatestCapture`.
+- **Verification:** a Linux Swift 6.4 model of both types and the preview's
+  share members, extracted from the production files, runs the test (81
+  checks) and 52 mutants. Three survive, all equivalent:
+  - clearing the copy retry when the capture changes, since the retry is
+    keyed by the old capture;
+  - the copy's capture check, since every caller passes the current one;
+  - `shareLink`'s closed check, since both paths it takes check again.
+
+  The panel and the island need macOS CI.
+
+Landed (4b, the super key's tap thread): one more generated file goes,
+which leaves 27.
+
+- **Injected:** `SuperKeyService` takes a `System`:
+  - the settings;
+  - event-tap creation;
+  - how the tap thread runs;
+  - the main queue that thread reports back to;
+  - Accessibility trust;
+  - hidutil.
+
+  `live` is the system's. Every settings read, trust check and hidutil
+  call in the service goes through it, so no test can reach the real key
+  mapping. `start()` is now `package`.
+- **Test:** the tap test starts a real service whose tap requests are
+  refused, runs its thread inline (`Thread.main()`), and records what it
+  asks of hidutil, over a private settings suite. It used to run a copy of
+  two members. New checks:
+  - a key never mapped leaves hidutil alone;
+  - a refused tap takes out a leftover mapping;
+  - without Accessibility no tap is asked for and a leftover mapping still
+    comes out.
+- **Kept as text:** the HID-stage check in `PointerInputFeatureTests` now
+  reads the mouse tap's `system.createTap(.cghidEventTap` call.
+- **Verification:** a Linux Swift 6.4 type-check of `System` (with `live`
+  over stubs) and the test against a reduced service model, 5 checks. The
+  tap thread's success path and the mapping itself need macOS CI.
+
+Landed (4b, the Now Playing adapter): one more generated file goes, which
+leaves 26.
+
+- **Injected:** `NotchMusicService` takes an `Environment`:
+  - how the adapter is launched;
+  - the main queue its replies come back on;
+  - delayed work and the clock;
+  - the queue commands are written on;
+  - the settings and the lyrics;
+  - the Apple Event system.
+
+  A running adapter is a `NotchMusicAdapterLink`: whether it runs, the pipe
+  its commands go into, and ending it. `live` launches the bundled script as
+  before; the reader's parsing and the service's checks stay in the service.
+- **Test:** the command, source and gap tests drive a real service over an
+  adapter they feed by hand, as the adapter's own JSON lines, with every
+  queue and the clock run by the test. They used to run a copy of twelve
+  members and set its private state directly. New checks:
+  - a replaced adapter can neither show a reading nor end its successor;
+  - a recovery waits before it relaunches;
+  - exits within a minute keep the budget spent;
+  - a seek past the end lands at the end;
+  - a command to an exited adapter is refused;
+  - a write the adapter cannot take reports the failure;
+  - each reading reaches the lyrics.
+- **Verification:** a Linux Swift 6.4 model of the real service and its
+  support files runs the six tests (72 checks) and 48 mutants. Eight
+  survive, each because another guard already covers the path:
+  - the reset in `start()`, already done by `stop()`;
+  - the second launch guard;
+  - the gap's and the restart's generation checks, already ended by
+    `disconnect()` and `stop()`;
+  - `stop()` cancelling the restart, already blocked by the restart's
+    generation check;
+  - `seek`'s track and context checks, which `send` repeats;
+  - `send`'s playback check, which the context check repeats.
+
+  The command queue's `live` form compiles only against macOS's Dispatch, as
+  it did before.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

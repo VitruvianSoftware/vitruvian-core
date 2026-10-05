@@ -67,7 +67,9 @@ package final class ScreenshotQuickPreviewController {
     /// The system share sheet is open, outside the preview.
     package var systemSharing = false
     private let onClose: () -> Void
-    private let model = ScreenshotQuickPreviewModel()
+    /// What the preview shows: sharing, the shared link, and the buttons
+    /// already done.
+    package let model = ScreenshotQuickPreviewModel()
     private var panel: ScreenshotQuickPreviewPanel?
     private var keyMonitor: Any?
     private var dismissWork: DispatchWorkItem?
@@ -79,6 +81,7 @@ package final class ScreenshotQuickPreviewController {
     private var didStartPreview = false
     package private(set) var pointerInside = false
     private let scheduler: Scheduler
+    private let links: ScreenshotLinkActions
 
     package var protectedWindowIDs: Set<CGWindowID> {
         guard let panel, panel.isVisible, panel.windowNumber > 0 else { return [] }
@@ -95,7 +98,8 @@ package final class ScreenshotQuickPreviewController {
                            @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
          shareFile: @escaping () -> URL?,
          onClose: @escaping () -> Void,
-         scheduler: Scheduler = .main) {
+         scheduler: Scheduler = .main,
+         links: ScreenshotLinkActions = .live) {
         self.capture = capture
         self.strings = strings
         self.defaultAction = defaultAction
@@ -106,6 +110,7 @@ package final class ScreenshotQuickPreviewController {
         self.shareFile = shareFile
         self.onClose = onClose
         self.scheduler = scheduler
+        self.links = links
         model.disabledActions = completedActions.intersection([.save, .copy])
     }
 
@@ -335,12 +340,11 @@ package final class ScreenshotQuickPreviewController {
         dismissWork?.cancel()
         dismissWork = nil
         model.sharing = true
+        let delete = links.delete
         share(duration) { [weak self] record in
             guard let self, !self.closed else {
                 if let record {
-                    Task { @MainActor in
-                        try? await ScreenshotShareService.shared.delete(record)
-                    }
+                    Task { @MainActor in try? await delete(record) }
                 }
                 return
             }
@@ -373,13 +377,13 @@ package final class ScreenshotQuickPreviewController {
     @MainActor
     private func copyLinkAndClose(_ record: ScreenshotShareRecord) -> Bool {
         let copied = ScreenshotSharingSupport.copyLink(
-            record, using: ScreenshotShareService.shared.copy,
+            record, using: links.copy,
             dismiss: { self.close() })
         if copied {
-            QuickToolHUD.show(icon: "link", message: strings.sharedHUD)
+            links.announce("link", strings.sharedHUD)
         } else {
-            QuickToolHUD.show(icon: "link", message: strings.linkCopyFailedHUD)
-            NSSound.beep()
+            links.announce("link", strings.linkCopyFailedHUD)
+            links.beep()
         }
         return copied
     }
@@ -392,20 +396,20 @@ package final class ScreenshotQuickPreviewController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await ScreenshotShareService.shared.delete(record)
+                try await self.links.delete(record)
                 guard !self.closed else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
                     self.model.sharedRecord = nil
                     self.model.deletingShare = false
                 }
-                QuickToolHUD.show(icon: "link", message: self.strings.linkDeletedHUD)
+                self.links.announce("link", self.strings.linkDeletedHUD)
                 self.autoDismissDuration = self.baseDismissDuration
                 self.resizePanel(showingLink: false)
             } catch {
                 guard !self.closed else { return }
                 self.model.deletingShare = false
-                QuickToolHUD.show(icon: "link", message: self.strings.deleteFailedHUD)
-                NSSound.beep()
+                self.links.announce("link", self.strings.deleteFailedHUD)
+                self.links.beep()
             }
             self.scheduleAutoDismiss()
         }
