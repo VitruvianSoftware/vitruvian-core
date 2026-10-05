@@ -314,7 +314,6 @@ GENERATED_TEST_SOURCES = [
     "NotchCaptureKeyboard.swift",
     "NotchCompact.swift",
     "NotchDestinations.swift",
-    "NotchDownloadFolderChoice.swift",
     "NotchFullscreen.swift",
     "NotchHover.swift",
     "NotchKeyMonitor.swift",

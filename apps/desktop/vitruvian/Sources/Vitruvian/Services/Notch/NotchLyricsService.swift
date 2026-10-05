@@ -9,29 +9,6 @@ import VitruvianDesign
 
 @MainActor
 package final class NotchLyricsService: ObservableObject {
-    /// The island a lyrics import returns to, as it is now.
-    package struct Island {
-        package var window: (any IslandWindowing)?
-        package var acceptsUserInteraction: Bool
-        package var expanded: Bool
-        package var selected: NotchModule
-        package var showingAppPanel: Bool
-        package var showingMetric: Bool
-        package var showingCaptureControls: Bool
-
-        package init(window: (any IslandWindowing)?, acceptsUserInteraction: Bool, expanded: Bool,
-                     selected: NotchModule, showingAppPanel: Bool, showingMetric: Bool,
-                     showingCaptureControls: Bool) {
-            self.window = window
-            self.acceptsUserInteraction = acceptsUserInteraction
-            self.expanded = expanded
-            self.selected = selected
-            self.showingAppPanel = showingAppPanel
-            self.showingMetric = showingMetric
-            self.showingCaptureControls = showingCaptureControls
-        }
-    }
-
     /// A file chooser for lyrics, as the import drives it.
     @MainActor
     package struct Chooser {
@@ -77,7 +54,7 @@ package final class NotchLyricsService: ObservableObject {
         /// failed rather than found nothing, off the main queue. Returns its
         /// cancellation.
         package var lookup: (URL, @escaping @Sendable (Data?, Bool) -> Void) -> () -> Void
-        package var island: () -> Island
+        package var island: () -> NotchIslandSurface
         package var makeChooser: () -> Chooser
         package var activate: () -> Void
         package var reopenMusic: () -> Void
@@ -87,7 +64,7 @@ package final class NotchLyricsService: ObservableObject {
         package init(isEnabled: @escaping () -> Bool,
                      onlineEnabled: @escaping () -> Bool,
                      lookup: @escaping (URL, @escaping @Sendable (Data?, Bool) -> Void) -> () -> Void,
-                     island: @escaping () -> Island,
+                     island: @escaping () -> NotchIslandSurface,
                      makeChooser: @escaping () -> Chooser,
                      activate: @escaping () -> Void,
                      reopenMusic: @escaping () -> Void,
@@ -112,15 +89,7 @@ package final class NotchLyricsService: ObservableObject {
                     let session = NotchLyricsDownload.load(url, completion: completion)
                     return { session.invalidateAndCancel() }
                 },
-                island: {
-                    let notch = NotchService.shared
-                    return Island(window: notch.presentationWindow,
-                                  acceptsUserInteraction: notch.acceptsUserInteraction,
-                                  expanded: notch.expanded, selected: notch.selected,
-                                  showingAppPanel: notch.showingAppPanel,
-                                  showingMetric: notch.selectedMetric != nil,
-                                  showingCaptureControls: notch.captureControls != nil)
-                },
+                island: { NotchIslandSurface.current },
                 makeChooser: { Chooser(NSOpenPanel()) },
                 activate: { NSApp.activate(ignoringOtherApps: true) },
                 reopenMusic: { NotchService.shared.open(.music, feedback: false) },
@@ -291,11 +260,7 @@ package final class NotchLyricsService: ObservableObject {
     }
 
     private func canReturnToLyrics(_ window: any IslandWindowing, track expected: NotchMusicIdentity) -> Bool {
-        let island = environment.island()
-        return visible && track == expected && environment.isEnabled()
-            && island.acceptsUserInteraction && island.window === window && window.isVisible
-            && island.expanded && island.selected == .music && !island.showingAppPanel
-            && !island.showingMetric && !island.showingCaptureControls
+        visible && track == expected && environment.isEnabled() && environment.island().shows(.music, in: window)
     }
 }
 

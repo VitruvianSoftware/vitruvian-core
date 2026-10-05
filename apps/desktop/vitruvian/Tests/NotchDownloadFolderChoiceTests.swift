@@ -7,143 +7,111 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The chooser and its cancellation/return methods are extracted from production.
-/// These objects model native dismissal order without creating windows or reading UI.
+/// The production folder choice runs on a session of doubles that model
+/// native dismissal order without creating windows or reading UI.
 enum NotchDownloadFolderChoiceContract {
-    final class Window {
-        struct Level { let rawValue: Int }
-        var level = Level(rawValue: 26)
+    final class Window: IslandWindowing {
+        var level = NSWindow.Level(rawValue: 26)
         var isVisible = true
-        var attachedSheet: Panel?
         var focusReturns = 0
-        func makeKeyAndOrderFront(_ sender: Any?) {
-            focusReturns += 1
-            NSApp.keyWindow = self
-        }
+        func makeKey() {}
     }
-    typealias NSWindow = Window
-    struct Event { let window: Window? }
-    enum NSApplication { enum ModalResponse { case OK, cancel } }
-    struct Location {
-        var fails = false
-        func bookmarkData(options: URL.BookmarkCreationOptions,
-                          includingResourceValuesForKeys: [URLResourceKey]?, relativeTo: URL?) throws -> Data {
-            if fails { throw CocoaError(.fileReadNoPermission) }
-            return Data([1, 2, 3])
-        }
-    }
+
     final class Panel {
         static weak var current: Panel?
-        var canChooseFiles = true
-        var canChooseDirectories = false
-        var allowsMultipleSelection = true
-        var directoryURL: URL?
-        var message = ""
-        var url: Location? = Location()
-        var level = Window.Level(rawValue: 0)
-        var hidesOnDeactivate = true
+        /// Set when begun on its own above the island.
+        var level: NSWindow.Level?
+        /// Begun as an ordinary window, as from Settings.
+        var ordinary = false
         var focused = false
-        weak var parent: Window?
-        var standalone = false
-        private var completed: ((NSApplication.ModalResponse) -> Void)?
-        func beginSheetModal(for parent: Window, completionHandler: @escaping (NSApplication.ModalResponse) -> Void) {
-            self.parent = parent
-            parent.attachedSheet = self
-            completed = completionHandler
+        var cancelled = false
+        var url: URL? = URL(fileURLWithPath: "/Users/example/Downloads", isDirectory: true)
+        var dismissed: () -> Void = {}
+        private var completed: ((NSApplication.ModalResponse, URL?) -> Void)?
+        var chooser: NotchDownloadFolderChoice.Chooser {
+            .init(beginAbove: { level, completion in
+                Self.current = self
+                self.level = level
+                self.completed = completion
+            }, begin: { completion in
+                Self.current = self
+                self.ordinary = true
+                self.completed = completion
+            }, makeKeyAndOrderFront: { self.focused = true },
+            cancel: { self.cancelled = true; self.finish(.cancel) })
         }
-        func begin(completionHandler: @escaping (NSApplication.ModalResponse) -> Void) {
-            Self.current = self
-            standalone = true
-            completed = completionHandler
-        }
-        func makeKeyAndOrderFront(_ sender: Any?) { focused = true }
         func finish(_ response: NSApplication.ModalResponse) {
             if Self.current === self { Self.current = nil }
-            parent?.attachedSheet = nil
-            completed?(response)
+            completed?(response, url)
             // Reproduce AppKit restoring a key window after calling completion.
-            NSApp.keyWindow = NSApp.settingsWindow
+            dismissed()
         }
-        func cancel(_ sender: Any?) { finish(.cancel) }
     }
-    typealias NSOpenPanel = Panel
-    final class Application {
+
+    final class Session {
         let settingsWindow = Window()
-        var currentEvent: Event?
-        var keyWindow: Window?
-        var activatedWithChooser = false
-        func activate(ignoringOtherApps: Bool) {
-            let notch = NotchService.shared
-            // A pending chooser keeps the island's working surface.
-            activatedWithChooser = Panel.current != nil
-            if currentEvent?.window === notch.presentationWindow,
-               !activatedWithChooser, !notch.pinned { notch.expanded = false }
-            keyWindow = settingsWindow
-        }
-    }
-    static var NSApp = Application()
-    enum DispatchQueue {
-        static var main = Queue()
-        final class Queue {
-            var jobs: [() -> Void] = []
-            func async(execute action: @escaping () -> Void) { jobs.append(action) }
-            func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
-        }
-    }
-    final class NotchService {
-        static var shared = NotchService()
-        var presentationWindow: Window? = Window()
-        var acceptsSystemFeedback = true
+        var window: Window? = Window()
         var acceptsUserInteraction = true
         var expanded = true
         var selected: NotchModule = .downloads
-        var showingAppPanel = false
-        var selectedMetric: Bool?
-        var captureControls: Bool?
         var pinned = false
-        var syncs = 0
-        func syncWithPreferences() { syncs += 1 }
-        func open(_ module: NotchModule, feedback: Bool) {
-            selected = module
-            expanded = true
-            presentationWindow?.makeKeyAndOrderFront(nil)
-        }
-    }
-    enum NotchSupport {
-        static var enabled = true
-        static var downloadsVisible = true
-        static func isEnabled() -> Bool { enabled }
-        static func modules() -> [NotchModule] { downloadsVisible ? [.downloads] : [.music] }
-    }
-    enum AppFeature {
-        static let notchDownloads = Feature()
-        final class Feature { var isAvailable = true }
-    }
-    enum UserDefaults {
-        static var standard = Store()
-        final class Store {
-            var values: [String: Any] = [:]
-            func set(_ value: Any, forKey key: String) { values[key] = value }
-        }
-    }
-    enum L10n {
-        static let shared = Localization()
-        final class Localization { let language: AppLanguage = .enUS }
-    }
+        var available = true
+        var downloadsShown = true
+        var eventWindow: Window?
+        var keyWindow: Window?
+        var activatedWithChooser = false
+        var panels: [Panel] = []
+        var bookmarkFails = false
+        var adopted: [Data] = []
+        var unavailable = false
+        var main: [() -> Void] = []
+        private(set) lazy var choice: NotchDownloadFolderChoice = NotchDownloadFolderChoice(environment: .init(
+            isAvailable: { self.available },
+            downloadsShown: { self.downloadsShown },
+            island: {
+                NotchIslandSurface(window: self.window, acceptsUserInteraction: self.acceptsUserInteraction,
+                                   expanded: self.expanded, selected: self.selected)
+            },
+            eventWindow: { self.eventWindow },
+            keyWindow: { self.keyWindow },
+            makeChooser: {
+                let panel = Panel()
+                panel.dismissed = { self.keyWindow = self.settingsWindow }
+                self.panels.append(panel)
+                return panel.chooser
+            },
+            activate: {
+                // A pending chooser keeps the island's working surface.
+                self.activatedWithChooser = Panel.current != nil
+                if self.eventWindow === self.window, !self.activatedWithChooser, !self.pinned { self.expanded = false }
+                self.keyWindow = self.settingsWindow
+            },
+            reopenDownloads: {
+                self.selected = .downloads
+                self.expanded = true
+                self.window?.focusReturns += 1
+                self.keyWindow = self.window
+            },
+            main: { work in self.main.append { work() } },
+            bookmark: { _ in
+                if self.bookmarkFails { throw CocoaError(.fileReadNoPermission) }
+                return Data([1, 2, 3])
+            },
+            adopt: { bookmark in
+                // The service stops watching, which ends any chooser, first.
+                self.choice.cancel()
+                self.adopted.append(bookmark)
+            },
+            markUnavailable: { self.unavailable = true }))
 
-    static func reset(fromNotch: Bool = true, pinned: Bool = false, menuAction: Bool = false) {
-        NSApp = Application()
-        DispatchQueue.main = DispatchQueue.Queue()
-        Panel.current = nil
-        NotchService.shared = NotchService()
-        NotchService.shared.pinned = pinned
-        NotchSupport.enabled = true
-        NotchSupport.downloadsVisible = true
-        AppFeature.notchDownloads.isAvailable = true
-        UserDefaults.standard = UserDefaults.Store()
-        let origin = fromNotch ? NotchService.shared.presentationWindow : NSApp.settingsWindow
-        NSApp.keyWindow = origin
-        NSApp.currentEvent = menuAction ? nil : Event(window: origin)
+        init(fromNotch: Bool = true, pinned: Bool = false, menuAction: Bool = false) {
+            self.pinned = pinned
+            let origin = fromNotch ? window : settingsWindow
+            keyWindow = origin
+            eventWindow = menuAction ? nil : origin
+        }
+
+        func drain() { while !main.isEmpty { main.removeFirst()() } }
     }
 }
 
@@ -153,131 +121,130 @@ enum NotchDownloadFolderChoiceTests {
     static func run(_ suite: TestSuite) {
         for pinned in [false, true] {
             for menu in [false, true] {
-                Context.reset(pinned: pinned, menuAction: menu)
-                let service = Context.Service()
-                let notch = Context.NotchService.shared
-                notch.acceptsSystemFeedback = false
-                let window = notch.presentationWindow!
-                service.chooseFolder()
-                guard let panel = service.chooser else { suite.expect(false, "the folder chooser was created"); continue }
-                suite.expect(panel.parent == nil && window.attachedSheet == nil && panel.standalone && panel.focused
-                       && panel.level.rawValue > window.level.rawValue && Context.NSApp.activatedWithChooser
-                       && !panel.hidesOnDeactivate,
-                       "notch buttons and menus focus a standalone picker despite hidden system feedback, begun before activation, "
-                       + "that stays up while another app is active")
-                suite.expect(notch.expanded && notch.pinned == pinned,
+                let session = Context.Session(pinned: pinned, menuAction: menu)
+                let choice = session.choice
+                let window = session.window!
+                choice.choose()
+                guard let panel = session.panels.last, choice.isChoosing else {
+                    suite.expect(false, "the folder chooser was created"); continue
+                }
+                suite.expect(!panel.ordinary && panel.focused && (panel.level?.rawValue ?? 0) > window.level.rawValue
+                       && session.activatedWithChooser,
+                       "notch buttons and menus focus a standalone picker, begun before activation")
+                suite.expect(session.expanded && session.pinned == pinned,
                        "opening the picker preserves the working surface and existing pin")
                 panel.finish(.OK)
-                suite.expect(Context.NSApp.keyWindow !== window && window.focusReturns == 0,
+                suite.expect(session.keyWindow !== window && window.focusReturns == 0,
                        "focus is not restored before native dismissal finishes")
-                Context.DispatchQueue.main.drain()
-                suite.expect(Context.NSApp.keyWindow === window && window.focusReturns == 1 && notch.pinned == pinned,
+                session.drain()
+                suite.expect(session.keyWindow === window && window.focusReturns == 1 && session.pinned == pinned,
                        "successful folder selection returns to the same Downloads surface without altering pin")
-                suite.expect(Context.UserDefaults.standard.values[DefaultsKey.notchDownloadsFolderBookmark] as? Data == Data([1, 2, 3])
-                       && Context.UserDefaults.standard.values[DefaultsKey.notchDownloadsEnabled] as? Bool == true,
+                suite.expect(session.adopted == [Data([1, 2, 3])] && !session.unavailable,
                        "only successful selection saves the folder authority and enables monitoring")
             }
         }
-        Context.reset()
-        let cancelled = Context.Service()
-        let original = Context.NotchService.shared.presentationWindow!
-        cancelled.chooseFolder()
-        cancelled.chooser?.finish(.cancel)
-        Context.DispatchQueue.main.drain()
-        suite.expect(original.focusReturns == 1 && Context.UserDefaults.standard.values.isEmpty,
+        let cancelled = Context.Session()
+        cancelled.choice.choose()
+        cancelled.panels.last?.finish(.cancel)
+        cancelled.drain()
+        suite.expect(cancelled.window?.focusReturns == 1 && cancelled.adopted.isEmpty,
                "Cancel returns to the still-open origin without saving a folder or enabling downloads")
 
-        Context.reset(fromNotch: false, pinned: true)
-        let settings = Context.Service()
-        let backgroundNotch = Context.NotchService.shared.presentationWindow!
-        settings.chooseFolder()
-        suite.expect(settings.chooser?.standalone == true && settings.chooser?.parent == nil
-               && settings.chooser?.level.rawValue == 0 && settings.chooser?.hidesOnDeactivate == true,
+        let settings = Context.Session(fromNotch: false, pinned: true)
+        let backgroundNotch = settings.window!
+        settings.choice.choose()
+        suite.expect(settings.panels.last?.ordinary == true && settings.panels.last?.level == nil,
                "a Settings action never borrows a pinned notch as its parent or rises to its level")
-        settings.chooser?.finish(.OK)
-        Context.DispatchQueue.main.drain()
-        suite.expect(backgroundNotch.focusReturns == 0 && Context.NSApp.keyWindow === Context.NSApp.settingsWindow,
+        settings.panels.last?.finish(.OK)
+        settings.drain()
+        suite.expect(backgroundNotch.focusReturns == 0 && settings.keyWindow === settings.settingsWindow
+               && settings.adopted.count == 1,
                "Settings selection stays in Settings and never opens or focuses the notch")
 
+        let removed = Context.Session(fromNotch: false)
+        removed.choice.choose()
+        removed.available = false
+        removed.panels.last?.finish(.OK)
+        suite.expect(removed.adopted.isEmpty, "a Settings chooser answered after the feature was removed saves nothing")
+
+        let clicked = Context.Session()
+        clicked.keyWindow = clicked.settingsWindow
+        clicked.choice.choose()
+        suite.expect(clicked.panels.last?.level != nil && clicked.panels.last?.ordinary == false,
+               "a click on the island opens the picker over it even while another window is key")
+
         for interruption in 0..<7 {
-            Context.reset()
-            let service = Context.Service()
-            let window = Context.NotchService.shared.presentationWindow!
-            service.chooseFolder()
-            let panel = service.chooser!
+            let session = Context.Session()
+            let window = session.window!
+            session.choice.choose()
+            let panel = session.panels.last!
             switch interruption {
-            case 0: service.stop()
-            case 1: Context.AppFeature.notchDownloads.isAvailable = false
-            case 2: Context.NotchService.shared.acceptsUserInteraction = false
-            case 3: Context.NotchService.shared.selected = .music
-            case 4: Context.NotchService.shared.expanded = false
-            case 5: Context.NotchService.shared.presentationWindow = Context.Window()
-            default: Context.NotchSupport.downloadsVisible = false
+            case 0: session.choice.cancel()
+            case 1: session.available = false
+            case 2: session.acceptsUserInteraction = false
+            case 3: session.selected = .music
+            case 4: session.expanded = false
+            case 5: session.window = Context.Window()
+            default: session.downloadsShown = false
             }
             panel.finish(.OK)
-            Context.DispatchQueue.main.drain()
-            suite.expect(window.focusReturns == 0 && Context.UserDefaults.standard.values.isEmpty,
+            session.drain()
+            suite.expect(window.focusReturns == 0 && session.adopted.isEmpty,
                    "stop, disable, lock, section change, collapse, replacement or hide rejects the stale folder result")
         }
         for interruption in 0..<4 {
-            Context.reset()
-            let service = Context.Service()
-            let window = Context.NotchService.shared.presentationWindow!
-            service.chooseFolder()
-            service.chooser?.finish(.OK)
+            let session = Context.Session()
+            let window = session.window!
+            session.choice.choose()
+            session.panels.last?.finish(.OK)
             switch interruption {
-            case 0: service.stop()
-            case 1: Context.NotchService.shared.selected = .music
-            case 2: Context.NotchService.shared.expanded = false
-            default: Context.AppFeature.notchDownloads.isAvailable = false
+            case 0: session.choice.cancel()
+            case 1: session.selected = .music
+            case 2: session.expanded = false
+            default: session.available = false
             }
-            Context.DispatchQueue.main.drain()
+            session.drain()
             suite.expect(window.focusReturns == 0, "an interruption during native dismissal cancels the deferred focus return too")
         }
-        Context.reset()
-        let newer = Context.Service()
-        let window = Context.NotchService.shared.presentationWindow!
-        newer.chooseFolder()
-        newer.chooser?.finish(.OK)
-        Context.NSApp.currentEvent = Context.Event(window: Context.NSApp.settingsWindow)
-        Context.NSApp.keyWindow = Context.NSApp.settingsWindow
-        newer.chooseFolder()
-        newer.chooser?.finish(.cancel)
-        Context.DispatchQueue.main.drain()
+        let newer = Context.Session()
+        let window = newer.window!
+        newer.choice.choose()
+        newer.panels.last?.finish(.OK)
+        newer.eventWindow = newer.settingsWindow
+        newer.keyWindow = newer.settingsWindow
+        newer.choice.choose()
+        newer.panels.last?.finish(.cancel)
+        newer.drain()
         suite.expect(window.focusReturns == 0, "a newer Settings chooser supersedes the old pending notch return")
 
-        Context.reset()
-        let failed = Context.Service()
-        let failureOrigin = Context.NotchService.shared.presentationWindow!
-        failed.chooseFolder()
-        failed.chooser?.url = Context.Location(fails: true)
-        failed.chooser?.finish(.OK)
-        Context.DispatchQueue.main.drain()
-        suite.expect(failed.folderUnavailable && failureOrigin.focusReturns == 1 && Context.UserDefaults.standard.values.isEmpty,
+        let failed = Context.Session()
+        failed.choice.choose()
+        failed.bookmarkFails = true
+        failed.panels.last?.finish(.OK)
+        failed.drain()
+        suite.expect(failed.unavailable && failed.window?.focusReturns == 1 && failed.adopted.isEmpty,
                "a failed folder grant returns to the existing error surface without saving or enabling anything")
 
-        Context.reset()
-        let leaving = Context.Service()
-        let leftIsland = Context.NotchService.shared.presentationWindow!
-        leaving.chooseFolder()
-        let islandChooser = leaving.chooser
-        leaving.cancelNotchFolderChoice()
-        Context.DispatchQueue.main.drain()
-        suite.expect(islandChooser != nil && Context.Panel.current == nil && leaving.chooser == nil,
+        let leaving = Context.Session()
+        leaving.choice.choose()
+        let islandChooser = leaving.panels.last
+        leaving.choice.cancelNotchChoice()
+        leaving.drain()
+        suite.expect(islandChooser?.cancelled == true && Context.Panel.current == nil && !leaving.choice.isChoosing,
                "leaving the island's Downloads page closes the chooser begun there")
-        suite.expect(leftIsland.focusReturns == 0 && Context.UserDefaults.standard.values.isEmpty,
+        suite.expect(leaving.window?.focusReturns == 0 && leaving.adopted.isEmpty,
                "the closed island chooser neither saves a folder nor refocuses the island")
 
-        Context.reset(fromNotch: false)
-        let staying = Context.Service()
-        staying.chooseFolder()
-        let settingsChooser = staying.chooser
-        staying.cancelNotchFolderChoice()
-        suite.expect(settingsChooser != nil && Context.Panel.current === settingsChooser && staying.chooser === settingsChooser,
+        let staying = Context.Session(fromNotch: false)
+        staying.choice.choose()
+        let settingsChooser = staying.panels.last
+        staying.choice.cancelNotchChoice()
+        suite.expect(settingsChooser?.cancelled == false && Context.Panel.current === settingsChooser
+               && staying.choice.isChoosing,
                "leaving the island's Downloads page leaves a chooser begun in Settings open")
         settingsChooser?.finish(.OK)
-        Context.DispatchQueue.main.drain()
-        suite.expect(Context.UserDefaults.standard.values[DefaultsKey.notchDownloadsEnabled] as? Bool == true,
+        staying.drain()
+        suite.expect(staying.adopted.count == 1,
                "the Settings chooser still saves the folder picked after the island's page went away")
     }
 }

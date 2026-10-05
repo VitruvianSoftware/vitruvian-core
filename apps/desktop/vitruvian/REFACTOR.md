@@ -931,7 +931,7 @@ leaves 64.
 - **Injected:** `NotchLyricsService` takes an `Environment`:
   - the preferences;
   - lookups, which return their cancellation;
-  - the island's state, as an `Island`;
+  - the island's state;
   - a `Chooser` (begin above a level, focus, cancel);
   - activation, reopening the music section, and both queues.
 
@@ -952,6 +952,30 @@ leaves 64.
   - work that supersedes a chosen file's late read;
   - an island that moved on before the reopen;
   - focus taken before activation.
+
+Landed (4b, the island's download folder choice): one more generated file
+goes, which leaves 63.
+
+- **Extracted:** `NotchDownloadFolderChoice` (new, `Services/Notch`) holds:
+  - choosing the watched folder, from the Downloads page or from Settings;
+  - returning to the page it came from;
+  - the chooser's cancellation.
+
+  `NotchDownloadService` owns it and adopts what is chosen: it stops, saves
+  the bookmark, enables watching and syncs.
+- **Injected:** the chooser (above the island or as an ordinary window),
+  the feature and page settings, the island, the event and key windows,
+  activation, the reopen, the main queue and the bookmark.
+- **Shared:** `NotchIslandSurface` (new) is the island state that a chooser
+  returns to, with `shows(_:in:)`. The lyrics importer uses it too.
+- **Test:** the test drives the real choice on a session of doubles instead
+  of copies of five service members.
+- **Checks added:** two mutants passed the old test, and each now fails one
+  of these:
+  - a Settings chooser answered after the feature was removed saves
+    nothing;
+  - a click on the island opens the picker over it, even while another
+    window is key.
 
 ## Step 5: decompose NotchService (in progress)
 

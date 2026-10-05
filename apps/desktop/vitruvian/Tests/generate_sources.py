@@ -1053,19 +1053,6 @@ def main():
             .replace("private static", "@discardableResult static", 1)
           + "}\n}\n")
 
-    downloads = "Sources/Vitruvian/Services/Notch/NotchDownloadService.swift"
-    write("NotchDownloadFolderChoice.swift", "import Foundation\n\nextension NotchDownloadFolderChoiceContract {\n"
-          + "final class Service {\nvar chooser: NSOpenPanel?\nvar chooserID = UUID()\nvar chooserInNotch = false\n"
-          + "var folderUnavailable = false\nvar syncs = 0\nvar stops = 0\n"
-          + "func syncWithPreferences() { syncs += 1 }\n"
-          + "func stop() { stops += 1; cancelFolderChoice() }\n"
-          + declaration(downloads, "    func chooseFolder()")
-          + declaration(downloads, "    private func folderPickerParent()")
-          + declaration(downloads, "    private func canReturnToDownloads(")
-          + declaration(downloads, "    private func cancelFolderChoice()")
-          + declaration(downloads, "    func cancelNotchFolderChoice()")
-          + "}\n}\n")
-
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):

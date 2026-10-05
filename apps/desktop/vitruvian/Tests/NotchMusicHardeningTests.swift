@@ -85,9 +85,8 @@ enum NotchLyricsContract {
                 return { lookup.cancelled = true }
             },
             island: {
-                .init(window: self.notch.window, acceptsUserInteraction: self.notch.acceptsUserInteraction,
-                      expanded: self.notch.expanded, selected: self.notch.selected, showingAppPanel: false,
-                      showingMetric: false, showingCaptureControls: false)
+                NotchIslandSurface(window: self.notch.window, acceptsUserInteraction: self.notch.acceptsUserInteraction,
+                                   expanded: self.notch.expanded, selected: self.notch.selected)
             },
             makeChooser: {
                 let chooser = Chooser()
