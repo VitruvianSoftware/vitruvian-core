@@ -799,6 +799,14 @@ goes, which leaves 73.
   in front cancels the restore. The stand-in it replaced always reported
   the item's app in front.
 
+Landed (4b, the keyboard debounce tap): one more generated file goes, which
+leaves 72.
+
+- **Injected:** `KeyboardDebounceService.suppresses(_:event:state:config:)` is
+  the tap's rule for a key event, with the state and settings passed in.
+- **What stayed:** the tap keeps its re-arm branch and its lock.
+- **Test:** the test calls the rule with a state of its own.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

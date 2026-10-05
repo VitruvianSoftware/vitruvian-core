@@ -305,7 +305,6 @@ GENERATED_TEST_SOURCES = [
     "DockAutohideInput.swift",
     "FanControlResume.swift",
     "KeepAwakeLidSleep.swift",
-    "KeyboardDebounceTap.swift",
     "LinearScrollTap.swift",
     "LocalizationCatalog.swift",
     "MediaDialogHost.swift",
