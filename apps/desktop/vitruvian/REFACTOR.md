@@ -3166,6 +3166,12 @@ title after `28 + 6` and centred a capsule's buttons with
 `headerButtonSpacing` now serve all four. The capture controls' narrow
 buttons are squares of their own `rowHeight`.
 
+Landed (5zf, the lyrics and queue cards): both cards gave their list
+`height - 24 - 10 - 18`: their padding twice, the spacing below the title
+row, and that row. Each also wrote its padding and spacing. They now read
+`NotchLayout.musicExtraPadding`, `musicExtraSpacing`,
+`musicExtraTitleHeight` and `musicExtraListHeight(_:)`.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

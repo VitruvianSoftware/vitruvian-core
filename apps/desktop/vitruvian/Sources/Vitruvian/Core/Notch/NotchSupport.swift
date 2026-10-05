@@ -520,6 +520,17 @@ package enum NotchLayout {
         min(layout == .spacious ? 148 : 120, max(musicPlayerMinimumHeight, height - musicControlsRowHeight - rowSpacing))
     }
 
+    /// The lyrics and queue cards: their padding, the space below their
+    /// title row, and that row.
+    package static let musicExtraPadding: CGFloat = 12
+    package static let musicExtraSpacing: CGFloat = 10
+    package static let musicExtraTitleHeight: CGFloat = 18
+
+    /// The room a lyrics or queue card `height` tall leaves for its list.
+    package static func musicExtraListHeight(_ height: CGFloat) -> CGFloat {
+        height - musicExtraPadding * 2 - musicExtraSpacing - musicExtraTitleHeight
+    }
+
     /// The smallest player the music page draws. Lyrics or the queue take
     /// its place where the page cannot hold both.
     package static let musicPlayerMinimumHeight: CGFloat = 88
