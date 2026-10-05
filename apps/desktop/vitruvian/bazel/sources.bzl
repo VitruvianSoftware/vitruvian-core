@@ -301,7 +301,6 @@ GENERATED_TEST_SOURCES = [
     "DockAutohideInput.swift",
     "KeepAwakeLidSleep.swift",
     "LocalizationCatalog.swift",
-    "MenuPanelKey.swift",
     "MenuPanelRecovery.swift",
     "MixerInputVolume.swift",
     "MixerOutputAdjustment.swift",

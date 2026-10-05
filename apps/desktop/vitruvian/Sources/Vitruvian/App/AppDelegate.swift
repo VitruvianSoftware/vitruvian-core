@@ -1074,44 +1074,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func handlePopoverKeyDown(_ event: NSEvent) -> NSEvent? {
-        if popover.isShown, event.keyCode == UInt16(kVK_Escape) {
-            // The monitor sees the whole app; Esc in another window, such as
-            // Settings or a popover or dialog opened from the panel, stays there.
-            guard let window = popover.contentViewController?.view.window,
-                  event.window === window else { return event }
-            // While an input method is composing, Esc belongs to it and
-            // drops the candidate; the panel closes on the next one.
-            if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
-            closePopover(reason: .escape)
-            return nil
-        }
-
-        guard popover.isShown,
-              PanelInteractionState.shared.viewKeepsPopoverOpen,
-              isPlainPopoverHoldKey(event),
-              let window = popover.contentViewController?.view.window else {
-            return event
-        }
-
-        // Text controls inside the popover, especially the Homebrew search
-        // field, need Space/Return delivered through AppKit's normal field
-        // editor path so delegates and target/actions can submit correctly.
-        if isTextEditingActive(in: window) {
-            return event
-        }
-
-        if NSApp.keyWindow === window || event.window === window {
-            window.firstResponder?.keyDown(with: event)
-            return nil
-        }
-        return event
+        panelKeys.handle(event) ? nil : event
     }
 
-    private func isPlainPopoverHoldKey(_ event: NSEvent) -> Bool {
-        let blockedModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
-        guard event.modifierFlags.intersection(blockedModifiers).isEmpty else { return false }
-        return event.keyCode == 49 || event.keyCode == 36 || event.keyCode == 76
+    private var popoverWindow: NSWindow? {
+        popover.contentViewController?.view.window
     }
+
+    /// The panel's keys (`MenuPanelKeyRoute`).
+    private lazy var panelKeys: MenuPanelKeyRoute<NSEvent> = MenuPanelKeyRoute(panel: .init(
+        isShown: { [weak self] in self?.popover.isShown == true },
+        window: { [weak self] in self?.popoverWindow },
+        isComposing: { [weak self] in (self?.popoverWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true },
+        viewKeepsOpen: { PanelInteractionState.shared.viewKeepsPopoverOpen },
+        isEditingText: { [weak self] in
+            guard let self, let window = self.popoverWindow else { return false }
+            return self.isTextEditingActive(in: window)
+        },
+        isKey: { [weak self] in
+            guard let window = self?.popoverWindow else { return false }
+            return NSApp.keyWindow === window
+        },
+        close: { [weak self] in self?.closePopover(reason: .escape) },
+        deliver: { [weak self] event in self?.popoverWindow?.firstResponder?.keyDown(with: event) }))
 
     private func isTextEditingActive(in window: NSWindow) -> Bool {
         guard let responder = window.firstResponder else { return false }

@@ -1370,6 +1370,21 @@ which leaves 39.
   `UpdateService` and `L10n`. It restores the language it changes.
 - **Verification:** SwiftUI and AppKit, so macOS CI only.
 
+Landed (4b, the menu bar panel's keys): one more generated file goes, which
+leaves 38.
+
+- **Moved:** what the panel's key monitor does with Escape and the held
+  Space and Return leaves `AppDelegate` for `MenuPanelKeyRoute`
+  (`Services/MenuPanelKeyRoute.swift`), over a `MenuPanelKeyEvent` that
+  `NSEvent` adopts and a `Panel` of closures. `AppDelegate` passes its
+  popover and keeps its text-editing check.
+- **Test:** the panel key test runs the real route instead of a copy of
+  three `AppDelegate` members. New checks: Escape on a closed panel, the
+  held keys and their modifiers, a key panel, a text field's own submit,
+  and a closed panel taking nothing.
+- **Verification:** a Linux model of the route runs the test (18 checks)
+  and kills all 14 mutants of the route.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
