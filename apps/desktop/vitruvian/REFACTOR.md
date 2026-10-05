@@ -1455,7 +1455,10 @@ files go, which leaves 33.
   answered, a validation that never answers gives up at its deadline, and a
   check that lands after the playback source changed is dropped.
 - **Verification:** a Swift 6 type-check of the flow and `send` on Linux;
-  the tests need macOS CI.
+  the tests need macOS CI. The first type-check stubbed `DispatchWorkItem` as
+  `Sendable`, which hid three captures macOS rejects (and one in the test).
+  Those locals are now `nonisolated(unsafe)`, since the queues read only the
+  item's thread-safe flag, and the model uses the real type.
 
 ## Step 5: decompose NotchService (in progress)
 

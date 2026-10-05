@@ -147,7 +147,8 @@ package final class NotchMusicAutomationFlow {
         guard target != self.target else { return }
         consentCancellation.cancel()
         discovery.cancel()
-        let cancellation = DispatchWorkItem {}
+        // The queues only read its flag, which is thread-safe.
+        nonisolated(unsafe) let cancellation = DispatchWorkItem {}
         discovery = cancellation
         self.target = target
         // Every page that shows the controls asks for a fresh look at the
@@ -187,7 +188,8 @@ package final class NotchMusicAutomationFlow {
         publish { requesting = true }
         let requested = host.generation()
         let context = host.playback()?.commandContext
-        let cancellation = DispatchWorkItem {}
+        // The queues only read its flag, which is thread-safe.
+        nonisolated(unsafe) let cancellation = DispatchWorkItem {}
         consentCancellation = cancellation
         let system = environment.system
         let main = environment.main
@@ -236,7 +238,8 @@ package final class NotchMusicAutomationFlow {
             cancelAction(); host.setCommandFailed(true); return
         }
         timeout?.cancel(); timeout = nil
-        let cancellation = cancellation
+        // The worker only reads its flag, which is thread-safe.
+        nonisolated(unsafe) let cancellation = cancellation
         let system = environment.system
         let validatedAt = system.uptime()
         let main = environment.main

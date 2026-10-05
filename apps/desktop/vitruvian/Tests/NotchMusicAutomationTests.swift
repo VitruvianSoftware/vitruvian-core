@@ -88,6 +88,8 @@ enum NotchMusicAutomationFlowContract {
                                interactive: { [player] in player.interactive.add($0) },
                                main: { [player] work in player.main.add { MainActor.assumeIsolated { work() } } },
                                after: { [unowned self] _, work in
+                                   // The flow schedules from the main thread, which runs the test.
+                                   nonisolated(unsafe) let work = work
                                    MainActor.assumeIsolated { self.timeouts.append(work) }
                                }))
 
