@@ -76,7 +76,13 @@ package final class DockPreviewService: ObservableObject {
     private var dockPIDCache: pid_t?
     private var cachedPreferences: DockPreviewPreferences?
     private var currentSpaceOnly = false
-    private var spaceChangeObserver: NSObjectProtocol?
+    private lazy var spaceObservation = DockPreviewSpaceObservation(
+        state: { [weak self] in
+            DockPreviewSpaceObservation.State(isRunning: self?.isRunning == true,
+                                              currentSpaceOnly: self?.currentSpaceOnly == true,
+                                              isDraggingWindow: self?.isDraggingWindow == true)
+        },
+        endSession: { [weak self] in self?.endSession() })
 
     private init() {}
 
@@ -132,35 +138,9 @@ package final class DockPreviewService: ObservableObject {
         }
 
         startTap()
-        syncSpaceObservation()
+        spaceObservation.sync()
     }
 
-    private func syncSpaceObservation() {
-        guard isRunning, currentSpaceOnly else {
-            stopSpaceObservation()
-            return
-        }
-        guard spaceChangeObserver == nil else { return }
-        spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            // Delivered on the main queue.
-            MainActor.assumeIsolated {
-                guard let self, self.isRunning, self.currentSpaceOnly,
-                      !self.isDraggingWindow else { return }
-                // Invalidate both the open list and a hover prefetched on the old
-                // desktop. Pinned panels keep their existing refresh cycle.
-                self.endSession()
-            }
-        }
-    }
-
-    private func stopSpaceObservation() {
-        if let spaceChangeObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
-        }
-        spaceChangeObserver = nil
-    }
 
     package func stop() {
         stopSettingsTimer()
@@ -412,7 +392,7 @@ package final class DockPreviewService: ObservableObject {
     }
 
     private func stopTap() {
-        stopSpaceObservation()
+        spaceObservation.stop()
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }

@@ -740,6 +740,18 @@ away, so 78 remain.
 - **Kept:** the copy of `AppUninstaller.Phase`, whose `.done` case holds the
   test's stand-in `Leftover`.
 
+Landed (4b, the Dock preview's desktop-change observer): one more generated
+file goes, which leaves 77.
+
+- **Extracted:** `Services/DockPreview/DockPreviewSpaceObservation.swift`
+  keeps at most one desktop-change observer. While previews list only the
+  current desktop, a change ends the open session, unless a window is being
+  dragged.
+- **Wiring:** `DockPreviewService` hands it its state and `endSession`. The
+  notification center and name are injected.
+- **Test:** the test drives the type on its own `NotificationCenter` instead
+  of copies of `syncSpaceObservation` and `stopSpaceObservation`.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

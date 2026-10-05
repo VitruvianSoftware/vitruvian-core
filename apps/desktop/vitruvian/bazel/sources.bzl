@@ -307,7 +307,6 @@ GENERATED_TEST_SOURCES = [
     "DisplayRestoration.swift",
     "DockAutohideInput.swift",
     "DockPreviewFrameRetry.swift",
-    "DockPreviewScope.swift",
     "FanControlResume.swift",
     "KeepAwakeLidSleep.swift",
     "KeyboardDebounceTap.swift",

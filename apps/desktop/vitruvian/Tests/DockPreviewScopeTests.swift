@@ -8,35 +8,9 @@ import VitruvianServices
 import VitruvianUI
 
 /// The module's own selection check with its desktop query passed in, and
-/// production observation methods with an isolated notification center. No
-/// windows, system notifications, desktop changes or synthetic input are used.
+/// the module's desktop-change observer on an isolated notification center.
+/// No windows, system notifications, desktop changes or synthetic input are used.
 enum DockPreviewScopeTests {
-    enum NSWorkspace {
-        static let shared = Workspace()
-        static let activeSpaceDidChangeNotification = Notification.Name("test.desktop.changed")
-    }
-
-    final class Workspace {
-        let notificationCenter = NotificationCenter()
-    }
-
-    final class Service {
-        typealias NSWorkspace = DockPreviewScopeTests.NSWorkspace
-        var isRunning = false
-        var currentSpaceOnly = false
-        var isDraggingWindow = false
-        var spaceChangeObserver: NSObjectProtocol?
-        var sessionEnds = 0
-        var pendingHover = false
-        var windows = [1]
-
-        func endSession() {
-            sessionEnds += 1
-            pendingHover = false
-            windows = []
-        }
-    }
-
     static func run(_ suite: TestSuite) {
         var hidden = false, queries = 0
         func mayActivate(currentSpaceOnly: Bool) -> Bool {
@@ -62,46 +36,58 @@ enum DockPreviewScopeTests {
         }
         suite.expect(windowless && queries == 0, "an item with no window is never asked about")
 
-        let service = Service()
-        let center = NSWorkspace.shared.notificationCenter
-        func changeDesktop() {
-            center.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        // The production observer, on its own notification center.
+        final class Preview {
+            var isRunning = false
+            var currentSpaceOnly = false
+            var isDraggingWindow = false
+            var sessionEnds = 0
         }
-        service.currentSpaceOnly = true
-        service.syncSpaceObservation()
-        suite.expect(service.spaceChangeObserver == nil, "a disabled preview does not observe desktop changes")
-        service.isRunning = true
-        service.syncSpaceObservation()
-        service.syncSpaceObservation()
-        service.pendingHover = true
+        let preview = Preview()
+        let center = NotificationCenter()
+        let desktopChanged = Notification.Name("test.desktop.changed")
+        let observation = DockPreviewSpaceObservation(
+            center: center, name: desktopChanged,
+            state: {
+                .init(isRunning: preview.isRunning, currentSpaceOnly: preview.currentSpaceOnly,
+                      isDraggingWindow: preview.isDraggingWindow)
+            },
+            endSession: { preview.sessionEnds += 1 })
+        func changeDesktop() {
+            center.post(name: desktopChanged, object: nil)
+        }
+        preview.currentSpaceOnly = true
+        observation.sync()
+        suite.expect(!observation.isObserving, "a disabled preview does not observe desktop changes")
+        preview.isRunning = true
+        observation.sync()
+        observation.sync()
         changeDesktop()
-        suite.expect(service.sessionEnds == 1 && service.windows.isEmpty && !service.pendingHover,
-               "one desktop change dismisses the old list and invalidates its prefetched hover exactly once")
-        service.windows = [2]
-        service.syncSpaceObservation()
+        suite.expect(preview.sessionEnds == 1, "one desktop change ends the open session exactly once")
+        observation.sync()
         changeDesktop()
-        suite.expect(service.sessionEnds == 2 && service.windows.isEmpty,
+        suite.expect(preview.sessionEnds == 2,
                "changing another preference cannot leave the next desktop list stale")
-        service.isDraggingWindow = true
+        preview.isDraggingWindow = true
         changeDesktop()
-        suite.expect(service.sessionEnds == 2, "a window being dragged can still be carried to another desktop")
-        service.isDraggingWindow = false
-        service.currentSpaceOnly = false
-        service.syncSpaceObservation()
+        suite.expect(preview.sessionEnds == 2, "a window being dragged can still be carried to another desktop")
+        preview.isDraggingWindow = false
+        preview.currentSpaceOnly = false
+        observation.sync()
         changeDesktop()
-        suite.expect(service.spaceChangeObserver == nil && service.sessionEnds == 2,
+        suite.expect(!observation.isObserving && preview.sessionEnds == 2,
                "all-desktop previews keep their session and stop observing desktop changes")
-        service.currentSpaceOnly = true
-        service.syncSpaceObservation()
-        service.isRunning = false
+        preview.currentSpaceOnly = true
+        observation.sync()
+        preview.isRunning = false
         changeDesktop()
-        suite.expect(service.sessionEnds == 2, "a queued desktop notification cannot act after disabling previews")
-        service.stopSpaceObservation()
-        suite.expect(service.spaceChangeObserver == nil, "stopping the tap removes desktop observation")
-        service.isRunning = true
-        service.syncSpaceObservation()
+        suite.expect(preview.sessionEnds == 2, "a queued desktop notification cannot act after disabling previews")
+        observation.stop()
+        suite.expect(!observation.isObserving, "stopping the tap removes desktop observation")
+        preview.isRunning = true
+        observation.sync()
         changeDesktop()
-        suite.expect(service.sessionEnds == 3, "re-enabling scoped previews restores exactly one observer")
-        service.stopSpaceObservation()
+        suite.expect(preview.sessionEnds == 3, "re-enabling scoped previews restores exactly one observer")
+        observation.stop()
     }
 }
