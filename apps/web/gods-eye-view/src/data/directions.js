@@ -32,6 +32,7 @@
  * the layer's pure helpers for the tests and the share-link code.
  */
 
+import * as credits from './dataCredits.js';
 import * as render from '../renderGovernor.js';
 import * as sprites from './spriteOrder.js';
 import * as picking from './pickRegistry.js';
@@ -45,6 +46,7 @@ import { createDirectionsLayer } from '../layers/directions/index.js';
 
 /** The shared scene owners every Directions instance runs on. */
 export const directionsServices = Object.freeze({
+  credits,
   render,
   sprites,
   picking,

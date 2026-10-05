@@ -21,10 +21,10 @@
  */
 
 import { CockpitViewController, CockpitDisplayPortal } from './cockpit.js';
-import { STYLE_STATUS_LABELS } from './visualPresets.js';
 import { cockpitEntryAllowed } from '../contextModePolicy.js';
 import { formatAwarenessLabel } from '../data/militaryAwarenessEngine.js';
 import { enterCockpitWithTracking } from '../cockpitTracking.js';
+import { cockpitVisionModeForStyle } from '../cockpitVisionPolicy.js';
 
 /** Own Cockpit entry/rollback, readouts and the single Display portal. */
 export class CockpitCoordinator {
@@ -94,11 +94,9 @@ export class CockpitCoordinator {
       },
       onVisionChange: (mode, active, options) =>
         this._setCockpitVision(mode, active, options),
+      getInitialVisionMode: () => cockpitVisionModeForStyle(this.activeStyle),
       onCameraTakeover: () =>
         this._stampNavigation({ cancelPendingSelection: false }),
-      getInheritedVisionLabel: () =>
-        STYLE_STATUS_LABELS[this.activeStyle] ||
-        String(this.activeStyle || 'normal').toUpperCase(),
       isEntryAllowed: () =>
         cockpitEntryAllowed({
           contextMode: this._contextMode,
