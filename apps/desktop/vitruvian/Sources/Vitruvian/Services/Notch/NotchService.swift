@@ -108,6 +108,8 @@ package final class NotchService: ObservableObject {
             package var fullscreen: NotchFullscreenVisibility.Environment
             package var screenEdges: @MainActor (_ islandWindow: @escaping () -> NSWindow?) -> NotchScreenEdgeClicks.Environment
             package var fileDrop: @MainActor (_ shelfAccept: @escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment
+            /// The clicks and keys the open island hears.
+            package var openEvents: NotchOpenEvents
             /// The app's own notifications: menus, windows, screens and preferences.
             package var notifications: NotificationCenter
             /// The workspace's: Spaces, the app in front and accessibility.
@@ -125,6 +127,7 @@ package final class NotchService: ObservableObject {
                          fullscreen: NotchFullscreenVisibility.Environment,
                          screenEdges: @escaping @MainActor (@escaping () -> NSWindow?) -> NotchScreenEdgeClicks.Environment,
                          fileDrop: @escaping @MainActor (@escaping (NSPasteboard) -> Bool) -> NotchFileDrop.Environment,
+                         openEvents: NotchOpenEvents,
                          notifications: NotificationCenter, workspaceNotifications: NotificationCenter,
                          sessionNotifications: NotificationCenter,
                          currentSession: @escaping @MainActor () -> NotchSessionState) {
@@ -137,6 +140,7 @@ package final class NotchService: ObservableObject {
                 self.fullscreen = fullscreen
                 self.screenEdges = screenEdges
                 self.fileDrop = fileDrop
+                self.openEvents = openEvents
                 self.notifications = notifications
                 self.workspaceNotifications = workspaceNotifications
                 self.sessionNotifications = sessionNotifications
@@ -150,6 +154,7 @@ package final class NotchService: ObservableObject {
                       screenRefresh: .system, fullscreen: .system,
                       screenEdges: { NotchScreenEdgeClicks.Environment.system(islandWindow: $0) },
                       fileDrop: { NotchFileDrop.Environment.system(shelfAccept: $0) },
+                      openEvents: .system,
                       notifications: .default, workspaceNotifications: NSWorkspace.shared.notificationCenter,
                       sessionNotifications: DistributedNotificationCenter.default(),
                       currentSession: { NotchSessionTracker.current() })
@@ -556,7 +561,7 @@ package final class NotchService: ObservableObject {
                 self.refreshPresentation(animated: false)
             },
             refreshPresentation: { [weak self] in self?.refreshPresentation(animated: false) },
-            resignKey: { [weak self] in self?.panel?.resignKey() },
+            resignKey: { [weak self] in self?.windowHost?.releaseKeyboard() },
             rememberPasteTarget: { [services] in services.rememberPasteTarget() },
             collapse: { [weak self] in self?.collapse() },
             takeDisplay: { [weak self] id in
@@ -1475,7 +1480,7 @@ package final class NotchService: ObservableObject {
         inside = windowHost?.containsHover(pointer()) == true
         installEventMonitors()
         syncVisibleConsumers()
-        if takeFocus { panel.makeKey() }
+        if takeFocus { windowHost?.takeKeyboard() }
         if feedback, changesPresentation { provideHapticFeedback() }
     }
 
@@ -1499,7 +1504,7 @@ package final class NotchService: ObservableObject {
             sectionRow = 0
         }
         panel?.acceptsKeyFocus = false
-        panel?.resignKey()
+        windowHost?.releaseKeyboard()
         removeEventMonitors()
         syncVisibleConsumers()
         closeCapture?()
@@ -1855,7 +1860,7 @@ package final class NotchService: ObservableObject {
     package func showScratchpad(toggle: Bool = false) -> Bool {
         guard NotchSupport.routesScratchpad(in: defaults), acceptsUserInteraction else { return false }
         if toggle, expanded, selected == .scratchpad, !showingAppPanel, !showingSections,
-           selectedMetric == nil, panel?.isKeyWindow == true { collapse() }
+           selectedMetric == nil, windowHost?.hasKeyboard == true { collapse() }
         else { open(.scratchpad) }
         return true
     }
@@ -1981,7 +1986,7 @@ package final class NotchService: ObservableObject {
         // comes back before they open.
         hoverState.close(pointerInside: windowHost?.containsHover(pointer()) == true)
         panel?.orderFrontRegardless()
-        panel?.makeKey()
+        windowHost?.takeKeyboard()
         installCaptureControlsClickThrough()
         syncVisibleConsumers()
         closeCapture?()
@@ -2004,7 +2009,7 @@ package final class NotchService: ObservableObject {
         hoverState.open()
         captureControlsCollapsed = false
         refreshPresentation()
-        panel?.makeKey()
+        windowHost?.takeKeyboard()
         updateCaptureControlsClickThrough()
     }
 
@@ -2126,7 +2131,7 @@ package final class NotchService: ObservableObject {
         removeCaptureControlsClickThrough()
         panel?.level = NotchPanel.normalLevel
         panel?.acceptsKeyFocus = false
-        panel?.resignKey()
+        windowHost?.releaseKeyboard()
         refreshPresentation()
         syncVisibleConsumers()
     }
@@ -2877,7 +2882,7 @@ package final class NotchService: ObservableObject {
     private func applicationDidActivate() { screenRefresh.applicationDidActivate() }
 
     private func syncPanelKey() {
-        let isKey = panel?.isKeyWindow == true
+        let isKey = windowHost?.hasKeyboard == true
         if panelIsKey != isKey { panelIsKey = isKey }
     }
 
@@ -2928,15 +2933,10 @@ package final class NotchService: ObservableObject {
     private func installEventMonitors() {
         guard eventMonitors.isEmpty else { return }
         clickedSinceOpening = false
-        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
+        eventMonitors = parts.openEvents.addMonitors({ [weak self] in
             guard let self, self.clickIsAway() else { return }
             self.collapse()
-        }) { eventMonitors.append(token) }
-        if let token = NSEvent.addLocalMonitorForEvents(matching: clicks.union(.keyDown), handler: { [weak self] event in
-            guard let self else { return event }
-            return self.localEvents.handle(event) ? nil : event
-        }) { eventMonitors.append(token) }
+        }, { [weak self] event in self?.localEvents.handle(event) == true })
     }
 
     /// A click lands away from the island: not on it, its status item or the
@@ -3053,7 +3053,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func removeEventMonitors() {
-        eventMonitors.forEach(NSEvent.removeMonitor)
+        eventMonitors.forEach(parts.openEvents.removeMonitor)
         eventMonitors.removeAll()
     }
 

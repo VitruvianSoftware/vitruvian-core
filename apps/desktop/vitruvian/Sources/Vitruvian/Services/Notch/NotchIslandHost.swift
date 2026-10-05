@@ -16,6 +16,11 @@ package protocol NotchIslandHost: AnyObject {
     var departsContent: Bool { get }
     var isConcealedForMissionControl: Bool { get }
     var missionControlDidRestore: (() -> Void)? { get set }
+    /// The island's window holds the keyboard.
+    var hasKeyboard: Bool { get }
+    /// Asks for the keyboard, which the window takes while it accepts key focus.
+    func takeKeyboard()
+    func releaseKeyboard()
 
     func containsHover(_ screenPoint: CGPoint) -> Bool
     func contains(_ screenPoint: CGPoint) -> Bool
@@ -38,4 +43,8 @@ package protocol NotchIslandHost: AnyObject {
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void)
 }
 
-extension NotchWindowHost: NotchIslandHost {}
+extension NotchWindowHost: NotchIslandHost {
+    package var hasKeyboard: Bool { panel.isKeyWindow }
+    package func takeKeyboard() { panel.makeKey() }
+    package func releaseKeyboard() { panel.resignKey() }
+}
