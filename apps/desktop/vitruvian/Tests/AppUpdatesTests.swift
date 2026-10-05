@@ -7,7 +7,7 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Generated production methods run with URLSession, controlled responses and a
+/// The production service's online sources run with controlled responses and a
 /// clock. No installed app is scanned, opened or changed by these contracts.
 enum AppUpdatesContract {
     /// The test sets it before a check starts; the check's queue then reads it.
@@ -21,12 +21,14 @@ enum AppUpdatesContract {
         }
     }
 
-    nonisolated enum URLSessionConfiguration {
-        static var ephemeral: Foundation.URLSessionConfiguration {
-            let configuration = Foundation.URLSessionConfiguration.ephemeral
-            configuration.protocolClasses = [ResponseProtocol.self]
-            return configuration
-        }
+    /// A service whose feeds and catalog are answered by `ResponseProtocol`,
+    /// on a clock of the test's.
+    static func makeService(_ clock: Clock = Clock()) -> AppUpdatesService {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ResponseProtocol.self]
+        return AppUpdatesService(network: .init(now: { clock.now() },
+                                                catalogSession: URLSession(configuration: configuration),
+                                                feedProtocolClasses: [ResponseProtocol.self]))
     }
 
     /// URL loading calls the protocol on its own threads.
@@ -77,11 +79,11 @@ enum AppUpdatesContract {
 
     final class Reply {
         let semaphore = DispatchSemaphore(value: 0)
-        var value: Service.SourceResult?
+        var value: AppUpdatesService.SourceResult?
     }
 
-    static func publisher(_ apps: [AppUpdatesSupport.InstalledApp], service: Service = Service(),
-                          suite: TestSuite) -> Service.SourceResult {
+    static func publisher(_ apps: [AppUpdatesSupport.InstalledApp], service: AppUpdatesService = makeService(),
+                          suite: TestSuite) -> AppUpdatesService.SourceResult {
         let reply = Reply()
         service.workQueue.async {
             service.publisherFindings(for: apps, operatingSystemVersion: "15.7") {
@@ -94,8 +96,8 @@ enum AppUpdatesContract {
         return reply.value ?? .init(items: [], available: false, uncheckedApps: apps)
     }
 
-    static func catalog(_ apps: [AppUpdatesSupport.InstalledApp], service: Service, refresh: Bool,
-                        suite: TestSuite) -> Service.SourceResult {
+    static func catalog(_ apps: [AppUpdatesSupport.InstalledApp], service: AppUpdatesService, refresh: Bool,
+                        suite: TestSuite) -> AppUpdatesService.SourceResult {
         let reply = Reply()
         service.workQueue.async {
             service.onlineCatalogFindings(for: apps, operatingSystemVersion: "15.7", forceRefresh: refresh) {
@@ -142,7 +144,7 @@ enum AppUpdatesContract {
                 ResponseProtocol.reset([url: .init(status: status)])
                 let feed = publisher([candidate], suite: suite)
                 for (name, entries, covered, rowCount) in cases {
-                    let online = Service().onlineResult(candidates: [candidate], catalog: entries, operatingSystemVersion: "15.7")
+                    let online = makeService().onlineResult(candidates: [candidate], catalog: entries, operatingSystemVersion: "15.7")
                     let resolved = feed.resolvingCatalogFallback(checkedPaths: online.checkedPaths, candidates: [candidate])
                     let label = "\(format) \(status) \(name)"
                     suite.expect(resolved.available == covered, "\(label): only usable catalog coverage clears a missing-feed warning")
@@ -171,14 +173,14 @@ enum AppUpdatesContract {
                 .replacingOccurrences(of: "2.0", with: "1.0")
             ResponseProtocol.reset([url: .init(body: Data(currentBody.utf8))])
             let current = publisher([candidate], suite: suite)
-            let online = Service().onlineResult(candidates: [candidate], catalog: [entry()], operatingSystemVersion: "15.7")
+            let online = makeService().onlineResult(candidates: [candidate], catalog: [entry()], operatingSystemVersion: "15.7")
             let visible = online.items.filter { !current.checkedPaths.contains($0.bundlePath ?? "") }
             suite.expect(current.available && current.items.isEmpty && visible.isEmpty,
                          "a successful publisher answer with no update still overrides a newer catalog row")
         }
 
         let unknownVersion = AppUpdatesSupport.InstalledApp(name: app.name, bundleID: app.bundleID, path: app.path, version: "latest", isFromAppStore: false)
-        suite.expect(Service().onlineResult(candidates: [unknownVersion], catalog: [entry()], operatingSystemVersion: "15.7").checkedPaths.isEmpty,
+        suite.expect(makeService().onlineResult(candidates: [unknownVersion], catalog: [entry()], operatingSystemVersion: "15.7").checkedPaths.isEmpty,
                      "an unknown installed version cannot prove catalog coverage")
 
         var shared = app
@@ -206,8 +208,9 @@ enum AppUpdatesContract {
                      "out-of-order batches keep real failures separate from covered absent feeds")
         suite.expect(ResponseProtocol.requestCount == 6, "every distinct feed is visited once across batches")
         for cutoff in [1, 2] {
-            let service = Service()
-            service.clock.expireAfterReads = cutoff
+            let clock = Clock()
+            clock.expireAfterReads = cutoff
+            let service = makeService(clock)
             ResponseProtocol.reset(Dictionary(uniqueKeysWithValues: batch.map { ($0.updateFeed!.url.absoluteString, .init(status: 404)) }))
             let stopped = publisher(batch, service: service, suite: suite)
             let resolved = stopped.resolvingCatalogFallback(checkedPaths: Set(batch.map(\.path)), candidates: batch)
@@ -223,7 +226,8 @@ enum AppUpdatesContract {
 
         let catalogURL = AppUpdatesSupport.onlineCatalogURL.absoluteString
         let body = Data(#"[{"token":"editor","version":"1.0","artifacts":[{"app":["Editor.app"]},{"uninstall":[{"quit":"com.example.editor"}]}]}]"#.utf8)
-        let service = Service()
+        let clock = Clock()
+        let service = makeService(clock)
         ResponseProtocol.reset([catalogURL: .init(body: body)])
         let first = catalog([shared], service: service, refresh: true, suite: suite)
         suite.expect(first.available && first.items.isEmpty && first.checkedPaths == [shared.path],
@@ -238,7 +242,7 @@ enum AppUpdatesContract {
         let uncovered = grouped.resolvingCatalogFallback(checkedPaths: failedRefresh.checkedPaths, candidates: [shared, renamed])
         suite.expect(!uncovered.available && uncovered.uncheckedApps.count == 2,
                      "a missing publisher plus failed catalog retains both unresolved apps")
-        service.clock.value = service.clock.value.addingTimeInterval(3601)
+        clock.value = clock.value.addingTimeInterval(3601)
         ResponseProtocol.reset([catalogURL: .init(body: Data("[]".utf8))])
         let expired = catalog([shared], service: service, refresh: false, suite: suite)
         suite.expect(expired.available && expired.checkedPaths.isEmpty && ResponseProtocol.requestCount == 1,

@@ -1547,6 +1547,12 @@ is that notice. Add an entry for every change to upstream files.
   (preferences, availability, notifications, scan) and splits the scan from
   `check()`; `Tests/AppUpdateRulesTests.swift` drives the real service, and
   `Tests/generate_sources.py` no longer copies its rule members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/AppUpdates/AppUpdatesService.swift` takes an injected `Network` (clock,
+  catalog session, feed URL loading) and opens its online sources to the package,
+  and `Services/AppUpdates/AppUpdateFeedLoader.swift` accepts URL protocol classes;
+  `Tests/AppUpdatesTests.swift` drives them, and `Tests/generate_sources.py` no
+  longer copies the loader or the service's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

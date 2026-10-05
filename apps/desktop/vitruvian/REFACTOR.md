@@ -1252,6 +1252,24 @@ goes, which leaves 46.
   instead of a copy of ten members.
 - **Verification:** AppKit and Combine, so macOS CI only.
 
+Landed (4b, app updates' online sources): one more generated file goes, which
+leaves 45.
+
+- **Injected:** `AppUpdatesService` also takes a `Network`:
+  - the clock the publisher deadline and the catalog cache read;
+  - the catalog's session;
+  - the URL loading for publisher feeds, which `AppUpdateFeedLoader.load(_:protocolClasses:completion:)`
+    now accepts.
+
+  `live` is the system's.
+- **Opened:** `SourceResult`, `publisherFindings`, `onlineCatalogFindings`,
+  `onlineResult` and `workQueue` are `package`.
+- **Test:** the findings test runs the real feed loader, batch loop, catalog
+  cache and fallback resolution over answered requests, instead of copies of
+  the loader and four service members.
+- **Verification:** URL loading through `URLProtocol` and the Darwin kernel
+  query keep this on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

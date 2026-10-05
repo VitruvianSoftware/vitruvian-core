@@ -16,7 +16,10 @@ package final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
 
     private init(completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) { self.completion = completion }
 
-    package static func load(_ url: URL, completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) {
+    /// `protocolClasses` replaces the system's URL loading; tests answer
+    /// requests themselves through it.
+    package static func load(_ url: URL, protocolClasses: [AnyClass]? = nil,
+                             completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) {
         guard AppUpdateFeedSupport.publicURL(url.absoluteString) != nil else {
             completion(.failed)
             return
@@ -29,6 +32,7 @@ package final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        if let protocolClasses { configuration.protocolClasses = protocolClasses }
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         session.dataTask(with: url).resume()
         session.finishTasksAndInvalidate()

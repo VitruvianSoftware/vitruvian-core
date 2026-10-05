@@ -75,7 +75,33 @@ package final class AppUpdatesService: ObservableObject {
         }
     }
 
+    /// The clock and the network the online sources use, read on the work
+    /// queue. `live` is the system's; tests answer requests themselves.
+    package struct Network: @unchecked Sendable {
+        // Set once at creation and only read afterwards.
+        package let now: @Sendable () -> Date
+        package let catalogSession: URLSession
+        /// Replaces the system's URL loading for publisher feeds; nil keeps it.
+        package let feedProtocolClasses: [AnyClass]?
+
+        package init(now: @escaping @Sendable () -> Date, catalogSession: URLSession, feedProtocolClasses: [AnyClass]?) {
+            self.now = now
+            self.catalogSession = catalogSession
+            self.feedProtocolClasses = feedProtocolClasses
+        }
+
+        package static var live: Network {
+            let configuration = URLSessionConfiguration.default
+            configuration.requestCachePolicy = .useProtocolCachePolicy
+            configuration.timeoutIntervalForRequest = 10
+            configuration.timeoutIntervalForResource = 20
+            return Network(now: { Date() }, catalogSession: URLSession(configuration: configuration),
+                           feedProtocolClasses: nil)
+        }
+    }
+
     private let environment: Environment
+    private let network: Network
 
     @Published package private(set) var items: [AppUpdatesSupport.Item] = []
     @Published package private(set) var rules: [AppUpdatesSupport.UpdateRule] = []
@@ -99,16 +125,9 @@ package final class AppUpdatesService: ObservableObject {
     @Published package private(set) var hasCheckedThisSession = false
     @Published package private(set) var lastError: String?
 
-    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.appupdates", qos: .utility)
+    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.appupdates", qos: .utility)
     private let lookupSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 20
-        return URLSession(configuration: configuration)
-    }()
-    private let catalogSession: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        configuration.requestCachePolicy = .useProtocolCachePolicy
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 20
         return URLSession(configuration: configuration)
@@ -130,8 +149,9 @@ package final class AppUpdatesService: ObservableObject {
     /// list refreshes itself even when no window is on screen to notice.
     private var upgradeObserver: AnyCancellable?
 
-    package init(environment: Environment = .live) {
+    package init(environment: Environment = .live, network: Network = .live) {
         self.environment = environment
+        self.network = network
         let stamp = environment.defaults.double(forKey: DefaultsKey.appUpdatesLastCheck)
         lastCheck = stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
         rules = AppUpdatesSupport.decodedRules(
@@ -508,14 +528,25 @@ package final class AppUpdatesService: ObservableObject {
 
     // MARK: - Online catalog source
 
-    private struct SourceResult {
-        let items: [AppUpdatesSupport.Item]
-        let available: Bool
-        var checkedPaths: Set<String> = []
-        var uncheckedApps: [AppUpdatesSupport.InstalledApp] = []
-        var catalogFallbackPaths: Set<String> = []
+    /// One source's answer: what it found, which apps it could and could
+    /// not check, and which apps only the catalog can vouch for.
+    package struct SourceResult {
+        package let items: [AppUpdatesSupport.Item]
+        package let available: Bool
+        package var checkedPaths: Set<String> = []
+        package var uncheckedApps: [AppUpdatesSupport.InstalledApp] = []
+        package var catalogFallbackPaths: Set<String> = []
 
-        func resolvingCatalogFallback(checkedPaths catalogPaths: Set<String>,
+        package init(items: [AppUpdatesSupport.Item], available: Bool, checkedPaths: Set<String> = [],
+                     uncheckedApps: [AppUpdatesSupport.InstalledApp] = [], catalogFallbackPaths: Set<String> = []) {
+            self.items = items
+            self.available = available
+            self.checkedPaths = checkedPaths
+            self.uncheckedApps = uncheckedApps
+            self.catalogFallbackPaths = catalogFallbackPaths
+        }
+
+        package func resolvingCatalogFallback(checkedPaths catalogPaths: Set<String>,
                                       candidates: [AppUpdatesSupport.InstalledApp]) -> SourceResult {
             let missing = catalogFallbackPaths.subtracting(catalogPaths)
             return SourceResult(items: items, available: available && missing.isEmpty,
@@ -527,7 +558,7 @@ package final class AppUpdatesService: ObservableObject {
     nonisolated private static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60
 
     nonisolated
-    private func publisherFindings(for candidates: [AppUpdatesSupport.InstalledApp],
+    package func publisherFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                    operatingSystemVersion: String,
                                    completion: @escaping (SourceResult) -> Void) {
         var grouped: [AppUpdateFeedSupport.Feed: [AppUpdatesSupport.InstalledApp]] = [:]
@@ -540,7 +571,7 @@ package final class AppUpdatesService: ObservableObject {
         var uncheckedPaths = Set<String>()
         var catalogFallbackPaths = Set<String>()
         var complete = true
-        let deadline = Date().addingTimeInterval(60)
+        let deadline = network.now().addingTimeInterval(60)
         var kernelBytes = [CChar](repeating: 0, count: 256)
         var kernelSize = kernelBytes.count
         let kernelVersion = sysctlbyname("kern.osrelease", &kernelBytes, &kernelSize, nil, 0) == 0
@@ -554,7 +585,7 @@ package final class AppUpdatesService: ObservableObject {
         // Four at a time, coalesced by URL, with a ceiling for the whole pass.
         // All accumulated results are confined to workQueue.
         func checkBatch(_ start: Int) {
-            guard start < feeds.count, Date() < deadline else {
+            guard start < feeds.count, network.now() < deadline else {
                 // A feed the deadline cut off was not checked, so keep its apps named.
                 uncheckedPaths.formUnion(feeds[start...].flatMap { $0.value.map(\.path) })
                 completion(SourceResult(items: items, available: complete && start >= feeds.count,
@@ -568,7 +599,7 @@ package final class AppUpdatesService: ObservableObject {
             let group = DispatchGroup()
             for (feed, apps) in feeds[start..<end] {
                 group.enter()
-                AppUpdateFeedLoader.load(feed.url) { loadResult in
+                AppUpdateFeedLoader.load(feed.url, protocolClasses: network.feedProtocolClasses) { loadResult in
                     self.workQueue.async {
                         defer { group.leave() }
                         let findings = AppUpdateFeedSupport.findings(
@@ -589,7 +620,7 @@ package final class AppUpdatesService: ObservableObject {
     }
 
     nonisolated
-    private func onlineCatalogFindings(for candidates: [AppUpdatesSupport.InstalledApp],
+    package func onlineCatalogFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                        operatingSystemVersion: String,
                                        forceRefresh: Bool,
                                        completion: @escaping (SourceResult) -> Void) {
@@ -598,7 +629,7 @@ package final class AppUpdatesService: ObservableObject {
             return
         }
 
-        let now = Date()
+        let now = network.now()
         if !forceRefresh, let cache = onlineCatalogCache {
             let age = now.timeIntervalSince(cache.loadedAt)
             if age >= 0, age < Self.onlineCatalogCacheLifetime {
@@ -611,7 +642,7 @@ package final class AppUpdatesService: ObservableObject {
 
         var request = URLRequest(url: AppUpdatesSupport.onlineCatalogURL)
         if forceRefresh { request.cachePolicy = .reloadIgnoringLocalCacheData }
-        catalogSession.dataTask(with: request) { [weak self] data, response, _ in
+        network.catalogSession.dataTask(with: request) { [weak self] data, response, _ in
             guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode
             self.workQueue.async {
@@ -620,7 +651,7 @@ package final class AppUpdatesService: ObservableObject {
                     completion(SourceResult(items: [], available: false, uncheckedApps: candidates))
                     return
                 }
-                self.onlineCatalogCache = (Date(), entries)
+                self.onlineCatalogCache = (self.network.now(), entries)
                 completion(self.onlineResult(candidates: candidates,
                                              catalog: entries,
                                              operatingSystemVersion: operatingSystemVersion))
@@ -629,7 +660,7 @@ package final class AppUpdatesService: ObservableObject {
     }
 
     nonisolated
-    private func onlineResult(candidates: [AppUpdatesSupport.InstalledApp],
+    package func onlineResult(candidates: [AppUpdatesSupport.InstalledApp],
                               catalog: [AppUpdatesSupport.CatalogEntry],
                               operatingSystemVersion: String) -> SourceResult {
         let findings = AppUpdatesSupport.onlineCatalogFindings(

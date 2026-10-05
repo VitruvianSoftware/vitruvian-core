@@ -255,22 +255,6 @@ def main():
             .replace("CGEvent.tapCreate(", "Tap.create(")
           + "}\n}\n")
 
-    updates = "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift"
-    loader = "Sources/Vitruvian/Services/AppUpdates/AppUpdateFeedLoader.swift"
-    # Only the network configuration, clock and declaration visibility change.
-    # The loader, batch loop, catalog matching and fallback resolution stay verbatim.
-    write("AppUpdates.swift", "import Foundation\nimport Darwin\nextension AppUpdatesContract {\n"
-          + declaration(loader, "final class AppUpdateFeedLoader:")
-          + "final class Service {\nlet workQueue = DispatchQueue(label: \"app-updates.contract\")\n"
-          + "let clock = Clock()\nnonisolated static let ownPackageTokens: Set<String> = [\"vitruvian\", \"vitruvian@beta\", \"vitruvian-beta\"]\n"
-          + "nonisolated static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60\n"
-          + "nonisolated(unsafe) var onlineCatalogCache: (loadedAt: Foundation.Date, entries: [AppUpdatesSupport.CatalogEntry])?\n"
-          + "let catalogSession = URLSession(configuration: URLSessionConfiguration.ephemeral)\n"
-          + declaration(updates, "    private struct SourceResult {").replace("private struct", "nonisolated struct", 1)
-          + declaration(updates, "    private func publisherFindings(", keep_nonisolated=True).replace("private func", "func", 1).replace("Date()", "self.clock.now()")
-          + declaration(updates, "    private func onlineCatalogFindings(", keep_nonisolated=True).replace("private func", "func", 1).replace("Date()", "self.clock.now()")
-          + declaration(updates, "    private func onlineResult(", keep_nonisolated=True).replace("private func", "func", 1)
-          + "}\n}\n")
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
     adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
     # Only the clock changes, so tests drive the wait for a chosen source's track.
