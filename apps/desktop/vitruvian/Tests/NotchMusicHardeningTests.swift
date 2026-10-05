@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import Combine
 import Foundation
 import UniformTypeIdentifiers
 import VitruvianCore
@@ -118,33 +119,166 @@ enum NotchLyricsContract {
     }
 }
 
-/// Production control and recovery methods run with a deterministic scheduler
-/// and a recording pipe, without a player process or a window.
+/// A real music service over an adapter the test feeds by hand. Replies go in
+/// as the adapter's own JSON lines and commands come out as the lines it would
+/// read. The main queue, delayed work, the clock and the command queue run
+/// when the test says. No process starts and nothing reaches a player.
 enum NotchMusicCommandContract {
-    enum NotchQueueSupport { static func isEnabled() -> Bool { true } }
-    enum NotchLyricsService {
-        static let shared = Reader()
-        final class Reader { func playbackChanged(_ playback: NotchPlayback?) {} }
-    }
-    final class Scheduler {
+    /// Work waiting for its queue. Only the test's own thread touches it.
+    nonisolated final class Jobs: @unchecked Sendable {
         var jobs: [() -> Void] = []
-        func async(execute action: @escaping () -> Void) { jobs.append(action) }
-        func asyncAfter(deadline: DispatchTime, execute work: DispatchWorkItem) { jobs.append { work.perform() } }
         func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
-    enum DispatchQueue { static var main = Scheduler() }
-    /// Records the song still published each time a new one is announced.
-    final class TrackChanges {
-        var shown: () -> NotchPlayback? = { nil }
-        var announcedOver: [NotchPlayback?] = []
-        func send() { announcedOver.append(shown()) }
+
+    /// One adapter the service launched: what it was told and whether it runs.
+    final class Link {
+        let watchAll: Bool
+        let read: @Sendable (Data) -> Void
+        let ended: @Sendable () -> Void
+        var running = true
+        var failsWrites = false
+        var written: [Data] = []
+        init(watchAll: Bool, read: @escaping @Sendable (Data) -> Void, ended: @escaping @Sendable () -> Void) {
+            self.watchAll = watchAll
+            self.read = read
+            self.ended = ended
+        }
+        var requests: [NotchPlaybackRequest] {
+            written.compactMap {
+                String(data: $0, encoding: .utf8).flatMap {
+                    NotchPlaybackRequest(message: $0.trimmingCharacters(in: .newlines))
+                }
+            }
+        }
     }
-    final class Process { var isRunning = true }
-    final class Pipe {
-        let fileHandleForWriting = Handle()
-        final class Handle {
-            var written: [Data] = []
-            func write(contentsOf data: Data) throws { written.append(data) }
+
+    /// The adapters, the clock and the delayed work, as the service sees them.
+    final class Machine {
+        var links: [Link] = []
+        var now: TimeInterval = 0
+        var delayed: [(at: TimeInterval, work: DispatchWorkItem)] = []
+        var lyrics: [String?] = []
+    }
+
+    /// Automation that never finds a player, so no Apple Event is ever asked for.
+    static var inertAutomation: NotchMusicAutomationFlow.Environment {
+        .init(system: NotchMusicAutomation.System(target: { _ in nil }, isCurrent: { _ in false },
+                                                  inspect: { _ in nil }, access: { _ in .unavailable },
+                                                  consent: { _ in false }, deliver: { _ in nil }, uptime: { 0 }),
+              worker: { _ in }, interactive: { _ in }, main: { _ in }, after: { _, _ in })
+    }
+
+    final class Harness {
+        let machine: Machine
+        let main: Jobs
+        let commands: Jobs
+        let defaultsName: String
+        let defaults: UserDefaults
+        let service: NotchMusicService
+        /// The song still shown each time a new one, or an ended one, is announced.
+        var announcedOver: [String?] = []
+        var endedOver: [String?] = []
+        private var subscriptions: Set<AnyCancellable> = []
+
+        init() {
+            let machine = Machine(), main = Jobs(), commands = Jobs()
+            let name = "vitru.tests.notch-music.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: name)!
+            self.machine = machine
+            self.main = main
+            self.commands = commands
+            defaultsName = name
+            self.defaults = defaults
+            service = NotchMusicService(environment: .init(
+                launch: { watchAll, read, ended in
+                    let link = Link(watchAll: watchAll, read: read, ended: ended)
+                    machine.links.append(link)
+                    return NotchMusicAdapterLink(isRunning: { link.running },
+                                                 write: {
+                                                     if link.failsWrites { throw CocoaError(.fileWriteUnknown) }
+                                                     link.written.append($0)
+                                                 },
+                                                 end: { link.running = false })
+                },
+                main: { work in main.jobs.append { MainActor.assumeIsolated { work() } } },
+                after: { delay, work in machine.delayed.append((machine.now + delay, work)) },
+                uptime: { machine.now },
+                commands: { commands.jobs.append($0) },
+                defaults: defaults,
+                lyricsChanged: { machine.lyrics.append($0?.track.title) },
+                hideLyrics: {},
+                automation: NotchMusicCommandContract.inertAutomation))
+            service.trackChanges.sink { [unowned self] in announcedOver.append(service.playback?.track.title) }
+                .store(in: &subscriptions)
+            service.trackEnds.sink { [unowned self] in endedOver.append(service.playback?.track.title) }
+                .store(in: &subscriptions)
+        }
+
+        deinit {
+            UserDefaults(suiteName: defaultsName)?.removePersistentDomain(forName: defaultsName)
+        }
+
+        var links: [Link] { machine.links }
+        var launches: [Bool] { machine.links.map(\.watchAll) }
+        /// Delayed work still waiting to run.
+        var pendingDelays: Int { machine.delayed.filter { !$0.work.isCancelled }.count }
+
+        /// What the newest adapter, or `link`, has read so far.
+        func requests(_ link: Link? = nil) -> [NotchPlaybackRequest] {
+            commands.drain()
+            return (link ?? machine.links.last)?.requests ?? []
+        }
+
+        /// The newest adapter prints one reading: `playback`, or nothing
+        /// playing, with the players it lists. It lands on the main queue.
+        func feed(_ playback: NotchPlayback?, sources: [NotchPlaybackSource] = [], automatic: Bool = true,
+                  selectedPID: Int32? = nil, from link: Link? = nil) {
+            var reply: [String: Any] = ["sourceIsAutomatic": automatic, "sources": sources.map(\.reply)]
+            if let selectedPID { reply["selectedPID"] = selectedPID }
+            if let playback {
+                let track = playback.track
+                reply["pid"] = track.appPID ?? 0
+                reply["displayID"] = track.appBundleIdentifier ?? ""
+                reply["isPlaying"] = playback.isPlaying
+                reply[RadialNowPlayingSupport.titleKey] = track.title ?? ""
+                if let artist = track.artist { reply[RadialNowPlayingSupport.artistKey] = artist }
+                if let album = track.album { reply[RadialNowPlayingSupport.albumKey] = album }
+                reply[RadialNowPlayingSupport.playbackRateKey] = playback.rate
+                reply["kMRMediaRemoteNowPlayingInfoElapsedTime"] = playback.elapsed
+                reply["kMRMediaRemoteNowPlayingInfoDuration"] = playback.duration
+                reply["canSeek"] = playback.canSeek
+                if let item = playback.itemIdentifier { reply["itemIdentifier"] = item }
+                if let context = playback.commandContext { reply["playbackRevision"] = context.revision.uuidString }
+                reply["canSendCommandsDirectly"] = playback.canSendCommandsDirectly
+            }
+            let data = try! JSONSerialization.data(withJSONObject: reply)
+            (link ?? machine.links.last)?.read(data + Data([0x0A]))
+            main.drain()
+        }
+
+        /// The newest adapter exits.
+        func end() {
+            machine.links.last?.running = false
+            machine.links.last?.ended()
+            main.drain()
+        }
+
+        /// Moves the clock on and runs the delayed work that falls due, in order.
+        func advance(_ seconds: TimeInterval) {
+            machine.now += seconds
+            while let index = machine.delayed.indices.filter({ machine.delayed[$0].at <= machine.now })
+                .min(by: { machine.delayed[$0].at < machine.delayed[$1].at }) {
+                let work = machine.delayed.remove(at: index).work
+                if !work.isCancelled { work.perform() }
+                main.drain()
+            }
+        }
+
+        /// Whether the page shows this song, as far as a reading says.
+        func shows(_ expected: NotchPlayback?) -> Bool {
+            let shown = service.playback
+            return shown?.track.title == expected?.track.title && shown?.isPlaying == expected?.isPlaying
+                && shown?.track.appBundleIdentifier == expected?.track.appBundleIdentifier
         }
     }
 }
@@ -178,64 +312,52 @@ enum NotchMusicHardeningTests {
     }
 
     private static func sourceSwitching(_ suite: TestSuite) {
-        let service = NotchMusicCommandContract.Service()
+        let harness = NotchMusicCommandContract.Harness()
+        let service = harness.service
         service.start()
         var current = playback("music")
         current.commandContext = NotchPlaybackContext(pid: 42, revision: UUID())
         current.canSendCommandsDirectly = true
-        service.playback = current
         let browser = NotchPlaybackSource(pid: 202, bundleIdentifier: "test.browser", isMusicApp: false,
                                           isPlaying: true, hasTrack: true)
-        service.sources = [browser]
+        harness.feed(current, sources: [browser])
         service.selectSource(.init(pid: 202, bundleIdentifier: "missing.app"))
-        suite.expect(service.playback == current && service.queue.jobs.isEmpty,
+        suite.expect(harness.shows(current) && harness.requests().isEmpty,
                      "an obsolete source menu cannot clear playback or queue a selection")
         service.selectSource(browser.selection)
-        suite.expect(service.playback == nil && service.awaitingPlayback && !service.queueVisible,
-                     "source switching retires the old controls and queue until new playback arrives")
+        suite.expect(service.playback == nil && service.awaitingPlayback,
+                     "source switching retires the old controls until new playback arrives")
         suite.expect(!service.send(.toggle, context: current.commandContext),
                      "a control rendered before the source switch cannot send to the old player")
-        service.queue.drain()
-        let request = service.input?.fileHandleForWriting.written.last.flatMap {
-            String(data: $0, encoding: .utf8).flatMap { NotchPlaybackRequest(message: $0.trimmingCharacters(in: .newlines)) }
-        }
-        suite.expect(request == NotchPlaybackRequest(command: .source(browser.selection)),
+        suite.expect(harness.requests().last == NotchPlaybackRequest(command: .source(browser.selection)),
                      "the production writer preserves the exact source chosen by the user")
-        service.awaitingPlayback = false
-        let count = service.input?.fileHandleForWriting.written.count ?? 0
+        let count = harness.requests().count
         service.selectSource(browser.selection)
-        service.queue.drain()
-        suite.expect(service.awaitingPlayback && service.input?.fileHandleForWriting.written.count == count + 1,
+        suite.expect(service.awaitingPlayback && harness.requests().count == count + 1,
                      "a discovered source is selectable from the empty playback state")
         suite.expect(!service.send(.toggle) && !service.send(.next) && !service.send(.seek(10)),
                      "allowing source selection without playback never enables transport commands")
-        let written = service.input?.fileHandleForWriting.written.count ?? 0
-        service.playback = current
+        let written = harness.requests().count
+        harness.feed(current, sources: [browser])
         service.selectSource(nil)
-        service.queue.drain()
-        suite.expect(service.playback == current && service.input?.fileHandleForWriting.written.count == written,
+        suite.expect(harness.shows(current) && harness.requests().count == written,
                      "choosing Automatic while it is already in effect leaves the page and the adapter alone")
-        service.sourceIsAutomatic = false
-        service.selectedSourcePID = 42
-        service.sources = [browser, NotchPlaybackSource(pid: 42, bundleIdentifier: "test.music", isMusicApp: true,
-                                                        isPlaying: true, hasTrack: true)]
+        let music = NotchPlaybackSource(pid: 42, bundleIdentifier: "test.music", isMusicApp: true,
+                                        isPlaying: true, hasTrack: true)
+        harness.feed(current, sources: [browser, music], automatic: false, selectedPID: 42)
         service.selectSource(.init(pid: 42, bundleIdentifier: "test.music"))
-        service.queue.drain()
-        suite.expect(service.playback == current && service.input?.fileHandleForWriting.written.count == written,
+        suite.expect(harness.shows(current) && harness.requests().count == written,
                      "choosing the source already shown leaves the page and the adapter alone")
         // The chosen browser waits for its next video while music fills the gap.
-        service.selectedSourcePID = 202
+        harness.feed(current, sources: [browser, music], automatic: false, selectedPID: 202)
         service.selectSource(browser.selection)
-        service.queue.drain()
-        suite.expect(service.playback == current && service.input?.fileHandleForWriting.written.count == written,
+        suite.expect(harness.shows(current) && harness.requests().count == written,
                      "choosing the source that waits for its next track leaves the stand-in shown")
-        service.playback = nil
+        harness.feed(nil, sources: [browser], automatic: false, selectedPID: 202)
+        harness.advance(10)
         service.selectSource(nil)
-        service.queue.drain()
-        let automatic = service.input?.fileHandleForWriting.written.last.flatMap {
-            String(data: $0, encoding: .utf8).flatMap { NotchPlaybackRequest(message: $0.trimmingCharacters(in: .newlines)) }
-        }
-        suite.expect(automatic == NotchPlaybackRequest(command: .source(nil)),
+        suite.expect(service.playback == nil
+                     && harness.requests().last == NotchPlaybackRequest(command: .source(nil)),
                      "a selected source that is not responding can be released from the empty state")
         service.stop()
     }
@@ -243,64 +365,66 @@ enum NotchMusicHardeningTests {
     /// The adapter keeps a choice only while it runs, and it stops on lock,
     /// sleep or when the page closes. The service gives the choice back.
     private static func sourceRestore(_ suite: TestSuite) {
-        typealias Contract = NotchMusicCommandContract
-        Contract.DispatchQueue.main = Contract.Scheduler()
-        defer { Contract.DispatchQueue.main = Contract.Scheduler() }
-        let service = Contract.Service()
+        let harness = NotchMusicCommandContract.Harness()
+        let service = harness.service
         let browser = NotchPlaybackSource(pid: 202, bundleIdentifier: "test.browser", isMusicApp: false,
                                           isPlaying: true, hasTrack: true)
-        func lastRequest() -> NotchPlaybackRequest? {
-            service.queue.drain()
-            let line = service.input?.fileHandleForWriting.written.last.flatMap { String(data: $0, encoding: .utf8) }
-            return line.flatMap { NotchPlaybackRequest(message: $0.trimmingCharacters(in: .newlines)) }
-        }
         let restore = NotchPlaybackRequest(command: .source(browser.selection))
         service.start()
-        service.sources = [browser]
+        harness.feed(nil, sources: [browser])
         service.selectSource(browser.selection)
         service.stop()
         service.start()
-        suite.expect(lastRequest() == restore && service.restoringSource,
+        suite.expect(harness.links.count == 2 && harness.requests() == [restore],
                      "locking, sleeping or closing the page gives the next adapter the chosen source back")
-        suite.expect(!service.acceptsSourceReply(automatic: true, sources: [browser]),
-                     "the new adapter's reading from before the restored choice is not shown")
-        suite.expect(service.acceptsSourceReply(automatic: true, sources: [browser]),
-                     "only that one reading is held back")
-        suite.expect(service.chosenSource == browser.selection, "a choice the adapter still lists is kept")
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        suite.expect(lastRequest() == restore, "an adapter restarted after it ended gets the choice back as well")
-        suite.expect(service.acceptsSourceReply(automatic: true, sources: []) && service.chosenSource == nil,
-                     "a choice the adapter reports gone is forgotten")
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        suite.expect(lastRequest() == nil && !service.restoringSource, "a forgotten choice is not restored")
+        let song = playback("song")
+        harness.feed(song, sources: [browser])
+        suite.expect(service.playback == nil, "the new adapter's reading from before the restored choice is not shown")
+        harness.feed(song, sources: [browser])
+        suite.expect(harness.shows(song), "only that one reading is held back")
+        harness.end()
+        harness.advance(10)
+        suite.expect(harness.links.count == 3 && harness.requests() == [restore],
+                     "an adapter restarted after it ended gets back a choice it still listed")
+        harness.feed(playback("stale"), sources: [browser], from: harness.links[1])
+        harness.links[1].ended()
+        harness.main.drain()
+        suite.expect(service.playback == nil && harness.pendingDelays == 0 && harness.links.count == 3,
+                     "an adapter that was replaced can neither show a reading nor end its successor")
+        harness.feed(nil, sources: [])
+        harness.end()
+        harness.advance(10)
+        suite.expect(harness.links.count == 4 && harness.requests().isEmpty,
+                     "a choice the adapter reports gone is forgotten, and not restored")
+        harness.feed(nil, sources: [browser])
         service.selectSource(browser.selection)
-        service.sourceIsAutomatic = false
+        harness.feed(nil, sources: [browser], automatic: false, selectedPID: 202)
         service.selectSource(nil)
-        suite.expect(service.chosenSource == nil, "choosing Automatic forgets the choice")
+        service.stop()
+        service.start()
+        suite.expect(harness.requests().isEmpty, "choosing Automatic forgets the choice")
         service.stop()
     }
 
     private static func sourcePreference(_ suite: TestSuite) {
-        typealias Contract = NotchMusicCommandContract
-        let preferences = Contract.Service.UserDefaults.standard
-        preferences.includeOtherPlayers = false
-        defer { preferences.includeOtherPlayers = false }
-        let service = Contract.Service()
+        let harness = NotchMusicCommandContract.Harness()
+        let service = harness.service
+        let browser = NotchPlaybackSource(pid: 20, bundleIdentifier: "test.browser", isMusicApp: false,
+                                          isPlaying: true, hasTrack: true)
+        let restore = NotchPlaybackRequest(command: .source(browser.selection))
         service.start()
-        suite.expect(service.launches == 1 && !service.includeOtherPlayers,
-                     "automatic playback starts with music apps only")
+        suite.expect(harness.launches == [false], "automatic playback starts with music apps only")
         service.start()
-        suite.expect(service.launches == 1, "an unchanged playback scope does not restart the adapter")
-        service.chosenSource = .init(pid: 20, bundleIdentifier: "test.browser")
-        preferences.includeOtherPlayers = true
+        suite.expect(harness.launches == [false], "an unchanged playback scope does not restart the adapter")
+        harness.feed(nil, sources: [browser])
+        service.selectSource(browser.selection)
+        harness.defaults.set(true, forKey: DefaultsKey.notchIncludeOtherPlayers)
         service.start()
-        suite.expect(service.launches == 2 && service.includeOtherPlayers && service.restoringSource,
+        suite.expect(harness.launches == [false, true] && harness.requests() == [restore],
                      "including other players restarts discovery and preserves a manual choice")
-        preferences.includeOtherPlayers = false
+        harness.defaults.set(false, forKey: DefaultsKey.notchIncludeOtherPlayers)
         service.start()
-        suite.expect(service.launches == 3 && !service.includeOtherPlayers && service.restoringSource,
+        suite.expect(harness.launches == [false, true, false] && harness.requests() == [restore],
                      "turning the option off restores music-only discovery without losing the chosen source")
         service.stop()
     }
@@ -369,19 +493,12 @@ enum NotchMusicHardeningTests {
     /// A player moving on to its next song can report nothing playing for a
     /// moment. The production reading path keeps the last song through it.
     private static func playbackGap(_ suite: TestSuite) {
-        typealias Contract = NotchMusicCommandContract
-        Contract.DispatchQueue.main = Contract.Scheduler()
-        defer { Contract.DispatchQueue.main = Contract.Scheduler() }
-        let service = Contract.Service()
-        service.trackChanges.shown = { [unowned service] in service.playback }
+        let harness = NotchMusicCommandContract.Harness()
+        let service = harness.service
         let player = NotchPlaybackSource(pid: 42, bundleIdentifier: "org.example.player", isMusicApp: true,
                                          isPlaying: true, hasTrack: true)
         let other = NotchPlaybackSource(pid: 202, bundleIdentifier: "test.browser", isMusicApp: false,
                                         isPlaying: false, hasTrack: true)
-        func reading(_ playback: NotchPlayback?, sources: [NotchPlaybackSource] = [player, other]) -> Contract.Service.Reading {
-            Contract.Service.Reading(playback: playback, artwork: nil, tint: nil, sources: sources,
-                                     automatic: true, selectedPID: nil)
-        }
         func controllable(_ item: String) -> NotchPlayback {
             var song = playback(item)
             song.commandContext = NotchPlaybackContext(pid: 42, revision: UUID())
@@ -390,35 +507,35 @@ enum NotchMusicHardeningTests {
         }
         let current = controllable("current"), next = controllable("next")
         service.start()
-        service.receive(reading(current))
-        service.receive(reading(nil, sources: [other]))
-        suite.expect(service.playback == current && service.sources == [player, other] && !service.awaitingPlayback,
+        harness.feed(current, sources: [player, other])
+        harness.feed(nil, sources: [other])
+        suite.expect(harness.shows(current) && service.sources == [player, other] && !service.awaitingPlayback,
                      "a player between songs keeps its last song and sources instead of the empty page")
         suite.expect(!service.send(.next) && !service.commandFailed,
                      "the held song's controls send nothing, so a press cannot read as a failure")
-        service.receive(reading(nil, sources: [other]))
-        suite.expect(Contract.DispatchQueue.main.jobs.count == 1, "another empty reading does not extend the grace period")
-        service.receive(reading(next))
-        suite.expect(service.playback == next && service.gapWork == nil && service.trackChanges.announcedOver == [current],
+        harness.feed(nil, sources: [other])
+        suite.expect(harness.pendingDelays == 1, "another empty reading does not extend the grace period")
+        harness.feed(next, sources: [player, other])
+        suite.expect(harness.shows(next) && harness.pendingDelays == 0 && harness.announcedOver == ["current"],
                      "the next song replaces the held one at once, announced while the old one is still shown")
         suite.expect(service.send(.next), "the next song's controls work at once")
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.playback == next, "the ended gap cannot clear the next song later")
-        service.receive(reading(nil, sources: [other]))
-        Contract.DispatchQueue.main.drain()
+        harness.advance(10)
+        suite.expect(harness.shows(next), "the ended gap cannot clear the next song later")
+        harness.feed(nil, sources: [other])
+        harness.advance(10)
         suite.expect(service.playback == nil && service.sources == [other] && !service.awaitingPlayback,
                      "playback that stays gone empties the page after the grace period, with the latest sources")
-        service.receive(reading(next))
-        service.receive(reading(nil, sources: [other]))
+        harness.feed(next, sources: [player, other])
+        harness.feed(nil, sources: [other])
         service.selectSource(other.selection)
-        Contract.DispatchQueue.main.drain()
+        harness.advance(10)
         suite.expect(service.playback == nil && service.awaitingPlayback,
                      "choosing another source during a gap still waits for that source's first reading")
-        service.receive(reading(current))
-        service.receive(reading(nil, sources: [other]))
+        harness.feed(current, sources: [player, other])
+        harness.feed(nil, sources: [other])
         service.stop()
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.playback == nil && service.gapWork == nil,
+        harness.advance(10)
+        suite.expect(service.playback == nil && harness.pendingDelays == 0,
                      "stopping during a gap ends it, and the held song cannot come back")
     }
 
@@ -426,20 +543,12 @@ enum NotchMusicHardeningTests {
     /// song can be reported paused before it starts. The production reading
     /// path keeps the song that played through both, as through an empty one.
     private static func standInGap(_ suite: TestSuite) {
-        typealias Contract = NotchMusicCommandContract
-        Contract.DispatchQueue.main = Contract.Scheduler()
-        defer { Contract.DispatchQueue.main = Contract.Scheduler() }
-        let service = Contract.Service()
-        service.trackChanges.shown = { [unowned service] in service.playback }
-        service.trackEnds.shown = { [unowned service] in service.playback }
+        let harness = NotchMusicCommandContract.Harness()
+        let service = harness.service
         let player = NotchPlaybackSource(pid: 42, bundleIdentifier: "org.example.player", isMusicApp: true,
                                          isPlaying: true, hasTrack: true)
         let other = NotchPlaybackSource(pid: 202, bundleIdentifier: "test.music", isMusicApp: true,
                                         isPlaying: false, hasTrack: true)
-        func reading(_ playback: NotchPlayback, sources: [NotchPlaybackSource] = [player, other]) -> Contract.Service.Reading {
-            Contract.Service.Reading(playback: playback, artwork: nil, tint: nil, sources: sources,
-                                     automatic: true, selectedPID: nil)
-        }
         func paused(_ song: NotchPlayback) -> NotchPlayback {
             NotchPlayback(track: song.track, isPlaying: false, elapsed: 0, duration: song.duration, rate: 0,
                           sampledAt: song.sampledAt, canSeek: false, itemIdentifier: song.itemIdentifier)
@@ -451,37 +560,35 @@ enum NotchMusicHardeningTests {
                                            isPlaying: false, elapsed: 30, duration: 200, rate: 0,
                                            sampledAt: Date(timeIntervalSinceReferenceDate: 0), canSeek: false))
         service.start()
-        service.receive(reading(current))
-        service.receive(reading(standIn, sources: [other]))
-        suite.expect(service.playback == current && service.sources == [player, other] && service.gapWork != nil,
+        harness.feed(current, sources: [player, other])
+        harness.feed(standIn, sources: [other])
+        suite.expect(harness.shows(current) && service.sources == [player, other] && harness.pendingDelays == 1,
                      "another player's paused song standing in between songs keeps the song that played")
         let listed = NotchPlaybackSource(pid: 42, bundleIdentifier: "org.example.player", isMusicApp: false,
                                          isPlaying: false, hasTrack: true)
-        service.receive(reading(standIn, sources: [listed, other]))
-        suite.expect(service.playback == current && service.gapWork != nil,
+        harness.feed(standIn, sources: [listed, other])
+        suite.expect(harness.shows(current) && harness.pendingDelays == 1,
                      "a player that lists its next song again while it loads keeps the gap going")
-        service.receive(reading(next))
-        suite.expect(service.playback == next && service.gapWork == nil && service.trackChanges.announcedOver == [current],
+        harness.feed(next, sources: [player, other])
+        suite.expect(harness.shows(next) && harness.pendingDelays == 0 && harness.announcedOver == ["current"],
                      "the next song replaces it at once, announced while the song before is still shown")
-        service.receive(reading(paused(later)))
-        suite.expect(service.playback == next && service.gapWork != nil,
+        harness.feed(paused(later), sources: [player, other])
+        suite.expect(harness.shows(next) && harness.pendingDelays == 1,
                      "the next song reported paused before it starts keeps the song that played")
-        suite.expect(service.trackEnds.announcedOver.isEmpty, "a gap that ends in a new song ends nothing")
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.playback == paused(later) && service.gapWork == nil,
+        suite.expect(harness.endedOver.isEmpty, "a gap that ends in a new song ends nothing")
+        harness.advance(10)
+        suite.expect(harness.shows(paused(later)) && harness.pendingDelays == 0,
                      "a song that stays paused is shown after the grace period")
-        suite.expect(service.trackEnds.announcedOver == [next],
-                     "the end of the song is announced while it is still shown")
-        service.receive(reading(later))
-        service.receive(reading(paused(later)))
-        suite.expect(service.playback == paused(later) && service.gapWork == nil && service.trackEnds.announcedOver == [next],
+        suite.expect(harness.endedOver == ["next"], "the end of the song is announced while it is still shown")
+        harness.feed(later, sources: [player, other])
+        harness.feed(paused(later), sources: [player, other])
+        suite.expect(harness.shows(paused(later)) && harness.pendingDelays == 0 && harness.endedOver == ["next"],
                      "pausing the song that plays is shown at once, and ends nothing")
-        service.receive(reading(later))
-        service.receive(reading(standIn, sources: [listed, other]))
-        suite.expect(service.playback == standIn && service.gapWork == nil && service.sources == [listed, other],
+        harness.feed(later, sources: [player, other])
+        harness.feed(standIn, sources: [listed, other])
+        suite.expect(harness.shows(standIn) && harness.pendingDelays == 0 && service.sources == [listed, other],
                      "a pause that hands automatic playback to another player's paused song is shown at once")
-        suite.expect(service.trackEnds.announcedOver == [next, later],
-                     "the strip leaves such a pause as its own song")
+        suite.expect(harness.endedOver == ["next", "later"], "the strip leaves such a pause as its own song")
     }
 
     /// The adapter flags bytes equal to its previous reading as unchanged,
@@ -1041,15 +1148,13 @@ enum NotchMusicHardeningTests {
     }
 
     private static func controlLifecycle(_ suite: TestSuite) {
-        typealias Contract = NotchMusicCommandContract
         typealias Adapter = NotchPlaybackRoutingContract
-        Contract.DispatchQueue.main = Contract.Scheduler()
         defer {
-            Contract.DispatchQueue.main = Contract.Scheduler()
             Adapter.metadata = [:]
             Adapter.publish(nil)
         }
-        let service = Contract.Service()
+        let harness = NotchMusicCommandContract.Harness()
+        let service = harness.service
         let nativePath = NSObject()
         let native = Adapter.Target(pid: 42, path: nativePath)
         var metadata: [String: Any] = ["kMRMediaRemoteNowPlayingInfoTitle": "same-title",
@@ -1060,28 +1165,25 @@ enum NotchMusicHardeningTests {
         current.commandContext = context
         current.canSendCommandsDirectly = true
         service.start()
-        service.playback = current
-        service.seek(to: 75, in: current.track, context: context)
-        service.queue.drain()
-        func requests() -> [NotchPlaybackRequest] {
-            (service.input?.fileHandleForWriting.written ?? []).compactMap {
-                String(data: $0, encoding: .utf8).flatMap {
-                    NotchPlaybackRequest(message: $0.trimmingCharacters(in: .newlines))
-                }
-            }
-        }
+        harness.feed(current)
+        service.seek(to: 75, in: service.playback!.track, context: context)
         // The shared playback helper disables seeking; explicitly enable it for this control fixture.
-        suite.expect(requests().isEmpty, "read-only native playback cannot enqueue a seek")
+        suite.expect(harness.requests().isEmpty, "read-only native playback cannot enqueue a seek")
         current = NotchPlayback(track: current.track, isPlaying: true, elapsed: 0, duration: 180, rate: 1,
                                 sampledAt: Date(), canSeek: true, itemIdentifier: "A", commandContext: context,
                                 canSendCommandsDirectly: true)
-        service.playback = current
-        service.seek(to: 75, in: current.track, context: context)
-        service.queue.drain()
-        suite.expect(requests().last == NotchPlaybackRequest(command: .seek(75), context: context),
+        harness.feed(current)
+        service.seek(to: 75, in: service.playback!.track, context: context)
+        suite.expect(harness.requests().last == NotchPlaybackRequest(command: .seek(75), context: context),
                "the production seek and writer preserve the gesture's process and recording revision")
+        service.seek(to: 500, in: service.playback!.track, context: context)
+        suite.expect(harness.requests().last == NotchPlaybackRequest(command: .seek(180), context: context),
+               "a seek past the end lands at the end")
+        harness.links.last?.running = false
+        suite.expect(!service.send(.toggle), "a command to an adapter that already exited is refused")
+        harness.links.last?.running = true
         Adapter.command = nil
-        Adapter.sendPlaybackCommand(requests().last!)
+        Adapter.sendPlaybackCommand(NotchPlaybackRequest(command: .seek(75), context: context))
         suite.expect(Adapter.command == 24 && Adapter.destination === nativePath,
                "a stable gesture traverses the real writer, decoder, validation and native dispatch")
         var changed = current
@@ -1089,79 +1191,92 @@ enum NotchMusicHardeningTests {
         Adapter.metadata[ObjectIdentifier(nativePath)] = metadata
         changed.commandContext = Adapter.publish(native, info: metadata)
         Adapter.command = nil
-        Adapter.sendPlaybackCommand(requests().last!)
+        Adapter.sendPlaybackCommand(NotchPlaybackRequest(command: .seek(75), context: context))
         suite.expect(Adapter.command == nil,
                "a written gesture from the old recording is rejected when native playback changes before dispatch")
-        service.playback = changed
-        let before = requests().count
-        service.seek(to: 90, in: current.track, context: context)
+        let shownTrack = service.playback!.track
+        harness.feed(changed)
+        let before = harness.requests().count
+        service.seek(to: 90, in: shownTrack, context: context)
         suite.expect(!service.send(.toggle, context: context) && !service.send(.next, context: nil),
                "an obsolete rendered control or missing revision cannot borrow the current recording")
-        service.queue.drain()
-        suite.expect(requests().count == before,
+        suite.expect(harness.requests().count == before,
                "identical visible metadata cannot retarget an earlier gesture after the recording revision changes")
         _ = service.send(.previous)
-        service.queue.drain()
-        suite.expect(requests().last?.context == changed.commandContext,
+        suite.expect(harness.requests().last?.context == changed.commandContext,
                "the gesture route captures its current playback context at submission")
+        harness.links.last?.failsWrites = true
+        suite.expect(service.send(.previous) && !service.commandFailed, "a command is accepted before it is written")
+        _ = harness.requests()
+        harness.main.drain()
+        suite.expect(service.commandFailed, "a write the adapter cannot take reports the command failed")
+        harness.links.last?.failsWrites = false
         _ = service.send(.next)
-        let pipe = service.input!
+        let link = harness.links.last!
         service.stop()
-        service.queue.drain()
-        suite.expect(pipe.fileHandleForWriting.written.count == before + 1,
+        suite.expect(harness.requests(link).count == before + 1,
                "closing the last music consumer cancels its still-unwritten controls")
 
         suite.expect(!service.awaitingPlayback, "a stopped subscription is not waiting for a reading")
         service.start()
-        let launches = service.launches
+        let launches = harness.links.count
         suite.expect(service.awaitingPlayback, "a fresh subscription waits for the adapter's first reply before reporting nothing playing")
-        service.connectionEnded()
+        harness.end()
         for _ in 0..<100 { service.start() }
-        suite.expect(service.launches == launches && Contract.DispatchQueue.main.jobs.count == 1,
+        harness.advance(0.5)
+        suite.expect(harness.links.count == launches && harness.pendingDelays == 1,
                "preference updates cannot bypass a pending recovery or launch extra helpers")
         suite.expect(service.awaitingPlayback, "a pending recovery keeps the first reading outstanding")
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.launches == launches + 1, "unexpected termination receives one delayed recovery while music is wanted")
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        service.connectionEnded()
+        harness.advance(10)
+        suite.expect(harness.links.count == launches + 1, "unexpected termination receives one delayed recovery while music is wanted")
+        harness.feed(playback("stale"), from: harness.links[harness.links.count - 2])
+        suite.expect(service.playback == nil && service.awaitingPlayback,
+                     "a reading from an adapter that was replaced is not shown")
+        harness.end()
+        harness.advance(10)
+        harness.end()
         for _ in 0..<100 { service.start() }
-        suite.expect(service.launches == launches + 2 && Contract.DispatchQueue.main.jobs.isEmpty,
+        suite.expect(harness.links.count == launches + 2 && harness.pendingDelays == 0,
                "persistent failure stops after two retries even if preferences continue changing")
         suite.expect(!service.awaitingPlayback, "giving up on the adapter ends the wait so the empty state can show")
         service.stop()
         service.start()
-        service.connectionEnded()
-        let cancelledLaunches = service.launches
+        harness.end()
+        let cancelledLaunches = harness.links.count
         service.stop()
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.launches == cancelledLaunches && !service.wantsPlayback && !service.awaitingPlayback,
+        harness.advance(10)
+        suite.expect(harness.links.count == cancelledLaunches && !service.awaitingPlayback,
                "disabling, hiding the last consumer or suspending cancels delayed recovery")
         service.start()
-        service.connectionEnded()
+        harness.end()
         service.stop()
         service.start()
-        let replacementLaunches = service.launches
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.launches == replacementLaunches,
+        let replacementLaunches = harness.links.count
+        harness.advance(10)
+        suite.expect(harness.links.count == replacementLaunches,
                "a delayed recovery from an ended subscription cannot launch inside its replacement")
         // Two quick exits spend the budget. An adapter that then runs for over
         // a minute before it ends is not crash looping.
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        service.uptime += 61
-        let budgetLaunches = service.launches
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        suite.expect(service.launches == budgetLaunches + 1,
+        harness.end()
+        harness.advance(10)
+        harness.end()
+        harness.advance(10)
+        harness.machine.now += 61
+        let budgetLaunches = harness.links.count
+        harness.end()
+        harness.advance(10)
+        suite.expect(harness.links.count == budgetLaunches + 1,
                "an adapter that ran for over a minute gets a fresh restart budget")
-        service.connectionEnded()
-        Contract.DispatchQueue.main.drain()
-        service.connectionEnded()
-        suite.expect(Contract.DispatchQueue.main.jobs.isEmpty && !service.awaitingPlayback,
-               "quick exits after that still stop after two retries")
+        harness.machine.now += 30
+        harness.end()
+        harness.advance(10)
+        harness.machine.now += 30
+        harness.end()
+        suite.expect(harness.pendingDelays == 0 && !service.awaitingPlayback,
+               "exits within a minute after that still stop after two retries")
+        harness.machine.now += 61
+        harness.end()
+        suite.expect(harness.pendingDelays == 0, "an adapter that is gone already cannot end twice")
 
         for raw: Any in [true, 0, -1, 42.5, Double(Int32.max) + 1] {
             suite.expect(NotchPlaybackContext(reply: ["pid": raw, "playbackRevision": UUID().uuidString]) == nil,
@@ -1170,5 +1285,6 @@ enum NotchMusicHardeningTests {
         let raw: [String: Any] = ["pid": 42, "playbackRevision": context.revision.uuidString]
         suite.expect(NotchPlaybackContext(reply: raw) == context,
                "the recording revision survives the adapter reply without depending on UUID letter case")
+        suite.expect(harness.machine.lyrics.contains("same-title"), "each reading reaches the lyrics")
     }
 }

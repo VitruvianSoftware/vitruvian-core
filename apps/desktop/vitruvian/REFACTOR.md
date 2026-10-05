@@ -1625,6 +1625,46 @@ which leaves 27.
   over stubs) and the test against a reduced service model, 5 checks. The
   tap thread's success path and the mapping itself need macOS CI.
 
+Landed (4b, the Now Playing adapter): one more generated file goes, which
+leaves 26.
+
+- **Injected:** `NotchMusicService` takes an `Environment`:
+  - how the adapter is launched;
+  - the main queue its replies come back on;
+  - delayed work and the clock;
+  - the queue commands are written on;
+  - the settings and the lyrics;
+  - the Apple Event system.
+
+  A running adapter is a `NotchMusicAdapterLink`: whether it runs, the pipe
+  its commands go into, and ending it. `live` launches the bundled script as
+  before; the reader's parsing and the service's checks stay in the service.
+- **Test:** the command, source and gap tests drive a real service over an
+  adapter they feed by hand, as the adapter's own JSON lines, with every
+  queue and the clock run by the test. They used to run a copy of twelve
+  members and set its private state directly. New checks:
+  - a replaced adapter can neither show a reading nor end its successor;
+  - a recovery waits before it relaunches;
+  - exits within a minute keep the budget spent;
+  - a seek past the end lands at the end;
+  - a command to an exited adapter is refused;
+  - a write the adapter cannot take reports the failure;
+  - each reading reaches the lyrics.
+- **Verification:** a Linux Swift 6.4 model of the real service and its
+  support files runs the six tests (72 checks) and 48 mutants. Eight
+  survive, each because another guard already covers the path:
+  - the reset in `start()`, already done by `stop()`;
+  - the second launch guard;
+  - the gap's and the restart's generation checks, already ended by
+    `disconnect()` and `stop()`;
+  - `stop()` cancelling the restart, already blocked by the restart's
+    generation check;
+  - `seek`'s track and context checks, which `send` repeats;
+  - `send`'s playback check, which the context check repeats.
+
+  The command queue's `live` form compiles only against macOS's Dispatch, as
+  it did before.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -558,44 +558,6 @@ def main():
           + declaration(dock, "    private func isNearDock(").replace("private func", "func", 1)
           + "}\n")
 
-    music = "Sources/Vitruvian/Services/Notch/NotchMusicService.swift"
-    write("NotchMusicControls.swift", "import AppKit\n\nextension NotchMusicCommandContract {\n"
-          + "final class Service {\ntypealias Command = NotchPlaybackCommand\n"
-          + "var playback: NotchPlayback?\nvar generation = UUID()\nvar queueRequest: UUID?\n"
-          + "var sources: [NotchPlaybackSource] = []\nvar sourceIsAutomatic = true\n"
-          + "var artwork: NSObject?\nvar artworkTint: NotchArtworkTint?\n"
-          + "func updateArtwork(_ image: NSImage?, tint: NotchArtworkTint?, playback: NotchPlayback?) { artwork = image; artworkTint = tint }\n"
-          + "let trackChanges = TrackChanges()\nlet trackEnds = TrackChanges()\nvar gapReading: Reading?\nvar gapWork: DispatchWorkItem?\nfunc updateQueue() {}\n"
-          + "func updateAutomation(for playback: NotchPlayback?) {}\nfunc setQueueVisible(_ visible: Bool) { queueVisible = visible }\n"
-          + "var queueVisible = true\nvar queueLoading = false\nvar queueActionPending = false\n"
-          + "var commandFailed = false\nvar queueActionFailed = false\nvar commandPending = false\n"
-          + "var canSeek: Bool { playback?.canSeek == true }\n"
-          + "func beginAutomation(_ command: Command, playback: NotchPlayback) -> Bool { false }\nfunc cancelAutomationAction() {}\n"
-          + "var process: Process?\nvar input: Pipe?\nlet queue = Scheduler()\n"
-          + "lazy var commandWriter = NotchMusicCommandWriter { [queue = self.queue] in queue.async(execute: $0) }\n"
-          + "enum UserDefaults { static let standard = Preferences()\n"
-          + "final class Preferences { var includeOtherPlayers = false\n"
-          + "func bool(forKey key: String) -> Bool { includeOtherPlayers } } }\n"
-          + "var wantsPlayback = false\nvar includeOtherPlayers = false\nvar awaitingPlayback = false\nvar restartCount = 0\nvar restartWork: DispatchWorkItem?\nvar launches = 0\n"
-          + "var selectedSourcePID: Int32?\nvar chosenSource: NotchPlaybackSource.Selection?\nvar restoringSource = false\n"
-          + "var launchedAt: TimeInterval?\nvar uptime: TimeInterval = 0\nvar trackChange = NotchTrackChange()\n"
-          + "func launch() { guard wantsPlayback, process == nil else { return }; launches += 1; process = Process(); input = Pipe(); commandWriter.start(); launchedAt = uptime; restoreSource() }\n"
-          + "func disconnect() { endPlaybackGap(); generation = UUID(); commandWriter.stop(); process = nil; input = nil; playback = nil }\n"
-          + declaration(music, "    func start()")
-          + declaration(music, "    func stop()")
-          + declaration(music, "    private func connectionEnded()").replace("private func", "func", 1)
-            .replace("ProcessInfo.processInfo.systemUptime", "uptime")
-          + declaration(music, "    private func restoreSource()").replace("private func", "func", 1)
-          + declaration(music, "    private func acceptsSourceReply(").replace("private func", "func", 1)
-          + declaration(music, "    private struct Reading {").replace("private struct", "struct", 1)
-          + declaration(music, "    private func receive(").replace("private func", "func", 1)
-          + declaration(music, "    private func endPlaybackGap()").replace("private func", "func", 1)
-          + declaration(music, "    private func apply(").replace("private func", "func", 1)
-          + declaration(music, "    func seek(")
-          + declaration(music, "    func selectSource(")
-          + declaration(music, "    func send(_ command: Command)").replace("    func", "    @discardableResult\n    func", 1)
-          + declaration(music, "    func send(_ command: Command, context:").replace("    func", "    @discardableResult\n    func", 1)
-          + "}\n}\n")
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
           + "extension SoftwareDimmingRouteContract {\n"

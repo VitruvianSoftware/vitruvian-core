@@ -306,7 +306,6 @@ GENERATED_TEST_SOURCES = [
     "NotchDestinations.swift",
     "NotchFullscreen.swift",
     "NotchHover.swift",
-    "NotchMusicControls.swift",
     "NotchMusicVisibility.swift",
     "NotchPlaybackRouting.swift",
     "NotchPresentationRefresh.swift",
