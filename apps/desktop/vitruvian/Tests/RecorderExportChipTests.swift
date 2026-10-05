@@ -21,10 +21,10 @@ enum RecorderExportChipTests {
                 RecorderExportProgressChip(uploading: false, progress: 0.4, label: "Saving…",
                                            cancelTitle: "Cancel", cancel: {})
                     .background(GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { report(proxy.size) }
-                        .onChange(of: proxy.size) { report(proxy.size) }
-                })
+                        Color.clear
+                            .onAppear { report(proxy.size) }
+                            .onChange(of: proxy.size) { report(proxy.size) }
+                    })
                 Color.clear.frame(width: 60, height: 20)
             }
         }
