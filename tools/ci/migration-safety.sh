@@ -50,7 +50,7 @@
 # behaviour is identical run locally or in CI.
 set +e -u -o pipefail
 
-SQUAWK_VERSION="2.59.0"
+SQUAWK_VERSION="2.67.0"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CONFIG="$ROOT/apps/suites/tabula/api/prisma/.squawk.toml"
 MIG_DIR="apps/suites/tabula/api/prisma/migrations"
