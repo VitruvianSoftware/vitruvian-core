@@ -1711,6 +1711,13 @@ is that notice. Add an entry for every change to upstream files.
   `Services/Update/UpdateIntroSequence.swift`. `Core/AppInfo.swift` gains
   `isPrerelease`. `Tests/UpdateIntroFlowTests.swift` drives the sequence,
   and `Tests/generate_sources.py` no longer copies the delegate's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the key routing of
+  `Services/QuickTools/ScreenshotQuickPreviewController.swift` and
+  `Services/QuickTools/ScreenshotSelectionController.swift` moves to the new
+  `Services/QuickTools/ScreenshotCaptureKeys.swift`.
+  `Services/Notch/NotchService.swift` gains `CaptureFocus` behind
+  `isCaptureVisible(id:)`. `Tests/NotchCaptureKeyboardTests.swift` calls
+  them, and `Tests/generate_sources.py` no longer copies the monitors.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

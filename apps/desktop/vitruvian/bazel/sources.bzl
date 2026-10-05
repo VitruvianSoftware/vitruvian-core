@@ -297,7 +297,6 @@ GENERATED_TEST_SOURCES = [
     "DisplayRestoration.swift",
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
-    "NotchCaptureKeyboard.swift",
     "NotchCompact.swift",
     "NotchDestinations.swift",
     "NotchFullscreen.swift",

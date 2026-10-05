@@ -2016,6 +2016,41 @@ Landed (4b, the update intros): one more generated file goes, which leaves
   - resetting Done when the support page opens, and the review flag when
     the tour closes: the close and the open reset each again.
 
+Landed (4b, a capture's keys): one more generated file goes, which leaves
+17.
+
+- **Moved to pure code** (`Services/QuickTools/ScreenshotCaptureKeys.swift`,
+  new):
+  - `ScreenshotPreviewKeys`: whether a preview owns the keyboard, and
+    what a press does to it;
+  - `ScreenshotChooserKeys`: what a press does while an area or window is
+    being chosen, over the overlays or the island's controls.
+
+  The two controllers' key monitors read the event, ask, and act. The
+  chooser's per-letter helpers go.
+- **`NotchService.CaptureFocus`** (new) is what decides whether the island
+  shows a capture. `isCaptureVisible(id:)` reads it from the island's
+  state.
+- **Test:** the keyboard test calls the routing and the focus with plain
+  values. Before, it compiled the two monitors, the chooser's helpers and
+  the island's check over stand-in events and windows. New checks:
+  - a metric's detail, a capture without content, or an island that is
+    away owns no capture keys;
+  - a preview that is not on screen ignores keys;
+  - modified keys are passed on, and Shift-E still edits;
+  - Return is kept from the app even when no display can be taken;
+  - only releasing a held Space ends the move;
+  - a sheet or a recording keeps the island's keys from the chooser;
+  - the floating chooser ignores the island's state;
+  - tools switch by number only when offered and without a command key;
+  - scrolling capture and the loupe follow their letters;
+  - C copies a color, and the arrows nudge, only while the loupe takes
+    keys, the arrows ten pixels with Shift.
+- **Verification:** a Linux Swift 6.4 model of the routing and the focus
+  runs the test, 440 checks, and 54 mutants. One survives, equivalent:
+  passing a command press through the plain-key switch, whose own guard
+  passes it on.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

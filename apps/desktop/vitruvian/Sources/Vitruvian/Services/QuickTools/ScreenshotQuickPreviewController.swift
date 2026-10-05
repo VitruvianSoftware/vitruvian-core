@@ -468,55 +468,20 @@ package final class ScreenshotQuickPreviewController {
 
     private func installKeyMonitor(for panel: NSPanel) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
-            guard let self, !self.closed, let panel, panel.isVisible, event.window === panel,
-                  !self.shownInNotch || NotchService.shared.isCaptureVisible(id: self.presentationID),
-                  panel.attachedSheet == nil, !(panel.firstResponder is NSText),
-                  !ShortcutCapture.isCapturing else { return event }
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let key = Int(event.keyCode)
-            if flags.intersection([.command, .option, .shift, .control]) == .command {
-                let text = event.charactersIgnoringModifiers?.folding(
-                    options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
-                let letter = text?.count == 1 ? text?.first : nil
-                let isLatinLetter = letter.map { $0.isASCII && $0.isLetter } ?? false
-                if isLatinLetter ? letter == "w" : key == kVK_ANSI_W {
-                    self.close()
-                    return nil
-                }
+            guard let self, let panel,
+                  ScreenshotPreviewKeys.ownsKeys(
+                    closed: self.closed, panelVisible: panel.isVisible, inPanel: event.window === panel,
+                    shownByIsland: !self.shownInNotch || NotchService.shared.isCaptureVisible(id: self.presentationID),
+                    hasSheet: panel.attachedSheet != nil, editingText: panel.firstResponder is NSText,
+                    recordingShortcut: ShortcutCapture.isCapturing),
+                  let command = ScreenshotPreviewKeys.command(keyCode: Int(event.keyCode), flags: event.modifierFlags,
+                                                              characters: event.charactersIgnoringModifiers)
+            else { return event }
+            switch command {
+            case .close: self.close()
+            case .perform(let action): self.perform(action)
             }
-            if flags.contains(.command) {
-                switch key {
-                case kVK_ANSI_C:
-                    self.perform(.copy)
-                    return nil
-                case kVK_ANSI_S:
-                    self.perform(.save)
-                    return nil
-                case kVK_Delete, kVK_ForwardDelete:
-                    self.perform(.discard)
-                    return nil
-                default:
-                    return event
-                }
-            }
-            guard flags.isDisjoint(with: [.command, .control, .option]) else { return event }
-            switch key {
-            case kVK_Return, kVK_ANSI_KeypadEnter, kVK_ANSI_E:
-                self.perform(.edit)
-                return nil
-            case kVK_Delete, kVK_ForwardDelete:
-                self.perform(.discard)
-                return nil
-            case kVK_Escape:
-                // Escape only dismisses. Before the after-capture actions it
-                // was equivalent to discard; now a discard can delete a file
-                // the HUD just announced as saved, and "make this popup go
-                // away" must never do that. Deleting stays on Trash and ⌫.
-                self.close()
-                return nil
-            default:
-                return event
-            }
+            return nil
         }
     }
 }
