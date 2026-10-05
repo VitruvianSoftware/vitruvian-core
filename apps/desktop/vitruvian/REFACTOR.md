@@ -782,6 +782,23 @@ file goes, which leaves 74.
 - **Test:** the test passes a route of its own instead of shadowing
   `NSScreen`, `NSEvent`, `NSSound`, the service and the queue.
 
+Landed (4b, the Dock preview's frame restore): one more generated file
+goes, which leaves 73.
+
+- **Injected:** `DockPreviewFrameRestoration.restore(...)` takes a
+  `RestoreHost`:
+  - a display's frames now;
+  - the frontmost process and the focused window;
+  - the restore itself, and the wait between checks.
+
+  `system` keeps AppKit, the window activator and the main queue.
+  `Screen` is `package`.
+- **Test:** the test steps the checks one at a time instead of waiting on
+  the run loop.
+- **Checks added:** the waits are 0.15 s and then 0.05 s, and another app
+  in front cancels the restore. The stand-in it replaced always reported
+  the item's app in front.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

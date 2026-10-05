@@ -11,10 +11,56 @@ package struct DockPreviewFrameRestoration {
     private let windows: [[String: Any]]
     private let screens: [Screen]
 
-    private struct Screen {
-        let id: CGDirectDisplayID
-        let frame: CGRect
-        let visibleFrame: CGRect
+    /// A display as it was when the hold began, in Accessibility coordinates.
+    package struct Screen: Sendable {
+        package let id: CGDirectDisplayID
+        package var frame: CGRect
+        package var visibleFrame: CGRect
+
+        package init(id: CGDirectDisplayID, frame: CGRect, visibleFrame: CGRect) {
+            self.id = id
+            self.frame = frame
+            self.visibleFrame = visibleFrame
+        }
+    }
+
+    /// What restoring a window asks of the system: a display's frames now,
+    /// in Accessibility coordinates, the frontmost process, the focused
+    /// window, the restore itself, and the wait between checks. `system`
+    /// reads AppKit and the window activator and waits on the main queue.
+    package struct RestoreHost: Sendable {
+        package typealias Frames = (frame: CGRect, visibleFrame: CGRect)
+        package var screen: @MainActor @Sendable (CGDirectDisplayID) -> Frames?
+        package var frontmostPID: @MainActor @Sendable () -> pid_t?
+        package var focusedWindow: @MainActor @Sendable (pid_t) -> CGWindowID?
+        package var restore: @MainActor @Sendable (SwitcherItem, _ original: CGRect, _ heldVisibleFrame: CGRect) -> Void
+        package var after: @Sendable (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
+
+        package init(screen: @escaping @MainActor @Sendable (CGDirectDisplayID) -> Frames?,
+                     frontmostPID: @escaping @MainActor @Sendable () -> pid_t?,
+                     focusedWindow: @escaping @MainActor @Sendable (pid_t) -> CGWindowID?,
+                     restore: @escaping @MainActor @Sendable (SwitcherItem, CGRect, CGRect) -> Void,
+                     after: @escaping @Sendable (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void) {
+            self.screen = screen
+            self.frontmostPID = frontmostPID
+            self.focusedWindow = focusedWindow
+            self.restore = restore
+            self.after = after
+        }
+
+        package static var system: RestoreHost {
+            RestoreHost(
+                screen: { id in
+                    DockPreviewFrameRestoration.screen(id).map {
+                        (DockPreviewFrameRestoration.axFrame($0.frame),
+                         DockPreviewFrameRestoration.axFrame($0.visibleFrame))
+                    }
+                },
+                frontmostPID: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+                focusedWindow: { WindowActivator.focusedWindowID(for: $0) },
+                restore: { WindowActivator.restoreFrameAfterDockHold($0, original: $1, heldVisibleFrame: $2) },
+                after: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } })
+        }
     }
 
     package init() {
@@ -52,23 +98,23 @@ package struct DockPreviewFrameRestoration {
         }
     }
 
-    private static func restore(_ item: SwitcherItem, original: CGRect, screen: Screen,
-                                heldVisibleFrame: CGRect, isCurrent: @escaping @MainActor @Sendable () -> Bool, attempt: Int) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.15 : 0.05)) {
-            guard isCurrent(), let currentScreen = Self.screen(screen.id),
-                  axFrame(currentScreen.frame) == screen.frame,
-                  NSWorkspace.shared.frontmostApplication?.processIdentifier == item.pid,
-                  WindowActivator.focusedWindowID(for: item.windowOwnerPID) == item.windowID
+    package static func restore(_ item: SwitcherItem, original: CGRect, screen: Screen,
+                                heldVisibleFrame: CGRect, isCurrent: @escaping @MainActor @Sendable () -> Bool,
+                                attempt: Int, host: RestoreHost = .system) {
+        host.after(attempt == 0 ? 0.15 : 0.05) {
+            guard isCurrent(), let currentScreen = host.screen(screen.id),
+                  currentScreen.frame == screen.frame,
+                  host.frontmostPID() == item.pid,
+                  host.focusedWindow(item.windowOwnerPID) == item.windowID
             else { return }
-            guard axFrame(currentScreen.visibleFrame) == screen.visibleFrame else {
+            guard currentScreen.visibleFrame == screen.visibleFrame else {
                 if attempt < 15 {
                     restore(item, original: original, screen: screen,
-                            heldVisibleFrame: heldVisibleFrame, isCurrent: isCurrent, attempt: attempt + 1)
+                            heldVisibleFrame: heldVisibleFrame, isCurrent: isCurrent, attempt: attempt + 1, host: host)
                 }
                 return
             }
-            WindowActivator.restoreFrameAfterDockHold(item, original: original,
-                                                      heldVisibleFrame: heldVisibleFrame)
+            host.restore(item, original, heldVisibleFrame)
         }
     }
 
