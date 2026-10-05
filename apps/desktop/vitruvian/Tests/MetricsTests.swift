@@ -12,6 +12,9 @@ import VitruvianUI
 @main
 struct MetricsTests {
     static func main() {
+        // Line-buffered, so a suite that crashes the run still leaves the
+        // names of the suites that finished before it in the test log.
+        setvbuf(stdout, nil, _IOLBF, 0)
         let suite = TestSuite()
         let groups: [(String, () -> Void)] = [
             ("harness", {
