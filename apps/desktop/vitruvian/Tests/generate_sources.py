@@ -231,7 +231,6 @@ def main():
               .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
           + "}\n}\n")
     write("ShelfDropRouting.swift", "import AppKit\n\nextension ShelfDropRoutingContract {\n"
-          + declaration(canvas, "struct NotchFileDropActions {")
           + "final class ShelfService: ShelfState {\nstatic var shared = ShelfService()\n"
           + declaration(shelf, "    func acceptDrop(pasteboard:")
           + declaration(shelf, "    func accept(draggingInfo:")
@@ -259,16 +258,6 @@ def main():
           + declaration(notch, "    func endFileDrop(")
           + declaration(notch, "    func accept(_ pasteboard:")
           + declaration(notch, "    private func fileDropLanded(").replace("private func", "func", 1)
-          + "}\nfinal class Canvas {\nvar acceptingDrag = false\n"
-          + "var dropActions: NotchFileDropActions?\n"
-          + "var visibleRect = CGRect(x: 0, y: 0, width: 440, height: 400)\n"
-          + "func convert(_ point: CGPoint, from: Int?) -> CGPoint { point }\n"
-          + "func containsVisiblePoint(_ point: CGPoint) -> Bool { visibleRect.contains(point) }\n"
-          + declaration(canvas, "    func beginDrop(")
-          + declaration(canvas, "    func finishDrop(")
-          + declaration(canvas, "    override func draggingUpdated(").replace("override func", "func", 1)
-          + declaration(canvas, "    override func draggingExited(").replace("override func", "func", 1)
-          + declaration(canvas, "    override func performDragOperation(").replace("override func", "func", 1)
           + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"

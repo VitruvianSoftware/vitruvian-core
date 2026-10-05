@@ -8,7 +8,8 @@ import VitruvianServices
 import VitruvianUI
 
 /// Production destination methods run against controlled delivery results.
-/// Native transport and payload integrity have separate transfer tests.
+/// Native transport and payload integrity have separate transfer tests. The
+/// island's canvas is the module's own `NotchCanvasDrop`.
 enum ShelfDropRoutingContract {
     enum AppFeature {
         static var shelf = Feature()
@@ -33,8 +34,6 @@ enum ShelfDropRoutingContract {
     struct NSDraggingInfo {
         let draggingPasteboard: NSPasteboard
         let draggingDestinationWindow: Window?
-        var draggingLocation = CGPoint.zero
-        var draggingSource: AnyObject?
     }
     class ShelfState {
         var dockedPanel = Window()
@@ -133,17 +132,17 @@ enum ShelfDropRoutingTests {
                 shelf.ordinaryItems = ["file", "note"]
                 shelf.accepts = accepted
                 let notch = Context.Notch()
-                let canvas = Context.Canvas()
-                canvas.dropActions = Context.NotchFileDropActions(
+                let canvas = NotchCanvasDrop()
+                canvas.actions = NotchFileDropActions(
                     canAccept: { _ in notch.canAcceptFileDrop }, enter: { _ in },
                     accept: { notch.accept($0) }, exit: {})
-                suite.expect(canvas.beginDrop(board, localSource: true) == [],
+                suite.expect(canvas.begin(board, localSource: true) == [],
                        "the island leaves internal tile drags to their merge destinations")
-                suite.expect(!canvas.finishDrop(board) && shelf.promisedAccepts + shelf.ordinaryAccepts == 0,
+                suite.expect(!canvas.finish(board) && shelf.promisedAccepts + shelf.ordinaryAccepts == 0,
                        "an unaccepted gesture never reaches file delivery")
-                suite.expect(canvas.beginDrop(board, localSource: false) == .copy,
+                suite.expect(canvas.begin(board, localSource: false) == .copy,
                        "an external drag remains accepted by the stable island destination")
-                suite.expect(canvas.finishDrop(board) == accepted,
+                suite.expect(canvas.finish(board) == accepted,
                        "the island reports the actual shelf admission result")
                 suite.expect(shelf.promisedAccepts == (promised ? 1 : 0)
                        && shelf.ordinaryAccepts == (promised ? 0 : 1),
@@ -153,7 +152,7 @@ enum ShelfDropRoutingTests {
                 suite.expect(notch.opened == (accepted ? [.files] : [])
                        && notch.heldDrag == !accepted && notch.dragPlaceholder == !accepted,
                        "only accepted deliveries open files and release the island placeholder")
-                suite.expect(!canvas.finishDrop(board), "one gesture cannot deliver twice")
+                suite.expect(!canvas.finish(board), "one gesture cannot deliver twice")
 
                 let dockDrop = Context.NSDraggingInfo(draggingPasteboard: board,
                                                      draggingDestinationWindow: shelf.dockedPanel)
@@ -169,11 +168,11 @@ enum ShelfDropRoutingTests {
             let shelf = Context.ShelfService.shared
             shelf.promises = [1]
             let notch = Context.Notch()
-            let canvas = Context.Canvas()
-            canvas.dropActions = Context.NotchFileDropActions(
+            let canvas = NotchCanvasDrop()
+            canvas.actions = NotchFileDropActions(
                 canAccept: { _ in notch.canAcceptFileDrop }, enter: { _ in },
                 accept: { notch.accept($0) }, exit: {})
-            _ = canvas.beginDrop(board, localSource: false)
+            _ = canvas.begin(board, localSource: false)
             switch revoked {
             case 0: Context.AppFeature.shelf.isAvailable = false
             case 1: Context.UserDefaults.standard.enabled = false
@@ -181,7 +180,7 @@ enum ShelfDropRoutingTests {
             case 3: notch.acceptsUserInteraction = false
             default: notch.captureControls = 1
             }
-            suite.expect(!canvas.finishDrop(board) && shelf.promisedAccepts == 0 && notch.opened.isEmpty,
+            suite.expect(!canvas.finish(board) && shelf.promisedAccepts == 0 && notch.opened.isEmpty,
                    "a destination disabled after hover cannot start an attachment delivery")
         }
         Context.AppFeature.shelf.isAvailable = true
@@ -344,24 +343,25 @@ enum ShelfDropRoutingTests {
                 board.clearContents()
                 board.writeObjects([image as NSURL])
                 let destination = Context.Notch()
-                let canvas = Context.Canvas()
-                canvas.visibleRect = CGRect(origin: .zero, size: destination.surfaceSize)
-                canvas.dropActions = Context.NotchFileDropActions(
+                let canvas = NotchCanvasDrop()
+                // The visible island, where the canvas reports the drag.
+                let visible = CGRect(origin: .zero, size: destination.surfaceSize)
+                canvas.actions = NotchFileDropActions(
                     canAccept: { _ in destination.canAcceptFileDrop },
                     enter: { destination.beginFileDrop($0) },
                     accept: { destination.accept($0) },
                     exit: { destination.endFileDrop() },
                     update: { destination.updateFileDrop(at: $0) })
+                func moved(to point: CGPoint) -> NSDragOperation {
+                    canvas.update(board, at: point, visible: visible.contains(point), localSource: false)
+                }
                 let area = NotchFileToolsSupport.mediaDropArea(in: destination.geometry, size: destination.surfaceSize)
-                var drag = Context.NSDraggingInfo(draggingPasteboard: board, draggingDestinationWindow: nil,
-                                                  draggingLocation: CGPoint(x: 40, y: area.midY))
-                suite.expect(canvas.draggingUpdated(drag) == .copy && !destination.targetsMediaDrop,
+                suite.expect(moved(to: CGPoint(x: 40, y: area.midY)) == .copy && !destination.targetsMediaDrop,
                        "native dragging starts on the shelf side")
-                drag.draggingLocation = CGPoint(x: area.midX, y: area.midY)
-                suite.expect(canvas.draggingUpdated(drag) == .copy && destination.targetsMediaDrop,
+                suite.expect(moved(to: CGPoint(x: area.midX, y: area.midY)) == .copy && destination.targetsMediaDrop,
                        "moving across the island highlights the media destination")
-                drag.draggingLocation = finishOutside ? CGPoint(x: -1, y: -1) : CGPoint(x: 40, y: area.midY)
-                suite.expect(canvas.performDragOperation(drag) == !finishOutside
+                let release = finishOutside ? CGPoint(x: -1, y: -1) : CGPoint(x: 40, y: area.midY)
+                suite.expect(canvas.perform(board, at: release, visible: visible.contains(release)) == !finishOutside
                        && Context.NotchFileToolsService.shared.mediaSession == nil,
                        "the release point is rechecked even when the last drag update targeted media")
                 suite.expect(Context.ShelfService.shared.ordinaryAccepts == (finishOutside ? 0 : 1)

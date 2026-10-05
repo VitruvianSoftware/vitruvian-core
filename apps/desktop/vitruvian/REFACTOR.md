@@ -2259,6 +2259,25 @@ which leaves 9.
 - **Verification:** a Linux Swift 6.4 model type-checks the new type against
   stand-ins. The suite itself runs on macOS CI.
 
+Landed (4b, the island canvas's drops): the shelf-drop contract stops
+copying the canvas. Its generated file stays for the shelf, file-tools and
+island members, which the next slices take one owner at a time, so 9 remain.
+
+- **`NotchCanvasDrop`** (new, `Services/Notch/`) is the drag bookkeeping
+  that lived in the window host's private canvas view:
+  - whether a drag is taken (drags from inside the app are not);
+  - delivering a taken drag once;
+  - letting go of a drag that leaves the visible island;
+  - checking the release point again, whatever the last update targeted.
+  - The canvas still converts the drag's location and says whether it is
+    on the visible island, then forwards one line to this type.
+- **Tests:** `ShelfDropRoutingTests` drives the module's own type with the
+  module's `NotchFileDropActions`. Before, it compiled copies of the
+  canvas's five drop methods and of the actions struct. Every check is
+  kept.
+- **Verification:** a Linux Swift 6.4 model type-checks and runs the new
+  type against stand-ins. The suite itself runs on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
