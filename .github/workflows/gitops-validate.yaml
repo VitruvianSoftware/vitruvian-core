@@ -96,7 +96,7 @@ jobs:
       # script's header for why this was deduped).
       - name: Install kubeconform (pinned + checksum-verified)
         env:
-          KUBECONFORM_VERSION: v0.6.7
+          KUBECONFORM_VERSION: v0.8.0
         run: |
           bash tools/ci/install-pinned-tool.sh \
             "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}" \
