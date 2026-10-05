@@ -1243,25 +1243,6 @@ def main():
           + declaration(dock, "    func endWindowDrag(")
           + "}\n")
 
-    write("AgentUsageEventDelivery.swift", "import Foundation\n"
-          + "extension AgentUsageEventDeliveryTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
-                        "    private func report(").replace("private func", "func", 1)
-          + "}\n}\n")
-
-
-    write("AgentUsageArchiveSave.swift", "import Foundation\n"
-          + "extension AgentUsageArchiveSaveTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
-                        "    private func saveProgress(").replace("private func", "func", 1)
-          + "}\n}\n")
-
-    write("AgentUsageArchiveSettle.swift", "import Foundation\n"
-          + "extension AgentUsageArchiveSettleTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
-                        "    private func settleArchive(").replace("private func", "func", 1)
-          + "}\n}\n")
-
     write("AgentUsageRead.swift", "import Foundation\n"
           + "extension AgentUsageReadTests {\nfinal class Host: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",

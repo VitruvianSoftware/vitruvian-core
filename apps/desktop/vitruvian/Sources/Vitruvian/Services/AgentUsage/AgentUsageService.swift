@@ -278,8 +278,14 @@ package final class AgentUsageService: ObservableObject {
     /// process right after, so this returns only once the file is settled.
     /// Main thread.
     private func settleArchive(keeping keeps: Bool) {
+        Self.settleArchive(on: queue, keeping: keeps, save: { saveProgress() })
+    }
+
+    /// Settles the file on `queue`, behind any reading still going there.
+    nonisolated package static func settleArchive(on queue: DispatchQueue, keeping keeps: Bool, save: () -> Void,
+                                                  remove: () -> Void = AgentUsageArchive.remove) {
         queue.sync {
-            if keeps { saveProgress() } else { AgentUsageArchive.remove() }
+            if keeps { save() } else { remove() }
         }
     }
 
@@ -288,16 +294,23 @@ package final class AgentUsageService: ObservableObject {
     nonisolated
     private func saveProgress() {
         guard readerSession >= 0 else { return }
-        let mark = progressMark
         lastSave = Date()
+        Self.saveProgress(mark: progressMark, savedMark: &savedMark, providers: enabled, store: store, cursors: cursors)
+    }
+
+    /// Writes progress unless `mark` says it is already saved; the first save
+    /// of a reading, with `savedMark` nil, always writes.
+    nonisolated package static func saveProgress(mark: Int, savedMark: inout Int?, providers: Set<AgentProvider>,
+                                                 store: AgentUsageStore, cursors: [String: AgentLogCursor],
+                                                 save: (AgentUsageArchive.Contents) -> Bool = AgentUsageArchive.save) {
         guard mark != savedMark else { return }
         // A log that started over while running still counts what its old
         // contents gave. Left out, the next launch reads it as rewritten.
         // Nothing from OpenCode's database is saved. Its open replies and
         // sessions live only in memory, so each launch reads it again.
         let kept = cursors.values.filter { !$0.restarted && $0.provider != .opencode }
-        let contents = AgentUsageArchive.Contents(providers: enabled, store: store.saved, cursors: kept.map(\.saved))
-        if AgentUsageArchive.save(contents) { savedMark = mark }
+        let contents = AgentUsageArchive.Contents(providers: providers, store: store.saved, cursors: kept.map(\.saved))
+        if save(contents) { savedMark = mark }
     }
 
     /// Changes whenever a log is read further, replaced or let go. OpenCode,
@@ -537,17 +550,27 @@ package final class AgentUsageService: ObservableObject {
     private func report(_ event: AgentUsageEvent) {
         let session = readerSession
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.running, self.session == session else { return }
-            switch event {
-            case .finished(let provider, let duration, _, _, _):
-                guard self.providers.contains(provider), let minimum = NotchAgentSupport.finishMinimum(),
-                      duration >= minimum else { return }
-            case .limitWarning(let provider, _), .limitReset(let provider, _):
-                guard self.providers.contains(provider), NotchAgentSupport.limitThreshold() != nil else { return }
-            case .budgetReached:
-                guard NotchAgentSupport.dailyBudget() != nil else { return }
-            }
+            guard let self, Self.delivers(event, queuedIn: session, running: self.running, session: self.session,
+                                          providers: self.providers) else { return }
             self.events.send(event)
+        }
+    }
+
+    /// Whether an event queued during reading `queued` still goes out: not
+    /// after a stop or restart, nor past the person's choices.
+    package static func delivers(_ event: AgentUsageEvent, queuedIn queued: Int, running: Bool, session: Int,
+                                 providers: [AgentProvider], in defaults: UserDefaults = .standard) -> Bool {
+        guard running, session == queued else { return false }
+        switch event {
+        case .finished(let provider, let duration, _, _, _):
+            guard providers.contains(provider), let minimum = NotchAgentSupport.finishMinimum(in: defaults) else {
+                return false
+            }
+            return duration >= minimum
+        case .limitWarning(let provider, _), .limitReset(let provider, _):
+            return providers.contains(provider) && NotchAgentSupport.limitThreshold(in: defaults) != nil
+        case .budgetReached:
+            return NotchAgentSupport.dailyBudget(in: defaults) != nil
         }
     }
 

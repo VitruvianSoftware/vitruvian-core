@@ -391,74 +391,53 @@ enum AgentUsageArchiveTests {
 /// The production settle method against a recording archive: turning the
 /// section off and quitting at once must still remove saved progress.
 enum AgentUsageArchiveSettleTests {
-    enum AgentUsageArchive {
-        static var removed = 0
-        static func remove() { removed += 1 }
-    }
-
-    class Fixture {
+    static func run(_ suite: TestSuite) {
         let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.agent-usage.settle-test")
         var saved = 0
-        func saveProgress() { saved += 1 }
-        init() {}
-    }
-
-    static func run(_ suite: TestSuite) {
-        defer { AgentUsageArchive.removed = 0 }
-        let host = Host()
+        var removed = 0
+        func settle(keeping keeps: Bool) {
+            AgentUsageService.settleArchive(on: queue, keeping: keeps, save: { saved += 1 }, remove: { removed += 1 })
+        }
         // A first read still going when the section is turned off.
         let reading = DispatchSemaphore(value: 0)
-        host.queue.async {
+        queue.async {
             reading.signal()
             Thread.sleep(forTimeInterval: 0.2)
         }
         reading.wait()
-        host.settleArchive(keeping: false)
-        suite.expect(AgentUsageArchive.removed == 1 && host.saved == 0,
+        settle(keeping: false)
+        suite.expect(removed == 1 && saved == 0,
                      "turning the section off removes saved progress before stopping returns, behind a read in progress")
-        host.settleArchive(keeping: true)
-        suite.expect(AgentUsageArchive.removed == 1 && host.saved == 1,
+        settle(keeping: true)
+        suite.expect(removed == 1 && saved == 1,
                      "quitting with the section on saves progress before stopping returns")
     }
 }
 
-typealias AgentUsageProductionArchive = AgentUsageArchive
-
 /// The production save method against a recording archive.
 enum AgentUsageArchiveSaveTests {
-    enum AgentUsageArchive {
-        typealias Contents = AgentUsageProductionArchive.Contents
-        static var saved: [Contents] = []
-        static func save(_ contents: Contents) -> Bool {
-            saved.append(contents)
-            return true
-        }
-    }
-
-    class Fixture {
-        var readerSession = 1
-        var progressMark = 0
-        var lastSave = Date.distantPast
-        var savedMark: Int?
-        var enabled: Set<AgentProvider> = [.claude]
-        var store = AgentUsageStore()
-        var cursors: [String: AgentLogCursor] = [:]
-    }
-
     static func run(_ suite: TestSuite) {
-        defer { AgentUsageArchive.saved = [] }
+        var saved: [AgentUsageArchive.Contents] = []
+        var savedMark: Int?
+        let store = AgentUsageStore()
+        var cursors: [String: AgentLogCursor] = [:]
+        func save(mark: Int) {
+            AgentUsageService.saveProgress(mark: mark, savedMark: &savedMark, providers: [.claude], store: store,
+                                           cursors: cursors) { contents in
+                saved.append(contents)
+                return true
+            }
+        }
         // A provider turned off with the section still on: the reading that
         // follows has nothing yet, and still replaces the old file.
-        let host = Host()
-        host.saveProgress()
-        suite.expect(AgentUsageArchive.saved.count == 1 && AgentUsageArchive.saved.first?.providers == [.claude]
-                        && AgentUsageArchive.saved.first?.store.records.isEmpty == true,
+        save(mark: 0)
+        suite.expect(saved.count == 1 && saved.first?.providers == [.claude]
+                        && saved.first?.store.records.isEmpty == true,
                      "the first save of a reading replaces the file even with nothing read, dropping agents now off")
-        host.saveProgress()
-        suite.expect(AgentUsageArchive.saved.count == 1, "a save with nothing new since writes nothing")
-        host.progressMark = 1
-        host.saveProgress()
-        suite.expect(AgentUsageArchive.saved.count == 2, "a save after reading moved on writes again")
+        save(mark: 0)
+        suite.expect(saved.count == 1, "a save with nothing new since writes nothing")
+        save(mark: 1)
+        suite.expect(saved.count == 2, "a save after reading moved on writes again")
 
         // A log replaced while the app ran still counts what its old contents
         // gave, so it is left out and the next launch reads it as rewritten.
@@ -482,15 +461,14 @@ enum AgentUsageArchiveSaveTests {
         let reply = AgentUsageRecord(provider: .opencode, date: Date(), model: "stealth/ox-alpha", project: "web",
                                      session: "s", tokens: AgentTokens(input: 10), cost: 0.01, savings: 0,
                                      reportedCost: true)
-        host.store.apply([.usage(key: "opencode:s:a", record: reply, billable: AgentBillable(tokens: reply.tokens))],
-                         file: "\(database.path)#s", provider: .opencode, tracksTurns: true, modified: Date())
-        host.cursors = [keptLog.path: kept, replacedLog.path: replaced, database.path: database]
-        host.progressMark = 2
-        host.saveProgress()
+        store.apply([.usage(key: "opencode:s:a", record: reply, billable: AgentBillable(tokens: reply.tokens))],
+                    file: "\(database.path)#s", provider: .opencode, tracksTurns: true, modified: Date())
+        cursors = [keptLog.path: kept, replacedLog.path: replaced, database.path: database]
+        save(mark: 2)
         suite.expect(replaced.restarted && !kept.restarted
-                        && AgentUsageArchive.saved.last?.cursors.map(\.path) == [keptLog.path],
+                        && saved.last?.cursors.map(\.path) == [keptLog.path],
                      "a log replaced or written again while the app ran is left out of saved progress, as is OpenCode's database")
-        suite.expect(host.store.records.count == 1 && AgentUsageArchive.saved.last?.store.records.isEmpty == true,
+        suite.expect(store.records.count == 1 && saved.last?.store.records.isEmpty == true,
                      "what OpenCode's database gave stays out of saved progress")
     }
 }

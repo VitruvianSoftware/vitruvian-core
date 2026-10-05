@@ -1346,6 +1346,14 @@ is that notice. Add an entry for every change to upstream files.
   `MenuPanelRowFeatures`, which `Tests/MenuPanelSectionGateTests.swift` checks
   against the shipped section gates; `Tests/generate_sources.py` no longer
   copies the sections, rows or quick toggles.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/AgentUsage/AgentUsageService.swift` settles and saves progress
+  through `settleArchive(on:keeping:save:remove:)` and
+  `saveProgress(mark:savedMark:providers:store:cursors:save:)`, and filters
+  agent events through `delivers(_:queuedIn:running:session:providers:in:)`,
+  which `Tests/AgentUsageArchiveTests.swift` and
+  `Tests/AgentUsageEventDeliveryTests.swift` call; `Tests/generate_sources.py`
+  no longer copies the settle, save or report methods.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
