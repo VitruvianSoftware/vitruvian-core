@@ -5073,6 +5073,23 @@ the offer. The read of `FeatureHubSettings.swift` that pinned it goes.
 
   Each converts when its code moves behind a seam, as 7b–7e did. The ledger
   keeps the rest from growing meanwhile.
+Landed (7f, Swift Testing beside the runner): the suites now run through
+Swift Testing as well as through the binary's own runner.
+
+- **One list:** `Tests/TestGroups.swift` holds the suites and their run
+  order. `MetricsTests` runs them from there, and the harness checks that
+  the names Swift Testing lists match.
+- **The cases:** `Tests/SwiftTesting/UnitTests.swift` turns each suite into
+  one `@Test` case, run one at a time on the main actor. Every failed check
+  is recorded as an issue, and a suite that checks nothing fails.
+- **The target:** `unit_tests_swift_testing` builds them with `swift_test`
+  and runs the result through `bazel/run_unit_tests.sh`, like `unit_tests`.
+  It gets the same working directory, bare bundle and preference sweep.
+  It is `exclusive`, because both runners use the same throwaway defaults
+  suites and would clear each other's.
+- **Left:** `unit_tests` stays until this target has run green beside it.
+  Then the binary's runner goes, and Swift Testing is the only one.
+
 ## Not in scope
 
 Product decisions remain open:

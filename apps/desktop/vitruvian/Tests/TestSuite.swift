@@ -77,6 +77,8 @@ enum TestHarnessTests {
         accepted.expectClose(-1.25, -1, "negative values", tol: 0.25)
         suite.expect(accepted.failures.isEmpty && accepted.checks == 3,
                      "finite comparisons retain exact and tolerance-boundary behavior")
+        suite.expect(TestGroups.names == TestGroups.all(TestSuite()).map(\.0),
+                     "Swift Testing lists the same suites, in the same order, as the runner")
 
         let reference = TestFormat.parse("%1$d items in %2$@")?.arguments
         suite.expect(reference == [1: "d", 2: "@"], "format arguments have explicit identities")

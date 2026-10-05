@@ -22,6 +22,7 @@ load("@build_bazel_rules_apple//apple:resources.bzl", "apple_resource_group")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -454,6 +455,70 @@ sh_test(
     target_compatible_with = MACOS_ONLY,
 )
 
+# The same suites through Swift Testing (REFACTOR.md step 7f): each group
+# `TestGroups` lists is one serialized case on the main actor, with every
+# failed check recorded as an issue. The binary's own runner (`MetricsTests`,
+# with `@main`) stays out, so `unit_tests` keeps running beside it until this
+# target has proven it runs everything the same way.
+swift_test(
+    name = "unit_tests_swift_testing_bin",
+    package_name = SWIFT_PACKAGE,
+    srcs = glob(
+        TEST_PRODUCTION_SOURCES,
+        allow_empty = True,
+        exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
+    ) + glob(
+        ["Tests/*.swift"],
+        exclude = ["Tests/MetricsTests.swift"],
+    ) + glob(["Tests/SwiftTesting/*.swift"]) + [":generated_test_sources"],
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    module_name = "VitruvianSwiftTests",
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":FanControlKit",
+        ":VMStatisticsCompat",
+        ":VitruvianCore",
+        ":VitruvianDesign",
+        ":VitruvianNowPlayingLib",
+        ":VitruvianServices",
+        ":VitruvianUI",
+    ],
+)
+
+# Run through the same wrapper as unit_tests, for the same working directory,
+# bare bundle and preference sweep. Exclusive, because both runners use the
+# same throwaway UserDefaults suites and would clear each other's.
+sh_test(
+    name = "unit_tests_swift_testing",
+    size = "large",
+    srcs = ["bazel/run_unit_tests.sh"],
+    args = [
+        "$(rootpath :unit_tests_swift_testing_bin)",
+        package_name(),
+    ],
+    data = [
+        "build.sh",
+        ":unit_tests_swift_testing_bin",
+    ] + glob([
+        "Resources/**",
+        "Sources/**",
+        "Tests/**",
+        "Tools/**",
+    ]),
+    tags = [
+        "exclusive",
+        "manual",
+        "no-remote",
+        "no-sandbox",
+    ],
+    target_compatible_with = MACOS_ONLY,
+)
+
 sh_test(
     name = "selftest",
     size = "medium",
@@ -520,6 +585,7 @@ pipeline_unit(
         ":selftest",
         ":sources_in_sync_test",
         ":unit_tests",
+        ":unit_tests_swift_testing",
     ],
     tier = "L1",
     timeout_minutes = 60,

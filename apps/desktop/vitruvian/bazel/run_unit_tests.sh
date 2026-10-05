@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 VitruvianSoftware
 
-# Bazel test wrapper for the upstream unit-test binary, mirroring
+# Bazel test wrapper for the unit-test binaries (the runner's own and Swift Testing's), mirroring
 # `build.sh --test`:
 #   1. run the binary from the app root, because the tests open repository
 #      files (sources, Resources/, build.sh) by app-relative paths;

@@ -2112,6 +2112,13 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/MetricsTests.swift`) recounts.
   - `Tests/FeatureCatalogTests.swift` drops the undo's source read, and
     `Tests/FeatureRuntimeTests.swift` checks it instead.
+- **2026-10-05**: Refactor step 7f (`REFACTOR.md`):
+  - `Tests/MetricsTests.swift` takes its suites from the new
+    `Tests/TestGroups.swift` instead of listing them itself, so the new
+    `Tests/SwiftTesting/UnitTests.swift` runs the same list through Swift
+    Testing.
+  - `Tests/TestSuite.swift` (the harness checks) checks that the names
+    Swift Testing lists match the runner's suites, in order.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
