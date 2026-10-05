@@ -2558,6 +2558,43 @@ kept on purpose.
 - **Mutations:** "floating scratchpad takes another host's focus" now
   mutates the guard in `ScratchpadFocus.swift`.
 
+Landed (4b, the menu panel's presentation): the last copy goes. What the
+generator writes now is the localization registry alone, and no test
+compiles a copy of production code.
+
+- **`MenuPanelPresenter`** (`Services/MenuPanel/MenuPanelPresenter.swift`)
+  is the main panel's presentation, moved out of `AppDelegate` with its
+  state, near verbatim:
+  - where the panel opens: the click, the status item's frame, the
+    remembered spot, the display;
+  - how it holds that spot while the menu bar shifts;
+  - how it closes, and why;
+  - how it comes back in place after something other than Vitruvian
+    closed it;
+  - where Settings opens beside it.
+- **Generic over the platform:** the presenter reads its display, windows,
+  status button and popover through `MenuPanelScreen`, `MenuPanelWindow`,
+  `MenuPanelButton` and `MenuPanelPopover`, which AppKit's types adopt
+  (`AppKitMenuPanel`).
+- **`Environment`** carries the rest:
+  - the screens, the current event, the main queue and window
+    observation;
+  - the shared services the panel's content uses (`MenuPanelFocus`,
+    `PanelInteractionState`, the sampling it releases);
+  - `AppDelegate`'s own hooks: dismissal monitors, following activation,
+    the stable positioning view, the Settings window.
+- **What stayed in `AppDelegate`:** the popover itself and its content, the
+  monitors and keys, activation tracking, metric anchor switches and the
+  positioning view, all of which now go through the presenter's state.
+- **Tests:** `MenuPanelRecoveryTests` drives the real presenter over a
+  platform of its own and a fixture that records every hook. It used to
+  shadow `NSScreen`, `NSWindow`, `NotificationCenter`, `DispatchQueue`,
+  `NSApp` and five singletons inside the test module. Every check is
+  kept. The release of sampling and metric focus is now counted at the
+  one hook that does both.
+- **Generator:** with no copy left, `Tests/generate_sources.py` loses its
+  extraction helpers.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

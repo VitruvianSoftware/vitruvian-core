@@ -1951,6 +1951,17 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/ScratchpadStoreContractTests.swift`'s harness passes its own
     defaults; `Tests/mutation_checks.py` mutates the focus guard where it
     now lives; `Tests/generate_sources.py` no longer copies any of it.
+- **2026-10-05**: Refactor step 4b, the menu panel's presentation (`REFACTOR.md`):
+  - `Sources/Vitruvian/App/AppDelegate.swift`: the panel's placement,
+    drift correction, close, foreign-close recovery and Settings placement
+    move, with their state, to the new `MenuPanelPresenter`
+    (`Services/MenuPanel/MenuPanelPresenter.swift`). `AppDelegate` builds it
+    over AppKit and its own hooks, and forwards the popover's close
+    callbacks to it.
+  - `Tests/MenuPanelRecoveryTests.swift` drives the real presenter instead of
+    a compiled copy over shadowed AppKit types.
+  - `Tests/generate_sources.py` copies nothing any more; it writes the
+    localization registry.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -294,7 +294,6 @@ TEST_PRODUCTION_SOURCES = [
 # Files Tests/generate_sources.py writes; Bazel needs them declared up front.
 GENERATED_TEST_SOURCES = [
     "LocalizationCatalog.swift",
-    "MenuPanelRecovery.swift",
 ]
 
 # Sources of the privileged fan-control helper.
