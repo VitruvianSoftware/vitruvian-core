@@ -71,12 +71,7 @@ package final class CommandBarService: ObservableObject {
     @Published package var query = "" {
         didSet {
             guard query != oldValue else { return }
-            uninstallWarning = nil
-            uninstallFinderRequestID = nil
-            if mode.isUninstallFlow {
-                AppUninstaller.shared.reset()
-                mode = .search
-            }
+            uninstallReview.queryChanged()
             // The argument field is temporary. Keep the completed search and
             // its original spelling intact until returning to search mode.
             if case .argument = mode {
@@ -193,8 +188,27 @@ package final class CommandBarService: ObservableObject {
     /// folder, same lifetime as `selectionEntries`.
     private var uninstallSelectionEntries: [CommandBarEntry] = [] { didSet { foldedSections[.uninstallSelection] = nil } }
     private var uninstallSelectionLoading = false
-    private var uninstallFinderRequestID: UUID?
-    private var pendingHomebrewRemoval: AppUninstaller.HomebrewRemovalConfirmation?
+    /// What an uninstall row opens, and the ways back out of it.
+    private lazy var uninstallReview = CommandBarUninstallReview(
+        uninstaller: .shared,
+        host: .init(
+            isAvailable: { AppFeature.uninstaller.isAvailable },
+            defaults: .standard,
+            mode: { [unowned self] in self.mode },
+            setMode: { [unowned self] in self.mode = $0 },
+            saveQuery: { [unowned self] in self.savedQuery = self.query },
+            returnToSearch: { [unowned self] query in
+                self.mode = .search
+                self.query = query ?? self.savedQuery
+                self.refreshResults()
+            },
+            setWarning: { [unowned self] in self.uninstallWarning = $0 },
+            refreshPanelLayout: { [unowned self] in self.refreshPanelLayout() },
+            forget: { [unowned self] url in
+                self.cachedApps.removeAll { $0.url.standardizedFileURL == url }
+                self.uninstallSelectionEntries.removeAll { $0.uninstallAppURL?.standardizedFileURL == url }
+                self.rebuildRunningEntries()
+            }))
     /// True while the bar is closing, so nothing is rebuilt on the way out.
     private var isTearingDown = false
     private var menusLoading = false
@@ -424,22 +438,9 @@ package final class CommandBarService: ObservableObject {
         removeMonitors()
         panel?.orderOut(nil)
         // Leaving mid-review through this path (global shortcut, outside
-        // click) skipped the reset stepBack() does for the same mode -
-        // AppUninstaller kept its selected target and scanned checklist,
-        // which then showed up unprompted in Settings and the menu panel.
-        // Guarded the same way: don't tear down a removal - Homebrew or
-        // plain - that's still actually running in the background.
-        switch mode {
-        case .uninstallReview, .uninstallHomebrewConfirm:
-            let uninstaller = AppUninstaller.shared
-            if !uninstaller.isRemoving {
-                uninstaller.reset()
-            }
-        default:
-            break
-        }
+        // click) skips the reset stepBack() does for the same mode.
+        uninstallReview.close()
         mode = .search
-        uninstallFinderRequestID = nil
         // A selection belongs to the moment the bar was opened. Keeping it
         // would offer to act on text the person may have replaced since.
         if !selectionEntries.isEmpty {
@@ -2033,51 +2034,6 @@ package final class CommandBarService: ObservableObject {
         appShell()?.openSettingsWindow()
     }
 
-    /// Return (or the Remove button) from the review checklist while it is
-    /// still showing results. A plain app just gets trashed in place; a
-    /// Homebrew-managed one needs its own confirmation first, guarded by
-    /// `.uninstallHomebrewConfirm` the same way a destructive row guards
-    /// itself with `.confirm`.
-    private func confirmUninstallReview(entryID: String) {
-        let uninstaller = AppUninstaller.shared
-        guard uninstaller.phase == .results, !uninstaller.isRemoving else { return }
-        if let confirmation = uninstaller.homebrewRemovalConfirmation {
-            pendingHomebrewRemoval = confirmation
-            mode = .uninstallHomebrewConfirm(entryID: entryID)
-            refreshPanelLayout()
-            return
-        }
-        uninstaller.removeSelected()
-    }
-
-    /// The Homebrew confirmation itself: runs the removal and returns to the
-    /// checklist, which shows its live progress the same way the menu panel
-    /// already does while `AppUninstaller` waits on it.
-    private func confirmUninstallHomebrewRemoval(entryID: String) {
-        if let confirmation = pendingHomebrewRemoval {
-            AppUninstaller.shared.removeSelectedWithHomebrew(confirmation: confirmation)
-        }
-        pendingHomebrewRemoval = nil
-        mode = .uninstallReview(entryID: entryID)
-        refreshPanelLayout()
-    }
-
-    /// Return (or the Done button) once removal has finished. Nothing is left
-    /// to review, so this goes all the way home with an empty field rather
-    /// than reoffering whatever was typed before the review began.
-    private func finishUninstallReview() {
-        let uninstaller = AppUninstaller.shared
-        if let url = uninstaller.target?.url, UninstallerSupport.isConfirmedAbsent(at: url) {
-            cachedApps.removeAll { $0.url.standardizedFileURL == url }
-            uninstallSelectionEntries.removeAll { $0.uninstallAppURL?.standardizedFileURL == url }
-            rebuildRunningEntries()
-        }
-        uninstaller.reset()
-        mode = .search
-        query = ""
-        refreshResults()
-    }
-
     package func openActions() {
         guard canOpenActions, let entry = selectedEntry else { return }
         savedQuery = query
@@ -2203,14 +2159,8 @@ package final class CommandBarService: ObservableObject {
         case .confirm(let id):
             guard let entry = entry(withID: id) else { return }
             finish(entry, value: nil)
-        case .uninstallReview(let id):
-            switch AppUninstaller.shared.phase {
-            case .results: confirmUninstallReview(entryID: id)
-            case .done: finishUninstallReview()
-            case .empty, .scanning, .removing: break
-            }
-        case .uninstallHomebrewConfirm(let id):
-            confirmUninstallHomebrewRemoval(entryID: id)
+        case .uninstallReview, .uninstallHomebrewConfirm:
+            uninstallReview.submit()
         case .argument(let id):
             guard let entry = entry(withID: id), let range = entry.numericRange,
                   let value = CommandBarSearch.argumentValue(query, in: range) else {
@@ -2241,24 +2191,8 @@ package final class CommandBarService: ObservableObject {
         run(entry)
     }
 
-    private func beginUninstallReview(appURL url: URL, entryID: String) {
-        let uninstaller = AppUninstaller.shared
-        guard AppFeature.uninstaller.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled),
-              uninstaller.select(appURL: url) else {
-            uninstallWarning = uninstaller.isRemoving
-                ? L10n.shared.s.uninstallerRemoving : L10n.shared.s.uninstallerSelectionUnavailable
-            refreshPanelLayout()
-            return
-        }
-        uninstallWarning = nil
-        savedQuery = query
-        mode = .uninstallReview(entryID: entryID)
-        refreshPanelLayout()
-    }
-
     private func run(_ entry: CommandBarEntry) {
-        uninstallFinderRequestID = nil
+        uninstallReview.finderRequestID = nil
         if case .needsSetup(_, let page) = entry.trouble {
             hide()
             SettingsRouter.shared.page = page
@@ -2266,7 +2200,7 @@ package final class CommandBarService: ObservableObject {
             return
         }
         if let url = entry.uninstallAppURL {
-            beginUninstallReview(appURL: url, entryID: entry.id)
+            uninstallReview.begin(appURL: url, entryID: entry.id)
             return
         }
         if entry.confirmationPrompt != nil {
@@ -2318,23 +2252,8 @@ package final class CommandBarService: ObservableObject {
             mode = .search
             query = savedQuery
             refreshResults()
-        case .uninstallReview:
-            if case .done = AppUninstaller.shared.phase {
-                finishUninstallReview()
-            } else {
-                let uninstaller = AppUninstaller.shared
-                if !uninstaller.isRemoving {
-                    uninstaller.reset()
-                }
-                mode = .search
-                query = savedQuery
-                refreshResults()
-            }
-        case .uninstallHomebrewConfirm(let id):
-            // Cancelling the Homebrew confirmation returns to the checklist
-            // it came from, not all the way home.
-            mode = .uninstallReview(entryID: id)
-            refreshPanelLayout()
+        case .uninstallReview, .uninstallHomebrewConfirm:
+            uninstallReview.stepBack()
         case .search:
             // A long query typed by mistake should be clearable without
             // throwing the whole session away; then Esc leaves the category,
@@ -2655,7 +2574,7 @@ package final class CommandBarService: ObservableObject {
     /// is open, same lifetime and guard shape as `loadSelection(for:)`.
     package func uninstallFinderSelection() {
         let requestID = UUID()
-        uninstallFinderRequestID = requestID
+        uninstallReview.finderRequestID = requestID
         loadUninstallSelectionEntries(for: presentationID, requestID: requestID)
     }
 
@@ -2683,8 +2602,8 @@ package final class CommandBarService: ObservableObject {
                     urls: urls, automationDenied: self.finderAutomationDenied)
                 self.indexEntries()
                 self.refreshResults()
-                if let requestID, self.uninstallFinderRequestID == requestID {
-                    self.uninstallFinderRequestID = nil
+                if let requestID, self.uninstallReview.finderRequestID == requestID {
+                    self.uninstallReview.finderRequestID = nil
                     guard case .search = self.mode else { return }
                     if let entry = self.uninstallSelectionEntries.first {
                         self.run(entry)
@@ -2693,7 +2612,7 @@ package final class CommandBarService: ObservableObject {
                         self.refreshPanelLayout()
                     }
                 }
-                if let pending = self.uninstallFinderRequestID {
+                if let pending = self.uninstallReview.finderRequestID {
                     self.loadUninstallSelectionEntries(for: id, requestID: pending)
                 }
             }
@@ -2934,18 +2853,6 @@ package final class CommandBarService: ObservableObject {
 
     // MARK: - Monitors
 
-    private func handleUninstallKey(_ keyCode: Int, searchFieldFocused: Bool) -> Bool {
-        if keyCode == kVK_Escape {
-            stepBack()
-            return true
-        }
-        if (keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter), searchFieldFocused {
-            runSelected()
-            return true
-        }
-        return false
-    }
-
     private func installMonitors(for panel: NSPanel) {
         removeMonitors()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
@@ -3034,8 +2941,8 @@ package final class CommandBarService: ObservableObject {
                    Int(event.keyCode) == kVK_Return || Int(event.keyCode) == kVK_ANSI_KeypadEnter {
                     return nil
                 }
-                return self.handleUninstallKey(Int(event.keyCode),
-                                               searchFieldFocused: panel.firstResponder is NSTextView)
+                return self.uninstallReview.handleKey(Int(event.keyCode),
+                                                      searchFieldFocused: panel.firstResponder is NSTextView)
                     ? nil : event
             }
             switch Int(event.keyCode) {

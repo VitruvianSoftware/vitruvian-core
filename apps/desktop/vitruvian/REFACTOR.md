@@ -2051,6 +2051,63 @@ Landed (4b, a capture's keys): one more generated file goes, which leaves
   passing a command press through the plain-key switch, whose own guard
   passes it on.
 
+Landed (4b, the uninstaller flow): one more generated file goes, which
+leaves 16.
+
+- **`AppUninstaller.Environment`** (new) is everything the uninstaller
+  reaches outside itself:
+  - the background and main queues;
+  - the scan and the removal, each moved whole into one static function
+    (`scan(_:)`, `remove(_:)`) that takes a `Scan` or `Removal` value
+    captured on the main thread;
+  - the running apps it quits;
+  - the package manager, as the new `AppUninstaller.PackageManager`
+    protocol, which `HomebrewManager` adopts;
+  - the HUD.
+
+  `shared` uses `live`. The Homebrew log is cleared before subscribing,
+  as before; the reason is now written beside it.
+- **`CommandBarUninstallReview`** (new, `Services/CommandBar`) holds the
+  bar's uninstall review:
+  - beginning, submitting and stepping back;
+  - its keys, and what a new query or a closing bar does to it;
+  - the pending Homebrew confirmation, and the explicit Finder request.
+
+  `CommandBarService` keeps its field and rows and reaches them through a
+  `Host`.
+- **`FinderBridge.selectionURLs`** takes an `Automation` (consent, status,
+  script) that defaults to the system.
+- **Test:** the flow test drives a real `AppUninstaller` on a manual queue
+  with recorded scans, removals and package-manager calls, and a real
+  review over a stand-in bar. Before, it compiled copies of seven
+  uninstaller members, five command-bar members and the Finder read over
+  stand-in queues, HUD and strings. New checks:
+  - a scan superseded while it runs, or on its way back, delivers nothing
+    and asks for no package;
+  - a bundle replaced during the scan, or while its package is asked, is
+    dropped;
+  - a plain removal quits the app first and takes the rows it captured;
+  - only the package's own running removal counts as removing;
+  - unchecking the app leaves its package out;
+  - a finished status from an earlier operation, another package's
+    removal, or this one failing does not continue the removal;
+  - a package removal that left the app trashes it with the rest, and
+    one that took it counts it once;
+  - closing the bar leaves a selection made elsewhere alone and cancels
+    a pending Finder request;
+  - a failed Finder read selects nothing.
+- **Verification:** a Linux Swift 6.4 model runs the test (58 checks)
+  over the production uninstaller, the review and the Finder read, with
+  stand-ins for AppKit, Combine and the platform-only scan helpers.
+  `live` is type-checked too. Of 72 mutants, three survive, all
+  equivalent:
+  - `reset()` not cancelling the package observation: the next
+    `select(appURL:)` cancels it before any results return;
+  - a removal's completion not checking for `.removing`: nothing can
+    leave that phase while the removal runs;
+  - the review's confirm not checking the phase: `submit()` only
+    confirms results, and `removeSelected()` checks again.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
