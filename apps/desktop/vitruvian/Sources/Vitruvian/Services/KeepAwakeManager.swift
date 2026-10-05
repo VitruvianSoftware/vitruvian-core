@@ -14,7 +14,92 @@ import VitruvianDesign
 /// and the battery protection watchdog.
 @MainActor
 package final class KeepAwakeManager: ObservableObject {
-    package static let shared = KeepAwakeManager()
+    /// What the manager asks of the system. `live` is the system's own; a test
+    /// passes doubles, so it can neither disable sleep, sleep the Mac nor dim
+    /// its panel.
+    package struct System: @unchecked Sendable {
+        package var defaults: UserDefaults
+        /// Where settings changes are announced.
+        package var notificationCenter: NotificationCenter
+        /// The `pmset disablesleep` override and its sudoers rule.
+        package var sleep: SleepOverride
+        /// `pmset -g`, read off the main thread.
+        package var pmsetReport: @Sendable () -> (status: Int32, output: String)
+        package var background: @Sendable (DispatchQoS.QoSClass, @escaping @Sendable () -> Void) -> Void
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var after: @Sendable (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
+        /// Blocks the main thread between quit's lid-sleep attempts.
+        package var wait: @MainActor (TimeInterval) -> Void
+        /// Puts a session, battery or pointer timer on the main run loop.
+        package var schedule: @MainActor (Timer) -> Void
+        /// Takes a power assertion of an IOKit type and name; nil when refused.
+        package var assert: @MainActor (_ type: String, _ name: String) -> IOPMAssertionID?
+        package var releaseAssertion: @MainActor (IOPMAssertionID) -> Void
+        package var battery: @MainActor () -> BatteryInfo?
+        /// Reports each screen lock (true) and unlock (false); the returned
+        /// closure stops it.
+        package var watchLock: @MainActor (_ changed: @escaping @MainActor @Sendable (Bool) -> Void) -> () -> Void
+        /// The login session's state, read when lock monitoring starts.
+        package var session: @MainActor () -> [String: Any]?
+        package var lidClosed: @MainActor () -> Bool?
+        /// Whether the system's own policy sleeps the Mac when its lid closes.
+        package var clamshellCausesSleep: @MainActor () -> Bool?
+        /// Every process's power assertions, or nil when they cannot be read.
+        package var powerAssertions: @MainActor () -> [[String: Any]]?
+        /// Asks the system to sleep: its IOKit result, or nil without a power manager.
+        package var sleepSystem: @MainActor () -> IOReturn?
+        /// Runs `changed` on the main queue for each of the power manager's
+        /// general-interest notifications, the lid's among them. The returned
+        /// closure stops it; nil when it could not start.
+        package var watchLid: @MainActor (_ changed: @escaping @MainActor @Sendable () -> Void) -> (() -> Void)?
+        package var panelBrightness: @MainActor () -> Double?
+        /// Writes the built-in panel's brightness; false when it found no panel.
+        package var setPanelBrightness: @MainActor (Double) -> Bool
+
+        package init(defaults: UserDefaults, notificationCenter: NotificationCenter, sleep: SleepOverride,
+                     pmsetReport: @escaping @Sendable () -> (status: Int32, output: String),
+                     background: @escaping @Sendable (DispatchQoS.QoSClass, @escaping @Sendable () -> Void) -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     after: @escaping @Sendable (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void,
+                     wait: @escaping @MainActor (TimeInterval) -> Void,
+                     schedule: @escaping @MainActor (Timer) -> Void,
+                     assert: @escaping @MainActor (String, String) -> IOPMAssertionID?,
+                     releaseAssertion: @escaping @MainActor (IOPMAssertionID) -> Void,
+                     battery: @escaping @MainActor () -> BatteryInfo?,
+                     watchLock: @escaping @MainActor (@escaping @MainActor @Sendable (Bool) -> Void) -> () -> Void,
+                     session: @escaping @MainActor () -> [String: Any]?,
+                     lidClosed: @escaping @MainActor () -> Bool?,
+                     clamshellCausesSleep: @escaping @MainActor () -> Bool?,
+                     powerAssertions: @escaping @MainActor () -> [[String: Any]]?,
+                     sleepSystem: @escaping @MainActor () -> IOReturn?,
+                     watchLid: @escaping @MainActor (@escaping @MainActor @Sendable () -> Void) -> (() -> Void)?,
+                     panelBrightness: @escaping @MainActor () -> Double?,
+                     setPanelBrightness: @escaping @MainActor (Double) -> Bool) {
+            self.defaults = defaults
+            self.notificationCenter = notificationCenter
+            self.sleep = sleep
+            self.pmsetReport = pmsetReport
+            self.background = background
+            self.main = main
+            self.after = after
+            self.wait = wait
+            self.schedule = schedule
+            self.assert = assert
+            self.releaseAssertion = releaseAssertion
+            self.battery = battery
+            self.watchLock = watchLock
+            self.session = session
+            self.lidClosed = lidClosed
+            self.clamshellCausesSleep = clamshellCausesSleep
+            self.powerAssertions = powerAssertions
+            self.sleepSystem = sleepSystem
+            self.watchLid = watchLid
+            self.panelBrightness = panelBrightness
+            self.setPanelBrightness = setPanelBrightness
+        }
+    }
+
+    package static let shared = KeepAwakeManager(system: .live)
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
                                     category: "keep-awake")
 
@@ -43,7 +128,7 @@ package final class KeepAwakeManager: ObservableObject {
     @Published package var clamshellPreferred: Bool {
         didSet {
             guard clamshellPreferred != oldValue else { return }
-            UserDefaults.standard.set(clamshellPreferred, forKey: DefaultsKey.clamshellPreferred)
+            system.defaults.set(clamshellPreferred, forKey: DefaultsKey.clamshellPreferred)
             clamshellSetupFailed = false
             guard !isTerminating else { return }
             if clamshellPreferred {
@@ -65,7 +150,7 @@ package final class KeepAwakeManager: ObservableObject {
     @Published package var dimScreenOnLidClose: Bool {
         didSet {
             guard dimScreenOnLidClose != oldValue else { return }
-            UserDefaults.standard.set(dimScreenOnLidClose, forKey: DefaultsKey.dimScreenOnLidClose)
+            system.defaults.set(dimScreenOnLidClose, forKey: DefaultsKey.dimScreenOnLidClose)
             if !dimScreenOnLidClose { applyDimmingAction(LidDimmingSupport.restoring(saved: savedDisplayBrightness)) }
             syncLidDimmingObserver()
         }
@@ -73,6 +158,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     package var onSessionEnded: ((EndReason) -> Void)?
 
+    nonisolated private let system: System
     private var systemAssertion = IOPMAssertionID(0)
     private var displayAssertion = IOPMAssertionID(0)
     private var hasSystemAssertion = false
@@ -83,7 +169,7 @@ package final class KeepAwakeManager: ObservableObject {
     private var pendingMouseReturn: DispatchWorkItem?
     private var defaultsObserver: AnyCancellable?
     private var screenParametersObserver: NSObjectProtocol?
-    private var screenLockObservers: [NSObjectProtocol] = []
+    private var endLockWatch: (() -> Void)?
     private var powerSourceRunLoopSource: CFRunLoopSource?
     private var runningAppsObservers: [NSObjectProtocol] = []
     private var automationEvaluationWorkItem: DispatchWorkItem?
@@ -99,12 +185,9 @@ package final class KeepAwakeManager: ObservableObject {
     private var clamshellSetupID: UUID?
     private var lidSleepGeneration = 0
     private var lidSleepAttemptsRemaining = 0
-    private var lidDimmingNotificationPort: IONotificationPortRef?
-    private var lidDimmingNotification: io_object_t = 0
+    private var endLidWatch: (() -> Void)?
     private var lidClosedForDimming: Bool?
     private var savedDisplayBrightness: Double?
-    private static let screenLockNotification = Notification.Name("com.apple.screenIsLocked")
-    private static let screenUnlockNotification = Notification.Name("com.apple.screenIsUnlocked")
     /// Guards the closed-lid setup against an infinite retry loop: if `pmset
     /// disablesleep` keeps failing while the sudoers rule still checks out as
     /// installed, re-preparing would bounce here forever (and flicker the
@@ -113,14 +196,15 @@ package final class KeepAwakeManager: ObservableObject {
     /// A reply to a settings change already waiting for the next run loop turn.
     private var preferenceSyncScheduled = false
 
-    private init() {
-        clamshellPreferred = UserDefaults.standard.bool(forKey: DefaultsKey.clamshellPreferred)
-        dimScreenOnLidClose = UserDefaults.standard.bool(forKey: DefaultsKey.dimScreenOnLidClose)
+    package init(system: System) {
+        self.system = system
+        clamshellPreferred = system.defaults.bool(forKey: DefaultsKey.clamshellPreferred)
+        dimScreenOnLidClose = system.defaults.bool(forKey: DefaultsKey.dimScreenOnLidClose)
         refreshPasswordlessStatus()
         // Every settings write announces itself, including the ones made from
         // inside this class, so a burst folds into a single reply on the next
         // turn of the run loop rather than one full pass per write.
-        defaultsObserver = NotificationCenter.default
+        defaultsObserver = system.notificationCenter
             .publisher(for: UserDefaults.didChangeNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -138,9 +222,10 @@ package final class KeepAwakeManager: ObservableObject {
     package func refreshPasswordlessStatus() {
         guard !isTerminating, !clamshellRestorePending else { return }
         let generation = clamshellOperationGeneration
-        DispatchQueue.global(qos: .utility).async {
-            let configured = Sudoers.isConfigured()
-            DispatchQueue.main.async {
+        let system = self.system
+        system.background(.utility) {
+            let configured = system.sleep.isConfigured()
+            system.main {
                 guard !self.isTerminating, !self.clamshellRestorePending,
                       self.clamshellOperationGeneration == generation else { return }
                 self.passwordlessClamshell = configured
@@ -163,28 +248,29 @@ package final class KeepAwakeManager: ObservableObject {
         clamshellActive = false
         passwordlessClamshell = false
         let generation = clamshellOperationGeneration
-        let checksSleep = UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag)
-        DispatchQueue.global(qos: .utility).async {
+        let checksSleep = system.defaults.bool(forKey: DefaultsKey.sleepDisabledFlag)
+        let system = self.system
+        system.background(.utility) {
             // A session can start while the removal waits for its password and
             // turn sleep off again through the rule. Only a reading that answered
             // "on" lets the recovery marker go.
             var sleepRestored = true
             if checksSleep {
-                let report = Shell.run("/usr/bin/pmset", ["-g"])
+                let report = system.pmsetReport()
                 sleepRestored = report.status == 0
                     && !SudoersSupport.sleepDisabled(inPmsetOutput: report.output)
             }
-            let configured = !restorePending && Sudoers.isConfigured()
-            DispatchQueue.main.async {
+            let configured = !restorePending && system.sleep.isConfigured()
+            system.main {
                 guard !self.isTerminating, self.clamshellOperationGeneration == generation else { return }
                 if checksSleep, sleepRestored {
-                    UserDefaults.standard.set(false, forKey: DefaultsKey.sleepDisabledFlag)
+                    system.defaults.set(false, forKey: DefaultsKey.sleepDisabledFlag)
                 }
                 // A prior restore can still finish with an authorized off. Its
                 // reply rearms this session in order after that operation.
                 guard !restorePending, !self.clamshellRestorePending else { return }
                 self.passwordlessClamshell = configured
-                if configured, self.clamshellPreferred, AppFeature.keepAwake.isAvailable {
+                if configured, self.clamshellPreferred, AppFeature.keepAwake.isAvailable(in: system.defaults) {
                     self.enableClamshell()
                 }
             }
@@ -207,7 +293,7 @@ package final class KeepAwakeManager: ObservableObject {
     /// Keep Awake leaving the hub ends any running session; everything else
     /// (saved duration, tint, shortcut setting) stays for its return.
     package func syncWithFeatures() {
-        guard AppFeature.keepAwake.isAvailable else {
+        guard AppFeature.keepAwake.isAvailable(in: system.defaults) else {
             stopAutomationMonitoring()
             if isActive { deactivate(reason: .manual) }
             return
@@ -238,8 +324,8 @@ package final class KeepAwakeManager: ObservableObject {
         sessionMinutes = isActive ? minutes : nil
         guard isActive else { return }
         // Every entry point records the pick, so each switch restarts the same session.
-        UserDefaults.standard.set(minutes, forKey: DefaultsKey.defaultDuration)
-        UserDefaults.standard.set(false, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
+        system.defaults.set(minutes, forKey: DefaultsKey.defaultDuration)
+        system.defaults.set(false, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
     }
 
     package func activate(until date: Date) {
@@ -249,15 +335,15 @@ package final class KeepAwakeManager: ObservableObject {
         // An end time replaces any running preset, so no duration chip stays selected.
         sessionMinutes = nil
         guard isActive else { return }
-        UserDefaults.standard.set(true, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
-        UserDefaults.standard.set(date.timeIntervalSinceReferenceDate, forKey: DefaultsKey.keepAwakeUntilTime)
+        system.defaults.set(true, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
+        system.defaults.set(date.timeIntervalSinceReferenceDate, forKey: DefaultsKey.keepAwakeUntilTime)
     }
 
     /// Restarts the last pick: the saved end time while it is still ahead,
     /// otherwise the saved duration. A passed end time never rolls to
     /// tomorrow here, which would silently start a session of almost a day.
     package func startLastPick() {
-        let defaults = UserDefaults.standard
+        let defaults = system.defaults
         let end = Date(timeIntervalSinceReferenceDate: defaults.double(forKey: DefaultsKey.keepAwakeUntilTime))
         if defaults.bool(forKey: DefaultsKey.keepAwakeSwitchUsesUntil), end > Date() {
             activate(until: end)
@@ -267,14 +353,14 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func activate(end: Date?, trigger: SessionTrigger) {
-        guard !isTerminating, AppFeature.keepAwake.isAvailable else { return }
+        guard !isTerminating, AppFeature.keepAwake.isAvailable(in: system.defaults) else { return }
         lidSleepGeneration &+= 1
         lidSleepAttemptsRemaining = 0
         endTimer?.invalidate()
         endTimer = nil
         syncScreenLockMonitoring()
         sessionPausedForScreenLock = screenLocked
-            && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
+            && system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
         if !sessionPausedForScreenLock { applyAssertions() }
         sessionTrigger = trigger
         if trigger == .manual {
@@ -295,11 +381,11 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     package func activateOnLaunchIfNeeded() {
-        guard AppFeature.keepAwake.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeAutoStart),
+        guard AppFeature.keepAwake.isAvailable(in: system.defaults),
+              system.defaults.bool(forKey: DefaultsKey.keepAwakeAutoStart),
               !isActive else { return }
         activate(minutes: Defaults.sanitizedDefaultDuration(
-            UserDefaults.standard.integer(forKey: DefaultsKey.defaultDuration)))
+            system.defaults.integer(forKey: DefaultsKey.defaultDuration)))
     }
 
     package func extend(minutes: Int) {
@@ -343,17 +429,17 @@ package final class KeepAwakeManager: ObservableObject {
     // MARK: - Automatic sessions
 
     private func syncAutomationMonitoring() {
-        let available = AppFeature.keepAwake.isAvailable
+        let available = AppFeature.keepAwake.isAvailable(in: system.defaults)
         let selectedApps = Defaults.sanitizedBundleIdentifierList(
-            UserDefaults.standard.stringArray(forKey: DefaultsKey.keepAwakeRunningAppBundleIDs) ?? [])
+            system.defaults.stringArray(forKey: DefaultsKey.keepAwakeRunningAppBundleIDs) ?? [])
         if runningAppBundleIDs != selectedApps { runningAppBundleIDs = selectedApps }
         syncScreenLockMonitoring()
         let observeScreens = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeExternalDisplay)
+            && system.defaults.bool(forKey: DefaultsKey.keepAwakeExternalDisplay)
         let observePower = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeConnectedToPower)
+            && system.defaults.bool(forKey: DefaultsKey.keepAwakeConnectedToPower)
         let observeRunningApps = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeRunningApps)
+            && system.defaults.bool(forKey: DefaultsKey.keepAwakeRunningApps)
             && !runningAppBundleIDs.isEmpty
 
         setScreenMonitoringEnabled(observeScreens)
@@ -363,32 +449,20 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func syncScreenLockMonitoring() {
-        let enabled = AppFeature.keepAwake.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
-        let center = DistributedNotificationCenter.default()
+        let enabled = AppFeature.keepAwake.isAvailable(in: system.defaults)
+            && system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
 
         if enabled {
-            guard screenLockObservers.isEmpty else { return }
-            screenLockObservers = [
-                center.addObserver(forName: Self.screenLockNotification,
-                                   object: nil, queue: .main) { [weak self] _ in
-                    // Delivered on the main queue.
-                    MainActor.assumeIsolated { self?.screenLockStateDidChange(locked: true) }
-                },
-                center.addObserver(forName: Self.screenUnlockNotification,
-                                   object: nil, queue: .main) { [weak self] _ in
-                    // Delivered on the main queue.
-                    MainActor.assumeIsolated { self?.screenLockStateDidChange(locked: false) }
-                },
-            ]
-            screenLocked = KeepAwakeAutomationSupport.isScreenLocked(
-                sessionDictionary: CGSessionCopyCurrentDictionary() as? [String: Any]
-            )
+            guard endLockWatch == nil else { return }
+            endLockWatch = system.watchLock { [weak self] locked in
+                self?.screenLockStateDidChange(locked: locked)
+            }
+            screenLocked = KeepAwakeAutomationSupport.isScreenLocked(sessionDictionary: system.session())
             syncSessionWithScreenLock()
         } else {
-            guard !screenLockObservers.isEmpty else { return }
-            for observer in screenLockObservers { center.removeObserver(observer) }
-            screenLockObservers.removeAll()
+            guard let endLockWatch else { return }
+            endLockWatch()
+            self.endLockWatch = nil
             screenLocked = false
             syncSessionWithScreenLock()
         }
@@ -407,7 +481,7 @@ package final class KeepAwakeManager: ObservableObject {
             return
         }
         let shouldPause = screenLocked
-            && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
+            && system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
         guard shouldPause != sessionPausedForScreenLock else { return }
 
         if shouldPause {
@@ -510,9 +584,8 @@ package final class KeepAwakeManager: ObservableObject {
         setScreenMonitoringEnabled(false)
         setPowerMonitoringEnabled(false)
         setRunningAppsMonitoringEnabled(false)
-        let center = DistributedNotificationCenter.default()
-        for observer in screenLockObservers { center.removeObserver(observer) }
-        screenLockObservers.removeAll()
+        endLockWatch?()
+        endLockWatch = nil
         screenLocked = false
         sessionPausedForScreenLock = false
         activeAutomationConditions.removeAll()
@@ -537,7 +610,7 @@ package final class KeepAwakeManager: ObservableObject {
         }
 
         if screenLocked,
-           UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked) {
+           system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked) {
             if sessionTrigger == .automation { activeAutomationConditions = matches }
             return
         }
@@ -546,7 +619,7 @@ package final class KeepAwakeManager: ObservableObject {
             activeAutomationConditions = matches
         }
         let action = KeepAwakeAutomationSupport.action(
-            featureAvailable: AppFeature.keepAwake.isAvailable,
+            featureAvailable: AppFeature.keepAwake.isAvailable(in: system.defaults),
             matchingConditions: matches,
             enabledConditions: enabled,
             requireAll: requireAll,
@@ -566,14 +639,14 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func automationRequiresAllConditions() -> Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeAutomationRequireAll)
+        system.defaults.bool(forKey: DefaultsKey.keepAwakeAutomationRequireAll)
     }
 
     private func currentEnabledAutomationConditions() -> Set<KeepAwakeAutomationCondition> {
         KeepAwakeAutomationSupport.enabledConditions(
-            externalDisplayEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeExternalDisplay),
-            powerEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeConnectedToPower),
-            runningAppsEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeRunningApps),
+            externalDisplayEnabled: system.defaults.bool(forKey: DefaultsKey.keepAwakeExternalDisplay),
+            powerEnabled: system.defaults.bool(forKey: DefaultsKey.keepAwakeConnectedToPower),
+            runningAppsEnabled: system.defaults.bool(forKey: DefaultsKey.keepAwakeRunningApps),
             hasSelectedApps: !runningAppBundleIDs.isEmpty
         )
     }
@@ -590,7 +663,7 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func currentMatchingAutomationConditions() -> Set<KeepAwakeAutomationCondition> {
-        let externalDisplayEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeExternalDisplay)
+        let externalDisplayEnabled = system.defaults.bool(forKey: DefaultsKey.keepAwakeExternalDisplay)
         let externalDisplayConnected: Bool
         if externalDisplayEnabled {
             if let current = Self.hasExternalDisplay() {
@@ -601,11 +674,11 @@ package final class KeepAwakeManager: ObservableObject {
             externalDisplayConnected = false
         }
 
-        let powerEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeConnectedToPower)
+        let powerEnabled = system.defaults.bool(forKey: DefaultsKey.keepAwakeConnectedToPower)
         let connectedToPower = powerEnabled
-            && (SystemInfo.batterySnapshot().map { !$0.isOnBattery } ?? false)
+            && (system.battery().map { !$0.isOnBattery } ?? false)
 
-        let runningAppsEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeRunningApps)
+        let runningAppsEnabled = system.defaults.bool(forKey: DefaultsKey.keepAwakeRunningApps)
         let selectedAppsRunning: Bool
         if runningAppsEnabled, !runningAppBundleIDs.isEmpty {
             let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
@@ -640,10 +713,10 @@ package final class KeepAwakeManager: ObservableObject {
 
     private func automaticSessionAllowedByBatteryProtection() -> Bool {
         let limit = Defaults.sanitizedBatteryLimit(
-            UserDefaults.standard.integer(forKey: DefaultsKey.batteryLimit)
+            system.defaults.integer(forKey: DefaultsKey.batteryLimit)
         )
         guard limit > 0,
-              let battery = SystemInfo.batterySnapshot(),
+              let battery = system.battery(),
               battery.isOnBattery else { return true }
         return battery.percent > limit
     }
@@ -651,6 +724,7 @@ package final class KeepAwakeManager: ObservableObject {
     private func continueAutomaticallyAfterTimerIfNeeded() -> Bool {
         guard let matches = Self.timerHandoff(
                 trigger: sessionTrigger, suppressed: automationSuppressedUntilConditionsClear,
+                in: system.defaults,
                 batteryAllows: { automaticSessionAllowedByBatteryProtection() },
                 matching: { currentMatchingAutomationConditions() },
                 enabled: { currentEnabledAutomationConditions() },
@@ -695,50 +769,38 @@ package final class KeepAwakeManager: ObservableObject {
                 }
             }
         }
-        RunLoop.main.add(t, forMode: .common)
+        system.schedule(t)
         endTimer = t
     }
 
     // MARK: - IOKit assertions
 
     private func applyAssertions() {
-        if !hasSystemAssertion {
-            var id = IOPMAssertionID(0)
-            let ok = IOPMAssertionCreateWithName("PreventUserIdleSystemSleep" as CFString,
-                                                 IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                 "Vitruvian: keep the Mac awake" as CFString,
-                                                 &id)
-            if ok == kIOReturnSuccess {
-                systemAssertion = id
-                hasSystemAssertion = true
-            }
+        if !hasSystemAssertion,
+           let id = system.assert("PreventUserIdleSystemSleep", "Vitruvian: keep the Mac awake") {
+            systemAssertion = id
+            hasSystemAssertion = true
         }
-        let allowDisplaySleep = UserDefaults.standard.bool(
+        let allowDisplaySleep = system.defaults.bool(
             forKey: DefaultsKey.keepAwakeAllowDisplaySleep
         )
         if allowDisplaySleep, hasDisplayAssertion {
-            IOPMAssertionRelease(displayAssertion)
+            system.releaseAssertion(displayAssertion)
             hasDisplayAssertion = false
-        } else if !allowDisplaySleep, !hasDisplayAssertion {
-            var id = IOPMAssertionID(0)
-            let ok = IOPMAssertionCreateWithName("PreventUserIdleDisplaySleep" as CFString,
-                                                 IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                 "Vitruvian: keep the display on" as CFString,
-                                                 &id)
-            if ok == kIOReturnSuccess {
-                displayAssertion = id
-                hasDisplayAssertion = true
-            }
+        } else if !allowDisplaySleep, !hasDisplayAssertion,
+                  let id = system.assert("PreventUserIdleDisplaySleep", "Vitruvian: keep the display on") {
+            displayAssertion = id
+            hasDisplayAssertion = true
         }
     }
 
     private func releaseAssertions() {
         if hasSystemAssertion {
-            IOPMAssertionRelease(systemAssertion)
+            system.releaseAssertion(systemAssertion)
             hasSystemAssertion = false
         }
         if hasDisplayAssertion {
-            IOPMAssertionRelease(displayAssertion)
+            system.releaseAssertion(displayAssertion)
             hasDisplayAssertion = false
         }
     }
@@ -747,7 +809,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     private var clamshellNeedsRestore: Bool {
         clamshellActive || clamshellEnablePending || clamshellRestorePending
-            || UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag)
+            || system.defaults.bool(forKey: DefaultsKey.sleepDisabledFlag)
     }
 
     private func applyClamshellPreference() {
@@ -772,15 +834,16 @@ package final class KeepAwakeManager: ObservableObject {
         clamshellSetupInProgress = true
         clamshellSetupFailed = false
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let configured = Sudoers.isConfigured()
-            DispatchQueue.main.async {
+        let system = self.system
+        system.background(.userInitiated) {
+            let configured = system.sleep.isConfigured()
+            system.main {
                 guard !self.isTerminating, self.clamshellSetupID == requestID else { return }
                 if configured {
                     self.finishClamshellSetup(ok: true, requestID: requestID)
                 } else {
-                    Sudoers.install { ok in
-                        DispatchQueue.main.async {
+                    system.sleep.install { ok in
+                        system.main {
                             self.finishClamshellSetup(ok: ok, requestID: requestID)
                         }
                     }
@@ -823,9 +886,10 @@ package final class KeepAwakeManager: ObservableObject {
         clamshellEnablePending = true
         // Persist before submitting the write: quitting or crashing before
         // its reply must not leave an unrecorded system-wide sleep override.
-        UserDefaults.standard.set(true, forKey: DefaultsKey.sleepDisabledFlag)
-        Sudoers.pmsetDisableSleep(true) { ok in
-            DispatchQueue.main.async {
+        system.defaults.set(true, forKey: DefaultsKey.sleepDisabledFlag)
+        let system = self.system
+        system.sleep.disableSleep(true) { ok in
+            system.main {
                 guard !self.isTerminating, self.clamshellOperationGeneration == generation else { return }
                 self.clamshellEnablePending = false
                 guard ok else {
@@ -866,24 +930,25 @@ package final class KeepAwakeManager: ObservableObject {
         if synchronous {
             // This drains earlier native writes, including a pending enable.
             // Complete here: no main-queue callback survives process teardown.
-            let ok = Sudoers.pmsetDisableSleep(false)
+            let ok = system.sleep.disableSleep(false)
             finishClamshellRestore(ok: ok, usedPasswordless: true,
                                   generation: generation, synchronous: true)
         } else {
-            Sudoers.pmsetDisableSleep(false) { ok in
-                DispatchQueue.main.async {
+            let system = self.system
+            system.sleep.disableSleep(false) { ok in
+                system.main {
                     guard !self.isTerminating, self.clamshellOperationGeneration == generation else { return }
                     if ok {
                         self.finishClamshellRestore(ok: true, usedPasswordless: true,
                                                    generation: generation, synchronous: false)
                     } else {
-                        // Never wait for a prompt on Sudoers' native queue:
-                        // quit drains that queue while running on the main thread.
-                        Sudoers.restoreSleepWithAuthorization(
+                        // Never wait for a prompt on the override's serial lane:
+                        // quit drains that lane while running on the main thread.
+                        system.sleep.restoreWithAuthorization(
                             prompt: L10n.shared.s.adminPromptClamshellOff,
                             shouldProceed: { !self.isTerminating && self.clamshellOperationGeneration == generation }
                         ) { restored in
-                            DispatchQueue.main.async {
+                            system.main {
                                 guard !self.isTerminating else { return }
                                 self.finishClamshellRestore(ok: restored, usedPasswordless: false,
                                                            generation: generation, synchronous: false)
@@ -903,7 +968,7 @@ package final class KeepAwakeManager: ObservableObject {
         // Keep the recovery marker on failure; never request sleep while the
         // system-wide override may still be set.
         guard ok else { return }
-        UserDefaults.standard.set(false, forKey: DefaultsKey.sleepDisabledFlag)
+        system.defaults.set(false, forKey: DefaultsKey.sleepDisabledFlag)
         if !isTerminating, isActive, clamshellPreferred, !sessionPausedForScreenLock {
             enableClamshell()
         } else {
@@ -923,47 +988,33 @@ package final class KeepAwakeManager: ObservableObject {
         guard generation == lidSleepGeneration else { return }
         lidSleepAttemptsRemaining = 0
         guard !isActive || sessionPausedForScreenLock, !clamshellActive else { return }
-        guard BrightnessService.lidClosed() == true, Self.lidSleepIsAllowed() else { return }
-        let rootDomain = IOPMFindPowerManagement(kIOMainPortDefault)
-        guard rootDomain != 0 else { return }
-        let result = IOPMSleepSystem(rootDomain)
-        IOServiceClose(rootDomain)
+        guard system.lidClosed() == true, lidSleepIsAllowed() else { return }
+        guard let result = system.sleepSystem() else { return }
         guard result != kIOReturnSuccess, attemptsLeft > 1 else { return }
         if synchronous {
             // The existing bounded retry must finish before quit returns.
             // Re-read the lid and external protections after every refusal.
-            Thread.sleep(forTimeInterval: 0.5)
+            system.wait(0.5)
             sleepIfLidAlreadyClosed(attemptsLeft: attemptsLeft - 1, synchronous: true,
                                     generation: generation)
         } else {
             lidSleepAttemptsRemaining = attemptsLeft - 1
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            system.after(0.5) { [weak self] in
                 guard let self, !self.isTerminating else { return }
                 self.sleepIfLidAlreadyClosed(attemptsLeft: attemptsLeft - 1, generation: generation)
             }
         }
     }
 
-    private static func lidSleepIsAllowed() -> Bool {
-        let service = IOServiceGetMatchingService(kIOMainPortDefault,
-                                                  IOServiceMatching("IOPMrootDomain"))
-        guard service != 0 else { return false }
-        defer { IOObjectRelease(service) }
-        let allowsSleep = IORegistryEntryCreateCFProperty(
-            service, kAppleClamshellCausesSleepKey as CFString,
-            kCFAllocatorDefault, 0)?.takeRetainedValue() as? Bool
+    private func lidSleepIsAllowed() -> Bool {
+        let allowsSleep = system.clamshellCausesSleep()
         guard allowsSleep == true else { return false }
 
         // The kernel does not republish its lid policy for every assertion
         // change. Read live protections as well, especially display hot-plug.
-        var snapshot: Unmanaged<CFDictionary>?
-        let result = IOPMCopyAssertionsByProcess(&snapshot)
-        let values = snapshot?.takeRetainedValue()
-        guard result == kIOReturnSuccess,
-              let assertions = values as? [AnyHashable: [[String: Any]]]
-        else { return false }
+        guard let assertions = system.powerAssertions() else { return false }
         return KeepAwakeAutomationSupport.lidSleepIsAllowed(
-            systemAllowsSleep: allowsSleep, assertions: assertions.values.flatMap { $0 })
+            systemAllowsSleep: allowsSleep, assertions: assertions)
     }
 
     /// If the app died unexpectedly while sleep was disabled, restores normal
@@ -971,7 +1022,7 @@ package final class KeepAwakeManager: ObservableObject {
     package func recoverIfNeeded(completion: (() -> Void)? = nil) {
         guard !isTerminating else { return }
         recoverDimmedDisplayIfNeeded()
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag) else {
+        guard system.defaults.bool(forKey: DefaultsKey.sleepDisabledFlag) else {
             finishRecovery(completion)
             return
         }
@@ -985,32 +1036,33 @@ package final class KeepAwakeManager: ObservableObject {
         // Recovery finishes on the main thread, so the caller's completion
         // never leaves it.
         nonisolated(unsafe) let completion = completion
+        let system = self.system
         let finish: @MainActor @Sendable (Bool) -> Void = { ok in
             guard !self.isTerminating, self.clamshellOperationGeneration == generation else { return }
             self.clamshellRestorePending = false
-            if ok { UserDefaults.standard.set(false, forKey: DefaultsKey.sleepDisabledFlag) }
+            if ok { system.defaults.set(false, forKey: DefaultsKey.sleepDisabledFlag) }
             self.finishRecovery(completion)
             if ok, self.isActive, self.clamshellPreferred, !self.sessionPausedForScreenLock {
                 self.enableClamshell()
             }
         }
-        DispatchQueue.global(qos: .utility).async {
-            let report = Shell.run("/usr/bin/pmset", ["-g"])
+        system.background(.utility) {
+            let report = system.pmsetReport()
             let stillDisabled = SudoersSupport.sleepDisabled(inPmsetOutput: report.output)
             // An unreadable report is not evidence that a persisted override
             // has disappeared. Keep its recovery marker unless an off succeeds.
             if report.status == 0, !stillDisabled {
-                DispatchQueue.main.async { finish(true) }
-            } else if Sudoers.pmsetDisableSleep(false) {
-                DispatchQueue.main.async { finish(true) }
+                system.main { finish(true) }
+            } else if system.sleep.disableSleep(false) {
+                system.main { finish(true) }
             } else {
-                DispatchQueue.main.async {
+                system.main {
                     guard !self.isTerminating, self.clamshellOperationGeneration == generation else { return }
-                    Sudoers.restoreSleepWithAuthorization(
+                    system.sleep.restoreWithAuthorization(
                         prompt: L10n.shared.s.adminPromptRecover,
                         shouldProceed: { !self.isTerminating && self.clamshellOperationGeneration == generation }
                     ) { ok in
-                        DispatchQueue.main.async { finish(ok) }
+                        system.main { finish(ok) }
                     }
                 }
             }
@@ -1029,7 +1081,7 @@ package final class KeepAwakeManager: ObservableObject {
     /// sleep already recovers its own override the same way: the intent is
     /// written down before acting, and undone on the next launch.
     private func recoverDimmedDisplayIfNeeded() {
-        guard let saved = UserDefaults.standard.object(forKey: DefaultsKey.dimmedDisplaySavedBrightness) as? Double
+        guard let saved = system.defaults.object(forKey: DefaultsKey.dimmedDisplaySavedBrightness) as? Double
         else { return }
         // Set before attempting, not just on failure: if the write does not
         // report success until later, `syncLidDimmingObserver` still has to
@@ -1053,36 +1105,20 @@ package final class KeepAwakeManager: ObservableObject {
         let armed = clamshellActive && dimScreenOnLidClose
         if !armed { applyDimmingAction(LidDimmingSupport.restoring(saved: savedDisplayBrightness)) }
         guard armed || savedDisplayBrightness != nil else {
-            if lidDimmingNotification != 0 { IOObjectRelease(lidDimmingNotification) }
-            lidDimmingNotification = 0
-            if let lidDimmingNotificationPort { IONotificationPortDestroy(lidDimmingNotificationPort) }
-            lidDimmingNotificationPort = nil
+            endLidWatch?()
+            endLidWatch = nil
             lidClosedForDimming = nil
             return
         }
-        guard lidDimmingNotificationPort == nil else { return }
-        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
-        guard root != 0 else { return }
-        defer { IOObjectRelease(root) }
-        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
-        let result = IOServiceAddInterestNotification(
-            port, root, kIOGeneralInterest, { context, _, _, _ in
-                guard let context else { return }
-                let manager = Unmanaged<KeepAwakeManager>.fromOpaque(context).takeUnretainedValue()
-                DispatchQueue.main.async { [weak manager] in manager?.lidStateMayHaveChangedForDimming() }
-            }, Unmanaged.passUnretained(self).toOpaque(), &lidDimmingNotification)
-        guard result == KERN_SUCCESS else {
-            IONotificationPortDestroy(port)
-            return
-        }
-        lidDimmingNotificationPort = port
-        IONotificationPortSetDispatchQueue(port, DispatchQueue.main)
-        lidClosedForDimming = BrightnessService.lidClosed()
+        guard endLidWatch == nil else { return }
+        guard let end = system.watchLid({ [weak self] in self?.lidStateMayHaveChangedForDimming() }) else { return }
+        endLidWatch = end
+        lidClosedForDimming = system.lidClosed()
         // The option can be enabled from an external display while the lid is
         // already shut. No transition follows registration in that case.
         if armed, lidClosedForDimming == true, savedDisplayBrightness == nil {
             applyDimmingAction(LidDimmingSupport.lidClosed(
-                currentBrightness: LidDisplayDimmer.currentBrightness()))
+                currentBrightness: system.panelBrightness()))
         }
     }
 
@@ -1093,12 +1129,12 @@ package final class KeepAwakeManager: ObservableObject {
     /// as a no-op instead of acting on a mode that already ended.
     private func lidStateMayHaveChangedForDimming() {
         guard (clamshellActive && dimScreenOnLidClose) || savedDisplayBrightness != nil else { return }
-        let closed = BrightnessService.lidClosed() ?? false
+        let closed = system.lidClosed() ?? false
         guard closed != lidClosedForDimming else { return }
         lidClosedForDimming = closed
         if closed {
             if clamshellActive, dimScreenOnLidClose {
-                applyDimmingAction(LidDimmingSupport.lidClosed(currentBrightness: LidDisplayDimmer.currentBrightness()))
+                applyDimmingAction(LidDimmingSupport.lidClosed(currentBrightness: system.panelBrightness()))
             }
         } else {
             applyDimmingAction(LidDimmingSupport.restoring(saved: savedDisplayBrightness))
@@ -1109,8 +1145,8 @@ package final class KeepAwakeManager: ObservableObject {
         switch action {
         case .dim(let save):
             savedDisplayBrightness = save
-            UserDefaults.standard.set(save, forKey: DefaultsKey.dimmedDisplaySavedBrightness)
-            LidDisplayDimmer.setBrightness(0)
+            system.defaults.set(save, forKey: DefaultsKey.dimmedDisplaySavedBrightness)
+            _ = system.setPanelBrightness(0)
             Self.log.log("lid closed: dimmed the built-in display, saved \(save)")
         case .restore(let value):
             attemptDisplayRestore(value)
@@ -1129,16 +1165,16 @@ package final class KeepAwakeManager: ObservableObject {
     /// keeps `syncLidDimmingObserver` armed for an owed restore is what
     /// finds the next real lid-open event to try again.
     private func attemptDisplayRestore(_ value: Double, attemptsLeft: Int = 6) {
-        guard LidDisplayDimmer.setBrightness(value) else {
+        guard system.setPanelBrightness(value) else {
             Self.log.log("restoring the built-in display to \(value) found no panel yet, \(attemptsLeft - 1) retries left")
             guard attemptsLeft > 1 else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            system.after(0.5) { [weak self] in
                 self?.attemptDisplayRestore(value, attemptsLeft: attemptsLeft - 1)
             }
             return
         }
         savedDisplayBrightness = nil
-        UserDefaults.standard.removeObject(forKey: DefaultsKey.dimmedDisplaySavedBrightness)
+        system.defaults.removeObject(forKey: DefaultsKey.dimmedDisplaySavedBrightness)
         Self.log.log("restored the built-in display to \(value)")
         syncLidDimmingObserver()
     }
@@ -1152,7 +1188,7 @@ package final class KeepAwakeManager: ObservableObject {
             MainActor.assumeIsolated { self?.checkBattery() }
         }
         t.tolerance = 5
-        RunLoop.main.add(t, forMode: .common)
+        system.schedule(t)
         batteryTimer = t
         checkBattery()
     }
@@ -1170,9 +1206,9 @@ package final class KeepAwakeManager: ObservableObject {
     /// The battery level while battery protection would end any session at
     /// once (on battery, at or below the limit); nil when a session can run.
     package func batteryProtectionPercent() -> Int? {
-        let limit = Defaults.sanitizedBatteryLimit(UserDefaults.standard.integer(forKey: DefaultsKey.batteryLimit))
+        let limit = Defaults.sanitizedBatteryLimit(system.defaults.integer(forKey: DefaultsKey.batteryLimit))
         guard limit > 0,
-              let battery = SystemInfo.batterySnapshot(),
+              let battery = system.battery(),
               battery.isOnBattery,
               battery.percent <= limit else { return nil }
         return battery.percent
@@ -1183,14 +1219,14 @@ package final class KeepAwakeManager: ObservableObject {
     private func syncMouseJiggleTimer() {
         guard isActive,
               !sessionPausedForScreenLock,
-              UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeMouseJiggleEnabled)
+              system.defaults.bool(forKey: DefaultsKey.keepAwakeMouseJiggleEnabled)
         else {
             stopMouseJiggleTimer()
             return
         }
 
         let minutes = Defaults.sanitizedKeepAwakeMouseJiggleInterval(
-            UserDefaults.standard.integer(forKey: DefaultsKey.keepAwakeMouseJiggleInterval)
+            system.defaults.integer(forKey: DefaultsKey.keepAwakeMouseJiggleInterval)
         )
         let interval = TimeInterval(minutes * 60)
         if mouseJiggleTimer?.timeInterval == interval { return }
@@ -1201,7 +1237,7 @@ package final class KeepAwakeManager: ObservableObject {
             MainActor.assumeIsolated { self?.jiggleMousePointer() }
         }
         timer.tolerance = min(10, interval * 0.1)
-        RunLoop.main.add(timer, forMode: .common)
+        system.schedule(timer)
         mouseJiggleTimer = timer
     }
 
@@ -1214,7 +1250,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     private func jiggleMousePointer() {
         guard isActive,
-              UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeMouseJiggleEnabled),
+              system.defaults.bool(forKey: DefaultsKey.keepAwakeMouseJiggleEnabled),
               let original = Self.currentMouseLocation(),
               let target = Self.mouseJiggleTarget(from: original)
         else {
@@ -1291,4 +1327,117 @@ package final class KeepAwakeManager: ObservableObject {
         event.post(tap: .cghidEventTap)
         return true
     }
+}
+
+extension KeepAwakeManager.System {
+    /// The system's own: the shared settings, `pmset`, IOKit's power
+    /// management and the built-in panel.
+    package static var live: KeepAwakeManager.System {
+        KeepAwakeManager.System(
+            defaults: .standard,
+            notificationCenter: .default,
+            sleep: .live,
+            pmsetReport: { Shell.run("/usr/bin/pmset", ["-g"]) },
+            background: { qos, work in DispatchQueue.global(qos: qos).async(execute: work) },
+            main: { work in DispatchQueue.main.async { work() } },
+            after: { delay, work in
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { work() } }
+            },
+            wait: { Thread.sleep(forTimeInterval: $0) },
+            schedule: { RunLoop.main.add($0, forMode: .common) },
+            assert: { type, name in
+                var id = IOPMAssertionID(0)
+                let ok = IOPMAssertionCreateWithName(type as CFString,
+                                                     IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                                                     name as CFString,
+                                                     &id)
+                return ok == kIOReturnSuccess ? id : nil
+            },
+            releaseAssertion: { _ = IOPMAssertionRelease($0) },
+            battery: { SystemInfo.batterySnapshot() },
+            watchLock: { changed in
+                let center = DistributedNotificationCenter.default()
+                let observers = [
+                    center.addObserver(forName: Notification.Name("com.apple.screenIsLocked"),
+                                       object: nil, queue: .main) { _ in
+                        // Delivered on the main queue.
+                        MainActor.assumeIsolated { changed(true) }
+                    },
+                    center.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"),
+                                       object: nil, queue: .main) { _ in
+                        // Delivered on the main queue.
+                        MainActor.assumeIsolated { changed(false) }
+                    },
+                ]
+                return { observers.forEach { center.removeObserver($0) } }
+            },
+            session: { CGSessionCopyCurrentDictionary() as? [String: Any] },
+            lidClosed: { BrightnessService.lidClosed() },
+            clamshellCausesSleep: {
+                let service = IOServiceGetMatchingService(kIOMainPortDefault,
+                                                          IOServiceMatching("IOPMrootDomain"))
+                guard service != 0 else { return nil }
+                defer { IOObjectRelease(service) }
+                return IORegistryEntryCreateCFProperty(
+                    service, kAppleClamshellCausesSleepKey as CFString,
+                    kCFAllocatorDefault, 0)?.takeRetainedValue() as? Bool
+            },
+            powerAssertions: {
+                var snapshot: Unmanaged<CFDictionary>?
+                let result = IOPMCopyAssertionsByProcess(&snapshot)
+                let values = snapshot?.takeRetainedValue()
+                guard result == kIOReturnSuccess,
+                      let assertions = values as? [AnyHashable: [[String: Any]]]
+                else { return nil }
+                return assertions.values.flatMap { $0 }
+            },
+            sleepSystem: {
+                let rootDomain = IOPMFindPowerManagement(kIOMainPortDefault)
+                guard rootDomain != 0 else { return nil }
+                let result = IOPMSleepSystem(rootDomain)
+                IOServiceClose(rootDomain)
+                return result
+            },
+            watchLid: { changed in watchPowerManagement(changed) },
+            panelBrightness: { LidDisplayDimmer.currentBrightness() },
+            setPanelBrightness: { LidDisplayDimmer.setBrightness($0) })
+    }
+
+    /// `IOPMrootDomain`'s general interest, which the lid's transitions are
+    /// part of. The watch holds the handler that the IOKit context points at,
+    /// so a notification already queued when it stops finds nothing.
+    @MainActor
+    private static func watchPowerManagement(_ changed: @escaping @MainActor @Sendable () -> Void) -> (() -> Void)? {
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard root != 0 else { return nil }
+        defer { IOObjectRelease(root) }
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return nil }
+        let handler = PowerManagementInterest(changed)
+        var notification: io_object_t = 0
+        let result = IOServiceAddInterestNotification(
+            port, root, kIOGeneralInterest, { context, _, _, _ in
+                guard let context else { return }
+                let handler = Unmanaged<PowerManagementInterest>.fromOpaque(context).takeUnretainedValue()
+                DispatchQueue.main.async { [weak handler] in handler?.changed() }
+            }, Unmanaged.passUnretained(handler).toOpaque(), &notification)
+        guard result == KERN_SUCCESS else {
+            IONotificationPortDestroy(port)
+            return nil
+        }
+        IONotificationPortSetDispatchQueue(port, DispatchQueue.main)
+        let watched = notification
+        return {
+            withExtendedLifetime(handler) {
+                if watched != 0 { IOObjectRelease(watched) }
+                IONotificationPortDestroy(port)
+            }
+        }
+    }
+}
+
+/// What a power-management notification runs; see `watchPowerManagement`.
+@MainActor
+private final class PowerManagementInterest {
+    let changed: @MainActor @Sendable () -> Void
+    init(_ changed: @escaping @MainActor @Sendable () -> Void) { self.changed = changed }
 }

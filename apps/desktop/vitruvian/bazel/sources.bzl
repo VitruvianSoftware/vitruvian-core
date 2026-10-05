@@ -296,7 +296,6 @@ GENERATED_TEST_SOURCES = [
     "BrightnessStep.swift",
     "CommandBarEmojiBodies.swift",
     "DisplayRestoration.swift",
-    "KeepAwakeLidSleep.swift",
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
     "MixerInputVolume.swift",

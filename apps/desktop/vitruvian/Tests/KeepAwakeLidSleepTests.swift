@@ -7,126 +7,253 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Runs the production retry body without sleeping the computer. Native facts,
-/// transport and time are controlled; the sleep policy itself is production.
+/// Drives the real `KeepAwakeManager` over a machine the test runs by hand:
+/// its queues, the `pmset` override and its rule, the power manager, the lid
+/// and the panel. Nothing reaches the Mac running the tests.
 enum KeepAwakeLidSleepContract {
-    struct Instant {
-        static func now() -> Instant { Instant() }
-        static func + (lhs: Instant, rhs: Double) -> Instant { lhs }
+    /// A value closures can share with the test.
+    nonisolated final class Box<Value>: @unchecked Sendable {
+        var value: Value
+        init(_ value: Value) { self.value = value }
     }
-    // Nonisolated like Dispatch: production completions reach these from
-    // Sendable closures. The tests flush every queue on the main thread.
-    nonisolated enum DispatchQueue {
-        static let main = Queue()
-        static let background = Queue()
-        static let native = Queue()
-        enum QoS { case utility, userInitiated }
-        static func global(qos: QoS) -> Queue { background }
-        final class Queue: @unchecked Sendable {
-            var immediate: [() -> Void] = []
-            var pending: [() -> Void] = []
-            func async(execute: @escaping () -> Void) { immediate.append(execute) }
-            func sync<T>(execute: () -> T) -> T { flush(); return execute() }
-            func flush() {
-                while !immediate.isEmpty {
-                    let ready = immediate
-                    immediate.removeAll()
-                    ready.forEach { $0() }
-                }
+
+    /// The machine's state and every queue, all run on the main thread.
+    nonisolated final class Machine: @unchecked Sendable {
+        // `pmset` and the sudoers rule.
+        /// SleepDisabled, as `pmset -g` reports it.
+        var disabled = false
+        /// Whether `sudo -n` gets through.
+        var configured = true
+        /// Passwordless writes still to refuse while the rule otherwise works.
+        var refusals = 0
+        /// Every passwordless write asked for, the rule's probes included.
+        var writes: [Bool] = []
+        var reportStatus: Int32 = 0
+        /// Nil reports `disabled`.
+        var reportOutput: String?
+        var installs: [@Sendable (Bool) -> Void] = []
+        var restores: [@Sendable (Bool) -> Void] = []
+        var commands: [String] = []
+        /// Restore prompts opened.
+        var prompts = 0
+
+        // The queues.
+        var lane: [@Sendable () -> Void] = []
+        var background: [@Sendable () -> Void] = []
+        var main: [@MainActor @Sendable () -> Void] = []
+        var later: [@MainActor @Sendable () -> Void] = []
+        var timers: [Timer] = []
+
+        // The power manager.
+        var lid: Bool? = true
+        var policy: Bool? = true
+        var assertions: [[String: Any]]? = []
+        /// Whether there is a power manager to ask.
+        var available = true
+        /// What each sleep request answers; the last one repeats.
+        var results: [Int32] = [0]
+        var sleeps = 0
+        /// Read at each sleep request, into `sleepChecks`.
+        var sleepCheck: (@MainActor () -> Bool)?
+        var sleepChecks: [Bool] = []
+        var waits = 0
+        var onWait: (@MainActor () -> Void)?
+        var held: Set<UInt32> = []
+        private var nextAssertion: UInt32 = 1
+
+        // The screen lock, the lid watch and the panel.
+        var lockChanged: (@MainActor @Sendable (Bool) -> Void)?
+        /// The login session's state when lock monitoring starts.
+        var sessionInfo: [String: Any]?
+        var lidChanged: (@MainActor @Sendable () -> Void)?
+        var lidWatches = 0
+        var lidWatchesEnded = 0
+        var reading: Double?
+        var writeSucceeds = true
+        var written: [Double] = []
+
+        var transport: SleepOverride.Transport {
+            SleepOverride.Transport(
+                async: { [self] work in lane.append(work) },
+                sync: { [self] body in
+                    runLane()
+                    return body()
+                },
+                report: { [self] in report() },
+                write: { [self] on in
+                    writes.append(on)
+                    guard configured else { return false }
+                    if refusals > 0 {
+                        refusals -= 1
+                        return false
+                    }
+                    disabled = on
+                    return true
+                },
+                authorize: { [self] command, _, completion in
+                    commands.append(command)
+                    if command == Sudoers.installCommand {
+                        installs.append(completion)
+                    } else {
+                        prompts += 1
+                        restores.append(completion)
+                    }
+                },
+                main: { [self] work in main.append(work) })
+        }
+
+        func report() -> (status: Int32, output: String) {
+            (reportStatus, reportOutput ?? "SleepDisabled \(disabled ? 1 : 0)")
+        }
+
+        @MainActor func system(defaults: UserDefaults) -> KeepAwakeManager.System {
+            KeepAwakeManager.System(
+                defaults: defaults,
+                notificationCenter: NotificationCenter(),
+                sleep: SleepOverride(transport: transport),
+                pmsetReport: { [self] in report() },
+                background: { [self] _, work in background.append(work) },
+                main: { [self] work in main.append(work) },
+                after: { [self] _, work in later.append(work) },
+                wait: { [self] _ in
+                    waits += 1
+                    onWait?()
+                },
+                schedule: { [self] in timers.append($0) },
+                assert: { [self] _, _ in
+                    let id = nextAssertion
+                    nextAssertion += 1
+                    held.insert(id)
+                    return id
+                },
+                releaseAssertion: { [self] in _ = held.remove($0) },
+                battery: { nil },
+                watchLock: { [self] changed in
+                    lockChanged = changed
+                    return { [self] in lockChanged = nil }
+                },
+                session: { [self] in sessionInfo },
+                lidClosed: { [self] in lid },
+                clamshellCausesSleep: { [self] in policy },
+                powerAssertions: { [self] in assertions },
+                sleepSystem: { [self] in
+                    guard available else { return nil }
+                    sleeps += 1
+                    if let sleepCheck { sleepChecks.append(sleepCheck()) }
+                    return results.count > 1 ? results.removeFirst() : results[0]
+                },
+                watchLid: { [self] changed in
+                    lidWatches += 1
+                    lidChanged = changed
+                    return { [self] in
+                        lidWatchesEnded += 1
+                        lidChanged = nil
+                    }
+                },
+                panelBrightness: { [self] in reading },
+                setPanelBrightness: { [self] value in
+                    guard writeSucceeds else { return false }
+                    written.append(value)
+                    reading = value
+                    return true
+                })
+        }
+
+        func runLane() {
+            while !lane.isEmpty { lane.removeFirst()() }
+        }
+
+        func runBackground() {
+            while !background.isEmpty { background.removeFirst()() }
+        }
+
+        @MainActor func runMain() {
+            while !main.isEmpty { main.removeFirst()() }
+        }
+
+        /// Runs every queue until all of them are idle.
+        @MainActor func drain() {
+            for _ in 0..<50 {
+                if lane.isEmpty, background.isEmpty, main.isEmpty { return }
+                runBackground()
+                runLane()
+                runMain()
             }
-            func asyncAfter(deadline: Instant, execute: @escaping () -> Void) { pending.append(execute) }
-            func advance() {
-                let ready = pending
-                pending.removeAll()
-                ready.forEach { $0() }
-            }
+        }
+
+        /// Runs the delayed work due now; what it schedules waits for the next call.
+        @MainActor func advance() {
+            let due = later
+            later.removeAll()
+            due.forEach { $0() }
+        }
+
+        /// Answers every open restore prompt.
+        @MainActor func answer(_ ok: Bool) {
+            if ok { disabled = false }
+            let waiting = restores
+            restores.removeAll()
+            waiting.forEach { $0(ok) }
+        }
+
+        /// Answers the oldest rule install; an approved one installs a rule
+        /// that works unless `works` says otherwise.
+        @MainActor func answerInstall(_ ok: Bool, works: Bool? = nil) {
+            if ok { configured = works ?? true }
+            installs.removeFirst()(ok)
+        }
+
+        /// The power manager's general interest, as the lid opens or closes.
+        @MainActor func lidEvent() {
+            if let lidChanged { main.append(lidChanged) }
+            drain()
         }
     }
-    enum BrightnessService {
-        static var lid: Bool? = true
-        static func lidClosed() -> Bool? { lid }
-    }
-    /// Only the built-in panel this fixture models; a value the production
-    /// code would treat as "the panel already reads asleep" is `nil`, not 0.
-    enum LidDisplayDimmer {
-        static var reading: Double?
-        static var written: [Double] = []
-        /// True by default; set false to model the panel not being back in
-        /// the online list yet, or the write itself failing.
-        static var writeSucceeds = true
-        static func currentBrightness() -> Double? { reading }
-        @discardableResult
-        static func setBrightness(_ value: Double) -> Bool {
-            guard writeSucceeds else { return false }
-            written.append(value)
-            return true
+
+    /// A manager over its machine and a private settings suite.
+    struct Rig {
+        let manager: KeepAwakeManager
+        let machine: Machine
+        let defaults: UserDefaults
+
+        /// The recovery marker for a sleep override this app set.
+        var marker: Bool { defaults.bool(forKey: DefaultsKey.sleepDisabledFlag) }
+        var savedBrightness: Double? {
+            defaults.object(forKey: DefaultsKey.dimmedDisplaySavedBrightness) as? Double
         }
     }
-    static let kIOMainPortDefault = 0
-    static let kIOReturnSuccess = 0
-    static let KERN_SUCCESS: Int32 = 0
-    static let kIOGeneralInterest = "IOGeneralInterest"
-    typealias IONotificationPortRef = Int
-    typealias io_object_t = Int
-    static var port = 1
-    static var results = [0]
-    static var calls = 0
-    static var closes = 0
-    static var policy: Bool? = true
-    static var assertions: [[String: Any]]? = []
-    static func IOPMFindPowerManagement(_ value: Int) -> Int { port }
-    static func IOPMSleepSystem(_ value: Int) -> Int {
-        calls += 1
-        onSleep?()
-        return results.count > 1 ? results.removeFirst() : results[0]
+
+    private static var suites: [String] = []
+
+    /// A fresh manager with Keep Awake available and closed-lid mode preferred,
+    /// after its launch-time rule probe. `prepare` runs before it starts.
+    static func make(_ prepare: (Machine, UserDefaults) -> Void = { _, _ in }) -> Rig {
+        let name = "vitru.tests.keep-awake.\(UUID().uuidString)"
+        suites.append(name)
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.set(true, forKey: AppFeature.keepAwake.availabilityKey)
+        defaults.set(true, forKey: DefaultsKey.clamshellPreferred)
+        let machine = Machine()
+        prepare(machine, defaults)
+        let manager = KeepAwakeManager(system: machine.system(defaults: defaults))
+        machine.drain()
+        machine.writes = []
+        return Rig(manager: manager, machine: machine, defaults: defaults)
     }
-    static func IOServiceClose(_ value: Int) { closes += 1 }
-    /// The root-domain general-interest observer the dimming feature keeps.
-    /// Registrations, releases and the queued callback are counted the same
-    /// way `DisplayRestorationTests` models `BrightnessService`'s own use of
-    /// this exact IOKit pattern.
-    enum DimmingObserver {
-        static var registrations = 0
-        static var releasedObjects = 0
-        static var destroyedPorts = 0
-        static var callback: (() -> Void)?
+
+    /// A running session whose closed-lid mode is on: sleep is off through
+    /// the rule and the recovery marker is written.
+    static func active(_ prepare: (Machine, UserDefaults) -> Void = { _, _ in }) -> Rig {
+        let rig = make(prepare)
+        rig.manager.activate(minutes: 0)
+        rig.machine.drain()
+        rig.machine.writes = []
+        return rig
     }
-    static func IOServiceMatching(_ name: String) -> Int { 1 }
-    static func IOServiceGetMatchingService(_ port: Int, _ matching: Int) -> Int { 2 }
-    static func IOObjectRelease(_ object: Int) { DimmingObserver.releasedObjects += 1 }
-    static func IONotificationPortCreate(_ port: Int) -> Int? { 3 }
-    static func IONotificationPortDestroy(_ port: Int) {
-        DimmingObserver.destroyedPorts += 1
-        DimmingObserver.callback = nil
-    }
-    static func IONotificationPortSetDispatchQueue(_ port: Int, _ queue: DispatchQueue.Queue) {}
-    static func IOServiceAddInterestNotification(
-        _ port: Int, _ root: Int, _ interest: String,
-        _ callback: @escaping (UnsafeMutableRawPointer?, Int, UInt32, UnsafeMutableRawPointer?) -> Void,
-        _ context: UnsafeMutableRawPointer?, _ notification: inout Int
-    ) -> Int32 {
-        DimmingObserver.registrations += 1
-        notification = 4
-        DimmingObserver.callback = { callback(context, root, 0, nil) }
-        return KERN_SUCCESS
-    }
-    static func reset() -> Service {
-        port = 1; results = [0]; calls = 0; closes = 0
-        policy = true; assertions = []; BrightnessService.lid = true
-        LidDisplayDimmer.reading = nil; LidDisplayDimmer.written = []; LidDisplayDimmer.writeSucceeds = true
-        DimmingObserver.registrations = 0; DimmingObserver.releasedObjects = 0
-        DimmingObserver.destroyedPorts = 0; DimmingObserver.callback = nil
-        for queue in [DispatchQueue.main, DispatchQueue.background, DispatchQueue.native] {
-            queue.pending.removeAll(); queue.immediate.removeAll()
-        }
-        UserDefaults.standard.values.removeAll(); UserDefaults.standard.doubles.removeAll()
-        Sudoers.calls = []; Sudoers.results = [true]; Sudoers.disabled = false
-        Sudoers.configured = true; Sudoers.installCompletions = []
-        Sudoers.sleepStateProbeSuspensions = 0; Sudoers.probeWrites = []
-        AdminShell.completions = []; AdminShell.prompts = 0; AdminShell.syncResult = false
-        Shell.status = 0; Shell.output = nil
-        Thread.waits = 0; Thread.onWait = nil; onSleep = nil
-        return Service()
+
+    static func removeSuites() {
+        for name in suites { UserDefaults().removePersistentDomain(forName: name) }
+        suites.removeAll()
     }
 }
 
@@ -161,61 +288,116 @@ enum KeepAwakeLidSleepTests {
                                "AppliesOnLidClose": true]]),
                "lid flags on unrelated assertion types do not change the system's policy")
 
+        // Ending a closed-lid session restores sleep, then asks for the
+        // sleep a lid that shut during the session would have caused.
         for lid in [true, false, nil] as [Bool?] {
             for policy in [true, false, nil] as [Bool?] {
-                let service = C.reset()
-                C.BrightnessService.lid = lid; C.policy = policy
-                service.sleepIfLidAlreadyClosed()
-                expect(C.calls == (lid == true && policy == true ? 1 : 0),
+                let rig = C.active()
+                rig.machine.lid = lid
+                rig.machine.policy = policy
+                rig.manager.deactivate(reason: .manual)
+                rig.machine.drain()
+                expect(rig.machine.sleeps == (lid == true && policy == true ? 1 : 0),
                        "only a closed lid with an affirmative current policy can request sleep")
-                expect(C.closes == C.calls && C.DispatchQueue.main.pending.isEmpty,
-                       "ports close and successful or inapplicable requests do not poll")
+                expect(rig.machine.later.isEmpty, "successful or inapplicable requests do not poll")
             }
         }
-        let blocked = C.reset(); C.assertions = [connection]
-        blocked.sleepIfLidAlreadyClosed()
-        expect(C.calls == 0, "the production request respects an in-progress monitor connection")
-        C.assertions = []
-        blocked.sleepIfLidAlreadyClosed()
-        expect(C.calls == 1, "sleep is allowed again once the temporary protection is released")
+        let blocked = C.active()
+        blocked.machine.assertions = [connection]
+        blocked.manager.deactivate(reason: .manual)
+        blocked.machine.drain()
+        expect(blocked.machine.sleeps == 0, "the production request respects an in-progress monitor connection")
+        blocked.machine.assertions = []
+        blocked.manager.activate(minutes: 0)
+        blocked.machine.drain()
+        blocked.manager.deactivate(reason: .manual)
+        blocked.machine.drain()
+        expect(blocked.machine.sleeps == 1, "sleep is allowed again once the temporary protection is released")
 
-        let retry = C.reset(); C.results = [1, 1, 0]
-        retry.sleepIfLidAlreadyClosed()
-        for _ in 0..<12 { C.DispatchQueue.main.advance() }
-        expect(C.calls == 3 && C.closes == 3,
-               "a refused lid sleep retries until the system accepts it")
-        let refused = C.reset(); C.results = [1]
-        refused.sleepIfLidAlreadyClosed()
-        for _ in 0..<15 { C.DispatchQueue.main.advance() }
-        expect(C.calls == 10 && C.DispatchQueue.main.pending.isEmpty,
+        let retry = C.active()
+        retry.machine.results = [1, 1, 0]
+        retry.manager.deactivate(reason: .manual)
+        retry.machine.drain()
+        for _ in 0..<12 { retry.machine.advance() }
+        expect(retry.machine.sleeps == 3, "a refused lid sleep retries until the system accepts it")
+        let refused = C.active()
+        refused.machine.results = [1]
+        refused.manager.deactivate(reason: .manual)
+        refused.machine.drain()
+        for _ in 0..<15 { refused.machine.advance() }
+        expect(refused.machine.sleeps == 10 && refused.machine.later.isEmpty,
                "refused sleep is bounded to ten attempts with no permanent timer")
 
-        for change in 0..<6 {
-            let service = C.reset(); C.results = [1]
-            service.sleepIfLidAlreadyClosed()
+        for change in 0..<5 {
+            let rig = C.active()
+            rig.machine.results = [1]
+            rig.manager.deactivate(reason: .manual)
+            rig.machine.drain()
             switch change {
-            case 0: service.isActive = true
-            case 1: C.BrightnessService.lid = false
-            case 2: C.policy = false
-            case 3: service.clamshellActive = true
-            case 4: C.assertions = [connection]
-            default: C.assertions = nil
+            case 0:
+                rig.manager.activate(minutes: 0)
+                rig.machine.drain()
+            case 1: rig.machine.lid = false
+            case 2: rig.machine.policy = false
+            case 3: rig.machine.assertions = [connection]
+            default: rig.machine.assertions = nil
             }
-            C.DispatchQueue.main.advance()
-            expect(C.calls == 1 && C.DispatchQueue.main.pending.isEmpty,
+            rig.machine.advance()
+            expect(rig.machine.sleeps == 1 && rig.machine.later.isEmpty,
                    "each retry rechecks the session, lid and current system protection")
-            service.isActive = false; service.clamshellActive = false
-            C.BrightnessService.lid = true; C.policy = true; C.assertions = []
-            C.DispatchQueue.main.advance()
-            expect(C.calls == 1, "a canceled retry cannot resume after a later context change")
+            guard change > 0 else { continue }
+            rig.machine.lid = true
+            rig.machine.policy = true
+            rig.machine.assertions = []
+            rig.machine.advance()
+            expect(rig.machine.sleeps == 1, "a canceled retry cannot resume after a later context change")
         }
-        let paused = C.reset(); paused.isActive = true; paused.sessionPausedForScreenLock = true
-        paused.sleepIfLidAlreadyClosed()
-        expect(C.calls == 1, "a session paused for screen lock no longer asks to stay awake")
-        let missing = C.reset(); C.port = 0
-        missing.sleepIfLidAlreadyClosed()
-        expect(C.calls == 0 && C.closes == 0, "an unavailable sleep service is not called or closed")
+
+        let paused = C.active { _, defaults in defaults.set(true, forKey: DefaultsKey.keepAwakePauseWhenLocked) }
+        paused.machine.lockChanged?(true)
+        paused.machine.drain()
+        expect(paused.manager.isActive && !paused.manager.clamshellActive && paused.machine.held.isEmpty
+               && !paused.machine.disabled && paused.machine.sleeps == 1,
+               "a session paused for screen lock no longer asks to stay awake")
+        paused.machine.lockChanged?(false)
+        paused.machine.drain()
+        expect(paused.manager.clamshellActive && paused.machine.disabled && paused.machine.held.count == 2,
+               "unlocking resumes the session's assertions and closed-lid mode")
+
+        let lockedStart = C.make { machine, defaults in
+            machine.configured = false
+            machine.sessionInfo = ["CGSSessionScreenIsLocked": true]
+            defaults.set(true, forKey: DefaultsKey.keepAwakePauseWhenLocked)
+        }
+        lockedStart.manager.activate(minutes: 0)
+        lockedStart.machine.drain()
+        expect(lockedStart.manager.isActive && lockedStart.machine.installs.isEmpty && lockedStart.machine.held.isEmpty,
+               "a session started behind a locked screen asks for nothing until it unlocks")
+        lockedStart.machine.lockChanged?(false)
+        lockedStart.machine.drain()
+        expect(lockedStart.machine.installs.count == 1 && lockedStart.machine.held.count == 2,
+               "unlocking starts that session and asks for the rule")
+
+        let relocked = C.active { _, defaults in defaults.set(true, forKey: DefaultsKey.keepAwakePauseWhenLocked) }
+        relocked.machine.results = [1]
+        for locked in [true, false, true] {
+            relocked.machine.lockChanged?(locked)
+            relocked.machine.drain()
+        }
+        relocked.machine.advance()
+        expect(relocked.machine.sleeps == 3,
+               "a lid-sleep retry left over from an earlier lock is dropped by the next restore")
+
+        let missing = C.active()
+        missing.machine.available = false
+        missing.machine.results = [1]
+        missing.manager.deactivate(reason: .manual)
+        missing.machine.drain()
+        expect(missing.machine.sleeps == 0 && missing.machine.later.isEmpty,
+               "a Mac without a power manager is neither asked to sleep nor polled")
+
         KeepAwakeClamshellTests.run(expect: expect)
         KeepAwakeDimmingTests.run(expect: expect)
+        C.removeSuites()
     }
 }

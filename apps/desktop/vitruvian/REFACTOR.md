@@ -1665,6 +1665,74 @@ leaves 26.
   The command queue's `live` form compiles only against macOS's Dispatch, as
   it did before.
 
+Landed (4b, Keep Awake's closed-lid mode): one more generated file goes,
+which leaves 25.
+
+- **Injected:** `KeepAwakeManager` takes a `System`:
+  - the settings and where their changes are announced;
+  - the sleep override;
+  - `pmset -g`, the background and main queues, delayed work and quit's
+    waits;
+  - timers, power assertions and the battery;
+  - the screen lock and the login session;
+  - the lid, the power manager's lid policy, power assertions and sleep
+    request;
+  - the lid watch and the built-in panel.
+
+  `live` is the system's own, with the IOKit bodies moved there unchanged.
+  Automatic sessions and pointer activity keep their direct calls: nothing
+  tests them yet.
+- **Moved:** the `pmset disablesleep` lane leaves `Sudoers` for
+  `SleepOverride` (new): the serial lane, the rule's probe, writes,
+  authorized restores with probes suspended, and the rule install.
+  `Sudoers` keeps the rule paths, the install command, and `isConfigured`
+  and `pmsetDisableSleep` for the uninstall paths.
+- **Test:** the lid-sleep, closed-lid and dimming tests drive a real manager
+  over a machine they run by hand: its queues, `pmset` and the rule, the
+  power manager, the lid and the panel. They used to run a copy of 21
+  members against stand-in globals and set its private state directly; each
+  state is now reached the way the app reaches it. New checks:
+  - a screen lock restores sleep and its unlock re-enables closed-lid mode;
+  - a session started behind a locked screen asks for nothing until it
+    unlocks;
+  - a retry left over from an earlier lock is dropped by the next restore;
+  - a Mac without a power manager is neither asked to sleep nor polled;
+  - an enable still in flight at a teardown cannot ask for the rule again;
+  - a rule that proves itself at setup needs no install prompt;
+  - a restore that needed the password stops trusting the rule;
+  - turning closed-lid mode off during a session never sleeps the Mac;
+  - a second session end adds no second restore while one waits for its
+    password;
+  - a prompt queued before quit never opens;
+  - switching picks keeps one assertion of each kind;
+  - one lid watch serves a session, a launch restore that finds no panel
+    keeps watching, and closing the lid again with the option off leaves
+    the owed level alone;
+  - an install counts only once the rule proves itself, and a probe that
+    cannot read `pmset` writes nothing.
+- **Kept as text:** the mutation suite's "lid sleep forgets to retry a
+  refusal" still targets the same retry guard.
+- **Verification:** a Linux Swift 6.4 model of the real manager and
+  `SleepOverride` (automation monitoring and pointer activity stubbed) runs
+  the three tests, 148 checks, and 84 mutants. `live` type-checks against
+  IOKit-shaped stubs. Sixteen mutants survive, each because another guard
+  already covers the path:
+  - the enable, setup and preference guards against a pending restore,
+    which back each other;
+  - quit's checks in the setup probe, the setup reply, the enable reply and
+    the authorized restore's reply: quit clears the setup and bumps the
+    generation first;
+  - the generation checks on a passwordless restore's reply and in
+    `finishClamshellRestore`: only launch recovery could move the generation
+    under a pending restore, and it runs before any session;
+  - a pending enable in `clamshellNeedsRestore`, whose marker is written
+    first;
+  - the teardown's skipped probe during a restore, and its check for a
+    newer restore, which the generation check already catches;
+  - the lid policy guard, which `KeepAwakeAutomationSupport` repeats;
+  - the lid watch's mode check and repeat check, whose branches recheck;
+  - the option's own restore, which the disarm repeats.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

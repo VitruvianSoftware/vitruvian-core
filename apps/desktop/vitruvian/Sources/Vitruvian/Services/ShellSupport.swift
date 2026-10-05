@@ -136,27 +136,10 @@ package enum Sudoers {
         "/etc/sudoers.d/vitru-clamshell",
     ]
 
-    /// Serializes native writes and read/reapply probes. Authorization runs
-    /// separately with probes suspended, so a probe cannot resurrect a stale
-    /// "1" after a restore cleared it and leave lid sleep off without a marker.
-    private static let sleepStateQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.pmset-state")
-    // Authorization runs outside this queue so quitting never waits for a
-    // password prompt. Probes must not reapply a stale state during that off.
-    // Only sleepStateQueue touches it.
-    nonisolated(unsafe) private static var sleepStateProbeSuspensions = 0
-
-    /// Proves the passwordless path by running it: re-applying the current
-    /// SleepDisabled state through `sudo -n` changes nothing on the system and
-    /// exercises the exact call the feature makes. Listing checks (`sudo -l`)
-    /// reported the rule as ready on Macs where the real call still asked for
-    /// a password, which put every toggle behind a prompt (issue #269).
+    /// Proves the passwordless path by running it; see `SleepOverride`, which
+    /// owns the writes and the probes.
     package static func isConfigured() -> Bool {
-        sleepStateQueue.sync {
-            guard sleepStateProbeSuspensions == 0 else { return false }
-            let report = Shell.run("/usr/bin/pmset", ["-g"])
-            guard report.status == 0 else { return false }
-            return pmsetDisableSleepOnQueue(SudoersSupport.sleepDisabled(inPmsetOutput: report.output))
-        }
+        SleepOverride.live.isConfigured()
     }
 
     /// Whether any rule file (current or legacy name) is visible on disk.
@@ -166,7 +149,9 @@ package enum Sudoers {
         ([rulePath] + legacyRulePaths).contains { FileManager.default.fileExists(atPath: $0) }
     }
 
-    package static func install(completion: @escaping (Bool) -> Void) {
+    /// What installing the rule runs as administrator. `SleepOverride.install`
+    /// runs it and then proves the rule.
+    package static var installCommand: String {
         // Granted by uid, not username: a short name is free-form text on
         // SSO-enrolled Macs (name@company.com, #915) and the old validation
         // rejected it before the password prompt could even appear.
@@ -174,10 +159,7 @@ package enum Sudoers {
         // Clear any earlier-named rule first, then write and validate the new one
         // (a failed check rolls back). Same password prompt either way.
         let legacy = legacyRulePaths.joined(separator: " ")
-        let command = "mkdir -p /etc/sudoers.d && chmod 0755 /etc/sudoers.d && rm -f \(legacy) && echo '\(rule)' > \(rulePath) && chmod 0440 \(rulePath) && /usr/sbin/visudo -c -f \(rulePath) || { rm -f \(rulePath); exit 1; }"
-        AdminShell.run(command, prompt: L10n.shared.s.adminPromptSudoersInstall) { ok in
-            completion(ok && isConfigured())
-        }
+        return "mkdir -p /etc/sudoers.d && chmod 0755 /etc/sudoers.d && rm -f \(legacy) && echo '\(rule)' > \(rulePath) && chmod 0440 \(rulePath) && /usr/sbin/visudo -c -f \(rulePath) || { rm -f \(rulePath); exit 1; }"
     }
 
     package static func remove(completion: @escaping (Bool) -> Void) {
@@ -193,51 +175,7 @@ package enum Sudoers {
     /// (returns false) when the rule is not installed.
     @discardableResult
     package static func pmsetDisableSleep(_ on: Bool) -> Bool {
-        sleepStateQueue.sync { pmsetDisableSleepOnQueue(on) }
-    }
-
-    /// Queues asynchronous writes directly in request order. Completions
-    /// must not wait for the main thread or for administrator authorization.
-    package static func pmsetDisableSleep(_ on: Bool, completion: @escaping (Bool) -> Void) {
-        sleepStateQueue.async {
-            completion(pmsetDisableSleepOnQueue(on))
-        }
-    }
-
-    /// Completes earlier probes before authorization can restore sleep and
-    /// suspends later probes until it finishes. The queue remains free for a
-    /// silent restore during quit; the main-thread guard cancels stale prompts.
-    /// `shouldProceed` runs on the main thread; `completion` on the state queue.
-    package static func restoreSleepWithAuthorization(prompt: String,
-                                              shouldProceed: @escaping @MainActor @Sendable () -> Bool,
-                                              completion: @escaping @Sendable (Bool) -> Void) {
-        sleepStateQueue.async {
-            sleepStateProbeSuspensions += 1
-            let finish: @Sendable (Bool) -> Void = { ok in
-                sleepStateQueue.async {
-                    sleepStateProbeSuspensions -= 1
-                    completion(ok)
-                }
-            }
-            // A failed enable may never have set the override. Once probes
-            // are suspended, a confirmed off needs no further authorization.
-            let report = Shell.run("/usr/bin/pmset", ["-g"])
-            if report.status == 0, !SudoersSupport.sleepDisabled(inPmsetOutput: report.output) {
-                finish(true)
-                return
-            }
-            DispatchQueue.main.async {
-                guard shouldProceed() else {
-                    finish(false)
-                    return
-                }
-                AdminShell.run("pmset disablesleep 0", prompt: prompt, completion: finish)
-            }
-        }
-    }
-
-    private static func pmsetDisableSleepOnQueue(_ on: Bool) -> Bool {
-        Shell.run("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "disablesleep", on ? "1" : "0"]).status == 0
+        SleepOverride.live.disableSleep(on)
     }
 }
 

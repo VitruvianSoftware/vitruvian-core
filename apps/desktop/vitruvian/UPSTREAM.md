@@ -1647,6 +1647,18 @@ is that notice. Add an entry for every change to upstream files.
   lyrics, Apple Events) and keeps a `NotchMusicAdapterLink` instead of the
   process and its pipes; `Tests/NotchMusicHardeningTests.swift` drives it,
   and `Tests/generate_sources.py` no longer copies it.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - `Services/KeepAwakeManager.swift` takes an injected system: settings,
+    the sleep override, `pmset`, its queues and delayed work, timers, power
+    assertions, the battery, the screen lock, the lid, the power manager
+    and the built-in panel.
+  - The `pmset disablesleep` lane, its probes and authorized restores move
+    from `Sudoers` in `Services/ShellSupport.swift` to the new
+    `Services/SleepOverride.swift`. `Sudoers` keeps the rule paths, the
+    install command and two delegating calls.
+  - `Tests/KeepAwakeLidSleepTests.swift`, `Tests/KeepAwakeClamshellTests.swift`
+    and `Tests/KeepAwakeDimmingTests.swift` drive both, and
+    `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
