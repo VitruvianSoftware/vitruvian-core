@@ -180,8 +180,11 @@ package final class DiskSampler {
         var fileSystemType: String?
     }
 
-    private static func mountedVolumes() -> [MountedVolume] {
-        let keys: Set<URLResourceKey> = [
+    /// What every mounted volume is asked for in one fetch. Nothing here may
+    /// need a writable volume to answer: purgeable space is asked for apart,
+    /// and only of a volume this says is writable (`importantFree`).
+    package static var volumeKeys: Set<URLResourceKey> {
+        [
             .volumeNameKey,
             .volumeLocalizedNameKey,
             .volumeTotalCapacityKey,
@@ -193,6 +196,10 @@ package final class DiskSampler {
             .volumeIsLocalKey,
             .volumeUUIDStringKey,
         ]
+    }
+
+    private static func mountedVolumes() -> [MountedVolume] {
+        let keys = volumeKeys
         guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys),
                                                                options: [.skipHiddenVolumes]) else {
             return []
@@ -257,7 +264,7 @@ package final class DiskSampler {
     /// writable volume can answer it: asking a mounted image costs a round
     /// trip to the purge service and comes back as an error on every sample,
     /// which is what filled the log while a disk image was attached.
-    private static func importantFree(for url: URL, isReadOnly: Bool) -> UInt64? {
+    package static func importantFree(for url: URL, isReadOnly: Bool) -> UInt64? {
         guard !isReadOnly,
               let values = try? url.resourceValues(
                 forKeys: [.volumeAvailableCapacityForImportantUsageKey]) else { return nil }

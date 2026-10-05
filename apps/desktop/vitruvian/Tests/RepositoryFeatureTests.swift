@@ -123,6 +123,41 @@ enum RepositoryFeatureTests {
         }
     }
 
+    /// What a Homebrew wait asked its stand-ins, from the worker thread it
+    /// runs on. Only that thread writes it, and the test reads it once the
+    /// wait has ended.
+    private nonisolated final class BrewWaitLog: @unchecked Sendable {
+        var silences: [TimeInterval]
+        var questions = 0
+        var stops = 0
+
+        init(silences: [TimeInterval]) {
+            self.silences = silences
+        }
+
+        /// The next silence, then a whole second once the list runs out.
+        func silence() -> TimeInterval {
+            questions += 1
+            return silences.isEmpty ? 1 : silences.removeFirst()
+        }
+    }
+
+    /// Runs `HomebrewManager.awaitExit` with a 10 ms limit on a worker thread,
+    /// and reports what it asked and how often it stopped the command, or nil
+    /// when it was still waiting after five seconds.
+    private static func brewWait(_ finished: DispatchSemaphore,
+                                 silences: [TimeInterval]) -> (questions: Int, stops: Int)? {
+        let waitLog = BrewWaitLog(silences: silences)
+        let ended = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            HomebrewManager.awaitExit(finished, silenceLimit: 0.01,
+                                      silence: { waitLog.silence() }, stop: { waitLog.stops += 1 })
+            ended.signal()
+        }
+        guard ended.wait(timeout: .now() + 5) == .success else { return nil }
+        return (waitLog.questions, waitLog.stops)
+    }
+
     /// A scratch folder for one script run; nothing is in it yet.
     private static func scratchFolder(_ name: String) -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("vitru-\(name)-\(UUID().uuidString)")
@@ -163,7 +198,6 @@ enum RepositoryFeatureTests {
         let requiredSourcePaths = [
             "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift",
             "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift",
-            "Sources/Vitruvian/Services/Metrics/DiskSampler.swift",
             "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
             "Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift",
             "Sources/Vitruvian/Services/SelfUninstall.swift",
@@ -363,12 +397,20 @@ enum RepositoryFeatureTests {
 
         // MARK: Homebrew command building and parsing
 
-        let homebrewManagerSource = repository.source(
-            at: "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift")
-        let homebrewRunStreaming = homebrewManagerSource.components(separatedBy: "func runStreaming(")
-            .dropFirst().first?.components(separatedBy: "private func appendLog").first ?? ""
-        suite.expect(homebrewRunStreaming.contains("brewSilenceTimeout")
-                && !homebrewRunStreaming.contains("waitUntilExit"),
+        // An operation waits for brew on a semaphore bounded by silence, never
+        // on waitUntilExit: a command that has said nothing for the limit is
+        // stopped and the wait ends, one that keeps talking is waited for, and
+        // one that has exited is not stopped at all.
+        let brewNeverExits = DispatchSemaphore(value: 0)
+        let silentWait = brewWait(brewNeverExits, silences: [])
+        let talkingWait = brewWait(brewNeverExits, silences: [0, 0])
+        // Signalled after it is made, so it ends back at its starting value.
+        let brewExited = DispatchSemaphore(value: 0)
+        brewExited.signal()
+        let exitedWait = brewWait(brewExited, silences: [])
+        suite.expect(silentWait?.questions == 1 && silentWait?.stops == 1
+                && talkingWait?.questions == 3 && talkingWait?.stops == 1
+                && exitedWait?.questions == 0 && exitedWait?.stops == 0,
                "Homebrew operations wait on a bounded semaphore, not waitUntilExit")
 
         suite.expect(HomebrewPackageKind.allCases == [.cask, .formula],
@@ -430,7 +472,8 @@ enum RepositoryFeatureTests {
         // did none of it, so the installed and outdated lists have to be re-read
         // after a failed operation too. Read from the source: the refresh happens
         // inside a completion closure that no unit test can drive.
-        let managerSource = homebrewManagerSource
+        let managerSource = repository.source(
+            at: "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift")
         suite.expect(!managerSource.isEmpty, "HomebrewManager source is readable for the refresh checks")
         let managerCode = managerSource
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -1187,18 +1230,17 @@ enum RepositoryFeatureTests {
         suite.expect(regionlessDecimals.isEmpty,
                "a decimal on screen names its region (\(regionlessDecimals.joined(separator: ", ")))")
 
-        // Purgeable space is queried only for writable volumes.
-        let samplerCode = repository.lines(
-            at: "Sources/Vitruvian/Services/Metrics/DiskSampler.swift")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!samplerCode.isEmpty, "the disk sampler reads back for its shape check")
-        let bulkKeys = samplerCode.components(separatedBy: "let keys: Set<URLResourceKey>")
-            .dropFirst().first?.components(separatedBy: "]").first ?? ""
-        suite.expect(!bulkKeys.contains("volumeAvailableCapacityForImportantUsageKey")
-                && bulkKeys.contains("volumeIsReadOnlyKey"),
+        // Purgeable space is queried only for writable volumes: the bulk fetch
+        // asks nothing that only a writable volume can answer, and a volume
+        // that says it is read-only is not asked. The scratch folder's volume
+        // answers when it is not called read-only, so the refusal is the
+        // sampler's own.
+        suite.expect(!DiskSampler.volumeKeys.contains(.volumeAvailableCapacityForImportantUsageKey)
+                && DiskSampler.volumeKeys.contains(.volumeIsReadOnlyKey),
                "the bulk volume fetch asks nothing that only a writable volume can answer")
-        suite.expect(samplerCode.contains("guard !isReadOnly,"),
+        let writableFolder = FileManager.default.temporaryDirectory
+        suite.expect(DiskSampler.importantFree(for: writableFolder, isReadOnly: false) != nil
+                && DiskSampler.importantFree(for: writableFolder, isReadOnly: true) == nil,
                "purgeable space is read only where there is something to purge")
 
         // Only localized fields that reach String(format:) need matching
@@ -1568,18 +1610,57 @@ enum RepositoryFeatureTests {
         suite.expect(!selfUninstallSource.contains("_ = Sudoers.pmsetDisableSleep")
                 && !uninstallerSource.contains("_ = Sudoers.pmsetDisableSleep"),
                "neither uninstall path discards the result of restoring sleep")
-        // The flows run through injected steps; the system's steps are the
-        // real restores, and SelfUninstallTests checks the order they run in.
-        suite.expect(selfUninstallSource.contains("guard steps.restoreSleepBeforeRemoval() else")
-                && selfUninstallSource.contains("guard detachFromSystem(steps) else")
-                && selfUninstallSource.contains("restoreSleepBeforeRemoval() -> Bool")
-                && selfUninstallSource.contains("guard steps.detachFanControl() else")
-                && selfUninstallSource.contains("restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() }")
+        // The flows run through injected steps, and SelfUninstallTests checks
+        // that a failed sleep restore or fan detach stops them. The system's
+        // steps are the real restores.
+        suite.expect(selfUninstallSource.contains("restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() }")
                 && selfUninstallSource.contains("detachFanControl: { SelfUninstall.detachFanControl() }")
                 && selfUninstallSource.contains("FanControlService.restoreAndUnregisterForRemoval()")
-                && selfUninstallSource.contains("adminPromptRecover")
-                && selfUninstallSource.contains("verification.status == 0"),
+                && selfUninstallSource.contains("adminPromptRecover"),
                "in-app uninstall aborts unless fans and normal sleep are restored before removal")
+        // The real sleep restore reports success only when sleep was never the
+        // app's to restore, or is known to be back: a flag that outlived the
+        // setting asks for no password, a probe that did not answer says
+        // nothing, and after the password only a reading that sleep is on
+        // again counts.
+        typealias PmsetReading = (status: Int32, output: String)
+        let sleepOff: PmsetReading = (0, "System-wide power settings:\n SleepDisabled\t\t1\n")
+        let sleepOn: PmsetReading = (0, "System-wide power settings:\n SleepDisabled\t\t0\n")
+        let noAnswer: PmsetReading = (1, "")
+        func sleepRestore(flagged: Bool = true, readings: [PmsetReading],
+                          rule: Bool = false, password: Bool = false) -> String {
+            var pending = readings
+            var steps: [String] = []
+            let restored = SelfUninstall.restoreSleep(
+                flagged: flagged,
+                probe: {
+                    steps.append("probe")
+                    return pending.isEmpty ? noAnswer : pending.removeFirst()
+                },
+                restoreWithoutPassword: { steps.append("rule"); return rule },
+                restoreAsAdministrator: { steps.append("password"); return password })
+            return (restored ? "restored" : "kept") + ": " + steps.joined(separator: ", ")
+        }
+        let sleepRestores = [
+            sleepRestore(flagged: false, readings: [sleepOff]),
+            sleepRestore(readings: [sleepOn]),
+            sleepRestore(readings: [noAnswer], rule: true),
+            sleepRestore(readings: [sleepOff], rule: true),
+            sleepRestore(readings: [sleepOff]),
+            sleepRestore(readings: [sleepOff, sleepOn], password: true),
+            sleepRestore(readings: [sleepOff, sleepOff], password: true),
+            sleepRestore(readings: [noAnswer, noAnswer], password: true),
+        ]
+        suite.expect(sleepRestores == [
+            "restored: ",
+            "restored: probe",
+            "restored: probe, rule",
+            "restored: probe, rule",
+            "kept: probe, rule, password",
+            "restored: probe, rule, password, probe",
+            "kept: probe, rule, password, probe",
+            "kept: probe, rule, password, probe",
+        ], "in-app uninstall restores normal sleep before removal, or stops: \(sleepRestores)")
         // The script reads the sleep setting back for itself, from what pmset
         // reports, and reads it as the app does. A stand-in pmset gives the
         // report; when it does not answer, the script reads nothing, which it
@@ -1623,10 +1704,6 @@ enum RepositoryFeatureTests {
                 && !brightnessTapCode.contains("restoreManagedDisplays")
                 && !brightnessTapCode.contains("restoreAllGamma"),
                "the permission teardown stops every persistent keyboard tap")
-        let quitProtectionSource = repository.source(
-            at: "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift")
-        suite.expect(quitProtectionSource.contains("func suspend()"),
-               "quit protection exposes the teardown the permission reset calls")
 
         // MARK: Secure input
 
