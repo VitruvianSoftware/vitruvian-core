@@ -2357,6 +2357,36 @@ contract's generated file goes, which leaves 8.
   gate, mixed, promised, refusal and busy checks. The suites themselves run
   on macOS CI.
 
+Landed (4b, the switcher's window strips): one more generated file goes,
+which leaves 7. Of those, six are copies and `LocalizationCatalog.swift`
+is the registry kept on purpose.
+
+- **`SwitcherWindowStrip`** (new, `UI/Switcher/`) is the scrolling row of
+  one app's windows that the switcher's previews and titles each built
+  inline. It keeps the selection in view:
+  - when it appears;
+  - when the selection or the app's windows change;
+  - after the viewport resizes.
+
+  It reads the selection from the switcher at reveal time, so a reveal
+  queued behind a resize finds the current selection.
+  - It is generic over `SwitcherStripModel`: the windows and the selected
+    index. `AppSwitcher` conforms.
+  - Each caller gives the tile and the frame.
+- **`SwitcherSupport.searchResult`** is what a search shows: the matching
+  session items in order, and the selection kept on the preferred item
+  while it is still shown. `AppSwitcher` applies it and then resizes as
+  before.
+- **Tests:** `SwitcherScrollContract` draws the module's own strip over
+  synthetic windows, with empty tiles of the real sizes, and searches
+  through the module's own helper. Before, it compiled copies of both
+  strips, the reveal and the search filter. Every check is kept.
+- **Mutation checks:** the two switcher mutations (no reveal after a
+  resize, reveal keyed on the window count) now edit the new file.
+- **Verification:** a Linux Swift 6.4 model type-checks and runs the search
+  helper. SwiftUI does not build on Linux, so the strip and the suite are
+  proven on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

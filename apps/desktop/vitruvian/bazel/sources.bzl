@@ -300,7 +300,6 @@ GENERATED_TEST_SOURCES = [
     "NotchHover.swift",
     "NotchMusicVisibility.swift",
     "NotchPresentationRefresh.swift",
-    "SwitcherScroll.swift",
 ]
 
 # Sources of the privileged fan-control helper.

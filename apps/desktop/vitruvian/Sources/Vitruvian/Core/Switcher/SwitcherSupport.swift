@@ -1817,6 +1817,21 @@ package enum SwitcherSupport {
         }
     }
 
+    /// What a search shows: the session's items that match `query`, in
+    /// session order, and the selection, which stays on `preferredID` while
+    /// that item is still shown.
+    package static func searchResult<Item>(_ items: [Item], query: String,
+                                           record: (Item) -> SwitcherSearchRecord,
+                                           preferredID: String?,
+                                           previousIndex: Int) -> (items: [Item], selectedIndex: Int) {
+        let records = items.map(record)
+        let visibleIDs = Set(filteredSearchIDs(records: records, query: query))
+        let shown = zip(items, records).filter { visibleIDs.contains($0.1.id) }
+        let index = searchSelectionIndex(itemIDs: shown.map { $0.1.id }, preferredID: preferredID,
+                                         previousIndex: previousIndex)
+        return (shown.map { $0.0 }, index)
+    }
+
     package static func searchSelectionIndex(itemIDs: [String],
                                      preferredID: String?,
                                      previousIndex: Int) -> Int {

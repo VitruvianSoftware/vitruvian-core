@@ -307,48 +307,32 @@ package struct SwitcherView: View {
                             .background(Capsule(style: .continuous).fill(SwitcherIconStyle.tile))
                     }
 
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: SwitcherIconRowLayout.spacing) {
-                                ForEach(appWindows, id: \.element.id) { index, window in
-                                    SwitcherWindowPreviewTile(window: window,
-                                                              preview: window.previewWindowID.flatMap { switcher.previews[$0] },
-                                                              isSelected: index == switcher.selectedIndex,
-                                                              instantSelection: instantSelection,
-                                                              onCommit: {
-                                                                  switcher.select(index: index)
-                                                                  switcher.commitSession()
-                                                              },
-                                                              onClose: {
-                                                                  switcher.closeWindow(window)
-                                                              })
-                                        .id(window.id)
-                                        .onHover { hovering in
-                                            if hovering {
-                                                switcher.hoverSelect(index: index)
-                                            } else {
-                                                switcher.hoverSelectEnded(index: index)
-                                            }
-                                        }
-                                    }
+                    SwitcherWindowStrip(
+                        switcher: switcher, windows: appWindows, spacing: SwitcherIconRowLayout.spacing,
+                        rowHeight: SwitcherIconRowLayout.previewCardHeight,
+                        scrollDisabled: switcher.iconRowLayout.previewFitsWithoutScrolling(cardCount: appWindows.count),
+                        size: CGSize(width: switcher.iconRowLayout.previewContentWidth,
+                                     height: SwitcherIconRowLayout.previewCardHeight),
+                        instantSelection: instantSelection
+                    ) { index, window in
+                        SwitcherWindowPreviewTile(window: window,
+                                                  preview: window.previewWindowID.flatMap { switcher.previews[$0] },
+                                                  isSelected: index == switcher.selectedIndex,
+                                                  instantSelection: instantSelection,
+                                                  onCommit: {
+                                                      switcher.select(index: index)
+                                                      switcher.commitSession()
+                                                  },
+                                                  onClose: {
+                                                      switcher.closeWindow(window)
+                                                  })
+                            .onHover { hovering in
+                                if hovering {
+                                    switcher.hoverSelect(index: index)
+                                } else {
+                                    switcher.hoverSelectEnded(index: index)
                                 }
-                            .frame(height: SwitcherIconRowLayout.previewCardHeight, alignment: .center)
-                        }
-                        .scrollDisabled(switcher.iconRowLayout.previewFitsWithoutScrolling(cardCount: appWindows.count))
-                        .frame(width: switcher.iconRowLayout.previewContentWidth,
-                               height: SwitcherIconRowLayout.previewCardHeight)
-                        .onAppear { revealSelection(in: proxy, animated: false) }
-                        .onChange(of: switcher.selectedIndex) { _, _ in
-                            revealSelection(in: proxy, animated: true)
-                        }
-                        .onChange(of: appWindows.map(\.element.id)) { _, _ in
-                            revealSelection(in: proxy, animated: true)
-                        }
-                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in
-                            DispatchQueue.main.async {
-                                revealSelection(in: proxy, animated: false)
                             }
-                        }
                     }
                 }
                 .padding(SwitcherIconRowLayout.previewPanelPadding)
@@ -404,42 +388,25 @@ package struct SwitcherView: View {
                     Spacer(minLength: 0)
                 }
 
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: SwitcherIconRowLayout.simpleTitleSpacing) {
-                            ForEach(appWindows, id: \.element.id) { entry in
-                                SwitcherWindowTitleChip(
-                                    window: entry.element,
-                                    isSelected: entry.offset == switcher.selectedIndex,
-                                    onSelect: {
-                                        switcher.select(index: entry.offset)
-                                        switcher.commitSession()
-                                    },
-                                    onHover: { hovering in
-                                        if hovering {
-                                            switcher.hoverSelect(index: entry.offset)
-                                        } else {
-                                            switcher.hoverSelectEnded(index: entry.offset)
-                                        }
-                                    }
-                                )
-                                .id(entry.element.id)
+                SwitcherWindowStrip(
+                    switcher: switcher, windows: appWindows, spacing: SwitcherIconRowLayout.simpleTitleSpacing,
+                    padding: SwitcherIconRowLayout.simpleTitleScrollPadding, instantSelection: instantSelection
+                ) { index, window in
+                    SwitcherWindowTitleChip(
+                        window: window,
+                        isSelected: index == switcher.selectedIndex,
+                        onSelect: {
+                            switcher.select(index: index)
+                            switcher.commitSession()
+                        },
+                        onHover: { hovering in
+                            if hovering {
+                                switcher.hoverSelect(index: index)
+                            } else {
+                                switcher.hoverSelectEnded(index: index)
                             }
                         }
-                        .padding(.horizontal, SwitcherIconRowLayout.simpleTitleScrollPadding)
-                    }
-                    .onAppear { revealSelection(in: proxy, animated: false) }
-                    .onChange(of: switcher.selectedIndex) { _, _ in
-                        revealSelection(in: proxy, animated: true)
-                    }
-                    .onChange(of: appWindows.map(\.element.id)) { _, _ in
-                        revealSelection(in: proxy, animated: true)
-                    }
-                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in
-                        DispatchQueue.main.async {
-                            revealSelection(in: proxy, animated: false)
-                        }
-                    }
+                    )
                 }
                 .frame(height: 25 * SwitcherIconRowLayout.scale)
             }
@@ -579,25 +546,6 @@ package struct SwitcherView: View {
     private var selectedWindow: SwitcherItem? {
         guard switcher.windows.indices.contains(switcher.selectedIndex) else { return nil }
         return switcher.windows[switcher.selectedIndex]
-    }
-
-    /// A search can resize the strip without moving the selection, and closing
-    /// a window can replace the selected item at the same index. Reveal after
-    /// the viewport's actual geometry changes, allowing its native scroll view
-    /// to finish resizing before the queued reveal reads the current selection.
-    /// Resize corrections are unanimated. SwiftUI before macOS 26 can also drop
-    /// animated reveals during rapid navigation, so use immediate scrolling there.
-    private func revealSelection(in proxy: ScrollViewProxy, animated: Bool) {
-        let index = switcher.selectedIndex
-        guard switcher.windows.indices.contains(index) else { return }
-        let id = switcher.windows[index].id
-        guard animated, !instantSelection, #available(macOS 26, *) else {
-            proxy.scrollTo(id, anchor: .center)
-            return
-        }
-        withAnimation(.easeOut(duration: 0.15)) {
-            proxy.scrollTo(id, anchor: .center)
-        }
     }
 
     private var selectedAppWindows: [(offset: Int, element: SwitcherItem)] {

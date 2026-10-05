@@ -146,12 +146,12 @@ MUTATIONS = [
      "guard matches.count == 1, let entry = matches.first else { return nil }",
      "guard !matches.isEmpty, let entry = matches.first else { return nil }",
      "manifest 404 ambiguous: only usable catalog coverage clears a missing-feed warning"),
-    ("switcher ignores resized viewport", "switcher", "Sources/Vitruvian/UI/Switcher/SwitcherView.swift",
-     "                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in\n"
-     "                            DispatchQueue.main.async {\n"
-     "                                revealSelection(in: proxy, animated: false)\n"
-     "                            }\n"
-     "                        }",
+    ("switcher ignores resized viewport", "switcher", "Sources/Vitruvian/UI/Switcher/SwitcherWindowStrip.swift",
+     "            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in\n"
+     "                DispatchQueue.main.async {\n"
+     "                    revealSelection(in: proxy, animated: false)\n"
+     "                }\n"
+     "            }",
      "",
      "previews search/narrowed without changing selection"),
     ("paused silence writes off the resumed play", "notch", "Sources/Vitruvian/Services/Notch/NotchAudioLevelService.swift",
@@ -162,9 +162,9 @@ MUTATIONS = [
      "        guard readerPID != pid || resumeBeforeSound else { return }",
      "        guard readerPID != pid else { return }",
      "a delayed silence report from the pause cannot write off the resumed play"),
-    ("switcher loses replacement identity", "switcher", "Sources/Vitruvian/UI/Switcher/SwitcherView.swift",
-     "                        .onChange(of: appWindows.map(\\.element.id)) { _, _ in",
-     "                        .onChange(of: appWindows.count) { _, _ in",
+    ("switcher loses replacement identity", "switcher", "Sources/Vitruvian/UI/Switcher/SwitcherWindowStrip.swift",
+     "            .onChange(of: windows.map(\\.element.id)) { _, _ in",
+     "            .onChange(of: windows.count) { _, _ in",
      "previews boundary close/next app at unchanged index"),
     ("switcher follows window count", "switcher-model", "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
      ": min(2, max(windowCount, maximumWindowCount))",

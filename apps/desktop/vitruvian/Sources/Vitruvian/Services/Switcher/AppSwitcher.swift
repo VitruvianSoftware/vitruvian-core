@@ -1238,14 +1238,11 @@ package final class AppSwitcher: ObservableObject {
     }
 
     private func applySearchFilter(preferredItemID: String?) {
-        let records = sessionItems.map { item in
+        let result = SwitcherSupport.searchResult(sessionItems, query: searchQuery, record: { item in
             SwitcherSearchRecord(id: item.id, title: item.title, appName: item.appName)
-        }
-        let visibleIDs = Set(SwitcherSupport.filteredSearchIDs(records: records, query: searchQuery))
-        windows = sessionItems.filter { visibleIDs.contains($0.id) }
-        selectedIndex = SwitcherSupport.searchSelectionIndex(itemIDs: windows.map(\.id),
-                                                             preferredID: preferredItemID,
-                                                             previousIndex: selectedIndex)
+        }, preferredID: preferredItemID, previousIndex: selectedIndex)
+        windows = result.items
+        selectedIndex = result.selectedIndex
         recomputeLayouts(for: windows)
         resizePanel()
     }

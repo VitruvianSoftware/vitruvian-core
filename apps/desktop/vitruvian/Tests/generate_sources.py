@@ -229,28 +229,6 @@ def main():
           + declaration(notch, "    private func updateSession(").replace("private func", "func", 1)
               .replace("NotchLockScreenSupport.playsSounds()", "NotchLockScreenSupport.playsSounds(in: ReviewDefaults.current)")
           + "}\n}\n")
-    switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
-    switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"
-    write("SwitcherScroll.swift", "import AppKit\nimport SwiftUI\n"
-          + "extension SwitcherScrollContract {\nstruct Strip: View {\n"
-          + "@ObservedObject var switcher: Model\n"
-          + "var instantSelection = false\n"
-          + "var iconRowContentWidth: CGFloat { switcher.iconRowLayout.contentWidth(simpleMode: true, windowRow: false) }\n"
-          + "var body: some View {\nif selectedWindow != nil {\nlet appWindows = selectedAppWindows\n"
-          + "if switcher.simple {\nGroup {\n"
-          + declaration(switcher, "                ScrollViewReader { proxy in")
-          + "}\n.frame(width: iconRowContentWidth - 2 * SwitcherIconRowLayout.simpleTitlePanelPadding, "
-          + "height: 25 * SwitcherIconRowLayout.scale)\n} else {\n"
-          + declaration(switcher, "                    ScrollViewReader { proxy in")
-          + "}\n}\n}\n"
-          + declaration(switcher, "    private var selectedWindow:")
-          + declaration(switcher, "    private var selectedAppWindows:")
-          + declaration(switcher, "    private func revealSelection(")
-          + "}\n}\nextension SwitcherScrollContract.Model {\n"
-          + "func search(_ query: String) { searchQuery = query; applySearchFilter(preferredItemID: selectedItemID) }\n"
-          + declaration(switcher_service, "    private var selectedItemID:")
-          + declaration(switcher_service, "    private func applySearchFilter(")
-          + "}\n")
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):

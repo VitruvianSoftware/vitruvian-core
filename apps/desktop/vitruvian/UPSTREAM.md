@@ -1811,6 +1811,15 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/ShelfDropRoutingTests.swift` and
     `Tests/MediaWorkspaceLayoutTests.swift` drive the module's own types,
     and `Tests/generate_sources.py` no longer writes `ShelfDropRouting.swift`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The preview and title strips in `UI/Switcher/SwitcherView.swift` use
+    the new `UI/Switcher/SwitcherWindowStrip.swift`, which holds their
+    scroll view and selection reveal.
+  - The search filter in `Services/Switcher/AppSwitcher.swift` moves to
+    `SwitcherSupport.searchResult` in `Core/Switcher/SwitcherSupport.swift`.
+  - `Tests/SwitcherScrollTests.swift` drives both, `Tests/mutation_checks.py`
+    points its two switcher mutations at the new file, and
+    `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
