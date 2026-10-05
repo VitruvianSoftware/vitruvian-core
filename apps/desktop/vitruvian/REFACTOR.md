@@ -1199,6 +1199,26 @@ leaves 49.
   globs and `sync_sources.py`'s staging with them.
 - **Verification:** AppKit and Core Animation, so macOS CI only.
 
+Landed (4b, a click on a copy of the island): one more generated file goes,
+which leaves 48.
+
+- **Extracted:** `NotchIslandSummons` (new, beside `NotchPointerFollower`)
+  holds what a click on a copy does:
+  - an open island closes;
+  - once its window settles, it moves to that display and opens;
+  - it stays put if it stopped, can no longer move, or the display went away.
+
+  `NotchService` wires it the way it wires the pointer follower, and
+  `NotchMirrors` calls it on a click.
+- **Test:** the mirror test drives the real summons instead of a copy of
+  `bringIsland(to:)`.
+- **Checks added:** the wait for the window to settle, an unplugged display,
+  an island on one display only, an island suspended while it settles, and a
+  closed island that must not be collapsed again. The last one catches a
+  mutant the others let through.
+- **Verification:** a Linux Swift 6 model of the summons and the test kills
+  all eight mutants.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

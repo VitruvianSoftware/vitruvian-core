@@ -113,30 +113,33 @@ enum NotchMirrorContract {
         }
     }
 
-    // A click on a copy runs the island's own `bringIsland(to:)`, copied
-    // from `NotchService` into `Service` below.
-    final class NSScreen {
-        static var screens: [NSScreen] = []
-        let notchDisplayID: CGDirectDisplayID
-        init(_ id: CGDirectDisplayID) { notchDisplayID = id }
-    }
-    final class WindowHost {
+    /// The island a click on a copy summons, recording what it was asked.
+    final class Island {
+        var showsOnAllDisplays = true, running = true, suspended = false
         var settling = false
         var settled: [() -> Void] = []
-        func whenSettled(_ action: @escaping () -> Void) {
-            if settling { settled.append(action) } else { action() }
-        }
-    }
-    class State {
-        var showsOnAllDisplays = true, running = true, suspended = false
-        var windowHost: WindowHost? = WindowHost()
         var displayID: CGDirectDisplayID? = 1
+        var displays: Set<CGDirectDisplayID> = [1, 2]
         var expanded = false, peeking = false, canFollowPointer = true
         var opened = 0, collapses = 0
         var moves: [CGDirectDisplayID] = []
-        func collapse() { collapses += 1; expanded = false; peeking = false }
-        func open() { opened += 1; expanded = true }
-        func move(to screen: NSScreen) { displayID = screen.notchDisplayID; moves.append(screen.notchDisplayID) }
+        /// Wired the way `NotchService` wires it.
+        lazy var summons = NotchIslandSummons(island: .init(
+            showsCopies: { [unowned self] in self.running && !self.suspended && self.showsOnAllDisplays },
+            displayID: { [unowned self] in self.displayID },
+            isOpen: { [unowned self] in self.expanded || self.peeking },
+            collapse: { [unowned self] in self.collapses += 1; self.expanded = false; self.peeking = false },
+            whenSettled: { [unowned self] action in
+                if self.settling { self.settled.append(action) } else { action() }
+            },
+            canMove: { [unowned self] in self.running && !self.suspended && self.canFollowPointer },
+            move: { [unowned self] id in
+                guard self.displays.contains(id) else { return false }
+                self.displayID = id
+                self.moves.append(id)
+                return true
+            },
+            open: { [unowned self] in self.opened += 1; self.expanded = true }))
     }
 
     static func run(_ suite: TestSuite) {
@@ -272,20 +275,46 @@ enum NotchMirrorContract {
     /// A click on a copy brings the island to its display, open, closing it
     /// on the display it was open on.
     private static func runActivation(_ suite: TestSuite) {
-        defer { NSScreen.screens = [] }
-        NSScreen.screens = [NSScreen(1), NSScreen(2)]
-        let island = Service()
+        let island = Island()
         island.displayID = 2
         island.expanded = true
-        island.bringIsland(to: 1)
+        island.summons.bring(to: 1)
         suite.expect(island.collapses == 1 && island.moves == [1] && island.displayID == 1 && island.opened == 1,
                      "clicking a copy closes the island, moves it to that display and opens it there")
         let opened = island.opened
         island.canFollowPointer = false
-        island.bringIsland(to: 2)
+        island.summons.bring(to: 2)
         island.canFollowPointer = true
         suite.expect(island.opened == opened, "a notice or a drag keeps the island where it is")
-        island.bringIsland(to: 1)
+        island.summons.bring(to: 1)
         suite.expect(island.opened == opened && island.moves == [1], "a click on the island's own display does nothing")
+
+        let settling = Island()
+        settling.expanded = true
+        settling.settling = true
+        settling.summons.bring(to: 2)
+        suite.expect(settling.collapses == 1 && settling.moves.isEmpty && settling.opened == 0,
+                     "the island closes at once and waits for its window to settle before moving")
+        settling.settled.forEach { $0() }
+        suite.expect(settling.moves == [2] && settling.opened == 1, "once settled, it moves there and opens")
+
+        let unplugged = Island()
+        unplugged.displays = [1]
+        unplugged.summons.bring(to: 2)
+        suite.expect(unplugged.moves.isEmpty && unplugged.opened == 0 && unplugged.collapses == 0,
+                     "a closed island is not collapsed again, and a display unplugged before it settles is not opened on")
+        let single = Island()
+        single.showsOnAllDisplays = false
+        single.expanded = true
+        single.summons.bring(to: 2)
+        suite.expect(single.collapses == 0 && single.moves.isEmpty,
+                     "with the island on one display, a stray copy click changes nothing")
+        let stopping = Island()
+        stopping.settling = true
+        stopping.summons.bring(to: 2)
+        stopping.suspended = true
+        stopping.settled.forEach { $0() }
+        suite.expect(stopping.moves.isEmpty && stopping.opened == 0,
+                     "an island suspended while it settles stays where it is")
     }
 }

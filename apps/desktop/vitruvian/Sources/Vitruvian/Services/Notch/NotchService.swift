@@ -358,7 +358,25 @@ package final class NotchService: ObservableObject {
             host.panel.title = FeatureStrings.notch(L10n.shared.language).title
             return host
         },
-        activate: { [weak self] id in self?.bringIsland(to: id) })
+        activate: { [weak self] id in self?.summons.bring(to: id) })
+    /// A click on a copy bringing the island to its display (`NotchIslandSummons`).
+    private lazy var summons: NotchIslandSummons = NotchIslandSummons(island: .init(
+        showsCopies: { [weak self] in self.map { $0.running && !$0.suspended && $0.showsOnAllDisplays } ?? false },
+        displayID: { [weak self] in self?.displayID },
+        isOpen: { [weak self] in self.map { $0.expanded || $0.peeking } ?? false },
+        collapse: { [weak self] in self?.collapse() },
+        whenSettled: { [weak self] action in
+            // Copies are clicked on the main thread, so `action` never leaves it.
+            nonisolated(unsafe) let action = action
+            self?.windowHost?.whenSettled { action() }
+        },
+        canMove: { [weak self] in self.map { $0.running && !$0.suspended && $0.canFollowPointer } ?? false },
+        move: { [weak self] id in
+            guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return false }
+            self.move(to: screen)
+            return true
+        },
+        open: { [weak self] in self?.open() }))
     /// The island following the pointer to another display (`NotchPointerFollower`).
     private lazy var pointerFollower: NotchPointerFollower = NotchPointerFollower(
         environment: .system,
@@ -2412,19 +2430,6 @@ package final class NotchService: ObservableObject {
 
     private func updateFullscreenDisplays() {
         mirrors.updateFullscreenDisplays(showsOnAllDisplays: showsOnAllDisplays)
-    }
-
-    /// A click on a copy brings the island to its display, open, closing it
-    /// on the display it was open on.
-    private func bringIsland(to id: CGDirectDisplayID) {
-        guard running, !suspended, showsOnAllDisplays, id != displayID else { return }
-        if expanded || peeking { collapse() }
-        windowHost?.whenSettled { [weak self] in
-            guard let self, self.running, !self.suspended, self.canFollowPointer,
-                  let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
-            self.move(to: screen)
-            self.open()
-        }
     }
 
     private var screenEdgeClickArea: CGRect? {
