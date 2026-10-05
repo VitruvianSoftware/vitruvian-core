@@ -2056,6 +2056,10 @@ is that notice. Add an entry for every change to upstream files.
   - It is drawn with it in the timer, keep awake, watch, agent and download
     views (`UI/Notch/`). Those strips and the calendar strip use the named
     wing widths.
+- **2026-10-05**: Refactor step 5zi (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchLayout.systemGridHeight(count:width:)` in place of
+  `NotchGeometry.systemRows(cards:)`; `UI/Notch/NotchSystemView.swift` uses it.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

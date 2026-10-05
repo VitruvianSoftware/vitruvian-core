@@ -93,8 +93,7 @@ package struct NotchSystemView: View {
         } else {
             let inset = NotchLayout.systemHoverInset(width: size.width)
             let rows = NotchLayout.systemRowRanges(count: cards.count, width: size.width - inset * 2)
-            let height = NotchLayout.railHeight(rows: rows.count, rowHeight: NotchLayout.systemCardHeight,
-                                               spacing: NotchLayout.rowSpacing) + inset * 2
+            let height = NotchLayout.systemGridHeight(count: cards.count, width: size.width)
             Group {
                 if height > size.height {
                     ScrollView {

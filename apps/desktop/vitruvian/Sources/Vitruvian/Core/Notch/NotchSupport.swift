@@ -459,6 +459,14 @@ package enum NotchLayout {
         return min(needed, fitting)
     }
 
+    /// The System page's grid of `count` cards across `width`, with the room
+    /// its hover effect keeps around it.
+    package static func systemGridHeight(count: Int, width: CGFloat) -> CGFloat {
+        let inset = systemHoverInset(width: width)
+        let rows = systemRowRanges(count: count, width: width - inset * 2).count
+        return railHeight(rows: rows, rowHeight: systemCardHeight, spacing: rowSpacing) + inset * 2
+    }
+
     package static func railHeight(rows: Int, rowHeight: CGFloat, spacing: CGFloat) -> CGFloat {
         CGFloat(max(1, rows)) * rowHeight + CGFloat(max(0, rows - 1)) * spacing
     }
@@ -2192,9 +2200,6 @@ package struct NotchGeometry: Equatable {
     /// within the chosen limit and the page swaps the player out instead.
     package var musicExtrasHeight: CGFloat { layout == .custom ? min(216, contentBudget) : 216 }
 
-    package func systemRows(cards: Int) -> Int {
-        NotchLayout.systemRowRanges(count: cards, width: contentWidth - NotchLayout.systemHoverInset(width: contentWidth) * 2).count
-    }
 
     package func toolRows(count: Int) -> Int {
         NotchLayout.railRows(count: count,
@@ -2251,8 +2256,7 @@ package struct NotchGeometry: Equatable {
             case .system:
                 let cards = max(0, systemCards)
                 contentHeight = min(budget, cards == 0 ? NotchLayout.emptyHeight
-                    : NotchLayout.railHeight(rows: systemRows(cards: cards), rowHeight: NotchLayout.systemCardHeight, spacing: NotchLayout.rowSpacing)
-                        + NotchLayout.systemHoverInset(width: contentWidth) * 2)
+                    : NotchLayout.systemGridHeight(count: cards, width: contentWidth))
             case .tools:
                 guard let toolCount else { contentHeight = pageBudget; break }
                 contentHeight = min(budget, toolCount == 0 ? NotchLayout.emptyHeight

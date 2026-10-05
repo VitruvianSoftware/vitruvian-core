@@ -3187,6 +3187,12 @@ draw the timer, keep awake, watch, agent and download marks.
 widths that show a mark (28) and a reading (42) were written in five strips.
 They are `NotchLayout.compactMarkWing` and `compactReadingWing`.
 
+Landed (5zi, the System grid): the island sized the System page from its
+card rows and hover inset, and `NotchSystemView` added the same rows and
+inset to decide whether to scroll. `NotchLayout.systemGridHeight(count:width:)`
+is now both, and `NotchGeometry.systemRows(cards:)`, which only the sizing
+used, is gone.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
