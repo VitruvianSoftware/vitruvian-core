@@ -2104,6 +2104,35 @@ package enum ScreenshotSupport {
         return CGPoint(x: dx * step, y: dy * step)
     }
 
+    /// Where an arrow key moves the pointer from `location`, in pixels of the
+    /// display it is on (or of `fallback`). It may cross onto a neighbouring
+    /// display; only when no display holds the target does it stop on the
+    /// edge of its own. Nil for any other key, or with no display.
+    package static func capturePointerNudge(keyCode: Int, fast: Bool, from location: CGPoint,
+                                            screens: [ScreenGeometry], fallback: ScreenGeometry?) -> CGPoint? {
+        var dx: CGFloat = 0
+        var dy: CGFloat = 0
+        switch keyCode {
+        case kVK_LeftArrow: dx = -1
+        case kVK_RightArrow: dx = 1
+        case kVK_UpArrow: dy = 1
+        case kVK_DownArrow: dy = -1
+        default: return nil
+        }
+        guard let screen = ScreenGeometry.under(location, among: screens, fallback: fallback) else { return nil }
+        let delta = captureLoupeNudge(dx: dx, dy: dy, fast: fast, scale: screen.scale)
+        var target = CGPoint(x: location.x + delta.x, y: location.y + delta.y)
+        if !screens.contains(where: { NSMouseInRect(target, $0.frame, false) }) {
+            // The pointer spans [minX, maxX) x (minY, maxY], as NSMouseInRect counts it.
+            let frame = screen.frame
+            let pixel = 1 / max(screen.scale, 1)
+            target = CGPoint(
+                x: min(max(target.x, frame.minX), frame.maxX - pixel),
+                y: min(max(target.y, frame.minY + pixel), frame.maxY))
+        }
+        return target
+    }
+
     /// The square of source pixels a loupe magnifies. The two loupes centre on
     /// different things and therefore need opposite parities.
     ///

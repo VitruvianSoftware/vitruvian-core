@@ -1943,6 +1943,42 @@ leaves 20.
   The press and the warp themselves stay with `SpaceHop`, which macOS CI
   builds.
 
+Landed (4b, the display under the pointer): one more generated file goes,
+which leaves 19.
+
+- **Added:** `ScreenGeometry` (`Core/ScreenGeometry.swift`, new) is what
+  placement reads of a display: its id, frames and scale. `under(_:among:fallback:)`
+  picks the display a pointer is on by AppKit's rule, through the existing
+  `NSScreen.screen(containing:…)`. `NSScreen.geometries` lists the attached
+  displays.
+- **Moved to pure functions** that take displays, one per owner:
+  - the full-display capture picks `ScreenGeometry.under`;
+  - `SpaceWindowBridge.visibleSpace(near:in:screens:main:)`;
+  - `WindowDirectionalIndicator.frame` (Core, new), with its size;
+  - `QuitProtectionSupport.panelOrigin`;
+  - `ScreenshotSupport.capturePointerNudge`, the loupe's arrow keys;
+  - `DockPreviewSupport.dropOrigin`.
+
+  The overlay under the pointer uses `NSScreen.screen(containing:…)` over
+  its panels. Each owner passes `NSScreen.geometries` and keeps its own
+  side effects.
+- **Test:** the lookup test calls the functions with the same three
+  displays. Before, it compiled copies of seven members with stand-ins
+  for screens, panels, the capture engine and the window activator. It no
+  longer needs a run loop. New checks:
+  - a display the topology misses falls back to its first, and a pointer
+    outside every display follows the main display's Space;
+  - the quit confirmation goes to the display asked for, clears the
+    Dock, rounds to whole points, and uses the first display without a
+    main one; with no display it places nothing;
+  - the directional indicator stays 8 points inside a corner;
+  - each arrow moves its own way, ten pixels with Shift, and another key
+    or no display moves nothing;
+  - the pointer crosses onto the next display, stops on the first column
+    and the top row, and stops on the fallback's edge from nowhere.
+- **Verification:** a Linux Swift 6.4 model of the functions runs the test,
+  71 checks, and 27 mutants, none surviving.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

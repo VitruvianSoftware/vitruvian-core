@@ -280,6 +280,14 @@ package enum DockPreviewSupport {
         )
     }
 
+    /// The same, against the visible frame of the display the pointer is on,
+    /// or of `fallback`.
+    package static func dropOrigin(pointer: CGPoint, windowSize: CGSize,
+                                   screens: [ScreenGeometry], fallback: ScreenGeometry?) -> CGPoint {
+        dragOrigin(pointer: pointer, windowSize: windowSize,
+                   visibleFrame: ScreenGeometry.under(pointer, among: screens, fallback: fallback)?.visibleFrame ?? .zero)
+    }
+
     // Card metrics. The preview size setting sizes what the card shows, so the
     // thumbnail and the icon standing in for it follow it, and so do the gaps
     // around them, which hold nothing of their own. What does not follow it is

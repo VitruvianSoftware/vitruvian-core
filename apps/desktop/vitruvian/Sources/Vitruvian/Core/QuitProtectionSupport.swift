@@ -65,6 +65,17 @@ package struct QuitProtectionConfiguration: Equatable {
 }
 
 package enum QuitProtectionSupport {
+    /// Where the confirmation pill of `size` sits: centred near the bottom of
+    /// the visible frame of `preferred`, else of the display the pointer is
+    /// on, else of `main` or the first display. Nil with no display at all.
+    package static func panelOrigin(size: CGSize, preferred: ScreenGeometry?, pointer: CGPoint,
+                                    screens: [ScreenGeometry], main: ScreenGeometry?) -> CGPoint? {
+        guard let screen = preferred ?? ScreenGeometry.under(pointer, among: screens, fallback: main ?? screens.first)
+        else { return nil }
+        let frame = screen.visibleFrame
+        return CGPoint(x: (frame.midX - size.width / 2).rounded(), y: (frame.minY + 18).rounded())
+    }
+
     package static let holdDurationRange = 250.0...2_000.0
     package static let doublePressIntervalRange = 200.0...1_500.0
     package static let defaultHoldDurationMilliseconds = 800.0

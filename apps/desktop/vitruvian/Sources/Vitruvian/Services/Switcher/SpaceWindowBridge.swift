@@ -198,9 +198,15 @@ package enum SpaceWindowBridge {
     /// on without moving anything rather than guessing at a destination.
     package static func visibleSpace(near pointer: CGPoint) -> UInt64? {
         guard let topology = topology() else { return nil }
-        let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
-        if let number = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?
-            .uint32Value,
+        return visibleSpace(near: pointer, in: topology, screens: NSScreen.geometries,
+                            main: NSScreen.main?.geometry)
+    }
+
+    /// The same, for a topology and the displays it was read with. A display
+    /// the topology does not list falls back to its first.
+    package static func visibleSpace(near pointer: CGPoint, in topology: Topology,
+                                     screens: [ScreenGeometry], main: ScreenGeometry?) -> UInt64? {
+        if let number = ScreenGeometry.under(pointer, among: screens, fallback: main)?.displayID,
            let display = topology.displays.first(where: { $0.displayID == number }) {
             return display.currentSpace
         }

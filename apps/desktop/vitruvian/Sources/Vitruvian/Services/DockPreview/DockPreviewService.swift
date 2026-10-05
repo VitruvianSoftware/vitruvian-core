@@ -315,12 +315,11 @@ package final class DockPreviewService: ObservableObject {
             return
         }
         let pointer = NSEvent.mouseLocation
-        let visibleFrame = (NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
-            ?? NSScreen.withMouse)?.visibleFrame ?? .zero
-        let origin = axPoint(fromAppKit: DockPreviewSupport.dragOrigin(
+        let origin = axPoint(fromAppKit: DockPreviewSupport.dropOrigin(
             pointer: pointer,
             windowSize: item.frame.size,
-            visibleFrame: visibleFrame
+            screens: NSScreen.geometries,
+            fallback: NSScreen.withMouse?.geometry
         ))
         let moved = WindowActivator.place(item, origin: origin, pointer: pointer)
         endSession()

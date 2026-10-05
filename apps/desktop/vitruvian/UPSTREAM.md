@@ -1695,6 +1695,17 @@ is that notice. Add an entry for every change to upstream files.
   and `Services/DockPreview/DockPreviewService.swift` call.
   `Tests/PointerOnDisplayTests.swift` calls them, and `Tests/generate_sources.py`
   no longer copies the three owners.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the display under
+  the pointer is read through the new `Core/ScreenGeometry.swift`.
+  - Pure placement functions join `Core/WindowLayout/WindowLayoutSupport.swift`,
+    `Core/QuitProtectionSupport.swift`, `Core/QuickTools/ScreenshotSupport.swift`,
+    `Core/DockPreview/DockPreviewSupport.swift` and
+    `Services/Switcher/SpaceWindowBridge.swift`.
+  - `Services/QuickTools/ScreenshotService.swift`, `ScreenshotSelectionController.swift`,
+    `Services/WindowLayout/WindowLayoutService.swift`, `Services/QuitProtection/QuitProtectionHUD.swift`
+    and `Services/DockPreview/DockPreviewService.swift` call them.
+  - `Tests/PointerDisplayLookupTests.swift` calls them, and
+    `Tests/generate_sources.py` no longer copies the seven members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

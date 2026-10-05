@@ -70,14 +70,12 @@ package final class QuitProtectionHUD {
 
     private func positionPanel(on preferredScreen: NSScreen?) {
         guard let panel,
-              let screen = preferredScreen
-                ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
-                ?? NSScreen.main
-                ?? NSScreen.screens.first
+              let origin = QuitProtectionSupport.panelOrigin(size: size, preferred: preferredScreen?.geometry,
+                                                             pointer: NSEvent.mouseLocation,
+                                                             screens: NSScreen.geometries,
+                                                             main: NSScreen.main?.geometry)
         else { return }
-        let frame = screen.visibleFrame
-        panel.setFrameOrigin(CGPoint(x: (frame.midX - size.width / 2).rounded(),
-                                     y: (frame.minY + 18).rounded()))
+        panel.setFrameOrigin(origin)
     }
 
     /// The pill's labels and hold progress, which lay out without a panel.

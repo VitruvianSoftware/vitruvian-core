@@ -576,32 +576,11 @@ package final class ScreenshotSelectionController {
     /// Warping generates no mouse event, so the overlays are refreshed by
     /// hand with the position just warped to.
     private func nudgePointer(keyCode: Int, fast: Bool) {
-        guard loupeAcceptsKeyboardActions else { return }
-        var dx: CGFloat = 0
-        var dy: CGFloat = 0
-        switch keyCode {
-        case kVK_LeftArrow: dx = -1
-        case kVK_RightArrow: dx = 1
-        case kVK_UpArrow: dy = 1
-        case kVK_DownArrow: dy = -1
-        default: return
-        }
-        let location = currentPointerLocation ?? NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(location, $0.frame, false) })
-            ?? NSScreen.withMouse else { return }
-        let delta = ScreenshotSupport.captureLoupeNudge(dx: dx,
-                                                        dy: dy,
-                                                        fast: fast,
-                                                        scale: screen.backingScaleFactor)
-        var target = CGPoint(x: location.x + delta.x, y: location.y + delta.y)
-        if !NSScreen.screens.contains(where: { NSMouseInRect(target, $0.frame, false) }) {
-            // The pointer spans [minX, maxX) x (minY, maxY], as NSMouseInRect counts it.
-            let frame = screen.frame
-            let pixel = 1 / max(screen.backingScaleFactor, 1)
-            target = CGPoint(
-                x: min(max(target.x, frame.minX), frame.maxX - pixel),
-                y: min(max(target.y, frame.minY + pixel), frame.maxY))
-        }
+        guard loupeAcceptsKeyboardActions,
+              let target = ScreenshotSupport.capturePointerNudge(
+                keyCode: keyCode, fast: fast, from: currentPointerLocation ?? NSEvent.mouseLocation,
+                screens: NSScreen.geometries, fallback: NSScreen.withMouse?.geometry)
+        else { return }
         currentPointerLocation = target
         let mainHeight = NSScreen.withMenuBar?.frame.height ?? 0
         CGWarpMouseCursorPosition(CGPoint(x: target.x, y: mainHeight - target.y))
@@ -609,8 +588,8 @@ package final class ScreenshotSelectionController {
     }
 
     private func panelUnderMouse() -> ScreenshotOverlayPanel? {
-        let location = currentPointerLocation ?? NSEvent.mouseLocation
-        return panels.first { NSMouseInRect(location, $0.screenFrame, false) } ?? panels.first
+        NSScreen.screen(containing: currentPointerLocation ?? NSEvent.mouseLocation, among: panels,
+                        frame: { $0.screenFrame }, fallback: panels.first)
     }
 
     private func keyPanelUnderMouse() -> ScreenshotOverlayPanel? {

@@ -131,7 +131,6 @@ def main():
           + "}\n}\nextension UninstallerFlowTests.Finder {\n"
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
-    dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
     # The composition root wires the island's collaborators; each contract
@@ -509,32 +508,6 @@ def main():
           + "static let factories: [(String, (AppLanguage) -> Any)] = [\n"
           + "".join(f'("{name}", {{ FeatureStrings.{name}($0) }}),\n' for name in factories)
           + "]\n}\n")
-
-    screens = "Sources/Vitruvian/Core/AppKitExtensions.swift"
-    bridge = "Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift"
-    write("PointerDisplayLookups.swift", "import AppKit\nimport Carbon.HIToolbox\nimport QuartzCore\n"
-          + "extension PointerDisplayLookupContract.Screen {\n"
-          + declaration(screens, "    static var withMouse:")
-          + declaration(screens, "    static var withMenuBar:")
-          + "}\nextension PointerDisplayLookupContract.Capturer {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
-                        "    private func beginFullScreenCapture()").replace("private func", "func", 1)
-          + "}\nextension PointerDisplayLookupContract.Bridge {\n"
-          + "typealias Topology = VitruvianServices.SpaceWindowBridge.Topology\n"
-          + declaration(bridge, "    static func visibleSpace(near")
-          + "}\nextension PointerDisplayLookupContract.Layout {\n"
-          + declaration("Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
-                        "    private func showDirectionalIndicator(").replace("private func", "func", 1)
-          + "}\nextension PointerDisplayLookupContract.HUD {\n"
-          + declaration("Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
-                        "    private func positionPanel(").replace("private func", "func", 1)
-          + "}\nextension PointerDisplayLookupContract.Chooser {\n"
-          + "".join(declaration(selection, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func nudgePointer(", "    private func panelUnderMouse()"])
-          + "}\nextension PointerDisplayLookupContract.Dock {\n"
-          + declaration(dock, "    func endWindowDrag(")
-          + "}\n")
-
 
 
 if __name__ == "__main__":

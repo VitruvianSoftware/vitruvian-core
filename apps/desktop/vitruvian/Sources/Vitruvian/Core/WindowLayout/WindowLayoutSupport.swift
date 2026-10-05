@@ -4,6 +4,21 @@
 import CoreGraphics
 import Foundation
 
+/// The panel that shows which way a directional gesture will move a window.
+package enum WindowDirectionalIndicator {
+    package static let size = CGSize(width: 180, height: 180)
+
+    /// Centred on the pointer, kept 8 points inside the visible frame of the
+    /// display the pointer is on, or of `main`.
+    package static func frame(pointer: CGPoint, screens: [ScreenGeometry], main: ScreenGeometry?) -> CGRect {
+        let screenFrame = ScreenGeometry.under(pointer, among: screens, fallback: main)?.visibleFrame ?? .zero
+        var origin = CGPoint(x: pointer.x - size.width / 2, y: pointer.y - size.height / 2)
+        origin.x = min(max(origin.x, screenFrame.minX + 8), screenFrame.maxX - size.width - 8)
+        origin.y = min(max(origin.y, screenFrame.minY + 8), screenFrame.maxY - size.height - 8)
+        return CGRect(origin: origin, size: size)
+    }
+}
+
 package enum WindowLayoutTargetCapability: Equatable {
     case position
     case frame
