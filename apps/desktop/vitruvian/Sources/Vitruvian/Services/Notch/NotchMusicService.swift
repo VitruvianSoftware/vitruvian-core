@@ -25,15 +25,10 @@ package final class NotchMusicService: ObservableObject {
     @Published package private(set) var commandPending = false
     @Published package private(set) var automationAvailability: NotchMusicAutomation.Availability?
     @Published package private(set) var requestingAutomation = false
-    @Published package private(set) var upcoming: NotchQueueSnapshot? {
-        didSet {
-            guard upcoming != oldValue else { return }
-            queueCovers.update(upcoming, decode: NSImage.init(data:))
-            upcomingArtwork = queueCovers.images
-        }
-    }
-    @Published package private(set) var upcomingArtwork: [String: NSImage] = [:]
-    private var queueCovers = NotchQueueCovers<NSImage>()
+    /// The queue shown and its covers (`NotchUpcomingQueue`).
+    @Published private var upcomingQueue = NotchUpcomingQueue<NSImage>(decode: NSImage.init(data:))
+    package var upcoming: NotchQueueSnapshot? { upcomingQueue.snapshot }
+    package var upcomingArtwork: [String: NSImage] { upcomingQueue.artwork }
     @Published package private(set) var queueLoading = false
     @Published package private(set) var queueActionPending = false
     @Published package private(set) var queueActionFailed = false
@@ -372,8 +367,8 @@ package final class NotchMusicService: ObservableObject {
         NotchLyricsService.shared.hide()
         queueRequest = nil
         queueReply = nil
-        upcoming = nil
-        queueCovers = .init()
+        upcomingQueue.show(nil)
+        upcomingQueue.forgetCovers()
         queueLoading = false
         queueActionPending = false
         queueActionFailed = false
@@ -429,7 +424,7 @@ package final class NotchMusicService: ObservableObject {
             if queueRequest != nil { send(.queueStop) }
             queueRequest = nil
             queueReply = nil
-            upcoming = nil
+            upcomingQueue.show(nil)
             queueLoading = false
             queueActionPending = false
             queueActionFailed = false
@@ -442,7 +437,7 @@ package final class NotchMusicService: ObservableObject {
     package func syncQueuePreference() {
         guard !NotchQueueSupport.isEnabled() else { return }
         setQueueVisible(false)
-        queueCovers = .init()
+        upcomingQueue.forgetCovers()
     }
 
     package func refreshQueue() {
@@ -451,21 +446,16 @@ package final class NotchMusicService: ObservableObject {
         queueRequest = request
         commandWriter.setQueueRequest(request)
         queueReply = nil
-        upcoming = nil
+        upcomingQueue.show(nil)
         queueLoading = true
         queueActionFailed = false
         queueActionPending = false
         if !send(.queue(request)) { queueLoading = false; queueActionFailed = true }
     }
 
-    package var upcomingIsHeld: Bool {
-        guard let upcoming else { return false }
-        return upcoming.currentIdentifier != playback?.itemIdentifier || upcoming.pid != playback?.track.appPID
-    }
+    package var upcomingIsHeld: Bool { upcomingQueue.isHeld(for: playback) }
 
-    package var upcomingRows: [NotchQueueItem] {
-        upcoming?.items.filter { $0.id != playback?.itemIdentifier } ?? []
-    }
+    package var upcomingRows: [NotchQueueItem] { upcomingQueue.rows(for: playback) }
 
     package func playQueued(_ item: NotchQueueItem) {
         Self.playQueued(item, visible: queueVisible, request: queueRequest, upcoming: upcoming, playback: playback,
@@ -503,14 +493,7 @@ package final class NotchMusicService: ObservableObject {
     }
 
     private func updateQueue() {
-        guard let request = queueRequest, let playback, let queueReply, NotchQueueSupport.isEnabled() else {
-            upcoming = nil
-            return
-        }
-        let next = NotchQueueSupport.decode(queueReply, requestID: request, playback: playback)
-        if next == nil, upcoming != nil,
-           NotchQueueSupport.awaitsSongQueue(queueReply, requestID: request, playback: playback) { return }
-        upcoming = next
+        upcomingQueue.receive(queueReply, request: queueRequest, playback: playback, enabled: NotchQueueSupport.isEnabled())
     }
 
     package func seek(to position: Double, in track: RadialNowPlayingSnapshot, context: NotchPlaybackContext?) {

@@ -1417,6 +1417,21 @@ which leaves 36.
 - **Verification:** a Swift 6 type-check of the type on Linux, and a run of
   its run-loop reply there; the modal loop needs macOS CI.
 
+Landed (4b, the island's queue rows): one more generated file goes, which
+leaves 35.
+
+- **Moved:** the queue the island shows, its covers, the rows held through
+  a song change and the rule that clears them leave `NotchMusicService` for
+  `NotchUpcomingQueue` (`Services/Notch/NotchQueueSupport.swift`), generic
+  over the cover image. `NotchMusicService` keeps one, and `upcoming`,
+  `upcomingArtwork`, `upcomingIsHeld` and `upcomingRows` read it.
+- **Test:** the queue hold test drives the real type over `Data` covers
+  instead of copies of four members. New checks: holding the rows decodes
+  no cover again, and a queue turned off, no request or nothing playing
+  shows no rows.
+- **Verification:** the types it builds on reach into AppKit, so macOS CI
+  only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
