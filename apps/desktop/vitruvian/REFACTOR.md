@@ -3120,6 +3120,18 @@ fonts stay as they are: the measuring side needs an `NSFont` and the
 drawing side a SwiftUI `Font`, and both already ask for the same system
 face.
 
+Landed (5za, the home page's split): five places split the home page's
+controls into level cards, the music card and shortcuts, each with its own
+filters:
+- `NotchService`'s and `NotchLayout.pageSize`'s sizing;
+- `NotchControlsView`;
+- the Settings editor's preview size and preview drawing.
+
+`NotchControlGroups` (`Core/Notch/NotchSupport.swift`, beside
+`NotchControlItem`) is now the one split, with `hasCards` for the card row.
+`NotchCompactTests` checks the split and that the page's size holds the
+rows drawn from it.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

@@ -2008,6 +2008,11 @@ is that notice. Add an entry for every change to upstream files.
   `Core/Notch/NotchKeepAwakeSupport.swift`, `Core/Notch/NotchDownloadSupport.swift`
   and the timer, agent, keep awake and watch strips in `UI/Notch/` use it
   instead of spelling the digits' inset out.
+- **2026-10-05**: Refactor step 5za (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds `NotchControlGroups`.
+  `Services/Notch/NotchService.swift`, `Core/Notch/NotchPageSize.swift`,
+  `UI/Notch/NotchControlsView.swift` and `UI/Settings/NotchLayoutEditor.swift`
+  split the home page's controls with it instead of their own filters.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

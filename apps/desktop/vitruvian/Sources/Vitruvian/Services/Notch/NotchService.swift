@@ -1014,12 +1014,10 @@ package final class NotchService: ObservableObject {
     private func pageSize(in geometry: NotchGeometry, module: NotchModule, detail: Bool, panel: Bool,
                           detailHeight: CGFloat?, musicExtraHeight: CGFloat, fileMediaHeight: CGFloat?, toolCount: Int?,
                           capturePreviewHeight: CGFloat?) -> CGSize {
-        let controls = NotchSupport.controls(in: defaults)
-        let sliders = controls.filter { $0 == .volume || $0 == .brightness }.count
-        let shortcuts = controls.filter { $0 != .volume && $0 != .brightness && $0 != .music }.count
+        let controls = NotchControlGroups(NotchSupport.controls(in: defaults))
         return geometry.expandedSize(module: module, detail: detail, panel: panel, detailHeight: detailHeight,
-                                     shortcutCount: shortcuts,
-                                     sliderCount: sliders, controlsHaveMusic: controls.contains(.music), musicHasContent: services.playback != nil,
+                                     shortcutCount: controls.shortcuts.count,
+                                     sliderCount: controls.levels.count, controlsHaveMusic: controls.music, musicHasContent: services.playback != nil,
                                      musicHasControlsRow: NotchMusicControls(in: defaults).hasRow,
                                      musicExtraHeight: musicExtraHeight, fileMediaHeight: fileMediaHeight,
                                      systemCards: NotchSupport.systemCardCount(hasBattery: hasBattery(),

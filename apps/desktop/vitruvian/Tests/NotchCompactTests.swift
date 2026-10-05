@@ -84,6 +84,7 @@ enum NotchCompactTests {
         focus(suite)
         sizing(suite)
         musicControls(suite)
+        controlGroups(suite)
     }
     private static func calendarRows(_ suite: TestSuite) {
         let day = Date(timeIntervalSince1970: 1_780_000_000)
@@ -336,6 +337,29 @@ enum NotchCompactTests {
         }
         suite.expect(height(true) - height(false) == NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing,
                      "the music page's size holds exactly the row it draws")
+    }
+
+    /// The home page's split into cards and shortcuts, which its size, its
+    /// drawing and the Settings preview all read from `NotchControlGroups`.
+    private static func controlGroups(_ suite: TestSuite) {
+        let groups = NotchControlGroups([.timer, .volume, .music, .keepAwake, .brightness])
+        suite.expect(groups.levels == [.volume, .brightness] && groups.music
+                     && groups.shortcuts == [.timer, .keepAwake] && groups.hasCards,
+                     "the levels and music share the card row and the rest are shortcuts, in their order")
+        suite.expect(!NotchControlGroups([.timer, .calendar]).hasCards && NotchControlGroups([.music]).hasCards
+                     && NotchControlGroups([.brightness]).hasCards,
+                     "the card row appears for music or any level, and only then")
+        let short = CGSize(width: 300, height: 10)
+        for items: [NotchControlItem] in [[.timer, .volume, .music], [.timer, .calendar, .keepAwake], [.brightness]] {
+            let groups = NotchControlGroups(items)
+            let page = NotchLayout.pageSize(content: short, module: .controls, detail: false, controls: items,
+                                            timerMode: .timer, timerHasSession: false, hasPlayback: true,
+                                            musicControlsRow: true, layout: .custom)
+            let drawn = NotchLayout.controls(hasCards: groups.hasCards, shortcutCount: groups.shortcuts.count,
+                                             width: short.width, height: short.height)
+            suite.expect(page.height == max(short.height, drawn.height),
+                         "the home page's size holds the rows it draws for \(items)")
+        }
     }
 
     private static func sizing(_ suite: TestSuite) {

@@ -23,11 +23,10 @@ extension NotchLayout {
         guard !detail else { return size }
         switch module {
         case .controls:
-            let items = controls()
-            let shortcuts = items.filter { $0 != .music && $0 != .volume && $0 != .brightness }
+            let groups = NotchControlGroups(controls())
             size.height = max(size.height, NotchLayout.controls(
-                hasCards: items.contains(.music) || items.contains(.volume) || items.contains(.brightness),
-                shortcutCount: shortcuts.count, width: size.width, height: size.height).height)
+                hasCards: groups.hasCards, shortcutCount: groups.shortcuts.count,
+                width: size.width, height: size.height).height)
         case .timer:
             size.height = max(size.height, NotchLayout.timer(
                 mode: timerMode(), hasSession: timerHasSession(), width: size.width, height: size.height))

@@ -152,11 +152,11 @@ package struct NotchLayoutEditor: View {
     }
     private var actualHeight: CGFloat {
         if layout == .custom { return previewGeometry.customHeight }
-        let items = NotchSupport.controls()
+        let groups = NotchControlGroups(NotchSupport.controls())
         return previewGeometry.expandedSize(module: .controls,
-            shortcutCount: items.filter { $0 != .volume && $0 != .brightness && $0 != .music }.count,
-            sliderCount: items.filter { $0 == .volume || $0 == .brightness }.count,
-            controlsHaveMusic: items.contains(.music)).height
+            shortcutCount: groups.shortcuts.count,
+            sliderCount: groups.levels.count,
+            controlsHaveMusic: groups.music).height
     }
 
     /// A narrow window shrinks the whole island rather than only its width.
@@ -255,11 +255,12 @@ package struct NotchLayoutEditor: View {
     /// components as the real Controls page, at the island's real size.
     private var islandPreview: some View {
         let items = NotchSupport.controls()
-        let levels = items.filter { $0 == .volume || $0 == .brightness }
-        let shortcuts = items.filter { $0 != .volume && $0 != .brightness && $0 != .music }
+        let groups = NotchControlGroups(items)
+        let levels = groups.levels
+        let shortcuts = groups.shortcuts
         let contentWidth = max(0, actualWidth - NotchLayout.horizontalInset * 2)
         let contentHeight = max(0, actualHeight - previewGeometry.headerTopInset - previewGeometry.headerChromeHeight)
-        let controls = NotchLayout.controls(hasCards: items.contains(.music) || !levels.isEmpty,
+        let controls = NotchLayout.controls(hasCards: groups.hasCards,
                                             shortcutCount: shortcuts.count, width: contentWidth, height: contentHeight)
         return Button(action: editContents) {
             Color.clear.contentShape(NotchShape.island(height: actualHeight, geometry: previewGeometry))
@@ -284,7 +285,7 @@ package struct NotchLayoutEditor: View {
                     if items.isEmpty {
                         NotchEmptyView(symbol: NotchModule.controls.symbol, message: text.empty)
                     } else {
-                        if controls.cardRow > 0 { cards(levels, music: items.contains(.music), height: controls.cardRow) }
+                        if controls.cardRow > 0 { cards(levels, music: groups.music, height: controls.cardRow) }
                         if controls.shortcutRows > 0 {
                             NotchRail(items: shortcuts, rows: controls.shortcutRows, itemWidth: NotchLayout.shortcutWidth,
                                       width: contentWidth, spacing: NotchLayout.shortcutSpacing,

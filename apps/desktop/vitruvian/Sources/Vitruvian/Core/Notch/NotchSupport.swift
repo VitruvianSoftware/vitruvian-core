@@ -1088,6 +1088,24 @@ package enum NotchControlItem: String, CaseIterable, Identifiable {
     }
 }
 
+/// The home page's controls as the page lays them out: the music card and
+/// the level cards share a row, and every other control is a shortcut below
+/// it. The page's size and its drawing both split them here.
+package struct NotchControlGroups: Equatable {
+    package let levels: [NotchControlItem]
+    package let music: Bool
+    package let shortcuts: [NotchControlItem]
+
+    package init(_ items: [NotchControlItem]) {
+        levels = items.filter { $0 == .volume || $0 == .brightness }
+        music = items.contains(.music)
+        shortcuts = items.filter { $0 != .volume && $0 != .brightness && $0 != .music }
+    }
+
+    /// Whether the page has its row of cards.
+    package var hasCards: Bool { music || !levels.isEmpty }
+}
+
 package enum NotchQuickAccessSide: String, CaseIterable, Codable {
     case left, right, bottom
 }
