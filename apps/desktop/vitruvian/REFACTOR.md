@@ -714,6 +714,18 @@ which leaves 79.
   and a queue turned off in Settings plays nothing. The stand-in always
   reported the queue on, so the second could not be checked before.
 
+Landed (4b, Keep Awake's timer handoff): one more generated file goes,
+which leaves 78.
+
+- **Injected:** `KeepAwakeManager.timerHandoff(trigger:suppressed:in:batteryAllows:matching:enabled:requireAll:)`
+  returns the conditions a timed session that ran out carries on with, or nil
+  when it ends. The battery and condition readers are closures, so they are
+  read in the same order as before, only after the cheaper guards pass.
+- **Check added:** a session already running automatically never reads the
+  conditions.
+- **Mutation fixture:** `mutation_checks.py` "a timed session hands over on
+  one condition" now targets the static's guard.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -1371,6 +1371,12 @@ is that notice. Add an entry for every change to upstream files.
   `playQueued(_:visible:request:upcoming:playback:pending:failed:in:send:)`,
   which `Tests/NotchMusicHardeningTests.swift` calls; `Tests/generate_sources.py`
   no longer copies the row action.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/KeepAwakeManager.swift` decides a timer's handoff to automation in
+  `timerHandoff(trigger:suppressed:in:batteryAllows:matching:enabled:requireAll:)`,
+  which `Tests/KeepAwakeTimerHandoffTests.swift` calls; `Tests/generate_sources.py`
+  no longer copies `continueAutomaticallyAfterTimerIfNeeded`, and
+  `Tests/mutation_checks.py` targets the static's guard.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

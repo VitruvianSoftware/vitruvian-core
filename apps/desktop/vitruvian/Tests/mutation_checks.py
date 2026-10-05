@@ -108,9 +108,9 @@ MUTATIONS = [
     ("a timed session hands over on one condition", "keep-awake", "Sources/Vitruvian/Services/KeepAwakeManager.swift",
      "        guard KeepAwakeAutomationSupport.conditionsSatisfied(\n"
      "                matching: matches,\n"
-     "                enabled: currentEnabledAutomationConditions(),\n"
-     "                requireAll: automationRequiresAllConditions()) else { return false }\n",
-     "        guard !matches.isEmpty else { return false }\n",
+     "                enabled: enabled(),\n"
+     "                requireAll: requireAll()) else { return nil }\n",
+     "        guard !matches.isEmpty else { return nil }\n",
      "a timer running out on battery hands nothing over to an All automation"),
     ("lid sleep ignores a display connection in progress", "keep-awake", "Sources/Vitruvian/Core/KeepAwakeAutomationSupport.swift",
      'return appliesToLid && assertion["AssertLevel"] as? Int != 0', 'return false',
