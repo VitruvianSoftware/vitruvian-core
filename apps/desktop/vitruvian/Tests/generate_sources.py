@@ -74,15 +74,9 @@ def main():
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
     write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchCameraView.swift", "struct NotchCameraView:")
-          + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "private struct NotchCalendarEventRow:")
-              .replace("private struct", "struct", 1)
-          + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "private struct NotchCountdownChoice:")
-              .replace("private struct", "struct", 1)
-          + declaration("Sources/Vitruvian/UI/Notch/NotchComponents.swift", "struct NotchRail<")
           + declaration("Sources/Vitruvian/Design/PlainTextEditor.swift", "struct PlainTextEditor:")
           + declaration(scratchpad_view, "struct NotchScratchpadView:")
           + "}\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "extension NotchCalendarColor {")
           + "extension NotchCompactTests.ScratchpadService {\n"
           + declaration(scratchpad_service, "    func clear(")
           + "}\nextension NotchCompactTests.Floating {\n"

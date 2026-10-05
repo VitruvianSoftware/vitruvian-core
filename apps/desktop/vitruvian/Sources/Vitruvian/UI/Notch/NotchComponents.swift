@@ -184,6 +184,20 @@ package struct NotchRail<Item: Identifiable, Content: View>: View {
     @ViewBuilder package let content: (Item) -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(items: [Item], rows: Int, itemWidth: CGFloat, width: CGFloat, spacing: CGFloat = 8,
+                 rowSpacing: CGFloat = 8, scrollTarget: Item.ID? = nil,
+                 @ViewBuilder content: @escaping (Item) -> Content) {
+        self.items = items
+        self.rows = rows
+        self.itemWidth = itemWidth
+        self.width = width
+        self.spacing = spacing
+        self.rowSpacing = rowSpacing
+        self.scrollTarget = scrollTarget
+        self.content = content
+    }
+
     private var columns: Int { NotchLayout.railColumns(count: items.count, rows: rows) }
     private var starts: [Int] { Array(stride(from: 0, to: items.count, by: max(1, rows))) }
     private var rowStarts: [Int] { Array(stride(from: 0, to: items.count, by: max(1, columns))) }

@@ -2504,6 +2504,17 @@ its whole map of the island's preferences, pointer, clock and services.
 - **Generator:** it deletes generated files it no longer writes, so
   `build.sh`'s glob cannot compile a stale copy.
 
+Landed (4b, the compact pages' calendar rows and rail): the `NotchCompact`
+copy loses four declarations. Its calendar-row and rail checks render the
+real views:
+
+- `NotchCalendarEventRow` is `package`, with its initializer spelled out.
+- `NotchRail` spells out its initializer; its callers already passed the
+  memberwise labels in order.
+- The copy no longer carries the row, its countdown modifier, the rail or
+  `NotchCalendarColor.color`. The checks are unchanged: the test doubles'
+  button style and surface added no layout, and neither do the real ones.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -299,7 +299,7 @@ private struct NotchCalendarDayLabel: View {
     }
 }
 
-private struct NotchCalendarEventRow: View {
+package struct NotchCalendarEventRow: View {
     let event: NotchCalendarEvent
     let day: Date
     let now: Date
@@ -311,10 +311,23 @@ private struct NotchCalendarEventRow: View {
     let open: () -> Void
     @Environment(\.colorSchemeContrast) private var contrast
 
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(event: NotchCalendarEvent, day: Date, now: Date, isNext: Bool, text: NotchCalendarStrings,
+                 countdown: Bool?, choose: @escaping (Bool) -> Void, open: @escaping () -> Void) {
+        self.event = event
+        self.day = day
+        self.now = now
+        self.isNext = isNext
+        self.text = text
+        self.countdown = countdown
+        self.choose = choose
+        self.open = open
+    }
+
     private var ongoing: Bool { !event.allDay && event.start <= now && event.end > now }
     private var ended: Bool { event.end <= now }
 
-    var body: some View {
+    package var body: some View {
         Button(action: open) { card }
             .buttonStyle(NotchButtonStyle(cornerRadius: 11, lifts: false))
             .help(text.openCalendar)

@@ -1922,6 +1922,13 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/generate_sources.py` no longer copies them, drops its map of the
     island's environment and services, which no copy uses any more, and
     deletes generated files it no longer writes.
+- **2026-10-05**: Refactor step 4b, the compact calendar rows and rail (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Notch/NotchCalendarView.swift`: `NotchCalendarEventRow`
+    is `package` and spells out its initializer.
+  - `Sources/Vitruvian/UI/Notch/NotchComponents.swift`: `NotchRail` spells out
+    its initializer.
+  - `Tests/NotchCompactTests.swift` renders both real views;
+    `Tests/generate_sources.py` no longer copies them.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

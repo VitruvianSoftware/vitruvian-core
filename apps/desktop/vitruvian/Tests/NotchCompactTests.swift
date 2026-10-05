@@ -169,7 +169,7 @@ enum NotchCompactTests {
         var body: some View {
             let entries = (0..<state.count).map { NotchCompactTests.Entry(id: $0) }
             return NotchRail(items: entries, rows: state.rows, itemWidth: 76, width: 424,
-                             scrollTarget: state.selected, content: marker)
+                             scrollTarget: state.selected) { marker($0) }
                 .frame(width: 424, height: 152)
         }
         private func marker(_ item: NotchCompactTests.Entry) -> some View {
