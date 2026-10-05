@@ -69,10 +69,4 @@ package struct ScratchpadFormatBar: View {
         .help(text.label(for: mark))
         .accessibilityLabel(text.label(for: mark))
     }
-
-    // Spelled out because a memberwise initializer never leaves its module.
-    package init(style: Style, editor: NSTextView? = nil) {
-        self.style = style
-        self.editor = editor
-    }
 }
