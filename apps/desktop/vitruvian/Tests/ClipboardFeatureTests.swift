@@ -923,7 +923,7 @@ enum ClipboardPreviewContract {
 
         deinit {
             try? FileManager.default.removeItem(at: directory)
-            defaults.removePersistentDomain(forName: domain)
+            UserDefaults.standard.removePersistentDomain(forName: domain)
         }
 
         /// Copies an entry and lets the write finish.

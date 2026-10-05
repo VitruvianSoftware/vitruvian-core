@@ -215,7 +215,7 @@ enum NotchMusicCommandContract {
         }
 
         deinit {
-            defaults.removePersistentDomain(forName: defaultsName)
+            UserDefaults.standard.removePersistentDomain(forName: defaultsName)
         }
 
         var links: [Link] { machine.links }
