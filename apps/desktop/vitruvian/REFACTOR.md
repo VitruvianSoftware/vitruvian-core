@@ -1219,6 +1219,19 @@ which leaves 48.
 - **Verification:** a Linux Swift 6 model of the summons and the test kills
   all eight mutants.
 
+Landed (4b, the island's screen-edge click area): one more generated file goes,
+which leaves 47.
+
+- **Extracted:** `NotchScreenEdgeClicks.area(for:)` works out where a click at
+  the top of the screen counts as a click on the closed island, from a
+  `Resting` value of the island's state. `pressed(hoverWork:hoverState:)` is
+  what a press there does to hover. `NotchService` passes its own state.
+- **Test:** the edge-click test feeds the real rules the same state, and
+  toggles each condition as before. It no longer runs a copy of the two
+  service members.
+- **Verification:** the rule moved verbatim. Its geometry lives in Core, so
+  this slice relies on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

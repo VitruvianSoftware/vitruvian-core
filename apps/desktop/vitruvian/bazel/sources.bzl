@@ -320,7 +320,6 @@ GENERATED_TEST_SOURCES = [
     "NotchPlaybackRouting.swift",
     "NotchPresentationRefresh.swift",
     "NotchQueueHold.swift",
-    "NotchScreenEdgeClicks.swift",
     "NotchScreenRefresh.swift",
     "NotchSectionScrollRoute.swift",
     "NotchUpdate.swift",

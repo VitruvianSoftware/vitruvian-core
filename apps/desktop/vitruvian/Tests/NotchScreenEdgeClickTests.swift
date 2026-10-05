@@ -9,7 +9,7 @@ import VitruvianUI
 
 /// The module's own `NotchScreenEdgeClicks` with controlled event delivery,
 /// never posted input. The island's click area and its reaction to a press
-/// come from production, copied from `NotchService` into `Service`.
+/// are the module's, fed this island's state the way `NotchService` feeds them.
 enum NotchScreenEdgeClickTests {
     final class Panel { var isVisible = true; var ignoresMouseEvents = false }
     final class Host { var acceptsPoint = true; func containsDestination(_ point: CGPoint) -> Bool { acceptsPoint } }
@@ -49,6 +49,22 @@ enum NotchScreenEdgeClickTests {
         var screenEdgeClicks: NotchScreenEdgeClicks!
         func syncScreenEdgeClicks() { screenEdgeClicks.sync() }
         func removeScreenEdgeClickMonitors() { screenEdgeClicks.remove() }
+    }
+
+    final class Service: State {
+        func open() { openings += 1; expanded = true; syncScreenEdgeClicks() }
+        var screenEdgeClickArea: CGRect? {
+            NotchScreenEdgeClicks.area(for: .init(
+                running: running, suspended: suspended, expanded: expanded, peeking: peeking,
+                hasCaptureControls: captureControls != nil, hasNotice: notice != nil,
+                dragPlaceholder: dragPlaceholder, heldDrag: heldDrag,
+                panelTakesClicks: panel.map { $0.isVisible && !$0.ignoresMouseEvents },
+                compactActivityIsVisible: compactActivityIsVisible, geometry: geometry,
+                compactActivityGeometry: compactActivityGeometry, surfaceSize: surfaceSize))
+        }
+        func screenEdgePressed() {
+            NotchScreenEdgeClicks.pressed(hoverWork: &hoverWork, hoverState: &hoverState)
+        }
     }
 
     /// Wired the way `NotchService` wires its own.

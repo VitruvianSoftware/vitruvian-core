@@ -2433,13 +2433,13 @@ package final class NotchService: ObservableObject {
     }
 
     private var screenEdgeClickArea: CGRect? {
-        guard running, !suspended, !expanded, captureControls == nil, notice == nil,
-              !dragPlaceholder, !heldDrag, let panel, panel.isVisible, !panel.ignoresMouseEvents else { return nil }
-        let geometry = compactActivityIsVisible ? compactActivityGeometry : self.geometry
-        let area = geometry.activationArea(in: surfaceSize, hasHeader: peeking, compactActivity: compactActivityIsVisible)
-        guard !area.isEmpty else { return nil }
-        let frame = geometry.frame(for: surfaceSize)
-        return CGRect(x: frame.minX + area.minX, y: frame.maxY - area.maxY, width: area.width, height: area.height)
+        NotchScreenEdgeClicks.area(for: .init(
+            running: running, suspended: suspended, expanded: expanded, peeking: peeking,
+            hasCaptureControls: captureControls != nil, hasNotice: notice != nil,
+            dragPlaceholder: dragPlaceholder, heldDrag: heldDrag,
+            panelTakesClicks: panel.map { $0.isVisible && !$0.ignoresMouseEvents },
+            compactActivityIsVisible: compactActivityIsVisible, geometry: geometry,
+            compactActivityGeometry: compactActivityGeometry, surfaceSize: surfaceSize))
     }
 
     private func syncScreenEdgeClicks() { screenEdgeClicks.sync() }
@@ -2448,8 +2448,7 @@ package final class NotchService: ObservableObject {
 
     /// A press began on the menu bar above the island: hover waits for the release.
     private func screenEdgePressed() {
-        hoverWork?.cancel(); hoverWork = nil
-        hoverState.close(pointerInside: true)
+        NotchScreenEdgeClicks.pressed(hoverWork: &hoverWork, hoverState: &hoverState)
     }
 
     /// Displays that share Spaces show the menu bar on the main one only.
