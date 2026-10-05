@@ -2873,23 +2873,14 @@ package final class NotchService: ObservableObject {
     }
 
     private func handleSectionScroll(_ event: NSEvent) -> Bool {
-        guard running, !suspended, expanded, showingSections, let panel, !trackingMenu,
-              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else {
-            sectionScroll = NotchSectionScroll()
-            return false
+        var surface: NotchSectionScrollSurface?
+        if running, !suspended, expanded, showingSections, !trackingMenu, let panel {
+            let host = windowHost
+            surface = NotchSectionScrollSurface(frame: panel.frame, toScreen: { panel.convertPoint(toScreen: $0) },
+                                                containsSurface: { host?.containsSurface($0) == true },
+                                                geometry: expandedGeometry)
         }
-        let screenPoint = panel.convertPoint(toScreen: event.locationInWindow)
-        // The header keeps its own gesture; the tiles and the rest of the body step rows.
-        guard windowHost?.containsSurface(screenPoint) == true,
-              panel.frame.maxY - screenPoint.y > expandedGeometry.headerBottom else {
-            sectionScroll = NotchSectionScroll()
-            return false
-        }
-        let steps = sectionScroll.steps(deltaY: Double(event.scrollingDeltaY), timestamp: event.timestamp,
-                                        precise: event.hasPreciseScrollingDeltas, hasPhase: !event.phase.isEmpty,
-                                        began: event.phase.contains(.began),
-                                        ended: !event.phase.intersection([.ended, .cancelled]).isEmpty,
-                                        momentum: !event.momentumPhase.isEmpty)
+        guard let steps = sectionScroll.route(event, over: surface) else { return false }
         if steps != 0 { scrollSections(by: steps) }
         return true
     }

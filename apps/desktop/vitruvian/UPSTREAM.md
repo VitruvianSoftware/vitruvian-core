@@ -1565,6 +1565,11 @@ is that notice. Add an entry for every change to upstream files.
   main queue) and exports from an `IslandWindowing` host;
   `Tests/ScratchpadStoreContractTests.swift` drives the real service, and
   `Tests/generate_sources.py` no longer copies its export and save members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the gallery's scroll
+  routing moves from `Services/Notch/NotchService.swift` to
+  `Services/Notch/NotchSectionScrollRoute.swift`;
+  `Tests/NotchSectionPagingTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the service's scroll handlers.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

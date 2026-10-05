@@ -1319,6 +1319,25 @@ which leaves 42.
   service's save and export members runs both contracts (45 checks), and
   kills all 22 mutants of those members.
 
+Landed (4b, the gallery's wheel): one more generated file goes, which leaves
+41.
+
+- **Moved:** which scrolls the open island's gallery takes, and how many
+  rows each steps, leave `NotchService` for
+  `NotchSectionScroll.route(_:over:)` (`Services/Notch/NotchSectionScrollRoute.swift`).
+  It reads a `NotchScrollEvent`, which `NSEvent` adopts, over a
+  `NotchSectionScrollSurface`: the window's frame, its screen conversion,
+  its surface test and the open geometry. `NotchService` still decides
+  whether the gallery is showing, steps the rows and hands what the gallery
+  leaves to its gestures.
+- **Test:** the routing test runs the real route instead of copies of two
+  members. New checks: a gallery that is not showing takes nothing, a scroll
+  the gallery leaves ends the drag it was part of, lifting the fingers and
+  momentum step nothing, a wheel notch steps one row, and a phaseless glide
+  ends when it pauses.
+- **Verification:** a Linux model of the paging and the route runs the
+  whole test (61 checks) and kills all 12 mutants of the route.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -386,10 +386,6 @@ def main():
           + declaration(notch, "    private var canFollowPointer:").replace("private var", "var", 1)
           + declaration(notch, "    private func move(to screen:").replace("private func", "func", 1)
           + "}\n}\n")
-    write("NotchSectionScrollRoute.swift", "import AppKit\nextension NotchSectionPagingTests {\nfinal class Service: State {\n"
-          + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func handleScroll(", "    private func handleSectionScroll("])
-          + "}\n}\n")
     write("NotchKeyMonitor.swift", "import Foundation\nextension NotchKeyMonitorTests {\nfinal class Service: State {\n"
           + declaration(notch, "    private func installEventMonitors()").replace("private func", "func", 1)
           + "}\n}\n")
