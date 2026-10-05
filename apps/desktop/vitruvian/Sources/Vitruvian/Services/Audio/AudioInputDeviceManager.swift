@@ -50,7 +50,8 @@ package final class AudioInputDeviceManager: ObservableObject {
             self.micMute = micMute
         }
 
-        package static var live: Environment {
+        /// Main-actor: it waits behind the shared mute.
+        @MainActor package static var live: Environment {
             Environment(hal: .live,
                         halQueue: .live(label: "com.vitruviansoftware.vitruvian.audioinput.hal"),
                         main: { work in DispatchQueue.main.async { work() } },
