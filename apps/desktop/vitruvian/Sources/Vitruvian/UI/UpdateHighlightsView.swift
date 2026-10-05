@@ -13,8 +13,12 @@ package struct UpdateHighlightsView: View {
     package var availableSize = NSScreen.pointerVisibleFrame.size
     package let onFinish: () -> Void
 
+    /// The demonstration GIF; tests pass the file from the source tree.
+    private let animationURL: URL?
+
     private var text: NotchTourStrings { FeatureStrings.notchTour(l10n.language) }
-    private var animationURL: URL? {
+
+    package static var bundledAnimationURL: URL? {
         Bundle.main.url(forResource: "highlights-notch", withExtension: "gif", subdirectory: "Gifs")
     }
 
@@ -72,8 +76,11 @@ package struct UpdateHighlightsView: View {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(availableSize: CGSize = NSScreen.pointerVisibleFrame.size, onFinish: @escaping () -> Void) {
+    package init(availableSize: CGSize = NSScreen.pointerVisibleFrame.size,
+                 animationURL: URL? = UpdateHighlightsView.bundledAnimationURL,
+                 onFinish: @escaping () -> Void) {
         self.availableSize = availableSize
+        self.animationURL = animationURL
         self.onFinish = onFinish
     }
 }
@@ -89,11 +96,16 @@ package enum UpdateHighlightsLayout {
     }
 }
 
-private struct UpdateHighlightsGIF: NSViewRepresentable {
+package struct UpdateHighlightsGIF: NSViewRepresentable {
     let url: URL
     let animates: Bool
 
-    func makeNSView(context: Context) -> NSView {
+    package init(url: URL, animates: Bool) {
+        self.url = url
+        self.animates = animates
+    }
+
+    package func makeNSView(context: Context) -> NSView {
         let container = NSView()
         container.wantsLayer = true
         container.layer?.masksToBounds = true
@@ -115,7 +127,7 @@ private struct UpdateHighlightsGIF: NSViewRepresentable {
         return container
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
+    package func updateNSView(_ view: NSView, context: Context) {
         (view.subviews.first as? NSImageView)?.animates = animates
     }
 }

@@ -1139,6 +1139,18 @@ goes, which leaves 53.
   model cannot build. The model type-checks the new signatures and the test's
   calls in Swift 6; the loop itself relies on macOS CI.
 
+Landed (4b, the update highlights tour): one more generated file goes, which
+leaves 52.
+
+- **Injected:** `UpdateHighlightsView` takes the animation's URL. The default,
+  `bundledAnimationURL`, is the GIF in the app bundle as before.
+  `UpdateHighlightsGIF` is `package`.
+- **Test:** the layout test renders the real tour in every language, through
+  the real `L10n`, which it restores afterwards. It no longer renders a copy of
+  the view with stand-ins for the language, the screen, the bundle and the app
+  shell.
+- **Verification:** SwiftUI, so macOS CI only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

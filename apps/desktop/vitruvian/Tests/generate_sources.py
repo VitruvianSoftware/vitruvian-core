@@ -377,12 +377,6 @@ def main():
           + "}\n"
           + declaration(update_view, "struct NotchUpdateControl:")
           + "}\n")
-    highlights = "Sources/Vitruvian/UI/UpdateHighlightsView.swift"
-    write("UpdateHighlights.swift", "import AppKit\nimport SwiftUI\nextension UpdateHighlightsTests {\n"
-          + "".join(declaration(highlights, prefix) for prefix in [
-              "struct UpdateHighlightsView:", "enum UpdateHighlightsLayout", "private struct UpdateHighlightsGIF:"])
-              .replace("private struct UpdateHighlightsGIF", "struct UpdateHighlightsGIF")
-          + "}\n")
     canvas = "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift"
     write("NotchHover.swift", "import AppKit\nextension NotchHoverTests {\nfinal class Service: State {\n"
           + declaration(notch, "    func show(_ incoming:").replace("NotchSupport.routes(incoming.event)", "true")

@@ -344,7 +344,6 @@ GENERATED_TEST_SOURCES = [
     "SuperKeyTap.swift",
     "SwitcherScroll.swift",
     "UninstallerFlow.swift",
-    "UpdateHighlights.swift",
     "UpdateIntroFlow.swift",
 ]
 

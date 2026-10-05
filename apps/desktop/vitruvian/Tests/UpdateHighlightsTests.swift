@@ -11,40 +11,18 @@ import VitruvianUI
 /// Lay out the production tour, including its bundled GIF and native buttons,
 /// on short displays in every language. No visible window or app settings change.
 enum UpdateHighlightsTests {
-    final class L10n: ObservableObject {
-        static let shared = L10n()
-        @Published var language = AppLanguage.enUS
-        var s: Strings { LocalizationTests.languages.first { $0.0 == language }!.1 }
-    }
-
-    enum NSScreen {
-        static let pointerVisibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
-    }
-
-    struct Bundle {
-        static let main = Bundle()
-        func url(forResource name: String, withExtension ext: String, subdirectory: String) -> URL? {
-            URL(fileURLWithPath: "Resources/\(subdirectory)/\(name).\(ext)")
-        }
-    }
-
-    final class FeatureRuntime {
-        static let shared = FeatureRuntime()
-        func setAvailable(_ features: [AppFeature], _ available: Bool) {}
-    }
-
-    final class Delegate {
-        func openSettingsFromHighlights() {}
-    }
-
     static func run(_ suite: TestSuite) {
         let displays = [CGSize(width: 1440, height: 900), CGSize(width: 1024, height: 640),
                         CGSize(width: 800, height: 480), CGSize(width: 520, height: 360)]
+        let originalLanguage = L10n.shared.language
+        defer { L10n.shared.language = originalLanguage }
+        let url = URL(fileURLWithPath: "Resources/Gifs/highlights-notch.gif")
         for language in AppLanguage.allCases {
             L10n.shared.language = language
             for display in displays {
                 autoreleasepool {
-                    let controller = NSHostingController(rootView: UpdateHighlightsView(availableSize: display, onFinish: {}))
+                    let controller = NSHostingController(rootView: UpdateHighlightsView(
+                        availableSize: display, animationURL: url, onFinish: {}))
                     controller.sizingOptions = .preferredContentSize
                     let window = NSPanel(contentViewController: controller)
                     window.styleMask = [.titled, .closable, .fullSizeContentView]
@@ -74,7 +52,6 @@ enum UpdateHighlightsTests {
                 }
             }
         }
-        let url = URL(fileURLWithPath: "Resources/Gifs/highlights-notch.gif")
         let host = NSHostingView(rootView: UpdateHighlightsGIF(url: url, animates: true))
         host.frame.size = CGSize(width: 500, height: 400)
         for animates in [true, false, true] {
@@ -88,8 +65,4 @@ enum UpdateHighlightsTests {
     private static func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
     }
-}
-
-extension UpdateHighlightsTests.UpdateHighlightsView {
-    func appShell() -> UpdateHighlightsTests.Delegate? { nil }
 }

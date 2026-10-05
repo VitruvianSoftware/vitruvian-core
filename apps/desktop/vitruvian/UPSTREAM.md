@@ -1509,6 +1509,10 @@ is that notice. Add an entry for every change to upstream files.
   `Services/QuickTools/ScreenshotScrollingCapture.swift` runs its capture loop
   over an injected `FrameSource`; `Tests/ScreenshotScrollingCaptureTests.swift`
   supplies the frames, and `Tests/generate_sources.py` no longer copies the enum.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/UpdateHighlightsView.swift` takes the tour animation's URL and opens
+  `UpdateHighlightsGIF` to the package; `Tests/UpdateHighlightsTests.swift`
+  renders the real view, and `Tests/generate_sources.py` no longer copies it.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
