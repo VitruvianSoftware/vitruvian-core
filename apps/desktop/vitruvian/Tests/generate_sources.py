@@ -308,13 +308,6 @@ def main():
               "    func setSelectedZoomFocus(", "    private func applyDuringInteraction(",
               "    func beginPickingBlurArea(", "    func endPickingBlurArea("])
           + "}\n}\n")
-    write("NotchVolumeFeedback.swift", "import Foundation\nimport Combine\n"
-          + "extension NotchVolumeFeedbackTests {\nfinal class Service: State {\n"
-          + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func bindVolumeEvents(", "    private func volumeChanged(",
-              "    func showCurrentVolume(", "    func noteOwnVolumeAdjustment("])
-          + declaration(notch, "    func showVolume(").replace("    func", "    @discardableResult func", 1)
-          + "}\n}\n")
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
     write("NotchCompact.swift", "import AppKit\nimport SwiftUI\nextension NotchCompactTests {\n"

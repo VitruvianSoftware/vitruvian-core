@@ -285,11 +285,10 @@ package final class NotchService: ObservableObject {
     private var settingsSignature = ""
     private var gesture = NotchGestureSupport()
     private var sectionScroll = NotchSectionScroll()
-    private var volumeBaseline: Double?
-    private var muteBaseline: Bool?
-    private var volumeDeviceUID: String?
-    /// System uptime until which an output change counts as the island's own.
-    private var ownVolumeAdjustmentUntil: TimeInterval = 0
+    private lazy var volumeFeedback: NotchVolumeFeedback = NotchVolumeFeedback(output: .system, island: .init(
+        isExpanded: { [weak self] in self?.expanded ?? false },
+        show: { [weak self] in self?.show($0) ?? false },
+        uptime: { ProcessInfo.processInfo.systemUptime }))
     private var notchNeedsMonitor = false
     /// Reads the room the menus leave beside the camera while the island
     /// wants it; `syncMenuSpaceMonitoring()` decides when.
@@ -2961,7 +2960,7 @@ package final class NotchService: ObservableObject {
                            heldSongTitles: $heldMusic.map { $0?.playback.track.title }.eraseToAnyPublisher())
         stopPower()
         if NotchSupport.routes(.volume) {
-            bindVolumeEvents()
+            volumeFeedback.follow().store(in: &subscriptions)
         }
         if NotchSupport.routes(.battery) || idleContent == .battery { startPower() }
     }
@@ -2999,59 +2998,19 @@ package final class NotchService: ObservableObject {
     }
 
     package func showCurrentVolume() {
-        let mixer = AppVolumeMixer.shared
-        guard let volume = mixer.systemOutputVolume else { return }
-        showVolume(volume, muted: mixer.systemOutputMuted)
+        volumeFeedback.showCurrentVolume()
     }
 
     /// The island's own output controls already show the level they set.
-    /// Their changes, and the device's reading that follows, leave the open
-    /// header's title in place instead of covering it with the same level.
     package func noteOwnVolumeAdjustment() {
-        ownVolumeAdjustmentUntil = ProcessInfo.processInfo.systemUptime + 1
+        volumeFeedback.noteOwnAdjustment()
     }
 
-    private func bindVolumeEvents() {
-        let mixer = AppVolumeMixer.shared
-        volumeDeviceUID = mixer.currentOutputDeviceUID
-        volumeBaseline = mixer.systemOutputVolume
-        muteBaseline = mixer.systemOutputMuted
-        mixer.$systemOutputVolume.combineLatest(mixer.$systemOutputMuted, mixer.$currentOutputDeviceUID)
-            .handleEvents(receiveOutput: { [weak self] _, _, deviceUID in
-                guard let self, deviceUID != self.volumeDeviceUID else { return }
-                self.volumeDeviceUID = deviceUID
-                self.volumeBaseline = nil
-                self.muteBaseline = nil
-            })
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak mixer] _ in
-                guard let mixer else { return }
-                // Published fields arrive separately and before assignment. Read
-                // the settled device and controls together on the main queue.
-                self?.volumeChanged(mixer.systemOutputVolume, muted: mixer.systemOutputMuted)
-            }
-            .store(in: &subscriptions)
-    }
-
-    private func volumeChanged(_ volume: Double?, muted: Bool?) {
-        defer { volumeBaseline = volume; muteBaseline = muted }
-        guard volumeDeviceUID != nil, let volume, volumeBaseline != nil,
-              volume != volumeBaseline || (muteBaseline != nil && muted != muteBaseline) else { return }
-        // Volume keys still announce themselves through showCurrentVolume.
-        guard !expanded || ProcessInfo.processInfo.systemUptime >= ownVolumeAdjustmentUntil else { return }
-        showVolume(volume, muted: muted)
-    }
-
-    /// Levels set outside the island, like Command Bar's, report here
-    /// too. The observer skips a level that matches the current one and a new
-    /// output's first reading. False leaves the confirmation to the caller.
+    /// Levels set outside the island, like Command Bar's, report here too.
+    /// False leaves the confirmation to the caller.
     @discardableResult
     package func showVolume(_ volume: Double, muted: Bool? = nil) -> Bool {
-        guard volume.isFinite else { return false }
-        let value = muted == true ? 0 : min(1, max(0, volume))
-        return show(NotchNotice(event: .volume, title: FeatureStrings.notch(L10n.shared.language).volume,
-                                detail: "\(Int((value * 100).rounded()))%",
-                                symbol: value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill", level: value))
+        volumeFeedback.showVolume(volume, muted: muted)
     }
 
     private func startPower() {

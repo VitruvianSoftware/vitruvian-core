@@ -1270,6 +1270,27 @@ leaves 45.
 - **Verification:** URL loading through `URLProtocol` and the Darwin kernel
   query keep this on macOS CI.
 
+Landed (4b, the island's volume notice): one more generated file goes, which
+leaves 44.
+
+- **Moved:** the volume binding, its baselines and the island's own
+  adjustment window leave `NotchService` for `NotchVolumeFeedback`
+  (`Services/Notch/NotchVolumeFeedback.swift`). Step 5k left this binding in
+  `bindEvents` because a contract copied it; that copy is now gone.
+- **Injected:** an `Output` (level, mute, device and their changes; `system`
+  is the app's mixer) and an `Island` (open or not, show a notice, uptime).
+  `NotchService` keeps `showCurrentVolume`, `noteOwnVolumeAdjustment` and
+  `showVolume` as forwarders, so callers do not change.
+- **Test:** the volume test runs the real type over a mixer of its own and a
+  clock it advances, instead of copies of five members. It now also checks
+  that the island's own adjustment lasts exactly one second and that a
+  reading with no output device shows nothing.
+- **Mutations:** the two volume mutations in `Tests/mutation_checks.py` now
+  apply to the new file.
+- **Verification:** a Linux model with a Combine shim runs the test (75
+  checks), and kills all 9 mutants of the type. The model also caught that
+  `Output` and `Island` must be `@MainActor`, because the mixer is.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
