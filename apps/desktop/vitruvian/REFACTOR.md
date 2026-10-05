@@ -1881,6 +1881,37 @@ leaves 22.
   not reach it. MediaRemote's player paths and the bridge into the
   hardening test need macOS CI.
 
+Landed (4b, the command bar's emoji rows and run learning): one more
+generated file goes, which leaves 21.
+
+- **Extracted:** `CommandBarRunRecorder` (new) takes from
+  `CommandBarService` what running a row teaches the bar:
+  - the use it counts and saves;
+  - the search that found it, remembered for the session;
+  - the emoji's other tones;
+  - the field and selection handed to the row.
+
+  Its `Host` is the field as it stands, the bar's close, typing and the
+  settings. `CommandBarCatalog.emojiEntries` takes the settings, the
+  Accessibility answer and the typing, which default to the bar's own.
+- **Test:** the emoji test drives the real rows and the real recorder over
+  a disposable settings domain, through the real session key. Before, it
+  compiled copies of the four service members and the catalog's rows. New
+  checks:
+  - the step that orders the memory counts;
+  - the field and selection are handed over before the close wipes them,
+    and a new opening forgets them;
+  - a completed search learns what was typed;
+  - a row runs once, with its number;
+  - a row that keeps the bar open runs without counting or learning;
+  - a hidden shortcut learns nothing even with a search in the field;
+  - without Accessibility every row says so.
+- **Verification:** a Linux Swift 6.4 model of the recorder and the rows
+  runs the test, 257 checks, and 37 mutants. CryptoKit and pinyin are
+  stubbed off Apple platforms. One survives, equivalent: trimming the
+  learned search, which the emoji parse, the memory and the habit keys
+  each do again for a one-line field.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

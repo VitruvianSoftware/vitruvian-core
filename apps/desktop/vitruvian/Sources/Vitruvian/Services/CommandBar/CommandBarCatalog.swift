@@ -1342,11 +1342,15 @@ package enum CommandBarCatalog {
     /// Emoji rows, which type themselves at the caret the way a snippet does.
     /// The names come from Unicode and never change.
     /// The tone is read here, because the bar has to rebuild this on every
-    /// opening and a chosen tone has to arrive with it.
+    /// opening and a chosen tone has to arrive with it. The settings, the
+    /// permission and the typing are the bar's own unless a test passes others.
     @MainActor
-    package static func emojiEntries(bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
+    package static func emojiEntries(bar: CommandBarFeatureStrings, defaults: UserDefaults = .standard,
+                                     accessible: Bool = Permissions.shared.accessibility,
+                                     type: @escaping @MainActor (String) -> Void = { typeAtCursor($0) })
+        -> [CommandBarEntry] {
         let tone = CommandBarPreferences.skinTone(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
+            from: defaults.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
         return CommandBarEmoji.emoji.map { emoji in
             let character = CommandBarEmoji.applying(tone, to: emoji.character)
             return CommandBarEntry(
@@ -1355,9 +1359,9 @@ package enum CommandBarCatalog {
                 subtitle: bar.kindEmoji,
                 keywords: emoji.name + " " + emoji.keywords + " " + bar.kindEmoji,
                 icon: .symbol("face.smiling"),
-                trouble: Permissions.shared.accessibility ? nil : .needsPermission,
+                trouble: accessible ? nil : .needsPermission,
                 matchTitle: emoji.name,
-                run: { _ in typeAtCursor(character) })
+                run: { _ in type(character) })
         }
     }
 
