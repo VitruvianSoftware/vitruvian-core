@@ -468,16 +468,26 @@ package final class NotchMusicService: ObservableObject {
     }
 
     package func playQueued(_ item: NotchQueueItem) {
-        guard queueVisible, NotchQueueSupport.isEnabled(), let request = queueRequest, let upcoming,
+        Self.playQueued(item, visible: queueVisible, request: queueRequest, upcoming: upcoming, playback: playback,
+                        pending: &queueActionPending, failed: &queueActionFailed) { send($0) }
+    }
+
+    /// Sends a queue row's selection, bound to the process, song and offset
+    /// shown, unless the queue is hidden, held for another song or busy.
+    package static func playQueued(_ item: NotchQueueItem, visible: Bool, request: UUID?,
+                                   upcoming: NotchQueueSnapshot?, playback: NotchPlayback?,
+                                   pending: inout Bool, failed: inout Bool, in defaults: UserDefaults = .standard,
+                                   send: (Command) -> Bool) {
+        guard visible, NotchQueueSupport.isEnabled(in: defaults), let request, let upcoming,
               let playback, upcoming.currentIdentifier == playback.itemIdentifier,
               upcoming.pid == playback.track.appPID, upcoming.canPlay,
               upcoming.items.contains(where: { $0.id == item.id && $0.offset == item.offset }),
-              !queueActionPending else { return }
-        queueActionFailed = false
-        queueActionPending = true
+              !pending else { return }
+        failed = false
+        pending = true
         let selected = NotchQueueSelection(requestID: request, pid: upcoming.pid,
             currentIdentifier: upcoming.currentIdentifier, itemIdentifier: item.id, offset: item.offset)
-        if !send(.queuePlay(selected)) { queueActionPending = false; queueActionFailed = true }
+        if !send(.queuePlay(selected)) { pending = false; failed = true }
     }
 
     private func receiveQueue(_ reply: [String: Any]) {
