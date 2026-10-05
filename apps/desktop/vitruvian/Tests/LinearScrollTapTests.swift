@@ -8,50 +8,21 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The raw wheel tap's handler is extracted from ScrollInverter.swift on every
-/// test build (Tests/generate_sources.py) and fed real wheel events. Only the
-/// services it asks and the defaults it reads are replaced here.
+/// The raw wheel tap's decision runs as shipped on real wheel events. Only
+/// the exception lists it asks and the defaults it reads are replaced here.
 enum LinearScrollTapTests {
-    enum StandardDefaults { static var standard = Foundation.UserDefaults() }
-    final class Exceptions {
-        static let shared = Exceptions()
+    /// The apps the wheel is excepted for. Only the test's own thread touches it.
+    nonisolated final class Exceptions: @unchecked Sendable {
         var excepted: Set<MouseExceptionScope> = []
-        func excludesPointerTarget(_ scope: MouseExceptionScope, at point: CGPoint,
-                                   sourceProcessID: Int64 = 0) -> Bool {
-            excepted.contains(scope)
-        }
-    }
-    final class Target {
-        static let shared = Target()
-        func contains(_ point: CGPoint) -> Bool { false }
-    }
-    final class Session {
-        static let shared = Session()
-        let isActive = true
-    }
-    final class Inverter {
-        typealias UserDefaults = StandardDefaults
-        typealias MouseAppExceptions = Exceptions
-        typealias ScrollWheelTarget = Target
-        typealias SessionActivity = Session
-        // Events built here carry this process's id, which the shipped tap
-        // skips as its own glide frames.
-        static let ownProcessID: Int64 = -1
-        let tapStateLock = NSLock()
-        var tap: CFMachPort?
-        var lastGesturePhaseTimestamp: UInt64?
-        var linearCarryVertical: Double = 0
-        var linearCarryHorizontal: Double = 0
     }
 
     static func run(_ suite: TestSuite) {
         let name = "com.vitruviansoftware.vitruvian.tests.linear-scroll-tap.\(UUID().uuidString)"
         let defaults = Foundation.UserDefaults(suiteName: name)!
-        StandardDefaults.standard = defaults
-        defer {
-            defaults.removePersistentDomain(forName: name)
-            Exceptions.shared.excepted = []
-        }
+        let exceptions = Exceptions()
+        let targets = ScrollInverter.WheelTapTargets(excludes: { scope, _, _ in exceptions.excepted.contains(scope) },
+                                                     isOwnWindow: { _ in false })
+        defer { defaults.removePersistentDomain(forName: name) }
         func configure(linear: Bool = true, installed: Bool = true, lines: Int = 3,
                        invert: Bool = false, inverterInstalled: Bool = true,
                        sidewaysKey: ScrollHorizontalModifier? = nil) {
@@ -63,11 +34,20 @@ enum LinearScrollTapTests {
             defaults.set(sidewaysKey != nil, forKey: AppFeature.scrollHorizontal.availabilityKey)
             defaults.set(sidewaysKey != nil, forKey: DefaultsKey.scrollHorizontalEnabled)
             defaults.set(sidewaysKey?.rawValue, forKey: DefaultsKey.scrollHorizontalModifier)
-            Exceptions.shared.excepted = []
+            exceptions.excepted = []
         }
-        /// One event through the shipped handler; nil when it was held back.
-        func deliver(_ event: CGEvent, through inverter: Inverter = Inverter()) -> CGEvent? {
-            inverter.handle(type: .scrollWheel, event: event)?.takeUnretainedValue()
+        /// One event through the shipped decision, with the state one tap keeps
+        /// across events; nil when it was held back. Events built here carry
+        /// this process's id, which the tap skips as its own glide frames, so
+        /// the decision is given an id no event carries.
+        func carry(_ event: CGEvent, through state: inout ScrollInverter.WheelTapState) -> CGEvent? {
+            ScrollInverter.adjustWheel(event, state: &state, defaults: defaults, ownProcessID: -1,
+                                       targets: targets) ? event : nil
+        }
+        /// One event through a tap that has seen nothing before it.
+        func deliver(_ event: CGEvent) -> CGEvent? {
+            var fresh = ScrollInverter.WheelTapState()
+            return carry(event, through: &fresh)
         }
 
         // Notches as a plain Bluetooth wheel sends them with macOS acceleration
@@ -89,33 +69,33 @@ enum LinearScrollTapTests {
                      "a high-resolution notch whose line already matches still loses its extra half line")
 
         configure()
-        let carrying = Inverter()
-        let quarters = (0..<4).map { _ in deliver(wheel(line: 0, fixed: 0.25, point: 0), through: carrying) }
+        var carrying = ScrollInverter.WheelTapState()
+        let quarters = (0..<4).map { _ in carry(wheel(line: 0, fixed: 0.25, point: 0), through: &carrying) }
         let delivered = quarters.compactMap { $0 }
         suite.expect(delivered.map(verticalLine).reduce(0, +) == 3
                         && delivered.allSatisfy { verticalLine($0) != 0 },
                      "four quarter notches add up to one notch, and a quarter that moves no whole line is held back")
 
         configure()
-        let afterException = Inverter()
-        _ = deliver(wheel(line: 0, fixed: 0.25, point: 0), through: afterException)
-        Exceptions.shared.excepted = [.linearScroll]
-        _ = deliver(wheel(line: 1, fixed: 1, point: 10), through: afterException)
-        Exceptions.shared.excepted = []
-        suite.expect(deliver(wheel(line: 0, fixed: 0.25, point: 0), through: afterException) == nil,
+        var afterException = ScrollInverter.WheelTapState()
+        _ = carry(wheel(line: 0, fixed: 0.25, point: 0), through: &afterException)
+        exceptions.excepted = [.linearScroll]
+        _ = carry(wheel(line: 1, fixed: 1, point: 10), through: &afterException)
+        exceptions.excepted = []
+        suite.expect(carry(wheel(line: 0, fixed: 0.25, point: 0), through: &afterException) == nil,
                      "a fractional notch does not carry through an excepted app")
 
         configure()
-        let afterOff = Inverter()
-        _ = deliver(wheel(line: 0, fixed: 0.25, point: 0), through: afterOff)
+        var afterOff = ScrollInverter.WheelTapState()
+        _ = carry(wheel(line: 0, fixed: 0.25, point: 0), through: &afterOff)
         configure(linear: false)
-        _ = deliver(wheel(line: 1, fixed: 1, point: 10), through: afterOff)
+        _ = carry(wheel(line: 1, fixed: 1, point: 10), through: &afterOff)
         configure()
-        suite.expect(deliver(wheel(line: 0, fixed: 0.25, point: 0), through: afterOff) == nil,
+        suite.expect(carry(wheel(line: 0, fixed: 0.25, point: 0), through: &afterOff) == nil,
                      "a fractional notch does not carry through a disabled interval")
 
         configure()
-        Exceptions.shared.excepted = [.linearScroll]
+        exceptions.excepted = [.linearScroll]
         let excepted = deliver(wheel(line: 4, fixed: 4, point: 40))
         suite.expect(excepted.map(verticalLine) == 4 && excepted.map(verticalFixed) == 4,
                      "an app on linear scrolling's own list gets the wheel exactly as macOS sent it")
@@ -135,7 +115,7 @@ enum LinearScrollTapTests {
                      "the capped notch is flipped only while the inverter is installed, not because linear scrolling keeps the tap up")
 
         configure(invert: true)
-        Exceptions.shared.excepted = [.scrollDirection]
+        exceptions.excepted = [.scrollDirection]
         let directionExcepted = deliver(wheel(line: 4, fixed: 4, point: 40))
         suite.expect(directionExcepted.map(verticalLine) == 3,
                      "an app excepted from the direction change is still capped by linear scrolling")
@@ -155,7 +135,7 @@ enum LinearScrollTapTests {
         suite.expect(controlSideways.map(verticalLine) == 0
                         && controlSideways?.getIntegerValueField(.scrollWheelEventDeltaAxis2) == 3,
                      "the explicit Control-to-horizontal shortcut still receives the fixed notch")
-        Exceptions.shared.excepted = [.scrollDirection]
+        exceptions.excepted = [.scrollDirection]
         let exceptedZoom = deliver(wheel(line: 4, fixed: 4, point: 40, flags: .maskControl))
         suite.expect(exceptedZoom.map(verticalLine) == 4,
                      "a direction exception also preserves Control-wheel zoom")

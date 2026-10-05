@@ -143,3 +143,61 @@ package final class NotchScreenEdgeClicks {
         }
     }
 }
+
+extension NotchScreenEdgeClicks {
+    /// The closed island as the screen edge sees it.
+    package struct Resting {
+        package var running: Bool
+        package var suspended: Bool
+        package var expanded: Bool
+        package var peeking: Bool
+        package var hasCaptureControls: Bool
+        package var hasNotice: Bool
+        package var dragPlaceholder: Bool
+        package var heldDrag: Bool
+        /// Whether the island's window is on screen and takes clicks; nil without one.
+        package var panelTakesClicks: Bool?
+        package var compactActivityIsVisible: Bool
+        package var geometry: NotchGeometry
+        package var compactActivityGeometry: NotchGeometry
+        package var surfaceSize: CGSize
+
+        package init(running: Bool, suspended: Bool, expanded: Bool, peeking: Bool, hasCaptureControls: Bool,
+                     hasNotice: Bool, dragPlaceholder: Bool, heldDrag: Bool, panelTakesClicks: Bool?,
+                     compactActivityIsVisible: Bool, geometry: NotchGeometry,
+                     compactActivityGeometry: NotchGeometry, surfaceSize: CGSize) {
+            self.running = running
+            self.suspended = suspended
+            self.expanded = expanded
+            self.peeking = peeking
+            self.hasCaptureControls = hasCaptureControls
+            self.hasNotice = hasNotice
+            self.dragPlaceholder = dragPlaceholder
+            self.heldDrag = heldDrag
+            self.panelTakesClicks = panelTakesClicks
+            self.compactActivityIsVisible = compactActivityIsVisible
+            self.geometry = geometry
+            self.compactActivityGeometry = compactActivityGeometry
+            self.surfaceSize = surfaceSize
+        }
+    }
+
+    /// Where a click at the top of the screen counts as a click on the
+    /// closed island, in screen coordinates, or nil while it takes none.
+    package static func area(for island: Resting) -> CGRect? {
+        guard island.running, !island.suspended, !island.expanded, !island.hasCaptureControls, !island.hasNotice,
+              !island.dragPlaceholder, !island.heldDrag, island.panelTakesClicks == true else { return nil }
+        let geometry = island.compactActivityIsVisible ? island.compactActivityGeometry : island.geometry
+        let area = geometry.activationArea(in: island.surfaceSize, hasHeader: island.peeking,
+                                           compactActivity: island.compactActivityIsVisible)
+        guard !area.isEmpty else { return nil }
+        let frame = geometry.frame(for: island.surfaceSize)
+        return CGRect(x: frame.minX + area.minX, y: frame.maxY - area.maxY, width: area.width, height: area.height)
+    }
+
+    /// A press at the edge holds hover back until the release decides.
+    package static func pressed(hoverWork: inout DispatchWorkItem?, hoverState: inout NotchHoverState) {
+        hoverWork?.cancel(); hoverWork = nil
+        hoverState.close(pointerInside: true)
+    }
+}

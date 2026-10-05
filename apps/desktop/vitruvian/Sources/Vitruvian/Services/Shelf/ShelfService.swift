@@ -227,9 +227,24 @@ package final class ShelfService: ObservableObject {
     private var sawGestureStart = false
     private var dragBeganInDock = false
     private var dragSourceBundleIdentifier: String?
-    private var activeInternalDragIDs: [UUID] = []
-    private weak var internalDragWindow: NSWindow?
-    private var internalDragWasMerged = false
+    private lazy var internalDrag = ShelfInternalDrag(host: .init(
+        defaults: .standard,
+        island: {
+            let notch = NotchService.shared
+            return .init(window: notch.presentationWindow, expanded: notch.expanded, selected: notch.selected,
+                         showingAppPanel: notch.showingAppPanel, showingSections: notch.showingSections,
+                         pinned: notch.pinned)
+        },
+        holdIsland: { NotchService.shared.fileDragChanged($0, internalDrag: true) },
+        collapseIsland: { NotchService.shared.collapse() },
+        floating: { [weak self] in .init(window: self?.panel, isVisible: self?.isVisible == true) },
+        floatingIsPinned: { [weak self] in self?.isPinned == true },
+        hideFloating: { [weak self] in self?.hide() },
+        docked: { [weak self] in .init(window: self?.dockedPanel, isVisible: self?.dockedVisible == true) },
+        collapseDocked: { [weak self] in self?.collapseDocked() },
+        endInteraction: { [weak self] in self?.endInteraction() },
+        protectedIDs: { [weak self] in self?.protectedIDs ?? [] },
+        removeItems: { [weak self] in self?.removeItems($0) }))
     /// The edge (and screen) a drag is currently dwelling near, before it has
     /// dwelled long enough to trigger a peek. Reset whenever the pointer
     /// leaves every edge's hot zone, so a fresh dwell always starts from
@@ -1352,60 +1367,11 @@ package final class ShelfService: ObservableObject {
     }
 
     package func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
-        internalDragWindow = window
-        if let window, window === NotchService.shared.presentationWindow {
-            NotchService.shared.fileDragChanged(true, internalDrag: true)
-        }
-        activeInternalDragIDs = ids
-        internalDragWasMerged = false
+        internalDrag.begin(ids: ids, from: window)
     }
 
-    package func finishInternalDrag(dropAccepted: Bool) -> [UUID] {
-        defer {
-            activeInternalDragIDs = []
-            internalDragWasMerged = false
-            if let window = internalDragWindow, window === NotchService.shared.presentationWindow {
-                NotchService.shared.fileDragChanged(false, internalDrag: true)
-            }
-            internalDragWindow = nil
-        }
-        guard dropAccepted, !internalDragWasMerged else { return [] }
-        return activeInternalDragIDs
-    }
-
-    /// Completes a tile drag in one place so removal, dismissal, pinning and
-    /// internal Shelf merges cannot drift apart across the AppKit views.
     package func completeInternalDrag(dropAccepted: Bool) {
-        let notch = NotchService.shared
-        let source = internalDragWindow
-        let fromNotch = source != nil && source === notch.presentationWindow
-        let draggedIDs = finishInternalDrag(dropAccepted: dropAccepted)
-        endInteraction()
-        guard !draggedIDs.isEmpty else { return }
-
-        let defaults = UserDefaults.standard
-        let removableIDs = ShelfInteractionSupport.removableAfterDrag(draggedIDs, protectedIDs: protectedIDs)
-        if ShelfInteractionSupport.shouldRemoveAfterDrag(
-            dropAccepted: dropAccepted,
-            draggedItemCount: removableIDs.count,
-            removeAfterDrop: defaults.bool(forKey: DefaultsKey.shelfRemoveAfterDrop)) {
-            removeItems(removableIDs)
-        }
-        if ShelfInteractionSupport.shouldCloseAfterDrag(
-            dropAccepted: dropAccepted,
-            draggedItemCount: draggedIDs.count,
-            closeAfterDrop: defaults.bool(forKey: DefaultsKey.shelfCloseAfterDrop),
-            pinned: fromNotch ? notch.pinned : isPinned) {
-            if fromNotch {
-                if notch.expanded, notch.selected == .files, !notch.showingAppPanel, !notch.showingSections {
-                    notch.collapse()
-                }
-            } else if isVisible, let source, source === panel {
-                hide()
-            } else if dockedVisible, let source, source === dockedPanel {
-                collapseDocked()
-            }
-        }
+        internalDrag.complete(dropAccepted: dropAccepted)
     }
 
     /// Retaining a file in the Shelf after use must offer copy-only outside
@@ -1416,24 +1382,24 @@ package final class ShelfService: ObservableObject {
         let protected = protectedIDs
         return ShelfInteractionSupport.offersMoveOutside(
             removeAfterDrop: UserDefaults.standard.bool(forKey: DefaultsKey.shelfRemoveAfterDrop),
-            dragIncludesPinned: activeInternalDragIDs.contains(where: protected.contains))
+            dragIncludesPinned: internalDrag.ids.contains(where: protected.contains))
             ? [.copy, .move]
             : .copy
     }
 
     package var isInternalDragActive: Bool {
-        !activeInternalDragIDs.isEmpty
+        internalDrag.isActive
     }
 
     package func canMergePasteboard(_ pasteboard: NSPasteboard, into targetID: UUID) -> Bool {
-        if !activeInternalDragIDs.isEmpty {
+        if internalDrag.isActive {
             return canMergeInternalDrag(into: targetID)
         }
         return pasteboardCanCreateItem(pasteboard)
     }
 
     package func mergePasteboard(_ pasteboard: NSPasteboard, into targetID: UUID) -> Bool {
-        if !activeInternalDragIDs.isEmpty {
+        if internalDrag.isActive {
             return mergeInternalDrag(into: targetID)
         }
         return mergeExternalItems(items(from: pasteboard), into: targetID)
@@ -1956,25 +1922,25 @@ package final class ShelfService: ObservableObject {
     }
 
     private func canMergeInternalDrag(into targetID: UUID) -> Bool {
-        guard !activeInternalDragIDs.isEmpty,
-              !activeInternalDragIDs.contains(targetID),
+        guard internalDrag.isActive,
+              !internalDrag.ids.contains(targetID),
               let target = item(withID: targetID)
         else { return false }
-        let active = Set(activeInternalDragIDs)
+        let active = Set(internalDrag.ids)
         guard allIDs(in: target.batchItems).isDisjoint(with: active) else { return false }
         return !items(withIDs: active, in: items).isEmpty
     }
 
     private func mergeInternalDrag(into targetID: UUID) -> Bool {
         guard canMergeInternalDrag(into: targetID) else { return false }
-        let sourceIDs = Set(activeInternalDragIDs)
+        let sourceIDs = Set(internalDrag.ids)
         let additions = dragItems(for: items(withIDs: sourceIDs, in: items))
         guard !additions.isEmpty else { return false }
 
         var moved: [Item] = []
         removeItems(sourceIDs, from: &items, removed: &moved)
         guard merge(additions, into: targetID) else { return false }
-        internalDragWasMerged = true
+        internalDrag.wasMerged = true
         // Bypasses the public removeItem/removeItems wrappers (it's
         // reparenting, not a user-facing removal), so it doesn't get the
         // tooltip-hide those centralize. A drag always starts with

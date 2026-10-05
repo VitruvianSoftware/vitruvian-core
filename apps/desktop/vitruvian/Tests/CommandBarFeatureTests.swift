@@ -501,9 +501,9 @@ enum CommandBarFeatureTests {
         let commandBarServiceSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift",
             encoding: .utf8)) ?? ""
-        suite.expect(commandBarServiceSource.contains("InputSourceSelection.asciiLayoutID"),
-               "the bar borrows the ASCII layout through the shared TIS selection")
-        suite.expect(commandBarServiceSource.contains("restoreSuspendedInputSource"),
+        suite.expect(commandBarServiceSource.contains("inputSource.adoptASCIIInputSource()"),
+               "opening the bar borrows the ASCII layout")
+        suite.expect(commandBarServiceSource.contains("inputSource.restoreSuspendedInputSource()"),
                "closing the bar gives the suspended input source back")
         suite.expect(commandBarServiceSource.range(
                 of: #"AppFeature\.uninstaller\.isAvailable,\s*UninstallerSupport\.selection\(for:\s*app\.url\) != nil"#,
@@ -1900,29 +1900,14 @@ enum CommandBarFeatureTests {
     }
 }
 
-typealias ProductionInputSourceSelection = InputSourceSelection
-
-/// Production borrow/restore methods with an inert input source and controlled
-/// next-turn delivery; the machine's keyboard layout is never changed.
+/// The production borrow and restore run with an inert input source and a
+/// next turn the test delivers; the machine's keyboard layout is never changed.
 enum CommandBarInputSourceContract {
-    enum Preferences {
-        static var standard: Preferences.Type { Self.self }
-        static var enabled = true
-        static func bool(forKey: String) -> Bool { enabled }
-    }
     enum Sources {
+        static var enabled = true
         static var current = "original"
         static var acceptsSelection = true
         static var selected: [String] = []
-        static func currentSourceID() -> String? { current }
-        static func snapshots() -> [ProductionInputSourceSelection.Snapshot] {
-            [.init(id: "original", isLayout: true, isASCIICapable: false),
-             .init(id: "ascii", isLayout: true, isASCIICapable: true)]
-        }
-        static func asciiLayoutID(currentID: String?,
-                                  snapshots: [ProductionInputSourceSelection.Snapshot]) -> String? {
-            ProductionInputSourceSelection.asciiLayoutID(currentID: currentID, snapshots: snapshots)
-        }
         static func select(sourceID: String) -> Bool {
             guard acceptsSelection else { return false }
             current = sourceID
@@ -1931,29 +1916,32 @@ enum CommandBarInputSourceContract {
         }
     }
     enum Queue {
-        static var main: Queue.Type { Self.self }
-        static var jobs: [() -> Void] = []
-        static func async(execute action: @escaping () -> Void) { jobs.append(action) }
-        static func sync(execute action: () -> Void) { action() }
+        static var jobs: [@MainActor () -> Void] = []
         static func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
-    class Fixture {
-        typealias UserDefaults = Preferences
-        typealias InputSourceSelection = Sources
-        typealias DispatchQueue = Queue
-        var suspendedInputSourceID: String?
-        var presentationID = UUID()
-        init() {}
+    /// The presentation on screen; a reopening replaces it.
+    static var presentationID = UUID()
+
+    static func borrowing() -> CommandBarInputSourceBorrowing {
+        CommandBarInputSourceBorrowing(system: .init(
+            isEnabled: { Sources.enabled },
+            currentSourceID: { Sources.current },
+            snapshots: { [.init(id: "original", isLayout: true, isASCIICapable: false),
+                          .init(id: "ascii", isLayout: true, isASCIICapable: true)] },
+            select: { Sources.select(sourceID: $0) },
+            nextTurn: { Queue.jobs.append($0) })) { presentationID }
     }
+
     static func run(_ suite: TestSuite) {
-        defer { Queue.jobs = []; Sources.selected = []; Sources.acceptsSelection = true; Preferences.enabled = true }
-        func reset() -> Service {
+        defer { Queue.jobs = []; Sources.selected = []; Sources.acceptsSelection = true; Sources.enabled = true }
+        func reset() -> CommandBarInputSourceBorrowing {
             Queue.jobs = []
             Sources.current = "original"
             Sources.selected = []
             Sources.acceptsSelection = true
-            Preferences.enabled = true
-            return Service()
+            Sources.enabled = true
+            presentationID = UUID()
+            return borrowing()
         }
         let normal = reset()
         normal.adoptASCIIInputSource()
@@ -1965,7 +1953,7 @@ enum CommandBarInputSourceContract {
         let reopened = reset()
         reopened.adoptASCIIInputSource()
         reopened.restoreSuspendedInputSource()
-        reopened.presentationID = UUID()
+        presentationID = UUID()
         reopened.adoptASCIIInputSource()
         Queue.drain()
         suite.expect(Sources.current == "ascii", "a stale close cannot switch the layout under the reopened bar")
@@ -1976,17 +1964,19 @@ enum CommandBarInputSourceContract {
                      "closing after a fast reopen restores the original layout without duplicate switches")
         for alreadyASCII in [false, true] {
             let untouched = reset()
-            if alreadyASCII { Sources.current = "ascii" } else { Preferences.enabled = false }
+            if alreadyASCII { Sources.current = "ascii" } else { Sources.enabled = false }
             untouched.adoptASCIIInputSource()
             untouched.restoreSuspendedInputSource()
+            let queued = Queue.jobs.count
             Queue.drain()
-            suite.expect(Sources.selected.isEmpty, "an ASCII or opted-out opening leaves the keyboard alone")
+            suite.expect(Sources.selected.isEmpty && queued == 0,
+                         "an ASCII or opted-out opening leaves the keyboard alone and its close waits for nothing")
         }
         let disabledOnReopen = reset()
         disabledOnReopen.adoptASCIIInputSource()
         disabledOnReopen.restoreSuspendedInputSource()
-        Preferences.enabled = false
-        disabledOnReopen.presentationID = UUID()
+        Sources.enabled = false
+        presentationID = UUID()
         disabledOnReopen.adoptASCIIInputSource()
         Queue.drain()
         suite.expect(Sources.current == "original" && disabledOnReopen.suspendedInputSourceID == nil,
@@ -2035,7 +2025,7 @@ enum CommandBarTerminationContract {
         }
     }
     enum Bar {
-        static var shared = CommandBarInputSourceContract.Service()
+        static var shared = CommandBarInputSourceContract.borrowing()
     }
     class Fixture {
         typealias NSApplication = Application
@@ -2045,9 +2035,11 @@ enum CommandBarTerminationContract {
     }
     static func run(_ suite: TestSuite) {
         func reset(borrowed: Bool) -> (Host, Application) {
-            Bar.shared = CommandBarInputSourceContract.Service()
-            Bar.shared.suspendedInputSourceID = borrowed ? "original" : nil
-            CommandBarInputSourceContract.Sources.current = borrowed ? "ascii" : "original"
+            Bar.shared = CommandBarInputSourceContract.borrowing()
+            CommandBarInputSourceContract.Sources.current = "original"
+            CommandBarInputSourceContract.Sources.acceptsSelection = true
+            // Opening the bar borrows the ASCII layout from the original one.
+            if borrowed { Bar.shared.adoptASCIIInputSource() }
             CommandBarInputSourceContract.Sources.selected = []
             CommandBarInputSourceContract.Sources.acceptsSelection = true
             return (Host(), Application())
@@ -2059,7 +2051,7 @@ enum CommandBarTerminationContract {
             }
         }
         defer {
-            Bar.shared = CommandBarInputSourceContract.Service()
+            Bar.shared = CommandBarInputSourceContract.borrowing()
             CommandBarInputSourceContract.Sources.current = "original"
             CommandBarInputSourceContract.Sources.selected = []
             CommandBarInputSourceContract.Sources.acceptsSelection = true

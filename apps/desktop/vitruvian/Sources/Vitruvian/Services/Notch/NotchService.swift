@@ -285,11 +285,10 @@ package final class NotchService: ObservableObject {
     private var settingsSignature = ""
     private var gesture = NotchGestureSupport()
     private var sectionScroll = NotchSectionScroll()
-    private var volumeBaseline: Double?
-    private var muteBaseline: Bool?
-    private var volumeDeviceUID: String?
-    /// System uptime until which an output change counts as the island's own.
-    private var ownVolumeAdjustmentUntil: TimeInterval = 0
+    private lazy var volumeFeedback: NotchVolumeFeedback = NotchVolumeFeedback(output: .system, island: .init(
+        isExpanded: { [weak self] in self?.expanded ?? false },
+        show: { [weak self] in self?.show($0) ?? false },
+        uptime: { ProcessInfo.processInfo.systemUptime }))
     private var notchNeedsMonitor = false
     /// Reads the room the menus leave beside the camera while the island
     /// wants it; `syncMenuSpaceMonitoring()` decides when.
@@ -358,7 +357,25 @@ package final class NotchService: ObservableObject {
             host.panel.title = FeatureStrings.notch(L10n.shared.language).title
             return host
         },
-        activate: { [weak self] id in self?.bringIsland(to: id) })
+        activate: { [weak self] id in self?.summons.bring(to: id) })
+    /// A click on a copy bringing the island to its display (`NotchIslandSummons`).
+    private lazy var summons: NotchIslandSummons = NotchIslandSummons(island: .init(
+        showsCopies: { [weak self] in self.map { $0.running && !$0.suspended && $0.showsOnAllDisplays } ?? false },
+        displayID: { [weak self] in self?.displayID },
+        isOpen: { [weak self] in self.map { $0.expanded || $0.peeking } ?? false },
+        collapse: { [weak self] in self?.collapse() },
+        whenSettled: { [weak self] action in
+            // Copies are clicked on the main thread, so `action` never leaves it.
+            nonisolated(unsafe) let action = action
+            self?.windowHost?.whenSettled { action() }
+        },
+        canMove: { [weak self] in self.map { $0.running && !$0.suspended && $0.canFollowPointer } ?? false },
+        move: { [weak self] id in
+            guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return false }
+            self.move(to: screen)
+            return true
+        },
+        open: { [weak self] in self?.open() }))
     /// The island following the pointer to another display (`NotchPointerFollower`).
     private lazy var pointerFollower: NotchPointerFollower = NotchPointerFollower(
         environment: .system,
@@ -2414,27 +2431,14 @@ package final class NotchService: ObservableObject {
         mirrors.updateFullscreenDisplays(showsOnAllDisplays: showsOnAllDisplays)
     }
 
-    /// A click on a copy brings the island to its display, open, closing it
-    /// on the display it was open on.
-    private func bringIsland(to id: CGDirectDisplayID) {
-        guard running, !suspended, showsOnAllDisplays, id != displayID else { return }
-        if expanded || peeking { collapse() }
-        windowHost?.whenSettled { [weak self] in
-            guard let self, self.running, !self.suspended, self.canFollowPointer,
-                  let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
-            self.move(to: screen)
-            self.open()
-        }
-    }
-
     private var screenEdgeClickArea: CGRect? {
-        guard running, !suspended, !expanded, captureControls == nil, notice == nil,
-              !dragPlaceholder, !heldDrag, let panel, panel.isVisible, !panel.ignoresMouseEvents else { return nil }
-        let geometry = compactActivityIsVisible ? compactActivityGeometry : self.geometry
-        let area = geometry.activationArea(in: surfaceSize, hasHeader: peeking, compactActivity: compactActivityIsVisible)
-        guard !area.isEmpty else { return nil }
-        let frame = geometry.frame(for: surfaceSize)
-        return CGRect(x: frame.minX + area.minX, y: frame.maxY - area.maxY, width: area.width, height: area.height)
+        NotchScreenEdgeClicks.area(for: .init(
+            running: running, suspended: suspended, expanded: expanded, peeking: peeking,
+            hasCaptureControls: captureControls != nil, hasNotice: notice != nil,
+            dragPlaceholder: dragPlaceholder, heldDrag: heldDrag,
+            panelTakesClicks: panel.map { $0.isVisible && !$0.ignoresMouseEvents },
+            compactActivityIsVisible: compactActivityIsVisible, geometry: geometry,
+            compactActivityGeometry: compactActivityGeometry, surfaceSize: surfaceSize))
     }
 
     private func syncScreenEdgeClicks() { screenEdgeClicks.sync() }
@@ -2443,8 +2447,7 @@ package final class NotchService: ObservableObject {
 
     /// A press began on the menu bar above the island: hover waits for the release.
     private func screenEdgePressed() {
-        hoverWork?.cancel(); hoverWork = nil
-        hoverState.close(pointerInside: true)
+        NotchScreenEdgeClicks.pressed(hoverWork: &hoverWork, hoverState: &hoverState)
     }
 
     /// Displays that share Spaces show the menu bar on the main one only.
@@ -2957,7 +2960,7 @@ package final class NotchService: ObservableObject {
                            heldSongTitles: $heldMusic.map { $0?.playback.track.title }.eraseToAnyPublisher())
         stopPower()
         if NotchSupport.routes(.volume) {
-            bindVolumeEvents()
+            volumeFeedback.follow().store(in: &subscriptions)
         }
         if NotchSupport.routes(.battery) || idleContent == .battery { startPower() }
     }
@@ -2995,59 +2998,19 @@ package final class NotchService: ObservableObject {
     }
 
     package func showCurrentVolume() {
-        let mixer = AppVolumeMixer.shared
-        guard let volume = mixer.systemOutputVolume else { return }
-        showVolume(volume, muted: mixer.systemOutputMuted)
+        volumeFeedback.showCurrentVolume()
     }
 
     /// The island's own output controls already show the level they set.
-    /// Their changes, and the device's reading that follows, leave the open
-    /// header's title in place instead of covering it with the same level.
     package func noteOwnVolumeAdjustment() {
-        ownVolumeAdjustmentUntil = ProcessInfo.processInfo.systemUptime + 1
+        volumeFeedback.noteOwnAdjustment()
     }
 
-    private func bindVolumeEvents() {
-        let mixer = AppVolumeMixer.shared
-        volumeDeviceUID = mixer.currentOutputDeviceUID
-        volumeBaseline = mixer.systemOutputVolume
-        muteBaseline = mixer.systemOutputMuted
-        mixer.$systemOutputVolume.combineLatest(mixer.$systemOutputMuted, mixer.$currentOutputDeviceUID)
-            .handleEvents(receiveOutput: { [weak self] _, _, deviceUID in
-                guard let self, deviceUID != self.volumeDeviceUID else { return }
-                self.volumeDeviceUID = deviceUID
-                self.volumeBaseline = nil
-                self.muteBaseline = nil
-            })
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak mixer] _ in
-                guard let mixer else { return }
-                // Published fields arrive separately and before assignment. Read
-                // the settled device and controls together on the main queue.
-                self?.volumeChanged(mixer.systemOutputVolume, muted: mixer.systemOutputMuted)
-            }
-            .store(in: &subscriptions)
-    }
-
-    private func volumeChanged(_ volume: Double?, muted: Bool?) {
-        defer { volumeBaseline = volume; muteBaseline = muted }
-        guard volumeDeviceUID != nil, let volume, volumeBaseline != nil,
-              volume != volumeBaseline || (muteBaseline != nil && muted != muteBaseline) else { return }
-        // Volume keys still announce themselves through showCurrentVolume.
-        guard !expanded || ProcessInfo.processInfo.systemUptime >= ownVolumeAdjustmentUntil else { return }
-        showVolume(volume, muted: muted)
-    }
-
-    /// Levels set outside the island, like Command Bar's, report here
-    /// too. The observer skips a level that matches the current one and a new
-    /// output's first reading. False leaves the confirmation to the caller.
+    /// Levels set outside the island, like Command Bar's, report here too.
+    /// False leaves the confirmation to the caller.
     @discardableResult
     package func showVolume(_ volume: Double, muted: Bool? = nil) -> Bool {
-        guard volume.isFinite else { return false }
-        let value = muted == true ? 0 : min(1, max(0, volume))
-        return show(NotchNotice(event: .volume, title: FeatureStrings.notch(L10n.shared.language).volume,
-                                detail: "\(Int((value * 100).rounded()))%",
-                                symbol: value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill", level: value))
+        volumeFeedback.showVolume(volume, muted: muted)
     }
 
     private func startPower() {

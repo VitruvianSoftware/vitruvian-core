@@ -1479,6 +1479,86 @@ is that notice. Add an entry for every change to upstream files.
   polling that `Services/Notch/NotchWindowHost.swift` forwards to;
   `Tests/NotchMissionControlPollingTests.swift` drives it, and
   `Tests/generate_sources.py` no longer copies the host's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/ScrollInverter.swift` decides each wheel event in
+  `adjustWheel(_:state:defaults:ownProcessID:targets:)`, which
+  `Tests/LinearScrollTapTests.swift` calls with real events;
+  `Tests/generate_sources.py` no longer copies the tap handler.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Shelf/ShelfInternalDrag.swift` (new) holds the drag out of a shelf
+  that `Services/Shelf/ShelfService.swift` forwards to;
+  `Tests/ShelfDragCompletionTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/QuickTools/ScreenshotQuickPreviewController.swift` takes an injected
+  `Scheduler` and opens its hover, action and auto-dismiss members to the
+  package; `Tests/ScreenshotPreviewHoverTests.swift` drives a real preview, and
+  `Tests/generate_sources.py` no longer copies the controller.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/CommandBar/CommandBarInputSourceBorrowing.swift` (new) holds the ASCII
+  layout borrowing that `Services/CommandBar/CommandBarService.swift` forwards to;
+  `Tests/CommandBarFeatureTests.swift` drives it, and `Tests/generate_sources.py`
+  no longer copies the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Switcher/WindowActivator.swift` activates apps through injected
+  `ActivationCalls` over `SwitcherActivatableApp`, and
+  `Services/Switcher/SpaceWindowBridge.swift` fronts windows through injected
+  `FrontingCalls`; `Tests/SwitcherActivationTests.swift` drives both, and
+  `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/QuickTools/ScreenshotScrollingCapture.swift` runs its capture loop
+  over an injected `FrameSource`; `Tests/ScreenshotScrollingCaptureTests.swift`
+  supplies the frames, and `Tests/generate_sources.py` no longer copies the enum.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/UpdateHighlightsView.swift` takes the tour animation's URL and opens
+  `UpdateHighlightsGIF` to the package; `Tests/UpdateHighlightsTests.swift`
+  renders the real view, and `Tests/generate_sources.py` no longer copies it.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/Settings/NotchSettingsRows.swift` (new) holds the destination and AI agents
+  rows that `UI/Settings/NotchSettings.swift` and
+  `UI/Settings/NotchAgentsSettings.swift` draw; `Tests/NotchSettingsChoiceTests.swift`
+  measures them, and `Tests/generate_sources.py` no longer copies the rows or the
+  card primitives.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/Media/MediaWorkspaceView.swift` draws its layout and drop target through
+  `MediaWorkspaceStack` and `MediaInputDropTarget` and picks tools through a
+  static `pick`, and `UI/Notch/NotchFilesView.swift` sizes the island through a
+  static `mediaHeightChanged` over `NotchMediaHeightTracking`
+  (`Services/Notch/NotchFileToolsService.swift`);
+  `Tests/MediaWorkspaceLayoutTests.swift` uses them, and
+  `Tests/generate_sources.py` no longer copies the view members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/QuitProtection/QuitProtectionHUD.swift` opens the HUD and its content
+  view to the package; the progress checks move from
+  `Tests/Fixtures/QuitProtectionHUDChecks.swift` to `Tests/QuitProtectionHUDTests.swift`,
+  and `Tests/generate_sources.py` no longer copies the HUD.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchPointerFollower.swift` gains `NotchIslandSummons`, which
+  `Services/Notch/NotchService.swift` wires in place of `bringIsland(to:)`;
+  `Tests/NotchMirrorTests.swift` drives it, and `Tests/generate_sources.py` no
+  longer copies the service's method.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchScreenEdgeClicks.swift` works out the island's edge-click
+  area and press in `area(for:)` and `pressed(hoverWork:hoverState:)`, which
+  `Services/Notch/NotchService.swift` calls; `Tests/NotchScreenEdgeClickTests.swift`
+  feeds them, and `Tests/generate_sources.py` no longer copies the members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/AppUpdates/AppUpdatesService.swift` takes an injected `Environment`
+  (preferences, availability, notifications, scan) and splits the scan from
+  `check()`; `Tests/AppUpdateRulesTests.swift` drives the real service, and
+  `Tests/generate_sources.py` no longer copies its rule members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/AppUpdates/AppUpdatesService.swift` takes an injected `Network` (clock,
+  catalog session, feed URL loading) and opens its online sources to the package,
+  and `Services/AppUpdates/AppUpdateFeedLoader.swift` accepts URL protocol classes;
+  `Tests/AppUpdatesTests.swift` drives them, and `Tests/generate_sources.py` no
+  longer copies the loader or the service's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the island's volume notice
+  moves from `Services/Notch/NotchService.swift` to
+  `Services/Notch/NotchVolumeFeedback.swift`, which takes an injected output
+  and island; `NotchService` forwards to it. `Tests/NotchVolumeFeedbackTests.swift`
+  drives it, `Tests/generate_sources.py` no longer copies the service's volume
+  members, and `Tests/mutation_checks.py` mutates the new file.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

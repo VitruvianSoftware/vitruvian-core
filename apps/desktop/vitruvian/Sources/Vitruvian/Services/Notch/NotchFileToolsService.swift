@@ -19,8 +19,15 @@ package struct NotchMediaSession: Identifiable {
     }
 }
 
+/// The island media's measured height, which sizes the island to it.
 @MainActor
-package final class NotchFileToolsService: ObservableObject {
+package protocol NotchMediaHeightTracking: AnyObject {
+    var mediaContentHeight: CGFloat? { get }
+    func updateMediaHeight(id: UUID, height: CGFloat)
+}
+
+@MainActor
+package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTracking {
     package static let shared = NotchFileToolsService()
     package let media = MediaService(replacesExistingOutputs: false)
     @Published package private(set) var mediaSession: NotchMediaSession?

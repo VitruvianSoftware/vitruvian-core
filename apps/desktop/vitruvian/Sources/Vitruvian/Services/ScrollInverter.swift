@@ -40,14 +40,9 @@ package final class ScrollInverter: ObservableObject {
     /// Guards the two above: the callback runs on the pointer thread while the
     /// main thread arms and tears the tap down.
     private let tapStateLock = NSLock()
-    /// Timestamp (ns, event clock) of the last event carrying a gesture phase —
-    /// only touch devices emit those. Read/written solely on the tap callback,
-    /// which is the pointer thread and nothing else.
-    nonisolated(unsafe) private var lastGesturePhaseTimestamp: UInt64?
-    /// Fractions of a line linear scrolling has yet to deliver, one per axis.
-    /// Tap callback only, like the timestamp above.
-    nonisolated(unsafe) private var linearCarryVertical: Double = 0
-    nonisolated(unsafe) private var linearCarryHorizontal: Double = 0
+    /// Read and written solely on the tap callback, which is the pointer
+    /// thread and nothing else, and reset by `stop` once the tap is gone.
+    nonisolated(unsafe) private var wheel = WheelTapState()
     private var tapCreationRetryUsed = false
     private var tapCreationRetryWork: DispatchWorkItem?
 
@@ -160,8 +155,8 @@ package final class ScrollInverter: ObservableObject {
         if let source {
             PointerTapRunLoop.remove(source, invalidating: port)
         }
-        linearCarryVertical = 0
-        linearCarryHorizontal = 0
+        wheel.linearCarryVertical = 0
+        wheel.linearCarryHorizontal = 0
         isRunning = false
     }
 
@@ -186,6 +181,46 @@ package final class ScrollInverter: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         guard type == .scrollWheel else { return Unmanaged.passUnretained(event) }
+        let keeps = Self.adjustWheel(event, state: &wheel, defaults: .standard,
+                                     ownProcessID: Self.ownProcessID, targets: .system)
+        return keeps ? Unmanaged.passUnretained(event) : nil
+    }
+
+    /// What the wheel tap remembers from one event to the next.
+    package struct WheelTapState: Sendable {
+        /// Timestamp (ns, event clock) of the last event carrying a gesture
+        /// phase — only touch devices emit those.
+        package var lastGesturePhaseTimestamp: UInt64?
+        /// Fractions of a line linear scrolling has yet to deliver, one per axis.
+        package var linearCarryVertical: Double = 0
+        package var linearCarryHorizontal: Double = 0
+
+        package init() {}
+    }
+
+    /// What the wheel tap asks about where the pointer is.
+    package struct WheelTapTargets: Sendable {
+        package var excludes: @Sendable (_ scope: MouseExceptionScope, _ point: CGPoint,
+                                         _ sourceProcessID: Int64) -> Bool
+        /// One of this app's own windows is under the pointer.
+        package var isOwnWindow: @Sendable (CGPoint) -> Bool
+
+        package init(excludes: @escaping @Sendable (MouseExceptionScope, CGPoint, Int64) -> Bool,
+                     isOwnWindow: @escaping @Sendable (CGPoint) -> Bool) {
+            self.excludes = excludes
+            self.isOwnWindow = isOwnWindow
+        }
+
+        package static let system = WheelTapTargets(excludes: {
+            MouseAppExceptions.shared.excludesPointerTarget($0, at: $1, sourceProcessID: $2)
+        }, isOwnWindow: { ScrollWheelTarget.shared.contains($0) })
+    }
+
+    /// Caps, turns or redirects one wheel event in place. False when it only
+    /// carried part of a notch, which is held back and added to the next one.
+    nonisolated package static func adjustWheel(_ event: CGEvent, state: inout WheelTapState,
+                                                defaults: UserDefaults, ownProcessID: Int64,
+                                                targets: WheelTapTargets) -> Bool {
         // Smooth scrolling swallows the wheel before this tap and already
         // turned its glide around, so flipping the glide here would cancel
         // that out and inverting would look broken while both are on. The
@@ -193,8 +228,8 @@ package final class ScrollInverter: ObservableObject {
         // are those glide frames.
         let sourceProcessID = event.getIntegerValueField(.eventSourceUnixProcessID)
         guard event.getIntegerValueField(.eventSourceUserData) != ScrollWheelSupport.syntheticTag,
-              sourceProcessID != Self.ownProcessID else {
-            return Unmanaged.passUnretained(event)
+              sourceProcessID != ownProcessID else {
+            return true
         }
 
         let traits = ScrollWheelEventTraits(
@@ -204,22 +239,20 @@ package final class ScrollInverter: ObservableObject {
             scrollCount: event.getIntegerValueField(.scrollWheelEventScrollCount)
         )
         let timestamp = EventTimestamp.nanoseconds(of: event)
-        let secondsSinceGesturePhase = lastGesturePhaseTimestamp.map {
+        let secondsSinceGesturePhase = state.lastGesturePhaseTimestamp.map {
             Double(timestamp &- $0) / 1_000_000_000.0
         }
         if traits.momentumPhase != 0 || traits.scrollPhase != 0 {
-            lastGesturePhaseTimestamp = timestamp
+            state.lastGesturePhaseTimestamp = timestamp
         }
 
         guard ScrollWheelSupport.isMouseWheel(traits,
                                               secondsSinceLastGesturePhase: secondsSinceGesturePhase)
-        else { return Unmanaged.passUnretained(event) }
+        else { return true }
 
-        let defaults = UserDefaults.standard
         let direction = ScrollDirectionPreferences(defaults: defaults)
         let directionApplies = direction.isEnabled
-            && !MouseAppExceptions.shared.excludesPointerTarget(
-                .scrollDirection, at: event.location, sourceProcessID: sourceProcessID)
+            && !targets.excludes(.scrollDirection, event.location, sourceProcessID)
         // Control-wheel is native zoom. Only the explicit Control-to-horizontal
         // shortcut turns it into scrolling; a direction exception or one of
         // our own windows leaves it as zoom too.
@@ -227,17 +260,12 @@ package final class ScrollInverter: ObservableObject {
             && direction.horizontalModifier == .control
             && event.flags.intersection([.maskShift, .maskAlternate, .maskControl, .maskCommand]) == .maskControl
             && ScrollWheelSupport.isVerticalOnly(event)
-            && !ScrollWheelTarget.shared.contains(event.location)
+            && !targets.isOwnWindow(event.location)
         let nativeZoom = event.flags.contains(.maskControl) && !controlRedirects
         if let linesPerNotch = nativeZoom ? nil : ScrollWheelSupport.linearLinesPerNotch(
             defaults: defaults,
-            isAvailable: AppFeature.linearScroll.isAvailable,
-            isExcepted: {
-                MouseAppExceptions.shared.excludesPointerTarget(
-                    .linearScroll,
-                    at: event.location,
-                    sourceProcessID: sourceProcessID)
-            }) {
+            isAvailable: AppFeature.linearScroll.isAvailable(in: defaults),
+            isExcepted: { targets.excludes(.linearScroll, event.location, sourceProcessID) }) {
             // Capture both axes before any set: writing a line delta makes the
             // system rederive its point and fixed-point fields.
             let rawVertical = ScrollWheelAxisDelta(
@@ -250,17 +278,17 @@ package final class ScrollInverter: ObservableObject {
                 fixedPoint: event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2))
             let linearVertical = ScrollWheelSupport.linearDelta(
                 rawVertical, isContinuous: traits.isContinuous,
-                linesPerNotch: linesPerNotch, carry: linearCarryVertical)
+                linesPerNotch: linesPerNotch, carry: state.linearCarryVertical)
             let linearHorizontal = ScrollWheelSupport.linearDelta(
                 rawHorizontal, isContinuous: traits.isContinuous,
-                linesPerNotch: linesPerNotch, carry: linearCarryHorizontal)
-            linearCarryVertical = linearVertical.carry
-            linearCarryHorizontal = linearHorizontal.carry
+                linesPerNotch: linesPerNotch, carry: state.linearCarryHorizontal)
+            state.linearCarryVertical = linearVertical.carry
+            state.linearCarryHorizontal = linearHorizontal.carry
             // A fraction of a notch is carried into the next event rather
             // than delivered as an event that moves nothing.
             if rawVertical.hasMovement || rawHorizontal.hasMovement,
                !linearVertical.delta.hasMovement, !linearHorizontal.delta.hasMovement {
-                return nil
+                return false
             }
             // Every axis that moves is written back, even when the capped line
             // matches the one already there: a discrete event's line is what
@@ -273,8 +301,8 @@ package final class ScrollInverter: ObservableObject {
         } else {
             // A fraction belongs to the active linear stream. Do not let it
             // reappear after an excepted app or an off/uninstalled interval.
-            linearCarryVertical = 0
-            linearCarryHorizontal = 0
+            state.linearCarryVertical = 0
+            state.linearCarryHorizontal = 0
         }
 
         // The direction features read their own availability here: linear
@@ -286,9 +314,9 @@ package final class ScrollInverter: ObservableObject {
                 invertVertical: direction.invertVertical,
                 invertHorizontal: direction.invertHorizontal,
                 horizontalModifier: direction.horizontalModifier,
-                targetsOwnWindow: ScrollWheelTarget.shared.contains(event.location)
+                targetsOwnWindow: targets.isOwnWindow(event.location)
             )
         }
-        return Unmanaged.passUnretained(event)
+        return true
     }
 }

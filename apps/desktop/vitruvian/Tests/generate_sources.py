@@ -66,12 +66,6 @@ def availability_declaration(path, prefix):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    write("ScrollingCaptureLoop.swift", "import AppKit\nimport CoreGraphics\n"
-          + "extension ScreenshotScrollingCaptureTests {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotScrollingCapture.swift",
-                        "enum ScreenshotScrollingCapture {").replace(
-                            "    private static func stitch(", "    static func stitch(")
-          + "}\n")
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
     write("UpdateIntroFlow.swift", "import AppKit\nimport Foundation\n"
           + "extension UpdateIntroFlowTests {\nfinal class Host: Fixture {\n"
@@ -131,16 +125,6 @@ def main():
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
           + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
           + "}\n}\n")
-    activator = "Sources/Vitruvian/Services/Switcher/WindowActivator.swift"
-    write("SwitcherActivationBodies.swift", "import AppKit\nimport ApplicationServices\n"
-          + "extension SwitcherActivationTests.Activator {\n"
-          + "".join(declaration(activator, prefix).replace("private static", "static", 1)
-                    for prefix in ["    private static func activateApp(",
-                                   "    private static func activateAppCooperatively(",
-                                   "    private static func activateSource("])
-          + "}\nextension SwitcherActivationTests.Bridge {\n"
-          + declaration("Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift",
-                        "    static func frontWindow(") + "}\n")
     write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
           + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
@@ -163,15 +147,6 @@ def main():
               "    private var firstRecentIndex:", "    private func normalizeEntryOrder(",
               "    func filteredEntries(", "    private func foldedCandidates("])
           + "func setEntries(_ values: [ClipboardHistoryEntry]) { entries = values }\n"
-          + "}\n}\n")
-    write("CommandBarInputSource.swift", "import Foundation\n"
-          + "extension CommandBarInputSourceContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration("Sources/Vitruvian/Services/CommandBar/CommandBarService.swift", prefix)
-                    .replace("private func", "func", 1) for prefix in [
-                        "    private func adoptASCIIInputSource(",
-                        "    private func restoreSuspendedInputSource(",
-                        "    func restoreBorrowedInputSource(",
-                        "    var hasBorrowedInputSource:"])
           + "}\n}\n")
     write("CommandBarTermination.swift", "import AppKit\nimport Foundation\n"
           + "extension CommandBarTerminationContract {\nfinal class Host: Fixture {\n"
@@ -218,14 +193,6 @@ def main():
     # The raw wheel tap runs as shipped: linear scrolling's cap, carry and
     # write-back, then the direction change. Only the services it asks and
     # the defaults it reads are fixtures.
-    wheel_tap = declaration("Sources/Vitruvian/Services/ScrollInverter.swift", "    private func handle(type:",
-                            scope="final class ScrollInverter:")
-    if wheel_tap.count("AppFeature.linearScroll.isAvailable") != 1:
-        raise ValueError("Expected one linear scrolling availability read in ScrollInverter.handle")
-    write("LinearScrollTap.swift", "import CoreGraphics\nimport Foundation\nextension LinearScrollTapTests.Inverter {\n"
-          + wheel_tap.replace("private func", "func", 1)
-                     .replace("AppFeature.linearScroll.isAvailable", "AppFeature.linearScroll.isAvailable(in: defaults)")
-          + "}\n")
     # Entire input/mute services retain their production control flow. Only
     # visibility, scheduling, defaults and HAL transport are replaced by fixtures.
     input_source = "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift"
@@ -288,32 +255,6 @@ def main():
             .replace("CGEvent.tapCreate(", "Tap.create(")
           + "}\n}\n")
 
-    updates = "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift"
-    loader = "Sources/Vitruvian/Services/AppUpdates/AppUpdateFeedLoader.swift"
-    # Only the network configuration, clock and declaration visibility change.
-    # The loader, batch loop, catalog matching and fallback resolution stay verbatim.
-    write("AppUpdates.swift", "import Foundation\nimport Darwin\nextension AppUpdatesContract {\n"
-          + declaration(loader, "final class AppUpdateFeedLoader:")
-          + "final class Service {\nlet workQueue = DispatchQueue(label: \"app-updates.contract\")\n"
-          + "let clock = Clock()\nnonisolated static let ownPackageTokens: Set<String> = [\"vitruvian\", \"vitruvian@beta\", \"vitruvian-beta\"]\n"
-          + "nonisolated static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60\n"
-          + "nonisolated(unsafe) var onlineCatalogCache: (loadedAt: Foundation.Date, entries: [AppUpdatesSupport.CatalogEntry])?\n"
-          + "let catalogSession = URLSession(configuration: URLSessionConfiguration.ephemeral)\n"
-          + declaration(updates, "    private struct SourceResult {").replace("private struct", "nonisolated struct", 1)
-          + declaration(updates, "    private func publisherFindings(", keep_nonisolated=True).replace("private func", "func", 1).replace("Date()", "self.clock.now()")
-          + declaration(updates, "    private func onlineCatalogFindings(", keep_nonisolated=True).replace("private func", "func", 1).replace("Date()", "self.clock.now()")
-          + declaration(updates, "    private func onlineResult(", keep_nonisolated=True).replace("private func", "func", 1)
-          + "}\n}\n")
-    # Rule mutations and completion stay verbatim; only declaration visibility changes.
-    write("AppUpdateRules.swift", "import Foundation\nextension AppUpdateRulesContract {\n"
-          + "final class Service: State {\n"
-          + "".join(declaration(updates, prefix).replace("private func", "func", 1)
-                    for prefix in ["    func skipVersion(", "    func excludeApp(",
-                                   "    private func setRule(", "    func removeRule(",
-                                   "    private func saveRules(", "    private func reloadRules(",
-                                   "    private func applyRules(", "    private func finishCheck(",
-                                   "    private static func announcedIDs(", "    private static func saveAnnouncedIDs("])
-          + "}\n}\n")
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
     adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
     # Only the clock changes, so tests drive the wait for a chosen source's track.
@@ -337,20 +278,6 @@ def main():
           + declaration(adapter_entry, "func encodedReply(").replace("func encodedReply", "static func encodedReply", 1)
           + "}\n")
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
-    write("ShelfDragCompletion.swift", "import Foundation\n\nextension ShelfDragCompletionContract {\n"
-          + "final class Service {\nvar activeInternalDragIDs: [UUID] = []\n"
-          + "weak var internalDragWindow: NSWindow?\nvar internalDragWasMerged = false\n"
-          + "var panel: NSWindow?\nvar dockedPanel: NSWindow?\n"
-          + "var isPinned = false\nvar isVisible = false\nvar dockedVisible = false\n"
-          + "var removed: [UUID] = []\nvar protectedIDs: Set<UUID> = []\n"
-          + "var floatingClosures = 0\nvar dockedClosures = 0\n"
-          + "func endInteraction() {}\nfunc removeItems(_ ids: [UUID]) { removed += ids }\n"
-          + "func hide() { floatingClosures += 1; isVisible = false }\n"
-          + "func collapseDocked() { dockedClosures += 1; dockedVisible = false }\n"
-          + declaration(shelf, "    func beginInternalDrag(")
-          + declaration(shelf, "    func finishInternalDrag(")
-          + declaration(shelf, "    func completeInternalDrag(")
-          + "}\n}\n")
     notch = "Sources/Vitruvian/Services/Notch/NotchService.swift"
     # The composition root wires the island's collaborators; each contract
     # wires its own stand-ins the way main.swift wires the services.
@@ -380,13 +307,6 @@ def main():
               "    func beginAiming(", "    func endAiming(", "    func aim(",
               "    func setSelectedZoomFocus(", "    private func applyDuringInteraction(",
               "    func beginPickingBlurArea(", "    func endPickingBlurArea("])
-          + "}\n}\n")
-    write("NotchVolumeFeedback.swift", "import Foundation\nimport Combine\n"
-          + "extension NotchVolumeFeedbackTests {\nfinal class Service: State {\n"
-          + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func bindVolumeEvents(", "    private func volumeChanged(",
-              "    func showCurrentVolume(", "    func noteOwnVolumeAdjustment("])
-          + declaration(notch, "    func showVolume(").replace("    func", "    @discardableResult func", 1)
           + "}\n}\n")
     scratchpad_service = "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift"
     scratchpad_view = "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift"
@@ -423,12 +343,6 @@ def main():
           + declaration(notch, "    func showUpdate()")
           + "}\n"
           + declaration(update_view, "struct NotchUpdateControl:")
-          + "}\n")
-    highlights = "Sources/Vitruvian/UI/UpdateHighlightsView.swift"
-    write("UpdateHighlights.swift", "import AppKit\nimport SwiftUI\nextension UpdateHighlightsTests {\n"
-          + "".join(declaration(highlights, prefix) for prefix in [
-              "struct UpdateHighlightsView:", "enum UpdateHighlightsLayout", "private struct UpdateHighlightsGIF:"])
-              .replace("private struct UpdateHighlightsGIF", "struct UpdateHighlightsGIF")
           + "}\n")
     canvas = "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift"
     write("NotchHover.swift", "import AppKit\nextension NotchHoverTests {\nfinal class Service: State {\n"
@@ -473,11 +387,6 @@ def main():
                                                 "AppFeature.fanControl.isAvailable(in: ReviewDefaults.current)")
     write("NotchMusicVisibility.swift", "import Foundation\nextension NotchMusicVisibilityTests {\n"
           + "final class Service: State {\n" + music_visibility + "}\n}\n")
-    write("NotchScreenEdgeClicks.swift", "import AppKit\nextension NotchScreenEdgeClickTests {\nfinal class Service: State {\n"
-          + "func open() { openings += 1; expanded = true; syncScreenEdgeClicks() }\n"
-          + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private var screenEdgeClickArea:", "    private func screenEdgePressed("])
-          + "}\n}\n")
     write("NotchScreenRefresh.swift", "import Foundation\n\nextension NotchScreenRefreshContract {\nfinal class Service: State {\n"
           + declaration(notch, "    private func schedulePreferenceSync()").replace("private func", "func", 1)
           + declaration(notch, "    private func screenParametersDidChange()").replace("private func", "func", 1)
@@ -488,9 +397,6 @@ def main():
               .replace("NotchSupport.coversMenus()", "coversMenus")
           + declaration(notch, "    private var canFollowPointer:").replace("private var", "var", 1)
           + declaration(notch, "    private func move(to screen:").replace("private func", "func", 1)
-          + "}\n}\n")
-    write("NotchMirrors.swift", "import AppKit\nextension NotchMirrorContract {\nfinal class Service: State {\n"
-          + declaration(notch, "    private func bringIsland(").replace("    private ", "    ", 1)
           + "}\n}\n")
     write("NotchSectionScrollRoute.swift", "import AppKit\nextension NotchSectionPagingTests {\nfinal class Service: State {\n"
           + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
@@ -588,7 +494,8 @@ def main():
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    var canAcceptMediaDrop:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func mediaDropContent(")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func openMediaDrop(")
-          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func updateMediaHeight(")
+          + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func updateMediaHeight(",
+                        scope="final class NotchFileToolsService:")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func hideMedia(")
           + declaration("Sources/Vitruvian/Services/Notch/NotchFileToolsService.swift", "    func showMedia(")
           + "}\nfinal class Notch: NotchState {\n"
@@ -614,67 +521,6 @@ def main():
           + declaration(canvas, "    override func draggingUpdated(").replace("override func", "func", 1)
           + declaration(canvas, "    override func draggingExited(").replace("override func", "func", 1)
           + declaration(canvas, "    override func performDragOperation(").replace("override func", "func", 1)
-          + "}\n}\n")
-    settings_card = "Sources/Vitruvian/UI/Settings/SettingsCard.swift"
-    text_inset = next(line for line in _source(settings_card).splitlines()
-                      if line.startswith("let settingsRowTextInset:"))
-    write("NotchSettingsChoice.swift", "import SwiftUI\n" + text_inset + "\n\nextension NotchSettingsChoiceTests {\n"
-          + "struct MenuBarGlyph: View { var body: some View { EmptyView() } }\n"
-          + declaration(settings_card, "struct SettingsCard<")
-          + declaration(settings_card, "struct SettingsRow<")
-          + declaration(settings_card, "struct SettingsChoiceRow<")
-          + declaration(settings_card, "struct SettingsMenuRow<")
-          + "struct Destination: View {\nlet language: AppLanguage\nlet title: String\n"
-          + "var text: NotchStrings { FeatureStrings.notch(language) }\n"
-          + "var editor: NotchEditorStrings { FeatureStrings.notchEditor(language) }\n"
-          + 'var body: some View { destination(title, symbol: "tray.full", value: .constant(true)) }\n'
-          + declaration("Sources/Vitruvian/UI/Settings/NotchSettings.swift", "    private func destination(")
-          + "}\nstruct Limits: View {\nlet language: AppLanguage\n"
-          + "@State var limitDisplay = NotchAgentLimitDisplay.remaining.rawValue\n"
-          + "var text: NotchAgentStrings { FeatureStrings.notchAgents(language) }\n"
-          + "var body: some View {\n"
-          + declaration("Sources/Vitruvian/UI/Settings/NotchAgentsSettings.swift",
-                        "            SettingsChoiceRow(symbol: NotchAgentCard.limits.symbol")
-          + "}\n}\n"
-          # The AI agents card's menu rows, each with the indent it has there.
-          + "".join(f"struct {name}: View {{\nlet language: AppLanguage\n"
-                    + "@State var readout = NotchAgentReadout.elapsed.rawValue\n"
-                    + "@State var finishMinimum = NotchAgentSupport.defaultFinishMinimum\n"
-                    + "@State var limitThreshold = NotchAgentSupport.defaultLimitThreshold\n"
-                    + "@State var dailyBudget = 0.0\n"
-                    + "@State var limitFocus = NotchAgentLimitFocus.mostUsed.rawValue\n"
-                    + "var text: NotchAgentStrings { FeatureStrings.notchAgents(language) }\n"
-                    + "var locale: Locale { language.formattingLocale() }\n"
-                    + "var body: some View {\nGroup {\n"
-                    + declaration("Sources/Vitruvian/UI/Settings/NotchAgentsSettings.swift", prefix)
-                    + "}\n" + (".padding(.leading, settingsRowTextInset)\n" if indented else "") + "}\n}\n"
-                    for name, prefix, indented in [
-                        ("Readout", '                SettingsMenuRow(symbol: "camera.metering.center.weighted"', True),
-                        ("FinishAfter", '                SettingsMenuRow(symbol: "timer"', True),
-                        ("LimitAt", '                SettingsMenuRow(symbol: "gauge.with.dots.needle.67percent"', True),
-                        ("Budget", '            SettingsMenuRow(symbol: "dollarsign.circle"', False),
-                        ("LimitFocus", '            SettingsMenuRow(symbol: "rectangle.topthird.inset.filled"', False)])
-          + "}\n")
-    media_workspace = "Sources/Vitruvian/UI/Media/MediaWorkspaceView.swift"
-    write("MediaWorkspaceLayout.swift", "import AppKit\nimport SwiftUI\nimport UniformTypeIdentifiers\n"
-          + "extension MediaWorkspaceLayoutTests {\n"
-          + "struct Workspace: View {\nlet compact = true\n@ObservedObject var fixture: Fixture\n"
-          + "let onContentHeightChange: ((CGFloat) -> Void)?\n"
-          + "var header: some View { Color.clear.frame(height: 22) }\n"
-          + "var toolPicker: some View { Color.clear.frame(height: 24) }\n"
-          + "var content: some View { Color.clear.frame(height: fixture.height) }\n"
-          + "var body: some View { layout }\n"
-          + declaration(media_workspace, "    private var layout:")
-          + "}\nstruct Input: View {\nlet inNotch: Bool\n@State var isDropTargeted = false\n"
-          + "var inputSelector: some View { Color.clear.frame(width: 300, height: 70) }\n"
-          + "func acceptDrop(_ providers: [NSItemProvider]) -> Bool { false }\n"
-          + "var body: some View { inputDropTarget }\n"
-          + declaration(media_workspace, "    @ViewBuilder private var inputDropTarget:")
-          + "}\nstruct ToolPicker {\nlet fixture: Selection\nlet onToolChange: (() -> Void)?\n"
-          + "var selectedTool: MediaTool { get { fixture.tool } nonmutating set { fixture.tool = newValue } }\n"
-          + declaration(media_workspace, "    private var selectedToolBinding:").replace("private var", "var", 1)
-          + "}\nfinal class FileView: HeightState {\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchFilesView.swift", "    private func mediaHeightChanged(").replace("private func", "func", 1)
           + "}\n}\n")
     switcher = "Sources/Vitruvian/UI/Switcher/SwitcherView.swift"
     switcher_service = "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift"
@@ -729,7 +575,7 @@ def main():
           + "extension ScreenshotShareCompletionTests {\nfinal class Controller: State {\n"
           + "".join(declaration(preview, prefix).replace("private func", "func", 1)
                     for prefix in ["    func shareLink()", "    private func performShare(",
-                                   "    private func copySharedLink()", "    private func scheduleAutoDismiss("])
+                                   "    private func copySharedLink()", "    func scheduleAutoDismiss("])
           + "}\n}\n")
     screenshot_service = "Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift"
     write("ScreenshotShortcutCompletion.swift", "import Foundation\n"
@@ -742,14 +588,6 @@ def main():
                                    "    private func invalidateLatestCaptureUploads()",
                                    "    private func beginLatestCapture(", "    private func discardLatestCapture(",
                                    "    private func syncLatestCapture("])
-          + "}\n}\n")
-    write("ScreenshotPreviewHover.swift", "import Foundation\n"
-          + "extension ScreenshotPreviewHoverTests {\nfinal class Controller: State {\n"
-          + "".join(declaration(preview, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func hoverChanged(", "    private func scheduleAutoDismiss(",
-                                   "    private func perform("])
-          + "}\nstruct Preview {\nlet embedded: Bool\nlet hoverChanged: (Bool) -> Void\n"
-          + declaration(preview, "    private func previewHoverChanged(").replace("private func", "func", 1)
           + "}\n}\n")
     selection = "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift"
     refresh_methods = [
@@ -1057,15 +895,6 @@ def main():
           + declaration(dock, "    func endWindowDrag(")
           + "}\n")
 
-    # Same-file extensions can exercise the private AppKit content view without
-    # widening the production interface or presenting an application window.
-    hud = "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift"
-    checks = "Tests/Fixtures/QuitProtectionHUDChecks.swift"
-    write("QuitProtectionHUDBodies.swift",
-          f'#sourceLocation(file: {json.dumps(hud)}, line: 1)\n'
-          + _source(hud) + "\n"
-          + f'#sourceLocation(file: {json.dumps(checks)}, line: 1)\n'
-          + (ROOT / checks).read_text() + "\n#sourceLocation()\n")
 
 
 if __name__ == "__main__":

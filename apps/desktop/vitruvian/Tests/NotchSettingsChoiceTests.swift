@@ -24,10 +24,13 @@ enum NotchSettingsChoiceTests {
         let column = 16 + settingsRowTextInset
         let indentedColumn = column + settingsRowTextInset
         for (language, _) in LocalizationTests.languages {
+            let agents = FeatureStrings.notchAgents(language)
             let destinations = [FeatureStrings.notch(language).files, FeatureStrings.clipboard(language).title,
                                 FeatureStrings.scratchpad(language).pageTitle]
-            let choices = destinations.map { ($0, AnyView(Destination(language: language, title: $0))) }
-                + [(FeatureStrings.notchAgents(language).limitsAs, AnyView(Limits(language: language)))]
+            let choices = destinations.map { title in
+                (title, AnyView(NotchDestinationRow(title, symbol: "tray.full", value: .constant(true), language: language)))
+            } + [(agents.limitsAs, AnyView(NotchAgentRows.Limits(
+                text: agents, limitDisplay: .constant(NotchAgentLimitDisplay.remaining.rawValue))))]
             for (title, row) in choices {
                 let overflow = problems(row, width: narrowest, textColumn: column)
                 suite.expect(overflow.isEmpty, "\(language.rawValue): \(title) fits the narrowest Dynamic Island "
@@ -35,13 +38,21 @@ enum NotchSettingsChoiceTests {
                 suite.expect(drawsChoiceBesideTitle(row, width: 1000, segments: true),
                              "\(language.rawValue): \(title) keeps its segments beside the title where they fit")
             }
-            let agents = FeatureStrings.notchAgents(language)
+            // Each with the indent it has in the AI agents card.
             let menus: [(String, AnyView, CGFloat)] = [
-                (agents.readout, AnyView(Readout(language: language)), indentedColumn),
-                (agents.finishAfter, AnyView(FinishAfter(language: language)), indentedColumn),
-                (agents.limitAt, AnyView(LimitAt(language: language)), indentedColumn),
-                (agents.budget, AnyView(Budget(language: language)), column),
-                (agents.limitFocus, AnyView(LimitFocus(language: language)), column),
+                (agents.readout, AnyView(NotchAgentRows.Readout(
+                    text: agents, readout: .constant(NotchAgentReadout.elapsed.rawValue))
+                    .padding(.leading, settingsRowTextInset)), indentedColumn),
+                (agents.finishAfter, AnyView(NotchAgentRows.FinishAfter(
+                    text: agents, locale: language.formattingLocale(),
+                    finishMinimum: .constant(NotchAgentSupport.defaultFinishMinimum))
+                    .padding(.leading, settingsRowTextInset)), indentedColumn),
+                (agents.limitAt, AnyView(NotchAgentRows.LimitAt(
+                    text: agents, limitThreshold: .constant(NotchAgentSupport.defaultLimitThreshold))
+                    .padding(.leading, settingsRowTextInset)), indentedColumn),
+                (agents.budget, AnyView(NotchAgentRows.Budget(text: agents, dailyBudget: .constant(0))), column),
+                (agents.limitFocus, AnyView(NotchAgentRows.LimitFocus(
+                    text: agents, limitFocus: .constant(NotchAgentLimitFocus.mostUsed.rawValue))), column),
             ]
             for (title, row, textColumn) in menus {
                 let overflow = problems(row, width: narrowest, textColumn: textColumn)

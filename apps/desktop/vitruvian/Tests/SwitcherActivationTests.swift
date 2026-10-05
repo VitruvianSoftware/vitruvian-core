@@ -8,60 +8,58 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production activation and bridge bodies run against transports that never
-/// activate an app or post input. Native window ordering is validated separately.
+/// The production activation and window fronting run against apps and
+/// window-server calls that never activate an app or post input. Native
+/// window ordering is validated separately.
 enum SwitcherActivationTests {
-    static var events: [String] = []
-    static var records: [[UInt8]] = []
-    static var canRaise = true
+    // Only the test's own thread touches these.
+    nonisolated(unsafe) static var events: [String] = []
+    nonisolated(unsafe) static var records: [[UInt8]] = []
+    nonisolated(unsafe) static var canRaise = true
+    static var fronting = SpaceWindowBridge.FrontingCalls(processForPID: nil, setFrontProcess: nil,
+                                                          postEventRecord: nil)
 
-    final class App {
-        static let current = App(processIdentifier: 1)!
+    nonisolated final class App: SwitcherActivatableApp {
         let processIdentifier: pid_t
         var isTerminated = false
         init?(processIdentifier: pid_t) {
             guard processIdentifier > 0 else { return nil }
             self.processIdentifier = processIdentifier
         }
-        func unhide() { events.append("unhide") }
-        @discardableResult func activate(from: App, options: NSApplication.ActivationOptions) -> Bool {
+        func unhide() -> Bool { events.append("unhide"); return true }
+        func activateFromCurrent(options: NSApplication.ActivationOptions) -> Bool {
             events.append("activate:\(processIdentifier):\(options.contains(.activateAllWindows))")
             return true
         }
-        @discardableResult func activate(options: NSApplication.ActivationOptions) -> Bool { false }
+        func activate(options: NSApplication.ActivationOptions) -> Bool { false }
     }
-    enum Handoff {
-        static func yield(to app: App) { events.append("yield:\(app.processIdentifier)") }
-    }
-    enum Activator {
-        typealias NSRunningApplication = App
-        typealias ActivationHandoff = Handoff
-        typealias SpaceWindowBridge = Bridge
-        @discardableResult static func prepareWindowForActivation(windowID: CGWindowID, pid: pid_t) -> Bool { true }
-        @discardableResult static func focusWindow(windowID: CGWindowID, pid: pid_t, makeAppFrontmost: Bool = true) -> Bool {
-            events.append("raise:\(windowID):\(pid):\(makeAppFrontmost)")
-            return canRaise
-        }
-    }
-    enum Bridge {
-        static var processForPID: ((pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus)?
-        static var setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?
-        static var postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?
+    static var calls: WindowActivator.ActivationCalls<App> {
+        .init(running: { App(processIdentifier: $0) },
+              yield: { events.append("yield:\($0.processIdentifier)") },
+              frontWindow: { SpaceWindowBridge.frontWindow($0, ownerPID: $1, calls: fronting) },
+              focusWindow: { windowID, pid, makeAppFrontmost in
+                  events.append("raise:\(windowID):\(pid):\(makeAppFrontmost)")
+                  return canRaise
+              },
+              prepareWindow: { _, _ in true })
     }
     static func reset(raise: Bool = true, front: CGError = .success, down: CGError = .success, up: CGError = .success) {
         events = []; records = []; canRaise = raise
-        Bridge.processForPID = { pid, _ in events.append("owner:\(pid)"); return noErr }
-        Bridge.setFrontProcess = { _, id, _ in events.append("front:\(id)"); return front }
-        Bridge.postEventRecord = { _, bytes in
-            events.append("event:\(bytes[8])")
-            records.append(Array(UnsafeBufferPointer(start: bytes, count: 0x100)))
-            return bytes[8] == 1 ? down : up
-        }
+        fronting = .init(
+            processForPID: { pid, _ in events.append("owner:\(pid)"); return noErr },
+            setFrontProcess: { _, id, _ in events.append("front:\(id)"); return front },
+            postEventRecord: { _, bytes in
+                events.append("event:\(bytes[8])")
+                records.append(Array(UnsafeBufferPointer(start: bytes, count: 0x100)))
+                return bytes[8] == 1 ? down : up
+            })
     }
     static func run(_ suite: TestSuite) {
         let app = App(processIdentifier: 20)!
         let windowPlan = SwitcherSupport.activationPlan(targetsSpecificWindow: true)
-        func select(owner: pid_t = 20) { Activator.activateApp(app, plan: windowPlan, windowID: 77, windowOwnerPID: owner) }
+        func select(owner: pid_t = 20) {
+            WindowActivator.activateApp(app, plan: windowPlan, windowID: 77, windowOwnerPID: owner, calls: calls)
+        }
         reset(); select()
         suite.expect(events == ["owner:20", "front:77", "event:1", "raise:77:20:false"],
                      "a delivered window selection raises the exact window without activating every sibling")
@@ -81,29 +79,40 @@ enum SwitcherActivationTests {
         suite.expect(events.contains("activate:20:false"), "a window lost by Accessibility retains cooperative recovery")
         reset(front: .failure); select()
         suite.expect(!events.contains("event:1") && events.contains("activate:20:false"), "a refused front request uses the previous activation path")
+        suite.expect(events == ["owner:20", "front:77", "yield:20", "activate:20:false", "raise:77:20:false"],
+                     "cooperative recovery still raises the selected window after activating its app")
         for down in [CGError.success, .failure] {
             reset(down: down); select()
             suite.expect(events.contains("activate:20:false") == (down != .success),
                          "a refused press triggers recovery")
             suite.expect(!events.contains("event:2"), "no release is ever posted")
         }
-        reset(); Bridge.postEventRecord = nil; select()
+        reset(); fronting.postEventRecord = nil; select()
         suite.expect(!events.contains("front:77") && events.contains("activate:20:false"), "missing event transport cannot claim success")
-        reset(); Bridge.setFrontProcess = nil; select()
+        reset(); fronting.setFrontProcess = nil; select()
         suite.expect(events.contains("activate:20:false"), "missing front transport recovers")
-        reset(); Bridge.processForPID = { _, _ in -1 }; select()
+        reset(); fronting.processForPID = { _, _ in -1 }; select()
         suite.expect(events.contains("activate:20:false"), "missing process identity recovers")
         reset(); select(owner: 30)
         suite.expect(events.prefix(3) == ["yield:20", "activate:20:false", "owner:30"],
                      "host menus are activated before fronting an accessory owner's window")
         suite.expect(events.last == "raise:77:30:false", "helper window focusing does not replace host activation")
-        reset(); _ = Activator.activateSource(pid: 20, windowID: nil, windowOwnerPID: nil)
+        reset(); _ = WindowActivator.activateSource(pid: 20, windowID: nil, windowOwnerPID: nil, calls: calls)
         suite.expect(events == ["unhide", "yield:20", "activate:20:false"], "returning without a saved window does not raise all source windows")
-        reset(); _ = Activator.activateSource(pid: 20, windowID: 77, windowOwnerPID: 20)
+        reset(); _ = WindowActivator.activateSource(pid: 20, windowID: 77, windowOwnerPID: 20, calls: calls)
         suite.expect(!events.contains("activate:20:true") && events.contains("front:77"), "returning to an identified source still selects its window")
-        reset(); Activator.activateApp(app, plan: SwitcherSupport.activationPlan(targetsSpecificWindow: false))
+        reset(); WindowActivator.activateApp(app, plan: SwitcherSupport.activationPlan(targetsSpecificWindow: false),
+                                             calls: calls)
         suite.expect(events == ["yield:20", "activate:20:true"], "explicit app selection still brings all its windows forward")
-        reset(); let restored = Activator.activateSource(pid: -1, windowID: nil, windowOwnerPID: nil)
+        reset(); let restored = WindowActivator.activateSource(pid: -1, windowID: nil, windowOwnerPID: nil, calls: calls)
         suite.expect(!restored && events.isEmpty, "an exited source cannot receive restoration")
+        var terminated = calls
+        terminated.running = { pid in
+            let app = App(processIdentifier: pid)
+            app?.isTerminated = true
+            return app
+        }
+        reset(); let revived = WindowActivator.activateSource(pid: 20, windowID: 77, windowOwnerPID: 20, calls: terminated)
+        suite.expect(!revived && events.isEmpty, "a source that is quitting cannot receive restoration")
     }
 }

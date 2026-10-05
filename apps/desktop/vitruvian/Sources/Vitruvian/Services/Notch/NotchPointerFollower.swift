@@ -161,3 +161,57 @@ package final class NotchPointerFollower {
         cancelPending = nil
     }
 }
+
+/// A click on a copy of the island asks for the island on that display: an
+/// open island closes, and once its window settles it moves there and opens,
+/// unless it stopped, can no longer move, or the display went away.
+package struct NotchIslandSummons {
+    /// The island's side, read when a copy is clicked.
+    package struct Island {
+        /// Running, not suspended, and showing on every display.
+        package var showsCopies: () -> Bool
+        package var displayID: () -> CGDirectDisplayID?
+        /// Expanded or peeking.
+        package var isOpen: () -> Bool
+        package var collapse: () -> Void
+        /// Runs an action once the island's window has finished moving or closing.
+        package var whenSettled: (@escaping () -> Void) -> Void
+        /// Running, not suspended, and closed at rest (`NotchService.canFollowPointer`).
+        package var canMove: () -> Bool
+        /// Moves the island to a display, or answers false when it is gone.
+        package var move: (CGDirectDisplayID) -> Bool
+        package var open: () -> Void
+
+        package init(showsCopies: @escaping () -> Bool, displayID: @escaping () -> CGDirectDisplayID?,
+                     isOpen: @escaping () -> Bool, collapse: @escaping () -> Void,
+                     whenSettled: @escaping (@escaping () -> Void) -> Void, canMove: @escaping () -> Bool,
+                     move: @escaping (CGDirectDisplayID) -> Bool, open: @escaping () -> Void) {
+            self.showsCopies = showsCopies
+            self.displayID = displayID
+            self.isOpen = isOpen
+            self.collapse = collapse
+            self.whenSettled = whenSettled
+            self.canMove = canMove
+            self.move = move
+            self.open = open
+        }
+    }
+
+    private let island: Island
+
+    package init(island: Island) {
+        self.island = island
+    }
+
+    /// Brings the island to a display, open, closing it on the display it
+    /// was open on.
+    package func bring(to id: CGDirectDisplayID) {
+        guard island.showsCopies(), id != island.displayID() else { return }
+        if island.isOpen() { island.collapse() }
+        let island = island
+        island.whenSettled {
+            guard island.canMove(), island.move(id) else { return }
+            island.open()
+        }
+    }
+}

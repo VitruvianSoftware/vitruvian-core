@@ -267,6 +267,29 @@ package enum SpaceWindowBridge {
         return unsafeBitCast(symbol, to: ProcessForPIDFunction.self)
     }()
 
+    /// The window server's calls for fronting a window, each nil when this
+    /// macOS lacks it. `live` resolves the private symbols; tests pass doubles
+    /// that post nothing.
+    package struct FrontingCalls {
+        package var processForPID: ((pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus)?
+        package var setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?
+        package var postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?
+
+        package init(processForPID: ((pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus)?,
+                     setFrontProcess: ((UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError)?,
+                     postEventRecord: ((UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError)?) {
+            self.processForPID = processForPID
+            self.setFrontProcess = setFrontProcess
+            self.postEventRecord = postEventRecord
+        }
+
+        package static var live: FrontingCalls {
+            FrontingCalls(processForPID: SpaceWindowBridge.processForPID.map { call in { call($0, $1) } },
+                          setFrontProcess: SpaceWindowBridge.setFrontProcess.map { call in { call($0, $1, $2) } },
+                          postEventRecord: SpaceWindowBridge.postEventRecord.map { call in { call($0, $1) } })
+        }
+    }
+
     /// Asks the window server to bring the process forward with this exact
     /// window as the one that comes up front, marked as user-initiated. Older
     /// macOS also travels to the window's Space; current macOS ignores the
@@ -283,8 +306,10 @@ package enum SpaceWindowBridge {
     /// Returns false when the window server did not take the request, so the
     /// caller can fall back to app-level activation.
     @discardableResult
-    package static func frontWindow(_ windowID: CGWindowID, ownerPID: pid_t) -> Bool {
-        guard let setFrontProcess, let processForPID, let postEventRecord else { return false }
+    package static func frontWindow(_ windowID: CGWindowID, ownerPID: pid_t,
+                                    calls: FrontingCalls = .live) -> Bool {
+        guard let setFrontProcess = calls.setFrontProcess, let processForPID = calls.processForPID,
+              let postEventRecord = calls.postEventRecord else { return false }
         var psn = ProcessSerialNumber()
         guard processForPID(ownerPID, &psn) == noErr else { return false }
         let userGenerated: UInt32 = 0x200

@@ -10,7 +10,7 @@ import VitruvianDesign
 /// Settings so showing a confirmation never changes the target application.
 @MainActor
 package final class QuitProtectionHUD {
-    private static let minimumSize = CGSize(width: 300, height: 48)
+    package static let minimumSize = CGSize(width: 300, height: 48)
     private static let textInset: CGFloat = 12
     private var size = QuitProtectionHUD.minimumSize
     private var panel: NSPanel?
@@ -20,7 +20,7 @@ package final class QuitProtectionHUD {
     /// translations need more than the fixed 300pt panel left for text. The
     /// labels are asked rather than the strings measured, so whatever inset
     /// their cells add is inside the answer.
-    private static func fittingSize(_ content: ContentView) -> CGSize {
+    package static func fittingSize(_ content: ContentView) -> CGSize {
         CGSize(width: max(minimumSize.width, (content.textWidth + textInset * 2).rounded(.up)),
                height: minimumSize.height + (content.showsProgress ? 8 : 0))
     }
@@ -80,21 +80,22 @@ package final class QuitProtectionHUD {
                                      y: (frame.minY + 18).rounded()))
     }
 
-    private final class ContentView: NSView {
+    /// The pill's labels and hold progress, which lay out without a panel.
+    package final class ContentView: NSView {
         private let title = NSTextField(labelWithString: "")
         private let detail = NSTextField(labelWithString: "")
         private let progressTrack = CALayer()
         private let progressFill = CALayer()
 
-        var showsProgress: Bool { !progressTrack.isHidden }
+        package var showsProgress: Bool { !progressTrack.isHidden }
 
         /// Width the two labels need for what they currently hold, straight
         /// from the cells that draw them.
-        var textWidth: CGFloat {
+        package var textWidth: CGFloat {
             max(title.fittingSize.width, detail.fittingSize.width)
         }
 
-        override init(frame frameRect: NSRect) {
+        package override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             wantsLayer = true
             title.font = .systemFont(ofSize: 13, weight: .semibold)
@@ -118,9 +119,9 @@ package final class QuitProtectionHUD {
         }
 
         @available(*, unavailable)
-        required init?(coder: NSCoder) { nil }
+        package required init?(coder: NSCoder) { nil }
 
-        override func layout() {
+        package override func layout() {
             super.layout()
             let inset = QuitProtectionHUD.textInset
             let offset: CGFloat = showsProgress ? 8 : 0
@@ -133,7 +134,7 @@ package final class QuitProtectionHUD {
             CATransaction.commit()
         }
 
-        func update(title: String, detail: String, showsProgress: Bool) {
+        package func update(title: String, detail: String, showsProgress: Bool) {
             stopProgress()
             progressTrack.isHidden = !showsProgress
             self.title.stringValue = title
@@ -144,7 +145,7 @@ package final class QuitProtectionHUD {
             needsDisplay = true
         }
 
-        func animateProgress(until deadline: Date?) {
+        package func animateProgress(until deadline: Date?) {
             guard let deadline else { return }
             let remaining = deadline.timeIntervalSinceNow
             guard remaining > 0 else { return }
@@ -156,12 +157,12 @@ package final class QuitProtectionHUD {
             progressFill.add(animation, forKey: "holdProgress")
         }
 
-        func stopProgress() {
+        package func stopProgress() {
             progressFill.removeAnimation(forKey: "holdProgress")
             progressTrack.isHidden = true
         }
 
-        override func draw(_ dirtyRect: NSRect) {
+        package override func draw(_ dirtyRect: NSRect) {
             let body = bounds.insetBy(dx: 0.5, dy: 0.5)
             let path = NSBezierPath(roundedRect: body,
                                     xRadius: body.height / 2,

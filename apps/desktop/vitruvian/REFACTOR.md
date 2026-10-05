@@ -1035,6 +1035,262 @@ goes, which leaves 59.
 - **Check added:** an overview that opens again is probed at once, sooner
   than a lasting one. A mutant without that passed the old test.
 
+Landed (4b, the raw wheel tap): one more generated file goes, which leaves
+58.
+
+- **Injected:** `ScrollInverter.adjustWheel(_:state:defaults:ownProcessID:targets:)`
+  is the tap's decision for one wheel event:
+  - linear lines;
+  - direction;
+  - the sideways shortcut;
+  - holding back a fraction of a notch.
+
+  It is a `nonisolated` static. What it remembers between events is a
+  `WheelTapState`. What it asks about the pointer's target is a
+  `WheelTapTargets`, and `system` asks the exception lists and the app's
+  own windows.
+- **What stayed:** the tap keeps its re-arm branch.
+- **Test:** the test feeds real wheel events through the decision instead
+  of through a copy of `handle`.
+- **Verification:** this slice uses Core Graphics events, which the Linux
+  model cannot build. It relies on macOS CI.
+
+Landed (4b, dragging items out of the shelf): one more generated file goes,
+which leaves 57.
+
+- **Extracted:** `ShelfInternalDrag` (new, `Services/Shelf`) holds a drag out
+  of a shelf:
+  - the dragged items, and whether a drop inside merged them;
+  - holding the island open while the drag lasts;
+  - what the shelf it came from does once the items land.
+
+  `ShelfService` owns it, reads its items and merge flag, and passes the
+  island, its two shelf windows, the interaction end and item removal.
+- **Test:** the test drives the real drag with stand-in windows instead of a
+  copy of three service members.
+
+Landed (4b, the screenshot preview's hover and dismissal): one more generated
+file goes, which leaves 56.
+
+- **Injected:** `ScreenshotQuickPreviewController` takes a `Scheduler` for
+  its main-queue hops and the auto-dismiss timer; `main` keeps today's
+  behavior.
+- **Opened:** `hoverChanged`, `perform` and `scheduleAutoDismiss` are
+  `package`. The image view's hover forwarding is the static
+  `forwardImageHover(_:embedded:to:)`.
+- **Test:** the hover test builds a real preview over a manual clock instead
+  of a copy of the controller. The share-completion copy now copies the
+  `package` `scheduleAutoDismiss` with a scheduler fixture.
+- **Verification:** the controller draws through Core Graphics and SwiftUI,
+  which the Linux model cannot build. It relies on macOS CI.
+
+Landed (4b, the command bar's borrowed keyboard layout): one more generated
+file goes, which leaves 55.
+
+- **Extracted:** `CommandBarInputSourceBorrowing` (new, `Services/CommandBar`)
+  borrows an ASCII layout when the bar opens and puts the person's own source
+  back on close or quit. It takes a `System`: the preference, the Text Input
+  Sources calls and the next main-loop turn. `live` keeps today's behavior.
+  `CommandBarService` owns it, says which presentation is current, and keeps
+  `hasBorrowedInputSource` and `restoreBorrowedInputSource()` for the app
+  delegate.
+- **Test:** the input-source test drives the real borrowing instead of a copy
+  of four service members. The termination test, which still copies the
+  delegate's callback, runs it against the real borrowing.
+- **Check added:** a close with nothing borrowed queues no work. Without it, a
+  close that queued a no-op restore passed.
+- **Not covered:** the restore's second guard, that the record is still the
+  one it captured. It is unreachable through the service: each open starts a
+  new presentation first.
+
+Landed (4b, switcher app activation and window fronting): one more generated
+file goes, which leaves 54.
+
+- **Injected:** `WindowActivator.activateApp(_:plan:windowID:windowOwnerPID:calls:)`
+  and `activateSource(pid:windowID:windowOwnerPID:calls:)` are generic over
+  `SwitcherActivatableApp`, which `NSRunningApplication` adopts. They take
+  `ActivationCalls`: finding a running app, handing activation over, fronting,
+  focusing and preparing a window. The private callers pass the live calls.
+- **Injected:** `SpaceWindowBridge.frontWindow(_:ownerPID:calls:)` takes
+  `FrontingCalls`, the window server's three private calls. `live` resolves
+  the symbols as before.
+- **Test:** the activation test drives the real activation and fronting with
+  apps that log and calls that post nothing, instead of copies of four
+  members.
+- **Checks added:**
+  - cooperative recovery still raises the selected window afterwards;
+  - a source that is quitting is not restored.
+- **Not covered:** `activateSource` passing the pid as the window owner when
+  none is given. `activateApp` falls back to the same pid, so the mutant is
+  equivalent.
+
+Landed (4b, the scrolling screenshot's capture loop): one more generated file
+goes, which leaves 53.
+
+- **Injected:** `ScreenshotScrollingCapture.capture(region:finishSignal:onProgress:prepare:)`
+  is the capture loop over a `FrameSource` that `prepare` resolves once. The
+  existing `capture(region:includePointer:...)` resolves it through the
+  capture engine as before. `stitch(_:)` is `package`.
+- **Test:** the test runs the real loop and stitching over frames it supplies,
+  instead of a copy of the whole enum with stand-ins for the region and the
+  engine.
+- **Check added:** a region that cannot be captured reports a failure.
+- **Verification:** the loop draws through Core Graphics, which the Linux
+  model cannot build. The model type-checks the new signatures and the test's
+  calls in Swift 6; the loop itself relies on macOS CI.
+
+Landed (4b, the update highlights tour): one more generated file goes, which
+leaves 52.
+
+- **Injected:** `UpdateHighlightsView` takes the animation's URL. The default,
+  `bundledAnimationURL`, is the GIF in the app bundle as before.
+  `UpdateHighlightsGIF` is `package`.
+- **Test:** the layout test renders the real tour in every language, through
+  the real `L10n`, which it restores afterwards. It no longer renders a copy of
+  the view with stand-ins for the language, the screen, the bundle and the app
+  shell.
+- **Verification:** SwiftUI, so macOS CI only.
+
+Landed (4b, the Dynamic Island settings rows): one more generated file goes,
+which leaves 51.
+
+- **Extracted:** `NotchSettingsRows.swift` (new, `UI/Settings`) holds the rows
+  the layout test measures, as `package` views:
+  - `NotchDestinationRow`, island or window for one kind of content;
+  - `NotchAgentRows`: `Limits`, `LimitFocus`, `Readout`, `FinishAfter`,
+    `LimitAt` and `Budget`.
+
+  `NotchSettings` and `NotchAgentsSettingsControls` draw them where the
+  inline rows were, with the same indents.
+- **Test:** the test measures the real rows in the real `SettingsCard`,
+  instead of copies of the card primitives and of the page fragments.
+- **Verification:** SwiftUI, so macOS CI only.
+
+Landed (4b, the media workspace's layout): one more generated file goes, which
+leaves 50.
+
+- **Extracted, in `MediaWorkspaceView.swift`:**
+  - `MediaWorkspaceStack` stacks the header, tool picker and content, and
+    reports the content's natural height in the island;
+  - `MediaInputDropTarget` takes file drops only outside the island;
+  - the static `pick(_:current:onToolChange:select:)` is the tool picker's
+    change rule.
+- **Extracted, in `NotchFilesView.swift`:** the static
+  `mediaHeightChanged(_:id:in:refresh:)` resizes the island over
+  `NotchMediaHeightTracking`, which `NotchFileToolsService` adopts.
+- **Test:** the test lays out the real stack and drop target, and drives the
+  real height and tool rules, instead of copies of four private members. Its
+  file tools are still the shelf routing contract's, which adopts the new
+  protocol in the test.
+- **Generator:** the shelf routing copy now scopes `updateMediaHeight` to the
+  service class, since the protocol declares it too.
+- **Verification:** a Linux Swift 6 model runs the height and tool rules with
+  these fixtures. The views rely on macOS CI.
+
+Landed (4b, the quit-protection HUD): one more generated file goes, which
+leaves 49.
+
+- **Opened:** `QuitProtectionHUD` is `package`, with its `ContentView`,
+  `minimumSize` and `fittingSize(_:)`.
+- **Test:** the progress checks move from `Tests/Fixtures` into
+  `Tests/QuitProtectionHUDTests.swift`, as an extension of the real HUD. They
+  are no longer appended to a copy of the whole HUD file.
+- **Removed:** `Tests/Fixtures` held only those checks. It leaves `BUILD`'s
+  globs and `sync_sources.py`'s staging with them.
+- **Verification:** AppKit and Core Animation, so macOS CI only.
+
+Landed (4b, a click on a copy of the island): one more generated file goes,
+which leaves 48.
+
+- **Extracted:** `NotchIslandSummons` (new, beside `NotchPointerFollower`)
+  holds what a click on a copy does:
+  - an open island closes;
+  - once its window settles, it moves to that display and opens;
+  - it stays put if it stopped, can no longer move, or the display went away.
+
+  `NotchService` wires it the way it wires the pointer follower, and
+  `NotchMirrors` calls it on a click.
+- **Test:** the mirror test drives the real summons instead of a copy of
+  `bringIsland(to:)`.
+- **Checks added:** the wait for the window to settle, an unplugged display,
+  an island on one display only, an island suspended while it settles, and a
+  closed island that must not be collapsed again. The last one catches a
+  mutant the others let through.
+- **Verification:** a Linux Swift 6 model of the summons and the test kills
+  all eight mutants.
+
+Landed (4b, the island's screen-edge click area): one more generated file goes,
+which leaves 47.
+
+- **Extracted:** `NotchScreenEdgeClicks.area(for:)` works out where a click at
+  the top of the screen counts as a click on the closed island, from a
+  `Resting` value of the island's state. `pressed(hoverWork:hoverState:)` is
+  what a press there does to hover. `NotchService` passes its own state.
+- **Test:** the edge-click test feeds the real rules the same state, and
+  toggles each condition as before. It no longer runs a copy of the two
+  service members.
+- **Verification:** the rule moved verbatim. Its geometry lives in Core, so
+  this slice relies on macOS CI.
+
+Landed (4b, app update rules and scan completion): one more generated file
+goes, which leaves 46.
+
+- **Injected:** `AppUpdatesService` takes an `Environment`:
+  - the preferences;
+  - the feature switch;
+  - notifications;
+  - an optional scan.
+
+  `live` is the app's, so `shared` behaves as before.
+- **Split:** `check()` builds a `ScanRequest` and hands the scan's `ScanResult`
+  to `finishCheck`. Without an injected scan, the service's own `runScan` runs
+  the same sources on its work queue.
+- **Opened:** `reloadRules()` is `package`, and `sourceRefreshPending` is
+  readable.
+- **Test:** the rules test runs the real service. Its scans finish when the
+  test says, so it drives check, scan and completion as the app does,
+  instead of a copy of ten members.
+- **Verification:** AppKit and Combine, so macOS CI only.
+
+Landed (4b, app updates' online sources): one more generated file goes, which
+leaves 45.
+
+- **Injected:** `AppUpdatesService` also takes a `Network`:
+  - the clock the publisher deadline and the catalog cache read;
+  - the catalog's session;
+  - the URL loading for publisher feeds, which `AppUpdateFeedLoader.load(_:protocolClasses:completion:)`
+    now accepts.
+
+  `live` is the system's.
+- **Opened:** `SourceResult`, `publisherFindings`, `onlineCatalogFindings`,
+  `onlineResult` and `workQueue` are `package`.
+- **Test:** the findings test runs the real feed loader, batch loop, catalog
+  cache and fallback resolution over answered requests, instead of copies of
+  the loader and four service members.
+- **Verification:** URL loading through `URLProtocol` and the Darwin kernel
+  query keep this on macOS CI.
+
+Landed (4b, the island's volume notice): one more generated file goes, which
+leaves 44.
+
+- **Moved:** the volume binding, its baselines and the island's own
+  adjustment window leave `NotchService` for `NotchVolumeFeedback`
+  (`Services/Notch/NotchVolumeFeedback.swift`). Step 5k left this binding in
+  `bindEvents` because a contract copied it; that copy is now gone.
+- **Injected:** an `Output` (level, mute, device and their changes; `system`
+  is the app's mixer) and an `Island` (open or not, show a notice, uptime).
+  `NotchService` keeps `showCurrentVolume`, `noteOwnVolumeAdjustment` and
+  `showVolume` as forwarders, so callers do not change.
+- **Test:** the volume test runs the real type over a mixer of its own and a
+  clock it advances, instead of copies of five members. It now also checks
+  that the island's own adjustment lasts exactly one second and that a
+  reading with no output device shows nothing.
+- **Mutations:** the two volume mutations in `Tests/mutation_checks.py` now
+  apply to the new file.
+- **Verification:** a Linux model with a Combine shim runs the test (75
+  checks), and kills all 9 mutants of the type. The model also caught that
+  `Output` and `Island` must be `@MainActor`, because the mixer is.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

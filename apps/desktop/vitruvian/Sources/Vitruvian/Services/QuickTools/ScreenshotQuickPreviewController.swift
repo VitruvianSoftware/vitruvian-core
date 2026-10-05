@@ -32,6 +32,25 @@ package final class ScreenshotQuickPreviewController {
         case discard
     }
 
+    /// Where the preview's deferred work runs. `main` is the main queue;
+    /// tests pass a clock of their own.
+    package struct Scheduler {
+        package var async: (@escaping @MainActor () -> Void) -> Void
+        package var after: (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void
+
+        package init(async: @escaping (@escaping @MainActor () -> Void) -> Void,
+                     after: @escaping (TimeInterval, DispatchWorkItem) -> Void) {
+            self.async = async
+            self.after = after
+        }
+
+        package static var main: Scheduler {
+            Scheduler(async: { work in
+                DispatchQueue.main.async { MainActor.assumeIsolated { work() } }
+            }, after: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) })
+        }
+    }
+
     private let capture: ScreenshotSelectionController.Capture
     private let strings: ScreenshotFeatureStrings
     private let defaultAction: ScreenshotDefaultAction
@@ -45,7 +64,8 @@ package final class ScreenshotQuickPreviewController {
     /// system share sheet.
     private let shareFile: () -> URL?
     private let shareAnchor = ShelfSharePickerAnchor.Anchor()
-    private var systemSharing = false
+    /// The system share sheet is open, outside the preview.
+    package var systemSharing = false
     private let onClose: () -> Void
     private let model = ScreenshotQuickPreviewModel()
     private var panel: ScreenshotQuickPreviewPanel?
@@ -57,7 +77,8 @@ package final class ScreenshotQuickPreviewController {
     private let presentationID = UUID()
     private var shownInNotch = false
     private var didStartPreview = false
-    private var pointerInside = false
+    package private(set) var pointerInside = false
+    private let scheduler: Scheduler
 
     package var protectedWindowIDs: Set<CGWindowID> {
         guard let panel, panel.isVisible, panel.windowNumber > 0 else { return [] }
@@ -73,7 +94,8 @@ package final class ScreenshotQuickPreviewController {
          share: @escaping (ScreenshotShareDuration,
                            @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
          shareFile: @escaping () -> URL?,
-         onClose: @escaping () -> Void) {
+         onClose: @escaping () -> Void,
+         scheduler: Scheduler = .main) {
         self.capture = capture
         self.strings = strings
         self.defaultAction = defaultAction
@@ -83,6 +105,7 @@ package final class ScreenshotQuickPreviewController {
         self.share = share
         self.shareFile = shareFile
         self.onClose = onClose
+        self.scheduler = scheduler
         model.disabledActions = completedActions.intersection([.save, .copy])
     }
 
@@ -175,7 +198,14 @@ package final class ScreenshotQuickPreviewController {
         scheduleAutoDismiss()
     }
 
-    private func hoverChanged(_ inside: Bool) {
+    /// The island tracks the image and header together. Leaving just the
+    /// image must not restart dismissal while its actions are still hovered.
+    package static func forwardImageHover(_ inside: Bool, embedded: Bool, to hoverChanged: (Bool) -> Void) {
+        guard !embedded else { return }
+        hoverChanged(inside)
+    }
+
+    package func hoverChanged(_ inside: Bool) {
         pointerInside = inside
         dismissWork?.cancel()
         dismissWork = nil
@@ -244,7 +274,7 @@ package final class ScreenshotQuickPreviewController {
         onClose()
     }
 
-    private func perform(_ requested: Action) {
+    package func perform(_ requested: Action) {
         guard !closed else { return }
         // Keyboard shortcuts honor the grayed-out buttons: what the
         // after-capture action already did is not done twice.
@@ -257,7 +287,7 @@ package final class ScreenshotQuickPreviewController {
             // button's current update rather than nesting editor layout in it.
             let action = action
             close()
-            DispatchQueue.main.async { _ = action(requested) }
+            scheduler.async { _ = action(requested) }
             return
         }
         guard !action(requested).isEmpty else {
@@ -422,14 +452,14 @@ package final class ScreenshotQuickPreviewController {
                         animate: true)
     }
 
-    private func scheduleAutoDismiss() {
+    package func scheduleAutoDismiss() {
         guard !closed, !pointerInside, !systemSharing, !model.sharing, !model.deletingShare,
               let dismissDuration = autoDismissDuration
         else { return }
         dismissWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.close() }
         dismissWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration, execute: work)
+        scheduler.after(dismissDuration, work)
     }
 
     private func installKeyMonitor(for panel: NSPanel) {
@@ -697,10 +727,7 @@ private struct ScreenshotQuickPreviewView: View {
     }
 
     private func previewHoverChanged(_ inside: Bool) {
-        // The island tracks the image and header together. Leaving just the
-        // image must not restart dismissal while its actions are still hovered.
-        guard !embedded else { return }
-        hoverChanged(inside)
+        ScreenshotQuickPreviewController.forwardImageHover(inside, embedded: embedded, to: hoverChanged)
     }
 
     private func sharedLinkRow(_ record: ScreenshotShareRecord) -> some View {
