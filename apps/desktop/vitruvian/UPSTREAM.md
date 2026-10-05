@@ -1864,6 +1864,10 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Notch/NotchService.swift` takes its last shared-service
     readings through `NotchIslandServices`: the calendar, the watch, the
     timer's clock, the artwork, the scratchpad and the tools page.
+- **2026-10-05**: Refactor step 5r (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` reads displays as the new
+    `NotchDisplayInfo` (`Services/Notch/NotchDisplayInfo.swift`) through its
+    environment; `.system` builds them from `NSScreen`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

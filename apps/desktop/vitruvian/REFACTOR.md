@@ -2726,6 +2726,23 @@ Reduce Motion (in `.system`) and its workspace notifications. The
 presentation copy reads the music service directly instead of through its
 alias, which its stand-in already offers.
 
+Landed (5r, displays as values): `NotchService` reads the displays as
+`NotchDisplayInfo` (`Services/Notch/NotchDisplayInfo.swift`) values
+through its environment, not as `NSScreen`s.
+
+- **A display** is what the island reads from a screen:
+  - its id, frames, safe area and backing scale;
+  - the camera housing's width;
+  - whether it is built in and whether it carries the menu bar.
+- **`Environment.displays`**, **`separateSpaces`** and
+  **`statusBarThickness`** answer the island's ten screen reads: choosing
+  its display, its geometry, the mirrors' displays, the menu reader's top,
+  and moves to a display. `.system` builds them from `NSScreen`, so
+  nothing reads differently.
+- **Why:** a test cannot make an `NSScreen`. It can now describe the
+  displays the island chooses between.
+- None of the generated copies read a screen, so they are unchanged.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

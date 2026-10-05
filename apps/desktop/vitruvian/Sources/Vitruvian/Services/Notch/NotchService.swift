@@ -86,19 +86,31 @@ package final class NotchService: ObservableObject {
         package var schedule: @MainActor (TimeInterval, DispatchWorkItem) -> Void
         /// The services the island reads, starts, stops and asks to act.
         package var services: any NotchIslandServices
+        /// The displays, the main one first.
+        package var displays: @MainActor () -> [NotchDisplayInfo]
+        /// Each display has its own Spaces and its own menu bar.
+        package var separateSpaces: @MainActor () -> Bool
+        /// The menu bar's thickness, as the status bar reports it.
+        package var statusBarThickness: @MainActor () -> CGFloat
 
         package init(defaults: UserDefaults,
                      makeHost: @escaping @MainActor (NotchService, NotchGeometry, CGSize) -> any NotchIslandHost,
                      pointer: @escaping @MainActor () -> CGPoint,
                      reducesMotion: @escaping @MainActor () -> Bool,
                      schedule: @escaping @MainActor (TimeInterval, DispatchWorkItem) -> Void,
-                     services: any NotchIslandServices) {
+                     services: any NotchIslandServices,
+                     displays: @escaping @MainActor () -> [NotchDisplayInfo],
+                     separateSpaces: @escaping @MainActor () -> Bool,
+                     statusBarThickness: @escaping @MainActor () -> CGFloat) {
             self.defaults = defaults
             self.makeHost = makeHost
             self.pointer = pointer
             self.reducesMotion = reducesMotion
             self.schedule = schedule
             self.services = services
+            self.displays = displays
+            self.separateSpaces = separateSpaces
+            self.statusBarThickness = statusBarThickness
         }
 
         @MainActor package static var system: Environment {
@@ -112,7 +124,10 @@ package final class NotchService: ObservableObject {
                 pointer: { NSEvent.mouseLocation },
                 reducesMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion },
                 schedule: { DispatchQueue.main.asyncAfter(deadline: .now() + $0, execute: $1) },
-                services: SystemNotchIslandServices())
+                services: SystemNotchIslandServices(),
+                displays: { NSScreen.screens.map { NotchDisplayInfo(screen: $0) } },
+                separateSpaces: { NSScreen.screensHaveSeparateSpaces },
+                statusBarThickness: { NSStatusBar.system.thickness })
         }
     }
 
@@ -342,7 +357,7 @@ package final class NotchService: ObservableObject {
             guard let self else { return nil }
             return NotchMenuSpaceReader.Subject(
                 geometry: self.geometry,
-                primaryTop: NSScreen.screens.first?.frame.maxY ?? self.geometry.screen.maxY,
+                primaryTop: self.displays().first?.frame.maxY ?? self.geometry.screen.maxY,
                 ownWindow: self.panel?.windowNumber ?? -1)
         },
         apply: { [weak self] in self?.applyMenuSpace($0) })
@@ -361,19 +376,18 @@ package final class NotchService: ObservableObject {
     /// The closed island as the other displays draw it (`NotchMirrors`).
     private lazy var mirrors: Mirrors = Mirrors(
         environment: Mirrors.Environment(
-            displays: {
-                NSScreen.screens.map { screen in
-                    Mirrors.Display(id: screen.notchDisplayID,
-                                    hasMenuBar: NSScreen.screensHaveSeparateSpaces || NSScreen.withMenuBar == screen)
+            displays: { [displays, separateSpaces] in
+                displays().map { display in
+                    Mirrors.Display(id: display.id, hasMenuBar: separateSpaces() || display.hasMenuBar)
                 }
             },
             baseGeometry: { [weak self] id in
-                guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return nil }
-                return self.baseGeometry(for: screen)
+                guard let self, let display = self.displays().first(where: { $0.id == id }) else { return nil }
+                return self.baseGeometry(for: display)
             },
-            fullscreenDisplays: { ids in
+            fullscreenDisplays: { [separateSpaces] ids in
                 guard let topology = SpaceWindowBridge.topology() else { return [] }
-                let separate = NSScreen.screensHaveSeparateSpaces
+                let separate = separateSpaces()
                 return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
             },
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
@@ -414,8 +428,8 @@ package final class NotchService: ObservableObject {
         },
         canMove: { [weak self] in self.map { $0.running && !$0.suspended && $0.canFollowPointer } ?? false },
         move: { [weak self] id in
-            guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return false }
-            self.move(to: screen)
+            guard let self, let display = self.displays().first(where: { $0.id == id }) else { return false }
+            self.move(to: display)
             return true
         },
         open: { [weak self] in self?.open() }))
@@ -436,8 +450,8 @@ package final class NotchService: ObservableObject {
                 self?.windowHost?.whenSettled { action() }
             },
             move: { [weak self] id in
-                guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
-                self.move(to: screen)
+                guard let self, let display = self.displays().first(where: { $0.id == id }) else { return }
+                self.move(to: display)
             }))
 
     /// The deferred refreshes, the menu reader's schedule, activations and
@@ -530,6 +544,10 @@ package final class NotchService: ObservableObject {
     private let schedule: @MainActor (TimeInterval, DispatchWorkItem) -> Void
     /// The services the island reads and drives (`Environment.services`).
     private let services: any NotchIslandServices
+    /// The displays and their menu bars (`Environment`).
+    private let displays: @MainActor () -> [NotchDisplayInfo]
+    private let separateSpaces: @MainActor () -> Bool
+    private let statusBarThickness: @MainActor () -> CGFloat
 
     package init(environment: Environment) {
         defaults = environment.defaults
@@ -538,6 +556,9 @@ package final class NotchService: ObservableObject {
         reducesMotion = environment.reducesMotion
         schedule = environment.schedule
         services = environment.services
+        displays = environment.displays
+        separateSpaces = environment.separateSpaces
+        statusBarThickness = environment.statusBarThickness
     }
 
     private var hiddenUntilHover: Bool {
@@ -1147,7 +1168,7 @@ package final class NotchService: ObservableObject {
         }
         // Checked before any service starts, so each preference change while
         // the lid is closed does not start and stop them all again.
-        guard screenIndex(in: NSScreen.screens) != nil else { withdrawFromMissingScreen(); return }
+        guard screenIndex(in: displays()) != nil else { withdrawFromMissingScreen(); return }
         refreshModules()
         services.syncDownloads()
         services.syncCalendar()
@@ -2549,8 +2570,8 @@ package final class NotchService: ObservableObject {
 
     private func schedulePointerFollow() { pointerFollower.pointerMoved() }
 
-    private func move(to screen: NSScreen) {
-        screenRefresh.move(to: screen.notchDisplayID)
+    private func move(to display: NotchDisplayInfo) {
+        screenRefresh.move(to: display.id)
     }
 
     /// A new song's title shows in the capsule for a few seconds, then the
@@ -2615,7 +2636,7 @@ package final class NotchService: ObservableObject {
 
     /// Displays that share Spaces show the menu bar on the main one only.
     private var displayHasMenuBar: Bool {
-        NSScreen.screensHaveSeparateSpaces || NSScreen.withMenuBar?.frame == geometry.screen
+        separateSpaces() || displays().first(where: \.hasMenuBar)?.frame == geometry.screen
     }
 
     private func syncMenuSpaceMonitoring() { screenRefresh.syncMenuSpaceMonitoring() }
@@ -2643,20 +2664,20 @@ package final class NotchService: ObservableObject {
         NotchDisplay(rawValue: defaults.string(forKey: DefaultsKey.notchDisplay) ?? "") ?? .automatic
     }
 
-    private func screenIndex(in screens: [NSScreen]) -> Int? {
+    private func screenIndex(in screens: [NotchDisplayInfo]) -> Int? {
         let preference = displayPreference
         var followed: Int?
         if preference == .pointer || preference == .all {
             // The island stays on its display until it can follow the pointer.
             let mouse = pointer()
-            followed = screens.firstIndex { $0.notchDisplayID == displayID }
+            followed = screens.firstIndex { $0.id == displayID }
                 ?? screens.firstIndex { NSMouseInRect(mouse, $0.frame, false) }
         }
         return NotchSupport.screenIndex(
             preference: preference,
-            builtIn: screens.map { CGDisplayIsBuiltin($0.notchDisplayID) != 0 },
-            notched: screens.map { $0.safeAreaInsets.top > 0 },
-            main: screens.firstIndex(where: { $0 === NSScreen.withMenuBar }) ?? 0,
+            builtIn: screens.map(\.isBuiltIn),
+            notched: screens.map { $0.safeAreaTop > 0 },
+            main: screens.firstIndex(where: \.hasMenuBar) ?? 0,
             pointer: followed,
             hasLid: Self.hasLid)
     }
@@ -2679,11 +2700,11 @@ package final class NotchService: ObservableObject {
     }
 
     private func updateScreen() {
-        let screens = NSScreen.screens
-        menuBarMeasurements.retainDisplays(screens.map(\.notchDisplayID))
+        let screens = displays()
+        menuBarMeasurements.retainDisplays(screens.map(\.id))
         guard let index = screenIndex(in: screens) else { withdrawFromMissingScreen(); return }
         let screen = screens[index]
-        displayID = screen.notchDisplayID
+        displayID = screen.id
         var next = baseGeometry(for: screen)
         let sameMenuBar = next.hasSameMenuBar(as: geometry)
         if sameMenuBar { next.compactSideRoom = geometry.compactSideRoom }
@@ -2719,23 +2740,19 @@ package final class NotchService: ObservableObject {
     }
 
     /// The island's geometry on a display, before its menus are measured.
-    private func baseGeometry(for screen: NSScreen) -> NotchGeometry {
-        let cameraWidth: CGFloat
-        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-            cameraWidth = max(0, right.minX - left.maxX)
-        } else { cameraWidth = 0 }
-        return NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaInsets.top,
-                             cameraWidth: cameraWidth,
-                             layout: NotchSize(rawValue: defaults.string(forKey: DefaultsKey.notchSize) ?? "") ?? .spacious,
-                             menuBarHeight: menuBarMeasurements.height(
-                                displayID: screen.notchDisplayID, frame: screen.frame,
-                                visibleTop: screen.visibleFrame.maxY, scale: screen.backingScaleFactor,
-                                statusBarThickness: NSStatusBar.system.thickness),
-                             customWidth: defaults.double(forKey: DefaultsKey.notchCustomWidth),
-                             customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
-                             cameraFit: NotchCameraFit.current(), silhouette: NotchSilhouette.current(),
-                             capsuleFit: NotchCapsuleFit.current(),
-                             outline: defaults.bool(forKey: DefaultsKey.notchOutlineEnabled))
+    private func baseGeometry(for screen: NotchDisplayInfo) -> NotchGeometry {
+        NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaTop,
+                      cameraWidth: screen.cameraWidth,
+                      layout: NotchSize(rawValue: defaults.string(forKey: DefaultsKey.notchSize) ?? "") ?? .spacious,
+                      menuBarHeight: menuBarMeasurements.height(
+                         displayID: screen.id, frame: screen.frame,
+                         visibleTop: screen.visibleFrame.maxY, scale: screen.backingScale,
+                         statusBarThickness: statusBarThickness()),
+                      customWidth: defaults.double(forKey: DefaultsKey.notchCustomWidth),
+                      customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
+                      cameraFit: NotchCameraFit.current(), silhouette: NotchSilhouette.current(),
+                      capsuleFit: NotchCapsuleFit.current(),
+                      outline: defaults.bool(forKey: DefaultsKey.notchOutlineEnabled))
     }
 
     private func updateFullscreenVisibility(displayID: CGDirectDisplayID) {
