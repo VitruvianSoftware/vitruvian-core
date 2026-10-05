@@ -386,9 +386,6 @@ def main():
           + declaration(notch, "    private var canFollowPointer:").replace("private var", "var", 1)
           + declaration(notch, "    private func move(to screen:").replace("private func", "func", 1)
           + "}\n}\n")
-    write("NotchKeyMonitor.swift", "import Foundation\nextension NotchKeyMonitorTests {\nfinal class Service: State {\n"
-          + declaration(notch, "    private func installEventMonitors()").replace("private func", "func", 1)
-          + "}\n}\n")
     write("NotchPresentationRefresh.swift", "import AppKit\nimport Foundation\nimport Combine\nimport SwiftUI\n"
           + "extension NotchPresentationRefreshContract {\nfinal class Service: State {\n"
           + "func hover(_ entered: Bool) {\nlet wasInside = inside\n"

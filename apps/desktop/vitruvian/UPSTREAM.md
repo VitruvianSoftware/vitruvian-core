@@ -1570,6 +1570,11 @@ is that notice. Add an entry for every change to upstream files.
   `Services/Notch/NotchSectionScrollRoute.swift`;
   `Tests/NotchSectionPagingTests.swift` drives it, and
   `Tests/generate_sources.py` no longer copies the service's scroll handlers.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the island's local key
+  and click routing moves from `Services/Notch/NotchService.swift` to
+  `Services/Notch/NotchLocalEventRoute.swift`; `Tests/NotchKeyMonitorTests.swift`
+  drives it, and `Tests/generate_sources.py` no longer copies
+  `installEventMonitors()`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

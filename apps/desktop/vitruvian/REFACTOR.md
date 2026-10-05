@@ -1338,6 +1338,25 @@ Landed (4b, the gallery's wheel): one more generated file goes, which leaves
 - **Verification:** a Linux model of the paging and the route runs the
   whole test (61 checks) and kills all 12 mutants of the route.
 
+Landed (4b, the island's keys and clicks): one more generated file goes,
+which leaves 40.
+
+- **Moved:** what the island's local event monitor does with a key or a
+  click leaves `NotchService` for `NotchLocalEventRoute`
+  (`Services/Notch/NotchLocalEventRoute.swift`). It reads a
+  `NotchMonitoredEvent`, which `NSEvent` adopts, and asks an `Island` of
+  closures for state and actions. `NotchService` keeps installing the
+  monitors, and the click-away test both monitors share
+  (`clickIsAway()`).
+- **Test:** the key monitor test runs the real route instead of a copy of
+  `installEventMonitors()`. Besides Escape through composing fields and the
+  Tools arrows, it now checks the gallery, page and Control-Tab shortcuts,
+  capture controls holding them, the order the gallery, Scratchpad and
+  clipboard handlers get a key, clicks inside, on a popover and away, and
+  that no click has its key code read, which `NSEvent` would refuse.
+- **Verification:** a Linux model of the route runs the test (32 checks)
+  and kills all 22 mutants of the route.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
