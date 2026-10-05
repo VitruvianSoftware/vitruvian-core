@@ -1437,6 +1437,11 @@ is that notice. Add an entry for every change to upstream files.
   injected `Opening` (`open(_:using:)`); `Tests/NowPlayingOpenContract.swift`
   passes recording doubles, and `Tests/generate_sources.py` no longer copies
   `open`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Update/UpdateService.swift` runs its administrator install through
+  an injected `AdminInstall`; `Tests/UpdateAdminInstallTests.swift` passes
+  doubles to its own service, and `Tests/generate_sources.py` no longer copies
+  `launchAdminInstaller`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

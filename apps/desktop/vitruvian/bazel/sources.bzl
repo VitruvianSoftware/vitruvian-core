@@ -357,7 +357,6 @@ GENERATED_TEST_SOURCES = [
     "SwitcherActivationBodies.swift",
     "SwitcherScroll.swift",
     "UninstallerFlow.swift",
-    "UpdateAdminInstall.swift",
     "UpdateHighlights.swift",
     "UpdateIntroFlow.swift",
 ]

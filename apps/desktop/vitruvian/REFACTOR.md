@@ -894,6 +894,22 @@ more generated file goes, which leaves 67.
 - **No longer checked:** that the cooperative request names Vitruvian as its
   source. That now sits in `system`'s one-line closure.
 
+Landed (4b, the updater's administrator install): one more generated file
+goes, which leaves 66.
+
+- **Injected:** `UpdateService` takes an `AdminInstall`:
+  - the authorization;
+  - hiding and restoring the Extra Brightness overlay;
+  - the main-queue hop;
+  - quitting.
+
+  `system` keeps `AdminShell`, the overlay service, the main queue and
+  `NSApp`. `launchAdminInstaller` is `package`.
+- **Test:** the test runs its own service.
+- **Checks added:** the answer waits for the main queue, and a declined
+  prompt leaves the service offering the update. Before, a double logged the
+  offer.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
