@@ -1741,6 +1741,9 @@ is that notice. Add an entry for every change to upstream files.
     and `Tests/SoftwareDimmingRouteTests.swift` drive the service over the
     new `Tests/BrightnessRig.swift`, and `Tests/generate_sources.py` no
     longer copies its members.
+  - `Tests/FeatureCatalogTests.swift`: the reconfiguration checks read
+    `configureDisplay`, where the main-thread, built-in and lid guards now
+    sit in front of the environment's transaction.
   - `Tests/RecorderExportRenderingTests.swift` names the export failure.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
