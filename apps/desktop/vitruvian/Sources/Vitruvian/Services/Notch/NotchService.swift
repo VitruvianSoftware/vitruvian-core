@@ -2912,13 +2912,17 @@ package final class NotchService: ObservableObject {
         eventMonitors.removeAll()
     }
 
+    /// Only a current offer, in the open island that is running, opens its
+    /// release notes; the resting island never opens for one.
+    package static func opensUpdatePreview(offered: Bool, running: Bool, suspended: Bool, expanded: Bool) -> Bool {
+        running && !suspended && expanded && offered
+    }
+
     package func showUpdate() {
         // UI passes this as the update control's action, which runs on the main thread.
-        let offered = MainActor.assumeIsolated {
-            if case .available = UpdateService.shared.state { return true }
-            return false
-        }
-        guard running, !suspended, expanded, offered else { return }
+        let offered = MainActor.assumeIsolated { UpdateService.shared.state.isOffer }
+        guard Self.opensUpdatePreview(offered: offered, running: running, suspended: suspended,
+                                      expanded: expanded) else { return }
         collapse()
         MainActor.assumeIsolated { appShell()?.showUpdatePreview() }
     }

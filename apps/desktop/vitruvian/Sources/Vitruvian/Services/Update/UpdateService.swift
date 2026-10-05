@@ -55,6 +55,12 @@ package final class UpdateService: ObservableObject {
         case downloading(progress: Double?)
         case installing
         case failed(String)
+
+        /// A version is on offer, which the island's update control opens.
+        package var isOffer: Bool {
+            if case .available = self { return true }
+            return false
+        }
     }
 
     @Published package private(set) var state: State = .idle

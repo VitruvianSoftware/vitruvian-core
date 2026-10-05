@@ -320,18 +320,6 @@ def main():
               .replace("private var", "var", 1).replace("NotchSupport.controls()", "controls")
               .replace("NotchTimerService.shared", "NotchCompactTests.NotchTimerService.shared")
           + "}\n")
-    update_view = "Sources/Vitruvian/UI/Notch/NotchUpdateControl.swift"
-    write("NotchUpdate.swift", "import AppKit\nimport SwiftUI\nimport Combine\nextension NotchUpdateTests {\n"
-          + "final class UpdateService: ObservableObject {\nstatic let shared = UpdateService()\n"
-          + "typealias State = VitruvianServices.UpdateService.State\n"
-          + "@Published var state: State = .idle\n}\n"
-          + "final class L10n: ObservableObject {\nstatic let shared = L10n()\n@Published var language = AppLanguage.enUS\n"
-          + declaration("Sources/Vitruvian/Core/Localization.swift", "    var s: Strings")
-          + "}\nfinal class Service: State {\n"
-          + declaration(notch, "    func showUpdate()")
-          + "}\n"
-          + declaration(update_view, "struct NotchUpdateControl:")
-          + "}\n")
     canvas = "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift"
     write("NotchHover.swift", "import AppKit\nextension NotchHoverTests {\nfinal class Service: State {\n"
           + declaration(notch, "    func show(_ incoming:").replace("NotchSupport.routes(incoming.event)", "true")

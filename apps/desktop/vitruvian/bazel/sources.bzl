@@ -318,7 +318,6 @@ GENERATED_TEST_SOURCES = [
     "NotchPresentationRefresh.swift",
     "NotchQueueHold.swift",
     "NotchScreenRefresh.swift",
-    "NotchUpdate.swift",
     "PointerDisplayLookups.swift",
     "PointerOnDisplay.swift",
     "PostUpdateStatusItemRecovery.swift",

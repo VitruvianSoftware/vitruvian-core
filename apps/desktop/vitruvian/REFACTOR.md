@@ -1357,6 +1357,19 @@ which leaves 40.
 - **Verification:** a Linux model of the route runs the test (32 checks)
   and kills all 22 mutants of the route.
 
+Landed (4b, the island's update control): one more generated file goes,
+which leaves 39.
+
+- **Split:** `NotchUpdateControl` follows `UpdateService` and draws
+  `NotchUpdateBadge`, which takes the state, so the layout test measures the
+  module's own view for any state and language. `UpdateService.State.isOffer`
+  names an available version, and `NotchService.opensUpdatePreview` is the
+  rule `showUpdate()` applies.
+- **Test:** the update test checks the real rule and lays out the real
+  control instead of copies of `showUpdate()`, the control and a stand-in
+  `UpdateService` and `L10n`. It restores the language it changes.
+- **Verification:** SwiftUI and AppKit, so macOS CI only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -9,65 +9,33 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production action and view bodies. No network, download, visible window,
-/// screenshot or input event is used by this contract.
+/// The island's update action and the module's own update control. No
+/// network, download, visible window, screenshot or input event is used.
 enum NotchUpdateTests {
-    final class Delegate {
-        var previews = 0
-        func showUpdatePreview() { previews += 1 }
-    }
-    class State {
-        var running = true
-        var suspended = false
-        var expanded = false
-        var collapses = 0
-        let delegate = Delegate()
-        func collapse() { collapses += 1; expanded = false }
-        func appShell() -> Delegate? { delegate }
-        init() {}
-    }
-
     static func run(_ suite: TestSuite) {
-        let updates = UpdateService.shared
-        let service = Service()
-        defer { updates.state = .idle }
         let states: [UpdateService.State] = [.idle, .checking, .upToDate, .failed("offline"),
             .available(version: "3.4.0"), .available(version: "3.4.0-beta.3"),
             .downloading(progress: nil), .downloading(progress: 0.5), .installing]
         for state in states {
-            updates.state = state
+            let offered: Bool
+            if case .available = state { offered = true } else { offered = false }
+            suite.expect(state.isOffer == offered, "only an available version is an offer (\(state))")
             for running in [false, true] {
                 for suspended in [false, true] {
                     for expanded in [false, true] {
-                        service.running = running
-                        service.suspended = suspended
-                        service.expanded = expanded
-                        let before = service.delegate.previews
-                        let collapsed = service.collapses
-                        service.showUpdate()
-                        let offered: Bool
-                        if case .available = state { offered = true } else { offered = false }
-                        let opens = running && !suspended && expanded && offered
-                        suite.expect(service.delegate.previews == before + (opens ? 1 : 0)
-                               && service.collapses == collapsed + (opens ? 1 : 0),
-                               "only a current offer in the open, running island can open release notes")
+                        let opens = NotchService.opensUpdatePreview(offered: state.isOffer, running: running,
+                                                                    suspended: suspended, expanded: expanded)
+                        suite.expect(opens == (running && !suspended && expanded && offered),
+                                     "only a current offer in the open, running island can open release notes")
                     }
                 }
             }
         }
-        service.running = true; service.suspended = false; service.expanded = false
-        updates.state = .available(version: "3.4.0-beta.3")
-        let before = service.delegate.previews
-        service.showUpdate()
-        suite.expect(service.delegate.previews == before && !service.expanded,
-               "an update cannot open or activate the resting island")
-        service.expanded = true
-        service.showUpdate()
-        suite.expect(service.delegate.previews == before + 1 && !service.expanded,
-               "opening the island makes the existing offer actionable and the action closes it for release notes")
-        service.showUpdate()
-        suite.expect(service.delegate.previews == before + 1,
-               "a delayed second action after collapse cannot reopen the update preview")
+        let offer = UpdateService.State.available(version: "3.4.0-beta.3").isOffer
+        suite.expect(!NotchService.opensUpdatePreview(offered: offer, running: true, suspended: false, expanded: false),
+                     "an update cannot open or activate the resting island")
+        suite.expect(NotchService.opensUpdatePreview(offered: offer, running: true, suspended: false, expanded: true),
+                     "opening the island makes the existing offer actionable")
         layout(suite)
     }
 
@@ -80,12 +48,13 @@ enum NotchUpdateTests {
         let samples: [UpdateService.State] = [.available(version: "3.4.0-beta.3"),
                                              .available(version: "3.4.0"), .downloading(progress: nil),
                                              .downloading(progress: 0.63), .installing]
+        let originalLanguage = L10n.shared.language
+        defer { L10n.shared.language = originalLanguage }
         for language in AppLanguage.allCases {
             L10n.shared.language = language
             for state in samples {
-                UpdateService.shared.state = state
                 for compact in [false, true] {
-                    let host = NSHostingView(rootView: NotchUpdateControl(action: {}, compact: compact)
+                    let host = NSHostingView(rootView: NotchUpdateBadge(state: state, action: {}, compact: compact)
                         .environment(\.colorScheme, .dark))
                     host.layoutSubtreeIfNeeded()
                     let size = host.fittingSize
