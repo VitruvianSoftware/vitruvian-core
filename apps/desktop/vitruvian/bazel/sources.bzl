@@ -345,7 +345,6 @@ GENERATED_TEST_SOURCES = [
     "ScreenshotShareCompletion.swift",
     "ScreenshotShortcutCompletion.swift",
     "ScrollingCaptureLoop.swift",
-    "SelfUninstallRemoval.swift",
     "ShelfDragCompletion.swift",
     "ShelfDropRouting.swift",
     "SoftwareDimmingRoute.swift",

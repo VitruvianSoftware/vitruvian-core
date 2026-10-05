@@ -986,6 +986,25 @@ which leaves 62.
 - **Test:** the layout test renders the real view instead of a copy of its
   body.
 
+Landed (4b, clearing permissions and uninstalling): one more generated
+file goes, which leaves 61.
+
+- **Injected:** `SelfUninstall.clearPermissions` and `uninstallCompletely`
+  take `Steps`:
+  - every teardown step: input interceptors, sleep, fan helper, login item,
+    sudoers rule, TCC, preferences and the bundle;
+  - the fan helper's registration;
+  - the aftermath on success or failure;
+  - the main and background queues.
+
+  `system` is the real teardown. The local `stop` functions are marked
+  `@Sendable`.
+- **Test:** the test logs a run of doubles instead of a copy of five
+  functions. Its messages now come from the real strings.
+- **Generated registry kept:** `LocalizationCatalog.swift` stays. It lists
+  every `FeatureStrings` factory and copies no production code, so it is a
+  generated registry, not a copy.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

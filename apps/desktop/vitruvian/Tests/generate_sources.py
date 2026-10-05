@@ -1029,24 +1029,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func restoreSleepWithAuthorization(")
           + "}\n")
 
-    self_uninstall = "Sources/Vitruvian/Services/SelfUninstall.swift"
-    write("SelfUninstallRemoval.swift", "import Foundation\n\nextension SelfUninstallContract {\nenum Host {\n"
-          + "static let bundleID = \"test\"\n"
-          + "static func suspendInputInterceptors() -> Bool { events.append(\"suspend\"); return suspensionAllowed }\n"
-          + "static func restoreSleepBeforeRemoval() -> Bool { events.append(\"sleep\"); return sleepRestoreAllowed }\n"
-          + "static func detachFanControl() -> Bool { events.append(\"fan\"); return detachAllowed }\n"
-          + "static func detachLoginItem() { events.append(\"login\") }\n"
-          + "static func removePreferences() { events.append(\"preferences\") }\n"
-          + "static func trashOwnBundleAndQuit() { events.append(\"trash\") }\n"
-          + declaration(self_uninstall, "    private static func detachFromSystem()")
-            .replace("private static", "static", 1)
-          + declaration(self_uninstall, "    static func clearPermissions(")
-          + declaration(self_uninstall, "    static func uninstallCompletely(")
-          + declaration(self_uninstall, "    private static func removeSudoersRuleIfPresent(")
-          + declaration(self_uninstall, "    private static func resetTCC(")
-            .replace("private static", "@discardableResult static", 1)
-          + "}\n}\n")
-
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"
     for path in sorted((ROOT / "Sources/Vitruvian/Core").glob("*Strings.swift")):
