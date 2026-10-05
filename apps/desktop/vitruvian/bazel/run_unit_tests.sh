@@ -8,7 +8,8 @@
 #      files (sources, Resources/, build.sh) by app-relative paths;
 #   2. on a full run, run Tests/PreferenceCleanupTests.sh;
 #   3. always sweep the throwaway UserDefaults suites the tests created;
-#   4. end the log with TESTS OK or TESTS FAILED, which mutation_checks.py
+#   4. fail unless every suite asked for reported its result;
+#   5. end the log with TESTS OK or TESTS FAILED, which mutation_checks.py
 #      reads.
 #
 # The suites live in the account's real ~/Library/Preferences: cfprefsd writes
@@ -68,10 +69,24 @@ if [[ -x "$backtracer" ]]; then
 	export SWIFT_BACKTRACE="enable=yes,interactive=no,swift-backtrace=$backtracer"
 fi
 
+# Every suite asked for must report its line (`notch: OK (…)`), so a run
+# that skips suites cannot pass: Swift Testing would count it green.
+if [[ -n "$selection" ]]; then
+	expected=$(tr ',' '\n' <<<"$selection" | grep -c .)
+else
+	expected=$(awk '/static let names = \[/{f=1; next} f && /\]/{exit} f' Tests/TestGroups.swift | grep -c '"')
+fi
+output="$TEST_TMPDIR/unit-tests.log"
+
 status=0
-"$binary" || status=$?
+"$binary" 2>&1 | tee "$output" || status=$?
+reported=$(grep -cE '^[[:alnum:]-]+: (OK|FAILED) \([0-9]+ checks' "$output" || true)
+if [[ $reported -ne $expected ]]; then
+	echo "$reported of $expected suites reported a result"
+	status=1
+fi
 if [[ $status -eq 0 ]]; then
-	echo "TESTS OK"
+	echo "TESTS OK ($reported suites)"
 else
 	echo "TESTS FAILED: the failed checks are listed under their suites above"
 fi
