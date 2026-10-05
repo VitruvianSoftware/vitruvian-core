@@ -894,7 +894,7 @@ enum ClipboardPreviewContract {
         init(_ entries: [ClipboardHistoryEntry], seed: Seed = .file, hasFile: Bool = true,
              byteLimit: Int = ClipboardHistoryEditing.maxEncodedHistoryBytes, images: [String: Data] = [:]) {
             let recorder = Recorder()
-            let name = "ClipboardPreviewContract-\(UUID().uuidString)"
+            let name = "vitru.tests.clipboard-preview.\(UUID().uuidString)"
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(name)
             let defaults = UserDefaults(suiteName: name)!
             let storeURL = hasFile ? directory.appendingPathComponent("ClipboardHistory.json") : nil
@@ -923,7 +923,7 @@ enum ClipboardPreviewContract {
 
         deinit {
             try? FileManager.default.removeItem(at: directory)
-            UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
+            defaults.removePersistentDomain(forName: domain)
         }
 
         /// Copies an entry and lets the write finish.
