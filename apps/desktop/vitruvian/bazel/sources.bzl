@@ -299,7 +299,6 @@ GENERATED_TEST_SOURCES = [
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
     "MixerInputVolume.swift",
-    "MixerOutputAdjustment.swift",
     "NotchCaptureKeyboard.swift",
     "NotchCompact.swift",
     "NotchDestinations.swift",

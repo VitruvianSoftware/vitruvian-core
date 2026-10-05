@@ -141,9 +141,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    # The raw wheel tap runs as shipped: linear scrolling's cap, carry and
-    # write-back, then the direction change. Only the services it asks and
-    # the defaults it reads are fixtures.
     # Entire input/mute services retain their production control flow. Only
     # visibility, scheduling, defaults and HAL transport are replaced by fixtures.
     input_source = "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift"
@@ -160,43 +157,6 @@ def main():
         input_bodies = input_bodies.replace("AudioObject" + operation + "(", "HAL." + operation + "(")
     write("MixerInputVolume.swift", "import Foundation\nimport Combine\nimport CoreAudio\nimport AudioToolbox\n"
           + "extension MixerInputVolumeContract {\n" + input_bodies + "}\n")
-    mixer = "Sources/Vitruvian/Services/Audio/AppVolumeMixer.swift"
-    write("MixerOutputAdjustment.swift", "import CoreAudio\nimport Foundation\n"
-          + "extension MixerOutputAdjustmentContract {\nfinal class Mixer {\n"
-          + declaration(mixer, "    private struct OutputAdjustment {")
-          + declaration(mixer, "    private struct OutputStep {")
-          + "private var queuedOutputSteps: [OutputStep] = []\nvar outputStepReadInFlight = false\nvar outputStepReadGeneration = 0\n"
-          + "static func hasSettableOutputVolume(for device: AudioObjectID) -> Bool { true }\n"
-          + "static func outputVolume(for device: AudioObjectID) -> Float32? { Hardware.volume }\n"
-          + "static func outputMuted(for device: AudioObjectID) -> Bool? { Hardware.muted }\n"
-          + "var systemOutputVolume: Double?\nvar systemOutputMuted: Bool?\n"
-          + "var outputControlListenerDevice: AudioObjectID?\n"
-          + "var outputControlListenerAddresses: [AudioObjectPropertyAddress] = []\n"
-          + "var outputControlRefreshGeneration = 0\n"
-          + "private var pendingOutputAdjustment: OutputAdjustment?\nprivate var outputWriteInFlight: OutputAdjustment?\n"
-          + "let outputControlLock = NSLock()\nvar outputControlLifetime = UUID()\nlet halQueue = Queue()\n"
-          + "var controlRefreshes: [AudioObjectID] = []\nvar listenerRefreshes = 0\n"
-          + "static let outputControlListenerCallback: AudioObjectPropertyListenerProc = { _, _, _, _ in noErr }\n"
-          + "var listenerClient: UnsafeMutableRawPointer? { nil }\n"
-          + "static func defaultOutputDeviceID() -> AudioObjectID { Hardware.device }\n"
-          + "static func setOutputVolume(_ value: Float, for device: AudioObjectID) -> Bool {\n"
-          + "Hardware.writes.append(.init(device: device, volume: value, muted: nil))\n"
-          + "let after = Hardware.afterVolumeWrite; Hardware.afterVolumeWrite = nil; after?()\nreturn Hardware.succeeds\n}\n"
-          + "static func setOutputMuted(_ value: Bool, for device: AudioObjectID) -> Bool {\n"
-          + "Hardware.writes.append(.init(device: device, volume: nil, muted: value)); return Hardware.succeeds\n}\n"
-          + "func scheduleListenerRefresh() { listenerRefreshes += 1 }\n"
-          + "func scheduleOutputControlRefresh(for device: AudioObjectID) { controlRefreshes.append(device) }\n"
-          + "func selectOutput(_ device: AudioObjectID?, volume: Double?, muted: Bool?) {\n"
-          + "removeOutputControlListeners(); outputControlListenerDevice = device; applyOutputControls(volume: volume, muted: muted)\n}\n"
-          + "func readSnapshot(volume: Double?, muted: Bool?) { applyOutputControls(volume: volume, muted: muted) }\n"
-          + "".join(declaration(mixer, prefix) for prefix in [
-              "    func requestOutputAdjustment(", "    private func removeOutputControlListeners(",
-              "    func requestOutputStep(", "    func requestOutputMuteToggle(",
-              "    private func enqueueOutputKey(", "    private func settleQueuedOutputSteps(",
-              "    private func applyQueuedOutputSteps(",
-              "    private func isCurrentOutputAdjustment(", "    private var hasCurrentOutputAdjustment:",
-              "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
-          + "}\n}\n")
 
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
     adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"

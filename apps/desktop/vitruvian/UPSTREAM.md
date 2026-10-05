@@ -1659,6 +1659,11 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/KeepAwakeLidSleepTests.swift`, `Tests/KeepAwakeClamshellTests.swift`
     and `Tests/KeepAwakeDimmingTests.swift` drive both, and
     `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the output volume and
+  mute state of `Services/Audio/AppVolumeMixer.swift` moves to the new
+  `Services/Audio/MixerOutputControl.swift`; `Tests/MixerOutputAdjustmentTests.swift`
+  drives it, and `Tests/generate_sources.py` no longer copies the mixer's
+  members (it also loses a comment left from an earlier removed block).
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -1733,6 +1733,50 @@ which leaves 25.
   - the lid watch's mode check and repeat check, whose branches recheck;
   - the option's own restore, which the disarm repeats.
 
+Landed (4b, the mixer's output volume): one more generated file goes,
+which leaves 24.
+
+- **Moved:** the default output's volume and mute leave `AppVolumeMixer` for
+  `MixerOutputControl` (new):
+  - the reading;
+  - the pending level and the write in flight;
+  - the keys waiting on the output's own reading;
+  - the lifetime that keeps one output's requests off the next;
+  - the read after the output's own notifications.
+
+  Its `Host` is the HAL queue, the main queue and delayed work, the HAL
+  reads and writes, whether the mixer still listens, and where the reading
+  and an output change go. The mixer keeps the listener registrations, its
+  `@Published` reading (the control assigns it, as the mixer did), and the
+  three request calls, which delegate.
+- **Test:** the output adjustment test drives a real control over an
+  in-memory output and hand-run queues. It used to run a copy of eleven
+  members with the refresh and the listener refresh stubbed. New checks:
+  - a failed write reads back the output's own level;
+  - a burst of notifications reads once, only for the output followed and
+    only while the mixer listens;
+  - a reading of a previous output, or from before it was followed again,
+    is dropped;
+  - an output without a settable volume reads as having none;
+  - with no output followed, requests go back to the system;
+  - requests clamp to the output's range;
+  - a key after the previous one finished reads again;
+  - a write for an output that stopped being the default is refused, and
+    one that outlived its output asks for the outputs again;
+  - the mixer's own writes and stop update the reading.
+- **Verification:** a Linux Swift 6.4 model of the control runs the test, 48
+  checks, and 51 mutants. One did not compile. Four survive, each
+  equivalent with serial HAL and main queues:
+  - the read generation and its check, already covered by the in-flight
+    write: a direct change always queues its write behind the read;
+  - the read's check for a current write, which only a direct change could
+    start, and that bumps the read generation;
+  - the drain's lifetime check: `end()` clears the pending level, so a
+    pending one is always current.
+
+  The mixer's host wiring type-checks against stubs; the HAL itself needs
+  macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
