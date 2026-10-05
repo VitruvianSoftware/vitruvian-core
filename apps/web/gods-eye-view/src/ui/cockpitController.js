@@ -74,11 +74,11 @@ export class CockpitViewController {
     {
       services,
       onVisionChange = null,
+      getInitialVisionMode = null,
       onCameraTakeover = null,
       isEntryAllowed = null,
       onEntered = null,
       onExited = null,
-      getInheritedVisionLabel = null,
       restoreTrackingFrame = null,
     } = {},
   ) {
@@ -143,13 +143,13 @@ export class CockpitViewController {
     this.visionNext = document.getElementById('cockpit-vision-next');
     this.visionMode = 'optical';
     this.onVisionChange = onVisionChange;
+    this.getInitialVisionMode =
+      typeof getInitialVisionMode === 'function'
+        ? getInitialVisionMode
+        : () => 'optical';
     this.onCameraTakeover = onCameraTakeover;
     this.onEntered = onEntered;
     this.onExited = onExited;
-    this.getInheritedVisionLabel =
-      typeof getInheritedVisionLabel === 'function'
-        ? getInheritedVisionLabel
-        : () => 'NORMAL';
     this.restoreTrackingFrame =
       typeof restoreTrackingFrame === 'function'
         ? restoreTrackingFrame

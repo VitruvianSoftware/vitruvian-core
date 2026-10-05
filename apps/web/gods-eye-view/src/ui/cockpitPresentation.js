@@ -80,7 +80,7 @@ export const COCKPIT_BRIEF_PAGES = [
     id: 'local',
     kicker: 'LOCAL INFO',
     subtitle: 'PLACE / CONDITIONS / POSITION',
-    source: 'OPENSTREETMAP · OPEN-METEO · UTC',
+    source: 'NATURAL EARTH · OPEN-METEO · UTC',
   },
 ];
 

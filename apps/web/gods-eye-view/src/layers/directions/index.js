@@ -717,6 +717,7 @@ export function createDirectionsLayer({ services }) {
   }
 
   function clearRouteGraphics() {
+    services.credits?.hideOsmCredit?.(_viewer, 'directions');
     _clearStepSelection();
     stopStepAnchoring();
     removeEntity(_routeEntity);
@@ -822,6 +823,7 @@ export function createDirectionsLayer({ services }) {
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       });
     }
+    services.credits?.showOsmCredit?.(_viewer, 'directions');
     services.ground.warmGroundFloor(cells);
     _anchorAttempts = 0;
     _anchorStartedAt = Date.now();

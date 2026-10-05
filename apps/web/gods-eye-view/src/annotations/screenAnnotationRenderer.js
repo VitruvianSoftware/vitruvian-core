@@ -183,7 +183,12 @@ export function createScreenAnnotationRenderer(
         filter: 'url(#gev-sketch)',
       });
       group.appendChild(parts.poly);
-      parts.label = makeCallout(anno.label, c);
+      parts.label = makeCallout(
+        anno.outlineUnavailable
+          ? `${anno.label || ''} · Detailed outline unavailable`
+          : anno.label,
+        c,
+      );
       if (parts.label) group.appendChild(parts.label.node);
     } else if (anno.type === 'arrow' && anno.to) {
       parts.path = svgEl('path', {
@@ -196,7 +201,12 @@ export function createScreenAnnotationRenderer(
       });
       ensureArrowMarker(defs, anno.color || 'primary', c);
       group.appendChild(parts.path);
-      parts.label = makeCallout(anno.label, c);
+      parts.label = makeCallout(
+        anno.outlineUnavailable
+          ? `${anno.label || ''} · Detailed outline unavailable`
+          : anno.label,
+        c,
+      );
       if (parts.label) group.appendChild(parts.label.node);
     } else if (
       anno.type === 'route' &&
@@ -225,7 +235,12 @@ export function createScreenAnnotationRenderer(
         group.appendChild(dot);
         return dot;
       });
-      parts.label = makeCallout(anno.label, c);
+      parts.label = makeCallout(
+        anno.outlineUnavailable
+          ? `${anno.label || ''} · Detailed outline unavailable`
+          : anno.label,
+        c,
+      );
       if (parts.label) group.appendChild(parts.label.node);
     } else {
       // pin / highlight / label — pulsing target rings + a marker dot + callout
@@ -264,7 +279,12 @@ export function createScreenAnnotationRenderer(
         'stroke-opacity': '0.7',
       });
       group.appendChild(parts.leader);
-      parts.label = makeCallout(anno.label, c);
+      parts.label = makeCallout(
+        anno.outlineUnavailable
+          ? `${anno.label || ''} · Detailed outline unavailable`
+          : anno.label,
+        c,
+      );
       if (parts.label) group.appendChild(parts.label.node);
     }
 
@@ -323,6 +343,10 @@ export function createScreenAnnotationRenderer(
       return;
     }
     rec.anno = anno;
+    if (anno.outlineUnavailable && rec.parts.label) {
+      rec.parts.label.text.textContent = `${anno.label || ''} · Detailed outline unavailable`;
+      sizeCallout(rec.parts.label);
+    }
 
     if (empty) {
       for (const child of Array.from(rec.group.children)) child.remove();

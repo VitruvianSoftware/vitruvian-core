@@ -49,7 +49,7 @@ function viewerFixture() {
   const added = [];
   const removed = [];
   return {
-    creditDisplay: { addStaticCredit() {} },
+    creditDisplay: { addStaticCredit() {}, removeStaticCredit() {} },
     dataSources: {
       add(source) { added.push(source); },
       remove(source) { removed.push(source); },

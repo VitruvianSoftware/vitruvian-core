@@ -31,6 +31,7 @@ import {
   decodeLayerStateParams,
   encodeLayerStateParams,
 } from './data/layerState.js';
+import { STYLE_URL_NAMES } from './view/index.js';
 
 /**
  * Share Links — URL Hash State Management
@@ -42,16 +43,8 @@ import {
 const DEBOUNCE_MS = 500;
 const LEGACY_BLOOM_FALLBACK = 50;
 
-// Style name mapping: internal → URL-friendly
-const STYLE_TO_URL = {
-  normal: 'normal',
-  retro: 'crt',
-  surveillance: 'nvg',
-  thermal: 'flir',
-  anime: 'anime',
-  noir: 'noir',
-  snow: 'snow',
-};
+// Style name mapping: internal → URL-friendly, shared with views.
+const STYLE_TO_URL = STYLE_URL_NAMES;
 
 const SHARE_UI_STATE_PARAM = 'ui';
 const SHARE_STYLE_PARAMS_PARAM = 'sp';
@@ -558,7 +551,13 @@ export class ShareLinkManager {
     if (this._destroyed || this._initialRestorePending) return;
     const params = this._buildHashParams();
     if (!params) return;
-    history.replaceState(null, '', `#${params.toString()}`);
+    // The hash belongs to this page's address, not the document base the
+    // app may load under.
+    history.replaceState(
+      null,
+      '',
+      new URL(`#${params.toString()}`, window.location.href).href,
+    );
   }
 
   /** Build a deterministic snapshot without mutating history. */

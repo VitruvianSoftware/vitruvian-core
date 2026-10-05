@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import { LayerStateCoordinator } from '../data/layerState.js';
+import { LayerStateCoordinator } from '../data/layerStateCoordinator.js';
 import { stampInitialShareGesture } from '../navigationPolicy.js';
 import { canPresentDeferredStatusNotice } from '../loadingFeedback.js';
 import { UiLifetime } from './uiLifetime.js';
