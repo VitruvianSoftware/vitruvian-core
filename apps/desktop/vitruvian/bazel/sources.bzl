@@ -297,7 +297,6 @@ GENERATED_TEST_SOURCES = [
     "AppUpdates.swift",
     "BrightnessStep.swift",
     "CleanerEligibilityBodies.swift",
-    "CleanerLastRun.swift",
     "CleanerScanFlow.swift",
     "ClipboardHistoryImageEditor.swift",
     "ClipboardPreview.swift",

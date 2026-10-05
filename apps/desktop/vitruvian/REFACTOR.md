@@ -694,6 +694,15 @@ goes, which leaves 81.
   so "a cancelled reading consumes no more entries" fails when cancellation
   is ignored. Before, the file was unchanged and the check passed either way.
 
+Landed (4b, the Cleaner's last run): one more generated file goes, which
+leaves 80.
+
+- **Injected:** `CleanerScheduler.recordRun(freed:failed:at:in:)` saves a
+  finished automatic pass, and `CleanerView.lastRunLine(ranAt:freed:failed:strings:)`
+  is the schedule card's line for it. The test saves to a test defaults
+  domain, reads back through the card's `Preferences` keys and checks the
+  shipped English strings, in place of a stand-in defaults store and strings.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -722,12 +722,17 @@ package struct CleanerView: View {
     }
 
     private var lastRunLine: String {
-        let ranAt = Self.nextRunFormatter.string(from: Date(timeIntervalSince1970: lastAutoRun))
-        let line = lastAutoFreed > 0
-            ? String(format: l10n.s.cleanerScheduleLastFormat, Self.byteString(Int64(lastAutoFreed)))
-            : String(format: l10n.s.cleanerScheduleRanFormat, ranAt)
+        Self.lastRunLine(ranAt: Self.nextRunFormatter.string(from: Date(timeIntervalSince1970: lastAutoRun)),
+                         freed: lastAutoFreed, failed: lastAutoFailed, strings: l10n.s)
+    }
+
+    /// The schedule card's line for the last automatic pass.
+    package static func lastRunLine(ranAt: String, freed: Int, failed: Int, strings: Strings) -> String {
+        let line = freed > 0
+            ? String(format: strings.cleanerScheduleLastFormat, byteString(Int64(freed)))
+            : String(format: strings.cleanerScheduleRanFormat, ranAt)
         // A pass that moved nothing still reads as a normal run unless what it left is said.
-        return lastAutoFailed > 0 ? line + " " + l10n.s.uninstallerSomeFailed : line
+        return failed > 0 ? line + " " + strings.uninstallerSomeFailed : line
     }
 
     /// Checked slightly delayed so a just fired authorization prompt has a
