@@ -492,6 +492,14 @@ private struct MenuPanelHeader: View {
     }
 }
 
+/// The hub features behind the panel's utility and control rows. A tab stays
+/// available while any of its rows can show, which the tests check against
+/// `PanelSectionID.featureGate` (REFACTOR.md step 4b).
+package enum MenuPanelRowFeatures {
+    package static var utilities: [AppFeature] { UtilityPanelItem.allCases.map(\.feature) }
+    package static var controls: [AppFeature] { ControlPanelItem.allCases.map(\.feature) }
+}
+
 private enum UtilityPanelItem: String, PanelOrderItem, Identifiable {
     // Case order IS the default panel order (PanelLayout.itemOrder falls back
     // to allCases). Screenshot leads in 3.1.13; existing orders that predate it

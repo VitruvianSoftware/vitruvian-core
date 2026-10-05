@@ -323,7 +323,6 @@ GENERATED_TEST_SOURCES = [
     "MediaWorkspaceLayout.swift",
     "MenuPanelKey.swift",
     "MenuPanelRecovery.swift",
-    "MenuPanelSectionGates.swift",
     "MixerInputVolume.swift",
     "MixerOutputAdjustment.swift",
     "MusicLaunchBlockerLifecycle.swift",
