@@ -707,7 +707,7 @@ def main():
           + "extension ScreenshotShareCompletionTests {\nfinal class Controller: State {\n"
           + "".join(declaration(preview, prefix).replace("private func", "func", 1)
                     for prefix in ["    func shareLink()", "    private func performShare(",
-                                   "    private func copySharedLink()", "    private func scheduleAutoDismiss("])
+                                   "    private func copySharedLink()", "    func scheduleAutoDismiss("])
           + "}\n}\n")
     screenshot_service = "Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift"
     write("ScreenshotShortcutCompletion.swift", "import Foundation\n"
@@ -720,14 +720,6 @@ def main():
                                    "    private func invalidateLatestCaptureUploads()",
                                    "    private func beginLatestCapture(", "    private func discardLatestCapture(",
                                    "    private func syncLatestCapture("])
-          + "}\n}\n")
-    write("ScreenshotPreviewHover.swift", "import Foundation\n"
-          + "extension ScreenshotPreviewHoverTests {\nfinal class Controller: State {\n"
-          + "".join(declaration(preview, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func hoverChanged(", "    private func scheduleAutoDismiss(",
-                                   "    private func perform("])
-          + "}\nstruct Preview {\nlet embedded: Bool\nlet hoverChanged: (Bool) -> Void\n"
-          + declaration(preview, "    private func previewHoverChanged(").replace("private func", "func", 1)
           + "}\n}\n")
     selection = "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift"
     refresh_methods = [

@@ -1069,6 +1069,21 @@ which leaves 57.
 - **Test:** the test drives the real drag with stand-in windows instead of a
   copy of three service members.
 
+Landed (4b, the screenshot preview's hover and dismissal): one more generated
+file goes, which leaves 56.
+
+- **Injected:** `ScreenshotQuickPreviewController` takes a `Scheduler` for
+  its main-queue hops and the auto-dismiss timer; `main` keeps today's
+  behavior.
+- **Opened:** `hoverChanged`, `perform` and `scheduleAutoDismiss` are
+  `package`. The image view's hover forwarding is the static
+  `forwardImageHover(_:embedded:to:)`.
+- **Test:** the hover test builds a real preview over a manual clock instead
+  of a copy of the controller. The share-completion copy now copies the
+  `package` `scheduleAutoDismiss` with a scheduler fixture.
+- **Verification:** the controller draws through Core Graphics and SwiftUI,
+  which the Linux model cannot build. It relies on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

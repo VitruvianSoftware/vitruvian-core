@@ -1,126 +1,135 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// Production hover handlers and dismissal scheduling run with a controlled
-/// clock. Pointer crossings are supplied explicitly; no native UI is exercised.
+/// The production preview's hover handling and dismissal run with a
+/// controlled clock. Pointer crossings are supplied explicitly; the preview
+/// is never shown, so no native UI is exercised.
 enum ScreenshotPreviewHoverTests {
-    typealias DispatchQueue = NotchScreenRefreshContract.DispatchQueue
+    typealias Scheduler = NotchScreenRefreshContract.Scheduler
+    typealias Action = ScreenshotQuickPreviewController.Action
 
-    enum Action: Hashable { case edit, copy, save }
-
-    final class Model {
-        var disabledActions: Set<Action> = []
-        var sharing = false
-        var deletingShare = false
-    }
-
-    class State {
-        var pointerInside = false
-        var systemSharing = false
-        var dismissWork: DispatchWorkItem?
-        var autoDismissDuration: TimeInterval? = 12
+    /// A preview that is never shown, on `clock`, that records being closed.
+    final class Preview {
         var closed = false
-        let model = Model()
         var action: (Action) -> Set<Action> = { [$0] }
-        func close() { closed = true }
+        private(set) var controller: ScreenshotQuickPreviewController!
+
+        init(clock: Scheduler, dismissInterval: TimeInterval? = 12) {
+            let pixels = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                   space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+            controller = ScreenshotQuickPreviewController(
+                capture: .init(image: pixels, scale: 1, anchorRect: .zero),
+                strings: .enUS, defaultAction: .none, completedActions: [],
+                dismissInterval: dismissInterval,
+                action: { [unowned self] in self.action($0) },
+                share: { _, _ in }, shareFile: { nil },
+                onClose: { [unowned self] in self.closed = true },
+                scheduler: .init(async: { work in clock.async { work() } },
+                                 after: { delay, work in
+                                     clock.asyncAfter(deadline: .init(seconds: clock.now + delay), execute: work)
+                                 }))
+        }
     }
 
     static func run(_ suite: TestSuite) {
-        defer { DispatchQueue.main = NotchScreenRefreshContract.Scheduler() }
-        DispatchQueue.main = NotchScreenRefreshContract.Scheduler()
-        let editorPreview = Controller()
+        var clock = Scheduler()
+        let editorPreview = Preview(clock: clock)
         var editorOpened = false
         editorPreview.action = { action in
             suite.expect(editorPreview.closed, "Edit releases preview focus before opening the editor")
             editorOpened = true
             return [action]
         }
-        editorPreview.perform(.edit)
+        editorPreview.controller.perform(.edit)
         suite.expect(editorPreview.closed && !editorOpened,
                      "Edit dismisses immediately and defers window creation beyond the button update")
-        editorPreview.perform(.edit)
-        DispatchQueue.main.advance(0)
-        suite.expect(editorOpened && DispatchQueue.main.pending == 0,
+        editorPreview.controller.perform(.edit)
+        clock.advance(0)
+        suite.expect(editorOpened && clock.pending == 0,
                      "Edit opens exactly once on the next main-queue turn")
-        let failedCopy = Controller()
+        let failedCopy = Preview(clock: Scheduler())
         failedCopy.action = { _ in [] }
-        failedCopy.perform(.copy)
+        failedCopy.controller.perform(.copy)
         suite.expect(!failedCopy.closed, "failed Copy still leaves the preview available for retry")
-        DispatchQueue.main = NotchScreenRefreshContract.Scheduler()
 
         for duration in [3.0, 12.0] {
-            DispatchQueue.main = NotchScreenRefreshContract.Scheduler()
-            let controller = Controller()
-            controller.autoDismissDuration = duration
-            let embedded = Preview(embedded: true, hoverChanged: controller.hoverChanged)
+            clock = Scheduler()
+            let preview = Preview(clock: clock, dismissInterval: duration)
+            let controller = preview.controller!
+            func imageHover(_ inside: Bool, embedded: Bool) {
+                ScreenshotQuickPreviewController.forwardImageHover(inside, embedded: embedded,
+                                                                   to: controller.hoverChanged)
+            }
             controller.scheduleAutoDismiss()
             controller.hoverChanged(true) // Enter the island through the header.
-            DispatchQueue.main.advance(duration)
-            suite.expect(!controller.closed, "entering the capture header cancels automatic dismissal")
+            clock.advance(duration)
+            suite.expect(!preview.closed, "entering the capture header cancels automatic dismissal")
 
             for _ in 0..<2 {
-                embedded.previewHoverChanged(true) // Header to image.
-                embedded.previewHoverChanged(false) // Image to header, still in the island.
-                DispatchQueue.main.advance(duration)
-                suite.expect(controller.pointerInside && !controller.closed && DispatchQueue.main.pending == 0,
+                imageHover(true, embedded: true) // Header to image.
+                imageHover(false, embedded: true) // Image to header, still in the island.
+                clock.advance(duration)
+                suite.expect(controller.pointerInside && !preview.closed && clock.pending == 0,
                              "moving between the image and header actions keeps the embedded preview open")
             }
 
             controller.hoverChanged(false) // Leave the whole island.
-            DispatchQueue.main.advance(duration - 0.5)
-            suite.expect(!controller.closed, "leaving the island keeps the configured dismissal delay")
+            clock.advance(duration - 0.5)
+            suite.expect(!preview.closed, "leaving the island keeps the configured dismissal delay")
             controller.hoverChanged(true) // Return before the deadline.
-            DispatchQueue.main.advance(duration)
-            suite.expect(!controller.closed, "returning to the header cancels an outstanding dismissal")
+            clock.advance(duration)
+            suite.expect(!preview.closed, "returning to the header cancels an outstanding dismissal")
             controller.hoverChanged(false)
-            DispatchQueue.main.advance(duration)
-            suite.expect(controller.closed, "leaving the island still dismisses an unused capture")
+            clock.advance(duration)
+            suite.expect(preview.closed, "leaving the island still dismisses an unused capture")
 
             // Disabling the island rebuilds the preview as a floating view.
-            DispatchQueue.main = NotchScreenRefreshContract.Scheduler()
-            let floatingController = Controller()
-            floatingController.autoDismissDuration = duration
-            let floating = Preview(embedded: false, hoverChanged: floatingController.hoverChanged)
+            clock = Scheduler()
+            let floatingPreview = Preview(clock: clock, dismissInterval: duration)
+            let floatingController = floatingPreview.controller!
             floatingController.scheduleAutoDismiss()
-            floating.previewHoverChanged(true)
-            DispatchQueue.main.advance(duration)
-            suite.expect(floatingController.pointerInside && !floatingController.closed,
+            ScreenshotQuickPreviewController.forwardImageHover(true, embedded: false,
+                                                               to: floatingController.hoverChanged)
+            clock.advance(duration)
+            suite.expect(floatingController.pointerInside && !floatingPreview.closed,
                          "the floating preview still cancels dismissal while hovered")
-            floating.previewHoverChanged(false)
-            DispatchQueue.main.advance(duration - 0.5)
-            suite.expect(!floatingController.closed, "the floating preview retains its dismissal delay")
-            DispatchQueue.main.advance(0.5)
-            suite.expect(floatingController.closed, "leaving the floating preview still dismisses it")
+            ScreenshotQuickPreviewController.forwardImageHover(false, embedded: false,
+                                                               to: floatingController.hoverChanged)
+            clock.advance(duration - 0.5)
+            suite.expect(!floatingPreview.closed, "the floating preview retains its dismissal delay")
+            clock.advance(0.5)
+            suite.expect(floatingPreview.closed, "leaving the floating preview still dismisses it")
 
             // The system share sheet opens outside the preview, so the pointer
             // leaves it while a target is being picked.
-            DispatchQueue.main = NotchScreenRefreshContract.Scheduler()
-            let sharingController = Controller()
-            sharingController.autoDismissDuration = duration
+            clock = Scheduler()
+            let sharingPreview = Preview(clock: clock, dismissInterval: duration)
+            let sharingController = sharingPreview.controller!
             sharingController.systemSharing = true
             sharingController.hoverChanged(true)
             sharingController.hoverChanged(false)
-            DispatchQueue.main.advance(duration)
-            suite.expect(!sharingController.closed && DispatchQueue.main.pending == 0,
+            clock.advance(duration)
+            suite.expect(!sharingPreview.closed && clock.pending == 0,
                          "an open share sheet keeps the preview from dismissing")
             sharingController.systemSharing = false
             sharingController.scheduleAutoDismiss()
-            DispatchQueue.main.advance(duration)
-            suite.expect(sharingController.closed, "a cancelled share sheet resumes the dismissal delay")
+            clock.advance(duration)
+            suite.expect(sharingPreview.closed, "a cancelled share sheet resumes the dismissal delay")
         }
 
-        DispatchQueue.main = NotchScreenRefreshContract.Scheduler()
-        let persistentController = Controller()
-        persistentController.autoDismissDuration = nil
-        persistentController.scheduleAutoDismiss()
-        DispatchQueue.main.advance(60)
-        suite.expect(!persistentController.closed && DispatchQueue.main.pending == 0,
+        clock = Scheduler()
+        let persistentPreview = Preview(clock: clock, dismissInterval: nil)
+        persistentPreview.controller.scheduleAutoDismiss()
+        clock.advance(60)
+        suite.expect(!persistentPreview.closed && clock.pending == 0,
                      "a persistent confirmation preview does not schedule automatic dismissal")
     }
 }

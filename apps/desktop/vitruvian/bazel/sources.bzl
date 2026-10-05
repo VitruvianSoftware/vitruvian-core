@@ -337,7 +337,6 @@ GENERATED_TEST_SOURCES = [
     "RecorderZoomAiming.swift",
     "ScratchpadExport.swift",
     "ScratchpadSave.swift",
-    "ScreenshotPreviewHover.swift",
     "ScreenshotSelectionRefresh.swift",
     "ScreenshotShareCompletion.swift",
     "ScreenshotShortcutCompletion.swift",
