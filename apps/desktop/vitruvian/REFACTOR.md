@@ -2235,6 +2235,30 @@ file goes, which leaves 10.
   test's desk and island against stand-ins. The suite itself runs on macOS
   CI.
 
+Landed (4b, the island's screen refresh): one more generated file goes,
+which leaves 9.
+
+- **`NotchScreenRefresh`** (new, `Services/Notch/`) keeps the island
+  current as the displays, the app in front and the preferences change.
+  It owns:
+  - one deferred pass per burst of preference or screen notifications;
+  - when the menu reader runs, and the room the island keeps without it;
+  - what another app coming forward does: resign key, remember the paste
+    target, collapse an open island unless the pointer is still in it;
+  - `canFollowPointer` and `move(to:)`, the two halves of following the
+    pointer that `NotchPointerFollower` asks the island for.
+  - Its environment is the main queue, Accessibility, the cover-the-menus
+    preference, the app in front, this app's identifier and the pointer
+    (`.system`). The island hands in its state and its reactions.
+  - `NotchService` keeps one-line forwards, so the rest of the island and
+    its other contracts are unchanged.
+- **Tests:** `NotchScreenRefreshContract` builds the module's own type over
+  its scripted island, which keeps its fields and forwards the old names.
+  Before, the suite compiled copies of seven island members. Every check
+  is kept, the pointer-follow ones included.
+- **Verification:** a Linux Swift 6.4 model type-checks the new type against
+  stand-ins. The suite itself runs on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

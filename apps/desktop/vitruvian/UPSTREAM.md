@@ -1776,6 +1776,13 @@ is that notice. Add an entry for every change to upstream files.
     Accessibility, the session and the event tap's creation.
   - `Tests/NotchFullscreenTests.swift` drives both, and
     `Tests/generate_sources.py` no longer copies them.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  - The island's deferred preference and screen passes, its menu reader's
+    schedule, its response to another app coming forward and its move to
+    another display go from `Services/Notch/NotchService.swift` to the new
+    `Services/Notch/NotchScreenRefresh.swift`.
+  - `Tests/NotchScreenRefreshTests.swift` drives it, and
+    `Tests/generate_sources.py` no longer copies those members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

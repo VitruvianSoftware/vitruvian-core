@@ -8,8 +8,9 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The notification and permission lifecycle bodies come from production;
-/// clock, scheduling, permission and menu reads are controlled boundaries.
+/// The module's own `NotchScreenRefresh`, wired the way `NotchService` wires
+/// it, to a scripted island; the clock, scheduling, permission and menu reads
+/// are controlled boundaries.
 enum NotchScreenRefreshContract {
     struct Deadline {
         let seconds: Double
@@ -108,7 +109,7 @@ enum NotchScreenRefreshContract {
         func containsHover(_ point: CGPoint) -> Bool { rect.contains(point) }
         func whenSettled(_ body: @escaping () -> Void) { settledCalls += 1; body() }
     }
-    class State {
+    final class Service {
         var hiddenInFullscreen = false
         func fullscreenEnvironmentDidChange() {}
         var running = true
@@ -121,8 +122,6 @@ enum NotchScreenRefreshContract {
         var accessibilityGranted = true
         var coversMenus = false
         let menuSpace = MenuSpace()
-        var screenRefreshWork: DispatchWorkItem?
-        var preferenceSyncWork: DispatchWorkItem?
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900),
                                      safeAreaTop: 32, cameraWidth: 210, compactSideRoom: 64)
         var panel: Panel? = Panel()
@@ -166,6 +165,64 @@ enum NotchScreenRefreshContract {
             }
         }
         func syncVisibleConsumers() { consumerSyncs += 1 }
+
+        lazy var refresh = NotchScreenRefresh(
+            environment: NotchScreenRefresh.Environment(
+                schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work) },
+                accessibilityGranted: { [unowned self] in self.accessibilityGranted },
+                coversMenus: { [unowned self] in self.coversMenus },
+                frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
+                ownBundleID: Bundle.main.bundleIdentifier,
+                mouseLocation: { NSEvent.mouseLocation }),
+            island: NotchScreenRefresh.Island(
+                running: { [unowned self] in self.running },
+                suspended: { [unowned self] in self.suspended },
+                hiddenInFullscreen: { [unowned self] in self.hiddenInFullscreen },
+                hiddenUntilHover: { [unowned self] in self.hiddenUntilHover },
+                expanded: { [unowned self] in self.expanded },
+                peeking: { [unowned self] in self.peeking },
+                showsNotice: { [unowned self] in self.notice != nil },
+                showsCaptureControls: { [unowned self] in self.captureControls != nil },
+                holdsDrag: { [unowned self] in self.heldDrag },
+                choosingFileDropDestination: { [unowned self] in self.choosingFileDropDestination },
+                keepsWorkingSurface: { [unowned self] in self.keepsWorkingSurface },
+                holdsMusic: { [unowned self] in self.heldMusic != nil },
+                pinned: { [unowned self] in self.pinned },
+                openedByHover: { [unowned self] in self.openedByHover },
+                clickedSinceOpening: { [unowned self] in self.clickedSinceOpening },
+                showsClipboard: { [unowned self] in self.modules.contains(.clipboard) },
+                idleContent: { [unowned self] in self.idleContent },
+                hasCompactActivity: { [unowned self] in self.compactActivity != nil },
+                geometry: { [unowned self] in self.geometry },
+                displayHasMenuBar: { [unowned self] in self.displayHasMenuBar },
+                containsHover: { [unowned self] in self.windowHost?.containsHover($0) == true },
+                syncWithPreferences: { [unowned self] in self.syncWithPreferences() },
+                fullscreenEnvironmentDidChange: { [unowned self] in self.fullscreenEnvironmentDidChange() },
+                applyMenuSpace: { [unowned self] in self.applyMenuSpace($0) },
+                withdrawMenuSpace: { [unowned self] in
+                    self.geometry.compactSideRoom = nil
+                    self.refreshPresentation(animated: false)
+                },
+                refreshPresentation: { [unowned self] in self.refreshPresentation(animated: false) },
+                resignKey: { [unowned self] in self.panel?.resignKey() },
+                rememberPasteTarget: { ClipboardHistoryService.shared.rememberPasteTarget() },
+                collapse: { [unowned self] in self.collapse() },
+                takeDisplay: { [unowned self] id in
+                    self.displayID = id
+                    self.updateScreen()
+                },
+                syncVisibleConsumers: { [unowned self] in self.syncVisibleConsumers() },
+                startMenuSpace: { [unowned self] in self.menuSpace.start() },
+                stopMenuSpace: { [unowned self] in self.menuSpace.stop() },
+                invalidateMenuSpace: { [unowned self] in self.menuSpace.invalidate() },
+                readMenuSpace: { [unowned self] in self.menuSpace.read() }))
+
+        // The island's own names for what it asks of `refresh`.
+        func schedulePreferenceSync() { refresh.schedulePreferenceSync() }
+        func screenParametersDidChange() { refresh.screenParametersDidChange() }
+        func syncMenuSpaceMonitoring() { refresh.syncMenuSpaceMonitoring() }
+        func applicationDidActivate() { refresh.applicationDidActivate() }
+        var canFollowPointer: Bool { refresh.canFollowPointer }
     }
 
     static func run(_ suite: TestSuite) {
@@ -182,7 +239,7 @@ enum NotchScreenRefreshContract {
         suite.expect(DispatchQueue.main.pending == 1 && preferences.preferenceSyncs == 0,
                      "a preference burst defers one island sync until drawing has finished")
         DispatchQueue.main.advance(0)
-        suite.expect(preferences.preferenceSyncs == 1 && preferences.preferenceSyncWork == nil,
+        suite.expect(preferences.preferenceSyncs == 1 && !preferences.refresh.hasPendingPreferenceSync,
                      "the deferred sync consumes the entire preference burst once")
         preferences.schedulePreferenceSync()
         DispatchQueue.main.advance(0)
@@ -213,7 +270,7 @@ enum NotchScreenRefreshContract {
         suite.expect(!geometryChanged && !service.geometry.compactMusicGeometry.compactActivityUsesFooter,
                "brightness-only notifications preserve measured music wings and never move music below the camera")
         DispatchQueue.main.advance(0.11)
-        suite.expect(service.preferenceSyncs == 1 && service.reads == 1 && service.screenRefreshWork == nil,
+        suite.expect(service.preferenceSyncs == 1 && service.reads == 1 && !service.refresh.hasPendingScreenRefresh,
                "the settled screen configuration triggers one synchronization and menu measurement")
         suite.expect(service.geometry.compactSideRoom == 64,
                "refreshing menu space retains the last valid measurement until its replacement arrives")
@@ -224,7 +281,7 @@ enum NotchScreenRefreshContract {
         service.screenParametersDidChange()
         service.suspended = true
         DispatchQueue.main.advance(0.11)
-        suite.expect(service.preferenceSyncs == 2 && service.screenRefreshWork == nil,
+        suite.expect(service.preferenceSyncs == 2 && !service.refresh.hasPendingScreenRefresh,
                "a queued display update cannot resynchronize the island after suspension")
         service.suspended = false
         service.screenParametersDidChange()
@@ -466,8 +523,8 @@ enum NotchScreenRefreshContract {
 
     /// Following the pointer runs the module's own `NotchPointerFollower`
     /// against two displays side by side, wired as `NotchService` wires it,
-    /// with the island's own `canFollowPointer` and `move(to:)`; only the
-    /// displays, the monitors and the clock are doubles.
+    /// with `NotchScreenRefresh`'s `canFollowPointer` and `move(to:)`; only
+    /// the displays, the monitors and the clock are doubles.
     private static func pointerFollowContracts(_ suite: TestSuite) {
         DispatchQueue.main = Scheduler()
         NSEvent.reset()
@@ -492,8 +549,8 @@ enum NotchScreenRefreshContract {
                     displayID: { [unowned service] in service.displayID },
                     whenSettled: { [unowned service] action in service.windowHost?.whenSettled(action) },
                     move: { [unowned service] id in
-                        guard let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
-                        service.move(to: screen)
+                        guard NSScreen.screens.contains(where: { $0.notchDisplayID == id }) else { return }
+                        service.refresh.move(to: id)
                     }))
             return service
         }

@@ -153,17 +153,6 @@ def main():
                                                 "AppFeature.fanControl.isAvailable(in: ReviewDefaults.current)")
     write("NotchMusicVisibility.swift", "import Foundation\nextension NotchMusicVisibilityTests {\n"
           + "final class Service: State {\n" + music_visibility + "}\n}\n")
-    write("NotchScreenRefresh.swift", "import Foundation\n\nextension NotchScreenRefreshContract {\nfinal class Service: State {\n"
-          + declaration(notch, "    private func schedulePreferenceSync()").replace("private func", "func", 1)
-          + declaration(notch, "    private func screenParametersDidChange()").replace("private func", "func", 1)
-          + declaration(notch, "    private func invalidateMenuSpace(").replace("private func", "func", 1)
-          + declaration(notch, "    private func applicationDidActivate()").replace("private func", "func", 1)
-          + declaration(notch, "    private func syncMenuSpaceMonitoring()").replace("private func", "func", 1)
-              .replace("AXIsProcessTrusted()", "accessibilityGranted")
-              .replace("NotchSupport.coversMenus()", "coversMenus")
-          + declaration(notch, "    private var canFollowPointer:").replace("private var", "var", 1)
-          + declaration(notch, "    private func move(to screen:").replace("private func", "func", 1)
-          + "}\n}\n")
     write("NotchPresentationRefresh.swift", "import AppKit\nimport Foundation\nimport Combine\nimport SwiftUI\n"
           + "extension NotchPresentationRefreshContract {\nfinal class Service: State {\n"
           + "func hover(_ entered: Bool) {\nlet wasInside = inside\n"
