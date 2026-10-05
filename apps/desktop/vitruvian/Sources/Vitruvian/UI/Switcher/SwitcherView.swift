@@ -55,7 +55,7 @@ package struct SwitcherView: View {
     @AppStorage(Preferences.switcherMergeTabs) private var mergeWindowsByApp: Bool
     @AppStorage(Preferences.switcherShowShortcutHints) private var showsShortcutHints: Bool
     @AppStorage(Preferences.switcherShortcut) private var switcherShortcutStorage: String
-    @AppStorage(DefaultsKey.switcherWindowShortcut) private var switcherWindowShortcutStorage = GlobalShortcut.switcherWindowDefault.storageValue
+    @AppStorage(Preferences.switcherWindowShortcut) private var switcherWindowShortcutStorage: String
 
     package var body: some View {
         if SwitcherSupport.usesIconRowLayout(iconRowMode: iconRowMode,

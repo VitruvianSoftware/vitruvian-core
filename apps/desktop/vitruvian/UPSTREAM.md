@@ -2077,7 +2077,9 @@ is that notice. Add an entry for every change to upstream files.
     `UI/Settings/MouseSettings.swift` and `UI/MenuPanel/MenuPanelView.swift`
     read whether either mouse-button switch is on from it.
   - Those three views take the mouse-button, smooth scrolling and clipboard
-    switches from their `Preference`.
+    switches from their `Preference`, as `UI/Switcher/SwitcherView.swift`
+    takes the window shortcut and `UI/Settings/CommandBarSettings.swift` the
+    disabled sources.
   - `Tests/PointerInputFeatureTests.swift` no longer reads the three views;
     `Tests/MouseButtonCaptureTests.swift` (run from `Tests/MetricsTests.swift`)
     checks the rules.

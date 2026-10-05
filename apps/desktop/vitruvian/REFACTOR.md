@@ -4917,12 +4917,13 @@ Landed (6zzq, the mouse switches): with step 7c's reads gone, eight more
 - smooth scrolling;
 - the menu panel's clipboard switch.
 
-16 remain:
+The switcher's window shortcut and the Command Bar's disabled sources
+follow; no test reads them. 14 remain:
 - the eight panel orders;
 - two enums, the timer mode and the horizontal scroll modifier;
 - `includeBetaUpdates`;
-- five in the Command Bar, window layout and switcher views, which tests
-  still read as text.
+- three in the Command Bar and window layout settings. Tests read their
+  keys there as text, to check that each has its own row.
 
 ## Step 7: test-suite hygiene
 
