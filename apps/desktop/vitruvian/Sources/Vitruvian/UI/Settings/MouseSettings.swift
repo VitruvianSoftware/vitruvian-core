@@ -24,7 +24,7 @@ package struct MouseSettings: View {
         ScrollHorizontalModifier.shift
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
     @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay: Int
-    @AppStorage(DefaultsKey.smoothScrollEnabled) private var smoothScrollEnabled = false
+    @AppStorage(Preferences.smoothScrollEnabled) private var smoothScrollEnabled: Bool
     @AppStorage(Preferences.smoothScrollStep) private var smoothScrollStep: Int
     @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled: Bool
     @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled: Bool
@@ -32,8 +32,8 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.smoothScrollResponse) private var smoothScrollResponse: Int
     @AppStorage(Preferences.smoothScrollCoast) private var smoothScrollCoast: Int
     @AppStorage(Preferences.mouseNavigationEnabled) private var mouseNavigationEnabled: Bool
-    @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled = false
-    @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
+    @AppStorage(Preferences.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled: Bool
+    @AppStorage(Preferences.mouseSpacesGestureEnabled) private var spacesEnabled: Bool
     @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled: Bool
     @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers: Int
     @AppStorage(Preferences.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled: Bool
@@ -130,7 +130,8 @@ package struct MouseSettings: View {
         case .linearScroll: return linearScrollEnabled
         case .mouseAcceleration: return mouseAccelerationDisabled
         case .mouseNavigation: return mouseNavigationEnabled
-        case .mouseButtonShortcuts: return mouseButtonShortcutsEnabled || spacesEnabled
+        case .mouseButtonShortcuts:
+            return MouseButtonCapture.isEngaged(shortcuts: mouseButtonShortcutsEnabled, spaces: spacesEnabled)
         case .mouseClickDebounce: return mouseClickDebounceEnabled
         case .middleClick: return middleClickEnabled
         default: return false
@@ -531,7 +532,7 @@ package struct MouseSettings: View {
             || (smoothScrollEnabled && AppFeature.smoothScroll.isAvailable)
             || (linearScrollEnabled && AppFeature.linearScroll.isAvailable)
             || (mouseNavigationEnabled && AppFeature.mouseNavigation.isAvailable)
-            || ((mouseButtonShortcutsEnabled || spacesEnabled)
+            || (MouseButtonCapture.isEngaged(shortcuts: mouseButtonShortcutsEnabled, spaces: spacesEnabled)
                 && AppFeature.mouseButtonShortcuts.isAvailable)
             || (mouseClickDebounceEnabled && AppFeature.mouseClickDebounce.isAvailable)
             || (middleClickEnabled && AppFeature.middleClick.isAvailable)

@@ -2069,6 +2069,18 @@ is that notice. Add an entry for every change to upstream files.
   `UI/QuickLauncher/QuickLauncherView.swift` and the Clipboard, Keyboard
   Debounce, Monitor, Notch Agents, Notch, Screenshot, Shelf and Switcher
   settings (`UI/Settings/`).
+- **2026-10-05**: Refactor steps 7c and 6zzq (`REFACTOR.md`):
+  - `Sources/Vitruvian/UI/Settings/MouseButtonSettings.swift` decides its
+    captures, prompts and refusals, the drag's binding and its exception
+    list through the new `MouseButtonCapture`
+    (`Core/MouseButtons/MouseButtonCapture.swift`).
+    `UI/Settings/MouseSettings.swift` and `UI/MenuPanel/MenuPanelView.swift`
+    read whether either mouse-button switch is on from it.
+  - Those three views take the mouse-button, smooth scrolling and clipboard
+    switches from their `Preference`.
+  - `Tests/PointerInputFeatureTests.swift` no longer reads the three views;
+    `Tests/MouseButtonCaptureTests.swift` (run from `Tests/MetricsTests.swift`)
+    checks the rules.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

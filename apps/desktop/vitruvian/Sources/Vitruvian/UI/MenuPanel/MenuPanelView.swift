@@ -569,7 +569,7 @@ package struct UtilitiesSection: View {
     @AppStorage(Preferences.panelUtilityScreenRecorder) private var showScreenRecorder: Bool
     @AppStorage(Preferences.panelUtilityPortManager) private var showPortManager: Bool
     @ObservedObject private var recorder = ScreenRecorderService.shared
-    @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
+    @AppStorage(Preferences.clipboardHistoryEnabled) private var clipboardEnabled: Bool
     @AppStorage(DefaultsKey.panelUtilityOrder) private var utilityOrderRaw = ""
     @State private var draggingItem: UtilityPanelItem?
     package var collapsible = true
@@ -1152,8 +1152,8 @@ package struct QuickControlsSection: View {
     @AppStorage(Preferences.notchEnabled) private var notchEnabled: Bool
     @AppStorage(Preferences.panelControlNotch) private var showNotch: Bool
     @AppStorage(Preferences.radialMenuEnabled) private var radialMenuEnabled: Bool
-    @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled = false
-    @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
+    @AppStorage(Preferences.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled: Bool
+    @AppStorage(Preferences.mouseSpacesGestureEnabled) private var spacesEnabled: Bool
     @AppStorage(Preferences.superKeyEnabled) private var superKeyEnabled: Bool
     @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled: Bool
     @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled: Bool
@@ -1300,7 +1300,8 @@ package struct QuickControlsSection: View {
         case .textSnippets: return textSnippetsEnabled
         case .notch: return notchEnabled
         case .radialMenu: return radialMenuEnabled
-        case .mouseButtonShortcuts: return mouseButtonShortcutsEnabled || spacesEnabled
+        case .mouseButtonShortcuts:
+            return MouseButtonCapture.isEngaged(shortcuts: mouseButtonShortcutsEnabled, spaces: spacesEnabled)
         case .superKey: return superKeyEnabled
         case .mouseClickDebounce: return mouseClickDebounceEnabled
         }
@@ -1719,7 +1720,8 @@ package struct QuickControlsSection: View {
             // (issue #1012), so every surface on this row reads them
             // together. Widening one and not the rest is what leaves the
             // row asking for a permission its own button cannot grant.
-            let buttonsEngaged = mouseButtonShortcutsEnabled || spacesEnabled
+            let buttonsEngaged = MouseButtonCapture.isEngaged(shortcuts: mouseButtonShortcutsEnabled,
+                                                              spaces: spacesEnabled)
             PanelToggleRow(title: buttonStrings.pageTitle,
                            caption: caption(buttonStrings.panelCaption,
                                             needsAccessibility: buttonsEngaged),

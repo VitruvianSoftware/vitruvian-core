@@ -4910,6 +4910,20 @@ registered.
   text: the menu panel, mouse, mouse button, window layout and Command Bar
   settings, and the switcher. They move with those reads.
 
+Landed (6zzq, the mouse switches): with step 7c's reads gone, eight more
+`@AppStorage` properties take their `Preference`:
+- the two mouse-button switches in the Mouse, Mouse Button and menu panel
+  views;
+- smooth scrolling;
+- the menu panel's clipboard switch.
+
+16 remain:
+- the eight panel orders;
+- two enums, the timer mode and the horizontal scroll modifier;
+- `includeBetaUpdates`;
+- five in the Command Bar, window layout and switcher views, which tests
+  still read as text.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
@@ -4951,6 +4965,32 @@ became behavioral checks in `Tests/CommandBarCatalogRowTests.swift`.
   already builds those rows and checks their ids for every skin tone.
 - **Left:** 141 source reads in 26 test files, over 86 production files.
 
+
+Landed (7c, the mouse-button settings): the three reads of
+`MouseButtonSettings.swift`, `MouseSettings.swift` and the mouse rows of
+`MenuPanelView.swift` became behavioral checks in
+`Tests/MouseButtonCaptureTests.swift`.
+
+- **Seam:** `MouseButtonCapture` (`Core/MouseButtons/MouseButtonCapture.swift`)
+  decides:
+  - what a pressed button means to the shortcut capture and to the Spaces
+    drag capture (refused as unusable, the radial menu's, already taken, or
+    accepted);
+  - what each capture says about a refusal, and its waiting prompt;
+  - the drag's button once its switch changes;
+  - whether either switch engages the tap.
+
+  The settings page, the Mouse page's permission note and status, and the
+  menu panel's row read it instead of spelling those rules out.
+- **What the checks run:**
+  - each capture's outcomes, including that the drag refuses a button
+    half-way through becoming a shortcut;
+  - that the drag's prompt and refusals never borrow the shortcut
+    capture's words;
+  - that switching the drag off drops its binding;
+  - that the feature's engaged keys are the same two switches.
+- **Left:** 138 source reads in 26 test files, over 84 production files.
+  The reads of `MouseButtonShortcutService.swift` stay for its own slice.
 ## Not in scope
 
 Product decisions remain open:
