@@ -26,7 +26,15 @@ enum NotchDestinationContract {
         static let shared = Reader()
         struct Reader { func rememberPasteTarget() {} }
     }
-    enum QuickLauncherService { static var shared = QuickLauncherContract.Launcher() }
+    /// The module's launcher over a world of doubles that reads the test's feature switches.
+    enum QuickLauncherService {
+        static var world = QuickLauncherContract.World()
+        static var shared: VitruvianServices.QuickLauncherService { world.launcher }
+        static func reset(_ defaults: UserDefaults?) {
+            world = QuickLauncherContract.World()
+            world.defaults = defaults
+        }
+    }
     enum MenuPanelFocus {
         static let shared = Focus()
         final class Focus {
@@ -111,13 +119,11 @@ enum NotchDestinationContract {
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         ReviewDefaults.current = defaults
-        let previousLauncherDefaults = QuickLauncherContract.ReviewDefaults.current
-        QuickLauncherContract.ReviewDefaults.current = defaults
+        QuickLauncherService.reset(defaults)
         defer {
-            QuickLauncherContract.ReviewDefaults.current = previousLauncherDefaults
             ReviewDefaults.current = nil
             defaults.removePersistentDomain(forName: domain)
-            QuickLauncherService.shared = QuickLauncherContract.Launcher()
+            QuickLauncherService.reset(nil)
             NotchTimerService.shared = Timer()
         }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
@@ -171,22 +177,22 @@ enum NotchDestinationContract {
         suite.expect(service.modules.contains(.system) && service.selectedMetric == .fan,
                "a separately installed fan feature exposes System and retains its direct detail")
 
-        QuickLauncherService.shared = QuickLauncherContract.Launcher()
+        QuickLauncherService.reset(defaults)
         let launcher = QuickLauncherService.shared
         let firstPresentation = launcher.presentationID
         service.open(.tools)
         suite.expect(service.selected == .tools && launcher.selectedIndex == 0 && launcher.presentationID != firstPresentation,
                "opening Tools inside the island prepares keyboard selection on its first presentation")
-        QuickLauncherContract.events.removeAll()
-        let enter = QuickLauncherContract.NSEvent(keyCode: UInt16(kVK_Return))
-        suite.expect(launcher.handlePanelKey(enter, flow: .columns(rows: 2)) == nil
-               && QuickLauncherContract.events == ["keepAwake.toggle"],
+        QuickLauncherService.world.events.removeAll()
+        let enter = QuickLauncherContract.Key(keyCode: UInt16(kVK_Return))
+        suite.expect(launcher.takesPanelKey(enter, flow: .columns(rows: 2))
+               && QuickLauncherService.world.events == ["perform keepAwake"],
                "Return works immediately after the island opens Tools")
         let unchangedPresentation = launcher.presentationID
         service.open(.tools)
         suite.expect(launcher.presentationID == unchangedPresentation,
                "reopening the same visible Tools destination does not reset its working presentation")
-        launcher.activeUtility = .urlCleaner
+        launcher.run(.urlCleaner)
         service.open(.controls)
         service.open(.tools)
         suite.expect(launcher.activeUtility == .urlCleaner,
@@ -197,7 +203,7 @@ enum NotchDestinationContract {
         suite.expect(launcher.activeUtility == nil,
                "returning to Tools after removal cannot revive its previous utility")
         service.open(.controls)
-        launcher.candidates = []
+        QuickLauncherService.world.order = []
         service.open(.tools)
         suite.expect(launcher.selectedIndex == nil, "an empty Tools module leaves keyboard activation without a target")
         sessionContracts(suite)

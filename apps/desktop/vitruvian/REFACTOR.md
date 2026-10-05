@@ -1460,6 +1460,30 @@ files go, which leaves 33.
   Those locals are now `nonisolated(unsafe)`, since the queues read only the
   item's thread-safe flag, and the model uses the real type.
 
+Landed (4b, the quick launcher): one more generated file goes, which leaves
+32.
+
+- **Injected:** `QuickLauncherService` takes an `Environment`: the feature
+  switches, the saved order, the island's Tools page, the camera's island
+  view, each tool's own action and the main queue. `live` is the app's,
+  including the map from tile to service call that the tile actions used to
+  hold inline. Which tiles hide first, wait and how long, toggle in place or
+  open inside the launcher stays in `run`.
+- **Keys:** `takesPanelKey(_:flow:)` reads a `QuickLauncherKey`, which
+  `NSEvent` adopts with whether an input method is composing in its window.
+  `handlePanelKey` and the island's Tools route both call it.
+- **Tiles:** `QuickLauncherView.icon(for:state:)` and `isActive(_:state:)`
+  take a `QuickLauncherTileState`, so the icons are checked without the
+  services that report them.
+- **Test:** the launcher test and the island's destination test run the real
+  launcher over a world of doubles, instead of copies of eleven members and
+  two view methods. New checks: Keep Awake and a muted microphone look
+  active, digits past the last tile run nothing, modified keys and the
+  grid being edited leave keys alone.
+- **Mutations:** the launcher's two fixtures follow the code: one now runs
+  the recorder before hiding, the other draws a fixed recording icon.
+- **Verification:** AppKit and SwiftUI, so macOS CI only.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

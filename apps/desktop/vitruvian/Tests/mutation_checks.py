@@ -176,11 +176,14 @@ MUTATIONS = [
     ("invalid saved zoom", "screenshots", "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
      "guard requested.isFinite else { return 1 }", "guard requested.isFinite else { return requested }",
      "an invalid saved magnifier zoom falls back safely"),
-    ("missing recording action", "launcher", "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
-     "                ScreenRecorderService.shared.toggle()", "                // ScreenRecorderService.shared.toggle()",
+    ("recording starts before the launcher hides", "launcher", "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
+     "        case .keepAwake, .micMute:\n            environment.perform(item)\n"
+     "        case .screenOCR, .screenshot, .screenRecorder, .colorPicker, .scratchpad:",
+     "        case .keepAwake, .micMute, .screenRecorder:\n            environment.perform(item)\n"
+     "        case .screenOCR, .screenshot, .colorPicker, .scratchpad:",
      "screenRecorder executes the intended action exactly once"),
     ("incorrect recording icon", "launcher", "Sources/Vitruvian/UI/QuickLauncher/QuickLauncherView.swift",
-     'case .screenRecorder: return recorder.isRecording ? "stop.circle" : "record.circle"',
+     'case .screenRecorder: return state.recording ? "stop.circle" : "record.circle"',
      'case .screenRecorder: return "record.circle"', "an active recording tile offers stopping"),
     ("missing translation", "localization", "Sources/Vitruvian/Core/FeatureStrings.swift",
      'shortcutHint: "Clique numa linha para colar no app anterior. ⌘+clique seleciona várias; ⌘C copia sem colar."',

@@ -50,7 +50,67 @@ package enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
 /// hidden, brought back and reordered by dragging.
 @MainActor
 package final class QuickLauncherService: ObservableObject {
-    package static let shared = QuickLauncherService()
+    package static let shared = QuickLauncherService(environment: .live)
+
+    /// What the launcher reaches outside its grid. `live` is the app's: the
+    /// feature switches, the saved order, the island, the main queue and each
+    /// tool's own service. Tests pass doubles, so no tool runs.
+    @MainActor
+    package struct Environment {
+        package var isAvailable: (AppFeature) -> Bool
+        /// Every tool in the person's saved order.
+        package var itemOrder: () -> [QuickLauncherItem]
+        /// The open island shows the Tools page, which hiding closes.
+        package var islandShowsTools: () -> Bool
+        package var collapseIsland: () -> Void
+        /// Shows the camera in the island when it is set up to; false leaves
+        /// it to its own window.
+        package var showCameraInIsland: () -> Bool
+        /// Runs a tool that works outside the launcher.
+        package var perform: (QuickLauncherItem) -> Void
+        package var after: (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
+
+        package init(isAvailable: @escaping (AppFeature) -> Bool,
+                     itemOrder: @escaping () -> [QuickLauncherItem],
+                     islandShowsTools: @escaping () -> Bool, collapseIsland: @escaping () -> Void,
+                     showCameraInIsland: @escaping () -> Bool, perform: @escaping (QuickLauncherItem) -> Void,
+                     after: @escaping (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void) {
+            self.isAvailable = isAvailable
+            self.itemOrder = itemOrder
+            self.islandShowsTools = islandShowsTools
+            self.collapseIsland = collapseIsland
+            self.showCameraInIsland = showCameraInIsland
+            self.perform = perform
+            self.after = after
+        }
+
+        package static var live: Environment {
+            Environment(
+                isAvailable: { $0.isAvailable },
+                itemOrder: { PanelLayout.itemOrder(QuickLauncherItem.self, key: DefaultsKey.quickLauncherItemOrder) },
+                islandShowsTools: { NotchService.shared.expanded && NotchService.shared.selected == .tools },
+                collapseIsland: { NotchService.shared.collapse() },
+                showCameraInIsland: { CameraPreviewService.shared.showInNotchIfEnabled() },
+                perform: { item in
+                    switch item {
+                    case .keepAwake: KeepAwakeManager.shared.toggle()
+                    case .micMute: MicMuteService.shared.toggle()
+                    case .screenOCR: ScreenTextService.shared.capture()
+                    case .screenshot: ScreenshotService.shared.capture()
+                    case .screenRecorder: ScreenRecorderService.shared.toggle()
+                    case .colorPicker: ColorSamplerService.shared.pick()
+                    case .cameraPreview: CameraPreviewService.shared.show()
+                    case .scratchpad: ScratchpadService.shared.show()
+                    case .clipboard: ClipboardHistoryService.shared.showHistoryWindow()
+                    case .cleaning: CleaningModeManager.shared.activate()
+                    case .windowLayout, .homebrew, .media, .urlCleaner, .uninstaller, .cleaner, .toggles: break
+                    }
+                },
+                after: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } })
+        }
+    }
+
+    private let environment: Environment
 
     nonisolated package static let columns = 3
 
@@ -80,7 +140,8 @@ package final class QuickLauncherService: ObservableObject {
     private var outsideClickMonitor: Any?
     private var activationObserver: NSObjectProtocol?
 
-    private init() {
+    package init(environment: Environment) {
+        self.environment = environment
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
@@ -115,8 +176,7 @@ package final class QuickLauncherService: ObservableObject {
     }
 
     private var orderedItems: [QuickLauncherItem] {
-        PanelLayout.itemOrder(QuickLauncherItem.self, key: DefaultsKey.quickLauncherItemOrder)
-            .filter { $0.feature.isAvailable }
+        environment.itemOrder().filter { environment.isAvailable($0.feature) }
     }
 
     package var itemOrderBinding: Binding<[QuickLauncherItem]> {
@@ -181,13 +241,13 @@ package final class QuickLauncherService: ObservableObject {
     }
 
     package func refreshAvailability() {
-        if let activeUtility, !activeUtility.feature.isAvailable { self.activeUtility = nil }
-        if let editingOptionsItem, !editingOptionsItem.feature.isAvailable { self.editingOptionsItem = nil }
+        if let activeUtility, !environment.isAvailable(activeUtility.feature) { self.activeUtility = nil }
+        if let editingOptionsItem, !environment.isAvailable(editingOptionsItem.feature) { self.editingOptionsItem = nil }
         clampSelection()
     }
 
     package func hide() {
-        if NotchService.shared.expanded, NotchService.shared.selected == .tools { NotchService.shared.collapse() }
+        if environment.islandShowsTools() { environment.collapseIsland() }
         removeMonitors()
         isEditing = false
         editingOptionsItem = nil
@@ -272,55 +332,22 @@ package final class QuickLauncherService: ObservableObject {
     }
 
     package func run(_ item: QuickLauncherItem) {
-        guard !isEditing, item.feature.isAvailable else { return }
+        guard !isEditing, environment.isAvailable(item.feature) else { return }
         switch item {
-        case .keepAwake:
-            KeepAwakeManager.shared.toggle()
-        case .micMute:
-            MicMuteService.shared.toggle()
-        case .screenOCR:
+        case .keepAwake, .micMute:
+            environment.perform(item)
+        case .screenOCR, .screenshot, .screenRecorder, .colorPicker, .scratchpad:
             hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                ScreenTextService.shared.capture()
-            }
-        case .screenshot:
-            hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                ScreenshotService.shared.capture()
-            }
-        case .screenRecorder:
-            hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                ScreenRecorderService.shared.toggle()
-            }
-        case .colorPicker:
-            hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                ColorSamplerService.shared.pick()
-            }
+            environment.after(0.15) { [weak self] in self?.environment.perform(item) }
         case .cameraPreview:
-            let embedded = CameraPreviewService.shared.showInNotchIfEnabled()
+            let embedded = environment.showCameraInIsland()
             hide()
             if !embedded {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    CameraPreviewService.shared.show()
-                }
+                environment.after(0.15) { [weak self] in self?.environment.perform(item) }
             }
-        case .scratchpad:
+        case .clipboard, .cleaning:
             hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                ScratchpadService.shared.show()
-            }
-        case .clipboard:
-            hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                ClipboardHistoryService.shared.showHistoryWindow()
-            }
-        case .cleaning:
-            hide()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                CleaningModeManager.shared.activate()
-            }
+            environment.after(0.1) { [weak self] in self?.environment.perform(item) }
         case .windowLayout, .homebrew, .media, .urlCleaner, .uninstaller, .cleaner, .toggles:
             activeUtility = item
         }
@@ -387,11 +414,17 @@ package final class QuickLauncherService: ObservableObject {
 
     package func handlePanelKey(_ event: NSEvent,
                         flow: QuickToolsSupport.GridFlow = .rows(columns: QuickLauncherService.columns)) -> NSEvent? {
-        if event.keyCode == UInt16(kVK_Escape) {
+        takesPanelKey(event, flow: flow) ? nil : event
+    }
+
+    /// Whether the launcher takes `key`, after acting on it.
+    package func takesPanelKey(_ key: some QuickLauncherKey,
+                               flow: QuickToolsSupport.GridFlow = .rows(columns: QuickLauncherService.columns)) -> Bool {
+        if key.keyCode == UInt16(kVK_Escape) {
             // While an input method is composing in a utility's field, Esc
             // belongs to it and drops the candidate; the launcher takes the
             // next one.
-            if (event.window?.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+            if key.inputIsComposing { return false }
             if activeUtility != nil {
                 activeUtility = nil
             } else if editingOptionsItem != nil {
@@ -403,32 +436,32 @@ package final class QuickLauncherService: ObservableObject {
             } else {
                 hide()
             }
-            return nil
+            return true
         }
         guard !isEditing, activeUtility == nil,
-              event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return event }
-        switch Int(event.keyCode) {
+              key.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
+        switch Int(key.keyCode) {
         case kVK_Return, kVK_ANSI_KeypadEnter:
             activateSelection()
-            return nil
+            return true
         case kVK_LeftArrow:
             moveSelection(.left, flow: flow)
-            return nil
+            return true
         case kVK_RightArrow:
             moveSelection(.right, flow: flow)
-            return nil
+            return true
         case kVK_UpArrow:
             moveSelection(.up, flow: flow)
-            return nil
+            return true
         case kVK_DownArrow:
             moveSelection(.down, flow: flow)
-            return nil
+            return true
         default:
-            if let index = Self.digitIndex(for: event.keyCode) {
+            if let index = Self.digitIndex(for: key.keyCode) {
                 activate(at: index)
-                return nil
+                return true
             }
-            return event
+            return false
         }
     }
 
@@ -516,5 +549,20 @@ package final class QuickLauncherService: ObservableObject {
         case kVK_ANSI_9: return 8
         default: return nil
         }
+    }
+}
+
+/// A key as the launcher reads it. `NSEvent` is one; tests pass their own.
+@MainActor
+package protocol QuickLauncherKey {
+    var keyCode: UInt16 { get }
+    var modifierFlags: NSEvent.ModifierFlags { get }
+    /// An input method is composing in the key's window.
+    var inputIsComposing: Bool { get }
+}
+
+extension NSEvent: QuickLauncherKey {
+    package var inputIsComposing: Bool {
+        (window?.firstResponder as? NSTextView)?.hasMarkedText() == true
     }
 }

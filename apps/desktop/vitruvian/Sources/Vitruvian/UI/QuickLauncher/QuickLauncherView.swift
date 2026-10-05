@@ -502,11 +502,24 @@ package struct QuickLauncherView: View {
         }
     }
 
+    private var tileState: QuickLauncherTileState {
+        QuickLauncherTileState(keepAwake: keepAwake.isActive, micMuted: micMute.isMuted,
+                               recording: recorder.isRecording)
+    }
+
     private func icon(for item: QuickLauncherItem) -> String {
+        Self.icon(for: item, state: tileState)
+    }
+
+    private func isActive(_ item: QuickLauncherItem) -> Bool {
+        Self.isActive(item, state: tileState)
+    }
+
+    package static func icon(for item: QuickLauncherItem, state: QuickLauncherTileState) -> String {
         switch item {
-        case .keepAwake: return keepAwake.isActive ? "bolt.fill" : "bolt"
+        case .keepAwake: return state.keepAwake ? "bolt.fill" : "bolt"
         case .toggles: return "togglepower"
-        case .micMute: return micMute.isMuted ? "mic.slash.fill" : "mic"
+        case .micMute: return state.micMuted ? "mic.slash.fill" : "mic"
         case .screenOCR: return "text.viewfinder"
         case .colorPicker: return "eyedropper"
         case .clipboard: return "doc.on.clipboard"
@@ -518,17 +531,17 @@ package struct QuickLauncherView: View {
         case .uninstaller: return "trash"
         case .cleaner: return "sparkle"
         case .screenshot: return "camera.viewfinder"
-        case .screenRecorder: return recorder.isRecording ? "stop.circle" : "record.circle"
+        case .screenRecorder: return state.recording ? "stop.circle" : "record.circle"
         case .cameraPreview: return "web.camera"
         case .scratchpad: return "note.text"
         }
     }
 
-    private func isActive(_ item: QuickLauncherItem) -> Bool {
+    package static func isActive(_ item: QuickLauncherItem, state: QuickLauncherTileState) -> Bool {
         switch item {
-        case .keepAwake: return keepAwake.isActive
-        case .micMute: return micMute.isMuted
-        case .screenRecorder: return recorder.isRecording
+        case .keepAwake: return state.keepAwake
+        case .micMute: return state.micMuted
+        case .screenRecorder: return state.recording
         default: return false
         }
     }
@@ -584,5 +597,18 @@ package struct FlowLayoutLite: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+}
+
+/// What a tile shows for the tools that report a state of their own.
+package struct QuickLauncherTileState: Equatable {
+    package var keepAwake = false
+    package var micMuted = false
+    package var recording = false
+
+    package init(keepAwake: Bool = false, micMuted: Bool = false, recording: Bool = false) {
+        self.keepAwake = keepAwake
+        self.micMuted = micMuted
+        self.recording = recording
     }
 }

@@ -496,32 +496,6 @@ def main():
           + declaration(switcher_service, "    private var selectedItemID:")
           + declaration(switcher_service, "    private func applySearchFilter(")
           + "}\n")
-    service = "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift"
-    view = "Sources/Vitruvian/UI/QuickLauncher/QuickLauncherView.swift"
-    panel_layout = _source("Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift")
-    protocol = next(line for line in panel_layout.splitlines() if line.startswith("protocol PanelOrderItem:"))
-    write("QuickLauncherBodies.swift", "import Foundation\nimport Carbon.HIToolbox\n" + protocol + "\n\nextension QuickLauncherContract {\n"
-          + declaration(service, "enum QuickLauncherItem:")
-          + "final class Launcher {\nvar isEditing = false\nvar activeUtility: QuickLauncherItem?\n"
-          + "var editingOptionsItem: QuickLauncherItem?\nvar selectedIndex: Int?\nvar keyboardIndex: Int?\nvar presentationID = UUID()\n"
-          + "var candidates: [QuickLauncherItem] = QuickLauncherItem.allCases\n"
-          + "var visibleItems: [QuickLauncherItem] { candidates.filter { $0.feature.isAvailable(in: ReviewDefaults.current) } }\n"
-          + 'func hide() { events.append("hide") }\n'
-          + availability_declaration(service, "    func run(_ item: QuickLauncherItem)")
-          + declaration(service, "    func prepareForPresentation()")
-          + availability_declaration(service, "    func refreshAvailability()")
-          + declaration(service, "    private func clampSelection()")
-          + declaration(service, "    func activateSelection()")
-          + declaration(service, "    func activate(at index:")
-          + declaration(service, "    func moveSelection(")
-          + declaration(service, "    func select(")
-          + declaration(service, "    func handlePanelKey(")
-          + declaration(service, "    private static func digitIndex(")
-          + "}\nstruct Tile {\nvar keepAwake = State()\nvar micMute = State()\nvar recorder = State()\n"
-          + declaration(view, "    private func icon(for item: QuickLauncherItem)")
-          + declaration(view, "    private func isActive(_ item: QuickLauncherItem)")
-          + "func display(_ item: QuickLauncherItem) -> (String, Bool) { (icon(for: item), isActive(item)) }\n}\n}\n")
-
     preview = "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift"
     write("ScreenshotShareCompletion.swift", "import Foundation\n"
           + "extension ScreenshotShareCompletionTests {\nfinal class Controller: State {\n"

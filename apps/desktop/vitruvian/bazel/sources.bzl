@@ -315,7 +315,6 @@ GENERATED_TEST_SOURCES = [
     "NotchScreenRefresh.swift",
     "PointerDisplayLookups.swift",
     "PointerOnDisplay.swift",
-    "QuickLauncherBodies.swift",
     "RecorderZoomAiming.swift",
     "ScreenshotSelectionRefresh.swift",
     "ScreenshotShareCompletion.swift",

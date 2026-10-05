@@ -2826,7 +2826,7 @@ package final class NotchService: ObservableObject {
         sectionKey: { [weak self] in self?.handleSectionKey($0) ?? false },
         scratchpadKey: { [weak self] in self?.handleScratchpadKey($0) ?? false },
         clipboardPasteKey: { [weak self] in self?.handleClipboardPasteKey($0) ?? false },
-        toolsKey: { QuickLauncherService.shared.handlePanelKey($0, flow: $1) == nil },
+        toolsKey: { QuickLauncherService.shared.takesPanelKey($0, flow: $1) },
         stepBack: { [weak self] in self?.stepBack() },
         collapse: { [weak self] in self?.collapse() },
         clickedInside: { [weak self] in self?.clickedSinceOpening = true }))
