@@ -5130,6 +5130,12 @@ Swift Testing as well as through the binary's own runner.
 - **The cases:** `Tests/SwiftTesting/UnitTests.swift` turns each suite into
   one `@Test` case, run one at a time on the main actor. Every failed check
   is recorded as an issue, and a suite that checks nothing fails.
+- **Where a suite runs:** on the main thread, from a run loop block. A
+  main-actor test body runs inside a main-queue callout, and the run loop
+  drains no more of the main queue under one. The suites spin the run loop
+  so that queued main-queue work can finish, so the first run, from the test
+  body, failed 16 checks there and crashed in the shelf's file promises.
+  Each suite now hands its failures back to the case, which records them.
 - **The target:** `unit_tests_swift_testing` builds them with `swift_test`
   and runs the result through `bazel/run_unit_tests.sh`, like `unit_tests`.
   It gets the same working directory, bare bundle and preference sweep.
