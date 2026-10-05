@@ -2833,7 +2833,7 @@ package final class NotchService: ObservableObject {
                 update: { [weak self] in self?.updateFileDrop(at: $0) == true }))
         } else { windowHost?.setFileDropActions(nil) }
         panel?.sharingType = NotchSupport.showsInCaptures(in: defaults) ? .readOnly : .none
-        updateFullscreenVisibility(displayID: screen.notchDisplayID)
+        updateFullscreenVisibility(displayID: screen.id)
     }
 
     /// The island's geometry on a display, before its menus are measured.
