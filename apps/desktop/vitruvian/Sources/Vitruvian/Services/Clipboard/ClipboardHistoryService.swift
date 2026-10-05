@@ -588,25 +588,75 @@ package final class ClipboardHistoryService: ObservableObject {
         }
     }
 
+    /// What opening a history image in the screenshot editor reads and does.
+    /// `system` reads the feature and the image store, and opens the editor
+    /// on the island's lane; tests pass doubles.
+    package struct ImageEditing: Sendable {
+        package var isAvailable: @Sendable () -> Bool
+        package var directory: @Sendable () -> URL?
+        package var background: @Sendable (@escaping @Sendable () -> Void) -> Void
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var beep: @MainActor @Sendable () -> Void
+        /// Puts the history away before the editor opens.
+        package var dismissHistory: @MainActor @Sendable () -> Void
+        package var openEditor: @MainActor @Sendable (ScreenshotSelectionController.Capture) -> Void
+
+        package init(isAvailable: @escaping @Sendable () -> Bool,
+                     directory: @escaping @Sendable () -> URL?,
+                     background: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     beep: @escaping @MainActor @Sendable () -> Void,
+                     dismissHistory: @escaping @MainActor @Sendable () -> Void,
+                     openEditor: @escaping @MainActor @Sendable (ScreenshotSelectionController.Capture) -> Void) {
+            self.isAvailable = isAvailable
+            self.directory = directory
+            self.background = background
+            self.main = main
+            self.beep = beep
+            self.dismissHistory = dismissHistory
+            self.openEditor = openEditor
+        }
+
+        package static func system(dismissHistory: @escaping @MainActor @Sendable () -> Void) -> ImageEditing {
+            ImageEditing(isAvailable: { AppFeature.screenshot.isAvailable },
+                         directory: { ClipboardImageStore.directory },
+                         background: { work in DispatchQueue.global(qos: .userInitiated).async { work() } },
+                         main: { work in DispatchQueue.main.async { work() } },
+                         beep: { NSSound.beep() },
+                         dismissHistory: dismissHistory,
+                         openEditor: { capture in
+                             NotchService.shared.perform {
+                                 ScreenshotService.shared.openEditor(with: capture)
+                             }
+                         })
+        }
+    }
+
     package func editImage(_ entry: ClipboardHistoryEntry) {
-        guard entry.kind == .image, AppFeature.screenshot.isAvailable,
-              let directory = ClipboardImageStore.directory else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
+        Self.editImage(entry, editing: .system(dismissHistory: { [weak self] in
+            self?.hideHistoryWindow()
+            appShell()?.closePopover()
+        }))
+    }
+
+    /// Loads the entry's stored original off the main thread and opens it in
+    /// the screenshot editor, or beeps when it is gone or unreadable.
+    package static func editImage(_ entry: ClipboardHistoryEntry, editing: ImageEditing) {
+        guard entry.kind == .image, editing.isAvailable(),
+              let directory = editing.directory() else { return }
+        editing.background {
             let capture = autoreleasepool {
                 ClipboardHistoryImageSupport.editorImage(for: entry, directory: directory)
                     .flatMap { ScreenshotService.imageCapture(from: $0) }
             }
-            DispatchQueue.main.async {
-                guard AppFeature.screenshot.isAvailable else { return }
+            editing.main {
+                guard editing.isAvailable() else { return }
                 guard let capture else {
-                    NSSound.beep()
+                    editing.beep()
                     return
                 }
-                self.hideHistoryWindow()
-                appShell()?.closePopover()
-                NotchService.shared.perform {
-                    ScreenshotService.shared.openEditor(with: capture)
-                }
+                editing.dismissHistory()
+                editing.openEditor(capture)
             }
         }
     }

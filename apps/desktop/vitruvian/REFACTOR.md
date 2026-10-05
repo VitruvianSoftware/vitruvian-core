@@ -1005,6 +1005,22 @@ file goes, which leaves 61.
   every `FeatureStrings` factory and copies no production code, so it is a
   generated registry, not a copy.
 
+Landed (4b, editing a history image): one more generated file goes, which
+leaves 60.
+
+- **Injected:** `ClipboardHistoryService.editImage(_:editing:)` is static and
+  takes an `ImageEditing`:
+  - the feature, the image store and both queues;
+  - the beep;
+  - putting the history away, and opening the editor.
+
+  The instance method passes `system`, with the service's own dismissal.
+- **Test:** the test runs the real handoff on the real queues. It also uses
+  the real `ScreenshotService.imageCapture(from:)` instead of a copy.
+- **Still to do:** `ClipboardPreview` is the service's other copy. It reaches
+  into the history's editing, pinning and search caches, so it waits for
+  those to move into their own type.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

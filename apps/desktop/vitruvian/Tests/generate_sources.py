@@ -72,14 +72,6 @@ def main():
                         "enum ScreenshotScrollingCapture {").replace(
                             "    private static func stitch(", "    static func stitch(")
           + "}\n")
-    write("ClipboardHistoryImageEditor.swift", "import AppKit\n"
-          + "extension ClipboardHistoryImageEditorTests {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift",
-                        "    func editImage(")
-          + "}\n}\nextension ClipboardHistoryImageEditorTests.ScreenshotService {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
-                        "    static func imageCapture(")
-          + "}\n")
     panel = "Sources/Vitruvian/App/AppDelegate.swift"
     write("UpdateIntroFlow.swift", "import AppKit\nimport Foundation\n"
           + "extension UpdateIntroFlowTests {\nfinal class Host: Fixture {\n"

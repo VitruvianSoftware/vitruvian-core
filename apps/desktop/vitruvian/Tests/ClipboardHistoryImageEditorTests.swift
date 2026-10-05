@@ -7,46 +7,29 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
+/// Runs the production handoff of a history image to the screenshot editor,
+/// on the real queues, with the history and the editor replaced by a record.
 struct ClipboardHistoryImageEditorTests {
-    class Fixture {
+    /// What the handoff did. Only the main thread touches it.
+    final class Record {
         var hidden = false
-        func hideHistoryWindow() { hidden = true }
-        init() {}
-    }
-    enum ClipboardImageStore { static var directory: URL? }
-    enum AppFeature {
-        static let screenshot = Availability()
-        struct Availability { let isAvailable = true }
-    }
-    enum NSSound {
-        static var failures = 0
-        static func beep() { failures += 1 }
-    }
-    final class AppDelegate: NSObject, NSApplicationDelegate {
-        func closePopover() {}
-    }
-    static func appShell() -> AppDelegate? { nil }
-    final class NotchService {
-        static let shared = NotchService()
-        func perform(_ action: @escaping () -> Void) { action() }
-    }
-    enum ScreenshotSelectionController {
-        struct Capture {
-            let image: CGImage
-            let scale: CGFloat
-            let anchorRect: CGRect
-        }
-    }
-    final class ScreenshotService {
-        typealias ScreenshotSelectionController = ClipboardHistoryImageEditorTests.ScreenshotSelectionController
-        static let shared = ScreenshotService()
+        var failures = 0
         var capture: ScreenshotSelectionController.Capture?
         var openedOnMain = false
-        func openEditor(with capture: ScreenshotSelectionController.Capture) {
-            self.capture = capture
-            openedOnMain = Thread.isMainThread
-        }
     }
+
+    static func editing(_ record: Record, directory: URL) -> ClipboardHistoryService.ImageEditing {
+        .init(isAvailable: { true }, directory: { directory },
+              background: { work in DispatchQueue.global(qos: .userInitiated).async { work() } },
+              main: { work in DispatchQueue.main.async { work() } },
+              beep: { record.failures += 1 },
+              dismissHistory: { record.hidden = true },
+              openEditor: { capture in
+                  record.capture = capture
+                  record.openedOnMain = Thread.isMainThread
+              })
+    }
+
     private static func pump(until done: () -> Bool) {
         let deadline = Date(timeIntervalSinceNow: 2)
         while !done(), Date() < deadline {
@@ -69,19 +52,16 @@ struct ClipboardHistoryImageEditorTests {
                 to: directory.appendingPathComponent("older.png"))
             let entry = ClipboardHistoryEntry(text: "", copiedAt: .distantPast, kind: .image,
                                                imageFile: "older.png", imageWidth: 960, imageHeight: 640)
-            ClipboardImageStore.directory = directory
-            ScreenshotService.shared.capture = nil
-            NSSound.failures = 0
-            let host = Host()
+            let record = Record()
             let changeCount = NSPasteboard.general.changeCount
-            host.editImage(entry)
-            pump { ScreenshotService.shared.capture != nil }
-            let capture = ScreenshotService.shared.capture
+            ClipboardHistoryService.editImage(entry, editing: editing(record, directory: directory))
+            pump { record.capture != nil }
+            let capture = record.capture
             suite.expect(capture?.image.width == 960 && capture?.image.height == 640,
                          "history handoff opens the original image in the screenshot editor")
             suite.expect(capture?.scale == 1 && capture?.anchorRect == .zero,
                          "stored image uses the shared editor conversion and no screen anchor")
-            suite.expect(host.hidden && ScreenshotService.shared.openedOnMain,
+            suite.expect(record.hidden && record.openedOnMain,
                          "history dismisses and presents the editor on the main thread")
             let image = ClipboardHistoryImageSupport.editorImage(for: entry, directory: directory)
             var rect = CGRect(origin: .zero, size: image?.size ?? .zero)
@@ -100,11 +80,10 @@ struct ClipboardHistoryImageEditorTests {
             suite.expect(NSPasteboard.general.changeCount == changeCount,
                          "loading a historical image does not replace the current clipboard")
             try FileManager.default.removeItem(at: directory.appendingPathComponent("older.png"))
-            ScreenshotService.shared.capture = nil
-            host.hidden = false
-            host.editImage(entry)
-            pump { NSSound.failures > 0 }
-            suite.expect(NSSound.failures == 1 && ScreenshotService.shared.capture == nil && !host.hidden,
+            let missing = Record()
+            ClipboardHistoryService.editImage(entry, editing: editing(missing, directory: directory))
+            pump { missing.failures > 0 }
+            suite.expect(missing.failures == 1 && missing.capture == nil && !missing.hidden,
                          "a missing image reports failure without dismissing history or opening an editor")
             suite.expect(ClipboardHistoryImageSupport.editorImage(for: entry, directory: directory) == nil,
                          "a removed historical image cannot fall back to the current clipboard")
