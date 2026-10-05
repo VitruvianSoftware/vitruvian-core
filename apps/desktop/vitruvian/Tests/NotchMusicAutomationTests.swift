@@ -10,68 +10,101 @@ import VitruvianUI
 
 /// Only the permission system, scheduling and final Apple Event delivery are
 /// doubles. The production command/validation/cancellation bodies are generated.
+/// The automation flow over a system of doubles and queues the test runs by
+/// hand: no Apple Event reaches a player and no consent prompt opens.
 enum NotchMusicAutomationFlowContract {
-    typealias Scheduler = NotchMusicCommandContract.Scheduler
-    enum DispatchQueue {
-        static var main = Scheduler()
-        static var worker = Scheduler()
-        static func global(qos: DispatchQoS.QoSClass) -> Scheduler { worker }
+    /// Work waiting for its queue. Only the test's own thread touches it.
+    nonisolated final class Jobs: @unchecked Sendable {
+        var jobs: [() -> Void] = []
+        func add(_ job: @escaping () -> Void) { jobs.append(job) }
     }
-    enum AppleScriptRunner {
-        static var prompts: [String] = []
-        static func consentToAutomate(bundleID: String) -> Bool { prompts.append(bundleID); return true }
+
+    /// The player, its permission and what was delivered, as the flow's
+    /// system reports them. Read from the queues the test drains itself.
+    nonisolated final class Player: @unchecked Sendable {
+        var alive = true
+        var permission = NotchMusicAutomation.Access.granted
+        var capabilities: NotchMusicAutomationCapabilities?
+        var inspections = 0
+        var prompts: [String] = []
+        /// The address of each event delivered.
+        var deliveries: [Data] = []
+        let worker = Jobs()
+        let interactive = Jobs()
+        let main = Jobs()
+
+        static let bundleURL = URL(fileURLWithPath: "/Applications/Player.app")
+
+        var system: NotchMusicAutomation.System {
+            NotchMusicAutomation.System(
+                target: { playback in
+                    playback.track.appPID.map {
+                        NotchMusicAutomation.Target(pid: $0, bundleIdentifier: "local.test.player",
+                                                    bundleURL: Player.bundleURL, launched: nil)
+                    }
+                },
+                isCurrent: { [unowned self] _ in self.alive },
+                inspect: { [unowned self] target in
+                    self.inspections += 1
+                    return self.capabilities.map {
+                        NotchMusicAutomation.Availability(target: target, capabilities: $0, access: self.permission)
+                    }
+                },
+                access: { [unowned self] _ in self.alive ? self.permission : .unavailable },
+                consent: { [unowned self] in
+                    self.prompts.append($0)
+                    return true
+                },
+                deliver: { [unowned self] event in
+                    self.deliveries.append(event.attributeDescriptor(forKeyword: keyAddressAttr)?.data ?? Data())
+                    return NSAppleEventDescriptor.record()
+                },
+                uptime: { 100 })
+        }
     }
-    enum NotchMusicAutomation {
-        enum Access { case granted, consent, denied, unavailable }
-        struct Target: Equatable {
-            let pid: Int32
-            var bundleIdentifier = "local.test.player"
-            var isCurrent: Bool { alive }
-        }
-        struct Availability {
-            let target: Target
-            let capabilities: NotchMusicAutomationCapabilities
-            let access: Access
-        }
-        static var alive = true
-        static var permission = Access.granted
-        static var deliveries: [(NotchPlaybackCommand, Int32)] = []
-        static func access(to target: Target) -> Access { permission }
-        static var capabilities: NotchMusicAutomationCapabilities?
-        static var inspections = 0
-        static func inspect(_ target: Target) -> Availability? {
-            inspections += 1
-            return capabilities.map { Availability(target: target, capabilities: $0, access: permission) }
-        }
-        struct Event {
-            enum Option { case waitForReply, neverInteract, dontRecord }
-            let command: NotchPlaybackCommand
-            let pid: Int32
-            func sendEvent(options: [Option], timeout: TimeInterval) throws -> NSAppleEventDescriptor {
-                deliveries.append((command, pid))
-                return NSAppleEventDescriptor.record()
+
+    /// The music service's side of the flow.
+    final class Service {
+        let player = Player()
+        var playback: NotchPlayback?
+        var generation = UUID()
+        var commandPending = false
+        var commandFailed = false
+        var validationRequests: [UUID] = []
+        var timeouts: [DispatchWorkItem] = []
+        lazy var flow: NotchMusicAutomationFlow = NotchMusicAutomationFlow(
+            host: .init(playback: { [unowned self] in self.playback },
+                        generation: { [unowned self] in self.generation },
+                        commandPending: { [unowned self] in self.commandPending },
+                        setCommandPending: { [unowned self] in self.commandPending = $0 },
+                        setCommandFailed: { [unowned self] in self.commandFailed = $0 },
+                        validate: { [unowned self] id, _ in
+                            self.validationRequests.append(id)
+                            return true
+                        },
+                        willChange: {}),
+            environment: .init(system: player.system,
+                               worker: { [player] in player.worker.add($0) },
+                               interactive: { [player] in player.interactive.add($0) },
+                               main: { [player] work in player.main.add { MainActor.assumeIsolated { work() } } },
+                               after: { [unowned self] _, work in
+                                   MainActor.assumeIsolated { self.timeouts.append(work) }
+                               }))
+
+        /// Runs every queue until nothing is left, as the system would.
+        func drain() {
+            while let jobs = [player.worker, player.interactive, player.main].first(where: { !$0.jobs.isEmpty }) {
+                jobs.jobs.removeFirst()()
             }
         }
-        static func event(_ command: NotchPlaybackCommand, playback: NotchPlayback,
-                          capabilities: NotchMusicAutomationCapabilities, pid: Int32) -> Event? {
-            Event(command: command, pid: pid)
-        }
-    }
-    static func reset() {
-        DispatchQueue.main = Scheduler(); DispatchQueue.worker = Scheduler()
-        AppleScriptRunner.prompts = []
-        NotchMusicAutomation.alive = true
-        NotchMusicAutomation.permission = .granted
-        NotchMusicAutomation.deliveries = []
-        NotchMusicAutomation.capabilities = nil
-        NotchMusicAutomation.inspections = 0
-    }
-}
 
-extension NotchMusicAutomationFlowContract.NotchMusicAutomation.Target {
-    init?(_ playback: NotchPlayback) {
-        guard let pid = playback.track.appPID else { return nil }
-        self.init(pid: pid)
+        /// The player answers with `capabilities` and `access` on a fresh check.
+        func land(_ capabilities: NotchMusicAutomationCapabilities, _ access: NotchMusicAutomation.Access) {
+            player.capabilities = capabilities
+            player.permission = access
+            flow.refresh()
+            drain()
+        }
     }
 }
 
@@ -165,76 +198,82 @@ enum NotchMusicAutomationTests {
     }
 
     private static func lifecycle(_ suite: TestSuite) {
-        typealias Context = NotchMusicAutomationFlowContract
-        typealias Automation = Context.NotchMusicAutomation
-        Context.reset()
-        defer { Context.reset() }
         let capabilities = NotchMusicAutomationCapabilities.parse(Data(dictionary.utf8))!
-        let service = Context.Service()
+        let service = NotchMusicAutomationFlowContract.Service()
+        let flow = service.flow
+        let player = service.player
         let current = playback()
         let native = NotchPlayback(track: current.track, isPlaying: true, elapsed: 3, duration: 180, rate: 1,
             sampledAt: Date(), canSeek: true, commandContext: current.commandContext, canSendCommandsDirectly: true)
         service.playback = native
-        suite.expect(service.canSeek && service.canPerform(.seek(20)), "direct native playback keeps its existing seeking capability")
-        suite.expect(service.canPerform(.next) && !service.lacksTrackSkipping(.next),
+        suite.expect(flow.canSeek && flow.canPerform(.seek(20)), "direct native playback keeps its existing seeking capability")
+        suite.expect(flow.canPerform(.next) && !flow.lacksTrackSkipping(.next),
                "a player whose commands are unknown keeps its skip buttons")
         var video = native; video.canSkipNext = false; video.canSkipPrevious = false
         service.playback = video
-        suite.expect(service.lacksTrackSkipping(.next) && service.lacksTrackSkipping(.previous)
-               && !service.canPerform(.next) && service.canPerform(.toggle),
+        suite.expect(flow.lacksTrackSkipping(.next) && flow.lacksTrackSkipping(.previous)
+               && !flow.canPerform(.next) && flow.canPerform(.toggle),
                "a player without next or previous commands keeps only play and pause")
         service.playback = current
-        let target = Automation.Target(pid: 42)
-        service.automationTarget = target
-        service.automationAvailability = .init(target: target, capabilities: capabilities, access: .granted)
-        suite.expect(service.canSeek && current.seekPosition(20, allowed: service.canSeek) == 20,
+        service.land(capabilities, .granted)
+        suite.expect(flow.canSeek && current.seekPosition(20, allowed: flow.canSeek) == 20,
                "authorized scripting position enables effective seek without a native seeking capability")
         var readonly = capabilities; readonly.position = nil
-        service.automationAvailability = .init(target: target, capabilities: readonly, access: .granted)
-        suite.expect(!service.canSeek, "authorization cannot make an undeclared or read-only position writable")
-        service.automationAvailability = .init(target: target, capabilities: capabilities, access: .granted)
+        service.land(readonly, .granted)
+        suite.expect(!flow.canSeek, "authorization cannot make an undeclared or read-only position writable")
+        service.land(capabilities, .granted)
         var noPosition = current; noPosition.hasPosition = false; service.playback = noPosition
-        suite.expect(!service.canSeek, "a missing observed position never exposes an editable timeline")
+        suite.expect(!flow.canSeek, "a missing observed position never exposes an editable timeline")
         service.playback = current
-        service.automationAvailability = .init(target: target, capabilities: capabilities, access: .consent)
-        suite.expect(!service.canSeek && !service.beginAutomation(.next, playback: current) && Context.AppleScriptRunner.prompts.isEmpty,
+        service.land(capabilities, .consent)
+        suite.expect(!flow.canSeek && !flow.begin(.next, playback: current) && player.prompts.isEmpty,
                "an ordinary gesture cannot request permission or send before authorization")
-        service.requestAutomationAccess()
-        Context.DispatchQueue.worker.drain(); Context.DispatchQueue.main.drain()
-        suite.expect(Context.AppleScriptRunner.prompts.count == 1 && Automation.deliveries.isEmpty && service.refreshes == 1,
+        let inspections = player.inspections
+        flow.requestAccess()
+        suite.expect(flow.requesting, "a consent request is pending until the person answers")
+        service.drain()
+        suite.expect(player.prompts == ["local.test.player"] && player.deliveries.isEmpty
+               && player.inspections == inspections + 1 && !flow.requesting,
                "consent refreshes capabilities but never replays the gesture that preceded it")
-        service.automationAvailability = .init(target: target, capabilities: capabilities, access: .granted)
-        suite.expect(service.beginAutomation(.seek(20), playback: current) && !service.beginAutomation(.next, playback: current),
+        service.land(capabilities, .granted)
+        suite.expect(flow.begin(.seek(20), playback: current) && !flow.begin(.next, playback: current),
                "only one fallback action waits for validation or execution")
-        let id = service.automationAction!.id
-        suite.expect(service.validationRequests.count == 1 && Automation.deliveries.isEmpty,
+        let id = flow.actionID!
+        suite.expect(service.validationRequests == [id] && player.deliveries.isEmpty && service.commandPending,
                "the first operation only asks the adapter to validate the selected recording")
-        service.receiveValidation(["validationRequest": id.uuidString, "validationOK": true])
-        service.receiveValidation(["validationRequest": id.uuidString, "validationOK": true])
-        service.queue.drain(); Context.DispatchQueue.main.drain()
-        suite.expect(Automation.deliveries.count == 1 && Automation.deliveries.first?.1 == 42 && !service.commandPending,
+        flow.receiveValidation(["validationRequest": id.uuidString, "validationOK": true])
+        flow.receiveValidation(["validationRequest": id.uuidString, "validationOK": true])
+        service.drain()
+        suite.expect(player.deliveries == [NSAppleEventDescriptor(processIdentifier: 42).data] && !service.commandPending
+               && !service.commandFailed && service.timeouts.first?.isCancelled == true,
                "a fresh validation permits exactly one event to the captured process")
 
         for interruption in 0..<4 {
-            Automation.deliveries = []
-            Automation.alive = true; Automation.permission = .granted
+            player.deliveries = []
+            player.alive = true; player.permission = .granted
             service.playback = current
-            _ = service.beginAutomation(.next, playback: current)
-            let action = service.automationAction!
+            _ = flow.begin(.next, playback: current)
+            let action = flow.actionID!
             if interruption == 0 { service.playback?.commandContext = .init(pid: 42, revision: UUID()) }
-            service.receiveValidation(["validationRequest": action.id.uuidString, "validationOK": interruption != 1])
-            if interruption == 2 { service.cancelAutomationAction() }
-            if interruption == 3 { Automation.permission = .denied }
-            service.queue.drain(); Context.DispatchQueue.main.drain()
-            suite.expect(Automation.deliveries.isEmpty, "track replacement, failed validation, cancellation and revoked consent block event delivery")
+            flow.receiveValidation(["validationRequest": action.uuidString, "validationOK": interruption != 1])
+            if interruption == 2 { flow.cancelAction() }
+            if interruption == 3 { player.permission = .denied }
+            service.drain()
+            suite.expect(player.deliveries.isEmpty && !service.commandPending,
+                         "track replacement, failed validation, cancellation and revoked consent block event delivery")
         }
-        service.automationAvailability = .init(target: target, capabilities: capabilities, access: .consent)
         service.playback = current
-        Context.AppleScriptRunner.prompts = []
-        service.requestAutomationAccess()
-        service.automationConsentCancellation.cancel()
-        Context.DispatchQueue.worker.drain(); Context.DispatchQueue.main.drain()
-        suite.expect(Context.AppleScriptRunner.prompts.isEmpty && !service.requestingAutomation,
+        service.land(capabilities, .granted)
+        _ = flow.begin(.toggle, playback: current)
+        service.timeouts.last?.perform()
+        suite.expect(flow.actionID == nil && service.commandFailed && !service.commandPending,
+                     "a validation that never answers gives up after its deadline")
+        service.land(capabilities, .consent)
+        player.prompts = []
+        flow.requestAccess()
+        flow.reset()
+        service.drain()
+        suite.expect(player.prompts.isEmpty && !flow.requesting,
                "stopping before a queued consent request suppresses the prompt and releases pending state")
     }
 
@@ -242,36 +281,40 @@ enum NotchMusicAutomationTests {
     /// appears. Until that check lands, the controls keep the player's last
     /// answer instead of flashing the fallback row on every open.
     private static func refresh(_ suite: TestSuite) {
-        typealias Context = NotchMusicAutomationFlowContract
-        typealias Automation = Context.NotchMusicAutomation
-        Context.reset()
-        defer { Context.reset() }
-        Automation.capabilities = NotchMusicAutomationCapabilities.parse(Data(dictionary.utf8))
-        let service = Context.RefreshService()
-        func land() { service.queue.drain(); Context.DispatchQueue.main.drain() }
+        let service = NotchMusicAutomationFlowContract.Service()
+        let flow = service.flow
+        let player = service.player
+        player.capabilities = NotchMusicAutomationCapabilities.parse(Data(dictionary.utf8))
         service.playback = playback()
-        service.refreshAutomation()
-        suite.expect(service.automationAvailability == nil,
+        flow.refresh()
+        suite.expect(flow.availability == nil,
                "a player seen for the first time shows no access until its check lands")
-        land()
-        suite.expect(service.automationAvailability?.access == .granted && Automation.inspections == 1,
+        service.drain()
+        suite.expect(flow.availability?.access == .granted && player.inspections == 1,
                "the first check fills in the player's access")
-        Automation.permission = .denied
-        service.refreshAutomation()
-        suite.expect(service.automationAvailability?.access == .granted,
+        player.permission = .denied
+        flow.refresh()
+        suite.expect(flow.availability?.access == .granted,
                "opening the page again keeps the last answer on screen while the player is checked again")
-        land()
-        suite.expect(service.automationAvailability?.access == .denied && Automation.inspections == 2,
+        service.drain()
+        suite.expect(flow.availability?.access == .denied && player.inspections == 2,
                "the fresh check still replaces the kept answer, so a revoked permission shows")
         let track = RadialNowPlayingSnapshot(title: "Other", artist: "Artist", album: "Album", artworkData: nil,
                                             appBundleIdentifier: "local.test.player", appPID: 43)
         let other = NotchPlayback(track: track, isPlaying: true, elapsed: 3, duration: 180, rate: 1, sampledAt: Date(),
                                   canSeek: false, itemIdentifier: "two", commandContext: .init(pid: 43, revision: UUID()))
         service.playback = other
-        service.updateAutomation(for: other)
-        suite.expect(service.automationAvailability == nil && service.automationTarget?.pid == 43,
+        flow.update(for: other)
+        suite.expect(flow.availability == nil && flow.target?.pid == 43,
                "another player never shows the previous player's access")
-        land()
-        suite.expect(service.automationAvailability?.target.pid == 43, "the new player gets its own answer")
+        service.drain()
+        suite.expect(flow.availability?.target.pid == 43, "the new player gets its own answer")
+        player.permission = .granted
+        flow.refresh()
+        service.generation = UUID()
+        service.drain()
+        suite.expect(flow.availability?.access == .denied,
+                     "a check that lands after the playback source changed is dropped")
     }
+
 }

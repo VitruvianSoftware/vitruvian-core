@@ -23,8 +23,8 @@ package final class NotchMusicService: ObservableObject {
     @Published package private(set) var artworkTint: NotchArtworkTint?
     @Published package private(set) var commandFailed = false
     @Published package private(set) var commandPending = false
-    @Published package private(set) var automationAvailability: NotchMusicAutomation.Availability?
-    @Published package private(set) var requestingAutomation = false
+    package var automationAvailability: NotchMusicAutomation.Availability? { automation.availability }
+    package var requestingAutomation: Bool { automation.requesting }
     /// The queue shown and its covers (`NotchUpcomingQueue`).
     @Published private var upcomingQueue = NotchUpcomingQueue<NSImage>(decode: NSImage.init(data:))
     package var upcoming: NotchQueueSnapshot? { upcomingQueue.snapshot }
@@ -82,21 +82,19 @@ package final class NotchMusicService: ObservableObject {
     private var restoringSource = false
     private var artworkCache = NotchArtworkCache<(image: NSImage, tint: NotchArtworkTint?)>()
     private var artworkWork: DispatchWorkItem?
-    private var automationTarget: NotchMusicAutomation.Target?
-    private var automationDiscovery = DispatchWorkItem {}
-    private var automationCancellation = DispatchWorkItem {}
-    private var automationConsentCancellation = DispatchWorkItem {}
-    private var automationTimeout: DispatchWorkItem?
-    private struct AutomationAction {
-        let id = UUID()
-        let command: Command
-        let playback: NotchPlayback
-        let availability: NotchMusicAutomation.Availability
-    }
-    private var automationAction: AutomationAction?
-    private var awaitingAutomationValidation = false
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music", qos: .utility)
     private lazy var commandWriter = NotchMusicCommandWriter { [queue = self.queue] action in queue.async(execute: action) }
+    /// Control through Apple Events for players whose own commands do not
+    /// reach them (`NotchMusicAutomationFlow`).
+    private lazy var automation: NotchMusicAutomationFlow = NotchMusicAutomationFlow(
+        host: .init(playback: { [weak self] in self?.playback },
+                    generation: { [weak self] in self?.generation ?? UUID() },
+                    commandPending: { [weak self] in self?.commandPending ?? false },
+                    setCommandPending: { [weak self] in self?.commandPending = $0 },
+                    setCommandFailed: { [weak self] in self?.commandFailed = $0 },
+                    validate: { [weak self] id, context in self?.send(.validate(id, context)) ?? false },
+                    willChange: { [weak self] in self?.objectWillChange.send() }),
+        environment: .live(queue: queue))
 
     private init() {}
 
@@ -357,11 +355,7 @@ package final class NotchMusicService: ObservableObject {
         artworkWork?.cancel()
         artworkWork = nil
         artworkCache = .init()
-        automationDiscovery.cancel()
-        automationConsentCancellation.cancel()
-        automationTarget = nil
-        automationAvailability = nil
-        cancelAutomationAction()
+        automation.reset()
         commandWriter.stop()
         queueVisible = false
         NotchLyricsService.shared.hide()
@@ -550,144 +544,27 @@ package final class NotchMusicService: ObservableObject {
         })
     }
 
-    package var canSeek: Bool {
-        guard let playback, playback.hasPosition, playback.duration > 0 else { return false }
-        return playback.canSendCommandsDirectly ? playback.canSeek
-            : automationAvailability?.access == .granted && automationAvailability?.capabilities.position != nil
-    }
+    package var canSeek: Bool { automation.canSeek }
 
-    package func canPerform(_ command: Command) -> Bool {
-        guard let playback, playback.commandContext != nil, !commandPending else { return false }
-        if case .seek = command { return canSeek }
-        if playback.canSendCommandsDirectly { return !lacksTrackSkipping(command) }
-        guard let available = automationAvailability, available.access == .granted else { return false }
-        if command == .toggle { return available.capabilities.canToggle }
-        return available.capabilities.event(for: command, isPlaying: playback.isPlaying) != nil
-    }
+    package func canPerform(_ command: Command) -> Bool { automation.canPerform(command) }
 
     /// The player itself says it cannot skip this way, so the button is hidden.
-    package func lacksTrackSkipping(_ command: Command) -> Bool {
-        guard let playback, playback.canSendCommandsDirectly else { return false }
-        switch command {
-        case .next: return playback.canSkipNext == false
-        case .previous: return playback.canSkipPrevious == false
-        default: return false
-        }
-    }
+    package func lacksTrackSkipping(_ command: Command) -> Bool { automation.lacksTrackSkipping(command) }
 
-    package func refreshAutomation() {
-        automationTarget = nil
-        updateAutomation(for: playback)
-    }
+    package func refreshAutomation() { automation.refresh() }
 
-    private func updateAutomation(for playback: NotchPlayback?) {
-        if let action = automationAction, action.playback.commandContext != playback?.commandContext { cancelAutomationAction() }
-        guard let playback, !playback.canSendCommandsDirectly, let target = NotchMusicAutomation.Target(playback) else {
-            automationDiscovery.cancel()
-            automationConsentCancellation.cancel()
-            automationTarget = nil
-            automationAvailability = nil
-            cancelAutomationAction()
-            return
-        }
-        guard target != automationTarget else { return }
-        automationConsentCancellation.cancel()
-        automationDiscovery.cancel()
-        let cancellation = DispatchWorkItem {}
-        automationDiscovery = cancellation
-        automationTarget = target
-        // Every page that shows the controls asks for a fresh look at the
-        // same player. Its last answer stays on screen until the new one
-        // lands, instead of the fallback row flashing on each open; sending
-        // checks access again anyway. Another player starts from nothing.
-        if automationAvailability?.target != target { automationAvailability = nil }
-        let requested = generation
-        queue.async { [weak self] in
-            guard !cancellation.isCancelled else { return }
-            let available = NotchMusicAutomation.inspect(target)
-            DispatchQueue.main.async {
-                guard let self, self.generation == requested, self.automationTarget == target,
-                      !cancellation.isCancelled else { return }
-                self.automationAvailability = available
-            }
-        }
-    }
+    private func updateAutomation(for playback: NotchPlayback?) { automation.update(for: playback) }
 
-    /// Consent never queues the old gesture. The next press supplies a fresh
-    /// recording context, which is re-read again before any Apple Event is sent.
-    package func requestAutomationAccess() {
-        guard !requestingAutomation, let available = automationAvailability,
-              available.access == .consent, available.target.isCurrent else { return }
-        requestingAutomation = true
-        let requested = generation
-        let context = playback?.commandContext
-        let cancellation = DispatchWorkItem {}
-        automationConsentCancellation = cancellation
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            if !cancellation.isCancelled, available.target.isCurrent {
-                _ = AppleScriptRunner.consentToAutomate(bundleID: available.target.bundleIdentifier)
-            }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.requestingAutomation = false
-                guard !cancellation.isCancelled, self.generation == requested, self.playback?.commandContext == context,
-                      self.automationTarget == available.target else { return }
-                self.refreshAutomation()
-            }
-        }
-    }
+    /// Consent never queues the old gesture (`NotchMusicAutomationFlow`).
+    package func requestAutomationAccess() { automation.requestAccess() }
 
     private func beginAutomation(_ command: Command, playback: NotchPlayback) -> Bool {
-        guard canPerform(command), let context = playback.commandContext,
-              let available = automationAvailability, available.target.isCurrent else { return false }
-        let action = AutomationAction(command: command, playback: playback, availability: available)
-        automationAction = action
-        awaitingAutomationValidation = true
-        automationCancellation = DispatchWorkItem {}
-        commandPending = true
-        commandFailed = false
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self, self.automationAction?.id == action.id else { return }
-            self.cancelAutomationAction()
-            self.commandFailed = true
-        }
-        automationTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: timeout)
-        guard send(.validate(action.id, context)) else {
-            cancelAutomationAction(); commandFailed = true; return false
-        }
-        return true
+        automation.begin(command, playback: playback)
     }
 
-    private func receiveValidation(_ reply: [String: Any]) {
-        guard awaitingAutomationValidation, let action = automationAction,
-              reply["validationRequest"] as? String == action.id.uuidString else { return }
-        awaitingAutomationValidation = false
-        guard reply["validationOK"] as? Bool == true, playback?.commandContext == action.playback.commandContext else {
-            cancelAutomationAction(); commandFailed = true; return
-        }
-        automationTimeout?.cancel(); automationTimeout = nil
-        let cancellation = automationCancellation
-        let validatedAt = ProcessInfo.processInfo.systemUptime
-        queue.async { [weak self] in
-            let succeeded = NotchMusicAutomation.send(action.command, playback: action.playback,
-                availability: action.availability, cancellation: cancellation, validatedAt: validatedAt)
-            DispatchQueue.main.async {
-                guard let self, !cancellation.isCancelled, self.automationAction?.id == action.id else { return }
-                self.cancelAutomationAction()
-                self.commandFailed = !succeeded
-                if !succeeded { self.refreshAutomation() }
-            }
-        }
-    }
+    private func receiveValidation(_ reply: [String: Any]) { automation.receiveValidation(reply) }
 
-    private func cancelAutomationAction() {
-        automationCancellation.cancel()
-        automationTimeout?.cancel(); automationTimeout = nil
-        automationAction = nil
-        awaitingAutomationValidation = false
-        commandPending = false
-    }
+    private func cancelAutomationAction() { automation.cancelAction() }
 
 }
 

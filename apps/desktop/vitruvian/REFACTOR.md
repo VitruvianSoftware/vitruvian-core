@@ -1432,6 +1432,31 @@ leaves 35.
 - **Verification:** the types it builds on reach into AppKit, so macOS CI
   only.
 
+Landed (4b, playback control through Apple Events): two more generated
+files go, which leaves 33.
+
+- **Seam:** `NotchMusicAutomation.System` is the Mac as playback
+  automation reaches it: the player for a playback, whether that process is
+  still the same player, its inspection and permission, the consent prompt,
+  event delivery and the clock. `NotchMusicAutomation.send` takes one, and
+  `Target` gains an initializer for a player already identified.
+- **Moved:** the fallback flow leaves `NotchMusicService` for
+  `NotchMusicAutomationFlow` (`Services/Notch/NotchMusicAutomationFlow.swift`):
+  - what the player offers and allows, kept on screen while it is checked
+    again;
+  - the consent request, which never replays the gesture before it;
+  - one validated action at a time, with its deadline.
+
+  The service keeps its command state and passes it in, and its views read
+  the flow's answer through the same properties as before.
+- **Test:** the automation tests drive the real flow and the real `send`
+  over a player of doubles and queues they run by hand, instead of copies of
+  eleven members. New checks: the consent request is pending until
+  answered, a validation that never answers gives up at its deadline, and a
+  check that lands after the playback source changed is dropped.
+- **Verification:** a Swift 6 type-check of the flow and `send` on Linux;
+  the tests need macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

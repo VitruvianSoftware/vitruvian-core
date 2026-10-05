@@ -668,34 +668,6 @@ def main():
           + declaration(music, "    func send(_ command: Command)").replace("    func", "    @discardableResult\n    func", 1)
           + declaration(music, "    func send(_ command: Command, context:").replace("    func", "    @discardableResult\n    func", 1)
           + "}\n}\n")
-    write("NotchMusicAutomationBodies.swift", "import Foundation\n\nextension NotchMusicAutomationFlowContract {\n"
-          + "final class Service {\ntypealias Command = NotchPlaybackCommand\nvar playback: NotchPlayback?\n"
-          + "var automationAvailability: NotchMusicAutomation.Availability?\nvar automationTarget: NotchMusicAutomation.Target?\n"
-          + "var generation = UUID()\nvar commandPending = false\nvar commandFailed = false\nvar requestingAutomation = false\n"
-          + "var automationCancellation = DispatchWorkItem {}\nvar automationConsentCancellation = DispatchWorkItem {}\n"
-          + "var automationTimeout: DispatchWorkItem?\nvar automationAction: AutomationAction?\nvar awaitingAutomationValidation = false\n"
-          + "let queue = Scheduler()\nvar refreshes = 0\nfunc refreshAutomation() { refreshes += 1 }\n"
-          + "var validationRequests: [Command] = []\nfunc send(_ command: Command) -> Bool { validationRequests.append(command); return true }\n"
-          + declaration(music, "    private struct AutomationAction {").replace("private struct", "struct", 1)
-          + declaration(music, "    var canSeek:")
-          + declaration(music, "    func canPerform(")
-          + declaration(music, "    func lacksTrackSkipping(")
-          + declaration(music, "    func requestAutomationAccess()")
-          + declaration(music, "    private func beginAutomation(").replace("private func", "func", 1)
-          + declaration(music, "    private func receiveValidation(").replace("private func", "func", 1)
-          + declaration(music, "    private func cancelAutomationAction()").replace("private func", "func", 1)
-          + "}\n}\nextension NotchMusicAutomationFlowContract.NotchMusicAutomation {\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchMusicAutomation.swift", "    static func send(") + "}\n")
-    write("NotchMusicAutomationRefresh.swift", "import Foundation\n\nextension NotchMusicAutomationFlowContract {\n"
-          + "final class RefreshService {\nstruct AutomationAction { let playback: NotchPlayback }\n"
-          + "var playback: NotchPlayback?\nvar automationAction: AutomationAction?\n"
-          + "var automationAvailability: NotchMusicAutomation.Availability?\nvar automationTarget: NotchMusicAutomation.Target?\n"
-          + "var automationDiscovery = DispatchWorkItem {}\nvar automationConsentCancellation = DispatchWorkItem {}\n"
-          + "var generation = UUID()\nlet queue = Scheduler()\nfunc cancelAutomationAction() { automationAction = nil }\n"
-          + declaration(music, "    func refreshAutomation()")
-          + declaration(music, "    private func updateAutomation(").replace("private func", "func", 1)
-          + "}\n}\n")
-
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
           + "extension SoftwareDimmingRouteContract {\n"
