@@ -1722,21 +1722,21 @@ private final class FullScreenControlHoverRelay {
     func update(_ hovered: Bool) { changed?(hovered) }
 }
 
-private final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
-    var passesThrough = true
-    var acceptsFirstClick = false
+package final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
+    package var passesThrough = true
+    package var acceptsFirstClick = false
     /// Capture actions remain clickable while the Dynamic Island panel owns
     /// key focus. Keep that policy attached to the interactive host itself so
     /// a caller cannot accidentally forget one half of the setup.
-    convenience init(interactiveRootView rootView: Content) {
+    package convenience init(interactiveRootView rootView: Content) {
         self.init(rootView: rootView)
         passesThrough = false
         acceptsFirstClick = true
     }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    package override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         acceptsFirstClick || super.acceptsFirstMouse(for: event)
     }
-    override func hitTest(_ point: NSPoint) -> NSView? {
+    package override func hitTest(_ point: NSPoint) -> NSView? {
         passesThrough ? nil : super.hitTest(point)
     }
 }
