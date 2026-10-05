@@ -1035,6 +1035,26 @@ goes, which leaves 59.
 - **Check added:** an overview that opens again is probed at once, sooner
   than a lasting one. A mutant without that passed the old test.
 
+Landed (4b, the raw wheel tap): one more generated file goes, which leaves
+58.
+
+- **Injected:** `ScrollInverter.adjustWheel(_:state:defaults:ownProcessID:targets:)`
+  is the tap's decision for one wheel event:
+  - linear lines;
+  - direction;
+  - the sideways shortcut;
+  - holding back a fraction of a notch.
+
+  It is a `nonisolated` static. What it remembers between events is a
+  `WheelTapState`. What it asks about the pointer's target is a
+  `WheelTapTargets`, and `system` asks the exception lists and the app's
+  own windows.
+- **What stayed:** the tap keeps its re-arm branch.
+- **Test:** the test feeds real wheel events through the decision instead
+  of through a copy of `handle`.
+- **Verification:** this slice uses Core Graphics events, which the Linux
+  model cannot build. It relies on macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
