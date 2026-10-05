@@ -339,25 +339,6 @@ def main():
               "    private func isCurrentOutputAdjustment(", "    private var hasCurrentOutputAdjustment:",
               "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
           + "}\n}\n")
-    cleaner = "Sources/Vitruvian/Services/Cleaner/JunkCleaner.swift"
-    write("CleanerEligibilityBodies.swift", "import Foundation\nextension CleanerEligibilityTests {\n"
-          + "".join(declaration(cleaner, "    private static func " + name)
-                    .replace("private static func", "static func", 1)
-                    for name in ["appendLeftovers(", "scanCaches(", "scanLogs(",
-                                 "directorySize(", "fileSize(", "sorted(",
-                                 "scanScreenshots(", "isScreenCapture(", "extendedAttribute("])
-          + declaration(cleaner, "    private static func leftoverOwner(")
-          + declaration(cleaner, "    private static func containerOwner(")
-          + declaration(cleaner, "    private static func mayRemove(")
-          + "static func owner(_ url: URL, metadata: Bool = false) -> String? {\n"
-          + "leftoverOwner(entry: url.lastPathComponent, url: url, usesContainerMetadata: metadata)\n}\n"
-          + "static func canRemove(_ item: Item, installed: Set<String> = []) -> Bool {\n"
-          + "mayRemove(item, installed: installed)\n}\n}\n")
-    write("CleanerScanFlow.swift", "import Foundation\nextension CleanerScanFlowTests {\n"
-          + "typealias Phase = VitruvianServices.JunkCleaner.Phase\n"
-          + "final class Scanner: ScannerState {\nstatic let shared = Scanner()\n"
-          + "".join(declaration(cleaner, prefix) for prefix in ["    func reset()", "    func scan("])
-          + "}\n}\n")
 
     super_key = "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift"
     write("SuperKeyTap.swift", "import CoreGraphics\nimport Foundation\n"

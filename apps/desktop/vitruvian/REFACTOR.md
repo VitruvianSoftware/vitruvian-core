@@ -752,6 +752,25 @@ file goes, which leaves 77.
 - **Test:** the test drives the type on its own `NotificationCenter` instead
   of copies of `syncSpaceObservation` and `stopSpaceObservation`.
 
+Landed (4b, the Cleaner's scans, grouped by owning file): both copies of
+`JunkCleaner` go, which leaves 75.
+
+- **Injected places:** `JunkCleaner.Places` names the home folder, the
+  folders screenshots are saved in, and how an app registered with Launch
+  Services is found. Every scanner and the removal guard read it instead of
+  `NSHomeDirectory()` and `NSWorkspace`.
+- **Injected scanning:** `JunkCleaner.Scanning` names what a scan runs for
+  each category and the two queues it uses.
+  - `shared` keeps the system's of both.
+  - A package initializer lets a test build a cleaner with its own.
+- **Tests:**
+  - `CleanerEligibilityTests` lays its fixtures out under the real Library
+    folders of a fixture home and calls `mayRemove`, `appendLeftovers`,
+    `scanCaches`, `scanLogs`, `scanScreenshots` and `leftoverOwner`.
+  - `CleanerScanFlowTests` drives a real cleaner through a manual queue.
+- **Source text:** the anchors in `AppManagementFeatureTests` follow the
+  new signatures.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

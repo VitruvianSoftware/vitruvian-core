@@ -1388,6 +1388,13 @@ is that notice. Add an entry for every change to upstream files.
   into the new `Services/DockPreview/DockPreviewSpaceObservation.swift`, which
   `Tests/DockPreviewScopeTests.swift` drives directly; `Tests/generate_sources.py`
   no longer copies the observation methods.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Cleaner/JunkCleaner.swift` reads its home folder, screenshot
+  folders and Launch Services lookup from an injected `Places`, and runs its
+  category scans and queues through an injected `Scanning`; `scan(attended:)`
+  loops over the categories in the same order. `Tests/CleanerEligibilityTests.swift`
+  and `Tests/CleanerScanFlowTests.swift` call the module, and
+  `Tests/generate_sources.py` no longer copies the cleaner.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
