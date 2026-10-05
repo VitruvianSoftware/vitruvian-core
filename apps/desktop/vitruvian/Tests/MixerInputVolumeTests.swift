@@ -386,7 +386,7 @@ enum MixerInputVolumeContract {
         m = manager()
         HAL.devices = [10, 20]
         HAL.current = 20
-        HAL.notify(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
         Queue.main.run()
         m.setInputVolume(0.8)
         Queue.drain()
@@ -474,7 +474,7 @@ enum MixerInputVolumeContract {
         HAL.current = 20
         HAL.uids[20] = "device-10"
         HAL.levels[HAL.key(20)] = 0.7
-        HAL.notify(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
         Queue.main.run()
         HAL.notify(10, kAudioDevicePropertyVolumeScalar)
         Queue.main.run()
@@ -490,7 +490,7 @@ enum MixerInputVolumeContract {
         HAL.devices = [20]
         HAL.current = 20
         HAL.levels[HAL.key(20)] = 0.7
-        HAL.notify(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
         Queue.main.run()
         HAL.notify(10, kAudioDevicePropertyVolumeScalar)
         Queue.main.run()
@@ -910,7 +910,7 @@ enum MixerInputVolumeContract {
         HAL.notify(10, kAudioDevicePropertyVolumeScalar)
         Queue.drain()
         check(near(m.inputVolume, 0.3), "a change made elsewhere reaches the slider through the device's notification")
-        HAL.notify(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
         Queue.main.run()
         m.setInputVolume(0.9)
         HAL.inputQueue.run()
@@ -953,7 +953,7 @@ enum MixerInputVolumeContract {
         m = manager()
         m.setPreferredInputDeviceUID("device-20")
         Queue.drain()
-        HAL.notify(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
         m.stop()
         Queue.drain()
         check(HAL.current == 10, "a notification arriving after stop changes no input")
@@ -1066,7 +1066,7 @@ enum MixerInputVolumeContract {
         Queue.drain()
         HAL.devices = [10, 20]
         HAL.levels[HAL.key(20)] = 0.5
-        HAL.notify(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
         Queue.drain()
         check(HAL.levels[HAL.key(20)] == 0, "a microphone that arrives while muted is muted as it appears")
         HAL.defaults.set(false, forKey: AppFeature.micMute.availabilityKey)
