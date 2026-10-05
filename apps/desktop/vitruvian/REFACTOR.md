@@ -1385,6 +1385,23 @@ leaves 38.
 - **Verification:** a Linux model of the route runs the test (18 checks)
   and kills all 14 mutants of the route.
 
+Landed (4b, the menu bar icon after an update): one more generated file
+goes, which leaves 37.
+
+- **Moved:** the bounded check that the icon came back after an update, and
+  its one rebuild, leave `AppDelegate` for `StatusItemUpdateCheck`
+  (`Services/StatusItemUpdateCheck.swift`). It is generic over the item and
+  takes a `Host` (the item, the app's state, the rebuild, the log) and a
+  `System` (the build, the clock, the queue, the displays, the menu bar, the
+  session, the organizer). `live` is the app's.
+- **Test:** the recovery test runs the real check over a world of doubles
+  instead of copies of three `AppDelegate` members and stand-in AppKit,
+  defaults and dispatch types. Every stop condition is still checked before
+  and after the rebuild; the replaced item now outlives the swap, so the
+  check is seen to stop on identity, not on the item being freed.
+- **Verification:** a Linux model of the check and its helpers runs the test
+  (61 checks) and kills all 24 mutants of the check.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -75,13 +75,6 @@ def main():
               "    func windowShouldClose(", "    func windowWillClose(", "    private func markOnboardingComplete()",
               "    private func markSupportUpdateIntroSeenIfCurrentUpdate()", "    private func markSupportUpdateIntroSeen()"])
           + "}\n}\n")
-    write("PostUpdateStatusItemRecovery.swift", "import AppKit\nimport Foundation\n"
-          + "extension PostUpdateStatusItemRecoveryTests {\nfinal class Host: Fixture {\n"
-          + "".join(declaration(panel, prefix).replace("private ", "") for prefix in [
-              "    private func recoverStatusItemAfterUpdate(",
-              "    private func verifyPostUpdateStatusItem(",
-              "    private func iconIsOnScreen("])
-          + "}\n}\n")
     write("MenuPanelRecovery.swift", "import AppKit\nimport Foundation\n"
           + "extension MenuPanelRecoveryTests {\nfinal class Host: Fixture {\n"
           + "".join(declaration(panel, prefix).replace("private ", "") for prefix in [

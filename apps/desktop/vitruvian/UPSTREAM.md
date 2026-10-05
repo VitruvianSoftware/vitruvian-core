@@ -1586,6 +1586,11 @@ is that notice. Add an entry for every change to upstream files.
   `Services/MenuPanelKeyRoute.swift`; `Tests/MenuPanelKeyTests.swift` drives
   it, and `Tests/generate_sources.py` no longer copies the delegate's key
   handler.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the post-update menu bar
+  icon check moves from `App/AppDelegate.swift` to
+  `Services/StatusItemUpdateCheck.swift`;
+  `Tests/PostUpdateStatusItemRecoveryTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the delegate's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
