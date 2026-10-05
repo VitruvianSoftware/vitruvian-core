@@ -3132,6 +3132,13 @@ filters:
 `NotchCompactTests` checks the split and that the page's size holds the
 rows drawn from it.
 
+Landed (5zb, the music page's arithmetic): the island's sizing,
+`NotchLayout.pageSize` and `NotchMusicView` each added the controls row and
+its spacing, and chose between the player and the idle message, by hand. The
+smallest player, 88pt, sat in `musicPlayerHeight` and again in the view.
+`NotchLayout.musicControlsRow(_:)`, `musicMainHeight(hasPlayback:layout:height:)`
+and `musicPlayerMinimumHeight` now hold them.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

@@ -504,7 +504,22 @@ package enum NotchLayout {
     /// The player row keeps the artwork square; the controls row below holds
     /// volume and the lyrics or queue toggles.
     package static func musicPlayerHeight(layout: NotchSize, height: CGFloat) -> CGFloat {
-        min(layout == .spacious ? 148 : 120, max(88, height - musicControlsRowHeight - rowSpacing))
+        min(layout == .spacious ? 148 : 120, max(musicPlayerMinimumHeight, height - musicControlsRowHeight - rowSpacing))
+    }
+
+    /// The smallest player the music page draws. Lyrics or the queue take
+    /// its place where the page cannot hold both.
+    package static let musicPlayerMinimumHeight: CGFloat = 88
+
+    /// The room the music page's row of controls takes with its spacing.
+    package static func musicControlsRow(_ hasRow: Bool) -> CGFloat {
+        hasRow ? musicControlsRowHeight + rowSpacing : 0
+    }
+
+    /// The player, or the idle message when nothing plays, on a page
+    /// `height` tall.
+    package static func musicMainHeight(hasPlayback: Bool, layout: NotchSize, height: CGFloat) -> CGFloat {
+        hasPlayback ? musicPlayerHeight(layout: layout, height: height) : musicIdleHeight
     }
 }
 
@@ -2179,8 +2194,8 @@ package struct NotchGeometry: Equatable {
                                                 width: contentWidth, height: budget)
                 contentHeight = min(budget, home.height == 0 ? NotchLayout.emptyHeight : home.height)
             case .music:
-                let controlsRow = musicHasControlsRow ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
-                let player = musicHasContent ? NotchLayout.musicPlayerHeight(layout: layout, height: budget) : NotchLayout.musicIdleHeight
+                let controlsRow = NotchLayout.musicControlsRow(musicHasControlsRow)
+                let player = NotchLayout.musicMainHeight(hasPlayback: musicHasContent, layout: layout, height: budget)
                 contentHeight = min(budget, player + controlsRow) + max(0, musicExtraHeight)
             case .system:
                 let cards = max(0, systemCards)

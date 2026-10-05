@@ -41,11 +41,12 @@ package struct NotchMusicView: View {
     }
 
     package var body: some View {
-        let controlsRow = hasControlsRow ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
+        let controlsRow = NotchLayout.musicControlsRow(hasControlsRow)
         let extraHeight = openExtra == nil ? 0 : min(extrasHeight, max(0, size.height - controlsRow))
         // The player yields to lyrics or the queue only where the island is
         // too short to hold both.
-        let showsPlayer = openExtra == nil || size.height - controlsRow - extraHeight - NotchLayout.rowSpacing >= 88
+        let showsPlayer = openExtra == nil || size.height - controlsRow - extraHeight - NotchLayout.rowSpacing
+            >= NotchLayout.musicPlayerMinimumHeight
         let playerHeight = max(0, size.height - controlsRow - (openExtra == nil ? 0 : extraHeight + NotchLayout.rowSpacing))
         VStack(spacing: NotchLayout.rowSpacing) {
             if showsPlayer {

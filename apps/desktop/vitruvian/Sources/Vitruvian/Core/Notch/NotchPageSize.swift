@@ -43,9 +43,8 @@ extension NotchLayout {
             // Shorten the tracks before pushing mute and level controls offscreen.
             size.height = max(size.height, 144)
         case .music:
-            let controlsRow = musicControlsRow() ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
-            let player = hasPlayback() ? NotchLayout.musicPlayerHeight(layout: layout, height: size.height)
-                : NotchLayout.musicIdleHeight
+            let controlsRow = NotchLayout.musicControlsRow(musicControlsRow())
+            let player = NotchLayout.musicMainHeight(hasPlayback: hasPlayback(), layout: layout, height: size.height)
             size.height = max(size.height, player + controlsRow)
         case .files:
             // One shelf tile, its vertical insets, the footer and their gap.
