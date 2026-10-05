@@ -67,12 +67,12 @@ package struct NotchCaptureControlsState {
         options != nil && !selectionInProgress
     }
 
-    /// Whether the controls take a click at the pointer. Only the visible
+    /// Whether the controls take a click at the pointer. Only shown, visible
     /// controls do; everywhere else the click falls through to the selection
     /// beneath. While collapsing, the window still reserves the open frame, so
     /// compact controls take only their own hover area.
     package func takesMouse(overWindow: @autoclosure () -> Bool, overHoverArea: @autoclosure () -> Bool) -> Bool {
-        !selectionInProgress && overWindow() && (!collapsed || overHoverArea())
+        options != nil && !selectionInProgress && overWindow() && (!collapsed || overHoverArea())
     }
 
     /// Whether open controls may close now: no selection is being dragged,
