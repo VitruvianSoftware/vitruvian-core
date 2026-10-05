@@ -30,7 +30,7 @@ package struct NotchTimerStrip: View {
     private var iconInset: CGFloat {
         guard !geometry.compactActivityUsesFooter else { return 0 }
         if let companion { return NotchCompanionMark.inset(companion, geometry: geometry) }
-        return geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2)
+        return geometry.compactMarkInset(side: iconSize)
     }
     private var textInset: CGFloat {
         guard !geometry.compactActivityUsesFooter else { return 0 }
@@ -42,7 +42,7 @@ package struct NotchTimerStrip: View {
         HStack(spacing: 0) {
             Button { service.openActivity(companion?.module ?? .timer) } label: {
                 Group {
-                    if geometry.compactActivityWingWidth >= 28 {
+                    if geometry.compactActivityWingWidth >= NotchLayout.compactMarkWing {
                         if let companion {
                             NotchCompanionMark(companion: companion, geometry: geometry)
                         } else {
@@ -81,7 +81,7 @@ package struct NotchTimerStrip: View {
                                                  locale: Locale(identifier: l10n.language.rawValue))
         return Button { service.openActivity(.timer) } label: {
             Group {
-                if geometry.compactActivityWingWidth >= 42 {
+                if geometry.compactActivityWingWidth >= NotchLayout.compactReadingWing {
                     Text(text)
                         .font(.system(size: textSize, weight: .medium)).monospacedDigit()
                         .foregroundStyle(.orange)
@@ -168,14 +168,14 @@ package struct NotchCompanionMark: View {
         switch companion {
         case .agents:
             let side = agentMarkSize(working.count, geometry)
-            return geometry.compactActivityEdgeInset(boxHeight: side + 4, radius: (side + 4) / 2)
+            return geometry.compactMarkInset(side: side + 4)
         case .music:
             return geometry.compactMusicArtworkInset
         case .calendar:
             return geometry.compactActivityEdgeInset(boxHeight: 9, radius: 0)
         case .downloads, .timer, .keepAwake, .watch:
             let side = min(13, NotchTimerSupport.stripIconSize(height: geometry.compactActivityContentHeight))
-            return geometry.compactActivityEdgeInset(boxHeight: side, radius: side / 2)
+            return geometry.compactMarkInset(side: side)
         }
     }
 

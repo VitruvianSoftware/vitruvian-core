@@ -229,7 +229,7 @@ package enum NotchDownloadSupport {
               room >= compactNameWingThreshold else { return 56 }
         let provisional = geometry.compactDownloadGeometry(wing: compactNameWingThreshold)
         let icon = min(17, provisional.compactActivityContentHeight - NotchLayout.compactEdgeGap * 2)
-        let inset = provisional.compactActivityEdgeInset(boxHeight: icon, radius: icon / 2)
+        let inset = provisional.compactMarkInset(side: icon)
         return min(compactNameMaximumWing,
                    max(compactNameMinimumWing, (inset + compactNameContentWidth(name, icon: icon) + 4).rounded(.up)))
     }

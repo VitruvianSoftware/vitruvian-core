@@ -3179,6 +3179,14 @@ activity picker's clamp, and one in the locked island. `NotchLayout.displaySideM
 and `displayBottomMargin` hold them. `NotchGeometry.maximumSurfaceWidth` and
 `maximumSurfaceHeight` give the limits.
 
+Landed (5zh, the compact strips' marks): eleven places kept a round mark
+clear of the strip's curve with
+`compactActivityEdgeInset(boxHeight: s, radius: s / 2)`. They measure and
+draw the timer, keep awake, watch, agent and download marks.
+`NotchGeometry.compactMarkInset(side:)` is now the one rule. The wing
+widths that show a mark (28) and a reading (42) were written in five strips.
+They are `NotchLayout.compactMarkWing` and `compactReadingWing`.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

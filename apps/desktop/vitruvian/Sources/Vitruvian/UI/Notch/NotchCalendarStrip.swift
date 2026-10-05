@@ -117,7 +117,7 @@ package struct NotchCalendarStrip: View {
         return HStack(spacing: 0) {
             Button { service.openActivity(companion.module) } label: {
                 Group {
-                    if geometry.compactActivityWingWidth >= 28 {
+                    if geometry.compactActivityWingWidth >= NotchLayout.compactMarkWing {
                         NotchCompanionMark(companion: companion, geometry: geometry)
                     }
                 }

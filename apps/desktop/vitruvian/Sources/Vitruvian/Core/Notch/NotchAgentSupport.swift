@@ -213,7 +213,7 @@ package enum NotchAgentSupport {
     package static func stripMarksWidth(working: Int, in geometry: NotchGeometry) -> CGFloat {
         let size = stripMarkSize(height: geometry.compactActivityContentHeight, working: working)
         return marksWidth(size: size, count: working)
-            + geometry.compactActivityEdgeInset(boxHeight: size + 4, radius: (size + 4) / 2)
+            + geometry.compactMarkInset(side: size + 4)
     }
 
     /// What the strip shows beside the camera while agents work: the reading

@@ -2046,6 +2046,16 @@ is that notice. Add an entry for every change to upstream files.
   `NotchGeometry.maximumSurfaceWidth`/`maximumSurfaceHeight`, and its sizing
   uses them. `Services/Notch/NotchService.swift` (the activity picker) and
   `Services/Notch/NotchLockScreenSupport.swift` do too.
+- **2026-10-05**: Refactor step 5zh (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchSupport.swift` adds
+  `NotchGeometry.compactMarkInset(side:)`, `NotchLayout.compactMarkWing` and
+  `compactReadingWing`.
+  - The mark's inset is measured with the new rule in
+    `Services/Notch/NotchService.swift` and in `Core/Notch/NotchKeepAwakeSupport.swift`,
+    `NotchDownloadSupport.swift` and `NotchAgentSupport.swift`.
+  - It is drawn with it in the timer, keep awake, watch, agent and download
+    views (`UI/Notch/`). Those strips and the calendar strip use the named
+    wing widths.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

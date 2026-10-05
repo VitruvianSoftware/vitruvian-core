@@ -929,7 +929,7 @@ package final class NotchService: ObservableObject {
         default:
             // Every mark the strip shows is about a square of its point size.
             let side = NotchTimerSupport.stripIconSize(height: height)
-            return side + provisional.compactActivityEdgeInset(boxHeight: side, radius: side / 2)
+            return side + provisional.compactMarkInset(side: side)
         }
     }
 

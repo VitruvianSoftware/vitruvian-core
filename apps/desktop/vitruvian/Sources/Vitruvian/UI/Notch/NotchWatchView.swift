@@ -409,7 +409,7 @@ package struct NotchWatchStrip: View {
         NotchAgentSupport.stripMarkSize(height: geometry.compactActivityContentHeight, working: 1)
     }
     private var textSize: CGFloat { NotchTimerSupport.stripTextSize(height: geometry.compactActivityContentHeight) }
-    private var iconInset: CGFloat { geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2) }
+    private var iconInset: CGFloat { geometry.compactMarkInset(side: iconSize) }
     private var textInset: CGFloat { geometry.compactReadingInset(textSize: textSize) }
 
     package var body: some View {
@@ -418,7 +418,7 @@ package struct NotchWatchStrip: View {
                 NotchWatchEye(size: iconSize, hidden: watch.state == .hidden)
                     .padding(.leading, iconInset)
                     .frame(width: geometry.compactActivityWingWidth, alignment: .leading)
-                    .opacity(geometry.compactActivityWingWidth >= 28 ? 1 : 0)
+                    .opacity(geometry.compactActivityWingWidth >= NotchLayout.compactMarkWing ? 1 : 0)
                 Color.clear.frame(width: geometry.compactActivityCameraGap)
                 reading
                     .padding(.trailing, textInset)

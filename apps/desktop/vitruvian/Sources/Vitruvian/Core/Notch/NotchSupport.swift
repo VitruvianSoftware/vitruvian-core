@@ -238,6 +238,10 @@ package enum NotchLayout {
         return width + (button ? iconButtonSide + headerButtonSpacing : 0)
     }
     package static let navigationHeight: CGFloat = 36
+    /// The narrowest compact wing that shows an activity's mark, and the
+    /// narrowest that shows its reading; a narrower wing leaves them out.
+    package static let compactMarkWing: CGFloat = 28
+    package static let compactReadingWing: CGFloat = 42
     /// The room the island keeps to the display's sides, both together, and
     /// below its tallest page.
     package static let displaySideMargins: CGFloat = 24
@@ -2096,6 +2100,12 @@ package struct NotchGeometry: Equatable {
     package var compactActivityShoulder: CGFloat {
         NotchLayout.shoulder(height: compactActivitySize.height)
     }
+    /// Inset that keeps a round mark `side` across an even gap from the
+    /// strip's silhouette.
+    package func compactMarkInset(side: CGFloat) -> CGFloat {
+        compactActivityEdgeInset(boxHeight: side, radius: side / 2)
+    }
+
     /// Inset that keeps a line of digits `textSize` tall an even gap from the
     /// strip's silhouette. Digits carry no descenders, so their ink is about
     /// the cap height. Every compact reading is measured and drawn with it.
