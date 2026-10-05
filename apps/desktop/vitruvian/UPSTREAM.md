@@ -1366,6 +1366,11 @@ is that notice. Add an entry for every change to upstream files.
   its last-run line in `lastRunLine(ranAt:freed:failed:strings:)`, both called
   by `Tests/CleanerLastRunContract.swift`; `Tests/generate_sources.py` no
   longer copies `finishRun` or the card's line.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchMusicService.swift` plays a queue row through
+  `playQueued(_:visible:request:upcoming:playback:pending:failed:in:send:)`,
+  which `Tests/NotchMusicHardeningTests.swift` calls; `Tests/generate_sources.py`
+  no longer copies the row action.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -1000,14 +1000,6 @@ def main():
           + declaration(music, "    func send(_ command: Command)").replace("    func", "    @discardableResult\n    func", 1)
           + declaration(music, "    func send(_ command: Command, context:").replace("    func", "    @discardableResult\n    func", 1)
           + "}\n}\n")
-    write("NotchQueueSelection.swift", "import Foundation\n\nextension NotchQueueContract {\n"
-          + "final class Service {\nvar queueVisible = true\nvar queueRequest: UUID?\n"
-          + "var upcoming: NotchQueueSnapshot?\nvar playback: NotchPlayback?\n"
-          + "var queueActionFailed = false\nvar queueActionPending = false\nvar sendAllowed = true\n"
-          + "var commands: [NotchPlaybackCommand] = []\n"
-          + "func send(_ command: NotchPlaybackCommand) -> Bool { commands.append(command); return sendAllowed && command.message != nil }\n"
-          + declaration(music, "    func playQueued(")
-          + "}\n}\n")
     write("NotchQueueHold.swift", "import Foundation\n\nextension NotchQueueHoldContract {\n"
           + "final class Service {\nvar queueEnabled = true\nvar queueRequest: UUID?\nvar queueReply: [String: Any]?\n"
           + "var playback: NotchPlayback?\nvar queueCovers = NotchQueueCovers<Data>()\nvar upcomingArtwork: [String: Data] = [:]\n"

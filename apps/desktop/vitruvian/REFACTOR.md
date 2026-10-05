@@ -703,6 +703,17 @@ leaves 80.
   domain, reads back through the card's `Preferences` keys and checks the
   shipped English strings, in place of a stand-in defaults store and strings.
 
+Landed (4b, the music queue's row action): one more generated file goes,
+which leaves 79.
+
+- **Injected:** `NotchMusicService.playQueued(_:visible:request:upcoming:playback:pending:failed:in:send:)`
+  holds the row action's rule and its pending and failed flags. The service
+  passes its own state and `send`. The test reads its preferences from a test
+  domain instead of a stand-in `NotchQueueSupport`.
+- **Checks added:** a row action still waiting for its reply blocks another,
+  and a queue turned off in Settings plays nothing. The stand-in always
+  reported the queue on, so the second could not be checked before.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

@@ -110,11 +110,6 @@ enum NotchLyricsContract {
     }
 }
 
-enum NotchQueueContract {
-    enum Preferences { static func isEnabled() -> Bool { true } }
-    typealias NotchQueueSupport = Preferences
-}
-
 enum NotchQueueHoldContract {}
 
 /// Production control and recovery methods run with a deterministic scheduler
@@ -814,32 +809,54 @@ enum NotchMusicHardeningTests {
         suite.expect(!selection(UUID(), item: "bad\0item").isValid,
                "the row, writer and native bridge share rejection of NUL identifiers")
 
-        let service = NotchQueueContract.Service()
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-queue-selection"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
+        for (key, value) in AppFeature.availabilityDefaults { defaults.set(value, forKey: key) }
+        defaults.set(true, forKey: DefaultsKey.notchEnabled)
         let row = NotchQueueItem(id: "next", offset: 2, title: "Next", artist: "", duration: 0)
-        service.queueRequest = selected.requestID
-        service.playback = playback("current")
-        service.upcoming = NotchQueueSnapshot(requestID: selected.requestID, currentIdentifier: "current", pid: 42,
+        let current = playback("current")
+        var upcoming = NotchQueueSnapshot(requestID: selected.requestID, currentIdentifier: "current", pid: 42,
             items: [row], canPlay: true)
-        service.sendAllowed = false
-        service.playQueued(row)
-        suite.expect(!service.queueActionPending && service.queueActionFailed,
+        var visible = true
+        var pending = false
+        var failed = false
+        var sendAllowed = false
+        var commands: [NotchPlaybackCommand] = []
+        func playQueued(_ item: NotchQueueItem) {
+            NotchMusicService.playQueued(item, visible: visible, request: selected.requestID, upcoming: upcoming,
+                                         playback: current, pending: &pending, failed: &failed, in: defaults) {
+                commands.append($0)
+                return sendAllowed && $0.message != nil
+            }
+        }
+        playQueued(row)
+        suite.expect(!pending && failed,
                "the real row action releases pending state when the writer rejects a command")
-        service.commands.removeAll()
-        service.sendAllowed = true
-        service.playQueued(row)
-        suite.expect(service.commands == [.queuePlay(selected)] && service.queueActionPending,
+        commands.removeAll()
+        sendAllowed = true
+        playQueued(row)
+        suite.expect(commands == [.queuePlay(selected)] && pending && !failed,
                "the real UI action captures its displayed process, current song, requested item and native offset")
-        service.queueVisible = false
-        service.queueActionPending = false
-        service.playQueued(row)
-        suite.expect(service.commands.count == 1, "a hidden queue cannot enqueue another row action")
-        service.queueVisible = true
-        service.commands.removeAll()
-        service.upcoming = NotchQueueSnapshot(requestID: selected.requestID, currentIdentifier: "current", pid: 42,
+        playQueued(row)
+        suite.expect(commands.count == 1, "a row action already waiting for its reply blocks another")
+        visible = false
+        pending = false
+        playQueued(row)
+        suite.expect(commands.count == 1, "a hidden queue cannot enqueue another row action")
+        visible = true
+        defaults.set(false, forKey: DefaultsKey.notchQueueEnabled)
+        playQueued(row)
+        suite.expect(commands.count == 1, "a queue turned off in Settings cannot enqueue a row action")
+        defaults.set(true, forKey: DefaultsKey.notchQueueEnabled)
+        commands.removeAll()
+        upcoming = NotchQueueSnapshot(requestID: selected.requestID, currentIdentifier: "current", pid: 42,
             items: [NotchQueueItem(id: "next", offset: 2, title: "Next", artist: "", duration: 0, artwork: Data([1]))],
             canPlay: true)
-        service.playQueued(row)
-        suite.expect(service.commands == [.queuePlay(selected)], "a row drawn before its cover arrived still plays")
+        playQueued(row)
+        suite.expect(commands == [.queuePlay(selected)], "a row drawn before its cover arrived still plays")
     }
 
     private static func queueHold(_ suite: TestSuite) {
