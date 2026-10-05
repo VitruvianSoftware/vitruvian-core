@@ -19,7 +19,46 @@ import VitruvianDesign
 /// release even while unplugged: it gets its level back when it returns.
 @MainActor
 package final class MicMuteService: ObservableObject {
-    package static let shared = MicMuteService()
+    /// What the mute asks of the system. `live` is the system's own; a test
+    /// passes doubles, so it never touches a real microphone.
+    package struct Environment: @unchecked Sendable {
+        package var hal: AudioHAL
+        /// The serial queue every device sweep runs on.
+        package var halQueue: AudioWorkQueue
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var defaults: UserDefaults
+        /// Shows the switch on the island; false when the island does not.
+        package var showMicrophone: @MainActor (Bool) -> Bool
+        package var retractMicrophoneNotice: @MainActor () -> Void
+        package var hud: @MainActor (_ icon: String, _ message: String) -> Void
+
+        package init(hal: AudioHAL, halQueue: AudioWorkQueue,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     defaults: UserDefaults,
+                     showMicrophone: @escaping @MainActor (Bool) -> Bool,
+                     retractMicrophoneNotice: @escaping @MainActor () -> Void,
+                     hud: @escaping @MainActor (String, String) -> Void) {
+            self.hal = hal
+            self.halQueue = halQueue
+            self.main = main
+            self.defaults = defaults
+            self.showMicrophone = showMicrophone
+            self.retractMicrophoneNotice = retractMicrophoneNotice
+            self.hud = hud
+        }
+
+        package static var live: Environment {
+            Environment(hal: .live,
+                        halQueue: .live(label: "com.vitruviansoftware.vitruvian.micmute.hal"),
+                        main: { work in DispatchQueue.main.async { work() } },
+                        defaults: .standard,
+                        showMicrophone: { NotchService.shared.showMicrophone(muted: $0) },
+                        retractMicrophoneNotice: { NotchService.shared.retractMicrophoneNotice() },
+                        hud: { QuickToolHUD.show(icon: $0, message: $1) })
+        }
+    }
+
+    package static let shared = MicMuteService(environment: .live)
 
     @Published package private(set) var isMuted = false
     @Published package private(set) var shortcutRegistrationFailed = false
@@ -30,8 +69,8 @@ package final class MicMuteService: ObservableObject {
     /// daemon holds the device (a headset connecting, an interface waking),
     /// and that is exactly the moment the listeners fire. Sweeping every
     /// device on the main thread would hand the app one hang per reconnection,
-    /// so all of it happens here, one sweep at a time.
-    private let halQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.micmute.hal", qos: .userInitiated)
+    /// so all of it happens on the environment's HAL queue, one sweep at a time.
+    nonisolated private let environment: Environment
     /// A sweep that finished after a newer one started must not publish what
     /// it saw.
     private var applyGeneration = 0
@@ -41,13 +80,15 @@ package final class MicMuteService: ObservableObject {
     /// sweep is still running must re-assert the request in flight, never the
     /// state it is replacing: read from the flag, a mute still being applied
     /// looked like "unmuted, with claims to release" and was silently undone.
-    private var wantsMute = UserDefaults.standard.bool(forKey: DefaultsKey.micMuteActive)
+    private var wantsMute: Bool
     private let inputVolumeLock = NSLock()
     // The two below are guarded by inputVolumeLock.
     nonisolated(unsafe) private var inputVolumeBlocked = false
     nonisolated(unsafe) private var inputVolumeLifetime = UUID()
 
-    private init() {
+    package init(environment: Environment) {
+        self.environment = environment
+        wantsMute = environment.defaults.bool(forKey: DefaultsKey.micMuteActive)
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
@@ -59,7 +100,7 @@ package final class MicMuteService: ObservableObject {
     private static let listenerCallback: AudioObjectPropertyListenerProc = { _, _, _, client in
         guard let client else { return noErr }
         let service = Unmanaged<MicMuteService>.fromOpaque(client).takeUnretainedValue()
-        DispatchQueue.main.async { service.reapplyIfNeeded() }
+        service.environment.main { service.reapplyIfNeeded() }
         return noErr
     }
 
@@ -70,9 +111,9 @@ package final class MicMuteService: ObservableObject {
     }
 
     package func syncWithPreferences() {
-        let available = AppFeature.micMute.isAvailable
+        let available = AppFeature.micMute.isAvailable(in: environment.defaults)
         let enabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.micMuteShortcutEnabled)
+            && environment.defaults.bool(forKey: DefaultsKey.micMuteShortcutEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.micMuteShortcut,
                                             fallback: .micMuteDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
@@ -93,7 +134,7 @@ package final class MicMuteService: ObservableObject {
             // with no control left to unmute it.
             if wantsMute || hasOutstandingClaims {
                 apply(muted: false, announce: false)
-                UserDefaults.standard.set(false, forKey: DefaultsKey.micMuteActive)
+                environment.defaults.set(false, forKey: DefaultsKey.micMuteActive)
             }
             isMuted = false
         }
@@ -104,7 +145,7 @@ package final class MicMuteService: ObservableObject {
     /// go, and to catch a claimed device coming back so it can be released;
     /// they live only as long as one of those is pending.
     private func syncListeners() {
-        if isMuted || (AppFeature.micMute.isAvailable && hasOutstandingClaims) {
+        if isMuted || (AppFeature.micMute.isAvailable(in: environment.defaults) && hasOutstandingClaims) {
             installListeners()
         } else {
             removeListeners()
@@ -113,7 +154,7 @@ package final class MicMuteService: ObservableObject {
 
     /// Devices this app silenced and has not yet put back, present or not.
     private var hasOutstandingClaims: Bool {
-        !(UserDefaults.standard.stringArray(forKey: DefaultsKey.micMuteMutedDevices) ?? []).isEmpty
+        !(environment.defaults.stringArray(forKey: DefaultsKey.micMuteMutedDevices) ?? []).isEmpty
     }
 
     package func suspend() {
@@ -130,7 +171,7 @@ package final class MicMuteService: ObservableObject {
 
     nonisolated
     package var inputVolumeAdjustmentLifetime: UUID? {
-        guard !UserDefaults.standard.bool(forKey: DefaultsKey.micMuteActive) else { return nil }
+        guard !environment.defaults.bool(forKey: DefaultsKey.micMuteActive) else { return nil }
         return inputVolumeLock.withLock { inputVolumeBlocked ? nil : inputVolumeLifetime }
     }
 
@@ -139,7 +180,7 @@ package final class MicMuteService: ObservableObject {
     /// microphone after the mute sweep has already silenced it.
     nonisolated
     package func withUnmutedInput(lifetime: UUID, _ adjustment: () -> Void) {
-        halQueue.sync {
+        environment.halQueue.sync {
             guard inputVolumeAdjustmentLifetime == lifetime else { return }
             adjustment()
         }
@@ -150,7 +191,7 @@ package final class MicMuteService: ObservableObject {
     /// and a microphone left cut by an app that no longer exists is the one
     /// failure this feature cannot afford, so this one waits.
     package func unmuteForTeardown() {
-        let defaults = UserDefaults.standard
+        let defaults = environment.defaults
         // A mute still being applied has not reached the flag yet, and a claim
         // is a device this app owes its level back whatever the flag says.
         guard wantsMute || defaults.bool(forKey: DefaultsKey.micMuteActive) || hasOutstandingClaims else { return }
@@ -158,7 +199,7 @@ package final class MicMuteService: ObservableObject {
         // runs behind it on the same serial queue.
         applyGeneration += 1
         wantsMute = false
-        _ = halQueue.sync { Self.sweep(muted: false) }
+        environment.halQueue.sync { _ = self.sweep(muted: false) }
         defaults.set(false, forKey: DefaultsKey.micMuteActive)
         isMuted = false
         inputVolumeLock.withLock {
@@ -192,10 +233,11 @@ package final class MicMuteService: ObservableObject {
         }
         applyGeneration += 1
         let generation = applyGeneration
-        halQueue.async { [weak self] in
-            let outcome = Self.sweep(muted: muted)
-            DispatchQueue.main.async {
-                self?.finish(outcome, muted: muted, announce: announce, generation: generation)
+        environment.halQueue.async { [weak self] in
+            guard let self else { return }
+            let outcome = self.sweep(muted: muted)
+            self.environment.main {
+                self.finish(outcome, muted: muted, announce: announce, generation: generation)
             }
         }
     }
@@ -208,8 +250,8 @@ package final class MicMuteService: ObservableObject {
     /// for, both would start from the same record; the second would then find
     /// the devices the first had just silenced already quiet and unclaimed,
     /// leave them to "the user", and the unmute would never release them.
-    nonisolated private static func sweep(muted: Bool) -> MuteOutcome {
-        let defaults = UserDefaults.standard
+    nonisolated private func sweep(muted: Bool) -> MuteOutcome {
+        let defaults = environment.defaults
         let outcome = applyToDevices(
             muted: muted,
             savedVolumes: defaults.dictionary(forKey: DefaultsKey.micMuteSavedVolumes) as? [String: Double] ?? [:],
@@ -240,21 +282,21 @@ package final class MicMuteService: ObservableObject {
             return
         }
         if isMuted != muted { isMuted = muted }
-        UserDefaults.standard.set(muted, forKey: DefaultsKey.micMuteActive)
+        environment.defaults.set(muted, forKey: DefaultsKey.micMuteActive)
         syncListeners()
         guard announce else { return }
         // A partial result keeps the floating confirmation: the whole
         // sentence matters, and it is longer than the island's wings.
         if outcome.failed {
-            NotchService.shared.retractMicrophoneNotice()
-            QuickToolHUD.show(icon: "exclamationmark.triangle",
-                              message: muted ? L10n.shared.s.micMutePartialHUD : L10n.shared.s.micUnmutePartialHUD)
+            environment.retractMicrophoneNotice()
+            environment.hud("exclamationmark.triangle",
+                            muted ? L10n.shared.s.micMutePartialHUD : L10n.shared.s.micUnmutePartialHUD)
             return
         }
         // With Dynamic Island on, the switch reports there like the volume.
-        guard !NotchService.shared.showMicrophone(muted: muted) else { return }
-        QuickToolHUD.show(icon: muted ? "mic.slash.fill" : "mic.fill",
-                          message: muted ? L10n.shared.s.micMutedHUD : L10n.shared.s.micUnmutedHUD)
+        guard !environment.showMicrophone(muted) else { return }
+        environment.hud(muted ? "mic.slash.fill" : "mic.fill",
+                        muted ? L10n.shared.s.micMutedHUD : L10n.shared.s.micUnmutedHUD)
     }
 
     // MARK: - CoreAudio
@@ -276,7 +318,7 @@ package final class MicMuteService: ObservableObject {
     }
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
-    nonisolated private static func applyToDevices(muted: Bool,
+    nonisolated private func applyToDevices(muted: Bool,
                                        savedVolumes: [String: Double],
                                        savedChannelVolumes: [String: [String: Double]],
                                        mutedDevices: [String]?,
@@ -295,7 +337,7 @@ package final class MicMuteService: ObservableObject {
                      mutedDevices: mutedDevices, legacyVolume: legacyVolume)
     }
 
-    nonisolated private static func mute(_ devices: [InputDevice],
+    nonisolated private func mute(_ devices: [InputDevice],
                              savedVolumes: [String: Double],
                              savedChannelVolumes: [String: [String: Double]],
                              mutedDevices: [String]?) -> MuteOutcome {
@@ -349,7 +391,7 @@ package final class MicMuteService: ObservableObject {
         return outcome
     }
 
-    nonisolated private static func unmute(_ devices: [InputDevice],
+    nonisolated private func unmute(_ devices: [InputDevice],
                                savedVolumes: [String: Double],
                                savedChannelVolumes: [String: [String: Double]],
                                mutedDevices: [String]?,
@@ -412,7 +454,7 @@ package final class MicMuteService: ObservableObject {
     }
 
     /// True when no audio can come out of the device right now.
-    nonisolated private static func isSilenced(_ device: AudioDeviceID) -> Bool {
+    nonisolated private func isSilenced(_ device: AudioDeviceID) -> Bool {
         if muteSwitchValue(of: device) == 1 { return true }
         guard let volume = inputVolume(of: device) else { return false }
         return volume <= 0.01
@@ -420,18 +462,18 @@ package final class MicMuteService: ObservableObject {
 
     /// Every device that can capture audio, skipping the app's own mixing
     /// device and the ones the system is not really offering.
-    nonisolated private static func inputDevices() -> [InputDevice] {
+    nonisolated private func inputDevices() -> [InputDevice] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
-                                             &address, 0, nil, &size) == noErr, size > 0 else { return [] }
+        guard environment.hal.getPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
+                                                  &address, 0, nil, &size) == noErr, size > 0 else { return [] }
         var deviceIDs = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
-                                         &address, 0, nil, &size, &deviceIDs) == noErr else { return [] }
+        guard environment.hal.getPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                              &address, 0, nil, &size, &deviceIDs) == noErr else { return [] }
 
         var devices: [InputDevice] = []
         for deviceID in deviceIDs {
@@ -454,27 +496,27 @@ package final class MicMuteService: ObservableObject {
         return devices
     }
 
-    nonisolated private static func hasInputStreams(_ deviceID: AudioDeviceID) -> Bool {
+    nonisolated private func hasInputStreams(_ deviceID: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
                                                  mScope: kAudioDevicePropertyScopeInput,
                                                  mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        return AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr
+        return environment.hal.getPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr
             && size >= MemoryLayout<AudioObjectID>.size
     }
 
-    nonisolated private static func muteAddress() -> AudioObjectPropertyAddress {
+    nonisolated private func muteAddress() -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,
                                    mScope: kAudioDevicePropertyScopeInput,
                                    mElement: kAudioObjectPropertyElementMain)
     }
 
-    nonisolated private static func muteSwitchValue(of device: AudioDeviceID) -> UInt32? {
+    nonisolated private func muteSwitchValue(of device: AudioDeviceID) -> UInt32? {
         var address = muteAddress()
-        guard AudioObjectHasProperty(device, &address) else { return nil }
+        guard environment.hal.hasProperty(device, &address) else { return nil }
         var value: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+        guard environment.hal.getPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
         return value
     }
 
@@ -482,20 +524,20 @@ package final class MicMuteService: ObservableObject {
     /// drivers answer a write with success and keep their own value, so the
     /// switch only counts when the device reads back the way it was asked to;
     /// otherwise the caller still has the volume to fall back on.
-    nonisolated private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID) -> Bool {
+    nonisolated private func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID) -> Bool {
         var address = muteAddress()
         var settable = DarwinBoolean(false)
-        guard AudioObjectHasProperty(device, &address),
-              AudioObjectIsPropertySettable(device, &address, &settable) == noErr,
+        guard environment.hal.hasProperty(device, &address),
+              environment.hal.isPropertySettable(device, &address, &settable) == noErr,
               settable.boolValue else { return false }
         var value: UInt32 = muted ? 1 : 0
-        guard AudioObjectSetPropertyData(device, &address, 0, nil,
-                                         UInt32(MemoryLayout<UInt32>.size), &value) == noErr else { return false }
+        guard environment.hal.setPropertyData(device, &address, 0, nil,
+                                              UInt32(MemoryLayout<UInt32>.size), &value) == noErr else { return false }
         guard let readBack = muteSwitchValue(of: device) else { return true }
         return readBack == value
     }
 
-    nonisolated private static func volumeAddresses() -> [AudioObjectPropertyAddress] {
+    nonisolated private func volumeAddresses() -> [AudioObjectPropertyAddress] {
         // Main element first; devices without a master volume expose the
         // channels individually.
         [kAudioObjectPropertyElementMain, 1, 2].map { element in
@@ -505,11 +547,11 @@ package final class MicMuteService: ObservableObject {
         }
     }
 
-    nonisolated private static func inputVolume(of device: AudioDeviceID) -> Float? {
-        for var address in volumeAddresses() where AudioObjectHasProperty(device, &address) {
+    nonisolated private func inputVolume(of device: AudioDeviceID) -> Float? {
+        for var address in volumeAddresses() where environment.hal.hasProperty(device, &address) {
             var volume = Float(0)
             var size = UInt32(MemoryLayout<Float>.size)
-            if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr {
+            if environment.hal.getPropertyData(device, &address, 0, nil, &size, &volume) == noErr {
                 return volume
             }
         }
@@ -519,13 +561,13 @@ package final class MicMuteService: ObservableObject {
     /// Channels 1 and 2 as levels of their own, keyed by element. A mute
     /// lowers them with the main level, and an unmute that wrote the main
     /// level into every channel would flatten the balance between them.
-    nonisolated private static func channelVolumes(of device: AudioDeviceID) -> [String: Double] {
+    nonisolated private func channelVolumes(of device: AudioDeviceID) -> [String: Double] {
         var levels: [String: Double] = [:]
         for var address in volumeAddresses() where address.mElement != kAudioObjectPropertyElementMain
-            && AudioObjectHasProperty(device, &address) {
+            && environment.hal.hasProperty(device, &address) {
             var volume = Float(0)
             var size = UInt32(MemoryLayout<Float>.size)
-            if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr,
+            if environment.hal.getPropertyData(device, &address, 0, nil, &size, &volume) == noErr,
                MicMuteSupport.shouldSaveVolume(volume) {
                 levels[String(address.mElement)] = Double(volume)
             }
@@ -535,16 +577,16 @@ package final class MicMuteService: ObservableObject {
 
     /// Writes the main level and channels 1 and 2, each channel taking its
     /// own entry in `channels` when there is one.
-    nonisolated private static func setInputVolume(_ volume: Float, of device: AudioDeviceID,
+    nonisolated private func setInputVolume(_ volume: Float, of device: AudioDeviceID,
                                        channels: [String: Double] = [:]) -> Bool {
         var applied = false
-        for var address in volumeAddresses() where AudioObjectHasProperty(device, &address) {
+        for var address in volumeAddresses() where environment.hal.hasProperty(device, &address) {
             var settable = DarwinBoolean(false)
-            guard AudioObjectIsPropertySettable(device, &address, &settable) == noErr,
+            guard environment.hal.isPropertySettable(device, &address, &settable) == noErr,
                   settable.boolValue else { continue }
             var value = channels[String(address.mElement)].map(Float.init) ?? volume
-            if AudioObjectSetPropertyData(device, &address, 0, nil,
-                                          UInt32(MemoryLayout<Float>.size), &value) == noErr {
+            if environment.hal.setPropertyData(device, &address, 0, nil,
+                                               UInt32(MemoryLayout<Float>.size), &value) == noErr {
                 applied = true
             }
         }
@@ -552,7 +594,7 @@ package final class MicMuteService: ObservableObject {
     }
 
     @discardableResult
-    nonisolated private static func read<T>(_ object: AudioObjectID,
+    nonisolated private func read<T>(_ object: AudioObjectID,
                                 _ selector: AudioObjectPropertySelector,
                                 _ value: inout T) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: selector,
@@ -560,8 +602,8 @@ package final class MicMuteService: ObservableObject {
                                                  mElement: kAudioObjectPropertyElementMain)
         var size = UInt32(MemoryLayout<T>.size)
         return withUnsafeMutablePointer(to: &value) { pointer in
-            AudioObjectGetPropertyData(object, &address, 0, nil, &size,
-                                       UnsafeMutableRawPointer(pointer)) == noErr
+            environment.hal.getPropertyData(object, &address, 0, nil, &size,
+                                            UnsafeMutableRawPointer(pointer)) == noErr
         }
     }
 
@@ -580,9 +622,9 @@ package final class MicMuteService: ObservableObject {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeGlobal,
                                                      mElement: kAudioObjectPropertyElementMain)
-            let status = AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject),
-                                                        &address, Self.listenerCallback,
-                                                        listenerClient)
+            let status = environment.hal.addPropertyListener(AudioObjectID(kAudioObjectSystemObject),
+                                                             &address, Self.listenerCallback,
+                                                             listenerClient)
             if status == noErr {
                 installedListeners.append(selector)
             }
@@ -594,9 +636,9 @@ package final class MicMuteService: ObservableObject {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeGlobal,
                                                      mElement: kAudioObjectPropertyElementMain)
-            AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject),
-                                              &address, Self.listenerCallback,
-                                              listenerClient)
+            _ = environment.hal.removePropertyListener(AudioObjectID(kAudioObjectSystemObject),
+                                                       &address, Self.listenerCallback,
+                                                       listenerClient)
         }
         installedListeners.removeAll()
     }

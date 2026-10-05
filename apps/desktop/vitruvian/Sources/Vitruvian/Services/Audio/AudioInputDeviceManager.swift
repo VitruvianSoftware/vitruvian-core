@@ -22,7 +22,51 @@ package struct MixerInputDevice: Identifiable, Equatable {
 /// microphone changes the system default input, without taps or audio capture.
 @MainActor
 package final class AudioInputDeviceManager: ObservableObject {
-    package static let shared = AudioInputDeviceManager()
+    /// What the manager asks of the system. `live` is the system's own; a
+    /// test passes doubles, so it never changes a real microphone.
+    package struct Environment: @unchecked Sendable {
+        package var hal: AudioHAL
+        /// The serial queue every CoreAudio call of a sweep, a write and a
+        /// read runs on.
+        package var halQueue: AudioWorkQueue
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var after: @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
+        package var now: @MainActor () -> CFAbsoluteTime
+        package var defaults: UserDefaults
+        /// The mute a volume adjustment has to wait behind.
+        package var micMute: MicMuteService
+
+        package init(hal: AudioHAL, halQueue: AudioWorkQueue,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     after: @escaping @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void,
+                     now: @escaping @MainActor () -> CFAbsoluteTime,
+                     defaults: UserDefaults, micMute: MicMuteService) {
+            self.hal = hal
+            self.halQueue = halQueue
+            self.main = main
+            self.after = after
+            self.now = now
+            self.defaults = defaults
+            self.micMute = micMute
+        }
+
+        /// Main-actor: it waits behind the shared mute.
+        @MainActor package static var live: Environment {
+            Environment(hal: .live,
+                        halQueue: .live(label: "com.vitruviansoftware.vitruvian.audioinput.hal"),
+                        main: { work in DispatchQueue.main.async { work() } },
+                        after: { delay, work in
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                MainActor.assumeIsolated { work() }
+                            }
+                        },
+                        now: { CFAbsoluteTimeGetCurrent() },
+                        defaults: .standard,
+                        micMute: .shared)
+        }
+    }
+
+    package static let shared = AudioInputDeviceManager(environment: .live)
 
     @Published package private(set) var inputDevices: [MixerInputDevice] = []
     @Published package private(set) var preferredInputDeviceUID: String?
@@ -49,11 +93,11 @@ package final class AudioInputDeviceManager: ObservableObject {
     /// the main thread, one reader at a time, and a sweep the manager no longer
     /// wants is dropped instead of publishing what it saw.
     private var refresh = MixerRefreshCoordinator()
-    /// Every CoreAudio call of a refresh runs here, and every HAL notification
-    /// is delivered here. A device being reconfigured can hold a property read
-    /// for as long as the audio daemon holds the device, and that is exactly
-    /// the moment the listeners fire.
-    private let halQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.audioinput.hal", qos: .userInitiated)
+    /// Every CoreAudio call of a refresh runs on the environment's HAL queue.
+    /// A device being reconfigured can hold a property read for as long as
+    /// the audio daemon holds the device, and that is exactly the moment the
+    /// listeners fire.
+    nonisolated private let environment: Environment
     /// The system input before the singular preferred-microphone behavior
     /// changed it, and the device that behavior applied. Priority selections
     /// clear this pair and become the new system choice instead of a temporary
@@ -64,14 +108,17 @@ package final class AudioInputDeviceManager: ObservableObject {
     /// preferred-input enforcement steps aside so the two do not fight.
     package private(set) var inputPriorityIsActive = false
 
-    private init() {}
+    package init(environment: Environment) {
+        self.environment = environment
+    }
 
     /// The microphone selector lives in the mixer panel section, so it
     /// follows the mixer's hub availability.
     package func syncWithPreferences() {
-        inputPriorityIsActive = AppFeature.audioPriority.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.audioPriorityInputEnabled)
-        if AppFeature.mixer.isAvailable || AppFeature.audioPriority.isAvailable {
+        inputPriorityIsActive = AppFeature.audioPriority.isAvailable(in: environment.defaults)
+            && environment.defaults.bool(forKey: DefaultsKey.audioPriorityInputEnabled)
+        if AppFeature.mixer.isAvailable(in: environment.defaults)
+            || AppFeature.audioPriority.isAvailable(in: environment.defaults) {
             start()
         } else {
             stop()
@@ -108,10 +155,10 @@ package final class AudioInputDeviceManager: ObservableObject {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeGlobal,
                                                      mElement: kAudioObjectPropertyElementMain)
-            AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject),
-                                              &address,
-                                              Self.listenerCallback,
-                                              listenerClient)
+            _ = environment.hal.removePropertyListener(AudioObjectID(kAudioObjectSystemObject),
+                                                       &address,
+                                                       Self.listenerCallback,
+                                                       listenerClient)
         }
         globalListeners.removeAll()
         if !inputDevices.isEmpty { inputDevices = [] }
@@ -139,9 +186,9 @@ package final class AudioInputDeviceManager: ObservableObject {
             return
         }
         if let sanitized {
-            UserDefaults.standard.set(sanitized, forKey: DefaultsKey.preferredInputDevice)
+            environment.defaults.set(sanitized, forKey: DefaultsKey.preferredInputDevice)
         } else {
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.preferredInputDevice)
+            environment.defaults.removeObject(forKey: DefaultsKey.preferredInputDevice)
         }
         preferredInputDeviceUID = sanitized
         lastError = nil
@@ -163,10 +210,11 @@ package final class AudioInputDeviceManager: ObservableObject {
               uid != currentInputDeviceUID,
               let device = inputDevices.first(where: { $0.uid == uid }) else { return }
         refresh.discardInFlight()
-        halQueue.async { [weak self] in
-            let status = Self.setDefaultInputDevice(device.audioObjectID)
-            DispatchQueue.main.async {
-                guard let self, self.listenerInstalled else { return }
+        environment.halQueue.async { [weak self] in
+            guard let self else { return }
+            let status = self.setDefaultInputDevice(device.audioObjectID)
+            self.environment.main {
+                guard self.listenerInstalled else { return }
                 if status == noErr {
                     self.inputDeviceBeforeOverride = nil
                     self.appliedInputDeviceUID = nil
@@ -185,7 +233,7 @@ package final class AudioInputDeviceManager: ObservableObject {
 
     package func setInputVolume(_ volume: Double) {
         guard listenerInstalled, volume.isFinite,
-              let muteLifetime = MicMuteService.shared.inputVolumeAdjustmentLifetime,
+              let muteLifetime = environment.micMute.inputVolumeAdjustmentLifetime,
               let uid = effectiveInputDeviceUID,
               let device = inputDevices.first(where: { $0.uid == uid }),
               volumeDeviceID == device.audioObjectID, inputVolume != nil else { return }
@@ -193,21 +241,21 @@ package final class AudioInputDeviceManager: ObservableObject {
         let lifetime = volumeWriteLock.withLock { volumeWriteLifetime }
         volumeRefreshGeneration &+= 1
         if inputVolume != clamped { inputVolume = clamped }
-        let micMute = MicMuteService.shared
-        halQueue.async { [weak self] in
+        let micMute = environment.micMute
+        environment.halQueue.async { [weak self] in
             guard let self else { return }
             // Serialize with mute itself, including a mute requested while
             // this adjustment was waiting for the audio device.
             micMute.withUnmutedInput(lifetime: muteLifetime) {
                 guard self.volumeWriteLock.withLock({ self.volumeWriteLifetime == lifetime }),
-                      Self.defaultInputDeviceUID() == uid else { return }
+                      self.defaultInputDeviceUID() == uid else { return }
                 var deviceUID: CFString = "" as CFString
-                guard Self.read(device.audioObjectID, kAudioDevicePropertyDeviceUID, &deviceUID),
+                guard self.read(device.audioObjectID, kAudioDevicePropertyDeviceUID, &deviceUID),
                       deviceUID as String == uid,
                       self.volumeWriteLock.withLock({ self.volumeWriteLifetime == lifetime }) else { return }
-                _ = Self.setInputVolume(Float32(clamped), for: device.audioObjectID)
+                _ = self.setInputVolume(Float32(clamped), for: device.audioObjectID)
             }
-            DispatchQueue.main.async {
+            self.environment.main {
                 guard self.volumeWriteLock.withLock({ self.volumeWriteLifetime == lifetime }) else { return }
                 // Success may still mean a rounded or ignored adjustment.
                 self.scheduleVolumeRefresh(for: device.audioObjectID)
@@ -223,7 +271,7 @@ package final class AudioInputDeviceManager: ObservableObject {
     private static let listenerCallback: AudioObjectPropertyListenerProc = { _, _, _, client in
         guard let client else { return noErr }
         let manager = Unmanaged<AudioInputDeviceManager>.fromOpaque(client).takeUnretainedValue()
-        DispatchQueue.main.async { manager.scheduleListenerRefresh() }
+        manager.environment.main { manager.scheduleListenerRefresh() }
         return noErr
     }
 
@@ -231,7 +279,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         device, _, _, client in
         guard let client else { return noErr }
         let manager = Unmanaged<AudioInputDeviceManager>.fromOpaque(client).takeUnretainedValue()
-        DispatchQueue.main.async { manager.scheduleVolumeRefresh(for: device) }
+        manager.environment.main { manager.scheduleVolumeRefresh(for: device) }
         return noErr
     }
 
@@ -245,10 +293,10 @@ package final class AudioInputDeviceManager: ObservableObject {
         var address = AudioObjectPropertyAddress(mSelector: selector,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject),
-                                             &address,
-                                             Self.listenerCallback,
-                                             listenerClient) == noErr else { return }
+        guard environment.hal.addPropertyListener(AudioObjectID(kAudioObjectSystemObject),
+                                                  &address,
+                                                  Self.listenerCallback,
+                                                  listenerClient) == noErr else { return }
         globalListeners.append(selector)
     }
 
@@ -258,7 +306,7 @@ package final class AudioInputDeviceManager: ObservableObject {
     /// into a single trailing refresh.
     private func scheduleListenerRefresh() {
         guard !refreshPending else { return }
-        let now = CFAbsoluteTimeGetCurrent()
+        let now = environment.now()
         let elapsed = now - lastListenerRefreshAt
         if elapsed >= Self.listenerRefreshInterval {
             lastListenerRefreshAt = now
@@ -267,10 +315,10 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
         refreshPending = true
         let delay = Self.listenerRefreshInterval - elapsed
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        environment.after(delay) { [weak self] in
             guard let self else { return }
             self.refreshPending = false
-            self.lastListenerRefreshAt = CFAbsoluteTimeGetCurrent()
+            self.lastListenerRefreshAt = self.environment.now()
             self.refreshAndApply()
         }
     }
@@ -317,23 +365,24 @@ package final class AudioInputDeviceManager: ObservableObject {
         guard let generation = refresh.begin() else { return }
         let request = RefreshRequest(
             savedUID: Defaults.sanitizedPreferredInputDeviceUID(
-                UserDefaults.standard.string(forKey: DefaultsKey.preferredInputDevice)),
+                environment.defaults.string(forKey: DefaultsKey.preferredInputDevice)),
             inputDeviceBeforeOverride: inputDeviceBeforeOverride,
             mayApplyPreferred: !applyingPreferred && !inputPriorityIsActive,
             priorityIsActive: inputPriorityIsActive,
-            preferredInputIsActive: AppFeature.mixer.isAvailable,
+            preferredInputIsActive: AppFeature.mixer.isAvailable(in: environment.defaults),
             volumeGeneration: volumeRefreshGeneration)
 
-        halQueue.async { [weak self] in
-            let snapshot = Self.readSnapshot(request)
-            DispatchQueue.main.async {
-                self?.apply(snapshot, generation: generation)
+        environment.halQueue.async { [weak self] in
+            guard let self else { return }
+            let snapshot = self.readSnapshot(request)
+            self.environment.main {
+                self.apply(snapshot, generation: generation)
             }
         }
     }
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
-    nonisolated private static func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
+    nonisolated private func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
         let savedUID = request.savedUID
         let currentUID = defaultInputDeviceUID()
         let devices = inputDevices(defaultUID: currentUID)
@@ -486,27 +535,27 @@ package final class AudioInputDeviceManager: ObservableObject {
               let appliedUID = appliedInputDeviceUID else { return }
         inputDeviceBeforeOverride = nil
         appliedInputDeviceUID = nil
-        let devices = Self.inputDevices(defaultUID: nil)
+        let devices = inputDevices(defaultUID: nil)
         guard let restoredUID = MixerRoutingSupport.restorableInputDeviceUID(
             originalUID: originalUID,
             appliedUID: appliedUID,
-            currentUID: Self.defaultInputDeviceUID(),
+            currentUID: defaultInputDeviceUID(),
             availableUIDs: Set(devices.map(\.uid))),
             let device = devices.first(where: { $0.uid == restoredUID }) else { return }
-        _ = Self.setDefaultInputDevice(device.audioObjectID)
+        _ = setDefaultInputDevice(device.audioObjectID)
     }
 
-    nonisolated private static func setDefaultInputDevice(_ deviceID: AudioObjectID) -> OSStatus {
+    nonisolated private func setDefaultInputDevice(_ deviceID: AudioObjectID) -> OSStatus {
         var nextDeviceID = deviceID
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
-        return AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject),
-                                          &address,
-                                          0,
-                                          nil,
-                                          UInt32(MemoryLayout<AudioObjectID>.size),
-                                          &nextDeviceID)
+        return environment.hal.setPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                               &address,
+                                               0,
+                                               nil,
+                                               UInt32(MemoryLayout<AudioObjectID>.size),
+                                               &nextDeviceID)
     }
 
     nonisolated private static let inputVolumeSelectors: [AudioObjectPropertySelector] = [
@@ -522,17 +571,17 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    nonisolated private static func channelInputVolumeAddresses(for deviceID: AudioObjectID) -> [AudioObjectPropertyAddress] {
+    nonisolated private func channelInputVolumeAddresses(for deviceID: AudioObjectID) -> [AudioObjectPropertyAddress] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
                                                 mScope: kAudioDevicePropertyScopeInput,
                                                 mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr,
+        guard environment.hal.getPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr,
               size >= UInt32(MemoryLayout<AudioBufferList>.size) else { return [] }
         let storage = UnsafeMutableRawPointer.allocate(
             byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
         defer { storage.deallocate() }
-        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, storage) == noErr else { return [] }
+        guard environment.hal.getPropertyData(deviceID, &address, 0, nil, &size, storage) == noErr else { return [] }
         let buffers = UnsafeMutableAudioBufferListPointer(storage.assumingMemoryBound(to: AudioBufferList.self))
         let channelCount = buffers.reduce(0) { $0 + Int($1.mNumberChannels) }
         guard channelCount > 0 else { return [] }
@@ -551,12 +600,12 @@ package final class AudioInputDeviceManager: ObservableObject {
         // The active device is also needed for explicit read-back when a
         // driver cannot install notifications.
         volumeDeviceID = deviceID
-        let addresses = Self.mainInputVolumeAddresses() + Self.channelInputVolumeAddresses(for: deviceID)
-        for var address in addresses where Self.isSettable(deviceID, &address) {
-            guard AudioObjectAddPropertyListener(deviceID,
-                                                 &address,
-                                                 Self.volumeListenerCallback,
-                                                 listenerClient) == noErr else { continue }
+        let addresses = Self.mainInputVolumeAddresses() + channelInputVolumeAddresses(for: deviceID)
+        for var address in addresses where isSettable(deviceID, &address) {
+            guard environment.hal.addPropertyListener(deviceID,
+                                                      &address,
+                                                      Self.volumeListenerCallback,
+                                                      listenerClient) == noErr else { continue }
             volumeListenerAddresses.append(address)
         }
     }
@@ -569,10 +618,10 @@ package final class AudioInputDeviceManager: ObservableObject {
             return
         }
         for var address in volumeListenerAddresses {
-            AudioObjectRemovePropertyListener(deviceID,
-                                              &address,
-                                              Self.volumeListenerCallback,
-                                              listenerClient)
+            _ = environment.hal.removePropertyListener(deviceID,
+                                                       &address,
+                                                       Self.volumeListenerCallback,
+                                                       listenerClient)
         }
         volumeListenerAddresses.removeAll()
         volumeDeviceID = nil
@@ -584,16 +633,16 @@ package final class AudioInputDeviceManager: ObservableObject {
         let generation = volumeRefreshGeneration
         // A drag can emit several property notifications for each step. Read
         // once after the burst, and never let an older read replace newer UI.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+        environment.after(0.03) { [weak self] in
             guard let self,
                   self.listenerInstalled,
                   self.volumeDeviceID == deviceID,
                   self.volumeRefreshGeneration == generation else { return }
-            self.halQueue.async { [weak self] in
-                let volume = Self.inputVolume(for: deviceID).map(Double.init)
-                DispatchQueue.main.async {
-                    guard let self,
-                          self.listenerInstalled,
+            self.environment.halQueue.async { [weak self] in
+                guard let self else { return }
+                let volume = self.inputVolume(for: deviceID).map(Double.init)
+                self.environment.main {
+                    guard self.listenerInstalled,
                           self.volumeDeviceID == deviceID,
                           self.volumeRefreshGeneration == generation else { return }
                     if self.inputVolume != volume { self.inputVolume = volume }
@@ -602,19 +651,19 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    nonisolated private static func isSettable(_ deviceID: AudioObjectID,
+    nonisolated private func isSettable(_ deviceID: AudioObjectID,
                                    _ address: inout AudioObjectPropertyAddress) -> Bool {
-        guard AudioObjectHasProperty(deviceID, &address) else { return false }
+        guard environment.hal.hasProperty(deviceID, &address) else { return false }
         var settable = DarwinBoolean(false)
-        return AudioObjectIsPropertySettable(deviceID, &address, &settable) == noErr
+        return environment.hal.isPropertySettable(deviceID, &address, &settable) == noErr
             && settable.boolValue
     }
 
-    nonisolated private static func inputVolume(for deviceID: AudioObjectID) -> Float32? {
-        for var address in mainInputVolumeAddresses() where isSettable(deviceID, &address) {
+    nonisolated private func inputVolume(for deviceID: AudioObjectID) -> Float32? {
+        for var address in Self.mainInputVolumeAddresses() where isSettable(deviceID, &address) {
             var volume = Float32(0)
             var size = UInt32(MemoryLayout<Float32>.size)
-            if AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &volume) == noErr {
+            if environment.hal.getPropertyData(deviceID, &address, 0, nil, &size, &volume) == noErr {
                 return volume
             }
         }
@@ -627,7 +676,7 @@ package final class AudioInputDeviceManager: ObservableObject {
             guard isSettable(deviceID, &address) else { return nil }
             var volume = Float32(0)
             var size = UInt32(MemoryLayout<Float32>.size)
-            guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &volume) == noErr else {
+            guard environment.hal.getPropertyData(deviceID, &address, 0, nil, &size, &volume) == noErr else {
                 return nil
             }
             return volume
@@ -636,15 +685,15 @@ package final class AudioInputDeviceManager: ObservableObject {
         return channelVolumes.reduce(0, +) / Float32(channelVolumes.count)
     }
 
-    nonisolated private static func setInputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
+    nonisolated private func setInputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
         let clamped = min(max(volume, 0), 1)
         // Prefer a master control and stop at the first successful selector so
         // devices exposing both master and channels keep their channel balance.
-        for var address in mainInputVolumeAddresses() where isSettable(deviceID, &address) {
+        for var address in Self.mainInputVolumeAddresses() where isSettable(deviceID, &address) {
             var nextVolume = clamped
-            if AudioObjectSetPropertyData(deviceID, &address, 0, nil,
-                                          UInt32(MemoryLayout<Float32>.size),
-                                          &nextVolume) == noErr {
+            if environment.hal.setPropertyData(deviceID, &address, 0, nil,
+                                               UInt32(MemoryLayout<Float32>.size),
+                                               &nextVolume) == noErr {
                 return true
             }
         }
@@ -654,25 +703,25 @@ package final class AudioInputDeviceManager: ObservableObject {
         var applied = false
         for var address in channelInputVolumeAddresses(for: deviceID) where isSettable(deviceID, &address) {
             var nextVolume = clamped
-            if AudioObjectSetPropertyData(deviceID, &address, 0, nil,
-                                          UInt32(MemoryLayout<Float32>.size),
-                                          &nextVolume) == noErr {
+            if environment.hal.setPropertyData(deviceID, &address, 0, nil,
+                                               UInt32(MemoryLayout<Float32>.size),
+                                               &nextVolume) == noErr {
                 applied = true
             }
         }
         return applied
     }
 
-    nonisolated private static func inputDevices(defaultUID: String?) -> [MixerInputDevice] {
+    nonisolated private func inputDevices(defaultUID: String?) -> [MixerInputDevice] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
-                                             &address, 0, nil, &size) == noErr else { return [] }
+        guard environment.hal.getPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
+                                                  &address, 0, nil, &size) == noErr else { return [] }
         var deviceIDs = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
-                                         &address, 0, nil, &size, &deviceIDs) == noErr else { return [] }
+        guard environment.hal.getPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                              &address, 0, nil, &size, &deviceIDs) == noErr else { return [] }
 
         var devices: [MixerInputDevice] = []
         for deviceID in deviceIDs {
@@ -724,16 +773,16 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    nonisolated private static func hasInputStreams(_ deviceID: AudioObjectID) -> Bool {
+    nonisolated private func hasInputStreams(_ deviceID: AudioObjectID) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
                                                  mScope: kAudioObjectPropertyScopeInput,
                                                  mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        return AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr
+        return environment.hal.getPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr
             && size >= MemoryLayout<AudioObjectID>.size
     }
 
-    nonisolated private static func defaultInputDeviceUID() -> String? {
+    nonisolated private func defaultInputDeviceUID() -> String? {
         var defaultDevice = AudioObjectID(0)
         guard read(AudioObjectID(kAudioObjectSystemObject),
                    kAudioHardwarePropertyDefaultInputDevice, &defaultDevice),
@@ -744,7 +793,7 @@ package final class AudioInputDeviceManager: ObservableObject {
     }
 
     @discardableResult
-    nonisolated private static func read<T>(_ object: AudioObjectID,
+    nonisolated private func read<T>(_ object: AudioObjectID,
                                 _ selector: AudioObjectPropertySelector,
                                 _ value: inout T,
                                 scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> Bool {
@@ -753,8 +802,8 @@ package final class AudioInputDeviceManager: ObservableObject {
                                                  mElement: kAudioObjectPropertyElementMain)
         var size = UInt32(MemoryLayout<T>.size)
         return withUnsafeMutablePointer(to: &value) { pointer in
-            AudioObjectGetPropertyData(object, &address, 0, nil, &size,
-                                       UnsafeMutableRawPointer(pointer)) == noErr
+            environment.hal.getPropertyData(object, &address, 0, nil, &size,
+                                            UnsafeMutableRawPointer(pointer)) == noErr
         }
     }
 }

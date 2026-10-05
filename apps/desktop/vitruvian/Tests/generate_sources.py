@@ -141,63 +141,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Finder/FinderCutPaste.swift", "    static func selectionURLs(")
           + "}\n")
     dock = "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift"
-    # The raw wheel tap runs as shipped: linear scrolling's cap, carry and
-    # write-back, then the direction change. Only the services it asks and
-    # the defaults it reads are fixtures.
-    # Entire input/mute services retain their production control flow. Only
-    # visibility, scheduling, defaults and HAL transport are replaced by fixtures.
-    input_source = "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift"
-    mute_source = "Sources/Vitruvian/Services/QuickTools/MicMuteService.swift"
-    input_bodies = (declaration(input_source, "struct MixerInputDevice:")
-                    + declaration(input_source, "final class AudioInputDeviceManager:")
-                    + declaration(mute_source, "final class MicMuteService:"))
-    input_bodies = (input_bodies.replace("fileprivate ", "")
-                   .replace("private(set) ", "").replace("private ", "")
-                   .replace("static let shared =", "static var shared ="))
-    for operation in ("HasProperty", "IsPropertySettable", "GetPropertyDataSize",
-                      "GetPropertyData", "SetPropertyData", "AddPropertyListener",
-                      "RemovePropertyListener"):
-        input_bodies = input_bodies.replace("AudioObject" + operation + "(", "HAL." + operation + "(")
-    write("MixerInputVolume.swift", "import Foundation\nimport Combine\nimport CoreAudio\nimport AudioToolbox\n"
-          + "extension MixerInputVolumeContract {\n" + input_bodies + "}\n")
-    mixer = "Sources/Vitruvian/Services/Audio/AppVolumeMixer.swift"
-    write("MixerOutputAdjustment.swift", "import CoreAudio\nimport Foundation\n"
-          + "extension MixerOutputAdjustmentContract {\nfinal class Mixer {\n"
-          + declaration(mixer, "    private struct OutputAdjustment {")
-          + declaration(mixer, "    private struct OutputStep {")
-          + "private var queuedOutputSteps: [OutputStep] = []\nvar outputStepReadInFlight = false\nvar outputStepReadGeneration = 0\n"
-          + "static func hasSettableOutputVolume(for device: AudioObjectID) -> Bool { true }\n"
-          + "static func outputVolume(for device: AudioObjectID) -> Float32? { Hardware.volume }\n"
-          + "static func outputMuted(for device: AudioObjectID) -> Bool? { Hardware.muted }\n"
-          + "var systemOutputVolume: Double?\nvar systemOutputMuted: Bool?\n"
-          + "var outputControlListenerDevice: AudioObjectID?\n"
-          + "var outputControlListenerAddresses: [AudioObjectPropertyAddress] = []\n"
-          + "var outputControlRefreshGeneration = 0\n"
-          + "private var pendingOutputAdjustment: OutputAdjustment?\nprivate var outputWriteInFlight: OutputAdjustment?\n"
-          + "let outputControlLock = NSLock()\nvar outputControlLifetime = UUID()\nlet halQueue = Queue()\n"
-          + "var controlRefreshes: [AudioObjectID] = []\nvar listenerRefreshes = 0\n"
-          + "static let outputControlListenerCallback: AudioObjectPropertyListenerProc = { _, _, _, _ in noErr }\n"
-          + "var listenerClient: UnsafeMutableRawPointer? { nil }\n"
-          + "static func defaultOutputDeviceID() -> AudioObjectID { Hardware.device }\n"
-          + "static func setOutputVolume(_ value: Float, for device: AudioObjectID) -> Bool {\n"
-          + "Hardware.writes.append(.init(device: device, volume: value, muted: nil))\n"
-          + "let after = Hardware.afterVolumeWrite; Hardware.afterVolumeWrite = nil; after?()\nreturn Hardware.succeeds\n}\n"
-          + "static func setOutputMuted(_ value: Bool, for device: AudioObjectID) -> Bool {\n"
-          + "Hardware.writes.append(.init(device: device, volume: nil, muted: value)); return Hardware.succeeds\n}\n"
-          + "func scheduleListenerRefresh() { listenerRefreshes += 1 }\n"
-          + "func scheduleOutputControlRefresh(for device: AudioObjectID) { controlRefreshes.append(device) }\n"
-          + "func selectOutput(_ device: AudioObjectID?, volume: Double?, muted: Bool?) {\n"
-          + "removeOutputControlListeners(); outputControlListenerDevice = device; applyOutputControls(volume: volume, muted: muted)\n}\n"
-          + "func readSnapshot(volume: Double?, muted: Bool?) { applyOutputControls(volume: volume, muted: muted) }\n"
-          + "".join(declaration(mixer, prefix) for prefix in [
-              "    func requestOutputAdjustment(", "    private func removeOutputControlListeners(",
-              "    func requestOutputStep(", "    func requestOutputMuteToggle(",
-              "    private func enqueueOutputKey(", "    private func settleQueuedOutputSteps(",
-              "    private func applyQueuedOutputSteps(",
-              "    private func isCurrentOutputAdjustment(", "    private var hasCurrentOutputAdjustment:",
-              "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
-          + "}\n}\n")
-
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
     adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
     # Only the clock changes, so tests drive the wait for a chosen source's track.
@@ -592,70 +535,6 @@ def main():
           + declaration(brightness, "    private func restoreAllGamma(").replace("private func", "func", 1)
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private func", "func", 1)
           + "}\n}\n")
-
-    keep_awake = "Sources/Vitruvian/Services/KeepAwakeManager.swift"
-    keep_awake_methods = [
-        "    func refreshPasswordlessStatus(",
-        "    func activate(minutes:",
-        "    func activate(until date:",
-        "    func startLastPick(",
-        "    func resumeAfterSystemTeardown(",
-        "    private func activate(end:",
-        "    func deactivate(reason:",
-        "    private func applyClamshellPreference(",
-        "    private func prepareClamshellPreference(",
-        "    private func finishClamshellSetup(",
-        "    private func markClamshellSetupFailed(",
-        "    private func enableClamshell(",
-        "    private func disableClamshell(",
-        "    private func sleepIfLidAlreadyClosed(",
-        "    func recoverIfNeeded(",
-        "    private func finishRecovery(",
-        "    private var clamshellNeedsRestore:",
-        "    private func finishClamshellRestore(",
-        "    private func recoverDimmedDisplayIfNeeded(",
-        "    private func syncLidDimmingObserver(",
-        "    private func lidStateMayHaveChangedForDimming(",
-        "    private func applyDimmingAction(",
-        "    private func attemptDisplayRestore(",
-    ]
-    write("KeepAwakeLidSleep.swift", "import Foundation\nimport os\n\nextension KeepAwakeLidSleepContract {\n"
-          # The extracted dimming bodies unwrap `Unmanaged<KeepAwakeManager>`
-          # for the IOKit callback's context; this makes that name resolve to
-          # the fixture's own class instead of leaving it undefined.
-          + "typealias KeepAwakeManager = Service\n"
-          + "final class Service {\n"
-          + "static let log = Logger(subsystem: \"vitruvian.tests\", category: \"keep-awake\")\n"
-          + "var isActive = false\nvar sessionPausedForScreenLock = false\n"
-          + "var isTerminating = false\nvar clamshellEnablePending = false\nvar clamshellRestorePending = false\n"
-          + "var clamshellOperationGeneration = 0\nvar clamshellSetupID: UUID?\n"
-          + "var lidSleepGeneration = 0\nvar lidSleepAttemptsRemaining = 0\n"
-          + "var clamshellSetupInProgress = false\nvar clamshellSetupFailed = false\n"
-          + "var clamshellSetupRetried = false\nvar passwordlessClamshell = true\n"
-          + "var recoveryCompleted = false\nvar screenLocked = false\nvar assertionsHeld = false\n"
-          + "var automationSuppressedUntilConditionsClear = false\n"
-          + "var endTimer: Timer?\nvar endDate: Date?\nvar sessionTrigger: SessionTrigger?\nvar sessionMinutes: Int?\n"
-          + "var activeAutomationConditions = Set<KeepAwakeAutomationCondition>()\n"
-          + "var onSessionEnded: ((EndReason) -> Void)?\n"
-          + "var lidDimmingNotificationPort: IONotificationPortRef?\nvar lidDimmingNotification: io_object_t = 0\n"
-          + "var lidClosedForDimming: Bool?\nvar savedDisplayBrightness: Double?\n"
-          + declaration(keep_awake, "    @Published private(set) var clamshellActive = false {")
-                .replace("@Published private(set) ", "", 1)
-          + declaration(keep_awake, "    @Published var clamshellPreferred:").replace("@Published ", "", 1)
-          + declaration(keep_awake, "    @Published var dimScreenOnLidClose: Bool {").replace("@Published ", "", 1)
-          + "init() { clamshellPreferred = true; dimScreenOnLidClose = false }\n"
-          + "func syncScreenLockMonitoring() {}\nfunc applyAssertions() { assertionsHeld = true }\n"
-          + "func releaseAssertions() { assertionsHeld = false }\nfunc scheduleEnd(at date: Date) {}\n"
-          + "func startBatteryWatch() {}\nfunc stopBatteryWatch() {}\nfunc syncMouseJiggleTimer() {}\n"
-          + "func stopMouseJiggleTimer() {}\nfunc stopAutomationMonitoring() {}\nfunc syncWithPreferences() {}\n"
-          + "static func lidSleepIsAllowed() -> Bool { KeepAwakeAutomationSupport.lidSleepIsAllowed("
-          + "systemAllowsSleep: policy, assertions: assertions) }\n"
-          + "".join(declaration(keep_awake, prefix).replace("private ", "", 1) for prefix in keep_awake_methods)
-          + "}\n}\n"
-          + "extension KeepAwakeLidSleepContract.Sudoers {\n"
-          + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func isConfigured()")
-          + declaration("Sources/Vitruvian/Services/ShellSupport.swift", "    static func restoreSleepWithAuthorization(")
-          + "}\n")
 
     factories = []
     pattern = r"static\s+func\s+(\w+)\s*\(\s*_\s+\w+:\s*AppLanguage\s*\)\s*->"

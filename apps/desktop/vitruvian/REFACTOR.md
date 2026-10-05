@@ -1665,6 +1665,168 @@ leaves 26.
   The command queue's `live` form compiles only against macOS's Dispatch, as
   it did before.
 
+Landed (4b, Keep Awake's closed-lid mode): one more generated file goes,
+which leaves 25.
+
+- **Injected:** `KeepAwakeManager` takes a `System`:
+  - the settings and where their changes are announced;
+  - the sleep override;
+  - `pmset -g`, the background and main queues, delayed work and quit's
+    waits;
+  - timers, power assertions and the battery;
+  - the screen lock and the login session;
+  - the lid, the power manager's lid policy, power assertions and sleep
+    request;
+  - the lid watch and the built-in panel.
+
+  `live` is the system's own, with the IOKit bodies moved there unchanged.
+  Automatic sessions and pointer activity keep their direct calls: nothing
+  tests them yet.
+- **Moved:** the `pmset disablesleep` lane leaves `Sudoers` for
+  `SleepOverride` (new): the serial lane, the rule's probe, writes,
+  authorized restores with probes suspended, and the rule install.
+  `Sudoers` keeps the rule paths, the install command, and `isConfigured`
+  and `pmsetDisableSleep` for the uninstall paths.
+- **Test:** the lid-sleep, closed-lid and dimming tests drive a real manager
+  over a machine they run by hand: its queues, `pmset` and the rule, the
+  power manager, the lid and the panel. They used to run a copy of 21
+  members against stand-in globals and set its private state directly; each
+  state is now reached the way the app reaches it. New checks:
+  - a screen lock restores sleep and its unlock re-enables closed-lid mode;
+  - a session started behind a locked screen asks for nothing until it
+    unlocks;
+  - a retry left over from an earlier lock is dropped by the next restore;
+  - a Mac without a power manager is neither asked to sleep nor polled;
+  - an enable still in flight at a teardown cannot ask for the rule again;
+  - a rule that proves itself at setup needs no install prompt;
+  - a restore that needed the password stops trusting the rule;
+  - turning closed-lid mode off during a session never sleeps the Mac;
+  - a second session end adds no second restore while one waits for its
+    password;
+  - a prompt queued before quit never opens;
+  - switching picks keeps one assertion of each kind;
+  - one lid watch serves a session, a launch restore that finds no panel
+    keeps watching, and closing the lid again with the option off leaves
+    the owed level alone;
+  - an install counts only once the rule proves itself, and a probe that
+    cannot read `pmset` writes nothing.
+- **Kept as text:** the mutation suite's "lid sleep forgets to retry a
+  refusal" still targets the same retry guard.
+- **Verification:** a Linux Swift 6.4 model of the real manager and
+  `SleepOverride` (automation monitoring and pointer activity stubbed) runs
+  the three tests, 148 checks, and 84 mutants. `live` type-checks against
+  IOKit-shaped stubs. Sixteen mutants survive, each because another guard
+  already covers the path:
+  - the enable, setup and preference guards against a pending restore,
+    which back each other;
+  - quit's checks in the setup probe, the setup reply, the enable reply and
+    the authorized restore's reply: quit clears the setup and bumps the
+    generation first;
+  - the generation checks on a passwordless restore's reply and in
+    `finishClamshellRestore`: only launch recovery could move the generation
+    under a pending restore, and it runs before any session;
+  - a pending enable in `clamshellNeedsRestore`, whose marker is written
+    first;
+  - the teardown's skipped probe during a restore, and its check for a
+    newer restore, which the generation check already catches;
+  - the lid policy guard, which `KeepAwakeAutomationSupport` repeats;
+  - the lid watch's mode check and repeat check, whose branches recheck;
+  - the option's own restore, which the disarm repeats.
+
+Landed (4b, the mixer's output volume): one more generated file goes,
+which leaves 24.
+
+- **Moved:** the default output's volume and mute leave `AppVolumeMixer` for
+  `MixerOutputControl` (new):
+  - the reading;
+  - the pending level and the write in flight;
+  - the keys waiting on the output's own reading;
+  - the lifetime that keeps one output's requests off the next;
+  - the read after the output's own notifications.
+
+  Its `Host` is the HAL queue, the main queue and delayed work, the HAL
+  reads and writes, whether the mixer still listens, and where the reading
+  and an output change go. The mixer keeps the listener registrations, its
+  `@Published` reading (the control assigns it, as the mixer did), and the
+  three request calls, which delegate.
+- **Test:** the output adjustment test drives a real control over an
+  in-memory output and hand-run queues. It used to run a copy of eleven
+  members with the refresh and the listener refresh stubbed. New checks:
+  - a failed write reads back the output's own level;
+  - a burst of notifications reads once, only for the output followed and
+    only while the mixer listens;
+  - a reading of a previous output, or from before it was followed again,
+    is dropped;
+  - an output without a settable volume reads as having none;
+  - with no output followed, requests go back to the system;
+  - requests clamp to the output's range;
+  - a key after the previous one finished reads again;
+  - a write for an output that stopped being the default is refused, and
+    one that outlived its output asks for the outputs again;
+  - the mixer's own writes and stop update the reading.
+- **Verification:** a Linux Swift 6.4 model of the control runs the test, 48
+  checks, and 51 mutants. One did not compile. Four survive, each
+  equivalent with serial HAL and main queues:
+  - the read generation and its check, already covered by the in-flight
+    write: a direct change always queues its write behind the read;
+  - the read's check for a current write, which only a direct change could
+    start, and that bumps the read generation;
+  - the drain's lifetime check: `end()` clears the pending level, so a
+    pending one is always current.
+
+  The mixer's host wiring type-checks against stubs; the HAL itself needs
+  macOS CI.
+
+Landed (4b, the microphone's gain and mute): one more generated file goes,
+which leaves 23.
+
+- **Injected:** `AudioHAL` (new) is the seven CoreAudio property calls both
+  services make; `live` is CoreAudio. `AudioInputDeviceManager` and
+  `MicMuteService` take an `Environment`:
+  - the HAL and its serial queue (`AudioWorkQueue`, new);
+  - the main queue;
+  - the settings.
+
+  The manager's also has delayed work, the clock and the mute it waits
+  behind. The mute's also has the island's microphone notice and the HUD.
+  Their static HAL helpers become instance methods that use the injected
+  HAL, so every CoreAudio call either service makes goes through it.
+- **Test:** the input volume test drives both real services over the
+  in-memory HAL it already had. That HAL now also calls the listeners the
+  services register, the way CoreAudio does. It used to run a copy of both
+  whole classes, with private members opened up and called directly. New
+  checks:
+  - a second start refreshes, and a restart removes each listener once;
+  - a read-only control and an old device keep no listener;
+  - the slider shows the clamped level at once;
+  - a change made elsewhere reaches the slider;
+  - a sweep from before a drag cannot pull it back;
+  - a gain change never reaches an object whose identity changed;
+  - a device without input streams is neither listed nor muted;
+  - a notification after stop changes no input;
+  - priority keeps its pick over an earlier preferred microphone, and its
+    pick becomes what quitting goes back to;
+  - the mute is saved for the next launch, and that saved mute blocks gain
+    changes until it is applied again;
+  - a double press announces once;
+  - a teardown outlasts a mute in flight;
+  - a mute that reached nothing is dropped;
+  - a sync during an unmute does not mute again;
+  - a driver that ignores the level or the switch is not recorded as muted;
+  - a read-only switch falls back to the level;
+  - an arriving microphone is muted;
+  - the user's own mute survives an unmute;
+  - switching the feature off gives every level back.
+- **Verification:** a Linux Swift 6.4 model of both services and their
+  support files runs the test, 90 checks, and 58 mutants. Two survive, each
+  equivalent:
+  - the gain write's first lifetime check, which the one after the identity
+    read repeats;
+  - the sweep's priority check, which `MixerRoutingSupport` makes when it
+    resolves the input.
+
+  CoreAudio itself needs macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
