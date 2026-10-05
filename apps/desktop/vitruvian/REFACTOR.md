@@ -2686,6 +2686,31 @@ pointer and Reduce Motion, and starts its timers, through its environment.
 - **Generated copies:** the generator maps the three back to the system
   calls when it reads the island, so the five copies stay as they were.
 
+Landed (5p, the services the island calls): `NotchService` reaches the
+services it reads, starts, stops and drives through `NotchIslandServices`
+(`Services/Notch/NotchIslandServices.swift`), in its environment.
+
+- **The protocol** names what the island uses, by what it means to it:
+  - 22 readings, such as the playing track, the timer's session, the
+    downloads, the agents' usage and the calendar countdown;
+  - 30 starts, stops and syncs of the services that follow it;
+  - 14 requests, such as the paste target, opening a notification and
+    the quick controls' actions.
+- **`SystemNotchIslandServices`** forwards each one to the shared instance
+  the island named before, so the app runs exactly as it did. The direct
+  calls in `NotchService` go from 66 to 0.
+- **Still named:**
+  - the local key route's tools key;
+  - a few readings the island takes through a local alias, such as the
+    watch's headline, the timer's clock, the artwork and the scratchpad's
+    tab limits;
+  - two `NSWorkspace` calls.
+
+  The next slice takes the aliases.
+- **Generated copies:** the generator maps each member back to the shared
+  instance, so the five copies stay byte for byte as they were (checked by
+  regenerating).
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

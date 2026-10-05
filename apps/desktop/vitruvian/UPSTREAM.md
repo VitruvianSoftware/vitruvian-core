@@ -1854,6 +1854,12 @@ is that notice. Add an entry for every change to upstream files.
     and schedules its main-queue timers, through `NotchService.Environment`;
     `.system` passes the system calls it used.
   - `Tests/generate_sources.py` maps those back when it copies the island.
+- **2026-10-05**: Refactor step 5p (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift` calls the services it uses through
+    the new `NotchIslandServices` (`Services/Notch/NotchIslandServices.swift`),
+    whose `SystemNotchIslandServices` forwards to the shared instances.
+  - `Tests/generate_sources.py` maps the members back when it copies the
+    island.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
