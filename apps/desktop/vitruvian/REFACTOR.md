@@ -2476,6 +2476,34 @@ generated file goes, which leaves 4: three copies (`NotchHover`,
 - The fixture gained Reduce Motion and a host that keeps departing content
   until it finishes.
 
+Landed (4b, the island's hover): one more generated file goes, which
+leaves 3: two copies (`NotchCompact`, `MenuPanelRecovery`) and the registry
+kept on purpose. No copy of `NotchService` is left, so the generator drops
+its whole map of the island's preferences, pointer, clock and services.
+
+- **Tests:** `NotchHoverTests` drives a real island from
+  `NotchIslandFixture` instead of compiled copies of 21 island members over
+  a state class. Every check is kept, each read from what the island shows
+  rather than its private state:
+  - opening and peeking are `expanded` and `peeking`, the hover deadlines
+    the fixture's pending work and its delays;
+  - the hover emphasis is the island's `surfaceSize`;
+  - the pointer observers are the fixture's movement watches, one per pair
+    of monitors;
+  - a departure that must not happen is a host transition that never
+    dismisses.
+- **Changed checks:**
+  - "Never consumes the local event" is checked on
+    `NotchMovementWatch.Environment.passingThrough(_:)`, the handler both
+    hidden hover and pointer following install. The island no longer sees
+    the event, so it cannot consume it.
+  - Local and global movement are one watch in the fixture, so the reveal
+    check no longer runs once for each.
+- **Production:** `NotchMovementWatch` names its local-monitor handler
+  (`passingThrough(_:)`) so that the check above can reach it.
+- **Generator:** it deletes generated files it no longer writes, so
+  `build.sh`'s glob cannot compile a stale copy.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

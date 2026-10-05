@@ -296,7 +296,6 @@ GENERATED_TEST_SOURCES = [
     "LocalizationCatalog.swift",
     "MenuPanelRecovery.swift",
     "NotchCompact.swift",
-    "NotchHover.swift",
 ]
 
 # Sources of the privileged fan-control helper.

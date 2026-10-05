@@ -55,8 +55,8 @@ final class NotchIslandFixture {
     private(set) var mirrors: [RecordingMirrorHost] = []
     /// The island's clock, in seconds, which only `advance` moves.
     private(set) var now: TimeInterval = 0
-    /// Work the island scheduled, with when it is due, in order.
-    private(set) var scheduled: [(due: TimeInterval, work: DispatchWorkItem)] = []
+    /// Work the island scheduled, with when it is due and its delay, in order.
+    private(set) var scheduled: [(due: TimeInterval, delay: TimeInterval, work: DispatchWorkItem)] = []
     /// The open island's monitors, while it has them.
     private(set) var clickElsewhere: (() -> Void)?
     private(set) var localEvent: ((NSEvent) -> Bool)?
@@ -64,6 +64,7 @@ final class NotchIslandFixture {
     private var movementWatches: [Int: () -> Void] = [:]
     private var nextWatch = 0
     var watchesMovement: Bool { !movementWatches.isEmpty }
+    var movementWatchCount: Int { movementWatches.count }
     /// The screen-edge click monitors installed now.
     private(set) var edgeMonitors = 0
     private var menuTick: (() -> Void)?
@@ -106,12 +107,22 @@ final class NotchIslandFixture {
     /// Work still waiting to run.
     var pendingWork: Int { scheduled.filter { !$0.work.isCancelled }.count }
 
+    /// The delays of the work still waiting, in order.
+    var pendingDelays: [TimeInterval] { scheduled.filter { !$0.work.isCancelled }.map(\.delay) }
+
     /// Moves the pointer as the mouse would: the island's window reports
     /// entering or leaving it, then each pointer watch sees the move.
     func move(to point: CGPoint) {
         let wasOver = host?.containsHover(pointer) == true
         pointer = point
         if let host, host.containsHover(point) != wasOver { host.hoverHandler?(!wasOver) }
+        for moved in movementWatches.values { moved() }
+    }
+
+    /// Moves the pointer with no report from the island's window, as when it
+    /// leaves over transparent pixels: only the pointer watches see it.
+    func drift(to point: CGPoint) {
+        pointer = point
         for moved in movementWatches.values { moved() }
     }
 
@@ -160,7 +171,9 @@ final class NotchIslandFixture {
             },
             pointer: { [unowned self] in self.pointer },
             reducesMotion: { [unowned self] in self.reducesMotion },
-            schedule: { [unowned self] delay, work in self.scheduled.append((due: self.now + delay, work: work)) },
+            schedule: { [unowned self] delay, work in
+                self.scheduled.append((due: self.now + delay, delay: delay, work: work))
+            },
             services: services,
             displays: { [unowned self] in self.displays },
             separateSpaces: { true },
@@ -291,7 +304,11 @@ final class RecordingIslandHost: NotchIslandHost {
     private(set) var activationRect = CGRect.zero
     private(set) var closed = false
     private(set) var hoverHandler: ((Bool) -> Void)?
+    /// A press on the activation area, before it activates.
+    private(set) var willPress: (() -> Void)?
     private(set) var activate: (() -> Void)?
+    /// How often the island asked whether Mission Control blocks a reveal.
+    private(set) var revealChecks = 0
     private(set) var fileDropActions: NotchFileDropActions?
     /// Runs as each present arrives, with its size.
     var onPresent: ((CGSize) -> Void)?
@@ -310,16 +327,20 @@ final class RecordingIslandHost: NotchIslandHost {
     private static func holds(_ rect: CGRect, _ point: CGPoint) -> Bool {
         rect.insetBy(dx: 0, dy: -1).contains(point)
     }
+    /// As the real host has it, only a window on screen and outside Mission Control holds the pointer.
+    private var presented: Bool { panel.isVisible && !isConcealedForMissionControl }
     func containsHover(_ screenPoint: CGPoint) -> Bool {
-        !isConcealedForMissionControl
-            && (Self.holds(frame, screenPoint) || hoverExtras.contains { $0.contains(screenPoint) })
+        presented && (Self.holds(frame, screenPoint) || hoverExtras.contains { $0.contains(screenPoint) })
     }
     func contains(_ screenPoint: CGPoint) -> Bool {
-        !isConcealedForMissionControl && Self.holds(animatingFrame ?? frame, screenPoint)
+        presented && Self.holds(animatingFrame ?? frame, screenPoint)
     }
     func containsDestination(_ screenPoint: CGPoint) -> Bool { contains(screenPoint) }
     func containsSurface(_ screenPoint: CGPoint) -> Bool { contains(screenPoint) }
-    func blocksHoverReveal() -> Bool { false }
+    func blocksHoverReveal() -> Bool {
+        revealChecks += 1
+        return isConcealedForMissionControl
+    }
 
     func present(size: CGSize, geometry: NotchGeometry, animated: Bool, transitionContent: NotchContentTransition,
                  quickAccess: NotchQuickAccessConfiguration?, revealFromHidden: Bool,
@@ -379,6 +400,7 @@ final class RecordingIslandHost: NotchIslandHost {
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
                            activate: @escaping () -> Void) {
         activationRect = rect
+        self.willPress = willPress
         self.activate = activate
     }
 }
@@ -534,7 +556,9 @@ final class RecordingIslandServices: NotchIslandServices {
 
     var hasModalWindow = false
     func isOverStatusItem(_ point: CGPoint) -> Bool { false }
-    func assistiveKeyboardOwns(_ point: CGPoint) -> Bool { false }
+    /// The Accessibility Keyboard covers the pointer.
+    var assistiveKeyboardActive = false
+    func assistiveKeyboardOwns(_ point: CGPoint) -> Bool { assistiveKeyboardActive }
     func closeMenuPopover() { log("closeMenuPopover") }
     func openSettingsWindow() { log("openSettingsWindow") }
     func showUpdatePreview() { log("showUpdatePreview") }
