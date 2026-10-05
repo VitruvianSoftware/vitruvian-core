@@ -2645,11 +2645,11 @@ package final class NotchService: ObservableObject {
 
     private func screenIndex(in screens: [NSScreen]) -> Int? {
         let preference = displayPreference
-        var pointer: Int?
+        var followed: Int?
         if preference == .pointer || preference == .all {
             // The island stays on its display until it can follow the pointer.
             let mouse = pointer()
-            pointer = screens.firstIndex { $0.notchDisplayID == displayID }
+            followed = screens.firstIndex { $0.notchDisplayID == displayID }
                 ?? screens.firstIndex { NSMouseInRect(mouse, $0.frame, false) }
         }
         return NotchSupport.screenIndex(
@@ -2657,7 +2657,7 @@ package final class NotchService: ObservableObject {
             builtIn: screens.map { CGDisplayIsBuiltin($0.notchDisplayID) != 0 },
             notched: screens.map { $0.safeAreaInsets.top > 0 },
             main: screens.firstIndex(where: { $0 === NSScreen.withMenuBar }) ?? 0,
-            pointer: pointer,
+            pointer: followed,
             hasLid: Self.hasLid)
     }
 
