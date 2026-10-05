@@ -312,6 +312,8 @@ enum MixerInputVolumeContract {
             suite.expect(condition(), name)
         }
         func near(_ x: Double?, _ y: Double) -> Bool { x.map { abs($0 - y) < 0.0001 } ?? false }
+        // What the floating confirmation says, in the app's language.
+        let text = L10n.shared.s
         func manager() -> AudioInputDeviceManager {
             let m = HAL.makeManager()
             m.start()
@@ -776,7 +778,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(true)
         Queue.drain()
         check(
-            Feedback.messages == ["mute partial"] && HAL.levels[HAL.key(20)] == 0.5,
+            Feedback.messages == [text.micMutePartialHUD] && HAL.levels[HAL.key(20)] == 0.5,
             "a microphone left open is announced instead of a plain mute")
         HAL.reset()
         HAL.devices = [10, 20]
@@ -789,7 +791,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(false)
         Queue.drain()
         check(
-            Feedback.messages == ["muted", "unmute partial"] && HAL.mute[10] == 0 && HAL.mute[20] == 1,
+            Feedback.messages == [text.micMutedHUD, text.micUnmutePartialHUD] && HAL.mute[10] == 0 && HAL.mute[20] == 1,
             "a claimed microphone that stays muted is announced instead of a plain unmute")
         HAL.reset()
         HAL.devices = [10, 20]
@@ -799,7 +801,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(true)
         Queue.drain()
         check(
-            Feedback.messages == ["muted"] && HAL.silenced(10),
+            Feedback.messages == [text.micMutedHUD] && HAL.silenced(10),
             "every microphone silent, one by the user, still announces a plain mute")
         HAL.muteService.setMuted(false)
         Queue.drain()
@@ -814,7 +816,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(true)
         Queue.drain()
         check(
-            Feedback.messages == ["muted"] && HAL.silenced(10),
+            Feedback.messages == [text.micMutedHUD] && HAL.silenced(10),
             "an aggregate with no mute or level of its own does not make the mute partial")
         HAL.reset()
         HAL.devices = [10, 40]
@@ -823,7 +825,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(true)
         Queue.drain()
         check(
-            Feedback.messages == ["muted"] && HAL.silenced(10),
+            Feedback.messages == [text.micMutedHUD] && HAL.silenced(10),
             "an idle microphone with no mute or level of its own does not make the mute partial")
         HAL.reset()
         HAL.levels[HAL.key(10)] = 0.5
@@ -848,7 +850,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(true)
         Queue.drain()
         check(
-            Feedback.messages == ["mute partial"] && Feedback.microphone.isEmpty,
+            Feedback.messages == [text.micMutePartialHUD] && Feedback.microphone.isEmpty,
             "a microphone left open keeps its whole warning in the floating confirmation")
         check(Feedback.retractions == 1,
               "a partial result takes back the island notice of the press before it")
@@ -1004,7 +1006,7 @@ enum MixerInputVolumeContract {
         HAL.muteService.setMuted(true)
         HAL.muteService.setMuted(false)
         Queue.drain()
-        check(Feedback.messages == ["unmuted"] && HAL.levels[HAL.key(10)] == 0.5,
+        check(Feedback.messages == [text.micUnmutedHUD] && HAL.levels[HAL.key(10)] == 0.5,
               "a quick double press announces only the state it ends in")
 
         HAL.reset()
