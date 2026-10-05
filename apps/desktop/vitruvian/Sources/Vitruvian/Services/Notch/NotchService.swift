@@ -33,7 +33,7 @@ package struct NotchNotice: Equatable {
         // Long accessory names still use bounded truncation.
         let maximum: CGFloat = event == .accessory && level == nil ? 160 : 240
         let symbol = NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing
-        return min(maximum, max(88, ceil(max(leading + symbol, trailing)) + NotchNoticeLayout.inset + cameraGap))
+        return min(maximum, max(NotchNoticeLayout.minimumWing, ceil(max(leading + symbol, trailing)) + NotchNoticeLayout.inset + cameraGap))
     }
 
     /// Two lines of text sit at the island's two ends, each as far from its

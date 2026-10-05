@@ -192,10 +192,11 @@ package enum NotchNotificationSupport {
 package enum NotchNotificationBannerLayout {
     package static let iconSize: CGFloat = 22
     package static let spacing: CGFloat = 8
-    package static let wingRange: ClosedRange<CGFloat> = 88...190
-    /// The inset from the island's curved end, and a little air so the
-    /// fitted text never truncates where SwiftUI rounds its width.
-    package static let inset: CGFloat = 16
+    package static let wingRange: ClosedRange<CGFloat> = NotchNoticeLayout.minimumWing...190
+    /// The inset from the island's curved end, which the banner is drawn
+    /// with as every notice is, and a little air so the fitted text never
+    /// truncates where SwiftUI rounds its width.
+    package static let inset = NotchNoticeLayout.inset
     package static let air: CGFloat = 6
     // NSFont is immutable once made, so any thread may share these.
     /// The fonts the banner draws with, so it is measured in the same ones.

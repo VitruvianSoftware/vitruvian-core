@@ -2018,6 +2018,12 @@ is that notice. Add an entry for every change to upstream files.
   `NotchLayout.musicControlsRow(_:)`, `musicMainHeight(hasPlayback:layout:height:)`
   and `musicPlayerMinimumHeight`, used by its own sizing,
   `Core/Notch/NotchPageSize.swift` and `UI/Notch/NotchMusicView.swift`.
+- **2026-10-05**: Refactor step 5zc (`REFACTOR.md`):
+  `Sources/Vitruvian/Core/Notch/NotchNoticeLayout.swift` adds `minimumWing`.
+  `Core/Notch/NotchNotificationSupport.swift` takes the banner's inset and the
+  low end of its range from `NotchNoticeLayout`, and
+  `Services/Notch/NotchService.swift` a text notice's narrowest wing.
+  `Tests/mutation_checks.py` quotes the changed line.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

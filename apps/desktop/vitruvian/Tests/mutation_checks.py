@@ -58,7 +58,7 @@ MUTATIONS = [
      ".sink { [weak self] _ in",
      "switching output never replaces its connection notice with stored volume or mute"),
     ("device alerts return to the fixed level width", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
-     "return min(maximum, max(88, ceil(max(leading + symbol, trailing)) + NotchNoticeLayout.inset + cameraGap))",
+     "return min(maximum, max(NotchNoticeLayout.minimumWing, ceil(max(leading + symbol, trailing)) + NotchNoticeLayout.inset + cameraGap))",
      "return 112",
      "power labels and connection status fit beside their icon"),
     ("device alert window ignores its content width", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",

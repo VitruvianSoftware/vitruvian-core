@@ -3139,6 +3139,13 @@ smallest player, 88pt, sat in `musicPlayerHeight` and again in the view.
 `NotchLayout.musicControlsRow(_:)`, `musicMainHeight(hasPlayback:layout:height:)`
 and `musicPlayerMinimumHeight` now hold them.
 
+Landed (5zc, the notice's inset and narrowest wing): the banner was
+measured with its own `inset` of 16, but drawn with `NotchNoticeLayout`'s,
+which was also 16. The narrowest wing, 88, was written in the banner's range
+and again in a text notice's width. The banner's inset now is
+`NotchNoticeLayout.inset`, and `NotchNoticeLayout.minimumWing` starts both
+ranges. `Tests/mutation_checks.py` follows the renamed line.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
