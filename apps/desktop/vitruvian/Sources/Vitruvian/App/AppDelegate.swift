@@ -36,7 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var metricAnchorSwitchSerial = 0
     private var popoverCloseCompletions: [() -> Void] = []
     private var isTerminating = false
-    private var inputSourceRestorationPending = false
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
     private var settingsKeepsAppRegular = false
@@ -257,21 +256,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if inputSourceRestorationPending { return .terminateLater }
-        guard CommandBarService.shared.hasBorrowedInputSource else { return .terminateNow }
-        inputSourceRestorationPending = true
-        // Terminate-later runs a modal loop, which may be nested inside a
-        // main-queue callback. Schedule in both modes before approving quit.
-        RunLoop.main.perform(inModes: [.default, .modalPanel]) { [weak self] in
-            // Performed on the main run loop.
-            MainActor.assumeIsolated {
-                CommandBarService.shared.restoreBorrowedInputSource()
-                self?.inputSourceRestorationPending = false
-                sender.reply(toApplicationShouldTerminate: true)
-            }
-        }
-        return .terminateLater
+        commandBarTermination.shouldTerminate { sender.reply(toApplicationShouldTerminate: $0) }
     }
+
+    /// Puts a borrowed keyboard layout back before the app quits.
+    private let commandBarTermination = CommandBarTermination(
+        hasBorrowed: { CommandBarService.shared.hasBorrowedInputSource },
+        restore: { CommandBarService.shared.restoreBorrowedInputSource() })
 
     // Most calls below touch `.shared` whether or not the service ran this
     // session. Some of them rely on that, so do not gate them on "was it

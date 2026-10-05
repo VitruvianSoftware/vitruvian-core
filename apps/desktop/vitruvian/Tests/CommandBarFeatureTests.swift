@@ -2015,8 +2015,8 @@ enum CommandBarInputSourceContract {
 /// The delegate's real termination callback runs in real default and modal
 /// run-loop modes, with inert replies and input sources. No app quits or layout changes.
 enum CommandBarTerminationContract {
+    /// AppKit's side of the quit: the replies it was sent.
     final class Application {
-        enum TerminateReply { case terminateNow, terminateLater }
         var replies: [Bool] = []
         var sourceAtReply: [String] = []
         func reply(toApplicationShouldTerminate accepted: Bool) {
@@ -2024,14 +2024,20 @@ enum CommandBarTerminationContract {
             replies.append(accepted)
         }
     }
+    /// The command bar's borrowing, as `AppDelegate` reaches it through
+    /// `CommandBarService.shared`.
     enum Bar {
         static var shared = CommandBarInputSourceContract.borrowing()
     }
-    class Fixture {
-        typealias NSApplication = Application
-        typealias CommandBarService = Bar
-        var inputSourceRestorationPending = false
-        init() {}
+    /// The production termination over the bar's borrowing, as `AppDelegate`
+    /// builds it, answering AppKit's quit request for `app`.
+    final class Host {
+        let termination = CommandBarTermination(hasBorrowed: { Bar.shared.hasBorrowedInputSource },
+                                                restore: { Bar.shared.restoreBorrowedInputSource() })
+        var inputSourceRestorationPending: Bool { termination.restorationPending }
+        func applicationShouldTerminate(_ app: Application) -> NSApplication.TerminateReply {
+            termination.shouldTerminate { app.reply(toApplicationShouldTerminate: $0) }
+        }
     }
     static func run(_ suite: TestSuite) {
         func reset(borrowed: Bool) -> (Host, Application) {

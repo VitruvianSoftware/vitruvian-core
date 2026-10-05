@@ -1402,6 +1402,21 @@ goes, which leaves 37.
 - **Verification:** a Linux model of the check and its helpers runs the test
   (61 checks) and kills all 24 mutants of the check.
 
+Landed (4b, quitting with a borrowed layout): one more generated file goes,
+which leaves 36.
+
+- **Moved:** the answer to AppKit's quit request while the command bar has
+  borrowed a keyboard layout, and the pending restoration it waits for,
+  leave `AppDelegate` for `CommandBarTermination`
+  (`Services/CommandBar/CommandBarTermination.swift`). `AppDelegate` passes
+  the bar's borrowing and AppKit's reply.
+- **Test:** the termination contract builds the real type over the bar's
+  real borrowing, as `AppDelegate` does, instead of a copy of
+  `applicationShouldTerminate`. Its checks are unchanged, including the
+  reply serviced inside a modal loop nested in a main-queue callback.
+- **Verification:** a Swift 6 type-check of the type on Linux, and a run of
+  its run-loop reply there; the modal loop needs macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
