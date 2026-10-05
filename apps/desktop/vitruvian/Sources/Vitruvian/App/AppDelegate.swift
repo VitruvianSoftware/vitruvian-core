@@ -36,7 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var metricAnchorSwitchSerial = 0
     private var popoverCloseCompletions: [() -> Void] = []
     private var isTerminating = false
-    private var inputSourceRestorationPending = false
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
     private var settingsKeepsAppRegular = false
@@ -257,21 +256,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if inputSourceRestorationPending { return .terminateLater }
-        guard CommandBarService.shared.hasBorrowedInputSource else { return .terminateNow }
-        inputSourceRestorationPending = true
-        // Terminate-later runs a modal loop, which may be nested inside a
-        // main-queue callback. Schedule in both modes before approving quit.
-        RunLoop.main.perform(inModes: [.default, .modalPanel]) { [weak self] in
-            // Performed on the main run loop.
-            MainActor.assumeIsolated {
-                CommandBarService.shared.restoreBorrowedInputSource()
-                self?.inputSourceRestorationPending = false
-                sender.reply(toApplicationShouldTerminate: true)
-            }
-        }
-        return .terminateLater
+        commandBarTermination.shouldTerminate { sender.reply(toApplicationShouldTerminate: $0) }
     }
+
+    /// Puts a borrowed keyboard layout back before the app quits.
+    private let commandBarTermination = CommandBarTermination(
+        hasBorrowed: { CommandBarService.shared.hasBorrowedInputSource },
+        restore: { CommandBarService.shared.restoreBorrowedInputSource() })
 
     // Most calls below touch `.shared` whether or not the service ran this
     // session. Some of them rely on that, so do not gate them on "was it
@@ -1074,44 +1065,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func handlePopoverKeyDown(_ event: NSEvent) -> NSEvent? {
-        if popover.isShown, event.keyCode == UInt16(kVK_Escape) {
-            // The monitor sees the whole app; Esc in another window, such as
-            // Settings or a popover or dialog opened from the panel, stays there.
-            guard let window = popover.contentViewController?.view.window,
-                  event.window === window else { return event }
-            // While an input method is composing, Esc belongs to it and
-            // drops the candidate; the panel closes on the next one.
-            if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
-            closePopover(reason: .escape)
-            return nil
-        }
-
-        guard popover.isShown,
-              PanelInteractionState.shared.viewKeepsPopoverOpen,
-              isPlainPopoverHoldKey(event),
-              let window = popover.contentViewController?.view.window else {
-            return event
-        }
-
-        // Text controls inside the popover, especially the Homebrew search
-        // field, need Space/Return delivered through AppKit's normal field
-        // editor path so delegates and target/actions can submit correctly.
-        if isTextEditingActive(in: window) {
-            return event
-        }
-
-        if NSApp.keyWindow === window || event.window === window {
-            window.firstResponder?.keyDown(with: event)
-            return nil
-        }
-        return event
+        panelKeys.handle(event) ? nil : event
     }
 
-    private func isPlainPopoverHoldKey(_ event: NSEvent) -> Bool {
-        let blockedModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
-        guard event.modifierFlags.intersection(blockedModifiers).isEmpty else { return false }
-        return event.keyCode == 49 || event.keyCode == 36 || event.keyCode == 76
+    private var popoverWindow: NSWindow? {
+        popover.contentViewController?.view.window
     }
+
+    /// The panel's keys (`MenuPanelKeyRoute`).
+    private lazy var panelKeys: MenuPanelKeyRoute<NSEvent> = MenuPanelKeyRoute(panel: .init(
+        isShown: { [weak self] in self?.popover.isShown == true },
+        window: { [weak self] in self?.popoverWindow },
+        isComposing: { [weak self] in (self?.popoverWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true },
+        viewKeepsOpen: { PanelInteractionState.shared.viewKeepsPopoverOpen },
+        isEditingText: { [weak self] in
+            guard let self, let window = self.popoverWindow else { return false }
+            return self.isTextEditingActive(in: window)
+        },
+        isKey: { [weak self] in
+            guard let window = self?.popoverWindow else { return false }
+            return NSApp.keyWindow === window
+        },
+        close: { [weak self] in self?.closePopover(reason: .escape) },
+        deliver: { [weak self] event in self?.popoverWindow?.firstResponder?.keyDown(with: event) }))
 
     private func isTextEditingActive(in window: NSWindow) -> Bool {
         guard let responder = window.firstResponder else { return false }
@@ -1746,64 +1722,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         window.setFrame(frame.integral, display: false)
     }
 
-    /// Only the first launch of a newer version gets this bounded check. Normal
-    /// launches and activations must not disturb an arranged menu bar.
+    /// Only the first launch of a newer version gets this bounded check
+    /// (`StatusItemUpdateCheck`).
     private func recoverStatusItemAfterUpdate(previousVersion: String?) {
-        guard let previousVersion, !AppInfo.isDeveloperBuild,
-              let previous = UpdateServiceSupport.SemanticVersion(raw: previousVersion),
-              let current = UpdateServiceSupport.SemanticVersion(raw: AppInfo.version), current > previous,
-              let item = statusController?.statusItem else { return }
-        let screens = NSScreen.screens.map(\.frame)
-        guard !screens.isEmpty else { return }
-        verifyPostUpdateStatusItem(item, screenFrames: screens,
-                                   deadline: Date().addingTimeInterval(30))
-    }
-
-    private func verifyPostUpdateStatusItem(_ item: NSStatusItem,
-                                            screenFrames: [CGRect],
-                                            deadline: Date,
-                                            attemptsLeft: Int = 12,
-                                            recreated: Bool = false) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.reshowVerifyInterval) { [weak self, weak item] in
-            // Reopening or explicitly recovering the app replaces this item,
-            // cancelling these callbacks. A sleep, display change or hidden bar
-            // is not evidence of failed placement, so those stop the check too.
-            guard let self, let item, self.statusController?.statusItem === item,
-                  !self.isTerminating, !self.isReshowingStatusItem,
-                  !self.popover.isShown, item.menu == nil, item.isVisible,
-                  NSEvent.pressedMouseButtons == 0,
-                  Date() < deadline,
-                  !UserDefaults.standard.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics),
-                  NSScreen.screens.map(\.frame) == screenFrames,
-                  NSMenu.menuBarVisible(),
-                  NSApp.currentSystemPresentationOptions.intersection(
-                    [.autoHideMenuBar, .hideMenuBar, .fullScreen]).isEmpty,
-                  let session = CGSessionCopyCurrentDictionary() as? [String: Any],
-                  SessionActivitySupport.isOnConsole(session),
-                  !KeepAwakeAutomationSupport.isScreenLocked(sessionDictionary: session),
-                  Self.runningMenuBarManagerName() == nil else { return }
-            if self.iconIsOnScreen() {
-                self.logStatusItemPlacement("post-update appeared")
-                return
-            }
-            guard attemptsLeft <= 1 else {
-                self.verifyPostUpdateStatusItem(item, screenFrames: screenFrames, deadline: deadline,
-                                                attemptsLeft: attemptsLeft - 1, recreated: recreated)
-                return
-            }
-            // Preserve the autosave identity and position. The more disruptive
-            // reset remains exclusive to the person's explicit recovery action.
-            guard !recreated else {
-                self.logStatusItemPlacement("post-update still hidden")
-                return
-            }
-            self.logStatusItemPlacement("post-update recreating")
-            self.statusController?.recreateStatusItem()
-            if let replacement = self.statusController?.statusItem {
-                self.verifyPostUpdateStatusItem(replacement, screenFrames: screenFrames,
-                                                deadline: deadline, recreated: true)
-            }
-        }
+        let check = StatusItemUpdateCheck<NSStatusItem>(
+            host: .init(item: { [weak self] in self?.statusController?.statusItem },
+                        isTerminating: { [weak self] in self?.isTerminating ?? true },
+                        isReshowing: { [weak self] in self?.isReshowingStatusItem ?? false },
+                        panelIsShown: { [weak self] in self?.popover.isShown ?? false },
+                        hasMenu: { $0.menu != nil },
+                        isVisible: { $0.isVisible },
+                        iconIsOnScreen: { [weak self] in self?.iconIsOnScreen() ?? false },
+                        recreate: { [weak self] in self?.statusController?.recreateStatusItem() },
+                        log: { [weak self] in self?.logStatusItemPlacement($0) }),
+            system: .live(menuBarManager: { Self.runningMenuBarManagerName() }),
+            interval: Self.reshowVerifyInterval)
+        check.start(previousVersion: previousVersion)
     }
 
     /// Rebuilds the menu bar item so the icon reappears when the OS has dropped it

@@ -2782,73 +2782,54 @@ package final class NotchService: ObservableObject {
         clickedSinceOpening = false
         let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         if let token = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
-            guard let self, !self.keepsWorkingSurface,
-                  self.windowHost?.contains(NSEvent.mouseLocation) != true,
-                  MainActor.assumeIsolated { appShell()?.isOverStatusItem(NSEvent.mouseLocation) } != true,
-                  !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation) else { return }
+            guard let self, self.clickIsAway() else { return }
             self.collapse()
         }) { eventMonitors.append(token) }
         if let token = NSEvent.addLocalMonitorForEvents(matching: clicks.union(.keyDown), handler: { [weak self] event in
             guard let self else { return event }
-            // While an input method is composing, Esc belongs to it and
-            // drops the candidate; the island takes the next one.
-            if event.type == .keyDown, event.window === self.panel, event.keyCode == 53,
-               (self.panel?.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
-            if event.type == .keyDown, event.window === self.panel, self.captureControls == nil {
-                let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-                if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "k" {
-                    self.toggleSections()
-                    return nil
-                }
-                if modifiers == [.command, .option],
-                   let module = NotchSupport.moduleShortcut(event.charactersIgnoringModifiers ?? "", modules: self.modules) {
-                    self.select(module)
-                    return nil
-                }
-                if event.keyCode == 48, modifiers == .control || modifiers == [.control, .shift],
-                   let module = NotchSupport.adjacentModule(to: self.selected, modules: self.modules,
-                                                           backwards: modifiers.contains(.shift)) {
-                    self.select(module)
-                    return nil
-                }
-                if event.keyCode == 53, self.showingSections {
-                    self.toggleSections()
-                    return nil
-                }
-                if self.handleSectionKey(event) { return nil }
-                if self.handleScratchpadKey(event) { return nil }
-                if self.handleClipboardPasteKey(event) { return nil }
-            }
-            if event.type == .keyDown, event.window === self.panel, self.selected == .tools, !self.showingAppPanel, !self.showingSections {
-                let launcher = QuickLauncherService.shared
-                // The rail reads across its rows until it scrolls, in the
-                // rows the open page leaves it below its header; the editing
-                // grid keeps its own rows.
-                let flow: QuickToolsSupport.GridFlow = launcher.isEditing
-                    ? .rows(columns: NotchSupport.toolColumns)
-                    : self.expandedGeometry.toolFlow(count: launcher.visibleItems.count)
-                return launcher.handlePanelKey(event, flow: flow)
-            }
-            if event.type == .keyDown, event.window === self.panel, event.keyCode == 53 {
-                // A level being typed in the mixer cancels on Escape by
-                // itself, and the scratchpad's find bar closes on it; the
-                // next one steps back.
-                if let editor = self.panel?.firstResponder as? NSTextView, editor.isFieldEditor,
-                   (editor.delegate as AnyObject?) is MixerPercentNativeTextField { return event }
-                if PlainTextEditor.findBarHasKeyboard(in: self.panel) { return event }
-                self.stepBack()
-                return nil
-            }
-            let click = clicks.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue))
-            let islandWindow = self.ownsWindow(event.window)
-            if click, islandWindow { self.clickedSinceOpening = true }
-            if click, !islandWindow, !self.keepsWorkingSurface,
-               self.windowHost?.contains(NSEvent.mouseLocation) != true,
-               MainActor.assumeIsolated { appShell()?.isOverStatusItem(NSEvent.mouseLocation) } != true,
-               !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation) { self.collapse() }
-            return event
+            return self.localEvents.handle(event) ? nil : event
         }) { eventMonitors.append(token) }
     }
+
+    /// A click lands away from the island: not on it, its status item or the
+    /// Accessibility Keyboard, while nothing keeps its working surface open.
+    private func clickIsAway() -> Bool {
+        !keepsWorkingSurface
+            && windowHost?.contains(NSEvent.mouseLocation) != true
+            && appShell()?.isOverStatusItem(NSEvent.mouseLocation) != true
+            && !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation)
+    }
+
+    /// The island's own keys and the clicks that close it (`NotchLocalEventRoute`).
+    private lazy var localEvents: NotchLocalEventRoute<NSEvent> = NotchLocalEventRoute(island: .init(
+        panel: { [weak self] in self?.panel },
+        isComposing: { [weak self] in (self?.panel?.firstResponder as? NSTextView)?.hasMarkedText() == true },
+        fieldTakesEscape: { [weak self] in
+            if let editor = self?.panel?.firstResponder as? NSTextView, editor.isFieldEditor,
+               (editor.delegate as AnyObject?) is MixerPercentNativeTextField { return true }
+            return PlainTextEditor.findBarHasKeyboard(in: self?.panel)
+        },
+        isCapturing: { [weak self] in self?.captureControls != nil },
+        modules: { [weak self] in self?.modules ?? [] },
+        selected: { [weak self] in self?.selected ?? .controls },
+        showingSections: { [weak self] in self?.showingSections ?? false },
+        showingAppPanel: { [weak self] in self?.showingAppPanel ?? false },
+        geometry: { [weak self] in self?.expandedGeometry ?? NotchGeometry(screen: .zero, safeAreaTop: 0, cameraWidth: 0) },
+        tools: {
+            let launcher = QuickLauncherService.shared
+            return (launcher.isEditing, launcher.visibleItems.count)
+        },
+        ownsWindow: { [weak self] in self?.ownsWindow($0 as? NSWindow) ?? false },
+        clickIsAway: { [weak self] in self?.clickIsAway() ?? false },
+        toggleSections: { [weak self] in self?.toggleSections() },
+        select: { [weak self] in self?.select($0) },
+        sectionKey: { [weak self] in self?.handleSectionKey($0) ?? false },
+        scratchpadKey: { [weak self] in self?.handleScratchpadKey($0) ?? false },
+        clipboardPasteKey: { [weak self] in self?.handleClipboardPasteKey($0) ?? false },
+        toolsKey: { QuickLauncherService.shared.handlePanelKey($0, flow: $1) == nil },
+        stepBack: { [weak self] in self?.stepBack() },
+        collapse: { [weak self] in self?.collapse() },
+        clickedInside: { [weak self] in self?.clickedSinceOpening = true }))
 
     /// The panel and what hangs from it: a SwiftUI popover opened in the
     /// island is a child window, so a click in it is not a click away.
@@ -2873,23 +2854,14 @@ package final class NotchService: ObservableObject {
     }
 
     private func handleSectionScroll(_ event: NSEvent) -> Bool {
-        guard running, !suspended, expanded, showingSections, let panel, !trackingMenu,
-              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else {
-            sectionScroll = NotchSectionScroll()
-            return false
+        var surface: NotchSectionScrollSurface?
+        if running, !suspended, expanded, showingSections, !trackingMenu, let panel {
+            let host = windowHost
+            surface = NotchSectionScrollSurface(frame: panel.frame, toScreen: { panel.convertPoint(toScreen: $0) },
+                                                containsSurface: { host?.containsSurface($0) == true },
+                                                geometry: expandedGeometry)
         }
-        let screenPoint = panel.convertPoint(toScreen: event.locationInWindow)
-        // The header keeps its own gesture; the tiles and the rest of the body step rows.
-        guard windowHost?.containsSurface(screenPoint) == true,
-              panel.frame.maxY - screenPoint.y > expandedGeometry.headerBottom else {
-            sectionScroll = NotchSectionScroll()
-            return false
-        }
-        let steps = sectionScroll.steps(deltaY: Double(event.scrollingDeltaY), timestamp: event.timestamp,
-                                        precise: event.hasPreciseScrollingDeltas, hasPhase: !event.phase.isEmpty,
-                                        began: event.phase.contains(.began),
-                                        ended: !event.phase.intersection([.ended, .cancelled]).isEmpty,
-                                        momentum: !event.momentumPhase.isEmpty)
+        guard let steps = sectionScroll.route(event, over: surface) else { return false }
         if steps != 0 { scrollSections(by: steps) }
         return true
     }
@@ -2940,13 +2912,17 @@ package final class NotchService: ObservableObject {
         eventMonitors.removeAll()
     }
 
+    /// Only a current offer, in the open island that is running, opens its
+    /// release notes; the resting island never opens for one.
+    package static func opensUpdatePreview(offered: Bool, running: Bool, suspended: Bool, expanded: Bool) -> Bool {
+        running && !suspended && expanded && offered
+    }
+
     package func showUpdate() {
         // UI passes this as the update control's action, which runs on the main thread.
-        let offered = MainActor.assumeIsolated {
-            if case .available = UpdateService.shared.state { return true }
-            return false
-        }
-        guard running, !suspended, expanded, offered else { return }
+        let offered = MainActor.assumeIsolated { UpdateService.shared.state.isOffer }
+        guard Self.opensUpdatePreview(offered: offered, running: running, suspended: suspended,
+                                      expanded: expanded) else { return }
         collapse()
         MainActor.assumeIsolated { appShell()?.showUpdatePreview() }
     }

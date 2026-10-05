@@ -118,8 +118,6 @@ enum NotchLyricsContract {
     }
 }
 
-enum NotchQueueHoldContract {}
-
 /// Production control and recovery methods run with a deterministic scheduler
 /// and a recording pipe, without a player process or a window.
 enum NotchMusicCommandContract {
@@ -913,7 +911,11 @@ enum NotchMusicHardeningTests {
     }
 
     private static func queueHold(_ suite: TestSuite) {
-        let service = NotchQueueHoldContract.Service()
+        var decodes = 0
+        var queue = NotchUpcomingQueue<Data> { data in
+            decodes += 1
+            return data
+        }
         let request = UUID()
         let cover = Data([1, 2, 3])
         func reply(anchor: String, pid: Int32 = 42, rows: [[String: Any]]) -> [String: Any] {
@@ -922,23 +924,20 @@ enum NotchMusicHardeningTests {
         }
         let covered = reply(anchor: "a", rows: [["id": "b", "offset": 1, "title": "B", "artworkBase64": cover.base64EncodedString()],
                                                 ["id": "c", "offset": 2, "title": "C"]])
-        service.queueRequest = request
-        service.playback = playback("a")
-        service.queueReply = covered
-        service.updateQueue()
-        suite.expect(service.upcoming?.items.map(\.id) == ["b", "c"] && service.upcomingArtwork == ["b": cover]
-               && !service.upcomingIsHeld, "a decoded queue publishes the covers its rows carry")
-        let shown = service.upcoming
-        service.playback = playback("b")
-        service.updateQueue()
-        suite.expect(service.upcoming == shown && service.upcomingArtwork == ["b": cover],
+        queue.receive(covered, request: request, playback: playback("a"), enabled: true)
+        suite.expect(queue.snapshot?.items.map(\.id) == ["b", "c"] && queue.artwork == ["b": cover]
+               && !queue.isHeld(for: playback("a")), "a decoded queue publishes the covers its rows carry")
+        let shown = queue.snapshot
+        queue.receive(covered, request: request, playback: playback("b"), enabled: true)
+        suite.expect(queue.snapshot == shown && queue.artwork == ["b": cover],
                "a song change keeps the rows and covers on screen until the new song's queue arrives")
-        suite.expect(service.upcomingIsHeld && service.upcomingRows.map(\.id) == ["c"],
+        suite.expect(queue.isHeld(for: playback("b")) && queue.rows(for: playback("b")).map(\.id) == ["c"],
                "held rows leave out the song now playing and refuse row actions")
-        service.queueReply = reply(anchor: "b", rows: [["id": "c", "offset": 1, "title": "C"]])
-        service.updateQueue()
-        suite.expect(service.upcoming?.currentIdentifier == "b" && !service.upcomingIsHeld
-               && service.upcomingRows.map(\.id) == ["c"], "the new song's queue replaces the held rows")
+        suite.expect(decodes == 1, "keeping the rows on screen decodes no cover again")
+        queue.receive(reply(anchor: "b", rows: [["id": "c", "offset": 1, "title": "C"]]),
+                      request: request, playback: playback("b"), enabled: true)
+        suite.expect(queue.snapshot?.currentIdentifier == "b" && !queue.isHeld(for: playback("b"))
+               && queue.rows(for: playback("b")).map(\.id) == ["c"], "the new song's queue replaces the held rows")
         var anonymous = playback("b")
         anonymous.itemIdentifier = nil
         var old = covered
@@ -950,14 +949,21 @@ enum NotchMusicHardeningTests {
             (anonymous, covered)
         ]
         for (current, ending) in endings {
-            service.playback = playback("a")
-            service.queueReply = covered
-            service.updateQueue()
-            service.playback = current
-            service.queueReply = ending
-            service.updateQueue()
-            suite.expect(service.upcoming == nil && service.upcomingArtwork.isEmpty,
+            queue.receive(covered, request: request, playback: playback("a"), enabled: true)
+            queue.receive(ending, request: request, playback: current, enabled: true)
+            suite.expect(queue.snapshot == nil && queue.artwork.isEmpty,
                    "an unavailable queue, another player, an old request or an unidentified song clears the rows")
+        }
+        let empties: [(name: String, request: UUID?, playback: NotchPlayback?, enabled: Bool)] = [
+            ("a queue turned off", request, playback("a"), false),
+            ("no request", nil, playback("a"), true),
+            ("nothing playing", request, nil, true),
+        ]
+        for (name, ask, current, enabled) in empties {
+            queue.receive(covered, request: request, playback: playback("a"), enabled: true)
+            queue.receive(covered, request: ask, playback: current, enabled: enabled)
+            suite.expect(queue.snapshot == nil && queue.artwork.isEmpty && !queue.isHeld(for: current)
+                         && queue.rows(for: current).isEmpty, "\(name) shows no rows")
         }
     }
 

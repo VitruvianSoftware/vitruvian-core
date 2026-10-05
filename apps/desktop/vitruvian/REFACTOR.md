@@ -1291,6 +1291,175 @@ leaves 44.
   checks), and kills all 9 mutants of the type. The model also caught that
   `Output` and `Island` must be `@MainActor`, because the mixer is.
 
+Landed (4b, the scratchpad's export and saves): two more generated files go,
+which leaves 42.
+
+- **Injected:** `ScratchpadService` takes an `Environment`:
+  - the store it saves to;
+  - the HUD warning;
+  - the autosave's timer;
+  - a save dialog per export (`ExportDialog`, which `live` builds over
+    `NSSavePanel`);
+  - the island's window, app activation and the main queue.
+
+  `live` is the app's, so `shared` behaves as before. The export's host is
+  now an `IslandWindowing`, which `NSWindow` already adopts.
+- **Test:** both contracts run a real pad over a store in a directory of
+  their own, which the save test makes unwritable and then repairs, instead
+  of copies of five members.
+  - New checks: an edit replaces the autosave waiting before it, closing
+    writes at once and drops it, edits kept through failed writes reach the
+    disk, an empty pad exports nothing, and with no host and no floating pad
+    nothing opens.
+  - Gone: the key-window and current-event host variants, since the export
+    reads neither.
+  - The dialog's `hidesOnDeactivate` is set in `live`, as the download
+    folder chooser's is, so no test sees it.
+- **Verification:** a Linux model of the store, the document and the
+  service's save and export members runs both contracts (45 checks), and
+  kills all 22 mutants of those members.
+
+Landed (4b, the gallery's wheel): one more generated file goes, which leaves
+41.
+
+- **Moved:** which scrolls the open island's gallery takes, and how many
+  rows each steps, leave `NotchService` for
+  `NotchSectionScroll.route(_:over:)` (`Services/Notch/NotchSectionScrollRoute.swift`).
+  It reads a `NotchScrollEvent`, which `NSEvent` adopts, over a
+  `NotchSectionScrollSurface`: the window's frame, its screen conversion,
+  its surface test and the open geometry. `NotchService` still decides
+  whether the gallery is showing, steps the rows and hands what the gallery
+  leaves to its gestures.
+- **Test:** the routing test runs the real route instead of copies of two
+  members. New checks: a gallery that is not showing takes nothing, a scroll
+  the gallery leaves ends the drag it was part of, lifting the fingers and
+  momentum step nothing, a wheel notch steps one row, and a phaseless glide
+  ends when it pauses.
+- **Verification:** a Linux model of the paging and the route runs the
+  whole test (61 checks) and kills all 12 mutants of the route.
+
+Landed (4b, the island's keys and clicks): one more generated file goes,
+which leaves 40.
+
+- **Moved:** what the island's local event monitor does with a key or a
+  click leaves `NotchService` for `NotchLocalEventRoute`
+  (`Services/Notch/NotchLocalEventRoute.swift`). It reads a
+  `NotchMonitoredEvent`, which `NSEvent` adopts, and asks an `Island` of
+  closures for state and actions. `NotchService` keeps installing the
+  monitors, and the click-away test both monitors share
+  (`clickIsAway()`).
+- **Test:** the key monitor test runs the real route instead of a copy of
+  `installEventMonitors()`. Besides Escape through composing fields and the
+  Tools arrows, it now checks the gallery, page and Control-Tab shortcuts,
+  capture controls holding them, the order the gallery, Scratchpad and
+  clipboard handlers get a key, clicks inside, on a popover and away, and
+  that no click has its key code read, which `NSEvent` would refuse.
+- **Verification:** a Linux model of the route runs the test (32 checks)
+  and kills all 22 mutants of the route.
+
+Landed (4b, the island's update control): one more generated file goes,
+which leaves 39.
+
+- **Split:** `NotchUpdateControl` follows `UpdateService` and draws
+  `NotchUpdateBadge`, which takes the state, so the layout test measures the
+  module's own view for any state and language. `UpdateService.State.isOffer`
+  names an available version, and `NotchService.opensUpdatePreview` is the
+  rule `showUpdate()` applies.
+- **Test:** the update test checks the real rule and lays out the real
+  control instead of copies of `showUpdate()`, the control and a stand-in
+  `UpdateService` and `L10n`. It restores the language it changes.
+- **Verification:** SwiftUI and AppKit, so macOS CI only.
+
+Landed (4b, the menu bar panel's keys): one more generated file goes, which
+leaves 38.
+
+- **Moved:** what the panel's key monitor does with Escape and the held
+  Space and Return leaves `AppDelegate` for `MenuPanelKeyRoute`
+  (`Services/MenuPanelKeyRoute.swift`), over a `MenuPanelKeyEvent` that
+  `NSEvent` adopts and a `Panel` of closures. `AppDelegate` passes its
+  popover and keeps its text-editing check.
+- **Test:** the panel key test runs the real route instead of a copy of
+  three `AppDelegate` members. New checks: Escape on a closed panel, the
+  held keys and their modifiers, a key panel, a text field's own submit,
+  and a closed panel taking nothing.
+- **Verification:** a Linux model of the route runs the test (18 checks)
+  and kills all 14 mutants of the route.
+
+Landed (4b, the menu bar icon after an update): one more generated file
+goes, which leaves 37.
+
+- **Moved:** the bounded check that the icon came back after an update, and
+  its one rebuild, leave `AppDelegate` for `StatusItemUpdateCheck`
+  (`Services/StatusItemUpdateCheck.swift`). It is generic over the item and
+  takes a `Host` (the item, the app's state, the rebuild, the log) and a
+  `System` (the build, the clock, the queue, the displays, the menu bar, the
+  session, the organizer). `live` is the app's.
+- **Test:** the recovery test runs the real check over a world of doubles
+  instead of copies of three `AppDelegate` members and stand-in AppKit,
+  defaults and dispatch types. Every stop condition is still checked before
+  and after the rebuild; the replaced item now outlives the swap, so the
+  check is seen to stop on identity, not on the item being freed.
+- **Verification:** a Linux model of the check and its helpers runs the test
+  (61 checks) and kills all 24 mutants of the check.
+
+Landed (4b, quitting with a borrowed layout): one more generated file goes,
+which leaves 36.
+
+- **Moved:** the answer to AppKit's quit request while the command bar has
+  borrowed a keyboard layout, and the pending restoration it waits for,
+  leave `AppDelegate` for `CommandBarTermination`
+  (`Services/CommandBar/CommandBarTermination.swift`). `AppDelegate` passes
+  the bar's borrowing and AppKit's reply.
+- **Test:** the termination contract builds the real type over the bar's
+  real borrowing, as `AppDelegate` does, instead of a copy of
+  `applicationShouldTerminate`. Its checks are unchanged, including the
+  reply serviced inside a modal loop nested in a main-queue callback.
+- **Verification:** a Swift 6 type-check of the type on Linux, and a run of
+  its run-loop reply there; the modal loop needs macOS CI.
+
+Landed (4b, the island's queue rows): one more generated file goes, which
+leaves 35.
+
+- **Moved:** the queue the island shows, its covers, the rows held through
+  a song change and the rule that clears them leave `NotchMusicService` for
+  `NotchUpcomingQueue` (`Services/Notch/NotchQueueSupport.swift`), generic
+  over the cover image. `NotchMusicService` keeps one, and `upcoming`,
+  `upcomingArtwork`, `upcomingIsHeld` and `upcomingRows` read it.
+- **Test:** the queue hold test drives the real type over `Data` covers
+  instead of copies of four members. New checks: holding the rows decodes
+  no cover again, and a queue turned off, no request or nothing playing
+  shows no rows.
+- **Verification:** the types it builds on reach into AppKit, so macOS CI
+  only.
+
+Landed (4b, playback control through Apple Events): two more generated
+files go, which leaves 33.
+
+- **Seam:** `NotchMusicAutomation.System` is the Mac as playback
+  automation reaches it: the player for a playback, whether that process is
+  still the same player, its inspection and permission, the consent prompt,
+  event delivery and the clock. `NotchMusicAutomation.send` takes one, and
+  `Target` gains an initializer for a player already identified.
+- **Moved:** the fallback flow leaves `NotchMusicService` for
+  `NotchMusicAutomationFlow` (`Services/Notch/NotchMusicAutomationFlow.swift`):
+  - what the player offers and allows, kept on screen while it is checked
+    again;
+  - the consent request, which never replays the gesture before it;
+  - one validated action at a time, with its deadline.
+
+  The service keeps its command state and passes it in, and its views read
+  the flow's answer through the same properties as before.
+- **Test:** the automation tests drive the real flow and the real `send`
+  over a player of doubles and queues they run by hand, instead of copies of
+  eleven members. New checks: the consent request is pending until
+  answered, a validation that never answers gives up at its deadline, and a
+  check that lands after the playback source changed is dropped.
+- **Verification:** a Swift 6 type-check of the flow and `send` on Linux;
+  the tests need macOS CI. The first type-check stubbed `DispatchWorkItem` as
+  `Sendable`, which hid three captures macOS rejects (and one in the test).
+  Those locals are now `nonisolated(unsafe)`, since the queues read only the
+  item's thread-safe flag, and the model uses the real type.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

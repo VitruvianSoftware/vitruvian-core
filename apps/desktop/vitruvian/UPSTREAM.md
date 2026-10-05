@@ -1559,6 +1559,54 @@ is that notice. Add an entry for every change to upstream files.
   and island; `NotchService` forwards to it. `Tests/NotchVolumeFeedbackTests.swift`
   drives it, `Tests/generate_sources.py` no longer copies the service's volume
   members, and `Tests/mutation_checks.py` mutates the new file.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/QuickTools/ScratchpadService.swift` takes an injected environment
+  (store, HUD warning, autosave timer, save dialog, island window, activation,
+  main queue) and exports from an `IslandWindowing` host;
+  `Tests/ScratchpadStoreContractTests.swift` drives the real service, and
+  `Tests/generate_sources.py` no longer copies its export and save members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the gallery's scroll
+  routing moves from `Services/Notch/NotchService.swift` to
+  `Services/Notch/NotchSectionScrollRoute.swift`;
+  `Tests/NotchSectionPagingTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the service's scroll handlers.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the island's local key
+  and click routing moves from `Services/Notch/NotchService.swift` to
+  `Services/Notch/NotchLocalEventRoute.swift`; `Tests/NotchKeyMonitorTests.swift`
+  drives it, and `Tests/generate_sources.py` no longer copies
+  `installEventMonitors()`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `UI/Notch/NotchUpdateControl.swift` draws a new `NotchUpdateBadge` for a
+  given state, `Services/Update/UpdateService.swift` adds `State.isOffer`,
+  and `Services/Notch/NotchService.swift` names its update rule;
+  `Tests/NotchUpdateTests.swift` uses them, and `Tests/generate_sources.py`
+  no longer copies the control or `showUpdate()`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the menu bar panel's key
+  routing moves from `App/AppDelegate.swift` to
+  `Services/MenuPanelKeyRoute.swift`; `Tests/MenuPanelKeyTests.swift` drives
+  it, and `Tests/generate_sources.py` no longer copies the delegate's key
+  handler.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the post-update menu bar
+  icon check moves from `App/AppDelegate.swift` to
+  `Services/StatusItemUpdateCheck.swift`;
+  `Tests/PostUpdateStatusItemRecoveryTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the delegate's members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): quitting with a borrowed
+  keyboard layout moves from `App/AppDelegate.swift` to
+  `Services/CommandBar/CommandBarTermination.swift`;
+  `Tests/CommandBarFeatureTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies `applicationShouldTerminate`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`): the island's queue rows
+  and covers move from `Services/Notch/NotchMusicService.swift` to
+  `NotchUpcomingQueue` in `Services/Notch/NotchQueueSupport.swift`;
+  `Tests/NotchMusicHardeningTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the service's queue members.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchMusicAutomation.swift` takes an injected `System`, and
+  the Apple Event fallback flow moves from `Services/Notch/NotchMusicService.swift`
+  to `Services/Notch/NotchMusicAutomationFlow.swift`;
+  `Tests/NotchMusicAutomationTests.swift` drives them, and
+  `Tests/generate_sources.py` no longer copies the service's automation members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

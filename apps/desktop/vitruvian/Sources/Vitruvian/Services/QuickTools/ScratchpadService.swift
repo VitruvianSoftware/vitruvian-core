@@ -16,7 +16,86 @@ import VitruvianDesign
 /// instead.
 @MainActor
 package final class ScratchpadService: NSObject, ObservableObject, NSWindowDelegate {
-    package static let shared = ScratchpadService()
+    package static let shared = ScratchpadService(environment: .live)
+
+    /// A save dialog for one export, as the pad drives it.
+    @MainActor
+    package struct ExportDialog {
+        /// Opens on its own at `level`, staying up while another app is
+        /// active. Used over the island.
+        package var beginAbove: (_ level: NSWindow.Level,
+                                 _ completion: @escaping (NSApplication.ModalResponse, URL?) -> Void) -> Void
+        package var makeKeyAndOrderFront: () -> Void
+        /// Runs as an app-modal dialog, as for the floating pad.
+        package var runModal: () -> (NSApplication.ModalResponse, URL?)
+
+        package init(beginAbove: @escaping (NSWindow.Level,
+                                            @escaping (NSApplication.ModalResponse, URL?) -> Void) -> Void,
+                     makeKeyAndOrderFront: @escaping () -> Void,
+                     runModal: @escaping () -> (NSApplication.ModalResponse, URL?)) {
+            self.beginAbove = beginAbove
+            self.makeKeyAndOrderFront = makeKeyAndOrderFront
+            self.runModal = runModal
+        }
+
+        init(_ panel: NSSavePanel, suggestedName: String) {
+            panel.allowedContentTypes = [.plainText]
+            panel.canCreateDirectories = true
+            panel.isExtensionHidden = false
+            panel.nameFieldStringValue = suggestedName
+            self.init(beginAbove: { level, completion in
+                panel.level = level
+                // Like the sheet it replaces, it stays up while another app is active.
+                panel.hidesOnDeactivate = false
+                panel.begin { response in completion(response, panel.url) }
+            }, makeKeyAndOrderFront: { panel.makeKeyAndOrderFront(nil) },
+            runModal: { (panel.runModal(), panel.url) })
+        }
+    }
+
+    /// What the pad reads and drives outside itself. `live` is the app's:
+    /// its private container, the HUD, the main queue, a save panel, the
+    /// island and the application. Tests pass a store over a directory of
+    /// their own and doubles for the rest.
+    @MainActor
+    package struct Environment {
+        package var makeStore: () -> ScratchpadStore
+        /// Shows a warning in the HUD, for when the pad is not there to show it.
+        package var showWarning: (_ message: String) -> Void
+        /// Runs an autosave after `delay` unless it is cancelled first.
+        package var schedule: (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void
+        package var makeExportDialog: (_ suggestedName: String) -> ExportDialog
+        package var islandWindow: () -> (any IslandWindowing)?
+        package var activate: () -> Void
+        package var main: (@escaping @MainActor () -> Void) -> Void
+
+        package init(makeStore: @escaping () -> ScratchpadStore,
+                     showWarning: @escaping (String) -> Void,
+                     schedule: @escaping (TimeInterval, DispatchWorkItem) -> Void,
+                     makeExportDialog: @escaping (String) -> ExportDialog,
+                     islandWindow: @escaping () -> (any IslandWindowing)?,
+                     activate: @escaping () -> Void,
+                     main: @escaping (@escaping @MainActor () -> Void) -> Void) {
+            self.makeStore = makeStore
+            self.showWarning = showWarning
+            self.schedule = schedule
+            self.makeExportDialog = makeExportDialog
+            self.islandWindow = islandWindow
+            self.activate = activate
+            self.main = main
+        }
+
+        package static var live: Environment {
+            Environment(
+                makeStore: { ScratchpadStore(directoryURL: PrivateFileStore.containerURL, defaults: .standard) },
+                showWarning: { QuickToolHUD.show(icon: "exclamationmark.triangle", message: $0) },
+                schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work) },
+                makeExportDialog: { ExportDialog(NSSavePanel(), suggestedName: $0) },
+                islandWindow: { NotchService.shared.presentationWindow },
+                activate: { NSApp.activate(ignoringOtherApps: true) },
+                main: { work in DispatchQueue.main.async { work() } })
+        }
+    }
 
     @Published package private(set) var shortcutRegistrationFailed = false
     @Published package private(set) var isPinned = false
@@ -51,13 +130,15 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     private weak var textView: NSTextView?
     private var pendingSave: DispatchWorkItem?
     private var document: ScratchpadDocument?
-    private var store = ScratchpadStore(directoryURL: PrivateFileStore.containerURL,
-                                        defaults: .standard)
+    private let environment: Environment
+    private var store: ScratchpadStore
     private var hasLoaded = false
     private var isReplacingText = false
     package private(set) var modalInteractionActive = false
 
-    private override init() {
+    package init(environment: Environment) {
+        self.environment = environment
+        store = environment.makeStore()
         super.init()
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
@@ -118,9 +199,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         marksExpanded = false
         isPinned = !closesOnClickOutside
         guard loadApplyingRetention() else {
-            QuickToolHUD.show(
-                icon: "exclamationmark.triangle",
-                message: FeatureStrings.scratchpad(L10n.shared.language).loadFailed)
+            environment.showWarning(FeatureStrings.scratchpad(L10n.shared.language).loadFailed)
             return
         }
         let panel = ensurePanel()
@@ -152,9 +231,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     package func commitEdits() {
         flushSave()
         if saveFailed {
-            QuickToolHUD.show(
-                icon: "exclamationmark.triangle",
-                message: FeatureStrings.scratchpad(L10n.shared.language).saveFailed)
+            environment.showWarning(FeatureStrings.scratchpad(L10n.shared.language).saveFailed)
         }
     }
 
@@ -195,7 +272,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         pendingSave?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.flushSave() }
         pendingSave = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+        environment.schedule(0.8, work)
     }
 
     private func flushSave() {
@@ -269,7 +346,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         pendingSave = nil
         hasLoaded = false
         document = nil
-        store = ScratchpadStore(directoryURL: PrivateFileStore.containerURL, defaults: .standard)
+        store = environment.makeStore()
     }
 
     // MARK: - Actions
@@ -359,19 +436,16 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// Activate for dialog input and return focus to the originating host.
     /// The island's dialog floats just above it: a sheet would move and
     /// reskin the borderless surface.
-    package func exportText(suggestedName: String, from window: NSWindow? = nil) {
+    package func exportText(suggestedName: String, from window: (any IslandWindowing)? = nil) {
         guard !text.isEmpty, !modalInteractionActive, let padID = selectedPadID,
-              let sourceWindow = window ?? panel, sourceWindow.isVisible else { return }
+              let sourceWindow = window ?? (panel as (any IslandWindowing)?), sourceWindow.isVisible else { return }
         modalInteractionActive = true
         flushSave()
-        let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [.plainText]
-        savePanel.canCreateDirectories = true
-        savePanel.isExtensionHidden = false
-        savePanel.nameFieldStringValue = suggestedName
-        let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+        let dialog = environment.makeExportDialog(suggestedName)
+        let environment = self.environment
+        let complete: (NSApplication.ModalResponse, URL?) -> Void = { [weak self] response, url in
             self?.modalInteractionActive = false
-            if response == .OK, let url = savePanel.url {
+            if response == .OK, let url {
                 do {
                     // The island's dialog leaves the pad editable, so the file
                     // gets the pad as it is when the save is confirmed. A pad
@@ -383,29 +457,27 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
                 } catch {
                     // A read-only volume or a full disk used to end here in
                     // silence, with the save panel closed and nothing written.
-                    QuickToolHUD.show(
-                        icon: "exclamationmark.triangle",
-                        message: FeatureStrings.scratchpad(L10n.shared.language).exportFailed)
+                    environment.showWarning(FeatureStrings.scratchpad(L10n.shared.language).exportFailed)
                 }
             }
             // Dismissal restores the previous key window after completion.
-            DispatchQueue.main.async {
+            environment.main {
                 if sourceWindow.isVisible { sourceWindow.makeKey() }
             }
         }
-        if sourceWindow === NotchService.shared.presentationWindow {
+        if sourceWindow === environment.islandWindow() {
             // modalInteractionActive keeps the island's working surface
             // while its independent dialog is up.
-            savePanel.level = NSWindow.Level(rawValue: sourceWindow.level.rawValue + 1)
-            // Like the sheet it replaces, it stays up while another app is active.
-            savePanel.hidesOnDeactivate = false
-            savePanel.begin(completionHandler: complete)
-            NSApp.activate(ignoringOtherApps: true)
+            dialog.beginAbove(NSWindow.Level(rawValue: sourceWindow.level.rawValue + 1), complete)
+            environment.activate()
             // Activation alone can leave the nonactivating island holding focus.
-            savePanel.makeKeyAndOrderFront(nil)
+            dialog.makeKeyAndOrderFront()
         } else {
-            NSApp.activate(ignoringOtherApps: true)
-            DispatchQueue.main.async { complete(savePanel.runModal()) }
+            environment.activate()
+            environment.main {
+                let (response, url) = dialog.runModal()
+                complete(response, url)
+            }
         }
     }
 

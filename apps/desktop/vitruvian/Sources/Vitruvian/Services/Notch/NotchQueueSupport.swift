@@ -133,3 +133,56 @@ package struct NotchQueueCovers<Image> {
     // Spelled out because a default initializer never leaves its module.
     package init() {}
 }
+
+/// The queue the island shows and the covers its rows carry, kept together.
+/// A song change holds the shown rows until the new song's queue arrives.
+package struct NotchUpcomingQueue<Image> {
+    package private(set) var snapshot: NotchQueueSnapshot?
+    package private(set) var artwork: [String: Image] = [:]
+    private var covers = NotchQueueCovers<Image>()
+    private let decode: (Data) -> Image?
+
+    package init(decode: @escaping (Data) -> Image?) {
+        self.decode = decode
+    }
+
+    /// Shows `queue`, decoding only the covers it has not seen yet.
+    package mutating func show(_ queue: NotchQueueSnapshot?) {
+        guard queue != snapshot else { return }
+        snapshot = queue
+        covers.update(queue, decode: decode)
+        artwork = covers.images
+    }
+
+    /// Drops the covers decoded so far, as when the queue is turned off.
+    package mutating func forgetCovers() {
+        covers = .init()
+    }
+
+    /// Takes the player's `reply` to `request` while `playback` plays. The
+    /// rows already shown stay while the new song's queue is on its way; an
+    /// unavailable queue, another player, an old request or an unidentified
+    /// song clears them.
+    package mutating func receive(_ reply: [String: Any]?, request: UUID?, playback: NotchPlayback?,
+                                  enabled: Bool) {
+        guard let request, let playback, let reply, enabled else {
+            show(nil)
+            return
+        }
+        let next = NotchQueueSupport.decode(reply, requestID: request, playback: playback)
+        if next == nil, snapshot != nil,
+           NotchQueueSupport.awaitsSongQueue(reply, requestID: request, playback: playback) { return }
+        show(next)
+    }
+
+    /// Rows still shown for another song than `playback`'s refuse row actions.
+    package func isHeld(for playback: NotchPlayback?) -> Bool {
+        guard let snapshot else { return false }
+        return snapshot.currentIdentifier != playback?.itemIdentifier || snapshot.pid != playback?.track.appPID
+    }
+
+    /// The rows to draw, leaving out the song now playing.
+    package func rows(for playback: NotchPlayback?) -> [NotchQueueItem] {
+        snapshot?.items.filter { $0.id != playback?.itemIdentifier } ?? []
+    }
+}

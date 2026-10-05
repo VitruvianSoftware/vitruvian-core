@@ -12,10 +12,27 @@ package struct NotchUpdateControl: View {
     @ObservedObject private var updates = UpdateService.shared
     package let action: () -> Void
     package var compact = false
+
+    package var body: some View {
+        NotchUpdateBadge(state: updates.state, action: action, compact: compact)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(action: @escaping () -> Void, compact: Bool = false) {
+        self.action = action
+        self.compact = compact
+    }
+}
+
+/// The control for one update state, so any state can be laid out.
+package struct NotchUpdateBadge: View {
+    package let state: UpdateService.State
+    package let action: () -> Void
+    package var compact = false
     @ObservedObject private var l10n = L10n.shared
 
     @ViewBuilder package var body: some View {
-        switch updates.state {
+        switch state {
         case let .available(version):
             let tint: Color = UpdateServiceSupport.SemanticVersion(raw: version)?.isPrerelease == true ? .orange : .blue
             let title = "\(l10n.s.updateBannerTitle), \(l10n.s.versionPrefix) \(version)"
@@ -68,7 +85,8 @@ package struct NotchUpdateControl: View {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(action: @escaping () -> Void, compact: Bool = false) {
+    package init(state: UpdateService.State, action: @escaping () -> Void, compact: Bool = false) {
+        self.state = state
         self.action = action
         self.compact = compact
     }

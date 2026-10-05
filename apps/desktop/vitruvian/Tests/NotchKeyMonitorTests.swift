@@ -1,151 +1,231 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The island's production event monitor runs against plain doubles. No
-/// window is shown, no native monitor is installed and no key is posted.
+/// The island's local event route runs against plain doubles. No window is
+/// shown, no native monitor is installed and no key is posted.
 enum NotchKeyMonitorTests {
-    struct NSEvent {
-        struct ModifierFlags: OptionSet {
-            let rawValue: Int
-            static let command = Self(rawValue: 1)
-            static let control = Self(rawValue: 2)
-            static let option = Self(rawValue: 4)
-            static let shift = Self(rawValue: 8)
-        }
-        enum EventType: UInt { case leftMouseDown = 1, rightMouseDown = 3, keyDown = 10, otherMouseDown = 25 }
-        struct EventTypeMask: OptionSet {
-            let rawValue: UInt64
-            static let leftMouseDown = Self(rawValue: 1 << 1)
-            static let rightMouseDown = Self(rawValue: 1 << 3)
-            static let keyDown = Self(rawValue: 1 << 10)
-            static let otherMouseDown = Self(rawValue: 1 << 25)
-        }
-        static let mouseLocation = CGPoint.zero
-        static var handler: ((Self) -> Self?)?
-        var type = EventType.keyDown
-        let window: Panel?
-        let keyCode: UInt16
-        var modifierFlags: ModifierFlags = []
-        var charactersIgnoringModifiers: String?
-        static func addGlobalMonitorForEvents(matching: EventTypeMask, handler: @escaping (Self) -> Void) -> Any? { nil }
-        static func addLocalMonitorForEvents(matching: EventTypeMask, handler: @escaping (Self) -> Self?) -> Any? {
-            self.handler = handler
-            return 1
-        }
-    }
-    final class Panel { var firstResponder: AnyObject? }
-    final class NSTextView {
-        let isFieldEditor: Bool
-        let delegate: AnyObject? = nil
-        var composing = false
-        init(isFieldEditor: Bool) { self.isFieldEditor = isFieldEditor }
-        func hasMarkedText() -> Bool { composing }
-    }
-    final class MixerPercentNativeTextField {}
-    enum PlainTextEditor { static func findBarHasKeyboard(in window: Panel?) -> Bool { false } }
-    final class Host { func contains(_ point: CGPoint) -> Bool { false } }
-    final class AppDelegate { func isOverStatusItem(_ point: CGPoint) -> Bool { false } }
-    static func appShell() -> AppDelegate? { nil }
-    enum AssistiveKeyboard { static func ownsCocoaPoint(_ point: CGPoint) -> Bool { false } }
-    /// What each Escape did: the gallery toggled, Tools took it or the island closed.
-    static var actions: [String] = []
-    final class Launcher {
-        var isEditing = false
-        var visibleItems = [0, 1, 2]
-        var flows: [QuickToolsSupport.GridFlow] = []
-        func handlePanelKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> NSEvent? {
-            NotchKeyMonitorTests.actions.append("tools")
-            flows.append(flow)
-            return nil
-        }
-    }
-    enum QuickLauncherService { static let shared = Launcher() }
+    final class Window {}
 
-    class State {
-        var eventMonitors: [Any] = []
-        var clickedSinceOpening = false
-        var keepsWorkingSurface = false
-        let panel: Panel? = Panel()
-        var windowHost: Host? = Host()
-        var captureControls: Int?
+    struct Event: NotchMonitoredEvent {
+        /// Reads of key-only fields from a click, which `NSEvent` refuses.
+        static var nonKeyReads = 0
+        var type: NSEvent.EventType = .keyDown
+        var targetWindow: AnyObject?
+        var code: UInt16 = 0
+        var modifierFlags: NSEvent.ModifierFlags = []
+        var characters: String?
+        var keyCode: UInt16 {
+            if type != .keyDown { Self.nonKeyReads += 1 }
+            return code
+        }
+        var charactersIgnoringModifiers: String? {
+            if type != .keyDown { Self.nonKeyReads += 1 }
+            return characters
+        }
+    }
+
+    /// The island as the route sees it, recording what it was asked to do.
+    final class Island {
+        let panel = Window()
+        let popover = Window()
+        var composing = false
+        var fieldTakesEscape = false
+        var capturing = false
         var modules = NotchModule.allCases
         var selected = NotchModule.controls
-        var showingAppPanel = false
         var showingSections = false
+        var showingAppPanel = false
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
                                      safeAreaTop: 32, cameraWidth: 180)
-        var headerTitleWidth: CGFloat = 0
-        var expandedGeometry: NotchGeometry {
-            var result = geometry
-            result.headerTitleWidth = headerTitleWidth
-            return result
+        var tools = (editing: false, count: 3)
+        var clickIsAway = true
+        /// The keys the section, Scratchpad and clipboard handlers take.
+        var taken: Set<String> = []
+        var actions: [String] = []
+        var flows: [QuickToolsSupport.GridFlow] = []
+
+        var route: NotchLocalEventRoute<Event> {
+            NotchLocalEventRoute(island: .init(
+                panel: { [unowned self] in self.panel },
+                isComposing: { [unowned self] in self.composing },
+                fieldTakesEscape: { [unowned self] in self.fieldTakesEscape },
+                isCapturing: { [unowned self] in self.capturing },
+                modules: { [unowned self] in self.modules },
+                selected: { [unowned self] in self.selected },
+                showingSections: { [unowned self] in self.showingSections },
+                showingAppPanel: { [unowned self] in self.showingAppPanel },
+                geometry: { [unowned self] in self.geometry },
+                tools: { [unowned self] in self.tools },
+                ownsWindow: { [unowned self] in $0 === self.panel || $0 === self.popover },
+                clickIsAway: { [unowned self] in self.clickIsAway },
+                toggleSections: { [unowned self] in self.actions.append("sections") },
+                select: { [unowned self] in self.actions.append("select \($0.rawValue)") },
+                sectionKey: { [unowned self] _ in self.takes("section") },
+                scratchpadKey: { [unowned self] _ in self.takes("scratchpad") },
+                clipboardPasteKey: { [unowned self] _ in self.takes("clipboard") },
+                toolsKey: { [unowned self] _, flow in
+                    self.actions.append("tools")
+                    self.flows.append(flow)
+                    return true
+                },
+                stepBack: { [unowned self] in self.actions.append("stepBack") },
+                collapse: { [unowned self] in self.actions.append("collapse") },
+                clickedInside: { [unowned self] in self.actions.append("clicked") }))
         }
-        func collapse() { NotchKeyMonitorTests.actions.append("collapse") }
-        func stepBack() { NotchKeyMonitorTests.actions.append("stepBack") }
-        func toggleSections() { NotchKeyMonitorTests.actions.append("sections") }
-        func select(_ module: NotchModule) { selected = module }
-        func handleSectionKey(_ event: NSEvent) -> Bool { false }
-        func handleScratchpadKey(_ event: NSEvent) -> Bool { false }
-        func handleClipboardPasteKey(_ event: NSEvent) -> Bool { false }
-        func ownsWindow(_ window: Panel?) -> Bool { window === panel }
+
+        private func takes(_ handler: String) -> Bool {
+            guard taken.contains(handler) else { return false }
+            actions.append(handler)
+            return true
+        }
+
+        func key(_ code: UInt16, _ modifiers: NSEvent.ModifierFlags = [], _ characters: String? = nil) -> Event {
+            Event(targetWindow: panel, code: code, modifierFlags: modifiers, characters: characters)
+        }
+
+        /// Whether the island took the event, and what it did with it.
+        func send(_ event: Event) -> (taken: Bool, actions: [String]) {
+            actions = []
+            let taken = route.handle(event)
+            return (taken, actions)
+        }
     }
 
     static func run(_ suite: TestSuite) {
-        defer {
-            NSEvent.handler = nil
-            actions = []
-        }
-        let service = Service()
-        service.installEventMonitors()
-        let escape = NSEvent(window: service.panel, keyCode: 53)
-        // Each Escape branch, reached from a field that can hold a composing
-        // input method: the gallery search, a field in a Tools utility, one
-        // in the app panel and the Scratchpad editor.
-        let destinations: [(name: String, module: NotchModule, sections: Bool, appPanel: Bool,
-                            field: NSTextView, action: String)] = [
-            ("the gallery search", .controls, true, false, NSTextView(isFieldEditor: true), "sections"),
-            ("a Tools utility", .tools, false, false, NSTextView(isFieldEditor: true), "tools"),
-            ("the app panel", .tools, false, true, NSTextView(isFieldEditor: true), "stepBack"),
-            ("the Scratchpad editor", .scratchpad, false, false, NSTextView(isFieldEditor: false), "stepBack"),
+        Event.nonKeyReads = 0
+        escape(suite)
+        tools(suite)
+        shortcuts(suite)
+        clicks(suite)
+        suite.expect(Event.nonKeyReads == 0, "the route never reads a key code or characters from a click")
+    }
+
+    /// Each Escape branch, reached from a field that can hold a composing
+    /// input method: the gallery search, a field in a Tools utility, one in
+    /// the app panel and the Scratchpad editor.
+    private static func escape(_ suite: TestSuite) {
+        let destinations: [(name: String, module: NotchModule, sections: Bool, appPanel: Bool, action: String)] = [
+            ("the gallery search", .controls, true, false, "sections"),
+            ("a Tools utility", .tools, false, false, "tools"),
+            ("the app panel", .tools, false, true, "stepBack"),
+            ("the Scratchpad editor", .scratchpad, false, false, "stepBack"),
         ]
         for destination in destinations {
-            service.selected = destination.module
-            service.showingSections = destination.sections
-            service.showingAppPanel = destination.appPanel
-            service.panel?.firstResponder = destination.field
-            destination.field.composing = true
-            actions = []
-            suite.expect(NSEvent.handler?(escape) != nil && actions.isEmpty,
+            let island = Island()
+            island.selected = destination.module
+            island.showingSections = destination.sections
+            island.showingAppPanel = destination.appPanel
+            island.composing = true
+            let composing = island.send(island.key(53))
+            suite.expect(!composing.taken && composing.actions.isEmpty,
                          "a composing input method keeps Esc in \(destination.name)")
-            destination.field.composing = false
-            actions = []
-            suite.expect(NSEvent.handler?(escape) == nil && actions == [destination.action],
+            island.composing = false
+            let escaped = island.send(island.key(53))
+            suite.expect(escaped.taken && escaped.actions == [destination.action],
                          "Esc reaches the island from \(destination.name) once composition ends")
         }
-        // A title too long to sit beside the camera takes a row below it, so
-        // a custom island leaves the Tools rail fewer rows than the island
-        // without its page would. The arrows walk the rail the page draws.
-        let launcher = QuickLauncherService.shared
-        let items = launcher.visibleItems
-        defer { launcher.visibleItems = items; launcher.flows = [] }
-        launcher.visibleItems = Array(0..<12)
-        service.selected = .tools
-        service.showingSections = false
-        service.showingAppPanel = false
-        service.panel?.firstResponder = nil
-        service.geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1710, height: 1112), safeAreaTop: 37.5,
-                                         cameraWidth: 208, layout: .custom, customWidth: 480, customHeight: 330)
-        service.headerTitleWidth = 200
-        launcher.flows = []
-        _ = NSEvent.handler?(NSEvent(window: service.panel, keyCode: 125))
-        let drawn = service.expandedGeometry.toolFlow(count: 12)
-        suite.expect(launcher.flows == [drawn] && drawn != service.geometry.toolFlow(count: 12),
+        let island = Island()
+        island.selected = .mixer
+        island.fieldTakesEscape = true
+        let field = island.send(island.key(53))
+        suite.expect(!field.taken && field.actions.isEmpty,
+                     "a mixer level being typed, or the find bar, takes Esc before the island steps back")
+        var elsewhere = island.key(53)
+        elsewhere.targetWindow = Window()
+        island.fieldTakesEscape = false
+        let other = island.send(elsewhere)
+        suite.expect(!other.taken && other.actions.isEmpty, "a key for another window is not the island's")
+    }
+
+    /// A title too long to sit beside the camera takes a row below it, so a
+    /// custom island leaves the Tools rail fewer rows than the island without
+    /// its page would. The arrows walk the rail the page draws.
+    private static func tools(_ suite: TestSuite) {
+        let island = Island()
+        island.selected = .tools
+        let plain = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1710, height: 1112), safeAreaTop: 37.5,
+                                  cameraWidth: 208, layout: .custom, customWidth: 480, customHeight: 330)
+        var titled = plain
+        titled.headerTitleWidth = 200
+        island.geometry = titled
+        island.tools = (false, 12)
+        let down = island.send(island.key(125))
+        suite.expect(down.taken && island.flows == [titled.toolFlow(count: 12)]
+                     && titled.toolFlow(count: 12) != plain.toolFlow(count: 12),
                      "the Tools arrows follow the rail below a title that takes the row under the camera")
+        island.flows = []
+        island.tools = (true, 12)
+        _ = island.send(island.key(125))
+        suite.expect(island.flows == [.rows(columns: NotchSupport.toolColumns)],
+                     "the Tools grid being edited keeps its own rows")
+        island.showingSections = true
+        island.flows = []
+        _ = island.send(island.key(125))
+        suite.expect(island.flows.isEmpty, "the gallery open over Tools keeps the arrows from the rail")
+    }
+
+    private static func shortcuts(_ suite: TestSuite) {
+        let island = Island()
+        let gallery = island.send(island.key(40, .command, "k"))
+        suite.expect(gallery.taken && gallery.actions == ["sections"], "Command-K opens the gallery")
+        let capsLock = island.send(island.key(40, .command, "K"))
+        suite.expect(capsLock.taken && capsLock.actions == ["sections"], "Command-K opens the gallery with Caps Lock on")
+        let shifted = island.send(island.key(40, [.command, .shift], "k"))
+        suite.expect(!shifted.taken && shifted.actions.isEmpty, "Command-Shift-K is not the gallery's shortcut")
+        let music = island.send(island.key(46, [.command, .option], "M"))
+        suite.expect(music.taken && music.actions == ["select music"],
+                     "Command-Option and a page's letter opens that page")
+        let missing = island.send(island.key(46, [.command, .option, .shift], "m"))
+        suite.expect(!missing.taken && missing.actions.isEmpty, "another modifier makes it not that shortcut")
+        island.modules = [.controls, .mixer, .music]
+        island.selected = .music
+        let next = island.send(island.key(48, .control))
+        suite.expect(next.taken && next.actions == ["select controls"], "Control-Tab wraps to the first page")
+        island.selected = .controls
+        let previous = island.send(island.key(48, [.control, .shift]))
+        suite.expect(previous.taken && previous.actions == ["select music"],
+                     "Control-Shift-Tab goes back, wrapping to the last page")
+        island.capturing = true
+        let capturing = island.send(island.key(40, .command, "k"))
+        suite.expect(!capturing.taken && capturing.actions.isEmpty,
+                     "capture controls keep the island's shortcuts while they are up")
+        island.capturing = false
+        island.taken = ["scratchpad", "clipboard"]
+        let scratchpad = island.send(island.key(1, .command, "s"))
+        suite.expect(scratchpad.taken && scratchpad.actions == ["scratchpad"],
+                     "the gallery, then the Scratchpad, then clipboard paste each get a key in turn")
+        island.taken = ["section", "scratchpad"]
+        let section = island.send(island.key(36))
+        suite.expect(section.taken && section.actions == ["section"], "the gallery's keys come first")
+        island.taken = ["clipboard"]
+        let paste = island.send(island.key(9, .command, "v"))
+        suite.expect(paste.taken && paste.actions == ["clipboard"], "clipboard paste gets the keys the others leave")
+        island.taken = []
+        let plain = island.send(island.key(0, [], "a"))
+        suite.expect(!plain.taken && plain.actions.isEmpty, "a key no part of the island wants goes on to the app")
+    }
+
+    private static func clicks(_ suite: TestSuite) {
+        let island = Island()
+        for (window, name) in [(island.panel, "the island"), (island.popover, "a popover hanging from it")] {
+            let inside = island.send(Event(type: .leftMouseDown, targetWindow: window))
+            suite.expect(!inside.taken && inside.actions == ["clicked"],
+                         "a click in \(name) counts as a click inside and goes on to it")
+        }
+        for type in [NSEvent.EventType.leftMouseDown, .rightMouseDown, .otherMouseDown] {
+            let away = island.send(Event(type: type, targetWindow: Window()))
+            suite.expect(!away.taken && away.actions == ["collapse"], "a click away closes the island and still lands")
+        }
+        island.clickIsAway = false
+        let kept = island.send(Event(type: .leftMouseDown, targetWindow: nil))
+        suite.expect(!kept.taken && kept.actions.isEmpty,
+                     "a click on the island's status item, or while it keeps its surface, leaves it open")
     }
 }

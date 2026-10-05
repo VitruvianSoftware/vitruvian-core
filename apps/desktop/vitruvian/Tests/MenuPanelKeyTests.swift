@@ -1,96 +1,122 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-import Foundation
+import AppKit
 import Carbon.HIToolbox
+import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
-/// The menu bar panel's production key handler runs against plain doubles.
-/// No popover is shown, no monitor is installed and no key is posted.
+/// The menu bar panel's key route runs against plain doubles. No popover is
+/// shown, no monitor is installed and no key is posted.
 enum MenuPanelKeyTests {
-    struct NSEvent {
-        struct ModifierFlags: OptionSet {
-            let rawValue: Int
-            static let command = Self(rawValue: 1)
-            static let control = Self(rawValue: 2)
-            static let option = Self(rawValue: 4)
-        }
-        let keyCode: UInt16
-        let window: NSWindow?
-        var modifierFlags: ModifierFlags = []
-    }
-    class NSResponder {
-        init() {}
-        func keyDown(with event: NSEvent) {}
-    }
-    final class NSTextView: NSResponder {
-        var composing = false
-        func hasMarkedText() -> Bool { composing }
-    }
-    final class NSTextField: NSResponder {}
-    final class NSWindow {
-        var firstResponder: NSResponder?
-        var parent: NSWindow?
-        func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSTextView? { nil }
-    }
-    final class View { var window: NSWindow? }
-    final class Controller { let view = View() }
-    final class Popover {
-        var isShown = true
-        let contentViewController: Controller? = Controller()
-    }
-    final class PanelInteractionState {
-        static let shared = PanelInteractionState()
-        var viewKeepsPopoverOpen = false
-    }
-    struct Application { var keyWindow: NSWindow? }
-    static let NSApp = Application()
+    final class Window {}
 
-    class Fixture {
-        let popover = Popover()
-        var closeReasons: [PanelCloseReason] = []
-        func closePopover(reason: PanelCloseReason) {
-            closeReasons.append(reason)
-            popover.isShown = false
+    struct Event: MenuPanelKeyEvent {
+        var keyCode: UInt16
+        var targetWindow: AnyObject?
+        var modifierFlags: NSEvent.ModifierFlags = []
+    }
+
+    /// The panel as the route sees it, recording what it was asked to do.
+    final class Panel {
+        let window = Window()
+        var isShown = true
+        var composing = false
+        var viewKeepsOpen = false
+        var editingText = false
+        var isKey = false
+        var closes = 0
+        var delivered: [UInt16] = []
+
+        var route: MenuPanelKeyRoute<Event> {
+            MenuPanelKeyRoute(panel: .init(
+                isShown: { [unowned self] in self.isShown },
+                window: { [unowned self] in self.window },
+                isComposing: { [unowned self] in self.composing },
+                viewKeepsOpen: { [unowned self] in self.viewKeepsOpen },
+                isEditingText: { [unowned self] in self.editingText },
+                isKey: { [unowned self] in self.isKey },
+                close: { [unowned self] in
+                    self.closes += 1
+                    self.isShown = false
+                },
+                deliver: { [unowned self] in self.delivered.append($0.keyCode) }))
         }
-        init() {}
     }
 
     static func run(_ suite: TestSuite) {
-        let window = NSWindow()
-        let field = NSTextView()
-        window.firstResponder = field
-        func shownPanel() -> Host {
-            let host = Host()
-            host.popover.contentViewController?.view.window = window
-            return host
+        escape(suite)
+        holdKeys(suite)
+    }
+
+    private static func escape(_ suite: TestSuite) {
+        let escape = UInt16(kVK_Escape)
+        func panelKeepsEscape(from window: AnyObject?) -> Bool {
+            let panel = Panel()
+            return !panel.route.handle(Event(keyCode: escape, targetWindow: window))
+                && panel.isShown && panel.closes == 0
         }
-        func panelKeepsEscape(from eventWindow: NSWindow?) -> Bool {
-            let host = shownPanel()
-            return host.handlePopoverKeyDown(NSEvent(keyCode: UInt16(kVK_Escape), window: eventWindow)) != nil
-                && host.popover.isShown && host.closeReasons.isEmpty
-        }
-        let settings = NSWindow()
-        settings.firstResponder = NSTextView()
-        suite.expect(panelKeepsEscape(from: settings),
+        suite.expect(panelKeepsEscape(from: Window()),
                      "Esc in Settings beside the open panel stays there, for its search field or sheet")
         suite.expect(panelKeepsEscape(from: nil), "Esc with no key window leaves the panel open")
-        let picker = NSWindow()
-        picker.parent = window
-        suite.expect(panelKeepsEscape(from: picker),
-                     "Esc in a popover opened from the panel, such as the Keep Awake end time, closes that popover first")
 
-        let host = shownPanel()
-        let escape = NSEvent(keyCode: UInt16(kVK_Escape), window: window)
-        field.composing = true
-        suite.expect(host.handlePopoverKeyDown(escape) != nil && host.popover.isShown && host.closeReasons.isEmpty,
+        let panel = Panel()
+        panel.composing = true
+        suite.expect(!panel.route.handle(Event(keyCode: escape, targetWindow: panel.window))
+                     && panel.isShown && panel.closes == 0,
                      "a composing input method keeps Esc in a panel field such as the Homebrew search")
-        field.composing = false
-        suite.expect(host.handlePopoverKeyDown(escape) == nil && !host.popover.isShown
-                     && host.closeReasons == [.escape],
+        panel.composing = false
+        suite.expect(panel.route.handle(Event(keyCode: escape, targetWindow: panel.window))
+                     && !panel.isShown && panel.closes == 1,
                      "Esc closes the panel once composition ends")
+        suite.expect(!panel.route.handle(Event(keyCode: escape, targetWindow: panel.window)) && panel.closes == 1,
+                     "Esc with the panel already closed goes on to the app")
+    }
+
+    /// While a view holds the panel open, Space and Return reach it even
+    /// when the panel is not key.
+    private static func holdKeys(_ suite: TestSuite) {
+        let space: UInt16 = 49, returnKey: UInt16 = 36, enter: UInt16 = 76
+        let panel = Panel()
+        suite.expect(!panel.route.handle(Event(keyCode: space, targetWindow: panel.window))
+                     && panel.delivered.isEmpty,
+                     "Space goes its usual way while no view holds the panel open")
+        panel.viewKeepsOpen = true
+        for key in [space, returnKey, enter] {
+            panel.delivered = []
+            suite.expect(panel.route.handle(Event(keyCode: key, targetWindow: panel.window))
+                         && panel.delivered == [key],
+                         "a view holding the panel open gets Space, Return and Enter (\(key))")
+        }
+        panel.delivered = []
+        suite.expect(!panel.route.handle(Event(keyCode: 0, targetWindow: panel.window)) && panel.delivered.isEmpty,
+                     "other keys go their usual way")
+        for modifier in [NSEvent.ModifierFlags.command, .control, .option] {
+            suite.expect(!panel.route.handle(Event(keyCode: space, targetWindow: panel.window,
+                                                   modifierFlags: modifier))
+                         && panel.delivered.isEmpty,
+                         "a held key with Command, Control or Option is a shortcut, not the view's")
+        }
+        suite.expect(panel.route.handle(Event(keyCode: space, targetWindow: panel.window, modifierFlags: .shift))
+                     && panel.delivered == [space],
+                     "Shift-Space still reaches the view")
+        panel.delivered = []
+        suite.expect(!panel.route.handle(Event(keyCode: space, targetWindow: Window())) && panel.delivered.isEmpty,
+                     "a held key for another window stays there while the panel is not key")
+        panel.isKey = true
+        suite.expect(panel.route.handle(Event(keyCode: space, targetWindow: nil)) && panel.delivered == [space],
+                     "a key panel gets the held key whatever window AppKit names")
+        panel.delivered = []
+        panel.editingText = true
+        suite.expect(!panel.route.handle(Event(keyCode: returnKey, targetWindow: panel.window))
+                     && panel.delivered.isEmpty,
+                     "a text field in the panel submits through AppKit's own field editor")
+        panel.editingText = false
+        panel.isShown = false
+        suite.expect(!panel.route.handle(Event(keyCode: space, targetWindow: panel.window)) && panel.delivered.isEmpty,
+                     "a closed panel takes no held key")
     }
 }

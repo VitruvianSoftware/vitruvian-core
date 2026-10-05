@@ -75,13 +75,6 @@ def main():
               "    func windowShouldClose(", "    func windowWillClose(", "    private func markOnboardingComplete()",
               "    private func markSupportUpdateIntroSeenIfCurrentUpdate()", "    private func markSupportUpdateIntroSeen()"])
           + "}\n}\n")
-    write("PostUpdateStatusItemRecovery.swift", "import AppKit\nimport Foundation\n"
-          + "extension PostUpdateStatusItemRecoveryTests {\nfinal class Host: Fixture {\n"
-          + "".join(declaration(panel, prefix).replace("private ", "") for prefix in [
-              "    private func recoverStatusItemAfterUpdate(",
-              "    private func verifyPostUpdateStatusItem(",
-              "    private func iconIsOnScreen("])
-          + "}\n}\n")
     write("MenuPanelRecovery.swift", "import AppKit\nimport Foundation\n"
           + "extension MenuPanelRecoveryTests {\nfinal class Host: Fixture {\n"
           + "".join(declaration(panel, prefix).replace("private ", "") for prefix in [
@@ -98,12 +91,6 @@ def main():
               "    private func reopenPanelAfterForeignClose(", "    private func shouldDismissPopover(",
               "    private func closePopoverNow("])
           + "var popoverAnchor: PanelAnchor?\nvar lastGoodPanelAnchor: PanelAnchor?\n"
-          + "}\n}\n")
-    write("MenuPanelKey.swift", "import Foundation\nimport Carbon.HIToolbox\n"
-          + "extension MenuPanelKeyTests {\nfinal class Host: Fixture {\n"
-          + "".join(declaration(panel, prefix).replace("private ", "", 1) for prefix in [
-              "    private func handlePopoverKeyDown(", "    private func isPlainPopoverHoldKey(",
-              "    private func isTextEditingActive("])
           + "}\n}\n")
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("DisplayRestoration.swift", "import CoreGraphics\nimport Foundation\n"
@@ -125,18 +112,6 @@ def main():
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
           + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
           + "}\n}\n")
-    write("ScratchpadExport.swift", "import AppKit\nimport Foundation\n"
-          + "extension ScratchpadExportContract {\nfinal class Service: Fixture {\n"
-          + declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
-                        "    func exportText(")
-          + "}\n}\n")
-    write("ScratchpadSave.swift", "import Foundation\n"
-          + "extension ScratchpadSaveContract {\nfinal class Service: Fixture {\n"
-          + "".join(declaration("Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift", prefix)
-                    .replace("private func", "func", 1) for prefix in [
-                        "    func commitEdits(", "    private func flushSave(", "    private func save(",
-                        "    func createPad("])
-          + "}\n}\n")
     clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
     write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
           + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"
@@ -147,10 +122,6 @@ def main():
               "    private var firstRecentIndex:", "    private func normalizeEntryOrder(",
               "    func filteredEntries(", "    private func foldedCandidates("])
           + "func setEntries(_ values: [ClipboardHistoryEntry]) { entries = values }\n"
-          + "}\n}\n")
-    write("CommandBarTermination.swift", "import AppKit\nimport Foundation\n"
-          + "extension CommandBarTerminationContract {\nfinal class Host: Fixture {\n"
-          + declaration("Sources/Vitruvian/App/AppDelegate.swift", "    func applicationShouldTerminate(")
           + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
@@ -332,18 +303,6 @@ def main():
               .replace("private var", "var", 1).replace("NotchSupport.controls()", "controls")
               .replace("NotchTimerService.shared", "NotchCompactTests.NotchTimerService.shared")
           + "}\n")
-    update_view = "Sources/Vitruvian/UI/Notch/NotchUpdateControl.swift"
-    write("NotchUpdate.swift", "import AppKit\nimport SwiftUI\nimport Combine\nextension NotchUpdateTests {\n"
-          + "final class UpdateService: ObservableObject {\nstatic let shared = UpdateService()\n"
-          + "typealias State = VitruvianServices.UpdateService.State\n"
-          + "@Published var state: State = .idle\n}\n"
-          + "final class L10n: ObservableObject {\nstatic let shared = L10n()\n@Published var language = AppLanguage.enUS\n"
-          + declaration("Sources/Vitruvian/Core/Localization.swift", "    var s: Strings")
-          + "}\nfinal class Service: State {\n"
-          + declaration(notch, "    func showUpdate()")
-          + "}\n"
-          + declaration(update_view, "struct NotchUpdateControl:")
-          + "}\n")
     canvas = "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift"
     write("NotchHover.swift", "import AppKit\nextension NotchHoverTests {\nfinal class Service: State {\n"
           + declaration(notch, "    func show(_ incoming:").replace("NotchSupport.routes(incoming.event)", "true")
@@ -397,13 +356,6 @@ def main():
               .replace("NotchSupport.coversMenus()", "coversMenus")
           + declaration(notch, "    private var canFollowPointer:").replace("private var", "var", 1)
           + declaration(notch, "    private func move(to screen:").replace("private func", "func", 1)
-          + "}\n}\n")
-    write("NotchSectionScrollRoute.swift", "import AppKit\nextension NotchSectionPagingTests {\nfinal class Service: State {\n"
-          + "".join(declaration(notch, prefix).replace("    private ", "    ", 1) for prefix in [
-              "    private func handleScroll(", "    private func handleSectionScroll("])
-          + "}\n}\n")
-    write("NotchKeyMonitor.swift", "import Foundation\nextension NotchKeyMonitorTests {\nfinal class Service: State {\n"
-          + declaration(notch, "    private func installEventMonitors()").replace("private func", "func", 1)
           + "}\n}\n")
     write("NotchPresentationRefresh.swift", "import AppKit\nimport Foundation\nimport Combine\nimport SwiftUI\n"
           + "extension NotchPresentationRefreshContract {\nfinal class Service: State {\n"
@@ -716,44 +668,6 @@ def main():
           + declaration(music, "    func send(_ command: Command)").replace("    func", "    @discardableResult\n    func", 1)
           + declaration(music, "    func send(_ command: Command, context:").replace("    func", "    @discardableResult\n    func", 1)
           + "}\n}\n")
-    write("NotchQueueHold.swift", "import Foundation\n\nextension NotchQueueHoldContract {\n"
-          + "final class Service {\nvar queueEnabled = true\nvar queueRequest: UUID?\nvar queueReply: [String: Any]?\n"
-          + "var playback: NotchPlayback?\nvar queueCovers = NotchQueueCovers<Data>()\nvar upcomingArtwork: [String: Data] = [:]\n"
-          + declaration(music, "    @Published private(set) var upcoming:")
-            .replace("@Published private(set) ", "", 1).replace("NSImage.init(data:)", "{ $0 }", 1)
-          + declaration(music, "    var upcomingIsHeld:")
-          + declaration(music, "    var upcomingRows:")
-          + declaration(music, "    private func updateQueue()").replace("private func", "func", 1)
-            .replace("NotchQueueSupport.isEnabled()", "queueEnabled", 1)
-          + "}\n}\n")
-    write("NotchMusicAutomationBodies.swift", "import Foundation\n\nextension NotchMusicAutomationFlowContract {\n"
-          + "final class Service {\ntypealias Command = NotchPlaybackCommand\nvar playback: NotchPlayback?\n"
-          + "var automationAvailability: NotchMusicAutomation.Availability?\nvar automationTarget: NotchMusicAutomation.Target?\n"
-          + "var generation = UUID()\nvar commandPending = false\nvar commandFailed = false\nvar requestingAutomation = false\n"
-          + "var automationCancellation = DispatchWorkItem {}\nvar automationConsentCancellation = DispatchWorkItem {}\n"
-          + "var automationTimeout: DispatchWorkItem?\nvar automationAction: AutomationAction?\nvar awaitingAutomationValidation = false\n"
-          + "let queue = Scheduler()\nvar refreshes = 0\nfunc refreshAutomation() { refreshes += 1 }\n"
-          + "var validationRequests: [Command] = []\nfunc send(_ command: Command) -> Bool { validationRequests.append(command); return true }\n"
-          + declaration(music, "    private struct AutomationAction {").replace("private struct", "struct", 1)
-          + declaration(music, "    var canSeek:")
-          + declaration(music, "    func canPerform(")
-          + declaration(music, "    func lacksTrackSkipping(")
-          + declaration(music, "    func requestAutomationAccess()")
-          + declaration(music, "    private func beginAutomation(").replace("private func", "func", 1)
-          + declaration(music, "    private func receiveValidation(").replace("private func", "func", 1)
-          + declaration(music, "    private func cancelAutomationAction()").replace("private func", "func", 1)
-          + "}\n}\nextension NotchMusicAutomationFlowContract.NotchMusicAutomation {\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchMusicAutomation.swift", "    static func send(") + "}\n")
-    write("NotchMusicAutomationRefresh.swift", "import Foundation\n\nextension NotchMusicAutomationFlowContract {\n"
-          + "final class RefreshService {\nstruct AutomationAction { let playback: NotchPlayback }\n"
-          + "var playback: NotchPlayback?\nvar automationAction: AutomationAction?\n"
-          + "var automationAvailability: NotchMusicAutomation.Availability?\nvar automationTarget: NotchMusicAutomation.Target?\n"
-          + "var automationDiscovery = DispatchWorkItem {}\nvar automationConsentCancellation = DispatchWorkItem {}\n"
-          + "var generation = UUID()\nlet queue = Scheduler()\nfunc cancelAutomationAction() { automationAction = nil }\n"
-          + declaration(music, "    func refreshAutomation()")
-          + declaration(music, "    private func updateAutomation(").replace("private func", "func", 1)
-          + "}\n}\n")
-
     brightness = "Sources/Vitruvian/Services/Display/BrightnessService.swift"
     write("SoftwareDimmingRoute.swift", "import CoreGraphics\nimport Foundation\n\n"
           + "extension SoftwareDimmingRouteContract {\n"

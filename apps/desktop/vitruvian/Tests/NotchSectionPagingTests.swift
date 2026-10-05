@@ -73,68 +73,97 @@ enum NotchSectionPagingTests {
         routing(suite)
     }
 
-    // The generated Service uses the production scroll handlers verbatim.
-    // Events stay inside this fixture and never post input to the desktop.
-    struct NSEvent {
+    /// A scroll that stays inside this test and never posts input to the desktop.
+    struct Event: NotchScrollEvent {
         var locationInWindow: CGPoint
         var scrollingDeltaY: CGFloat = -24
         var timestamp: TimeInterval = 10
         var hasPreciseScrollingDeltas = true
-        var phase: AppKit.NSEvent.Phase = .began
-        var momentumPhase: AppKit.NSEvent.Phase = []
-        var modifierFlags: AppKit.NSEvent.ModifierFlags = []
+        var phase: NSEvent.Phase = .began
+        var momentumPhase: NSEvent.Phase = []
+        var modifierFlags: NSEvent.ModifierFlags = []
     }
+
     final class Panel {
         let frame = CGRect(x: 173, y: 127, width: 600, height: 260)
         func convertPoint(toScreen point: CGPoint) -> CGPoint {
             CGPoint(x: frame.minX + point.x, y: frame.minY + point.y)
         }
     }
+
     final class Host {
         var acceptsPoint = true
         func containsSurface(_ point: CGPoint) -> Bool { acceptsPoint }
     }
-    class State {
-        var running = true, suspended = false, expanded = true, showingSections = true, trackingMenu = false
-        var panel: Panel? = Panel()
-        var windowHost: Host? = Host()
-        var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
-                                     safeAreaTop: 32, cameraWidth: 180)
-        var expandedGeometry: NotchGeometry { geometry }
-        var sectionScroll = NotchSectionScroll()
-        var movedRows = 0, gestureCalls = 0
-        func scrollSections(by rows: Int) { movedRows += rows }
-        func handleGesture(_ event: NSEvent) -> Bool { gestureCalls += 1; return false }
-        init() {}
-    }
 
     private static func routing(_ suite: TestSuite) {
+        let screen = CGRect(x: 0, y: 0, width: 1470, height: 956)
         for (width, cameraHeight) in [(600.0, 32.0), (400.0, 32.0), (600.0, 0.0), (600.0, 52.0)] {
-            let service = Service()
-            service.geometry = NotchGeometry(screen: service.geometry.screen, safeAreaTop: cameraHeight,
-                                             cameraWidth: 180, layout: .custom, customWidth: width, customHeight: 260)
-            let headerBottom = service.expandedGeometry.headerTopInset + service.expandedGeometry.headerRowHeight
-            func event(fromTop top: CGFloat) -> NSEvent {
-                NSEvent(locationInWindow: CGPoint(x: 100, y: service.panel!.frame.height - top))
+            let geometry = NotchGeometry(screen: screen, safeAreaTop: cameraHeight, cameraWidth: 180,
+                                         layout: .custom, customWidth: width, customHeight: 260)
+            let panel = Panel()
+            let host = Host()
+            let surface = NotchSectionScrollSurface(frame: panel.frame, toScreen: panel.convertPoint(toScreen:),
+                                                    containsSurface: host.containsSurface, geometry: geometry)
+            var scroll = NotchSectionScroll()
+            let headerBottom = geometry.headerTopInset + geometry.headerRowHeight
+            func event(fromTop top: CGFloat) -> Event {
+                Event(locationInWindow: CGPoint(x: 100, y: panel.frame.height - top))
             }
-            suite.expect(!service.handleScroll(event(fromTop: headerBottom))
-                         && service.gestureCalls == 1 && service.movedRows == 0,
+            suite.expect(scroll.route(event(fromTop: headerBottom), over: surface) == nil,
                          "the actual header keeps its gesture for width \(width) and camera height \(cameraHeight)")
             for offset in [1.0, NotchLayout.spacing + 1, NotchLayout.spacing + NotchLayout.sectionTileHeight / 2] {
-                let before = service.movedRows
-                let gestures = service.gestureCalls
-                suite.expect(service.handleScroll(event(fromTop: headerBottom + offset))
-                             && service.movedRows == before + 1 && service.gestureCalls == gestures,
+                suite.expect(scroll.route(event(fromTop: headerBottom + offset), over: surface) == 1,
                              "every part of the body steps rows below the rendered header, including the top of the first tile")
             }
             var modified = event(fromTop: headerBottom + 20)
             modified.modifierFlags = .command
-            let before = service.movedRows
-            suite.expect(!service.handleScroll(modified) && service.movedRows == before,
+            suite.expect(scroll.route(modified, over: surface) == nil,
                          "modified scrolling is not captured by the gallery")
-            service.windowHost?.acceptsPoint = false
-            suite.expect(!service.handleScroll(event(fromTop: headerBottom + 20)) && service.movedRows == before,
+            suite.expect(scroll.route(event(fromTop: headerBottom + 20), over: nil) == nil,
+                         "an island that is not showing the gallery leaves the scroll to its gestures")
+            host.acceptsPoint = false
+            suite.expect(scroll.route(event(fromTop: headerBottom + 20), over: surface) == nil,
                          "transparent corners and floating controls are not captured by the gallery")
         }
+
+        // A drag that wanders off the gallery starts over when it comes back.
+        let geometry = NotchGeometry(screen: screen, safeAreaTop: 32, cameraWidth: 180,
+                                     layout: .custom, customWidth: 600, customHeight: 260)
+        let panel = Panel()
+        let surface = NotchSectionScrollSurface(frame: panel.frame, toScreen: panel.convertPoint(toScreen:),
+                                                containsSurface: { _ in true }, geometry: geometry)
+        let body = CGPoint(x: 100, y: panel.frame.height - geometry.headerBottom - 20)
+        var scroll = NotchSectionScroll()
+        func drag(_ deltaY: CGFloat, at location: CGPoint, began: Bool = false) -> Int? {
+            scroll.route(Event(locationInWindow: location, scrollingDeltaY: deltaY, phase: began ? .began : .changed),
+                         over: surface)
+        }
+        suite.expect(drag(-10, at: body, began: true) == 0 && drag(-10, at: body) == 0,
+                     "a short drag over the gallery has not stepped yet")
+        let header = CGPoint(x: 100, y: panel.frame.height - 1)
+        suite.expect(drag(-10, at: header) == nil && drag(-10, at: body) == 0,
+                     "a scroll the gallery leaves to the header ends the drag it was part of")
+        var command = Event(locationInWindow: body, scrollingDeltaY: -10, phase: .changed)
+        command.modifierFlags = .command
+        suite.expect(drag(-10, at: body) == 0 && scroll.route(command, over: surface) == nil
+                     && drag(-10, at: body) == 0,
+                     "a modified scroll ends the drag it was part of")
+        suite.expect(drag(-10, at: body, began: true) == 0
+                     && scroll.route(Event(locationInWindow: body, scrollingDeltaY: -20, phase: .ended),
+                                     over: surface) == 0,
+                     "lifting the fingers ends the drag without stepping")
+        suite.expect(drag(-30, at: body, began: true) == 1
+                     && scroll.route(Event(locationInWindow: body, scrollingDeltaY: -400, phase: [],
+                                           momentumPhase: .changed), over: surface) == 0,
+                     "momentum after the fingers lift is the gallery's but steps nothing")
+        var notch = Event(locationInWindow: body, scrollingDeltaY: -1, phase: [])
+        notch.hasPreciseScrollingDeltas = false
+        suite.expect(scroll.route(notch, over: surface) == 1, "a wheel notch steps one row however small its delta")
+        suite.expect(scroll.route(Event(locationInWindow: body, scrollingDeltaY: -20, timestamp: 20, phase: []),
+                                  over: surface) == 0
+                     && scroll.route(Event(locationInWindow: body, scrollingDeltaY: -20, timestamp: 20.5, phase: []),
+                                     over: surface) == 0,
+                     "a smooth wheel glide without phases ends when its events pause")
     }
 }

@@ -24,6 +24,14 @@ package enum NotchMusicAutomation {
             self.pid = pid; bundleIdentifier = bundle; bundleURL = url; launched = app.launchDate
         }
 
+        /// A player already identified, as tests name one.
+        package init(pid: Int32, bundleIdentifier: String, bundleURL: URL, launched: Date?) {
+            self.pid = pid
+            self.bundleIdentifier = bundleIdentifier
+            self.bundleURL = bundleURL
+            self.launched = launched
+        }
+
         package var isCurrent: Bool {
             guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return false }
             return app.bundleIdentifier == bundleIdentifier && app.bundleURL == bundleURL && app.launchDate == launched
@@ -41,6 +49,49 @@ package enum NotchMusicAutomation {
             self.target = target
             self.capabilities = capabilities
             self.access = access
+        }
+    }
+
+    /// The Mac as playback automation reaches it: the running player, its
+    /// permission, the consent prompt and Apple Event delivery. `live` is the
+    /// system's; tests pass doubles, so no event reaches a real player.
+    package struct System: Sendable {
+        package var target: @Sendable (NotchPlayback) -> Target?
+        /// The same process is still running the same player.
+        package var isCurrent: @Sendable (Target) -> Bool
+        package var inspect: @Sendable (Target) -> Availability?
+        package var access: @Sendable (Target) -> Access
+        /// Asks to automate the player, prompting the person if needed.
+        package var consent: @Sendable (_ bundleIdentifier: String) -> Bool
+        /// Delivers one event and answers its reply, nil when it failed.
+        package var deliver: @Sendable (NSAppleEventDescriptor) -> NSAppleEventDescriptor?
+        package var uptime: @Sendable () -> TimeInterval
+
+        package init(target: @escaping @Sendable (NotchPlayback) -> Target?,
+                     isCurrent: @escaping @Sendable (Target) -> Bool,
+                     inspect: @escaping @Sendable (Target) -> Availability?,
+                     access: @escaping @Sendable (Target) -> Access,
+                     consent: @escaping @Sendable (String) -> Bool,
+                     deliver: @escaping @Sendable (NSAppleEventDescriptor) -> NSAppleEventDescriptor?,
+                     uptime: @escaping @Sendable () -> TimeInterval) {
+            self.target = target
+            self.isCurrent = isCurrent
+            self.inspect = inspect
+            self.access = access
+            self.consent = consent
+            self.deliver = deliver
+            self.uptime = uptime
+        }
+
+        package static var live: System {
+            System(target: { Target($0) },
+                   isCurrent: { $0.isCurrent },
+                   inspect: { NotchMusicAutomation.inspect($0) },
+                   access: { NotchMusicAutomation.access(to: $0) },
+                   consent: { AppleScriptRunner.consentToAutomate(bundleID: $0) },
+                   // A timeout may occur after delivery. Never retry a playback action.
+                   deliver: { try? $0.sendEvent(options: [.waitForReply, .neverInteract, .dontRecord], timeout: 1) },
+                   uptime: { ProcessInfo.processInfo.systemUptime })
         }
     }
 
@@ -85,14 +136,13 @@ package enum NotchMusicAutomation {
     }
 
     package static func send(_ command: NotchPlaybackCommand, playback: NotchPlayback, availability: Availability,
-                     cancellation: DispatchWorkItem, validatedAt: TimeInterval) -> Bool {
-        guard !cancellation.isCancelled, availability.target.isCurrent,
-              access(to: availability.target) == .granted,
+                     cancellation: DispatchWorkItem, validatedAt: TimeInterval, system: System = .live) -> Bool {
+        guard !cancellation.isCancelled, system.isCurrent(availability.target),
+              system.access(availability.target) == .granted,
               let event = event(command, playback: playback, capabilities: availability.capabilities, pid: availability.target.pid),
-              !cancellation.isCancelled, availability.target.isCurrent,
-              ProcessInfo.processInfo.systemUptime - validatedAt < 0.5 else { return false }
-        // A timeout may occur after delivery. Never retry a playback action.
-        guard let reply = try? event.sendEvent(options: [.waitForReply, .neverInteract, .dontRecord], timeout: 1) else { return false }
+              !cancellation.isCancelled, system.isCurrent(availability.target),
+              system.uptime() - validatedAt < 0.5 else { return false }
+        guard let reply = system.deliver(event) else { return false }
         return (reply.paramDescriptor(forKeyword: keyErrorNumber)?.int32Value ?? 0) == 0
     }
 }
