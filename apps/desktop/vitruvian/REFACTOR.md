@@ -1021,6 +1021,20 @@ leaves 60.
   into the history's editing, pinning and search caches, so it waits for
   those to move into their own type.
 
+Landed (4b, the island's Mission Control polling): one more generated file
+goes, which leaves 59.
+
+- **Extracted:** `NotchMissionControlPolling` (new, `Services/Notch`) owns:
+  - the polling timer and its cadence;
+  - when a check is worth a frame probe.
+
+  `NotchWindowHost` owns it and passes the panel's visibility, the conceal
+  state, the window-list reading, the clock and its frame probe.
+- **Test:** the test drives the real polling instead of a copy of four host
+  members.
+- **Check added:** an overview that opens again is probed at once, sooner
+  than a lasting one. A mutant without that passed the old test.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

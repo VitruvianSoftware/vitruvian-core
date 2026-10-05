@@ -1474,6 +1474,11 @@ is that notice. Add an entry for every change to upstream files.
   screenshot editor through a static `editImage(_:editing:)` with an injected
   `ImageEditing`; `Tests/ClipboardHistoryImageEditorTests.swift` runs it, and
   `Tests/generate_sources.py` no longer copies it or `imageCapture(from:)`.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/Notch/NotchMissionControlPolling.swift` (new) holds the Mission Control
+  polling that `Services/Notch/NotchWindowHost.swift` forwards to;
+  `Tests/NotchMissionControlPollingTests.swift` drives it, and
+  `Tests/generate_sources.py` no longer copies the host's members.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

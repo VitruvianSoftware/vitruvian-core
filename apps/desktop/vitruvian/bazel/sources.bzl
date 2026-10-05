@@ -317,7 +317,6 @@ GENERATED_TEST_SOURCES = [
     "NotchHover.swift",
     "NotchKeyMonitor.swift",
     "NotchMirrors.swift",
-    "NotchMissionControlPolling.swift",
     "NotchMusicAutomationBodies.swift",
     "NotchMusicAutomationRefresh.swift",
     "NotchMusicControls.swift",
