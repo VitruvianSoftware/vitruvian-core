@@ -1597,6 +1597,34 @@ which leaves 28.
 
   The panel and the island need macOS CI.
 
+Landed (4b, the super key's tap thread): one more generated file goes,
+which leaves 27.
+
+- **Injected:** `SuperKeyService` takes a `System`:
+  - the settings;
+  - event-tap creation;
+  - how the tap thread runs;
+  - the main queue that thread reports back to;
+  - Accessibility trust;
+  - hidutil.
+
+  `live` is the system's. Every settings read, trust check and hidutil
+  call in the service goes through it, so no test can reach the real key
+  mapping. `start()` is now `package`.
+- **Test:** the tap test starts a real service whose tap requests are
+  refused, runs its thread inline (`Thread.main()`), and records what it
+  asks of hidutil, over a private settings suite. It used to run a copy of
+  two members. New checks:
+  - a key never mapped leaves hidutil alone;
+  - a refused tap takes out a leftover mapping;
+  - without Accessibility no tap is asked for and a leftover mapping still
+    comes out.
+- **Kept as text:** the HID-stage check in `PointerInputFeatureTests` now
+  reads the mouse tap's `system.createTap(.cghidEventTap` call.
+- **Verification:** a Linux Swift 6.4 type-check of `System` (with `live`
+  over stubs) and the test against a reduced service model, 5 checks. The
+  tap thread's success path and the mapping itself need macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

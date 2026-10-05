@@ -1636,6 +1636,11 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/generate_sources.py` no longer copies them.
   - `Tests/ScreenshotFeatureTests.swift` and `Tests/mutation_checks.py`
     follow the moved code.
+- **2026-10-05**: Refactor step 4b (`REFACTOR.md`):
+  `Services/SuperKey/SuperKeyService.swift` takes an injected system (settings,
+  event taps, tap thread, main queue, Accessibility trust, hidutil);
+  `Tests/SuperKeyTapContract.swift` drives it, `Tests/PointerInputFeatureTests.swift`
+  reads the new tap call, and `Tests/generate_sources.py` no longer copies it.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -198,14 +198,6 @@ def main():
               "    private func applyOutputControls(", "    private func drainOutputAdjustment("])
           + "}\n}\n")
 
-    super_key = "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift"
-    write("SuperKeyTap.swift", "import CoreGraphics\nimport Foundation\n"
-          + "extension SuperKeyTapContract {\nfinal class SuperKeyService: State {\n"
-          + "".join(declaration(super_key, prefix).replace("private func", "func", 1)
-                    for prefix in ["    private func runEventTap()", "    private func setMappingFailure("])
-            .replace("CGEvent.tapCreate(", "Tap.create(")
-          + "}\n}\n")
-
     playback_adapter = "Sources/NowPlayingAdapter/NowPlayingSelection.swift"
     adapter_entry = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
     # Only the clock changes, so tests drive the wait for a chosen source's track.
