@@ -229,15 +229,19 @@ package enum NotchLayout {
     /// title is measured once per font. The island lays out on the main
     /// thread, the only one that touches this.
     nonisolated(unsafe) private static var measuredHeaderTitles: [String: CGFloat] = [:]
-    /// A header title as wide as drawn, after the 28-point button and the
+    /// A header title as wide as drawn, after the icon button and the
     /// spacing that may lead it.
     package static func headerTitleWidth(_ title: String, font: NSFont = headerTitleFont, button: Bool) -> CGFloat {
         let key = "\(font.fontName) \(font.pointSize) \(title)"
         let width = measuredHeaderTitles[key] ?? (title as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
         measuredHeaderTitles[key] = width
-        return width + (button ? 28 + 6 : 0)
+        return width + (button ? iconButtonSide + headerButtonSpacing : 0)
     }
     package static let navigationHeight: CGFloat = 36
+    /// The header's square icon buttons, and the space between one and the
+    /// title or button beside it.
+    package static let iconButtonSide: CGFloat = 28
+    package static let headerButtonSpacing: CGFloat = 6
     /// The room a scrolling page keeps below its last row.
     package static let scrollBottomPadding: CGFloat = 4
     /// Each side of the capture controls folded around the camera: the tool
@@ -1001,7 +1005,7 @@ package struct NotchCaptureControlsLayout {
     package static let rowHeight: CGFloat = 28
     package static let buttonSpacing: CGFloat = 6
     /// The repeat key, collapse and close at their narrowest, as squares.
-    package static let narrowButtonsWidth: CGFloat = 28 * 3 + buttonSpacing * 2
+    package static let narrowButtonsWidth: CGFloat = rowHeight * 3 + buttonSpacing * 2
     /// Room the title and the buttons keep from the camera.
     package static let cameraClearance: CGFloat = 8
     // NSFont is immutable once made, so any thread may share these.
@@ -1860,9 +1864,9 @@ package struct NotchGeometry: Equatable {
             && headerTitleWidth <= (contentWidth - cameraWidth) / 2 ? cameraWidth : 0
     }
     /// A capsule's header keeps clear of its rounded top corners, its
-    /// 28-point buttons as far from the top edge as the page is from the bottom.
+    /// icon buttons as far from the top edge as the page is from the bottom.
     package var headerTopInset: CGFloat {
-        if floats { return NotchLayout.bottomInset - (NotchLayout.headerHeight - 28) / 2 }
+        if floats { return NotchLayout.bottomInset - (NotchLayout.headerHeight - NotchLayout.iconButtonSide) / 2 }
         return !isNotched || headerCameraGap > 0 ? 0 : safeContentTop
     }
     package var headerRowHeight: CGFloat { headerCameraGap > 0 ? max(cameraHeight, NotchLayout.headerHeight) : NotchLayout.headerHeight }

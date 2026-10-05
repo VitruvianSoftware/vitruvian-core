@@ -3159,6 +3159,13 @@ agreed by coincidence. Each now has a name its sizing and its drawing share:
 - **Download beside another activity:** an 80pt wing, which also decided
   whether its percentage shows. It is `NotchDownloadSupport.companionWing`.
 
+Landed (5ze, the header's icon buttons): `NotchIconButton` drew a 28pt
+square and the header spaced it 6pt from its title. The geometry measured the
+title after `28 + 6` and centred a capsule's buttons with
+`(headerHeight - 28) / 2`. `NotchLayout.iconButtonSide` and
+`headerButtonSpacing` now serve all four. The capture controls' narrow
+buttons are squares of their own `rowHeight`.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

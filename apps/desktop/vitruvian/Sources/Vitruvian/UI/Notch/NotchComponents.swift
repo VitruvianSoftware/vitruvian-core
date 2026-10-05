@@ -80,7 +80,7 @@ package struct NotchIconButton: View {
                 .foregroundStyle(selected ? .white : .white.opacity(0.55))
                 .contentTransition(.symbolEffect(.replace))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: symbol)
-                .frame(width: 28, height: 28)
+                .frame(width: NotchLayout.iconButtonSide, height: NotchLayout.iconButtonSide)
                 .background(.white.opacity(selected ? 0.12 : 0),
                             in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
