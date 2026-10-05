@@ -1484,6 +1484,42 @@ Landed (4b, the quick launcher): one more generated file goes, which leaves
   the recorder before hiding, the other draws a fixed recording icon.
 - **Verification:** AppKit and SwiftUI, so macOS CI only.
 
+Landed (4b, the clipboard history): one more generated file goes, which
+leaves 31.
+
+- **Injected:** `ClipboardHistoryService` takes an `Environment`:
+  - the settings, which hold the legacy blob;
+  - the history file;
+  - the saved file's byte limit;
+  - the stored images it reads and sweeps;
+  - the pasteboard lane its copies go through;
+  - the search folding.
+
+  `live` is the app's: the standard defaults, the private container, the
+  image store, `GeneralPasteboardAccess` over the general pasteboard, and the
+  search's own fold. Every settings read in the service goes through it, so
+  the persist lane writes the blob through a `LegacyBlob` handle instead of
+  `UserDefaults.standard`.
+- **Test:** the preview contract runs a real history over a temporary file,
+  its own defaults suite and a recorded pasteboard, instead of a copy of ten
+  members and stubbed saves. It loads each history from disk and changes it
+  only through the service's own calls. New checks:
+  - a copy while another is in flight is refused;
+  - a failed write changes nothing;
+  - batch copies blank the preview;
+  - an image whose file is gone is never written;
+  - edits, pins and the size trim reach the saved file;
+  - the legacy blob moves to the file and is retired;
+  - without a file the history saves to the blob;
+  - the launch sweep;
+  - an unpin is allowed even while the pinned items already overflow the
+    file;
+  - a history change drops the cached result for the same query.
+- **Verification:** a Linux Swift 6.4 model of the service's history members,
+  extracted from the production file, runs the contract (44 checks) and 34
+  mutants, all killed. A Swift 6 type-check of `live` over stubs. The
+  AppKit paths need macOS CI.
+
 ## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33

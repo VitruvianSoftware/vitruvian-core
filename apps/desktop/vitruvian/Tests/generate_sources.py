@@ -112,17 +112,6 @@ def main():
           + declaration(brightness, "    private func writeExtendedBrightness(").replace("private ", "", 1)
           + declaration(brightness, "    private static func writeSystemBrightness(").replace("private ", "", 1)
           + "}\n}\n")
-    clipboard = "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift"
-    write("ClipboardPreview.swift", "import Foundation\nimport Combine\n"
-          + "extension ClipboardPreviewContract {\nfinal class Service: Fixture {\n"
-          + declaration(clipboard, "    @Published private(set) var entries:")
-          + declaration(clipboard, "    func updateText(")
-          + "".join(declaration(clipboard, prefix).replace("private ", "", 1) for prefix in [
-              "    func togglePin(", "    func copy(_ entry:", "    private func touch(",
-              "    private var firstRecentIndex:", "    private func normalizeEntryOrder(",
-              "    func filteredEntries(", "    private func foldedCandidates("])
-          + "func setEntries(_ values: [ClipboardHistoryEntry]) { entries = values }\n"
-          + "}\n}\n")
     uninstall = "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift"
     write("CommandBarEmojiBodies.swift", "import Foundation\n"
