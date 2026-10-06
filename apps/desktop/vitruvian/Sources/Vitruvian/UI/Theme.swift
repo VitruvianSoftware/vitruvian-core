@@ -120,6 +120,51 @@ package enum PanelSurface {
     }
 }
 
+/// How the panel's glass surface meets what hosts it.
+///
+/// AppKit hands the hosted panel a safe area for the popover's border and
+/// arrow, and draws the arrow on the frame itself, so a surface that stopped at
+/// the panel would leave the tip in the plain system material. The panel's
+/// content keeps that inset and never sits under the arrow; only the surface
+/// may reach into it.
+package enum PanelSurfaceFit: Equatable, Sendable {
+    /// In the island, which supplies the surface the panel sits on.
+    case island
+    /// Across a popover's whole balloon, arrow band included; see
+    /// `PanelSurface.popoverHostsFullSizeContent`.
+    case balloon
+    /// A card inside a popover that still insets its content.
+    case card
+
+    package init(notchPresentation: Bool,
+                 popoverHostsFullSizeContent: Bool = PanelSurface.popoverHostsFullSizeContent) {
+        if notchPresentation {
+            self = .island
+        } else if popoverHostsFullSizeContent {
+            self = .balloon
+        } else {
+            self = .card
+        }
+    }
+
+    /// Whether the surface paints past the safe area, up into the arrow. Only
+    /// a popover that hosts the panel full size has a balloon under it to
+    /// reach; anywhere else the bleed would land outside the panel.
+    package var paintsPastSafeArea: Bool { self == .balloon }
+
+    /// The corner radius of the surface's own shape, or nil where it has none.
+    /// The popover clips a balloon surface to its own balloon, so that surface
+    /// is a plain rectangle, Liquid Glass or not: rounding would expose the
+    /// system material at the corners. The balloon's rounding never reaches a
+    /// card inside it, so the card carries its own.
+    package var cornerRadius: CGFloat? { self == .card ? 18 : nil }
+
+    /// The width of the rim the surface draws on its own edge, or nil where it
+    /// draws none. AppKit already outlines the balloon, so a stroke there
+    /// would duplicate it; a card inside the balloon needs an edge of its own.
+    package var rimWidth: CGFloat? { self == .card ? 0.8 : nil }
+}
+
 package func sectionTitle(_ text: String) -> some View {
     Text(text.uppercased())
         .font(.system(size: 10, weight: .semibold))
@@ -175,26 +220,31 @@ private struct PanelGlassSurface: View {
     @AppStorage(Preferences.liquidGlassEnabled) private var liquidGlassEnabled: Bool
 
     var body: some View {
-        // AppKit hands the hosted panel a safe area for the popover's border and
-        // arrow, so a surface that stopped at the panel would leave the tip in the
-        // plain system material. The panel content keeps that inset and never sits
-        // under the arrow; only this background bleeds into it. The popover clips
-        // it to its own balloon, so the surface is a plain rectangle: rounding would
-        // expose the system material at the corners, while stroking would duplicate
-        // the outline AppKit already draws. Where the popover still insets its
-        // content, the panel is a card inside the balloon instead; see
-        // PanelSurface.popoverHostsFullSizeContent.
-        if notchPresentation {
-            Rectangle().fill(notchGlassSurface ? Color.clear : .black)
-        } else if PanelSurface.popoverHostsFullSizeContent {
-            surface.ignoresSafeArea()
+        // Where it reaches, and what shape it takes, is PanelSurfaceFit's call.
+        let fit = PanelSurfaceFit(notchPresentation: notchPresentation)
+        if fit.paintsPastSafeArea {
+            surface(fit).ignoresSafeArea()
         } else {
-            insetSurface
+            surface(fit)
         }
     }
 
     @ViewBuilder
-    private var surface: some View {
+    private func surface(_ fit: PanelSurfaceFit) -> some View {
+        switch fit {
+        case .island:
+            Rectangle().fill(notchGlassSurface ? Color.clear : .black)
+        case .balloon:
+            balloonSurface
+        case .card:
+            cardSurface(cornerRadius: fit.cornerRadius ?? 0, rimWidth: fit.rimWidth ?? 0)
+        }
+    }
+
+    /// The surface across the whole balloon: a plain rectangle the popover
+    /// clips and outlines, in Liquid Glass where it is on.
+    @ViewBuilder
+    private var balloonSurface: some View {
 #if compiler(>=6.2)
         if #available(macOS 26.0, *), liquidGlassEnabled, !reduceTransparency {
             Rectangle()
@@ -223,12 +273,12 @@ private struct PanelGlassSurface: View {
     /// macOS 26): the balloon's rounding never reaches it there, so it carries
     /// its own rounding and rim. Liquid Glass needs macOS 26, so this is always
     /// the standard material.
-    private var insetSurface: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+    private func cardSurface(cornerRadius: CGFloat, rimWidth: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         return shape
             .fill(.regularMaterial)
             .overlay(shape.fill(PanelSurface.baseFill(for: colorScheme)))
-            .overlay(shape.strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8))
+            .overlay(shape.strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: rimWidth))
     }
 }
 

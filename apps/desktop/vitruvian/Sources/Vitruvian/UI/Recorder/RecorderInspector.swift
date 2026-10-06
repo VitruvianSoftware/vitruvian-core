@@ -266,9 +266,7 @@ package struct RecorderInspector: View {
             Text(title)
                 .font(.system(size: 10.5))
                 .foregroundStyle(Color(white: 0.72))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(width: 50, alignment: .leading)
+                .sliderColumnLabel(width: 50)
             Slider(value: Binding(get: { value }, set: onChange), in: 0...1)
                 .controlSize(.mini)
                 .onTapGesture(count: 2) { onReset() }

@@ -355,9 +355,7 @@ package struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
                     // The column keeps the sliders aligned; the longest of
                     // these words runs past 64 points in Turkish and Spanish,
                     // so it gives a little rather than being cut.
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .frame(width: 64, alignment: .leading)
+                    .sliderColumnLabel(width: 64)
                     .foregroundStyle(model.showsBackdrop ? .secondary : .tertiary)
                 Slider(value: paddingBinding, in: 0...1)
                     .controlSize(.small)
@@ -369,9 +367,7 @@ package struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
                     // The column keeps the sliders aligned; the longest of
                     // these words runs past 64 points in Turkish and Spanish,
                     // so it gives a little rather than being cut.
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .frame(width: 64, alignment: .leading)
+                    .sliderColumnLabel(width: 64)
                     .foregroundStyle(.secondary)
                 Slider(value: cornerBinding, in: 0...1)
                     .controlSize(.small)
@@ -382,9 +378,7 @@ package struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
                     // The column keeps the sliders aligned; the longest of
                     // these words runs past 64 points in Turkish and Spanish,
                     // so it gives a little rather than being cut.
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .frame(width: 64, alignment: .leading)
+                    .sliderColumnLabel(width: 64)
                     .foregroundStyle(model.showsBackdrop ? .secondary : .tertiary)
                 Slider(value: blurBinding, in: 0...1)
                     .controlSize(.small)

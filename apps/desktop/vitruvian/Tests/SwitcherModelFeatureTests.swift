@@ -185,12 +185,6 @@ enum SwitcherModelFeatureTests {
                          file: file, line: line)
         }
         let registeredDefaults = Defaults.registeredDefaults
-        func sourceBody(of source: String, from opening: String, to closing: String) -> String {
-            guard let start = source.range(of: opening),
-                  let end = source.range(of: closing, range: start.upperBound..<source.endIndex)
-            else { return "" }
-            return String(source[start.upperBound..<end.lowerBound])
-        }
 
         suite.expect(registeredDefaults[DefaultsKey.switcherEnabled] as? Bool == true,
                "window switcher is on for clean installs")
@@ -1815,40 +1809,53 @@ enum SwitcherModelFeatureTests {
         // The card used to draw the app icon on every thumbnail and the window
         // title both over the thumbnail and under it. In a panel every card
         // belongs to one app, so both said the same thing once per window.
-        let dockPreviewCardSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Switcher/DockPreviewPanelView.swift",
-            encoding: .utf8)) ?? ""
-        let dockPreviewCardCode = dockPreviewCardSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(dockPreviewCardCode.components(separatedBy: "window.displayTitle").count - 1 == 1,
+        // The card lays its band out from `cardTitleBand`, the one place it
+        // names its window or draws its controls.
+        let cardBand = DockPreviewSupport.cardTitleBand
+        suite.expect(cardBand.filter { $0 == .name }.count == 1,
                "a Dock Preview card names its window once")
         // Nothing is drawn on top of the picture any more. The close and
         // minimize buttons sat in a 28pt capsule in its top-right corner --
         // over a third of its height -- and the pinned badge sat beside them.
-        suite.expect(!dockPreviewCardCode.contains("previewControlBar"),
+        suite.expect(cardBand.filter { $0 == .closeButton }.count == 1
+                   && cardBand.filter { $0 == .minimizeButton }.count == 1,
                "no control bar floats over a Dock Preview thumbnail")
-        let titleBandBody = dockPreviewCardCode
-            .components(separatedBy: "private var titleBand: some View {").last ?? ""
-        let bandDeclaration = titleBandBody.components(separatedBy: "private var").first ?? ""
-        suite.expect(bandDeclaration.contains("closeButton") && bandDeclaration.contains("minimizeButton"),
+        suite.expect(cardBand == [.name, .closeButton, .minimizeButton],
                "both window controls sit in the title band, beside the name")
         suite.expect(!DockPreviewSupport.showsCardControls(isHovering: false, isSelected: false),
                "a card with no pointer on it and no selection draws no window controls")
         suite.expect(DockPreviewSupport.showsCardControls(isHovering: true, isSelected: false),
                "the pointer summons a card's window controls")
-        let contextMenuBody = dockPreviewCardCode
-            .components(separatedBy: "private var cardContextMenu: some View {").last ?? ""
-        suite.expect((contextMenuBody.components(separatedBy: "private var").first ?? "")
-                   .contains("dockPreviewPinPanel"),
-               "pinning is offered by name in the card menu, not by a bare pushpin")
+        for language in AppLanguage.allCases {
+            let strings = Strings.localized(language)
+            let pin = DockPreviewSupport.pinMenuTitle(isPanelPinned: false, strings: strings)
+            let unpin = DockPreviewSupport.pinMenuTitle(isPanelPinned: true, strings: strings)
+            suite.expect(pin == strings.dockPreviewPinPanel && unpin == strings.dockPreviewUnpinPanel
+                       && !pin.isEmpty && !unpin.isEmpty && pin != unpin,
+                   "pinning is offered by name in the card menu, not by a bare pushpin (\(language.rawValue))")
+        }
         suite.expect(DockPreviewSupport.showsCardAppBadge(hasPreview: true),
                "a card with a capture badges it with the app's icon, as the App Switcher does")
         suite.expect(!DockPreviewSupport.showsCardAppBadge(hasPreview: false),
                "a card without one already shows that icon as its watermark, so it takes no badge")
-        suite.expect(dockPreviewCardSource.contains("window.isOnHiddenSpace"),
+        // Both cards draw the badges the window's model gives them.
+        let elsewhereWindow = SwitcherItem.window(id: 7, title: "Notes", appName: "Notes", pid: 70,
+                                                  isOnScreen: false, frame: .zero)
+            .withHiddenSpaceState(true)
+        suite.expect(elsewhereWindow.statusBadges == [.otherDesktop]
+                   && elsewhereWindow.withHiddenSpaceState(false).statusBadges.isEmpty,
                "a Dock Preview card badges a window that lives on another desktop")
+        let everyStateWindow = SwitcherItem(id: "w:8", title: "Draft", appName: "Pages", pid: 80,
+                                            windowOwnerPID: 80, windowID: 8, isOnScreen: false,
+                                            isAppHidden: false, isMinimized: true, isFullscreen: true,
+                                            isOnHiddenSpace: true, frame: .zero)
+        let everyBadge = everyStateWindow.statusBadges
+        suite.expect(everyBadge == [.minimized, .fullscreen, .otherDesktop]
+                   && Set(everyBadge.map(\.systemImage)).count == everyBadge.count
+                   && everyBadge.allSatisfy {
+                       NSImage(systemSymbolName: $0.systemImage, accessibilityDescription: nil) != nil
+                   },
+               "each state a card badges draws a symbol of its own, and one that exists")
 
         let dockDropScreen = CGRect(x: -1440, y: 24, width: 1440, height: 876)
         suite.expect(DockPreviewSupport.dragOrigin(pointer: CGPoint(x: -700, y: 500),
@@ -2372,11 +2379,6 @@ enum SwitcherModelFeatureTests {
                    && !hits(onClipboardItem, main: (visible: true, frame: bandItem)),
                    "status-item hit testing also covers the clipboard preview item")
         }
-        let stripCommentLines: (String) -> String = {
-            $0.split(separator: "\n", omittingEmptySubsequences: false)
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-        }
 
         // MARK: The panel surface reaches the popover arrow (issue #1030)
 
@@ -2400,39 +2402,36 @@ enum SwitcherModelFeatureTests {
                      == ProcessInfo.processInfo.isOperatingSystemAtLeast(
                          OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)),
                "full-size popover content is limited to macOS 26, where AppKit fills the balloon with it")
-        // The surface itself is SwiftUI view structure, which only rendering
-        // could check, so its shape stays pinned as text.
-        let panelThemeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Theme.swift",
-            encoding: .utf8)) ?? ""
-        let panelGlassCode = stripCommentLines((panelThemeSource
-            .components(separatedBy: "private struct PanelGlassSurface: View {").last ?? "")
-            .components(separatedBy: "\n}").first ?? "")
-        suite.expect(panelGlassCode.contains("} else if PanelSurface.popoverHostsFullSizeContent {\n            surface.ignoresSafeArea()\n        } else {\n            insetSurface"),
-               "the panel surface paints past the safe area, up into the arrow, only in a full-size popover")
-        let fullSizeSurfaceCode = panelGlassCode
-            .components(separatedBy: "private var insetSurface: some View {").first ?? ""
-        let insetSurfaceCode = panelGlassCode
-            .components(separatedBy: "private var insetSurface: some View {").dropFirst().first ?? ""
-        suite.expect(!fullSizeSurfaceCode.isEmpty
-                   && !fullSizeSurfaceCode.contains("RoundedRectangle")
-                   && !fullSizeSurfaceCode.contains("cornerRadius"),
-               "the full-size surface leaves the rounding to the popover balloon that clips it")
-        suite.expect(fullSizeSurfaceCode.contains(".glassEffect(.regular, in: Rectangle())")
-                   && fullSizeSurfaceCode.contains("Rectangle()\n            .fill(.regularMaterial)"),
-               "both the standard and the Liquid Glass surface fill the whole balloon, no shape of their own")
-        suite.expect(insetSurfaceCode.contains("RoundedRectangle(cornerRadius: 18, style: .continuous)")
-                   && insetSurfaceCode.contains(".strokeBorder(PanelSurface.border(for: colorScheme)"),
-               "an inset panel is a rounded, rimmed card inside the balloon")
-        let panelViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift",
-            encoding: .utf8)) ?? ""
-        let panelBodyCode: (String) -> String = { header in
-            stripCommentLines((panelViewSource.components(separatedBy: header).last ?? "")
-                .components(separatedBy: "\n    }").first ?? "")
+        // The surface draws what PanelSurfaceFit decides: how far it reaches,
+        // and whether it has a shape and a rim of its own.
+        let balloonFit = PanelSurfaceFit(notchPresentation: false, popoverHostsFullSizeContent: true)
+        let cardFit = PanelSurfaceFit(notchPresentation: false, popoverHostsFullSizeContent: false)
+        let islandFits = [true, false].map {
+            PanelSurfaceFit(notchPresentation: true, popoverHostsFullSizeContent: $0)
         }
-        suite.expect(panelBodyCode("private var navigablePanel: some View {").contains(".panelGlassSurface()")
-                   && panelBodyCode("private var metricPanel: some View {").contains(".panelGlassSurface()"),
+        suite.expect(balloonFit == .balloon && cardFit == .card && islandFits == [.island, .island],
+               "the panel is a balloon in a full-size popover, a card in an inset one, and the island's own in the island")
+        suite.expect(PanelSurfaceFit(notchPresentation: false)
+                     == (PanelSurface.popoverHostsFullSizeContent ? PanelSurfaceFit.balloon : PanelSurfaceFit.card),
+               "the menu panel's surface follows how this system hosts the popover")
+        suite.expect(balloonFit.paintsPastSafeArea && !cardFit.paintsPastSafeArea
+                   && !islandFits.contains { $0.paintsPastSafeArea },
+               "the panel surface paints past the safe area, up into the arrow, only in a full-size popover")
+        suite.expect(balloonFit.cornerRadius == nil && balloonFit.rimWidth == nil,
+               "the full-size surface leaves the rounding to the popover balloon that clips it")
+        // The fit takes no Liquid Glass input: the glass and the standard
+        // material are two fills of the same plain rectangle.
+        suite.expect(balloonFit.cornerRadius == nil,
+               "both the standard and the Liquid Glass surface fill the whole balloon, no shape of their own")
+        suite.expect(cardFit.cornerRadius == 18 && (cardFit.rimWidth ?? 0) > 0,
+               "an inset panel is a rounded, rimmed card inside the balloon")
+        let panelModes = [MenuPanelView.Mode(notchSize: nil, showsMetric: false),
+                          MenuPanelView.Mode(notchSize: nil, showsMetric: true)]
+        let islandMode = MenuPanelView.Mode(notchSize: CGSize(width: 640, height: 300), showsMetric: true)
+        suite.expect(panelModes == [.navigable, .metric]
+                   && islandMode == .embedded(CGSize(width: 640, height: 300)),
+               "the popover shows the sections or one metric's detail, and the island its embedded copy")
+        suite.expect(panelModes.allSatisfy(\.wearsGlassSurface) && !islandMode.wearsGlassSurface,
                "both the navigable panel and the metric panel wear that surface")
 
         // The popover window is the panel plus 13 pt for the arrow and 13 pt
@@ -3343,23 +3342,9 @@ enum SwitcherModelFeatureTests {
                > SwitcherSupport.titleWidth("Preferences", weight: .regular),
                "the selected card's heavier name is measured as the heavier name")
         // Both panels show windows of the same kind, so a name too long for its
-        // room behaves the same in each. One view, two callers, two widths:
-        // ScrollingTitleMotionTests renders it, and these pin the two callers.
-        let switcherCardSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Switcher/SwitcherView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(switcherCardSource.contains("ScrollingTitle(")
-               && dockPreviewCardSource.contains("ScrollingTitle("),
-               "the App Switcher and the Dock preview both draw their name through it")
-        // One view, hung differently by each panel. Pinning it to the leading
-        // edge in both left a grid card's name and the app name under it on two
-        // different axes, which reads as a broken card rather than a choice.
-        suite.expect(sourceBody(of: switcherCardSource, from: "ScrollingTitle(", to: "scrolls:")
-                .contains("alignment: .center"),
-               "a grid card centres the window's name over the app name under it")
-        suite.expect(sourceBody(of: dockPreviewCardSource, from: "ScrollingTitle(", to: "scrolls:")
-                .contains("alignment: .leading"),
-               "a Dock preview card keeps the name on the leading edge, beside its two buttons")
+        // room behaves the same in each. One view, two callers, two widths, each
+        // hung by its panel's WindowNamePlacement: ScrollingTitleMotionTests
+        // renders the name the way each panel builds it.
         suite.expect(!DockPreviewSupport.showsPanelHeader(isPinned: false),
                "a hovered panel draws no header, whatever it is showing")
         suite.expect(DockPreviewSupport.showsPanelHeader(isPinned: true),
@@ -4658,14 +4643,17 @@ enum SwitcherModelFeatureTests {
                "App Switcher icon-row mode keeps one row entry per app")
         let windowlessApps = [SwitcherItem.appOnly(appName: "Gamma", pid: 303),
                               SwitcherItem.appOnly(appName: "Delta", pid: 404)]
-        let dividerViewSource = switcherCardSource
-            .replacingOccurrences(of: #"(?s)/\*.*?\*/|//[^\n]*"#, with: "", options: .regularExpression)
-            .filter { !$0.isWhitespace }
-        suite.expect(dividerViewSource.contains("SwitcherSupport.windowlessAppDividerPIDs("),
+        // The icon row hangs a divider only where one can be made, and one is
+        // made only before a tile the boundary decision names.
+        let rowBoundaries = SwitcherSupport.windowlessAppDividerPIDs(items: groupedSwitcherItems + windowlessApps)
+        suite.expect(SwitcherWindowlessDivider(before: 303, boundaries: rowBoundaries) != nil
+                   && SwitcherWindowlessDivider(before: 101, boundaries: rowBoundaries) == nil
+                   && SwitcherWindowlessDivider(before: 202, boundaries: rowBoundaries) == nil
+                   && SwitcherWindowlessDivider(before: 404, boundaries: rowBoundaries) == nil,
                "the switcher view uses the windowless-app boundary decision")
-        let dividerPresentation = sourceBody(of: dividerViewSource, from: ".separatorColor", to: ".onHover")
-        suite.expect(dividerPresentation.contains(".allowsHitTesting(false)")
-               && dividerPresentation.contains(".accessibilityHidden(true)"),
+        suite.expect(SwitcherWindowlessDivider.color == NSColor.separatorColor
+                   && !SwitcherWindowlessDivider.takesPointer
+                   && !SwitcherWindowlessDivider.isReadAloud,
                "the switcher renders a system-colored windowless-app divider without pointer or accessibility targets")
         suite.expect(SwitcherSupport.windowlessAppDividerPIDs(items: []) == [],
                "an empty app row has no windowless divider")

@@ -1342,16 +1342,64 @@ enum ScreenshotFeatureTests {
             .map(\.count).max() ?? 0
         suite.expect(widestBackdropLabel >= 10,
                "the backdrop labels are long enough somewhere for the column to matter")
-        for path in ["Sources/Vitruvian/UI/Screenshot/ScreenshotBackdropPopover.swift",
-                     "Sources/Vitruvian/UI/Recorder/RecorderInspector.swift"] {
-            let code = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            suite.expect(!code.isEmpty, "the slider source reads back for its shape check")
-            let pinned = code.components(separatedBy: "\n")
-                .filter { $0.contains(".frame(width: 64, alignment: .leading)")
-                          || $0.contains(".frame(width: 50, alignment: .leading)") }
-            suite.expect(!pinned.isEmpty, "the pinned label column is still there in \(path)")
-            suite.expect(code.components(separatedBy: "minimumScaleFactor(0.82)").count - 1 == pinned.count,
-                   "every label pinned to that column may shrink instead of being cut (\(path))")
+        // Every name in those slider columns is laid out by sliderColumnLabel.
+        // Rendered, a name a little wider than the column stays in it, drawn
+        // smaller, where a name that may not shrink keeps its size and loses
+        // its end.
+        do {
+            let column: CGFloat = 64
+            let renderScale = 6
+            func rendered<Content: View>(_ label: Content) -> CGImage? {
+                let renderer = ImageRenderer(content: label)
+                renderer.scale = CGFloat(renderScale)
+                return renderer.cgImage
+            }
+            func naturally(_ text: String) -> CGImage? {
+                rendered(Text(text).font(.system(size: 12)).lineLimit(1).fixedSize())
+            }
+            /// The height, in pixels, of the rows the label's ink reaches.
+            func inkHeight(_ image: CGImage) -> Int {
+                let width = image.width
+                let height = image.height
+                var pixels = [UInt8](repeating: 0, count: width * height * 4)
+                let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+                    guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                                  bitsPerComponent: 8, bytesPerRow: width * 4,
+                                                  space: CGColorSpaceCreateDeviceRGB(),
+                                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                    else { return false }
+                    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                    return true
+                }
+                guard drawn else { return 0 }
+                let inkedRows = (0..<height).filter { row in
+                    (0..<width).contains { x in pixels[(row * width + x) * 4 + 3] > 96 }
+                }
+                guard let first = inkedRows.first, let last = inkedRows.last else { return 0 }
+                return last - first + 1
+            }
+            // A name about 15 percent wider than the column: it fits once
+            // shrunk, well within the smallest size the label may take.
+            let candidates = (1...40).compactMap { count -> (text: String, width: CGFloat)? in
+                let text = String(repeating: "l", count: count)
+                guard let image = naturally(text) else { return nil }
+                return (text, CGFloat(image.width) / CGFloat(renderScale))
+            }
+            let overlong = candidates.min {
+                abs($0.width - column * 1.15) < abs($1.width - column * 1.15)
+            }
+            if let overlong, overlong.width > column * 1.08, overlong.width < column * 1.2,
+               let natural = naturally(overlong.text),
+               let labelled = rendered(Text(overlong.text).font(.system(size: 12))
+                                           .sliderColumnLabel(width: column)) {
+                suite.expect(labelled.width == Int(column) * renderScale,
+                       "a slider label keeps to its column, however long its name")
+                suite.expect(inkHeight(labelled) > 0
+                           && Double(inkHeight(labelled)) < Double(inkHeight(natural)) * 0.95,
+                       "every label pinned to that column may shrink instead of being cut")
+            } else {
+                suite.expect(false, "a name a little wider than the slider column renders for the shrink check")
+            }
         }
 
         let cocoa = ScreenshotSupport.cocoaRect(fromWindowServer: CGRect(x: 10, y: 30, width: 200, height: 100),
@@ -2968,18 +3016,44 @@ enum ScreenshotFeatureTests {
         suite.expect(GlobalShortcutRole.scratchpad.requiredEnableKeys == [DefaultsKey.scratchpadShortcutEnabled]
                 && GlobalShortcutRole.scratchpad.feature == .scratchpad,
                "the scratchpad shortcut role gates on its toggle and feature")
-        let scratchpadViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Scratchpad/ScratchpadView.swift",
-            encoding: .utf8)) ?? ""
-        let scratchpadHitTargetContracts = [
-            "Image(systemName: \"plus\")\n                    .font(.system(size: 12, weight: .semibold))\n                    .frame(width: 22, height: 22)\n                    .contentShape(Rectangle())",
-            "Image(systemName: \"ellipsis\")\n                    .font(.system(size: 12, weight: .semibold))\n                    .frame(width: 22, height: 22)\n                    .contentShape(Rectangle())",
-            ".fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)\n                }\n                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))",
-            "Image(systemName: service.isPinned ? \"pin.fill\" : \"pin\")\n                    .font(.system(size: 12, weight: .semibold))\n                    .frame(width: 22, height: 22)\n                    .contentShape(Rectangle())",
-            "Image(systemName: \"xmark.circle.fill\")\n                    .font(.system(size: 14))\n                    .foregroundStyle(.secondary)\n                    .frame(width: 22, height: 22)\n                    .contentShape(Rectangle())",
-        ]
-        suite.expect(scratchpadHitTargetContracts.allSatisfy { scratchpadViewSource.contains($0) },
-               "the scratchpad tab bar and header controls keep their full padded hit targets")
+        // The tab bar's and the header's icon controls are laid out in a 22pt
+        // square and hit across all of it, corners included; a tab is hit
+        // across its whole rounded shape, whether or not it is drawn.
+        do {
+            func fittingSize<Content: View>(_ view: Content) -> CGSize {
+                let host = NSHostingView(rootView: view)
+                host.layoutSubtreeIfNeeded()
+                return host.fittingSize
+            }
+            let headerGlyphs: [(symbol: String, font: Font)] = [
+                ("plus", .system(size: 12, weight: .semibold)),
+                ("ellipsis", .system(size: 12, weight: .semibold)),
+                ("pin", .system(size: 12, weight: .semibold)),
+                ("pin.fill", .system(size: 12, weight: .semibold)),
+                ("xmark.circle.fill", .system(size: 14)),
+            ]
+            let paddedSquare = CGSize(width: 22, height: 22)
+            for glyph in headerGlyphs {
+                let ink = fittingSize(Image(systemName: glyph.symbol).font(glyph.font))
+                let target = fittingSize(Image(systemName: glyph.symbol).font(glyph.font)
+                                            .modifier(ScratchpadIconTarget()))
+                suite.expect(target == paddedSquare && ink.width > 0
+                           && ink.width < paddedSquare.width && ink.height < paddedSquare.height,
+                       "the scratchpad's \(glyph.symbol) control is laid out in a square padded past its glyph")
+            }
+            let square = CGRect(origin: .zero, size: paddedSquare)
+            let iconHit = ScratchpadHitTarget.iconShape.path(in: square)
+            let squareProbes = [CGPoint(x: 0.5, y: 0.5), CGPoint(x: 21.5, y: 0.5),
+                                CGPoint(x: 0.5, y: 21.5), CGPoint(x: 21.5, y: 21.5),
+                                CGPoint(x: 11, y: 11)]
+            let tab = CGRect(x: 0, y: 0, width: 46, height: 24)
+            let tabHit = ScratchpadHitTarget.tabShape.path(in: tab)
+            let tabProbes = [CGPoint(x: 1, y: 12), CGPoint(x: 45, y: 12),
+                             CGPoint(x: 23, y: 1), CGPoint(x: 23, y: 23)]
+            suite.expect(squareProbes.allSatisfy { iconHit.contains($0) }
+                       && tabProbes.allSatisfy { tabHit.contains($0) },
+                   "the scratchpad tab bar and header controls keep their full padded hit targets")
+        }
         suite.expect(ScratchpadRetention.sanitized("day") == .day
                 && ScratchpadRetention.sanitized("week") == .week
                 && ScratchpadRetention.sanitized("month") == .month
