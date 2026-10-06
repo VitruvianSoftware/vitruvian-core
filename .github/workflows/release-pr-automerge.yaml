@@ -64,9 +64,14 @@ jobs:
     # e.g. a deploy-triggering phase release, or a breaking major that needs a
     # coordinated cut. To release a held PR into the auto-merge flow, remove the
     # label (and mark it ready if drafted).
+    #
+    # vitruvian's release PR is NOT enabled here: release-beta-gate.yaml owns its
+    # auto-merge and enables it only once the beta DMG has been built for its
+    # code. Enabling it on open would let it merge before that build finishes.
     if: >-
       github.event.pull_request.draft == false &&
       startsWith(github.event.pull_request.head.ref, 'release-please--') &&
+      github.event.pull_request.head.ref != 'release-please--branches--main--components--vitruvian' &&
       github.event.pull_request.user.type == 'Bot' &&
       !contains(github.event.pull_request.labels.*.name, 'do-not-automerge')
     runs-on: ubuntu-26.04

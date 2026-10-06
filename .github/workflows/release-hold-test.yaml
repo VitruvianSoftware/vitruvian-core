@@ -20,7 +20,8 @@
 
 # Regression guard for tools/ci/release-hold.sh — the case state machine that
 # holds or releases a component's release PR based on its development deploy
-# conclusion. Hermetic: a fake `gh` binary, no network, no credentials. Pins
+# conclusion — and for tools/ci/release-beta-gate.sh, which keeps vitruvian's
+# release PR out of auto-merge until its beta DMG has been built. Hermetic: a fake `gh` binary, no network, no credentials. Pins
 # the bug fix landed alongside this extraction: a failed `gh pr list` lookup
 # must surface as an indeterminate warning, not silently look like "no open
 # release PR".
@@ -32,12 +33,16 @@ on:
     paths:
       - "tools/ci/release-hold.sh"
       - "tools/ci/release-hold_test.sh"
+      - "tools/ci/release-beta-gate.sh"
+      - "tools/ci/release-beta-gate_test.sh"
       - ".github/workflows/release-hold-test.yaml"
   push:
     branches: [main]
     paths:
       - "tools/ci/release-hold.sh"
       - "tools/ci/release-hold_test.sh"
+      - "tools/ci/release-beta-gate.sh"
+      - "tools/ci/release-beta-gate_test.sh"
       - ".github/workflows/release-hold-test.yaml"
 
 permissions:
@@ -54,3 +59,6 @@ jobs:
 
       - name: Run the release-hold script tests
         run: bash tools/ci/release-hold_test.sh
+
+      - name: Run the release-beta-gate script tests
+        run: bash tools/ci/release-beta-gate_test.sh
