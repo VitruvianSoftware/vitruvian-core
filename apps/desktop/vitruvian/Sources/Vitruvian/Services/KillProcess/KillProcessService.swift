@@ -92,8 +92,8 @@ package final class KillProcessService: ObservableObject {
 
     private init() {
         sortBy = SortBy(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.killProcessSortBy) ?? "cpu") ?? .cpu
-        sortAscending = UserDefaults.standard.bool(forKey: DefaultsKey.killProcessSortAscending)
-        groupRelated = UserDefaults.standard.bool(forKey: DefaultsKey.killProcessGroupRelated)
+        sortAscending = UserDefaults.standard[Preferences.killProcessSortAscending]
+        groupRelated = UserDefaults.standard[Preferences.killProcessGroupRelated]
     }
 
     package var filteredEntries: [KillProcessEntry] {
@@ -136,12 +136,12 @@ package final class KillProcessService: ObservableObject {
             sortAscending = value == .name
         }
         UserDefaults.standard.set(sortBy.rawValue, forKey: DefaultsKey.killProcessSortBy)
-        UserDefaults.standard.set(sortAscending, forKey: DefaultsKey.killProcessSortAscending)
+        UserDefaults.standard[Preferences.killProcessSortAscending] = sortAscending
     }
 
     package func setGroupRelated(_ value: Bool) {
         groupRelated = value
-        UserDefaults.standard.set(value, forKey: DefaultsKey.killProcessGroupRelated)
+        UserDefaults.standard[Preferences.killProcessGroupRelated] = value
         refresh(force: true)
     }
 

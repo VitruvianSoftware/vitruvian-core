@@ -493,7 +493,7 @@ extension RadialMenuSupport {
 
     package static func claimsMouseButton(_ button: Int64, defaults: UserDefaults) -> Bool {
         guard defaults.bool(forKey: AppFeature.radialMenu.availabilityKey),
-              defaults.bool(forKey: DefaultsKey.radialMenuEnabled) else { return false }
+              defaults[Preferences.radialMenuEnabled] else { return false }
         return claimedMouseButtons(defaults.data(forKey: DefaultsKey.radialMenuProfiles),
                                    defaults: defaults).contains(button)
     }

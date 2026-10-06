@@ -1004,17 +1004,17 @@ package final class AppVolumeMixer: ObservableObject {
             lowered: LoweredOutputState(lastAutomaticLoweredOutputUID: lastAutomaticLoweredOutputUID,
                                         loweredOutput: loweredOutput),
             lowerOnHeadphonesDisconnect: AppFeature.mixer.isAvailable
-                && UserDefaults.standard.bool(forKey: DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect),
+                && UserDefaults.standard[Preferences.mixerLowerVolumeOnHeadphonesDisconnect],
             lowerToPercent: Defaults.sanitizedMixerHeadphonesDisconnectVolumePercent(
                 UserDefaults.standard.integer(forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)),
             savedVolumes: savedVolumes(),
             savedOutputs: savedOutputDeviceUIDs(),
             sessionVolumes: sessionVolumes,
             sessionRoutes: sessionRoutes,
-            showFinder: UserDefaults.standard.bool(forKey: DefaultsKey.mixerShowFinder),
+            showFinder: UserDefaults.standard[Preferences.mixerShowFinder],
             hiddenRowIDs: MixerRoutingSupport.hiddenRowIDs(
                 hiddenApps: savedHiddenApps(),
-                showFinder: UserDefaults.standard.bool(forKey: DefaultsKey.mixerShowFinder)),
+                showFinder: UserDefaults.standard[Preferences.mixerShowFinder]),
             ownPid: ProcessInfo.processInfo.processIdentifier)
 
         halQueue.async { [weak self] in
@@ -1544,7 +1544,7 @@ package final class AppVolumeMixer: ObservableObject {
     package func hideFromList(_ app: MixerApp) {
         guard let id = app.persistenceID else { return }
         if id == MixerRoutingSupport.finderBundleIdentifier {
-            UserDefaults.standard.set(false, forKey: DefaultsKey.mixerShowFinder)
+            UserDefaults.standard[Preferences.mixerShowFinder] = false
         } else {
             var hidden = savedHiddenApps()
             hidden[id] = app.name
@@ -1558,7 +1558,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// again on the next refresh.
     package func showInList(id: String) {
         if id == MixerRoutingSupport.finderBundleIdentifier {
-            UserDefaults.standard.set(true, forKey: DefaultsKey.mixerShowFinder)
+            UserDefaults.standard[Preferences.mixerShowFinder] = true
         } else {
             var hidden = savedHiddenApps()
             hidden.removeValue(forKey: id)
@@ -1585,7 +1585,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// while its toggle keeps it out, sorted the same way as the visible rows.
     private func publishHiddenApps() {
         var entries = savedHiddenApps().map { MixerHiddenApp(id: $0.key, name: $0.value) }
-        if !UserDefaults.standard.bool(forKey: DefaultsKey.mixerShowFinder) {
+        if !UserDefaults.standard[Preferences.mixerShowFinder] {
             let finderID = MixerRoutingSupport.finderBundleIdentifier
             let name = NSRunningApplication.runningApplications(withBundleIdentifier: finderID)
                 .first?.localizedName ?? "Finder"

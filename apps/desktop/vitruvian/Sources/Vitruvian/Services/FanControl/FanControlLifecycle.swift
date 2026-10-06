@@ -62,13 +62,13 @@ package struct FanControlLifecycle {
     package func recoverIfNeeded() {
         // Re-applying supersedes the recovery: a start that fails restores too.
         if let configuration = resumableConfiguration, resume(configuration) { return }
-        guard defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return }
+        guard defaults[Preferences.fanControlRecoveryNeeded] else { return }
         host.restore(false)
     }
 
     package func syncWithPreferences() {
         if AppFeature.fanControl.isAvailable(in: defaults) {
-            if defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) {
+            if defaults[Preferences.fanControlRecoveryNeeded] {
                 host.restore(false)
             }
         } else {
@@ -86,7 +86,7 @@ package struct FanControlLifecycle {
     /// Turning resume on keeps the control already running; turning it off
     /// forgets it, so no later restart brings back an old choice.
     package func resumePreferenceDidChange() {
-        guard defaults.bool(forKey: DefaultsKey.fanControlResume) else {
+        guard defaults[Preferences.fanControlResume] else {
             defaults.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
             return
         }
@@ -106,7 +106,7 @@ package struct FanControlLifecycle {
         // Picking System in the card is a return to System too, even when a
         // safety stop had already handed the fans back and left no button.
         guard AppFeature.fanControl.isAvailable(in: defaults),
-              defaults.bool(forKey: DefaultsKey.fanControlResume),
+              defaults[Preferences.fanControlResume],
               defaults.string(forKey: DefaultsKey.fanControlMode)
                 != FanControlMode.system.rawValue else { return nil }
         return FanControlConfiguration.decodeResume(
@@ -130,14 +130,14 @@ package struct FanControlLifecycle {
     }
 
     package func rememberForResume(_ configuration: FanControlConfiguration) {
-        guard defaults.bool(forKey: DefaultsKey.fanControlResume),
+        guard defaults[Preferences.fanControlResume],
               let stored = FanControlConfiguration.encodeResume(configuration) else { return }
         defaults.set(stored, forKey: DefaultsKey.fanControlResumeConfiguration)
     }
 
     package func stopIdleWorkIfPossible() {
         guard !host.panelIsVisible(), !host.snapshot().isCooling,
-              !defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return }
+              !defaults[Preferences.fanControlRecoveryNeeded] else { return }
         host.stopTimer()
         // A resume waits for the next wake, which only these observers see.
         guard resumableConfiguration == nil else { return }
@@ -146,7 +146,7 @@ package struct FanControlLifecycle {
 
     package func workspaceDidWake() {
         if let configuration = resumableConfiguration, resume(configuration) { return }
-        if defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) {
+        if defaults[Preferences.fanControlRecoveryNeeded] {
             host.restore(true)
         } else if host.panelIsVisible() {
             host.refresh()

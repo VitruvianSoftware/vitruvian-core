@@ -100,12 +100,12 @@ extension AppFeature {
         case .switcher, .superKey, .textSnippets, .autoQuit:
             return .inputs
         case .windowLayout:
-            let edgeSnapRuns = UserDefaults.standard.bool(forKey: DefaultsKey.windowEdgeSnapEnabled)
+            let edgeSnapRuns = UserDefaults.standard[Preferences.windowEdgeSnapEnabled]
                 && !WindowEdgeSnapZone.enabledZones(
                     from: UserDefaults.standard.string(
                         forKey: DefaultsKey.windowEdgeSnapDisabledZones)
                 ).isEmpty
-            return UserDefaults.standard.bool(forKey: DefaultsKey.windowGestureEnabled)
+            return UserDefaults.standard[Preferences.windowGestureEnabled]
                 || edgeSnapRuns
                 ? .pointer : .idle
         case .radialMenu:
@@ -126,15 +126,15 @@ extension AppFeature {
              .monitorNetwork, .monitorDisk, .monitorPower, .connectedDevices:
             return .periodic
         case .mixer:
-            return UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
+            return UserDefaults.standard[Preferences.preciseVolumeRollerEnabled]
                 ? .keyboard : .idle
         case .brightness:
             // Following the pointer, the overlay and a finer step answer the
             // brightness keys from a tap. Like Accessibility, the island's own
             // notices are counted under the island.
             let defaults = UserDefaults.standard
-            return defaults.bool(forKey: DefaultsKey.brightnessKeysEnabled)
-                || defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled)
+            return defaults[Preferences.brightnessKeysEnabled]
+                || defaults[Preferences.brightnessOSDEnabled]
                 || BrightnessSupport.KeyStep.sanitized(
                     defaults.string(forKey: DefaultsKey.brightnessKeyStep)) != .standard
                 ? .keyboard : .idle

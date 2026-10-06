@@ -40,7 +40,7 @@ package final class NotchFileDrop {
                         hideMedia: { NotchFileToolsService.shared.hideMedia() },
                         shelfEnabled: {
                             AppFeature.shelf.isAvailable
-                                && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
+                                && UserDefaults.standard[Preferences.shelfEnabled]
                         },
                         shelfAccept: shelfAccept)
         }

@@ -11,8 +11,7 @@ package struct GeneralSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var appearance = AppAppearanceController.shared
     @ObservedObject private var hotkeys = HotkeyManager.shared
-    @State private var launchAtLogin = UserDefaults.standard.bool(
-        forKey: DefaultsKey.launchAtLoginWanted)
+    @State private var launchAtLogin = UserDefaults.standard[Preferences.launchAtLoginWanted]
     @State private var loginError: String?
     @State private var loginRefreshID = UUID()
     @AppStorage(Preferences.hotkeyEnabled) private var hotkeyEnabled: Bool

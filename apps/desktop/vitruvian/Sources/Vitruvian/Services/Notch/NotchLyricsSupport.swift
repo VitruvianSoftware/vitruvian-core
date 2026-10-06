@@ -129,12 +129,12 @@ package enum NotchLyricsSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchLyrics.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchLyricsEnabled)
+            && defaults[Preferences.notchLyricsEnabled]
             && NotchSupport.modules(in: defaults).contains(.music)
     }
 
     package static func onlineEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchLyricsOnline)
+        isEnabled(in: defaults) && defaults[Preferences.notchLyricsOnline]
     }
 
     package static func lookupURL(for track: NotchMusicIdentity) -> URL? {

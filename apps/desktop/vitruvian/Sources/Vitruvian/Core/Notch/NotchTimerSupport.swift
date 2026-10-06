@@ -189,7 +189,7 @@ package enum NotchTimerSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchTimer.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchTimerEnabled)
+            && defaults[Preferences.notchTimerEnabled]
             && NotchSupport.modules(in: defaults).contains(.timer)
     }
 

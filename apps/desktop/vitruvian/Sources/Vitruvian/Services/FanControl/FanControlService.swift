@@ -159,7 +159,7 @@ package final class FanControlService: ObservableObject {
         let retrySnapshot = snapshot
         startObservingSystemState()
         let generation = beginRequest()
-        UserDefaults.standard.set(true, forKey: DefaultsKey.fanControlRecoveryNeeded)
+        UserDefaults.standard[Preferences.fanControlRecoveryNeeded] = true
         isWorking = true
         send({ proxy, reply in
             proxy.applyConfiguration(encodedConfiguration, withReply: reply)
@@ -230,7 +230,7 @@ package final class FanControlService: ObservableObject {
     }
 
     package static func restoreBeforeTerminationIfNeeded() {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return }
+        guard UserDefaults.standard[Preferences.fanControlRecoveryNeeded] else { return }
         shared.restoreBeforeTermination()
     }
 
@@ -288,7 +288,7 @@ package final class FanControlService: ObservableObject {
             guard service.status != .notRegistered else { return true }
             // A pending recovery keeps the daemon deliberately: it is the only
             // thing that can put the fans back. Still not a clean detach.
-            guard !UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded)
+            guard !UserDefaults.standard[Preferences.fanControlRecoveryNeeded]
             else { return false }
             return unregisterForRemoval(service)
         }
@@ -478,7 +478,7 @@ package final class FanControlService: ObservableObject {
         let current = Self.helperVersion
         guard !installed.isEmpty, installed != current,
               registrationAttemptedVersion != current,
-              !UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return false }
+              !UserDefaults.standard[Preferences.fanControlRecoveryNeeded] else { return false }
         registrationAttemptedVersion = current
         isWorking = true
         Self.appService.unregister { error in
@@ -562,7 +562,7 @@ package final class FanControlService: ObservableObject {
         refreshAccessState()
         guard accessState != .notRegistered else { return }
         if accessState != .enabled {
-            guard !UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else {
+            guard !UserDefaults.standard[Preferences.fanControlRecoveryNeeded] else {
                 error = .authorizationRequired
                 return
             }
@@ -601,7 +601,7 @@ package final class FanControlService: ObservableObject {
 
     private func startTimerIfNeeded() {
         guard panelIsVisible || snapshot.isCooling
-                || UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return }
+                || UserDefaults.standard[Preferences.fanControlRecoveryNeeded] else { return }
         startObservingSystemState()
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -645,7 +645,7 @@ package final class FanControlService: ObservableObject {
     }
 
     @objc private func workspaceWillSleep() {
-        if UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) {
+        if UserDefaults.standard[Preferences.fanControlRecoveryNeeded] {
             restoreAutomatic(supersedingCurrentRequest: true)
         }
     }

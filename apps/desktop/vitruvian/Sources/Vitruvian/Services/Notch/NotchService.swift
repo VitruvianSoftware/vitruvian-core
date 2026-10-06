@@ -490,8 +490,8 @@ package final class NotchService: ObservableObject {
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
             coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
             showsInCaptures: { [defaults] in NotchSupport.showsInCaptures(in: defaults) },
-            outlineEnabled: { [defaults] in defaults.bool(forKey: DefaultsKey.notchOutlineEnabled) },
-            hidesInFullscreen: { [defaults] in defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },
+            outlineEnabled: { [defaults] in defaults[Preferences.notchOutlineEnabled] },
+            hidesInFullscreen: { [defaults] in defaults[Preferences.notchHideInFullscreen] },
             openTitle: { FeatureStrings.notch(L10n.shared.language).open }),
         island: { [weak self] in
             guard let self, self.showsOnAllDisplays, self.running, !self.suspended, self.windowHost != nil else { return nil }
@@ -661,8 +661,8 @@ package final class NotchService: ObservableObject {
     }
 
     private var hiddenUntilHover: Bool {
-        !hiddenInFullscreen && defaults.bool(forKey: DefaultsKey.notchHideUntilHover)
-            && defaults.bool(forKey: DefaultsKey.notchOpenOnHover)
+        !hiddenInFullscreen && defaults[Preferences.notchHideUntilHover]
+            && defaults[Preferences.notchOpenOnHover]
             && !expanded && !peeking && !dragPlaceholder && captureControls == nil
     }
 
@@ -1423,7 +1423,7 @@ package final class NotchService: ObservableObject {
             let activity = notice?.notificationID != nil ? NotchModule.notifications
                 : opensActivity ? compactActivity?.module : nil
             if let activity, modules.contains(activity) { return (activity, false, false) }
-            if defaults.bool(forKey: DefaultsKey.notchReturnHome) {
+            if defaults[Preferences.notchReturnHome] {
                 let saved = defaults.string(forKey: DefaultsKey.notchHomeModule) ?? ""
                 switch NotchReopeningDestination(rawValue: saved) {
                 case .appPanel: return (modules.contains(.controls) ? .controls : modules.first ?? .controls, true, false)
@@ -1584,9 +1584,9 @@ package final class NotchService: ObservableObject {
         if inside {
             if holdsNotification, let id = notice?.notificationID { holdNotification(id); return }
             guard !hoverState.suppressed, (notice == nil || hiddenUntilHover), !expanded, !peeking, !dragPlaceholder,
-                  defaults.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
+                  defaults[Preferences.notchOpenOnHover] else { return }
             if !hiddenInFullscreen, compactActivity != nil, compactActivityGeometry.compactActivityWingWidth > 0,
-               !defaults.bool(forKey: DefaultsKey.notchHoverExpands) { return }
+               !defaults[Preferences.notchHoverExpands] { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
@@ -1594,12 +1594,12 @@ package final class NotchService: ObservableObject {
                       !self.expanded, !self.peeking, !self.pinned, !self.heldDrag, !self.keepsWorkingSurface,
                       !self.showsCompactActivityPicker,
                       self.captureControls == nil, (self.notice == nil || self.hiddenUntilHover), !self.dragPlaceholder,
-                      self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
+                      self.defaults[Preferences.notchOpenOnHover],
                       self.windowHost?.blocksHoverReveal() == false,
                       self.geometry.contains(self.pointer(), in: self.hiddenUntilHover ? self.geometry.collapsed : self.surfaceSize) else { return }
                 // Following the closed island ends as it opens or peeks.
                 self.removeHoverExitMonitors()
-                if self.defaults.bool(forKey: DefaultsKey.notchHoverExpands) {
+                if self.defaults[Preferences.notchHoverExpands] {
                     self.open(takeFocus: false)
                 } else {
                     self.mutatePresentation(transitionContent: .reveal) { self.peeking = true }
@@ -1667,13 +1667,13 @@ package final class NotchService: ObservableObject {
     private func holdNotification(_ id: UUID) {
         noticeWork?.cancel(); noticeWork = nil
         guard !noticeExpanded, !hoverState.suppressed,
-              defaults.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
+              defaults[Preferences.notchOpenOnHover] else { return }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.hoverWork = nil
             guard self.running, !self.suspended, self.inside, !self.hoverState.suppressed, !self.pinned, !self.heldDrag,
                   !self.keepsWorkingSurface, self.holdsNotification, self.notice?.notificationID == id, !self.noticeExpanded,
-                  self.defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
+                  self.defaults[Preferences.notchOpenOnHover],
                   self.geometry.contains(self.pointer(), in: self.surfaceSize) else { return }
             self.mutatePresentation(transitionContent: .reveal) { self.peeking = false; self.noticeQueue.open() }
             self.provideHapticFeedback()
@@ -2561,14 +2561,14 @@ package final class NotchService: ObservableObject {
         // Preferences can change computed dimensions without publishing a
         // service property. Update SwiftUI's layout along with the native host.
         if let windowHost, windowHost.targetSize != size { objectWillChange.send() }
-        windowHost?.setOutline(enabled: !fullscreenCompact && defaults.bool(forKey: DefaultsKey.notchOutlineEnabled),
+        windowHost?.setOutline(enabled: !fullscreenCompact && defaults[Preferences.notchOutlineEnabled],
                                color: compactActivityIsVisible && compactActivity == .timer ? .systemOrange : .white)
         windowHost?.present(size: size, geometry: expanded ? expandedGeometry : geometry, animated: animated,
                             transitionContent: contentTransition,
                             quickAccess: expanded && captureControls == nil && !access.buttons.isEmpty ? access : nil,
                             revealFromHidden: !hiddenInFullscreen && captureControls == nil
-                                && defaults.bool(forKey: DefaultsKey.notchHideUntilHover)
-                                && defaults.bool(forKey: DefaultsKey.notchOpenOnHover),
+                                && defaults[Preferences.notchHideUntilHover]
+                                && defaults[Preferences.notchOpenOnHover],
                             hideWhenSettled: false,
                             usesGlass: !fullscreenCompact && usesGlassSurface)
         // The selector lives in a separate full-screen panel. A floating
@@ -2823,7 +2823,7 @@ package final class NotchService: ObservableObject {
                       customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
                       cameraFit: NotchCameraFit.current(in: defaults), silhouette: NotchSilhouette.current(in: defaults),
                       capsuleFit: NotchCapsuleFit.current(in: defaults),
-                      outline: defaults.bool(forKey: DefaultsKey.notchOutlineEnabled))
+                      outline: defaults[Preferences.notchOutlineEnabled])
     }
 
     private func updateFullscreenVisibility(displayID: CGDirectDisplayID) {

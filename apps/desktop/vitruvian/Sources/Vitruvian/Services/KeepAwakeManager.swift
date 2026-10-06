@@ -128,7 +128,7 @@ package final class KeepAwakeManager: ObservableObject {
     @Published package var clamshellPreferred: Bool {
         didSet {
             guard clamshellPreferred != oldValue else { return }
-            system.defaults.set(clamshellPreferred, forKey: DefaultsKey.clamshellPreferred)
+            system.defaults[Preferences.clamshellPreferred] = clamshellPreferred
             clamshellSetupFailed = false
             guard !isTerminating else { return }
             if clamshellPreferred {
@@ -150,7 +150,7 @@ package final class KeepAwakeManager: ObservableObject {
     @Published package var dimScreenOnLidClose: Bool {
         didSet {
             guard dimScreenOnLidClose != oldValue else { return }
-            system.defaults.set(dimScreenOnLidClose, forKey: DefaultsKey.dimScreenOnLidClose)
+            system.defaults[Preferences.dimScreenOnLidClose] = dimScreenOnLidClose
             if !dimScreenOnLidClose { applyDimmingAction(LidDimmingSupport.restoring(saved: savedDisplayBrightness)) }
             syncLidDimmingObserver()
         }
@@ -198,8 +198,8 @@ package final class KeepAwakeManager: ObservableObject {
 
     package init(system: System) {
         self.system = system
-        clamshellPreferred = system.defaults.bool(forKey: DefaultsKey.clamshellPreferred)
-        dimScreenOnLidClose = system.defaults.bool(forKey: DefaultsKey.dimScreenOnLidClose)
+        clamshellPreferred = system.defaults[Preferences.clamshellPreferred]
+        dimScreenOnLidClose = system.defaults[Preferences.dimScreenOnLidClose]
         refreshPasswordlessStatus()
         // Every settings write announces itself, including the ones made from
         // inside this class, so a burst folds into a single reply on the next
@@ -325,7 +325,7 @@ package final class KeepAwakeManager: ObservableObject {
         guard isActive else { return }
         // Every entry point records the pick, so each switch restarts the same session.
         system.defaults.set(minutes, forKey: DefaultsKey.defaultDuration)
-        system.defaults.set(false, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
+        system.defaults[Preferences.keepAwakeSwitchUsesUntil] = false
     }
 
     package func activate(until date: Date) {
@@ -335,7 +335,7 @@ package final class KeepAwakeManager: ObservableObject {
         // An end time replaces any running preset, so no duration chip stays selected.
         sessionMinutes = nil
         guard isActive else { return }
-        system.defaults.set(true, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
+        system.defaults[Preferences.keepAwakeSwitchUsesUntil] = true
         system.defaults.set(date.timeIntervalSinceReferenceDate, forKey: DefaultsKey.keepAwakeUntilTime)
     }
 
@@ -345,7 +345,7 @@ package final class KeepAwakeManager: ObservableObject {
     package func startLastPick() {
         let defaults = system.defaults
         let end = Date(timeIntervalSinceReferenceDate: defaults.double(forKey: DefaultsKey.keepAwakeUntilTime))
-        if defaults.bool(forKey: DefaultsKey.keepAwakeSwitchUsesUntil), end > Date() {
+        if defaults[Preferences.keepAwakeSwitchUsesUntil], end > Date() {
             activate(until: end)
         } else {
             activate(minutes: Defaults.sanitizedDefaultDuration(defaults.integer(forKey: DefaultsKey.defaultDuration)))
@@ -360,7 +360,7 @@ package final class KeepAwakeManager: ObservableObject {
         endTimer = nil
         syncScreenLockMonitoring()
         sessionPausedForScreenLock = screenLocked
-            && system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
+            && system.defaults[Preferences.keepAwakePauseWhenLocked]
         if !sessionPausedForScreenLock { applyAssertions() }
         sessionTrigger = trigger
         if trigger == .manual {
@@ -382,7 +382,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     package func activateOnLaunchIfNeeded() {
         guard AppFeature.keepAwake.isAvailable(in: system.defaults),
-              system.defaults.bool(forKey: DefaultsKey.keepAwakeAutoStart),
+              system.defaults[Preferences.keepAwakeAutoStart],
               !isActive else { return }
         activate(minutes: Defaults.sanitizedDefaultDuration(
             system.defaults.integer(forKey: DefaultsKey.defaultDuration)))
@@ -435,11 +435,11 @@ package final class KeepAwakeManager: ObservableObject {
         if runningAppBundleIDs != selectedApps { runningAppBundleIDs = selectedApps }
         syncScreenLockMonitoring()
         let observeScreens = available
-            && system.defaults.bool(forKey: DefaultsKey.keepAwakeExternalDisplay)
+            && system.defaults[Preferences.keepAwakeExternalDisplay]
         let observePower = available
-            && system.defaults.bool(forKey: DefaultsKey.keepAwakeConnectedToPower)
+            && system.defaults[Preferences.keepAwakeConnectedToPower]
         let observeRunningApps = available
-            && system.defaults.bool(forKey: DefaultsKey.keepAwakeRunningApps)
+            && system.defaults[Preferences.keepAwakeRunningApps]
             && !runningAppBundleIDs.isEmpty
 
         setScreenMonitoringEnabled(observeScreens)
@@ -450,7 +450,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     private func syncScreenLockMonitoring() {
         let enabled = AppFeature.keepAwake.isAvailable(in: system.defaults)
-            && system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
+            && system.defaults[Preferences.keepAwakePauseWhenLocked]
 
         if enabled {
             guard endLockWatch == nil else { return }
@@ -481,7 +481,7 @@ package final class KeepAwakeManager: ObservableObject {
             return
         }
         let shouldPause = screenLocked
-            && system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked)
+            && system.defaults[Preferences.keepAwakePauseWhenLocked]
         guard shouldPause != sessionPausedForScreenLock else { return }
 
         if shouldPause {
@@ -610,7 +610,7 @@ package final class KeepAwakeManager: ObservableObject {
         }
 
         if screenLocked,
-           system.defaults.bool(forKey: DefaultsKey.keepAwakePauseWhenLocked) {
+           system.defaults[Preferences.keepAwakePauseWhenLocked] {
             if sessionTrigger == .automation { activeAutomationConditions = matches }
             return
         }
@@ -639,14 +639,14 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func automationRequiresAllConditions() -> Bool {
-        system.defaults.bool(forKey: DefaultsKey.keepAwakeAutomationRequireAll)
+        system.defaults[Preferences.keepAwakeAutomationRequireAll]
     }
 
     private func currentEnabledAutomationConditions() -> Set<KeepAwakeAutomationCondition> {
         KeepAwakeAutomationSupport.enabledConditions(
-            externalDisplayEnabled: system.defaults.bool(forKey: DefaultsKey.keepAwakeExternalDisplay),
-            powerEnabled: system.defaults.bool(forKey: DefaultsKey.keepAwakeConnectedToPower),
-            runningAppsEnabled: system.defaults.bool(forKey: DefaultsKey.keepAwakeRunningApps),
+            externalDisplayEnabled: system.defaults[Preferences.keepAwakeExternalDisplay],
+            powerEnabled: system.defaults[Preferences.keepAwakeConnectedToPower],
+            runningAppsEnabled: system.defaults[Preferences.keepAwakeRunningApps],
             hasSelectedApps: !runningAppBundleIDs.isEmpty
         )
     }
@@ -663,7 +663,7 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func currentMatchingAutomationConditions() -> Set<KeepAwakeAutomationCondition> {
-        let externalDisplayEnabled = system.defaults.bool(forKey: DefaultsKey.keepAwakeExternalDisplay)
+        let externalDisplayEnabled = system.defaults[Preferences.keepAwakeExternalDisplay]
         let externalDisplayConnected: Bool
         if externalDisplayEnabled {
             if let current = Self.hasExternalDisplay() {
@@ -674,11 +674,11 @@ package final class KeepAwakeManager: ObservableObject {
             externalDisplayConnected = false
         }
 
-        let powerEnabled = system.defaults.bool(forKey: DefaultsKey.keepAwakeConnectedToPower)
+        let powerEnabled = system.defaults[Preferences.keepAwakeConnectedToPower]
         let connectedToPower = powerEnabled
             && (system.battery().map { !$0.isOnBattery } ?? false)
 
-        let runningAppsEnabled = system.defaults.bool(forKey: DefaultsKey.keepAwakeRunningApps)
+        let runningAppsEnabled = system.defaults[Preferences.keepAwakeRunningApps]
         let selectedAppsRunning: Bool
         if runningAppsEnabled, !runningAppBundleIDs.isEmpty {
             let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
@@ -781,9 +781,7 @@ package final class KeepAwakeManager: ObservableObject {
             systemAssertion = id
             hasSystemAssertion = true
         }
-        let allowDisplaySleep = system.defaults.bool(
-            forKey: DefaultsKey.keepAwakeAllowDisplaySleep
-        )
+        let allowDisplaySleep = system.defaults[Preferences.keepAwakeAllowDisplaySleep]
         if allowDisplaySleep, hasDisplayAssertion {
             system.releaseAssertion(displayAssertion)
             hasDisplayAssertion = false
@@ -1219,7 +1217,7 @@ package final class KeepAwakeManager: ObservableObject {
     private func syncMouseJiggleTimer() {
         guard isActive,
               !sessionPausedForScreenLock,
-              system.defaults.bool(forKey: DefaultsKey.keepAwakeMouseJiggleEnabled)
+              system.defaults[Preferences.keepAwakeMouseJiggleEnabled]
         else {
             stopMouseJiggleTimer()
             return
@@ -1250,7 +1248,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     private func jiggleMousePointer() {
         guard isActive,
-              system.defaults.bool(forKey: DefaultsKey.keepAwakeMouseJiggleEnabled),
+              system.defaults[Preferences.keepAwakeMouseJiggleEnabled],
               let original = Self.currentMouseLocation(),
               let target = Self.mouseJiggleTarget(from: original)
         else {

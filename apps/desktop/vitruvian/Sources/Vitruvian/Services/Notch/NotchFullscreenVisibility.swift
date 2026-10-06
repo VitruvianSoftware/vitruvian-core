@@ -24,7 +24,7 @@ package final class NotchFullscreenVisibility {
 
         @MainActor package static var system: Environment {
             Environment(
-                hidesInFullscreen: { UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen) },
+                hidesInFullscreen: { UserDefaults.standard[Preferences.notchHideInFullscreen] },
                 showsFullscreen: {
                     SpaceWindowBridge.topology()?.isFullscreen(on: $0,
                                                               separateSpaces: NSScreen.screensHaveSeparateSpaces)

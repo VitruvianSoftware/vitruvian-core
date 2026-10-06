@@ -55,7 +55,7 @@ package final class CameraPreviewService: ObservableObject {
     package func syncWithPreferences() {
         let available = AppFeature.cameraPreview.isAvailable
         let enabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.cameraPreviewShortcutEnabled)
+            && UserDefaults.standard[Preferences.cameraPreviewShortcutEnabled]
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.cameraPreviewShortcut,
                                             fallback: .cameraPreviewDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,

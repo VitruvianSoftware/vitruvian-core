@@ -88,7 +88,7 @@ package struct StatusItemUpdateCheck<Item: AnyObject> {
                    after: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } },
                    screenFrames: { NSScreen.screens.map(\.frame) },
                    mouseIsPressed: { NSEvent.pressedMouseButtons != 0 },
-                   hidesIcon: { UserDefaults.standard.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics) },
+                   hidesIcon: { UserDefaults.standard[Preferences.menuBarHideIconWithMetrics] },
                    menuBarVisible: { NSMenu.menuBarVisible() },
                    presentationHidesMenuBar: {
                        !NSApp.currentSystemPresentationOptions.intersection(

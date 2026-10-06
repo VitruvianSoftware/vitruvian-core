@@ -34,7 +34,7 @@ package final class WindowMaximizer: ObservableObject {
 
     package func syncWithPreferences() {
         let wanted = AppFeature.windowMaximizer.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.windowMaximizeEnabled)
+            && UserDefaults.standard[Preferences.windowMaximizeEnabled]
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
                                                accessibilityGranted: AXIsProcessTrusted(),
                                                sessionIsActive: SessionActivity.shared.isActive) {

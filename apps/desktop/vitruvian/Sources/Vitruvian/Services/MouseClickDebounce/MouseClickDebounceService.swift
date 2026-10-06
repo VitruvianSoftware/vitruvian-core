@@ -65,7 +65,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
             Environment(
                 featureWanted: {
                     AppFeature.mouseClickDebounce.isAvailable
-                        && UserDefaults.standard.bool(forKey: DefaultsKey.mouseClickDebounceEnabled)
+                        && UserDefaults.standard[Preferences.mouseClickDebounceEnabled]
                 },
                 windowMilliseconds: {
                     UserDefaults.standard.integer(forKey: DefaultsKey.mouseClickDebounceWindowMs)

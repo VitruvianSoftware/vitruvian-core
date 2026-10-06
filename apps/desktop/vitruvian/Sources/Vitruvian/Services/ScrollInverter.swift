@@ -76,7 +76,7 @@ package final class ScrollInverter: ObservableObject {
     /// features; its keys survive the hub uninstalling it.
     private static var linearScrollWanted: Bool {
         AppFeature.linearScroll.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.linearScrollEnabled)
+            && UserDefaults.standard[Preferences.linearScrollEnabled]
     }
 
     /// Each list's source apps are tracked only while its feature is one the

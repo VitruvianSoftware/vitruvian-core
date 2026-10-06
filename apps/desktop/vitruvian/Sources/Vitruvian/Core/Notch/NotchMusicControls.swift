@@ -28,8 +28,8 @@ package struct NotchMusicControls: Equatable {
     }
 
     package init(in defaults: UserDefaults = .standard) {
-        self.init(lyricsEnabled: defaults.bool(forKey: DefaultsKey.notchLyricsEnabled),
-                  queueEnabled: defaults.bool(forKey: DefaultsKey.notchQueueEnabled), in: defaults)
+        self.init(lyricsEnabled: defaults[Preferences.notchLyricsEnabled],
+                  queueEnabled: defaults[Preferences.notchQueueEnabled], in: defaults)
     }
 
     /// Whether the page draws a row of controls at all.

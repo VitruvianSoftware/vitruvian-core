@@ -350,7 +350,7 @@ package enum SelfUninstall {
         // Unregister the login item (scoped to our bundle id). The stored
         // intent goes with it, or the startup repair would quietly register
         // the item again after the user asked for a clean detach.
-        UserDefaults.standard.set(false, forKey: DefaultsKey.launchAtLoginWanted)
+        UserDefaults.standard[Preferences.launchAtLoginWanted] = false
         try? SMAppService.mainApp.unregister()
     }
 

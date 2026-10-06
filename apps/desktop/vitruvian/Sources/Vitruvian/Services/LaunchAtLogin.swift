@@ -78,7 +78,7 @@ package enum LaunchAtLogin {
 
     package static func setEnabled(_ enabled: Bool, system: System) throws {
         if enabled, system.locationIsUnstable() { throw UnstableLocationError() }
-        system.defaults.set(enabled, forKey: DefaultsKey.launchAtLoginWanted)
+        system.defaults[Preferences.launchAtLoginWanted] = enabled
         var failure: Error?
         do {
             if enabled {
@@ -102,7 +102,7 @@ package enum LaunchAtLogin {
             // The stored intent must match what the user actually got;
             // keeping the failed wish would make the startup repair register
             // an item the UI showed as off.
-            system.defaults.set(system.registration() == .enabled, forKey: DefaultsKey.launchAtLoginWanted)
+            system.defaults[Preferences.launchAtLoginWanted] = system.registration() == .enabled
             throw failure
         }
     }
@@ -112,13 +112,13 @@ package enum LaunchAtLogin {
     package static func repairAtStartup() {
         let defaults = UserDefaults.standard
         switch LaunchAtLoginSupport.startupAction(
-            wanted: defaults.bool(forKey: DefaultsKey.launchAtLoginWanted),
+            wanted: defaults[Preferences.launchAtLoginWanted],
             registration: registration,
             locationIsUnstable: locationIsUnstable) {
         case .none:
             break
         case .adoptEnabled:
-            defaults.set(true, forKey: DefaultsKey.launchAtLoginWanted)
+            defaults[Preferences.launchAtLoginWanted] = true
         case .register:
             try? SMAppService.mainApp.register()
         }

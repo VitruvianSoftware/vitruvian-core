@@ -126,7 +126,7 @@ package final class AppSwitcher: ObservableObject {
             updateIconRowLayoutForCurrentSelection()
             revealSelectedIconInVisibleRow()
             if sessionActive, simpleModeEnabled, !usesWindowRow {
-                resizePanel(animated: !UserDefaults.standard.bool(forKey: DefaultsKey.switcherInstantSelection))
+                resizePanel(animated: !UserDefaults.standard[Preferences.switcherInstantSelection])
             }
         }
     }
@@ -284,7 +284,7 @@ package final class AppSwitcher: ObservableObject {
     private var tapIsWanted: Bool {
         SessionActivitySupport.tapShouldRun(
             featureWanted: AppFeature.switcher.isAvailable
-                && UserDefaults.standard.bool(forKey: DefaultsKey.switcherEnabled),
+                && UserDefaults.standard[Preferences.switcherEnabled],
             accessibilityGranted: AXIsProcessTrusted(),
             sessionIsActive: SessionActivity.shared.isActive)
     }
@@ -307,7 +307,7 @@ package final class AppSwitcher: ObservableObject {
             installTap()
             // A live tap can pick up a shortcut change without rebuilding;
             // apply here so the native hotkeys follow immediately.
-            if !UserDefaults.standard.bool(forKey: DefaultsKey.switcherTakeOverSystemShortcuts) {
+            if !UserDefaults.standard[Preferences.switcherTakeOverSystemShortcuts] {
                 restoreNativeHotkeys()
             } else {
                 applyNativeHotkeySuppressionIfTapLive()
@@ -524,8 +524,7 @@ package final class AppSwitcher: ObservableObject {
     /// installed, so a missing Accessibility grant never kills both switchers.
     private func applyNativeHotkeySuppression() {
         let (apps, windows) = routeLock.withLock { (routeShortcut, routeWindowShortcut) }
-        let takeOver = UserDefaults.standard.bool(
-            forKey: DefaultsKey.switcherTakeOverSystemShortcuts)
+        let takeOver = UserDefaults.standard[Preferences.switcherTakeOverSystemShortcuts]
         SystemShortcutTakeover.setWanted(
             SwitcherSupport.nativeHotkeyIDs(
                 takeOverSystemShortcuts: takeOver,
@@ -545,10 +544,10 @@ package final class AppSwitcher: ObservableObject {
         // must not hold them either or the keys flip off and on.
         guard SessionActivitySupport.tapShouldRun(
                   featureWanted: AppFeature.switcher.isAvailable
-                      && UserDefaults.standard.bool(forKey: DefaultsKey.switcherEnabled),
+                      && UserDefaults.standard[Preferences.switcherEnabled],
                   accessibilityGranted: AXIsProcessTrusted(),
                   sessionIsActive: SessionActivity.shared.isActive),
-              UserDefaults.standard.bool(forKey: DefaultsKey.switcherTakeOverSystemShortcuts)
+              UserDefaults.standard[Preferences.switcherTakeOverSystemShortcuts]
         else { return [] }
         return SwitcherSupport.nativeHotkeyIDs(
             takeOverSystemShortcuts: true,
@@ -954,7 +953,7 @@ package final class AppSwitcher: ObservableObject {
             return routePendingSessionStart
         }) else { return }
         let allApps = requested.scope == .allApps
-        let mergeWindowsByApp = UserDefaults.standard.bool(forKey: DefaultsKey.switcherMergeTabs)
+        let mergeWindowsByApp = UserDefaults.standard[Preferences.switcherMergeTabs]
         let groupByApp = allApps && mergeWindowsByApp
         let preservesGroupedWindows = SwitcherSupport.preservesGroupedWindowsDuringEnumeration(
             allApps: allApps,
@@ -1776,27 +1775,27 @@ package final class AppSwitcher: ObservableObject {
     }
 
     private var iconRowModeEnabled: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.switcherIconRowMode)
+        UserDefaults.standard[Preferences.switcherIconRowMode]
     }
 
     private var simpleModeEnabled: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.switcherSimpleMode)
+        UserDefaults.standard[Preferences.switcherSimpleMode]
     }
 
     private var usesWindowRow: Bool {
         SwitcherSupport.usesWindowRow(
             simpleMode: simpleModeEnabled,
-            mergeWindowsByApp: UserDefaults.standard.bool(forKey: DefaultsKey.switcherMergeTabs),
+            mergeWindowsByApp: UserDefaults.standard[Preferences.switcherMergeTabs],
             sessionScope: sessionScope
         )
     }
 
     private var searchPinEnabled: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.switcherSearchPinEnabled)
+        UserDefaults.standard[Preferences.switcherSearchPinEnabled]
     }
 
     private var showsShortcutHints: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.switcherShowShortcutHints)
+        UserDefaults.standard[Preferences.switcherShowShortcutHints]
     }
 
     private var usesIconRowLayout: Bool {
@@ -1846,7 +1845,7 @@ package final class AppSwitcher: ObservableObject {
 
     /// Freeze the pointer's display before the asynchronous window walk.
     private var currentDisplayScope: WindowEnumerator.DisplayScope? {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.switcherCurrentDisplayOnly) else {
+        guard UserDefaults.standard[Preferences.switcherCurrentDisplayOnly] else {
             return nil
         }
         let screens = NSScreen.screens

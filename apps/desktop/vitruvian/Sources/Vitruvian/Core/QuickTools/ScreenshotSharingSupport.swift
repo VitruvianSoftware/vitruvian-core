@@ -82,12 +82,12 @@ package struct ScreenshotShareResponse: Decodable {
 
 package enum ScreenshotSharingSupport {
     package static func uploadShortcutEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: DefaultsKey.screenshotUploadShortcutEnabled)
-            && defaults.bool(forKey: DefaultsKey.screenshotSharingEnabled)
+        defaults[Preferences.screenshotUploadShortcutEnabled]
+            && defaults[Preferences.screenshotSharingEnabled]
     }
 
     package static func retainsLatestCapture(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: DefaultsKey.screenshotLastCaptureShortcutEnabled)
+        defaults[Preferences.screenshotLastCaptureShortcutEnabled]
             || uploadShortcutEnabled(in: defaults)
     }
 

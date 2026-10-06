@@ -68,9 +68,9 @@ package final class DockClickService {
     }
 
     package func syncWithPreferences() {
-        let minimizeEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickMinimize)
-        let hideEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickHide)
-        let cycleEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickCycleWindows)
+        let minimizeEnabled = UserDefaults.standard[Preferences.dockClickMinimize]
+        let hideEnabled = UserDefaults.standard[Preferences.dockClickHide]
+        let cycleEnabled = UserDefaults.standard[Preferences.dockClickCycleWindows]
         if SessionActivitySupport.tapShouldRun(
             featureWanted: AppFeature.dockClick.isAvailable
                 && (minimizeEnabled || hideEnabled || cycleEnabled),
@@ -219,9 +219,9 @@ package final class DockClickService {
                                                        elapsed: record.map { now - $0.time })
         if decision == .swallow { return nil }
 
-        let cycleEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickCycleWindows)
-        let minimizeEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickMinimize)
-        let hideEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickHide)
+        let cycleEnabled = UserDefaults.standard[Preferences.dockClickCycleWindows]
+        let minimizeEnabled = UserDefaults.standard[Preferences.dockClickMinimize]
+        let hideEnabled = UserDefaults.standard[Preferences.dockClickHide]
         // Launcher-style apps can misreport isActive; the workspace's idea of
         // the frontmost app is the tiebreaker.
         let frontmost = !app.isHidden && (app.isActive

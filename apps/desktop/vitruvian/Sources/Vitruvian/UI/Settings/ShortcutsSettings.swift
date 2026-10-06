@@ -126,8 +126,7 @@ package struct ShortcutsSettings: View {
                     ForEach(WindowLayoutAction.shortcutActions) { action in
                         CentralWindowLayoutShortcutRow(
                             action: action,
-                            shortcutsEnabled: UserDefaults.standard.bool(
-                                forKey: DefaultsKey.windowLayoutShortcutsEnabled),
+                            shortcutsEnabled: UserDefaults.standard[Preferences.windowLayoutShortcutsEnabled],
                             showsSuperKeyAlternative: superKey.isRunning,
                             superKeyModifiers: superKey.modifiers,
                             text: text
@@ -271,7 +270,7 @@ package struct ShortcutsSettings: View {
     private func featureHasActiveShortcut(_ feature: AppFeature,
                                           roles: [GlobalShortcutRole]) -> Bool {
         if feature == .windowLayout,
-           UserDefaults.standard.bool(forKey: DefaultsKey.windowLayoutShortcutsEnabled),
+           UserDefaults.standard[Preferences.windowLayoutShortcutsEnabled],
            WindowLayoutAction.shortcutActions.contains(where: { $0.savedShortcut != nil }) {
             return true
         }

@@ -139,7 +139,7 @@ package enum NotchNotificationSupport {
     }
 
     package static func dismissesNative(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchDismissNativeNotifications)
+        isEnabled(in: defaults) && defaults[Preferences.notchDismissNativeNotifications]
     }
 
     package static func closeAction(in actions: [String], title: String) -> String? {
@@ -151,7 +151,7 @@ package enum NotchNotificationSupport {
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults)
             && AppFeature.notchNotifications.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchNotificationsEnabled)
+            && defaults[Preferences.notchNotificationsEnabled]
             && NotchSupport.modules(in: defaults).contains(.notifications)
     }
 

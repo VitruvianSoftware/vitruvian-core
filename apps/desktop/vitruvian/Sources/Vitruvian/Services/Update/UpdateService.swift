@@ -87,7 +87,7 @@ package final class UpdateService: ObservableObject {
     package var autoCheckEnabled: Bool {
         get { UserDefaults.standard.object(forKey: DefaultsKey.autoCheckUpdates) as? Bool ?? true }
         set {
-            UserDefaults.standard.set(newValue, forKey: DefaultsKey.autoCheckUpdates)
+            UserDefaults.standard[Preferences.autoCheckUpdates] = newValue
             configureAutomaticChecks()
         }
     }
@@ -100,7 +100,7 @@ package final class UpdateService: ObservableObject {
             return AppInfo.isBeta
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: DefaultsKey.includeBetaUpdates)
+            UserDefaults.standard[Preferences.includeBetaUpdates] = newValue
         }
     }
 
@@ -110,7 +110,7 @@ package final class UpdateService: ObservableObject {
     package func startAutomaticChecks() {
         consumeInstallResult()
         if AppInfo.isBeta && UserDefaults.standard.object(forKey: DefaultsKey.includeBetaUpdates) == nil {
-            UserDefaults.standard.set(true, forKey: DefaultsKey.includeBetaUpdates)
+            UserDefaults.standard[Preferences.includeBetaUpdates] = true
         }
         // The local dev build never auto-updates, but can simulate the
         // "update available" UI via the `simulateUpdate` default, for testing.

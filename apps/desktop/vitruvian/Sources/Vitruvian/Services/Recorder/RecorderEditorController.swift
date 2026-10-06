@@ -195,12 +195,12 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
             document = RecorderEditDocument(
                 quality: RecorderSupport.sanitizedQuality(
                     defaults.string(forKey: DefaultsKey.recorderQuality)).rawValue,
-                keepsSystemAudio: defaults.bool(forKey: DefaultsKey.recorderSystemAudio),
+                keepsSystemAudio: defaults[Preferences.recorderSystemAudio],
                 gifSize: RecorderSupport.sanitizedGIFSize(
                     defaults.string(forKey: DefaultsKey.recorderGIFSize)).rawValue,
                 gifFrameRate: RecorderSupport.sanitizedGIFFrameRate(
                     defaults.integer(forKey: DefaultsKey.recorderGIFFrameRate)),
-                zoomEnabled: defaults.bool(forKey: DefaultsKey.recorderAutomaticZoom))
+                zoomEnabled: defaults[Preferences.recorderAutomaticZoom])
         }
         player.isMuted = false
         pointerTrack = RecorderPointerTrack.decoded(try? Data(contentsOf: take.pointerURL))

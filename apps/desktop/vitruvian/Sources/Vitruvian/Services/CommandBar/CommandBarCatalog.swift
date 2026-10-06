@@ -384,7 +384,7 @@ package enum CommandBarCatalog {
         }
         if AppFeature.clipboardHistory.isAvailable {
             let clipboard = FeatureStrings.clipboard(language)
-            let keepsHistory = UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
+            let keepsHistory = UserDefaults.standard[Preferences.clipboardHistoryEnabled]
             let canUseHistory = CommandBarClipboardAccess.canUseHistory(
                 captureEnabled: keepsHistory,
                 hasSavedItems: !ClipboardHistoryService.shared.entries.isEmpty)
@@ -431,7 +431,7 @@ package enum CommandBarCatalog {
                 run: { _ in afterBeat { CameraPreviewService.shared.show() } }))
         }
         if AppFeature.shelf.isAvailable {
-            let enabled = UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
+            let enabled = UserDefaults.standard[Preferences.shelfEnabled]
             entries.append(CommandBarEntry(
                 id: "action.shelf",
                 title: s.shelfName,
@@ -482,7 +482,7 @@ package enum CommandBarCatalog {
         }
 
         if AppFeature.brightness.isAvailable {
-            let enabled = UserDefaults.standard.bool(forKey: DefaultsKey.brightnessControlEnabled)
+            let enabled = UserDefaults.standard[Preferences.brightnessControlEnabled]
             entries.append(CommandBarEntry(
                 id: "action.brightness",
                 title: bar.brightnessTitle,
@@ -671,7 +671,7 @@ package enum CommandBarCatalog {
                 subtitle: area(.uninstaller, under: s.uninstallerName),
                 icon: .symbol("trash"),
                 run: { _ in openSettings(at: .uninstaller) }))
-            if UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled) {
+            if UserDefaults.standard[Preferences.uninstallerCommandBarEnabled] {
                 entries.append(CommandBarEntry(
                     id: "uninstall.browse",
                     title: s.uninstallerCommandBarBrowseTitle,
@@ -716,7 +716,7 @@ package enum CommandBarCatalog {
             keepsBarOpen: true,
             run: { _ in CommandBarService.shared.setCategory(.emoji) }))
         if AppFeature.killProcess.isAvailable,
-           UserDefaults.standard.bool(forKey: DefaultsKey.killProcessCommandBarEnabled) {
+           UserDefaults.standard[Preferences.killProcessCommandBarEnabled] {
             let killStrings = FeatureStrings.killProcess(language)
             entries.append(CommandBarEntry(
                 id: CommandBarPreferences.killProcessBrowserRowID,
@@ -1072,7 +1072,7 @@ package enum CommandBarCatalog {
                                  bar: CommandBarFeatureStrings,
                                  defaults: UserDefaults = .standard) -> [CommandBarEntry] {
         guard AppFeature.uninstaller.isAvailable(in: defaults),
-              defaults.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled)
+              defaults[Preferences.uninstallerCommandBarEnabled]
         else { return [] }
         let ownBundleID = Bundle.main.bundleIdentifier
         return apps.filter {
@@ -1118,7 +1118,7 @@ package enum CommandBarCatalog {
         uninstallerTakes: (URL) -> Bool = { UninstallerSupport.selection(for: $0) != nil }
     ) -> [CommandBarEntry] {
         guard AppFeature.uninstaller.isAvailable(in: defaults),
-              defaults.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled),
+              defaults[Preferences.uninstallerCommandBarEnabled],
               urls.count == 1, let url = urls.first,
               url.pathExtension.lowercased() == "app",
               isInApplications(url),
@@ -1684,7 +1684,7 @@ package enum CommandBarCatalog {
         }
 
         if AppFeature.shelf.isAvailable,
-           UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) {
+           UserDefaults.standard[Preferences.shelfEnabled] {
             entries.append(CommandBarEntry(
                 id: "selection.shelf",
                 title: bar.selectionShelf,
@@ -1816,7 +1816,7 @@ package enum CommandBarCatalog {
               !query.isEmpty else { return [] }
         let history = ClipboardHistoryService.shared
         guard CommandBarClipboardAccess.canUseHistory(
-            captureEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled),
+            captureEnabled: UserDefaults.standard[Preferences.clipboardHistoryEnabled],
             hasSavedItems: !history.entries.isEmpty) else { return [] }
         let imageLabel = FeatureStrings.clipboard(L10n.shared.language).imageEntryLabel
         return history.filteredEntries(matching: query)
@@ -1860,7 +1860,7 @@ package enum CommandBarCatalog {
         guard AppFeature.clipboardHistory.isAvailable else { return [] }
         let history = ClipboardHistoryService.shared
         guard CommandBarClipboardAccess.canUseHistory(
-            captureEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled),
+            captureEnabled: UserDefaults.standard[Preferences.clipboardHistoryEnabled],
             hasSavedItems: !history.entries.isEmpty) else { return [] }
         let imageLabel = FeatureStrings.clipboard(L10n.shared.language).imageEntryLabel
         return history.entries.prefix(limit).map { entry in

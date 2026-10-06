@@ -403,7 +403,7 @@ package final class FeatureRuntime: ObservableObject {
         case .cleaner:
             let schedules: [FeatureBindingAction] = [.cleanerScheduler, .whatsAppScheduler, .whatsAppOrganizer]
             let keepsDownloads = AppFeature.cleaner.isAvailable(in: defaults)
-                && defaults.bool(forKey: DefaultsKey.whatsAppDownloadsEnabled)
+                && defaults[Preferences.whatsAppDownloadsEnabled]
             return keepsDownloads ? schedules : schedules + [.resetWhatsAppDownloads, .stopWhatsAppOrganizer]
         case .appUpdates: return [.appUpdates]
         // Connected devices feeds SystemMonitor's sampling plan like the
@@ -414,7 +414,7 @@ package final class FeatureRuntime: ObservableObject {
              .connectedDevices:
             return [.monitorPlan, .monitorAlerts]
         case .fanControl:
-            let needsRecovery = defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded)
+            let needsRecovery = defaults[Preferences.fanControlRecoveryNeeded]
             let hasRegisteredHelper = !(defaults.string(forKey: DefaultsKey.fanControlHelperVersion) ?? "").isEmpty
             let syncsHelper = needsRecovery || (!AppFeature.fanControl.isAvailable(in: defaults) && hasRegisteredHelper)
             return syncsHelper ? [.monitorPlan, .fanControl] : [.monitorPlan]

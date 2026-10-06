@@ -252,7 +252,7 @@ MUTATIONS = [
      "capture controls detach a persistent preview before closing it after island takeover"),
     ("confirmation switch stops hiding previews", "screenshots",
      "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
-     "confirmationEnabled: defaults.bool(forKey: DefaultsKey.screenshotPreviewEnabled))",
+     "confirmationEnabled: defaults[Preferences.screenshotPreviewEnabled])",
      "confirmationEnabled: true)",
      "with confirmations off a successful action shows nothing"),
     ("upload shortcut publishes an edited capture's original", "screenshots",

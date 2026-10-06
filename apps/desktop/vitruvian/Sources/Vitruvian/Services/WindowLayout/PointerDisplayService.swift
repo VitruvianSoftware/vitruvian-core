@@ -22,7 +22,7 @@ package final class PointerDisplayService: ObservableObject {
 
     package func syncWithPreferences() {
         let enabled = AppFeature.windowLayout.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.pointerDisplayEnabled)
+            && UserDefaults.standard[Preferences.pointerDisplayEnabled]
         // Like Window Layout's other keys, this one steps aside while an app
         // from Ignore apps is in front, so the key reaches that app.
         let front = NSWorkspace.shared.frontmostApplication

@@ -406,7 +406,7 @@ package final class SystemMonitor: ObservableObject {
                 ensureTimer()
                 let panelGPUBecameVisible = needs.system
                     && !previousNeeds.system
-                    && defaults.bool(forKey: DefaultsKey.monitorSysGPU)
+                    && defaults[Preferences.monitorSysGPU]
                 let suppressImmediateGPU = needsGPUAfter && (!neededGPUBefore || panelGPUBecameVisible)
                 refresh(suppressImmediateGPU: suppressImmediateGPU)
                 if suppressImmediateGPU {
@@ -577,50 +577,50 @@ package final class SystemMonitor: ObservableObject {
         let panelNeedsDisk = fullMonitorVisible || menuPanelNeeds.disk
         let panelNeedsPower = fullMonitorVisible || menuPanelNeeds.power || notchVisible
 
-        let panelCPU = (panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysCPU)) || menuPanelNeeds.cpu || notchVisible
-        let panelGPU = (panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysGPU)) || menuPanelNeeds.gpu || notchVisible
-        let panelMemory = (panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysMemory)) || menuPanelNeeds.memory || notchVisible
+        let panelCPU = (panelNeedsSystem && defaults[Preferences.monitorSysCPU]) || menuPanelNeeds.cpu || notchVisible
+        let panelGPU = (panelNeedsSystem && defaults[Preferences.monitorSysGPU]) || menuPanelNeeds.gpu || notchVisible
+        let panelMemory = (panelNeedsSystem && defaults[Preferences.monitorSysMemory]) || menuPanelNeeds.memory || notchVisible
         let panelBattery = hasInternalBattery
-            && ((panelNeedsPower && defaults.bool(forKey: DefaultsKey.monitorSysBattery)) || menuPanelNeeds.battery)
-        let panelTemps = panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysTemps)
-        let alertCPU = defaults.bool(forKey: DefaultsKey.monitorAlertCPU)
-        let alertCPUTemperature = defaults.bool(forKey: DefaultsKey.monitorAlertCPUTemperature)
+            && ((panelNeedsPower && defaults[Preferences.monitorSysBattery]) || menuPanelNeeds.battery)
+        let panelTemps = panelNeedsSystem && defaults[Preferences.monitorSysTemps]
+        let alertCPU = defaults[Preferences.monitorAlertCPU]
+        let alertCPUTemperature = defaults[Preferences.monitorAlertCPUTemperature]
         let alertBatteryTemperature = hasInternalBattery
-            && defaults.bool(forKey: DefaultsKey.monitorAlertBatteryTemperature)
-        let alertMemory = defaults.bool(forKey: DefaultsKey.monitorAlertMemory)
-        let alertDisk = defaults.bool(forKey: DefaultsKey.monitorAlertDisk)
-        let alertBattery = hasInternalBattery && defaults.bool(forKey: DefaultsKey.monitorAlertBattery)
+            && defaults[Preferences.monitorAlertBatteryTemperature]
+        let alertMemory = defaults[Preferences.monitorAlertMemory]
+        let alertDisk = defaults[Preferences.monitorAlertDisk]
+        let alertBattery = hasInternalBattery && defaults[Preferences.monitorAlertBattery]
 
-        plan.needCPU = panelCPU || defaults.bool(forKey: DefaultsKey.menuBarCPU) || alertCPU
-        plan.needMemory = panelMemory || defaults.bool(forKey: DefaultsKey.menuBarMemory) || alertMemory
-        plan.needNetwork = panelNeedsNetwork || defaults.bool(forKey: DefaultsKey.menuBarNetwork)
+        plan.needCPU = panelCPU || defaults[Preferences.menuBarCPU] || alertCPU
+        plan.needMemory = panelMemory || defaults[Preferences.menuBarMemory] || alertMemory
+        plan.needNetwork = panelNeedsNetwork || defaults[Preferences.menuBarNetwork]
         plan.needDisk = panelNeedsDisk
-            || defaults.bool(forKey: DefaultsKey.menuBarDiskUsage)
-            || defaults.bool(forKey: DefaultsKey.menuBarDiskActivity)
+            || defaults[Preferences.menuBarDiskUsage]
+            || defaults[Preferences.menuBarDiskActivity]
             || alertDisk
         plan.needPower = panelNeedsPower || panelBattery
-            || defaults.bool(forKey: DefaultsKey.menuBarPower)
-            || (hasInternalBattery && defaults.bool(forKey: DefaultsKey.menuBarBattery))
-            || (hasInternalBattery && defaults.bool(forKey: DefaultsKey.menuBarBatteryTime))
+            || defaults[Preferences.menuBarPower]
+            || (hasInternalBattery && defaults[Preferences.menuBarBattery])
+            || (hasInternalBattery && defaults[Preferences.menuBarBatteryTime])
             || alertBattery
         plan.needPeripheralBattery = menuPanelNeeds.peripheralBattery || notchAccessoryMonitoring
-            || defaults.bool(forKey: DefaultsKey.menuBarPeripheralBattery)
-        plan.needGPUUsage = panelGPU || defaults.bool(forKey: DefaultsKey.menuBarGPU)
+            || defaults[Preferences.menuBarPeripheralBattery]
+        plan.needGPUUsage = panelGPU || defaults[Preferences.menuBarGPU]
         plan.needCPUTemperature = panelTemps || menuPanelNeeds.cpuTemperature ||
-            defaults.bool(forKey: DefaultsKey.menuBarCPUTemperature) || alertCPUTemperature
+            defaults[Preferences.menuBarCPUTemperature] || alertCPUTemperature
         plan.needGPUTemperature = panelTemps || menuPanelNeeds.gpuTemperature ||
-            defaults.bool(forKey: DefaultsKey.menuBarGPUTemperature)
+            defaults[Preferences.menuBarGPUTemperature]
         plan.needBatteryTemperature = hasInternalBattery && (
-            (panelNeedsPower && defaults.bool(forKey: DefaultsKey.monitorPwrTemperature))
+            (panelNeedsPower && defaults[Preferences.monitorPwrTemperature])
                 || menuPanelNeeds.batteryTemperature
-                || defaults.bool(forKey: DefaultsKey.menuBarBatteryTemperature) || alertBatteryTemperature)
+                || defaults[Preferences.menuBarBatteryTemperature] || alertBatteryTemperature)
         if defaults.bool(forKey: AppFeature.fanControl.availabilityKey),
            Self.fanTelemetryAvailable {
             plan.needFanSpeed = fullMonitorVisible || menuPanelNeeds.fanSpeed
-                || defaults.bool(forKey: DefaultsKey.menuBarFanSpeed)
+                || defaults[Preferences.menuBarFanSpeed]
         }
         plan.needConnectedDevices = menuPanelNeeds.connectedDevices
-            || defaults.bool(forKey: DefaultsKey.menuBarConnectedDevices)
+            || defaults[Preferences.menuBarConnectedDevices]
 
         // The hub gates whole metric families: an unavailable metric never
         // samples, no matter what is pinned, shown or alerting.

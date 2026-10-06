@@ -284,7 +284,7 @@ extension ScrollWheelSupport {
     /// list is only consulted while the feature is on.
     package static func linearLinesPerNotch(defaults: UserDefaults, isAvailable: Bool,
                                     isExcepted: () -> Bool) -> Int? {
-        guard isAvailable, defaults.bool(forKey: DefaultsKey.linearScrollEnabled), !isExcepted() else {
+        guard isAvailable, defaults[Preferences.linearScrollEnabled], !isExcepted() else {
             return nil
         }
         return sanitizedLinesPerNotch(defaults.integer(forKey: DefaultsKey.linearScrollLines))

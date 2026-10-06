@@ -23,7 +23,7 @@ package final class HotkeyManager: ObservableObject {
 
     package func syncWithPreferences() {
         setEnabled(AppFeature.keepAwake.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.hotkeyEnabled))
+            && UserDefaults.standard[Preferences.hotkeyEnabled])
     }
 
     package func setEnabled(_ enabled: Bool) {

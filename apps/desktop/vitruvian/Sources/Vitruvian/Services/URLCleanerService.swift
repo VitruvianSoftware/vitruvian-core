@@ -49,7 +49,7 @@ package final class URLCleanerService: ObservableObject {
     private init() {}
 
     package func syncWithPreferences() {
-        if AppFeature.urlCleaner.isAvailable, UserDefaults.standard.bool(forKey: DefaultsKey.urlCleanerEnabled) {
+        if AppFeature.urlCleaner.isAvailable, UserDefaults.standard[Preferences.urlCleanerEnabled] {
             start()
         } else {
             stop()

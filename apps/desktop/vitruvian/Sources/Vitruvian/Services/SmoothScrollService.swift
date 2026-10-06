@@ -77,7 +77,7 @@ package final class SmoothScrollService: ObservableObject {
     /// Applies the persisted preference; safe to call repeatedly.
     package func syncWithPreferences() {
         let wanted = AppFeature.smoothScroll.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.smoothScrollEnabled)
+            && UserDefaults.standard[Preferences.smoothScrollEnabled]
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
                                                accessibilityGranted: AXIsProcessTrusted(),
                                                sessionIsActive: SessionActivity.shared.isActive) {
@@ -176,7 +176,7 @@ package final class SmoothScrollService: ObservableObject {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             stopGlide()
             let wanted = AppFeature.smoothScroll.isAvailable
-                && UserDefaults.standard.bool(forKey: DefaultsKey.smoothScrollEnabled)
+                && UserDefaults.standard[Preferences.smoothScrollEnabled]
             let shouldRearm = SessionActivitySupport.tapShouldRun(
                 featureWanted: wanted,
                 accessibilityGranted: AXIsProcessTrusted(),

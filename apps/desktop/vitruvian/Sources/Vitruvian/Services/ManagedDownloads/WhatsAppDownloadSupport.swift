@@ -49,7 +49,7 @@ package enum WhatsAppDownloadSupport {
     ]
 
     package static var isEnabled: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppDownloadsEnabled)
+        UserDefaults.standard[Preferences.whatsAppDownloadsEnabled]
     }
 
     package static func sanitizedRetentionDays(_ value: Int) -> Int {

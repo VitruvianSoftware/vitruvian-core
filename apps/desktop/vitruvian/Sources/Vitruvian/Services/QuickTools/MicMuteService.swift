@@ -88,7 +88,7 @@ package final class MicMuteService: ObservableObject {
 
     package init(environment: Environment) {
         self.environment = environment
-        wantsMute = environment.defaults.bool(forKey: DefaultsKey.micMuteActive)
+        wantsMute = environment.defaults[Preferences.micMuteActive]
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
@@ -113,7 +113,7 @@ package final class MicMuteService: ObservableObject {
     package func syncWithPreferences() {
         let available = AppFeature.micMute.isAvailable(in: environment.defaults)
         let enabled = available
-            && environment.defaults.bool(forKey: DefaultsKey.micMuteShortcutEnabled)
+            && environment.defaults[Preferences.micMuteShortcutEnabled]
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.micMuteShortcut,
                                             fallback: .micMuteDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
@@ -134,7 +134,7 @@ package final class MicMuteService: ObservableObject {
             // with no control left to unmute it.
             if wantsMute || hasOutstandingClaims {
                 apply(muted: false, announce: false)
-                environment.defaults.set(false, forKey: DefaultsKey.micMuteActive)
+                environment.defaults[Preferences.micMuteActive] = false
             }
             isMuted = false
         }
@@ -171,7 +171,7 @@ package final class MicMuteService: ObservableObject {
 
     nonisolated
     package var inputVolumeAdjustmentLifetime: UUID? {
-        guard !environment.defaults.bool(forKey: DefaultsKey.micMuteActive) else { return nil }
+        guard !environment.defaults[Preferences.micMuteActive] else { return nil }
         return inputVolumeLock.withLock { inputVolumeBlocked ? nil : inputVolumeLifetime }
     }
 
@@ -194,13 +194,13 @@ package final class MicMuteService: ObservableObject {
         let defaults = environment.defaults
         // A mute still being applied has not reached the flag yet, and a claim
         // is a device this app owes its level back whatever the flag says.
-        guard wantsMute || defaults.bool(forKey: DefaultsKey.micMuteActive) || hasOutstandingClaims else { return }
+        guard wantsMute || defaults[Preferences.micMuteActive] || hasOutstandingClaims else { return }
         // Any sweep still in flight loses its right to publish, and this one
         // runs behind it on the same serial queue.
         applyGeneration += 1
         wantsMute = false
         environment.halQueue.sync { _ = self.sweep(muted: false) }
-        defaults.set(false, forKey: DefaultsKey.micMuteActive)
+        defaults[Preferences.micMuteActive] = false
         isMuted = false
         inputVolumeLock.withLock {
             inputVolumeBlocked = false
@@ -282,7 +282,7 @@ package final class MicMuteService: ObservableObject {
             return
         }
         if isMuted != muted { isMuted = muted }
-        environment.defaults.set(muted, forKey: DefaultsKey.micMuteActive)
+        environment.defaults[Preferences.micMuteActive] = muted
         syncListeners()
         guard announce else { return }
         // A partial result keeps the floating confirmation: the whole

@@ -33,7 +33,7 @@ package final class FocusFollowsMouseService {
 
     package func syncWithPreferences() {
         let wanted = AppFeature.focusFollowsMouse.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.focusFollowsMouseEnabled)
+            && UserDefaults.standard[Preferences.focusFollowsMouseEnabled]
         if SessionActivitySupport.tapShouldRun(
             featureWanted: wanted,
             accessibilityGranted: AXIsProcessTrusted(),

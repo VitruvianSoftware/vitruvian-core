@@ -29,14 +29,14 @@ package final class AppAppearanceController: ObservableObject {
     @Published package var liquidGlassEnabled: Bool {
         didSet {
             guard liquidGlassEnabled != oldValue else { return }
-            UserDefaults.standard.set(liquidGlassEnabled, forKey: DefaultsKey.liquidGlassEnabled)
+            UserDefaults.standard[Preferences.liquidGlassEnabled] = liquidGlassEnabled
         }
     }
 
     @Published package var notchLiquidGlassEnabled: Bool {
         didSet {
             guard notchLiquidGlassEnabled != oldValue else { return }
-            UserDefaults.standard.set(notchLiquidGlassEnabled, forKey: DefaultsKey.notchLiquidGlassEnabled)
+            UserDefaults.standard[Preferences.notchLiquidGlassEnabled] = notchLiquidGlassEnabled
         }
     }
 
@@ -44,8 +44,8 @@ package final class AppAppearanceController: ObservableObject {
         appearance = AppAppearance.sanitized(
             UserDefaults.standard.string(forKey: DefaultsKey.appearance)
         )
-        liquidGlassEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.liquidGlassEnabled)
-        notchLiquidGlassEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.notchLiquidGlassEnabled)
+        liquidGlassEnabled = UserDefaults.standard[Preferences.liquidGlassEnabled]
+        notchLiquidGlassEnabled = UserDefaults.standard[Preferences.notchLiquidGlassEnabled]
     }
 
     /// The panel is a popover anchored to the menu bar item, so it takes its

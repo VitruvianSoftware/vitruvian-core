@@ -242,9 +242,9 @@ package final class AppUpdatesService: ObservableObject {
         let generation = scanGeneration
         let request = ScanRequest(
             rules: checkedRules,
-            includeHomebrewApps: environment.defaults.bool(forKey: DefaultsKey.appUpdatesIncludeHomebrewApps),
-            includeAppStore: environment.defaults.bool(forKey: DefaultsKey.appUpdatesIncludeAppStore),
-            includeOnlineCatalog: environment.defaults.bool(forKey: DefaultsKey.appUpdatesIncludeOnlineCatalog),
+            includeHomebrewApps: environment.defaults[Preferences.appUpdatesIncludeHomebrewApps],
+            includeAppStore: environment.defaults[Preferences.appUpdatesIncludeAppStore],
+            includeOnlineCatalog: environment.defaults[Preferences.appUpdatesIncludeOnlineCatalog],
             country: Locale.current.region?.identifier,
             automatic: automatic)
         let deliver: @MainActor @Sendable (ScanResult) -> Void = { [weak self] result in
@@ -397,7 +397,7 @@ package final class AppUpdatesService: ObservableObject {
     /// stays quiet after the first notice. True when a notice went out.
     private func notifyIfWanted(freshCount: Int, total: Int) -> Bool {
         guard freshCount > 0,
-              environment.defaults.bool(forKey: DefaultsKey.appUpdatesNotify) else { return false }
+              environment.defaults[Preferences.appUpdatesNotify] else { return false }
         let strings = FeatureStrings.appUpdates(L10n.shared.language)
         let body = total == 1
             ? strings.notificationBodyOne

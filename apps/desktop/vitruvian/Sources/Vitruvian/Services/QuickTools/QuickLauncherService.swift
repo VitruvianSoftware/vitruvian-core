@@ -147,7 +147,7 @@ package final class QuickLauncherService: ObservableObject {
 
     package func syncWithPreferences() {
         let enabled = AppFeature.quickLauncher.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.quickLauncherShortcutEnabled)
+            && UserDefaults.standard[Preferences.quickLauncherShortcutEnabled]
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.quickLauncherShortcut,
                                             fallback: .quickLauncherDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,

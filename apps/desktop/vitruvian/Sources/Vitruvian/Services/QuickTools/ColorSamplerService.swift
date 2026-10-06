@@ -50,7 +50,7 @@ package final class ColorSamplerService: ObservableObject {
                                  green: srgb.greenComponent,
                                  blue: srgb.blueComponent,
                                  format: format,
-                                 bareHex: UserDefaults.standard.bool(forKey: DefaultsKey.colorPickerBareHex))
+                                 bareHex: UserDefaults.standard[Preferences.colorPickerBareHex])
     }
 
     /// Copies without the HUD. The capture surface calls this while its

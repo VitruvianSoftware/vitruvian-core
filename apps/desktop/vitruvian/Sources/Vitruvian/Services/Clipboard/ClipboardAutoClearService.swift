@@ -51,24 +51,24 @@ package final class ClipboardAutoClearService {
         configurationLock.unlock()
         let defaults = UserDefaults.standard
         let isAvailable = AppFeature.clipboardHistory.isAvailable
-        if isAvailable, defaults.bool(forKey: DefaultsKey.clipboardAutoClearOnDelay) {
+        if isAvailable, defaults[Preferences.clipboardAutoClearOnDelay] {
             startTimer()
         } else {
             stopTimer()
         }
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         syncObserver(&sleepObserver,
-                     isWanted: isAvailable && defaults.bool(forKey: DefaultsKey.clipboardAutoClearOnSleep),
+                     isWanted: isAvailable && defaults[Preferences.clipboardAutoClearOnSleep],
                      preferenceKey: DefaultsKey.clipboardAutoClearOnSleep,
                      name: NSWorkspace.willSleepNotification,
                      center: workspaceCenter)
         syncObserver(&displaySleepObserver,
-                     isWanted: isAvailable && defaults.bool(forKey: DefaultsKey.clipboardAutoClearOnDisplaySleep),
+                     isWanted: isAvailable && defaults[Preferences.clipboardAutoClearOnDisplaySleep],
                      preferenceKey: DefaultsKey.clipboardAutoClearOnDisplaySleep,
                      name: NSWorkspace.screensDidSleepNotification,
                      center: workspaceCenter)
         syncObserver(&screenLockObserver,
-                     isWanted: isAvailable && defaults.bool(forKey: DefaultsKey.clipboardAutoClearOnScreenLock),
+                     isWanted: isAvailable && defaults[Preferences.clipboardAutoClearOnScreenLock],
                      preferenceKey: DefaultsKey.clipboardAutoClearOnScreenLock,
                      name: Self.screenLockNotification,
                      center: DistributedNotificationCenter.default())

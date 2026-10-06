@@ -43,7 +43,7 @@ package struct NotchGestureSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchGestures.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchGesturesEnabled)
+            && defaults[Preferences.notchGesturesEnabled]
     }
 
     package static func movement(_ delta: Double, precise: Bool, inverted: Bool) -> Double {

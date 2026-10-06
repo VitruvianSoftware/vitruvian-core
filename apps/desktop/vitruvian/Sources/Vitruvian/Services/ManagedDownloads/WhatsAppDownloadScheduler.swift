@@ -27,13 +27,13 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
         let defaults = UserDefaults.standard
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
-              defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled),
-              defaults.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else {
+              defaults[Preferences.whatsAppDownloadsAutomaticEnabled],
+              defaults[Preferences.whatsAppDownloadsAccessConfirmed] else {
             stop()
             return
         }
         if defaults.double(forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate) <= 0,
-           !defaults.bool(forKey: DefaultsKey.whatsAppDownloadsIncludeExisting) {
+           !defaults[Preferences.whatsAppDownloadsIncludeExisting] {
             defaults.set(Date().timeIntervalSince1970,
                          forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate)
         }
@@ -75,10 +75,8 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
     private func scheduleNext() {
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
-              UserDefaults.standard.bool(
-                forKey: DefaultsKey.whatsAppDownloadsAutomaticEnabled),
-              UserDefaults.standard.bool(
-                forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed) else { return }
+              UserDefaults.standard[Preferences.whatsAppDownloadsAutomaticEnabled],
+              UserDefaults.standard[Preferences.whatsAppDownloadsAccessConfirmed] else { return }
         let now = Date()
         let lastStamp = UserDefaults.standard.double(
             forKey: DefaultsKey.whatsAppDownloadsLastAutoRun)
@@ -155,7 +153,7 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
         runObserver = nil
         UserDefaults.standard.set(Date().timeIntervalSince1970,
                                   forKey: DefaultsKey.whatsAppDownloadsLastAutoRun)
-        if notify, UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppDownloadsNotify) {
+        if notify, UserDefaults.standard[Preferences.whatsAppDownloadsNotify] {
             let strings = FeatureStrings.whatsAppDownloads(L10n.shared.language)
             let body = String(format: strings.notificationFormat, moved,
                               ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file), failed)

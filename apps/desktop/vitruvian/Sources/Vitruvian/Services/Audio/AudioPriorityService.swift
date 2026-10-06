@@ -110,8 +110,8 @@ package final class AudioPriorityService: ObservableObject {
 
     private func loadPreferences() {
         let defaults = UserDefaults.standard
-        outputPriorityEnabled = defaults.bool(forKey: DefaultsKey.audioPriorityOutputEnabled)
-        inputPriorityEnabled = defaults.bool(forKey: DefaultsKey.audioPriorityInputEnabled)
+        outputPriorityEnabled = defaults[Preferences.audioPriorityOutputEnabled]
+        inputPriorityEnabled = defaults[Preferences.audioPriorityInputEnabled]
         outputPriorityUIDs = Defaults.sanitizedAudioPriorityUIDs(
             defaults.array(forKey: DefaultsKey.audioPriorityOutputUIDs) ?? [])
         inputPriorityUIDs = Defaults.sanitizedAudioPriorityUIDs(
@@ -125,7 +125,7 @@ package final class AudioPriorityService: ObservableObject {
     package func setOutputPriorityEnabled(_ enabled: Bool) {
         let becameEnabled = enabled && !outputPriorityEnabled
         let defaults = UserDefaults.standard
-        defaults.set(enabled, forKey: DefaultsKey.audioPriorityOutputEnabled)
+        defaults[Preferences.audioPriorityOutputEnabled] = enabled
         outputPriorityEnabled = enabled
         mergeAvailableDevicesIntoPriorityLists()
         updateDeviceNames()
@@ -138,7 +138,7 @@ package final class AudioPriorityService: ObservableObject {
     package func setInputPriorityEnabled(_ enabled: Bool) {
         let becameEnabled = enabled && !inputPriorityEnabled
         let defaults = UserDefaults.standard
-        defaults.set(enabled, forKey: DefaultsKey.audioPriorityInputEnabled)
+        defaults[Preferences.audioPriorityInputEnabled] = enabled
         inputPriorityEnabled = enabled
         AudioInputDeviceManager.shared.setInputPriorityActive(enabled)
         mergeAvailableDevicesIntoPriorityLists()

@@ -48,7 +48,7 @@ package final class MouseAccelerationService {
 
     private var featureWanted: Bool {
         AppFeature.mouseAcceleration.isAvailable
-            && defaults.bool(forKey: DefaultsKey.mouseAccelerationDisabled)
+            && defaults[Preferences.mouseAccelerationDisabled]
     }
 
     private func startIfAllowed() {

@@ -479,7 +479,7 @@ package enum MenuBarRenderer {
         let appearance = MenuBarMetricAppearance.current
         let usesBars = appearance == .bars
         let combineTemperatures = appearance.allowsCombinedTemperatures
-            && UserDefaults.standard.bool(forKey: DefaultsKey.menuBarCombineTemperatures)
+            && UserDefaults.standard[Preferences.menuBarCombineTemperatures]
         let enabled = Set(metrics)
         var renderedCPU = false
         var renderedGPU = false
@@ -1143,7 +1143,7 @@ package enum MenuBarRenderer {
     }
 
     private static func networkBlockImage(down: String, up: String, style: MenuBarBlockStyle) -> NSImage {
-        let uploadFirst = UserDefaults.standard.bool(forKey: DefaultsKey.menuBarNetworkUploadFirst)
+        let uploadFirst = UserDefaults.standard[Preferences.menuBarNetworkUploadFirst]
         let cacheKey = "network|\(down)|\(up)|\(style)|\(uploadFirst)" as NSString
         if let cached = blockImageCache.object(forKey: cacheKey) { return cached }
 
@@ -1403,7 +1403,7 @@ extension MenuBarRenderer {
     /// Settings preview, so it draws the same split the bar does.
     package static func metricStatusGroups(for metrics: [MenuBarMetric], strings: Strings) -> [MetricStatusGroup] {
         guard MenuBarMetricAppearance.current.allowsCombinedTemperatures,
-              UserDefaults.standard.bool(forKey: DefaultsKey.menuBarCombineTemperatures) else {
+              UserDefaults.standard[Preferences.menuBarCombineTemperatures] else {
             return metrics.map {
                 MetricStatusGroup(id: $0.rawValue, metrics: [$0], focusMetric: $0, title: $0.title(strings))
             }
