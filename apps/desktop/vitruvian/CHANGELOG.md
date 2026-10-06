@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.7.0...vitruvian-v3.8.0) (2026-10-06)
+
+
+### Features
+
+* **vitruvian:** restore authentic spotlight-style quick prompt for nexus agent ([#2779](https://github.com/VitruvianSoftware/vitruvian-core/issues/2779)) ([6d00b65](https://github.com/VitruvianSoftware/vitruvian-core/commit/6d00b65cd3b8d7440fe02c486e468f5ad98c6c83))
+
 ## [3.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.6.0...vitruvian-v3.7.0) (2026-10-06)
 
 
