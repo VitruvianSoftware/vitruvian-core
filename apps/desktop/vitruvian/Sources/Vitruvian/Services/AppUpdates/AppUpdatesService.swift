@@ -407,11 +407,11 @@ package final class AppUpdatesService: ObservableObject {
     }
 
     private func announcedIDs() -> Set<String> {
-        Set(environment.defaults.stringArray(forKey: DefaultsKey.appUpdatesNotifiedIDs) ?? [])
+        Set(environment.defaults[Preferences.appUpdatesNotifiedIDs])
     }
 
     private func saveAnnouncedIDs(_ ids: Set<String>) {
-        environment.defaults.set(ids.sorted(), forKey: DefaultsKey.appUpdatesNotifiedIDs)
+        environment.defaults[Preferences.appUpdatesNotifiedIDs] = ids.sorted()
     }
 
     // MARK: - Package manager source

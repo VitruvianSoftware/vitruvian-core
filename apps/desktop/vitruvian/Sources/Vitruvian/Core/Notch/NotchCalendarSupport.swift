@@ -207,13 +207,13 @@ package enum NotchCalendarSupport {
 
     /// Stored as excluded identifiers so a calendar added later starts shown.
     package static func excludedCalendars(in defaults: UserDefaults = .standard) -> Set<String> {
-        Set(defaults.stringArray(forKey: DefaultsKey.notchCalendarExcluded) ?? [])
+        Set(defaults[Preferences.notchCalendarExcluded])
     }
 
     package static func setCalendar(_ identifier: String, shown: Bool, in defaults: UserDefaults = .standard) {
         var excluded = excludedCalendars(in: defaults)
         if shown { excluded.remove(identifier) } else { excluded.insert(identifier) }
-        defaults.set(excluded.sorted(), forKey: DefaultsKey.notchCalendarExcluded)
+        defaults[Preferences.notchCalendarExcluded] = excluded.sorted()
     }
 
     /// The calendars to pass to EventKit: nil reads every calendar, including

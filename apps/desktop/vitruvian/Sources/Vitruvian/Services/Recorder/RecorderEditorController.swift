@@ -633,15 +633,15 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     private func loadEditPresets() {
-        guard let data = environment.defaults.data(forKey: DefaultsKey.recorderEditorPresets),
-              let presets = try? JSONDecoder().decode([RecorderEditPreset].self, from: data)
+        guard let presets = try? JSONDecoder().decode(
+            [RecorderEditPreset].self, from: environment.defaults[Preferences.recorderEditorPresets])
         else { return }
         editPresets = Array(presets.suffix(12))
     }
 
     private func persistEditPresets(_ presets: [RecorderEditPreset]) -> Bool {
         guard let data = try? JSONEncoder().encode(presets) else { return false }
-        environment.defaults.set(data, forKey: DefaultsKey.recorderEditorPresets)
+        environment.defaults[Preferences.recorderEditorPresets] = data
         let retainedPaths = Set(presets.flatMap { $0.images ?? [] }.map(\.path))
         let retiredImages = editPresets.flatMap { $0.images ?? [] }
             .filter { !retainedPaths.contains($0.path) }

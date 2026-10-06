@@ -290,7 +290,7 @@ package final class ShelfService: ObservableObject {
 
     private init() {
         automaticExclusions = Defaults.sanitizedBundleIdentifierList(
-            UserDefaults.standard.stringArray(forKey: DefaultsKey.shelfAutomaticExclusions) ?? [])
+            UserDefaults.standard[Preferences.shelfAutomaticExclusions])
         restoreItems()
     }
 
@@ -366,21 +366,21 @@ package final class ShelfService: ObservableObject {
         let updated = Defaults.sanitizedBundleIdentifierList(automaticExclusions + [bundleIdentifier])
         guard updated != automaticExclusions else { return }
         automaticExclusions = updated
-        UserDefaults.standard.set(updated, forKey: DefaultsKey.shelfAutomaticExclusions)
+        UserDefaults.standard[Preferences.shelfAutomaticExclusions] = updated
     }
 
     package func removeAutomaticExclusion(_ bundleIdentifier: String) {
         let updated = automaticExclusions.filter { $0 != bundleIdentifier }
         guard updated != automaticExclusions else { return }
         automaticExclusions = updated
-        UserDefaults.standard.set(updated, forKey: DefaultsKey.shelfAutomaticExclusions)
+        UserDefaults.standard[Preferences.shelfAutomaticExclusions] = updated
     }
 
     private func reloadAutomaticExclusions() {
-        let stored = UserDefaults.standard.stringArray(forKey: DefaultsKey.shelfAutomaticExclusions) ?? []
+        let stored = UserDefaults.standard[Preferences.shelfAutomaticExclusions]
         let sanitized = Defaults.sanitizedBundleIdentifierList(stored)
         if stored != sanitized {
-            UserDefaults.standard.set(sanitized, forKey: DefaultsKey.shelfAutomaticExclusions)
+            UserDefaults.standard[Preferences.shelfAutomaticExclusions] = sanitized
         }
         if automaticExclusions != sanitized { automaticExclusions = sanitized }
     }

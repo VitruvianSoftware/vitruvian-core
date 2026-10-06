@@ -26,10 +26,10 @@ package final class DiskProtectionService: ObservableObject {
     }
 
     package func reloadExclusions() {
-        let raw = UserDefaults.standard.stringArray(forKey: DefaultsKey.diskEjectExcludedVolumes) ?? []
+        let raw = UserDefaults.standard[Preferences.diskEjectExcludedVolumes]
         let sanitized = Defaults.sanitizedDiskExclusionList(raw)
         if raw != sanitized {
-            UserDefaults.standard.set(sanitized, forKey: DefaultsKey.diskEjectExcludedVolumes)
+            UserDefaults.standard[Preferences.diskEjectExcludedVolumes] = sanitized
         }
         excludedVolumes = sanitized
     }
@@ -39,14 +39,14 @@ package final class DiskProtectionService: ObservableObject {
         guard !trimmed.isEmpty else { return }
         guard !excludedVolumes.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
         let updated = Defaults.sanitizedDiskExclusionList(excludedVolumes + [trimmed])
-        UserDefaults.standard.set(updated, forKey: DefaultsKey.diskEjectExcludedVolumes)
+        UserDefaults.standard[Preferences.diskEjectExcludedVolumes] = updated
         excludedVolumes = updated
     }
 
     package func removeExcludedVolume(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let updated = excludedVolumes.filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
-        UserDefaults.standard.set(updated, forKey: DefaultsKey.diskEjectExcludedVolumes)
+        UserDefaults.standard[Preferences.diskEjectExcludedVolumes] = updated
         excludedVolumes = updated
     }
 

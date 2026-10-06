@@ -635,7 +635,7 @@ package final class CommandBarService: ObservableObject {
         // argument and nothing on screen. Direct execution bypasses result
         // filtering. Do nothing when the row is hidden or Links is disabled.
         if let link = CommandBarLinks.directRunScript(forStableKey: key, in: CommandBarLinks.decode(
-            UserDefaults.standard.data(forKey: DefaultsKey.commandBarLinks))) {
+            UserDefaults.standard[Preferences.commandBarLinks])) {
             guard !hiddenCache.contains(key), isEnabled(.links) else { return }
             CommandBarCatalog.runScriptDirectly(link)
             return
@@ -1467,7 +1467,7 @@ package final class CommandBarService: ObservableObject {
         // that one link is hidden - a switched-off source must not still
         // spawn a process behind it.
         let savedLinks = CommandBarLinks.decode(
-            UserDefaults.standard.data(forKey: DefaultsKey.commandBarLinks))
+            UserDefaults.standard[Preferences.commandBarLinks])
         let scriptMatch = isEnabled(.links)
             ? CommandBarLinks.matchingScriptLink(in: savedLinks, query: trimmed)
             : nil

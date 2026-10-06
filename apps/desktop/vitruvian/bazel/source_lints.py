@@ -1256,17 +1256,17 @@ KEYED_PREFERENCE_PATHS = {
 # its count here. The rule fails on one more, so no new access by key comes
 # in, and on one fewer, so each count stays exact.
 PREFERENCE_ACCESS_BY_KEY = {
-    "array": 2,
+    "array": 0,
     "bool": 0,
-    "data": 8,
-    "dictionary": 6,
+    "data": 0,
+    "dictionary": 0,
     "double": 0,
     "integer": 0,
     "object": 25,
     "removeObject": 18,
-    "set": 35,
+    "set": 2,
     "string": 0,
-    "stringArray": 18,
+    "stringArray": 0,
 }
 
 

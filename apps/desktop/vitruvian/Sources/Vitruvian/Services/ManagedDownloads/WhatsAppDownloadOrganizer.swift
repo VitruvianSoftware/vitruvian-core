@@ -630,20 +630,19 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
     }
 
     nonisolated private static func loadRecords() -> [Record] {
-        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.whatsAppOrganizerRecords),
-              !data.isEmpty else { return [] }
+        let data = UserDefaults.standard[Preferences.whatsAppOrganizerRecords]
+        guard !data.isEmpty else { return [] }
         return (try? JSONDecoder().decode([Record].self, from: data)) ?? []
     }
 
     nonisolated private static func saveRecords(_ records: [Record]) {
         let data = (try? JSONEncoder().encode(records)) ?? Data()
-        UserDefaults.standard.set(data, forKey: DefaultsKey.whatsAppOrganizerRecords)
+        UserDefaults.standard[Preferences.whatsAppOrganizerRecords] = data
     }
 
     nonisolated private static func loadUndoTransactions() -> [UndoTransaction] {
-        guard let data = UserDefaults.standard.data(
-            forKey: DefaultsKey.whatsAppOrganizerUndoTransaction),
-              !data.isEmpty else { return [] }
+        let data = UserDefaults.standard[Preferences.whatsAppOrganizerUndoTransaction]
+        guard !data.isEmpty else { return [] }
         return (try? JSONDecoder().decode([UndoTransaction].self, from: data)) ?? []
     }
 
@@ -656,8 +655,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
 
     nonisolated private static func saveUndoTransactions(_ transactions: [UndoTransaction]) {
         let data = (try? JSONEncoder().encode(transactions)) ?? Data()
-        UserDefaults.standard.set(data,
-                                  forKey: DefaultsKey.whatsAppOrganizerUndoTransaction)
+        UserDefaults.standard[Preferences.whatsAppOrganizerUndoTransaction] = data
     }
 
     nonisolated private static func recordMap(_ records: [Record]) -> [String: Record] {

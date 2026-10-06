@@ -431,7 +431,7 @@ package final class KeepAwakeManager: ObservableObject {
     private func syncAutomationMonitoring() {
         let available = AppFeature.keepAwake.isAvailable(in: system.defaults)
         let selectedApps = Defaults.sanitizedBundleIdentifierList(
-            system.defaults.stringArray(forKey: DefaultsKey.keepAwakeRunningAppBundleIDs) ?? [])
+            system.defaults[Preferences.keepAwakeRunningAppBundleIDs])
         if runningAppBundleIDs != selectedApps { runningAppBundleIDs = selectedApps }
         syncScreenLockMonitoring()
         let observeScreens = available

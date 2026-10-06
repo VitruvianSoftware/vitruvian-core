@@ -195,7 +195,7 @@ package enum CommandBarCatalog {
         entries.append(contentsOf: settingsEntries(s, language: language, bar: bar))
         entries.append(contentsOf: snippetEntries(bar))
         entries.append(contentsOf: linkEntries(
-            CommandBarLinks.decode(UserDefaults.standard.data(forKey: DefaultsKey.commandBarLinks)),
+            CommandBarLinks.decode(UserDefaults.standard[Preferences.commandBarLinks]),
             bar: bar))
         return entries
     }

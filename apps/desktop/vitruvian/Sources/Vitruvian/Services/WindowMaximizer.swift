@@ -164,7 +164,7 @@ package final class WindowMaximizer: ObservableObject {
     /// The list is read here rather than cached: this only runs for a press on
     /// a green button, and a restored backup needs no reload to take effect.
     private func isExcluded(pid: pid_t) -> Bool {
-        let excluded = UserDefaults.standard.stringArray(forKey: DefaultsKey.windowMaximizeExcludedApps) ?? []
+        let excluded = UserDefaults.standard[Preferences.windowMaximizeExcludedApps]
         guard !excluded.isEmpty else { return false }
         return WindowMaximizerSupport.excludes(
             bundleIdentifier: NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,

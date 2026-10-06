@@ -1298,7 +1298,8 @@ package struct NotchQuickAccessConfiguration: Equatable, Codable {
     }
 
     package static func stored(in defaults: UserDefaults = .standard) -> Self {
-        if let data = defaults.data(forKey: DefaultsKey.notchQuickAccessLayout), !data.isEmpty, data.count <= 32_768,
+        let data = defaults[Preferences.notchQuickAccessLayout]
+        if !data.isEmpty, data.count <= 32_768,
            let value = try? JSONDecoder().decode(Self.self, from: data), value.version == 1 {
             return value.sanitized()
         }

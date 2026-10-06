@@ -126,7 +126,7 @@ package final class MouseButtonShortcutService: ObservableObject {
         let enabled = AppFeature.mouseButtonShortcuts.isAvailable
             && defaults[Preferences.mouseButtonShortcutsEnabled]
         mappings = MouseButtonShortcutSupport.decode(
-            defaults.dictionary(forKey: DefaultsKey.mouseButtonShortcuts) as? [String: String])
+            defaults[Preferences.mouseButtonShortcuts])
         wantsSideWheelEvents = enabled && (isCapturing
             || mappings[MouseButtonShortcutSupport.sideWheelLeftInput] != nil
             || mappings[MouseButtonShortcutSupport.sideWheelRightInput] != nil)

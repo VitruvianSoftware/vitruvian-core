@@ -220,7 +220,7 @@ package enum WindowEnumerator {
                                          isCancelled: @escaping @Sendable () -> Bool = { false }) -> WindowList {
         listWindows(
             appRules: SwitcherAppRule.rules(
-                storedValue: UserDefaults.standard.dictionary(forKey: DefaultsKey.switcherAppRules)),
+                storedValue: UserDefaults.standard[Preferences.switcherAppRules]),
             groupByApp: groupByApp,
             preservingGroupedWindows: preservingGroupedWindows,
             marksHiddenSpaces: true,

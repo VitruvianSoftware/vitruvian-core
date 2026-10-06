@@ -87,7 +87,7 @@ package enum SettingsBackup {
     /// watermark and exception list paths are read before the clear and put
     /// back after the file's values.
     @MainActor package static func restore(_ settings: [String: Any], into defaults: UserDefaults) {
-        let localRecorderPresets = defaults.data(forKey: DefaultsKey.recorderEditorPresets)
+        let localRecorderPresets = defaults[Preferences.recorderEditorPresets]
         let localWatermark = defaults[Preferences.screenshotWatermarkStyle]
         let localWatermarkPresets = defaults[Preferences.screenshotWatermarkPresets]
         // A backup carries only the portable half of an exception list: the
@@ -101,7 +101,7 @@ package enum SettingsBackup {
                 in: defaults.stringArray(forKey: scope.defaultsKey) ?? [])
         }
         let windowLayoutPaths = SettingsBackupSupport.pathIdentities(
-            in: defaults.stringArray(forKey: DefaultsKey.windowLayoutIgnoredApps) ?? [])
+            in: defaults[Preferences.windowLayoutIgnoredApps])
         for key in SettingsBackupSupport.keysToClear(whenImporting: settings) {
             defaults.removeObject(forKey: key)
         }
@@ -109,8 +109,8 @@ package enum SettingsBackup {
             defaults.set(value, forKey: key)
         }
         if let restored = settings[DefaultsKey.recorderEditorPresets] as? Data {
-            defaults.set(SettingsBackupSupport.preservingLocalPresetImages(
-                restored: restored, local: localRecorderPresets), forKey: DefaultsKey.recorderEditorPresets)
+            defaults[Preferences.recorderEditorPresets] = SettingsBackupSupport.preservingLocalPresetImages(
+                restored: restored, local: localRecorderPresets)
         }
         defaults[Preferences.screenshotWatermarkStyle] = SettingsBackupSupport.restoredScreenshotWatermark(
             restored: settings[DefaultsKey.screenshotWatermarkStyle] as? String,
@@ -124,9 +124,9 @@ package enum SettingsBackup {
                 carried: paths), forKey: key)
         }
         if !windowLayoutPaths.isEmpty {
-            defaults.set(SettingsBackupSupport.restoredExceptionList(
-                restored: defaults.stringArray(forKey: DefaultsKey.windowLayoutIgnoredApps) ?? [],
-                carried: windowLayoutPaths), forKey: DefaultsKey.windowLayoutIgnoredApps)
+            defaults[Preferences.windowLayoutIgnoredApps] = SettingsBackupSupport.restoredExceptionList(
+                restored: defaults[Preferences.windowLayoutIgnoredApps],
+                carried: windowLayoutPaths)
         }
     }
 }
