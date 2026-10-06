@@ -32,6 +32,79 @@ private struct SwitcherPendingSessionStart {
     var commitWhenReady = false
 }
 
+/// What the switcher's event tap listens to, and which part of the
+/// main-thread handler answers each kind. The wheel is one of them: an open
+/// session steps its selection by mouse wheel and trackpad.
+package enum SwitcherTapEvent: Equatable {
+    case wheel
+    case key
+    case modifiers
+    case press
+    case middleRelease
+    case other
+
+    /// Every kind the tap subscribes to.
+    package static let mask: CGEventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+        | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+        | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+        | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
+        | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+
+    package init(_ type: CGEventType) {
+        switch type {
+        case .scrollWheel: self = .wheel
+        case .keyDown: self = .key
+        case .flagsChanged: self = .modifiers
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown: self = .press
+        case .otherMouseUp: self = .middleRelease
+        default: self = .other
+        }
+    }
+}
+
+/// The order a switcher session's lifecycle depends on, with each step
+/// passed in so the order can be checked.
+package enum SwitcherSessionSteps {
+    /// The window walk can wait seconds on a slow app, so the display the
+    /// session belongs to is read before the walk is queued, never inside it.
+    package static func enumerate<Scope: Sendable>(displayScope: () -> Scope,
+                                                   enqueue: (@escaping @Sendable () -> Void) -> Void,
+                                                   walk: @escaping @Sendable (Scope) -> Void) {
+        let scope = displayScope()
+        enqueue { walk(scope) }
+    }
+
+    /// The first layout pass reads whether the session lists windows in a
+    /// row, which depends on the session's scope. Teardown resets the scope
+    /// to every app, so it is set before that pass, or a window-scoped panel
+    /// is sized for the grouped layout on its first frame.
+    package static func open<Scope>(scope: Scope, assign: (Scope) -> Void, layOut: () -> Void) {
+        assign(scope)
+        layOut()
+    }
+
+    /// Letting go of a session. The app in front is read before teardown and
+    /// handed over as the focus handoff only: a session can open without a
+    /// source item (the app in front has no window left), and that app still
+    /// keeps the settling retry, while the session's own source stays the one
+    /// that arms the minimize restore and Space hops.
+    package static func commit<Item>(_ selection: Item?,
+                                     sources: SwitcherActivationSources,
+                                     frontmostPID: () -> pid_t?,
+                                     endSession: () -> Void,
+                                     recordUse: (Item) -> Void,
+                                     activate: (Item, SwitcherActivationSources) -> Void) {
+        var sources = sources
+        sources.handoffSourcePID = frontmostPID()
+        endSession()
+        guard let selection else { return }
+        recordUse(selection)
+        activate(selection, sources)
+    }
+}
+
 /// The window switcher: a global event tap takes over the configured shortcut,
 /// and while its modifiers are held a non-activating panel cycles through real
 /// windows. Releasing commits, middle-clicking a card or pressing W closes the
@@ -402,18 +475,11 @@ package final class AppSwitcher: ObservableObject {
                 return
             }
 
-            let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-                | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-                | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
-                | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
-                | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
-                | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
-                | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
             guard let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
                 options: .defaultTap,
-                eventsOfInterest: mask,
+                eventsOfInterest: SwitcherTapEvent.mask,
                 callback: { _, type, event, userInfo in
                     guard let userInfo else { return Unmanaged.passUnretained(event) }
                     let switcher = Unmanaged<AppSwitcher>.fromOpaque(userInfo).takeUnretainedValue()
@@ -697,8 +763,8 @@ package final class AppSwitcher: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        switch type {
-        case .scrollWheel:
+        switch SwitcherTapEvent(type) {
+        case .wheel:
             guard sessionActive else { return Unmanaged.passUnretained(event) }
             let delta = scrollNavigation.selectionDelta(for: event)
             if delta != 0 {
@@ -708,9 +774,9 @@ package final class AppSwitcher: ObservableObject {
                 advanceSelection(by: delta, wrapping: false)
             }
             return nil
-        case .keyDown:
+        case .key:
             return handleKeyDown(event)
-        case .flagsChanged:
+        case .modifiers:
             if sessionActive, !isSearchPinned {
                 if let shortcut = sessionShortcut,
                    !shortcut.requiredModifiersHeld(in: event.flags) {
@@ -720,7 +786,7 @@ package final class AppSwitcher: ObservableObject {
                 }
             }
             return Unmanaged.passUnretained(event)
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+        case .press:
             if type == .otherMouseDown,
                let panel,
                let hoveredWindowIndex,
@@ -741,7 +807,7 @@ package final class AppSwitcher: ObservableObject {
             swallowingMiddleMouseUp = false
             dismissForClickOutsidePanel(event)
             return Unmanaged.passUnretained(event)
-        case .otherMouseUp:
+        case .middleRelease:
             let shouldSwallow = SwitcherSupport.shouldSwallowMiddleMouseUp(
                    eventType: type,
                    buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber),
@@ -752,7 +818,7 @@ package final class AppSwitcher: ObservableObject {
                 return nil
             }
             return Unmanaged.passUnretained(event)
-        default:
+        case .other:
             return Unmanaged.passUnretained(event)
         }
     }
@@ -900,8 +966,8 @@ package final class AppSwitcher: ObservableObject {
             return
         }
         let enumerationSnapshot = WindowEnumerator.snapshot()
-        let displayScope = currentDisplayScope
-        enumerationQueue.async { [weak self] in
+        SwitcherSessionSteps.enumerate(displayScope: { currentDisplayScope },
+                                       enqueue: { enumerationQueue.async(execute: $0) }) { [weak self] displayScope in
             guard let self,
                   self.routeLock.withLock({
                       SwitcherSupport.isCurrentSessionStart(
@@ -1020,12 +1086,9 @@ package final class AppSwitcher: ObservableObject {
                                   frame: source.frame)
         }
         sessionStartWindowID = source?.windowID
-        // The layout pass below reads usesWindowRow, which depends on the
-        // session scope; teardown resets it to .allApps, so assigning it after
-        // recomputeLayouts would size a window-scoped panel for the grouped
-        // layout on its first frame.
-        sessionScope = pending.scope
-        recomputeLayouts(for: list)
+        SwitcherSessionSteps.open(scope: pending.scope,
+                                  assign: { sessionScope = $0 },
+                                  layOut: { recomputeLayouts(for: list) })
         if !capturesPreviews {
             previews = [:]
         } else {
@@ -1559,20 +1622,17 @@ package final class AppSwitcher: ObservableObject {
                                                        closingItemIDs: closingItemIDs)
             .flatMap { id in windows.first { $0.id == id } }
         let source = sessionSourceContext
-        // A session can open without a source item (the app in front has no
-        // window left); the app in front still keeps the settling retry.
-        let handoffSourcePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let previousWindowID = sessionStartWindowID
-        endSession()
-        if let selection {
-            recordUse(selection, previous: previousWindowID)
-            WindowActivator.activate(selection,
-                                     sourceWasFullscreen: source?.isFullscreen ?? false,
-                                     sourcePID: source?.pid,
-                                     handoffSourcePID: handoffSourcePID,
-                                     sourceWindowID: source?.isFullscreen == true ? nil : source?.windowID,
-                                     sourceWindowOwnerPID: source?.windowOwnerPID)
-        }
+        SwitcherSessionSteps.commit(
+            selection,
+            sources: SwitcherActivationSources(sessionPID: source?.pid,
+                                               windowID: source?.windowID,
+                                               windowOwnerPID: source?.windowOwnerPID,
+                                               isFullscreen: source?.isFullscreen ?? false),
+            frontmostPID: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+            endSession: { endSession() },
+            recordUse: { recordUse($0, previous: previousWindowID) },
+            activate: { WindowActivator.activate($0, sources: $1) })
     }
 
     private func resumePendingCommitAfterClose() {

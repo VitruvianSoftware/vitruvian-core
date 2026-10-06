@@ -5318,11 +5318,59 @@ leaving 15. Two kinds of check come out of them.
   the screenshot route, the command bar, Cleaning Mode, brightness, click
   debounce, smooth scrolling and the recorder session.
 
-What step 7 leaves: 15 reads of source files as text after 7i, counted in
-`Tests/source_pins.txt` (7e). They pin code that has not moved: SwiftUI view
-structure, live wiring to the system, and resources and build files. Each
-converts when its code moves behind a seam, and the ledger only lets the
-count fall.
+Landed (7j, the last source pins): the 15 reads left after 7i go, and with
+them the ledger. No unit test reads a source file as text.
+
+- **Service wiring, through seams:**
+  - App Switcher: `SwitcherTapEvent` (the tap mask and handler),
+    `SwitcherSessionSteps` (scope before the first layout, the display read
+    before the walk is queued, the front app read before teardown).
+  - Activation: `WindowActivator.ActivationSteps` and
+    `SwitcherActivationSources`, which record which source each step
+    receives.
+  - Dock Preview: `DockPreviewReattachment`, run tick by tick, and
+    `DockPreviewActions` for the close and activation flows.
+  - `SpaceHop.scheduleArrivalPulses`, with the scheduler injected.
+  - Screenshot route: `ScreenshotService.route`/`restore` over
+    `PreviewRoute`, and `ScreenshotLatestCapture.end` and
+    `registerShortcut`.
+  - Smooth scrolling and the side-wheel shortcuts take an `Environment` that
+    says whether the switcher steps by wheel. The glide is
+    `SmoothScrollGlide`, with its own environment and rig.
+  - `MouseClickDebounceLifecycle` and a `ClickFilterRig`.
+  - Cleaning Mode takes an `Environment`, and `CleaningTapSupport.classify`
+    reads each event.
+  - Brightness: `Environment.isMainThread` and a `stateLockIsFree` watched
+    by a defaults double.
+  - Command bar: `CommandBarPresentationSteps` for open and close, and
+    `offersUninstall`, `uninstallableAppIDs` and
+    `CommandBarUninstallReview` over throwaway bundles and a real
+    uninstaller.
+  - Search: `SearchFolding.folded`, the one fold the four searches use,
+    checked against Turkish.
+  - The recorder samplers' `start()` and `stop()` are `@MainActor`, which
+    the compiler now checks.
+- **Absences, as lints:** five checks that a file never does something
+  have nothing to run:
+  - Cleaning Mode posts no mouse event and reads no global button state;
+  - the brightness work queue never names NSScreen;
+  - the click filter schedules nothing;
+  - the smooth-scroll disabled-tap branch re-arms only while wanted;
+  - the inverter never yields to the switcher.
+
+  They join `bazel/source_lints.py`, each shown to fail on a mutated copy
+  of the tree.
+- **The ledger becomes a rule.** `SourcePinLedgerTests` and
+  `Tests/source_pins.txt` are deleted. `source_lints_test` fails on any
+  unit test that reads a source file as text or walks `Sources/`, so the
+  count stays at zero. `TestDoubleNameTests`, a rule over how the tests are
+  written, moves into the same lint. Both rules check their scanners on
+  sample text and fail on planted cases.
+
+What step 7 leaves: no reads of source files as text in the unit tests.
+The rules about how the code is written (33 of them) run as
+`source_lints_test`, on any platform. Where a rule needs a Mac to finish,
+`Tests/SourceNames.swift` carries the names and the unit tests check them.
 
 ## Not in scope
 

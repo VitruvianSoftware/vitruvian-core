@@ -149,6 +149,9 @@ package final class BrightnessService: ObservableObject {
         /// Whether a rebuild resyncs the brightness keys and the keyboard
         /// light, which talk to the system on their own.
         package var followsKeys: Bool
+        /// Whether the caller is on the main thread, the one thread a display
+        /// reconfiguration may start on (see `configureDisplay`).
+        package var isMainThread: @Sendable () -> Bool
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(work: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
@@ -161,7 +164,8 @@ package final class BrightnessService: ObservableObject {
                      showInIsland: @escaping @MainActor (Double) -> Bool,
                      showOverlay: @escaping @MainActor (CGDirectDisplayID, Double) -> Void,
                      tearDownOverlay: @escaping @MainActor () -> Void,
-                     followsKeys: Bool) {
+                     followsKeys: Bool,
+                     isMainThread: @escaping @Sendable () -> Bool = { Thread.isMainThread }) {
             self.work = work
             self.workSync = workSync
             self.main = main
@@ -176,6 +180,7 @@ package final class BrightnessService: ObservableObject {
             self.showOverlay = showOverlay
             self.tearDownOverlay = tearDownOverlay
             self.followsKeys = followsKeys
+            self.isMainThread = isMainThread
         }
 
         /// Main-actor: it hands over the island.
@@ -457,6 +462,14 @@ package final class BrightnessService: ObservableObject {
     /// topology and the rebuild generation: the work queue and the key
     /// thread read them too.
     private let stateLock = NSLock()
+    /// Whether `stateLock` is free right now. Nothing here writes the
+    /// preferences while holding it (see `rememberDisplaySwitchedOff`); this
+    /// is how a check sees that from inside such a write.
+    nonisolated package var stateLockIsFree: Bool {
+        guard stateLock.try() else { return false }
+        stateLock.unlock()
+        return true
+    }
     nonisolated(unsafe) private var routes: [CGDirectDisplayID: Route] = [:]
     private struct PendingWrite {
         let value: Double
@@ -1105,7 +1118,7 @@ package final class BrightnessService: ObservableObject {
     private func configureDisplay(
         _ id: CGDirectDisplayID, enabled: Bool
     ) -> BrightnessSupport.DisplayConfigurationResult {
-        guard Thread.isMainThread else {
+        guard environment.isMainThread() else {
             Self.log.error("refused to reconfigure display \(id) off the main thread")
             return .failed
         }

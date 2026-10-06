@@ -216,75 +216,120 @@ enum FeatureCatalogTests {
         }
         suite.expect(shippedUnlock(every: 5.5) && !shippedUnlock(every: 6.5),
                "the shipped unlock counter keeps the forgiving 6s press window")
-        let cleaningSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift",
-            encoding: .utf8)) ?? ""
-        let cleaningCode = cleaningSource
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!cleaningCode.isEmpty, "the cleaning mode source reads back for its shape checks")
+        // Two absences have no behaviour to run: nothing in the manager posts
+        // a mouse event, and nothing reads the global button state. They are
+        // rules on its source, in bazel/source_lints.py.
 
-        suite.expect(!cleaningCode.contains("CGEvent(mouseEventSource:"),
-               "Cleaning Mode never synthesizes a global mouse release")
-        suite.expect(!cleaningCode.contains("pressedMouseButtons")
-                && !cleaningCode.contains("CGEventSource.buttonState"),
-               "Cleaning Mode does not infer ownership from a global button-state snapshot")
-        suite.expect(cleaningCode.contains("let shouldFinishUserDeactivation = mouseReleaseGate.deactivationPending")
-                && cleaningCode.contains("mouseReleaseGate.invalidateTrackedPresses()")
-                && cleaningCode.contains("if shouldFinishUserDeactivation {"),
-               "disabled-tap recovery invalidates stale mouse state and preserves a pending user unlock")
-        suite.expect(cleaningCode.contains("self.mouseReleaseGate.deactivationPending,")
-                && cleaningCode.contains("self.mouseReleaseGate.pressedButtons.isEmpty else { return }"),
-               "queued cleaning teardown rechecks the current press state")
-        suite.expect(cleaningCode.contains("armReleaseDeadline()\n        guard mouseReleaseGate.requestDeactivation()")
-                && cleaningCode.contains("releaseDeadline?.cancel()"),
-               "every user unlock arms the release deadline and teardown cancels it")
-
-        // The counter above cannot see how events reach it, and the real HID
-        // gesture is not reproducible headlessly. Pin the two properties of the
-        // tap's handler the counter depends on: modifiers reach it (they arrive
-        // as .flagsChanged, never as key-downs, and are the keys nearest
-        // Escape), and every ordinary event is still swallowed. The sole
-        // fail-open return belongs to a disabled tap in an inactive or
-        // untrusted session, where keeping input locked would strand the user.
-        let cleaningLines = cleaningSource.components(separatedBy: "\n")
-        let handlerStart = cleaningLines.firstIndex { $0.contains("private func handle(type:") }
-        let handlerEnd = handlerStart.flatMap { start in
-            cleaningLines[(start + 1)...].firstIndex { $0.hasPrefix("    private func ") }
-        } ?? cleaningLines.count
-        var modifiersReachCounter = false
-        var leakedEvents: [String] = []
-        var passThroughReturns = 0
-        for (index, line) in cleaningLines[(handlerStart ?? handlerEnd)..<handlerEnd].enumerated()
-        where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
-            let number = (handlerStart ?? 0) + index + 1
-            if line.contains("type == .flagsChanged") {
-                // Read to the end of that branch: the call has to be inside it.
-                var cursor = (handlerStart ?? 0) + index + 1
-                while cursor < handlerEnd, !cleaningLines[cursor].trimmingCharacters(in: .whitespaces).hasPrefix("}") {
-                    if cleaningLines[cursor].contains("registerUnlockKeyDown(") { modifiersReachCounter = true }
-                    cursor += 1
+        // What the tap's events are to the lock. The real HID gesture is not
+        // reproducible headlessly, so the callback's reading of an event is a
+        // pure function, run here on each kind the lock tells apart.
+        let systemDefined = CGEventType(rawValue: CleaningSystemKeyEvent.systemDefinedEventTypeRawValue)!
+        func cleaningEvent(_ type: CGEventType, systemKey: CleaningSystemKeyEvent? = nil) -> CleaningTapEvent {
+            CleaningTapSupport.classify(type: type, field: { field in
+                switch field {
+                case .keyboardEventKeycode: return 56
+                case .keyboardEventAutorepeat: return 1
+                case .mouseEventButtonNumber: return 4
+                default: return 0
                 }
-            }
-            if line.contains("return Unmanaged.passUnretained(event)") {
-                passThroughReturns += 1
-            } else if line.contains("return"), !line.contains("return nil") {
-                leakedEvents.append("CleaningModeManager.swift:\(number)")
-            }
+            }, systemKey: { systemKey })
         }
-        suite.expect(modifiersReachCounter,
-               "flags-changed events feed the unlock counter, so modifiers reset the Escape count")
-        suite.expect(handlerStart != nil
-               && leakedEvents.isEmpty
-               && passThroughReturns == 2
-               && cleaningCode.contains("if handleMouseButton(type: type, event: event)"),
-               "the cleaning tap swallows locked input while mouse events and disabled-session recovery pass through: \(leakedEvents)")
-        suite.expect(cleaningCode.contains("self.deactivate(restoreSuspendedFeatures: false)")
-                && cleaningCode.contains("shouldRestoreSuspendedFeaturesOnSessionReturn = true")
-                && cleaningCode.contains("self.resumeSuspendedFeatures()")
-                && cleaningCode.contains("guard restoreSuspendedFeatures else {"),
-               "Cleaning Mode restores suspended taps only after its login session returns")
+        let mediaKeyDown = CleaningSystemKeyEvent(code: 10_017, isKeyDown: true, isRepeat: false)
+        let mediaKeyUp = CleaningSystemKeyEvent(code: 10_017, isKeyDown: false, isRepeat: false)
+        suite.expect(cleaningEvent(.flagsChanged) == .unlockKey(code: 56, isRepeat: false),
+               "flags-changed events reach the unlock counter, and a modifier never counts as a repeat")
+        suite.expect(cleaningEvent(.tapDisabledByTimeout) == .tapDisabled
+                && cleaningEvent(.tapDisabledByUserInput) == .tapDisabled
+                && cleaningEvent(.leftMouseDown) == .mouseButton(0, isDown: true)
+                && cleaningEvent(.rightMouseUp) == .mouseButton(1, isDown: false)
+                && cleaningEvent(.otherMouseDown) == .mouseButton(4, isDown: true)
+                && cleaningEvent(.keyDown) == .unlockKey(code: 56, isRepeat: true)
+                && cleaningEvent(systemDefined, systemKey: mediaKeyDown) == .unlockKey(code: 10_017, isRepeat: false)
+                && cleaningEvent(systemDefined, systemKey: mediaKeyUp) == .other
+                && cleaningEvent(systemDefined) == .other
+                && cleaningEvent(.keyUp) == .other
+                && cleaningEvent(.scrollWheel) == .other,
+               "the cleaning tap tells disabled-tap notices, mouse buttons and unlock keys from what it only holds back")
+
+        // The manager over doubles: its tap, the features it suspends, the
+        // cover, the session and both queues are `CleaningRig`'s, and the
+        // tap's events are handed to `handle(_:)` as the callback hands them.
+        do {
+            let rig = CleaningRig()
+            let manager = CleaningModeManager(environment: rig.environment)
+            let escape: Int64 = 53
+            manager.activate()
+            suite.expect(manager.isActive && rig.log == ["install", "suspend", "show"],
+                   "Cleaning Mode installs its tap, suspends the taps that could run ahead of it and covers the screens")
+            let passed = [manager.handle(.mouseButton(0, isDown: true)), manager.handle(.mouseButton(0, isDown: false)),
+                          manager.handle(.unlockKey(code: 0, isRepeat: false)), manager.handle(.other),
+                          manager.handle(.tapDisabled)]
+            suite.expect(passed == [true, true, false, false, false] && manager.isActive
+                    && rig.log.last == "rearm",
+                   "the cleaning tap swallows locked input and re-arms when disabled, while mouse events pass through")
+            for _ in 0..<4 { _ = manager.handle(.unlockKey(code: escape, isRepeat: false)) }
+            let countedEscapes = manager.unlockProgress
+            _ = manager.handle(cleaningEvent(.flagsChanged))
+            suite.expect(countedEscapes == 4 && manager.unlockProgress == 0,
+                   "flags-changed events feed the unlock counter, so modifiers reset the Escape count")
+
+            // A user unlock waits for the release of a press it saw begin.
+            rig.log = []
+            _ = manager.handle(.mouseButton(1, isDown: true))
+            manager.deactivate()
+            let waited = manager.isActive && rig.mainQueue.isEmpty && rig.deadlines.count == 1
+            suite.expect(waited && !manager.handle(.tapDisabled) && rig.log == ["rearm"]
+                    && rig.mainQueue.count == 1,
+                   "disabled-tap recovery invalidates stale mouse state and preserves a pending user unlock")
+            rig.drainMain()
+            suite.expect(!manager.isActive && rig.log == ["rearm", "remove", "hide", "resume"]
+                    && rig.deadlines.first?.isCancelled == true,
+                   "every user unlock arms the release deadline and teardown cancels it")
+
+            rig.deadlines = []
+            manager.activate()
+            _ = manager.handle(.mouseButton(0, isDown: true))
+            manager.deactivate()
+            _ = manager.handle(.mouseButton(0, isDown: false))
+            _ = manager.handle(.mouseButton(2, isDown: true))
+            rig.drainMain()
+            let heldForNewPress = manager.isActive
+            _ = manager.handle(.mouseButton(2, isDown: false))
+            rig.drainMain()
+            suite.expect(heldForNewPress && !manager.isActive,
+                   "queued cleaning teardown rechecks the current press state")
+
+            rig.deadlines = []
+            manager.activate()
+            _ = manager.handle(.mouseButton(0, isDown: true))
+            manager.deactivate()
+            manager.deactivate()
+            let armedOnce = rig.deadlines.count == 1
+            rig.deadlines.first?.perform()
+            rig.drainMain()
+            suite.expect(armedOnce && !manager.isActive,
+                   "an unlock stops waiting for a release that never arrives once its deadline passes")
+
+            // The tap cannot hold the lock without the grant: its notice
+            // passes and the lock ends, the one fail-open answer.
+            rig.log = []
+            manager.activate()
+            rig.trusted = false
+            let noticePassed = manager.handle(.tapDisabled)
+            rig.drainMain()
+            rig.trusted = true
+            suite.expect(noticePassed && !manager.isActive
+                    && rig.log == ["install", "suspend", "show", "remove", "hide", "resume"],
+                   "a disabled tap without Accessibility passes its notice and ends the lock")
+
+            rig.log = []
+            manager.activate()
+            rig.sessionCenter.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+            let endedAway = !manager.isActive && rig.log == ["install", "suspend", "show", "remove", "hide"]
+            rig.sessionCenter.post(name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+            suite.expect(endedAway && rig.log.last == "resume",
+                   "Cleaning Mode restores suspended taps only after its login session returns")
+        }
 
         func systemKeyData(keyCode: Int, state: Int, repeatFlag: Bool = false) -> Int {
             Int((UInt32(keyCode) << 16) | (UInt32(state) << 8) | (repeatFlag ? 1 : 0))
@@ -2210,22 +2255,10 @@ enum FeatureCatalogTests {
 
         // Every section of the service below its "Rebuild (work queue)" MARK
         // runs on the private work queue, so a display's user-facing name is
-        // read from NSScreen on the main thread and handed to the rebuild.
-        // AppKit reached from below the line would be a main thread violation
-        // on every hotplug, wake and panel open.
-        let brightnessSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
-            encoding: .utf8)) ?? ""
-        let brightnessWorkQueueHalf = brightnessSource
-            .components(separatedBy: "// MARK: - Rebuild (work queue)").last ?? ""
-        // Comments are stripped first: a note naming the symbol it bans is not
-        // a call, and a check that cannot tell them apart goes red for prose.
-        let brightnessWorkQueueCode = brightnessWorkQueueHalf
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!brightnessWorkQueueHalf.isEmpty && !brightnessWorkQueueCode.contains("NSScreen"),
-               "the brightness work queue resolves display names without touching NSScreen")
+        // read from NSScreen on the main thread and handed to the rebuild
+        // (the rig scenarios below check the names arrive that way). That the
+        // half never names NSScreen at all is a rule on its source, in
+        // bazel/source_lints.py.
 
         let ddcWrite = BrightnessSupport.writePacket(code: 0x10, value: 0x1234)
         let expectedDDCWrite: [UInt8] = [0x84, 0x03, 0x10, 0x12, 0x34, 0x8E]
@@ -2466,36 +2499,79 @@ enum FeatureCatalogTests {
         suite.expect(BrightnessSupport.headlessRecoveryCandidates(
             drawableDisplayIDs: [], managedDisabledIDs: [], builtInDisabledIDs: [1]).isEmpty,
                "a display disabled elsewhere is never changed during headless recovery")
-        // CoreGraphics runs a reconfiguration's callbacks inline on the driving
-        // thread, and in this process those callbacks are AppKit's, so the
-        // transaction belongs to the main thread. Getting it wrong hangs the
-        // app rather than returning a wrong answer, and no pure helper can
-        // carry that, so it is pinned against the CoreGraphics symbols.
-        suite.expect(brightnessSource.components(separatedBy: "CGBeginDisplayConfiguration(").count == 2
-               && brightnessSource.components(separatedBy: "CGCompleteDisplayConfiguration(").count == 2,
-               "every display power change goes through the one reconfiguration transaction")
-        // The transaction itself is the live environment's `Power.configure`;
-        // the one way into it is `configureDisplay`, which guards it.
-        let configurationEntry = ((brightnessSource
-            .components(separatedBy: "private func configureDisplay(").dropFirst().first ?? "")
-            .components(separatedBy: "\n    }\n").first ?? "")
-            .replacingOccurrences(of: #"(?s)/\*.*?\*/|//[^\n]*"#, with: "",
-                                  options: .regularExpression)
-        let transactionStart = configurationEntry.range(of: "configure(id, enabled)")?.lowerBound
-        func guards(_ pattern: String) -> Bool {
-            guard let start = transactionStart,
-                  let found = configurationEntry.range(of: pattern, options: .regularExpression) else { return false }
-            return found.lowerBound < start
+        // Display power on a started service over the scripted desk in
+        // `BrightnessRig`: the reconfiguration call, the lid, the main-thread
+        // check and the display server's answers are the rig's. Every way a
+        // display is switched (a tap, the start-up and termination restores,
+        // the lid) reaches that one reconfiguration call, which
+        // `DisplayRestorationTests` follows path by path.
+        func powerDesk(defaults: UserDefaults? = nil) -> (BrightnessRig.Desk, BrightnessService) {
+            let desk = BrightnessRig.Desk(defaults: defaults)
+            let panel = BrightnessRig.Display(id: 1, systemLevel: 0.5)
+            panel.builtIn = true
+            desk.displays = [panel, BrightnessRig.Display(id: 2), BrightnessRig.Display(id: 3)]
+            desk.screenNames = [2: "Studio Display"]
+            let service = BrightnessService(environment: desk.environment)
+            service.start()
+            desk.drain()
+            return (desk, service)
         }
-        suite.expect(brightnessSource.components(separatedBy: "configure(id, enabled)").count == 2
-                && guards(#"\bThread\.isMainThread\b"#),
-               "the display reconfiguration transaction refuses to start off the main thread")
-        suite.expect(guards(#"\bBrightnessSupport\s*\.\s*canConfigureDisplay\s*\("#)
-                && guards(#"\benvironment\.hardware\.isBuiltIn\(id\)"#)
-                && guards(#"\benvironment\.power\.lidClosed\(\)"#)
-                && brightnessSource.range(of: #"isBuiltIn:\s*\{\s*CGDisplayIsBuiltin\(\$0\)"#,
-                                          options: .regularExpression) != nil,
-               "the shared transaction checks the live built-in and lid state before beginning")
+        func tapDisplay(_ id: CGDirectDisplayID, _ desk: BrightnessRig.Desk, _ service: BrightnessService) {
+            guard let row = service.displays.first(where: { $0.id == id }) else { return }
+            service.toggleDisplay(row)
+            desk.drain()
+        }
+        do {
+            let (desk, service) = powerDesk()
+            defer { desk.tearDown() }
+            suite.expect(service.displays.first { $0.id == 2 }?.name == "Studio Display",
+                   "a display is named from the screen names read on the main thread before the rebuild")
+
+            // CoreGraphics runs a reconfiguration's callbacks inline on the
+            // driving thread, and in this process those callbacks are
+            // AppKit's, so the transaction belongs to the main thread.
+            // Getting it wrong hangs the app rather than returning a wrong
+            // answer, so a caller anywhere else is refused before it begins.
+            desk.onMainThread = false
+            tapDisplay(2, desk, service)
+            suite.expect(desk.configurations.isEmpty && service.displayControlFailure == .failed
+                    && service.displays.first { $0.id == 2 }?.isActive == true,
+                   "the display reconfiguration transaction refuses to start off the main thread")
+            desk.onMainThread = true
+
+            // Whether the display is the built-in panel is read when the
+            // transaction is about to begin, not taken from the row: here the
+            // display read as external when its row was built.
+            tapDisplay(2, desk, service)
+            desk.display(2).builtIn = true
+            desk.lidClosed = true
+            tapDisplay(2, desk, service)
+            suite.expect(desk.configurations == ["off:2"] && service.displayControlFailure == .closedLid,
+                   "the shared transaction checks the live built-in and lid state before beginning")
+        }
+
+        // Switching off the display the panel is on makes AppKit lay that
+        // panel out again inside the reconfiguration this app drives, so
+        // anything the power button's body asks the display server is a
+        // question the same thread is still answering, and the app freezes
+        // with nothing left that can end it (issue #969). The body decides
+        // from the snapshot the last rebuild published instead.
+        do {
+            let (desk, service) = powerDesk()
+            defer { desk.tearDown() }
+            func canSwitchOff(_ id: CGDirectDisplayID) -> Bool {
+                service.displays.first { $0.id == id }.map { service.canToggleDisplay($0) } == true
+            }
+            let queries = desk.displayQueries
+            let answered = canSwitchOff(2)
+            desk.display(1).active = false
+            desk.display(3).active = false
+            suite.expect(answered && canSwitchOff(2) && desk.displayQueries == queries,
+                   "the panel reads whether a display can be switched off without asking the display server")
+            desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            desk.runDelayed()
+            suite.expect(!canSwitchOff(2), "the snapshot the panel reads follows the displays after a rebuild")
+        }
 
         // A `UserDefaults` write posts `didChangeNotification`, and the
         // observers registered with `queue: .main` make that post wait for the
@@ -2503,34 +2579,37 @@ enum FeatureCatalogTests {
         // can itself be waiting for the same lock inside `canToggleDisplay`,
         // called from a SwiftUI body, and the app hangs with nothing left that
         // can end it (issue #647). Which thread the write happens to run on
-        // does not change that, so it is the locked region that is pinned.
-        let lockedRegions = brightnessSource.components(separatedBy: "stateLock.lock()")
-            .dropFirst()
-            .map { $0.components(separatedBy: "stateLock.unlock()").first ?? $0 }
-        suite.expect(!lockedRegions.isEmpty
-               && lockedRegions.allSatisfy { !$0.contains("SwitchedOff(") },
-               "the list of displays switched off is never written while stateLock is held")
-
-        // The same transaction relays its screen change to AppKit inline, and
-        // switching off the display the panel is on makes AppKit lay that panel
-        // out again right there: the power button's body is evaluated while
-        // this app holds the display server busy, so anything it asks the
-        // display server is a question the same thread is still answering, and
-        // the app freezes with nothing left that can end it (issue #969). The
-        // body decides from the published snapshot instead, and the live
-        // reading stays where it guards the switch itself. Comments are
-        // stripped first: a note naming what it bans is not a call.
-        let canToggleCode = ((brightnessSource
-            .components(separatedBy: "func canToggleDisplay(").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!canToggleCode.isEmpty
-               && canToggleCode.contains("drawableDisplays")
-               && !canToggleCode.contains("Self.drawableDisplayIDs(")
-               && !canToggleCode.contains("stateLock"),
-               "the panel reads whether a display can be switched off without asking the display server")
+        // does not change that, so every write of the list is checked for the
+        // lock: switching off and on, restoring at termination and at
+        // start-up, and the lid opening on a deferred restore.
+        do {
+            let lockSuite = "vitru.tests.brightness-lock"
+            let watched = LockWatchingDefaults(suiteName: lockSuite)!
+            watched.removePersistentDomain(forName: lockSuite)
+            defer { watched.removePersistentDomain(forName: lockSuite) }
+            let (desk, service) = powerDesk(defaults: watched)
+            defer { desk.tearDown() }
+            watched.lockIsFree = { service.stateLockIsFree }
+            tapDisplay(2, desk, service)
+            tapDisplay(2, desk, service)
+            tapDisplay(3, desk, service)
+            service.restoreDisplaysBeforeTermination()
+            desk.drain()
+            desk.display(2).online = false
+            desk.display(2).active = false
+            watched.set([2], forKey: DefaultsKey.displaysSwitchedOff)
+            service.restoreDisplaysLeftOff()
+            desk.drain()
+            tapDisplay(1, desk, service)
+            desk.lidClosed = true
+            tapDisplay(1, desk, service)
+            desk.lidMoved(closed: false)
+            desk.drain()
+            // Each switch writes the list, so a quiet run would prove nothing.
+            suite.expect(service.stateLockIsFree && watched.switchedOffWrites >= 6
+                    && watched.writesUnderLock == 0,
+                   "the list of displays switched off is never written while stateLock is held")
+        }
 
         suite.expect(BrightnessSupport.ddcCommandDelay(nowMicroseconds: 1_000_000,
                                                  lastCommandEndMicroseconds: nil) == 0,
@@ -2862,9 +2941,51 @@ enum FeatureCatalogTests {
         suite.expect(!BrightnessSupport.overlayReplacesNative(overlayEnabled: false, islandRoutes: false,
                                                               islandShowsNotices: true),
                "an island without brightness leaves the key to the system")
-        suite.expect(!brightnessWorkQueueCode.contains("NotchSupport.routes(.brightness)"),
-               "the app's overlay appears only with its own option, never in place of an island that shows nothing")
+        // The written level calls the app's overlay up by its own option
+        // alone: an island that routes brightness but shows nothing leaves
+        // the overlay away rather than standing it in.
+        do {
+            let desk = BrightnessRig.Desk()
+            defer { desk.tearDown() }
+            desk.displays = [BrightnessRig.Display(id: 2, monitor: BrightnessRig.Monitor(current: 50))]
+            let service = BrightnessService(environment: desk.environment)
+            service.start()
+            desk.drain()
+            desk.islandShowsBrightness = false
+            service.setBrightness(0.8, for: 2, showOSD: true)
+            desk.drain()
+            let withoutOption = desk.overlays
+            desk.defaults.set(true, forKey: DefaultsKey.brightnessOSDEnabled)
+            service.setBrightness(0.6, for: 2, showOSD: true)
+            desk.drain()
+            suite.expect(withoutOption.isEmpty && desk.overlays == ["2:0.600"],
+                   "the app's overlay appears only with its own option, never in place of an island that shows nothing")
+        }
+    }
+}
 
+/// Writes of the list of displays switched off, and whether
+/// `BrightnessService`'s state lock was free during each: the probe is set
+/// once the service exists. Only the test's own thread writes here.
+nonisolated final class LockWatchingDefaults: UserDefaults, @unchecked Sendable {
+    var lockIsFree: (() -> Bool)?
+    private(set) var switchedOffWrites = 0
+    private(set) var writesUnderLock = 0
+
+    private func watch(_ key: String) {
+        guard key == DefaultsKey.displaysSwitchedOff else { return }
+        switchedOffWrites += 1
+        if lockIsFree?() == false { writesUnderLock += 1 }
+    }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        watch(defaultName)
+        super.set(value, forKey: defaultName)
+    }
+
+    override func removeObject(forKey defaultName: String) {
+        watch(defaultName)
+        super.removeObject(forKey: defaultName)
     }
 }
 
@@ -3091,5 +3212,41 @@ enum MusicLaunchBlockerContract {
         launch(fallback)
         suite.expect(fallback.forceCalls == 1 && fallback.terminateCalls == 1 && session.replacementPlays.count == 1,
                      "a successful normal termination still opens the configured replacement once")
+    }
+}
+
+/// Cleaning Mode's outside world for one test: the grant, the tap, the
+/// features it suspends, the cover, the session and both queues are recorded
+/// here, so no keyboard is locked and no window opens.
+final class CleaningRig {
+    var log: [String] = []
+    var trusted = true
+    let sessionCenter = NotificationCenter()
+    lazy var session = SessionActivity(center: sessionCenter, initialIsActive: { true })
+    var mainQueue: [@MainActor @Sendable () -> Void] = []
+    var deadlines: [DispatchWorkItem] = []
+
+    var environment: CleaningModeManager.Environment {
+        CleaningModeManager.Environment(
+            hasAccessibility: { true },
+            promptForAccessibility: { [unowned self] in self.log.append("prompt") },
+            installTap: { [unowned self] _ in
+                self.log.append("install")
+                return CleaningModeManager.Tap(rearm: { [unowned self] in self.log.append("rearm") },
+                                               remove: { [unowned self] in self.log.append("remove") })
+            },
+            suspendFeatures: { [unowned self] in self.log.append("suspend") },
+            resumeFeatures: { [unowned self] in self.log.append("resume") },
+            showCover: { [unowned self] in self.log.append("show") },
+            hideCover: { [unowned self] in self.log.append("hide") },
+            session: session,
+            isProcessTrusted: { [unowned self] in self.trusted },
+            now: { 1_000 },
+            main: { [unowned self] work in self.mainQueue.append(work) },
+            schedule: { [unowned self] _, item in self.deadlines.append(item) })
+    }
+
+    func drainMain() {
+        while !mainQueue.isEmpty { mainQueue.removeFirst()() }
     }
 }

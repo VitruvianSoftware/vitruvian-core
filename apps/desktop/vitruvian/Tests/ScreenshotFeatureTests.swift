@@ -1256,32 +1256,110 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.offersRepeatLastRegion(isPickingColor: true,
                                                          storedRegionDisplayIsAvailable: true),
                "the colour picker has no region to repeat, matching repeatLastRegion's own guard")
-        // The uploader tests run what these call. Here the calls themselves
-        // are checked with comments removed: a new capture starts the latest
-        // capture first, teardown invalidates pending uploads, and only a
-        // preview made from that new capture can withhold it on discard.
-        let screenshotServiceCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        func serviceBody(_ start: String) -> String {
-            screenshotServiceCode.components(separatedBy: start).dropFirst().first?
-                .components(separatedBy: "\n    }\n").first ?? ""
+        // The uploader tests run the latest capture itself. Here the service's
+        // flows run as shipped over steps that record what they are handed:
+        // nothing is captured, saved, uploaded or shown.
+        do {
+            let suiteName = "vitru.tests.screenshot-latest-route"
+            let defaults = UserDefaults(suiteName: "vitru.tests.screenshot-latest-route")!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            defaults.set(true, forKey: DefaultsKey.screenshotCopyToClipboard)
+            var log: [String] = []
+            var latestID = UUID()
+            var shownLatest: [UUID?] = []
+            var defaultAction = ScreenshotDefaultAction.none
+            let steps = ScreenshotService.PreviewRoute<String, Int>(
+                beginLatest: { capture in
+                    log.append("begin:\(capture)")
+                    latestID = UUID()
+                },
+                latestID: { latestID },
+                closePreview: { log.append("close") },
+                record: { _ in log.append("record") },
+                autoCopy: { _ in log.append("copy") },
+                defaultAction: { defaultAction },
+                openEditor: { _ in log.append("editor") },
+                runDefaultAction: { _, _ in
+                    log.append("action")
+                    return (performed: [], saved: nil)
+                },
+                presentPreview: { _, _, _, _, _, latestCapture in
+                    log.append("preview")
+                    shownLatest.append(latestCapture)
+                })
+            ScreenshotService.route("new", defaults: defaults, steps: steps)
+            let routedID = latestID
+            let previewRoute = log
+            log = []
+            defaultAction = .edit
+            ScreenshotService.route("edited", defaults: defaults, steps: steps)
+            let editorRoute = log
+            log = []
+            ScreenshotService.restore("history", steps: steps)
+            suite.expect(previewRoute == ["begin:new", "close", "record", "copy", "action", "preview"]
+                         && editorRoute == ["begin:edited", "close", "record", "copy", "editor"],
+                   "every capture starts as the latest one, before its editor or preview can claim it")
+            let namedOnlyRouted: [UUID?] = [routedID, nil]
+            suite.expect(log == ["close", "preview"] && shownLatest == namedOnlyRouted,
+                   "a routed preview names the latest capture, and a preview reopened from history names none")
+
+            var withheld: [UUID?] = []
+            var trashed: [Int] = []
+            let actions = ScreenshotService.PreviewActions<String, Int>(
+                edit: { _ in }, pin: { _ in }, copy: { _ in true },
+                save: { _ in 7 }, saveAndCopy: { _ in (outcome: 8, copied: true) },
+                trash: { trashed.append($0) },
+                withholdLatest: { withheld.append($0) })
+            let routedPreview = ScreenshotService.previewAction(for: "new", initialSaved: nil,
+                                                                latestCapture: routedID, actions: actions)
+            let restoredPreview = ScreenshotService.previewAction(for: "history", initialSaved: nil,
+                                                                  latestCapture: nil, actions: actions)
+            let discarded: Set<ScreenshotQuickPreviewController.Action> = [.discard]
+            let routedDiscard = routedPreview(.discard) == discarded
+            let restoredSave = restoredPreview(.save) == [.save]
+            let restoredDiscard = restoredPreview(.discard) == discarded
+            let withheldOnlyRouted: [UUID?] = [routedID, nil]
+            suite.expect(routedDiscard && restoredSave && restoredDiscard
+                         && withheld == withheldOnlyRouted && trashed == [7],
+                   "discarding the preview of the latest capture withholds it, while a preview reopened from history does not")
         }
-        let routeStatements = serviceBody("    private func route(_ capture:")
-            .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        suite.expect(serviceBody("    private func teardownSurfaces() {").contains("latest.invalidate()")
-                && routeStatements.dropFirst().first == "latest.begin(capture)",
-               "turning screenshots off invalidates pending shortcut uploads, and every capture starts as the latest one")
-        suite.expect(serviceBody("    package func syncWithPreferences() {")
-                    .contains("enabled: ScreenshotSharingSupport.uploadShortcutEnabled(in: defaults),"),
-               "the upload shortcut is registered only while it and temporary links are both on")
-        suite.expect(serviceBody("    private func route(_ capture:").contains("latestCapture: latest.id)")
-                && serviceBody("    package func restorePreview(").contains("latestCapture: nil)")
-                && screenshotServiceCode.contains("self.latest.discard(latestCapture)\n                    return [.discard]"),
-               "discarding the preview of the latest capture withholds it, while a preview reopened from history does not")
+        do {
+            let uploader = ScreenshotShareCompletionTests.Uploader(ScreenshotShareCompletionTests.Links())
+            uploader.latest.upload()
+            let pendingID = uploader.latest.id
+            let editor = ScreenshotShareCompletionTests.Editor()
+            uploader.latest.editorOpened(editor)
+            var order: [String] = []
+            uploader.latest.end(closingPreview: {
+                order.append(uploader.latest.id == pendingID ? "preview, upload still claimed" : "preview")
+            }, closingEditor: { closed in
+                order.append(closed === editor ? "editor" : "another editor")
+            })
+            suite.expect(uploader.uploads == 1 && uploader.latest.uploadingID == pendingID
+                         && uploader.latest.id != pendingID
+                         && order == ["preview", "editor"] && uploader.latest.editors.isEmpty,
+                   "turning screenshots off invalidates pending shortcut uploads, then closes the preview and editors")
+
+            var registered: [Bool] = []
+            let bothOn = uploader.latest.registerShortcut { enabled in
+                registered.append(enabled)
+                return true
+            }
+            uploader.defaults.set(false, forKey: DefaultsKey.screenshotSharingEnabled)
+            _ = uploader.latest.registerShortcut { enabled in
+                registered.append(enabled)
+                return true
+            }
+            uploader.defaults.set(true, forKey: DefaultsKey.screenshotSharingEnabled)
+            uploader.defaults.set(false, forKey: DefaultsKey.screenshotUploadShortcutEnabled)
+            let refused = uploader.latest.registerShortcut { enabled in
+                registered.append(enabled)
+                return false
+            }
+            suite.expect(bothOn && !refused && registered == [true, false, false],
+                   "the upload shortcut is registered only while it and temporary links are both on")
+        }
         // In the island the menu arrow is hidden, so a click there must open
         // the durations rather than publish at once.
         suite.expect(ScreenshotQuickPreviewController.shareLinkClick(embedded: true) == .opensDurations

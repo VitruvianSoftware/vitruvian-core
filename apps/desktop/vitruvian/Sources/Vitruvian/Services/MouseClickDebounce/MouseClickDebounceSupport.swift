@@ -147,3 +147,70 @@ package struct MouseClickDebounceState {
     // Spelled out because a default initializer never leaves its module.
     package init() {}
 }
+
+/// The click filter's tap thread as bookkeeping: whether one is serving,
+/// whether it was told to stop, a start owed once it is gone, and the
+/// generation that tells a current restart or recovery from one a newer
+/// lifecycle change overtook. `MouseClickDebounceService` keeps it under its
+/// lifecycle lock.
+package struct MouseClickDebounceLifecycle {
+    package private(set) var hasTapThread = false
+    package private(set) var isStopping = false
+    package private(set) var restartsAfterStop = false
+    package private(set) var generation: UInt = 0
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    /// Asks for a serving thread; true when the caller should start one.
+    /// While the old thread is still on its way out after a stop, no second
+    /// thread starts beside it and its record is kept: the start is owed
+    /// instead, and paid once that thread is gone.
+    package mutating func requestStart() -> Bool {
+        if hasTapThread {
+            if isStopping {
+                restartsAfterStop = true
+            }
+            return false
+        }
+        isStopping = false
+        restartsAfterStop = false
+        generation &+= 1
+        hasTapThread = true
+        return true
+    }
+
+    /// Tells the serving thread to stop. Its record stays until the thread
+    /// itself reports it is gone, so a stop never erases a newer thread.
+    package mutating func requestStop() {
+        isStopping = true
+        restartsAfterStop = false
+        generation &+= 1
+    }
+
+    /// The serving thread is gone: whether a start is owed, and the
+    /// generation it was owed in.
+    package mutating func threadFinished() -> (restart: Bool, generation: UInt) {
+        let owed = (restart: restartsAfterStop, generation: generation)
+        hasTapThread = false
+        isStopping = false
+        restartsAfterStop = false
+        return owed
+    }
+
+    /// Whether work queued in `generation` still belongs to this lifecycle:
+    /// any start or stop since then makes it stale.
+    package func isCurrent(_ generation: UInt) -> Bool {
+        generation == self.generation
+    }
+
+    /// A tap the window server switched off goes straight back on only while
+    /// the filter is enabled, in the session on screen, with Accessibility,
+    /// and not on its way out. Anything else is rebuilt from the preferences.
+    package static func rearmsDisabledTap(enabled: Bool,
+                                          sessionIsActive: @autoclosure () -> Bool,
+                                          accessibilityGranted: @autoclosure () -> Bool,
+                                          stopping: Bool) -> Bool {
+        enabled && sessionIsActive() && accessibilityGranted() && !stopping
+    }
+}

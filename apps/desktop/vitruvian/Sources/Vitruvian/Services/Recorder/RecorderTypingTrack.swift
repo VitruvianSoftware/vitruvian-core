@@ -27,7 +27,7 @@ package struct RecorderTypingTrack: Codable, Equatable {
 }
 
 /// The monitor exists only while recording and remembers timing, never keys.
-/// `start()` and `stop()` run on the main thread, which alone touches the
+/// `start()` and `stop()` are main-actor, so only the main thread touches the
 /// monitors, and `times` sits under `lock`, so it is `@unchecked Sendable`.
 package final class RecorderTypingSampler: @unchecked Sendable {
     private let pauseClock: RecorderPauseClock
@@ -40,6 +40,7 @@ package final class RecorderTypingSampler: @unchecked Sendable {
         self.pauseClock = pauseClock
     }
 
+    @MainActor
     package func start() {
         guard globalMonitor == nil, localMonitor == nil else { return }
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -51,11 +52,9 @@ package final class RecorderTypingSampler: @unchecked Sendable {
         }
     }
 
+    @MainActor
     package func stop() -> RecorderTypingTrack {
-        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
-        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
-        globalMonitor = nil
-        localMonitor = nil
+        removeMonitors()
         return lock.withLock {
             let track = RecorderTypingTrack(times: times)
             times.removeAll()
@@ -79,7 +78,17 @@ package final class RecorderTypingSampler: @unchecked Sendable {
         }
     }
 
+    private func removeMonitors() {
+        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        globalMonitor = nil
+        localMonitor = nil
+    }
+
+    /// The last reference can go on any thread, so this takes the monitors
+    /// down directly rather than through the main-actor `stop()`; what was
+    /// recorded goes with the sampler.
     deinit {
-        _ = stop()
+        removeMonitors()
     }
 }

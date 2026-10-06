@@ -182,14 +182,12 @@ package enum CommandBarSearch {
         return String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
 
-    /// Case, accent and width differences never matter. Folded without a
-    /// locale on purpose: Turkish lowercases a capital I to a dotless one, so
-    /// a locale-aware fold would stop "insta" from finding a title that begins
-    /// with that letter on a Mac set to Turkish.
+    /// Case, accent and width differences never matter. Folded through
+    /// `SearchFolding`, which takes no locale: Turkish lowercases a capital I
+    /// to a dotless one, so a locale-aware fold would stop "insta" from
+    /// finding a title that begins with that letter on a Mac set to Turkish.
     package static func normalized(_ value: String) -> String {
-        let folded = strippingInvisibles(value)
-            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                     locale: nil)
+        let folded = SearchFolding.folded(strippingInvisibles(value))
             .lowercased()
         // Splitting on any whitespace — not just the ASCII space — treats the
         // full-width space (U+3000) that some input methods produce the same
@@ -414,9 +412,7 @@ package enum CommandBarSearch {
     /// the original, one position per character.
     private static func foldedCharacters(_ value: String) -> [Character] {
         value.map { character in
-            let folded = String(character).folding(
-                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                locale: nil)
+            let folded = SearchFolding.folded(String(character))
             return folded.first ?? character
         }
     }

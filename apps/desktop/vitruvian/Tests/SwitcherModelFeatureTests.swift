@@ -158,22 +158,38 @@ enum SwitcherModelFeatureTests {
         suite.expect(navigation.selectionDelta(for: event(-step / 2, continuous: true, scrollCount: 1)) == 0,
                      "a phaseless trackpad transition is not treated as a mouse notch")
 
-        func code(_ path: String) -> String {
-            ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
-                .components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-        }
-        let switcher = code("Sources/Vitruvian/Services/Switcher/AppSwitcher.swift")
-        suite.expect(switcher.contains("CGEventType.scrollWheel.rawValue") && switcher.contains("case .scrollWheel:"),
+        // The switcher's tap subscribes to the wheel, and its main-thread
+        // handler answers the wheel with its own branch.
+        suite.expect(SwitcherTapEvent.mask & (CGEventMask(1) << CGEventType.scrollWheel.rawValue) != 0
+                     && SwitcherTapEvent(.scrollWheel) == .wheel
+                     && SwitcherTapEvent(.keyDown) == .key,
                      "the switcher subscribes to and handles scroll-wheel events")
-        for path in ["Sources/Vitruvian/Services/SmoothScrollService.swift",
-                     "Sources/Vitruvian/Services/MouseButtons/MouseButtonShortcutService.swift"] {
-            suite.expect(code(path).contains("AppSwitcher.shared.scrollNavigationActive"),
-                         "\(path) yields scrolling to the open switcher")
-        }
-        suite.expect(!code("Sources/Vitruvian/Services/ScrollInverter.swift").contains("AppSwitcher.shared.scrollNavigationActive"),
-                     "scroll direction still transforms wheel events before they reach the open switcher")
+        // Smooth scrolling and the side-wheel shortcuts sit ahead of the
+        // switcher's tap. While it navigates, each asks and hands the raw notch
+        // on untouched, instead of replaying it as a glide the switcher skips
+        // or taking it for a shortcut.
+        final class SwitcherWheelAsks { var count = 0 }
+        let asks = SwitcherWheelAsks()
+        let notch = wheel(line: -1, fixed: 0)
+        let smooth = SmoothScrollService(environment: .init(switcherNavigatesByWheel: {
+            asks.count += 1
+            return true
+        }))
+        suite.expect(smooth.handle(type: .scrollWheel, event: notch)?.takeUnretainedValue() === notch
+                     && asks.count == 1
+                     && notch.getIntegerValueField(.scrollWheelEventDeltaAxis1) == -1,
+                     "smooth scrolling yields scrolling to the open switcher")
+        let buttons = MouseButtonShortcutService(environment: .init(switcherNavigatesByWheel: {
+            asks.count += 1
+            return true
+        }))
+        suite.expect(buttons.handle(proxy: nil, type: .scrollWheel, event: notch)?.takeUnretainedValue() === notch
+                     && asks.count == 2,
+                     "the side-wheel shortcuts yield scrolling to the open switcher")
+        // The inverter is the one wheel tap that does not step aside: an open
+        // switcher still moves the way the wheel is turned. Its tap is handed
+        // nothing that names the switcher, so that is a rule on its source,
+        // in bazel/source_lints.py.
     }
 
     static func run(_ suite: TestSuite) {
@@ -472,34 +488,22 @@ enum SwitcherModelFeatureTests {
                                                   mergeWindowsByApp: false,
                                                   sessionScope: .allApps),
                "App Switcher groups all-app sessions but keeps window-scoped simple sessions per-window")
-        // The session-start layout pass reads usesWindowRow, which now depends
-        // on the session scope; teardown resets the scope to .allApps, so the
+        // The session-start layout pass reads usesWindowRow, which depends on
+        // the session scope; teardown resets the scope to .allApps, so the
         // scope must be assigned before the layout pass or a window-scoped
         // panel is sized for the grouped layout on its first frame.
-        let switcherSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift",
-            encoding: .utf8)) ?? ""
-        // Ends on whatever declaration comes next rather than naming the
-        // neighbour: a rename would find no separator, leave the slice running
-        // to end of file, and quietly restore the whole-file search this
-        // replaced — a failure that makes the slice bigger, so an empty check
-        // cannot see it. Hence the count assertion below.
-        let finishSessionParts = (switcherSource.components(separatedBy: "private func finishPendingSession")
-            .last ?? "").components(separatedBy: "\n    private func ")
-        let finishSessionBody = finishSessionParts.first ?? ""
-        suite.expect(finishSessionParts.count > 1,
-               "the App Switcher ordering guard finds the end of finishPendingSession")
-        let switcherCode = finishSessionBody
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let scopeAssign = switcherCode.range(of: "sessionScope = pending.scope")
-        let startLayout = switcherCode.range(of: "recomputeLayouts(for: list)")
-        suite.expect(!finishSessionBody.isEmpty,
-               "the App Switcher session-start ordering guard finds finishPendingSession")
-        suite.expect(scopeAssign != nil && startLayout != nil
-               && scopeAssign!.lowerBound < startLayout!.lowerBound,
-               "the App Switcher session scope is assigned before the session-start layout pass")
+        do {
+            var scope = SwitcherSessionScope.allApps
+            var firstPassUsesWindowRow: Bool?
+            SwitcherSessionSteps.open(scope: SwitcherSessionScope.frontmostApp,
+                                      assign: { scope = $0 },
+                                      layOut: {
+                                          firstPassUsesWindowRow = SwitcherSupport.usesWindowRow(
+                                              simpleMode: true, mergeWindowsByApp: true, sessionScope: scope)
+                                      })
+            suite.expect(firstPassUsesWindowRow == true,
+                   "the App Switcher session scope is assigned before the session-start layout pass")
+        }
         suite.expect(!SwitcherSupport.usesAppGroupsForMainShortcut(iconRowLayout: true,
                                                               windowRow: true)
                && SwitcherSupport.usesAppGroupsForMainShortcut(iconRowLayout: true,
@@ -1318,11 +1322,22 @@ enum SwitcherModelFeatureTests {
                && displayScopedList.items.map(\.id) == ["right"]
                && displayScopedList.sourceItems.map(\.id) == ["left", "right"],
                "activation retains the foreground window even when the displayed list excludes its monitor")
-        let displaySnapshot = switcherSource.range(of: "let displayScope = currentDisplayScope")
-        let enumerationDispatch = switcherSource.range(of: "enumerationQueue.async")
-        suite.expect(displaySnapshot != nil && enumerationDispatch != nil
-               && displaySnapshot!.lowerBound < enumerationDispatch!.lowerBound,
-               "the target display is captured before window enumeration can delay the session")
+        do {
+            var order: [String] = []
+            var queued: [@Sendable () -> Void] = []
+            let walked = KeepAwakeLidSleepContract.Box<Int?>(nil)
+            SwitcherSessionSteps.enumerate(displayScope: { () -> Int in
+                order.append("display")
+                return 2
+            }, enqueue: { work in
+                order.append("enqueue")
+                queued.append(work)
+            }, walk: { scope in walked.value = scope })
+            let beforeWalk = order
+            for work in queued { work() }
+            suite.expect(beforeWalk == ["display", "enqueue"] && order == beforeWalk && walked.value == 2,
+                   "the target display is captured before window enumeration can delay the session")
+        }
 
         // MARK: Switcher entries for apps with no window (issue #351)
         suite.expect(SwitcherWindowlessApps.mode(storedValue: nil,
@@ -3273,31 +3288,101 @@ enum SwitcherModelFeatureTests {
                 didReattachForSession: false,
                 autohide: true),
                "an auto-hiding Dock still arms the visibility watcher the first time")
-        let dockPreviewServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift",
-            encoding: .utf8)) ?? ""
-        let dockPreviewServiceCode = dockPreviewServiceSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(dockPreviewServiceCode.contains("startDockVisibilityTimerIfNeeded()")
-               && dockPreviewServiceCode.contains("CGWindowListCopyWindowInfo(.optionOnScreenOnly")
-               && dockPreviewServiceCode.contains("DockPreviewSupport.panelFrameWhenDockHidden("),
-               "an entered auto-hide Dock Preview follows the Dock's live window to the vacated edge")
-        suite.expect(dockPreviewServiceCode.contains("if accepted { self?.endSession() }")
-                && dockPreviewServiceCode.contains("if accepted { self?.closePreviewPanel() }"),
-               "an accepted app quit closes both hover and pinned previews immediately")
-        // The jump is the Dock's thickness, an order of magnitude past
-        // panelStayMargin, so a pointer that never moved would otherwise read as
-        // outside the panel on its next twitch and dismiss the preview.
-        suite.expect(dockPreviewServiceCode.contains("reattachGraceFrame = frame")
-               && dockPreviewServiceCode.contains("reattachGraceFrame?.insetBy("),
-               "the frame a reattached Dock Preview left behind keeps counting until the pointer reaches the new one")
-        // The tap this service owns is served by the main run loop, so an
-        // animated setFrame would queue every mouse event behind the slide.
-        suite.expect(!dockPreviewServiceCode.contains("setFrame(edgeFrame, display: true, animate: true)")
-               && dockPreviewServiceCode.contains("clampedPanelFrame(DockPreviewSupport.panelFrameWhenDockHidden("),
-               "a reattached Dock Preview lands clamped, without animating the main run loop")
+        // The reattachment runs as shipped over a Dock, panel and watcher the
+        // test drives: the watcher's ticks are run by hand, and the panel's
+        // moves and the frames clamped on the way are recorded.
+        do {
+            let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
+            let dockStrip: [String: Any] = [kCGWindowOwnerPID as String: NSNumber(value: Int32(5)),
+                                            kCGWindowLayer as String: dockLevel]
+            var onScreen: [[String: Any]]? = [dockStrip]
+            let visible = CGRect(x: 0, y: 4, width: 1440, height: 871)
+            let openedFrame = CGRect(x: 600, y: 100, width: 300, height: 200)
+            var panelFrame = openedFrame
+            var clamped: [CGRect] = []
+            var moves: [(frame: CGRect, animate: Bool)] = []
+            var ticks: [@MainActor @Sendable () -> Bool] = []
+            var stops = 0
+            let reattachment = DockPreviewReattachment(host: .init(
+                isEngaged: { true },
+                dockPID: { 5 },
+                onScreenWindows: { onScreen },
+                panelFrame: { panelFrame },
+                preferences: {
+                    DockPreviewPreferences(orientation: .bottom, autohide: true, tileSize: 64,
+                                           magnification: false, magnifiedTileSize: 128)
+                },
+                visibleFrame: { _ in visible },
+                clamp: { frame in
+                    clamped.append(frame)
+                    return frame.offsetBy(dx: 1, dy: 0)
+                },
+                pointer: { CGPoint(x: 750, y: 290) },
+                setPanelFrame: { frame, animate in
+                    moves.append((frame: frame, animate: animate))
+                    panelFrame = frame
+                },
+                startWatcher: { tick in
+                    ticks.append(tick)
+                    return { stops += 1 }
+                }))
+            reattachment.panelEntered()
+            let watchesOnEntry = ticks.count == 1
+            let waitsWhileShown = ticks.first?() == false && moves.isEmpty
+            // The Dock's strip leaves the on-screen list once it has slid away.
+            onScreen = []
+            let doneOnceHidden = ticks.first?() == true
+            reattachment.panelEntered()
+            let edge = DockPreviewSupport.panelFrameWhenDockHidden(openedFrame, screenVisibleFrame: visible,
+                                                                   orientation: .bottom)
+            suite.expect(watchesOnEntry && waitsWhileShown && doneOnceHidden && moves.count == 1
+                         && reattachment.didReattach && ticks.count == 1,
+                   "an entered auto-hide Dock Preview follows the Dock's live window to the vacated edge")
+            suite.expect(DockPreviewReattachment.windowListOption == .optionOnScreenOnly
+                         && DockPreviewReattachment.dockIsRevealed(in: [dockStrip], dockPID: 5)
+                         && !DockPreviewReattachment.dockIsRevealed(in: [dockStrip], dockPID: 6)
+                         && DockPreviewReattachment.dockIsRevealed(in: nil, dockPID: 5),
+                   "the watcher reads the Dock's strip from the on-screen list, and an unreadable list moves nothing")
+            suite.expect(clamped == [edge] && moves.first?.frame == edge.offsetBy(dx: 1, dy: 0)
+                         && moves.first?.animate == false,
+                   "a reattached Dock Preview lands clamped, without animating the main run loop")
+            // The jump is the Dock's thickness, an order of magnitude past
+            // panelStayMargin, so a pointer that never moved would otherwise read as
+            // outside the panel on its next twitch and dismiss the preview.
+            let resting = CGPoint(x: 750, y: 290)
+            let restingCounts = reattachment.countsAsPanel(resting, panelFrame: panelFrame)
+            let travelledCounts = reattachment.countsAsPanel(CGPoint(x: 750, y: 260), panelFrame: panelFrame)
+            let graceEnded = !reattachment.countsAsPanel(resting, panelFrame: panelFrame)
+            suite.expect(!panelFrame.insetBy(dx: -DockPreviewSupport.panelStayMargin,
+                                             dy: -DockPreviewSupport.panelStayMargin).contains(resting)
+                         && restingCounts && !travelledCounts && graceEnded
+                         && reattachment.countsAsPanel(CGPoint(x: panelFrame.midX, y: panelFrame.midY),
+                                                       panelFrame: panelFrame),
+                   "the frame a reattached Dock Preview left behind keeps counting until the pointer reaches the new one")
+            reattachment.reset()
+            reattachment.panelEntered()
+            reattachment.stopWatching()
+            suite.expect(!reattachment.didReattach && ticks.count == 2 && stops == 1,
+                   "a new session starts unattached and an ended one stops its watcher")
+        }
+        do {
+            var log: [String] = []
+            func closing(quitAppOnClose: Bool, accepts: Bool) -> [String] {
+                log = []
+                DockPreviewActions.close(quitAppOnClose: quitAppOnClose,
+                                         requestQuit: {
+                                             log.append("quit")
+                                             return accepts
+                                         },
+                                         closePreview: { log.append("close preview") },
+                                         closeWindow: { log.append("close window") })
+                return log
+            }
+            suite.expect(closing(quitAppOnClose: true, accepts: true) == ["quit", "close preview"]
+                         && closing(quitAppOnClose: true, accepts: false) == ["quit", "close window"]
+                         && closing(quitAppOnClose: false, accepts: true) == ["close window"],
+                   "an accepted app quit closes both hover and pinned previews immediately")
+        }
         let corridor = DockPreviewSupport.hoverCorridor(iconFrame: iconBottom,
                                                         panelFrame: bottomFrame,
                                                         orientation: .bottom)
@@ -5463,78 +5548,147 @@ enum SwitcherModelFeatureTests {
                                                          targetAppFocusedWindowID: 777,
                                                           ownPID: 99),
                "App Switcher focus retries let go of a window the app opened after the switch")
-        // The guard only reads Accessibility once the cheap window-server list
-        // shows the app gained something. Both lists must therefore be taken
-        // in the same scope: the on-screen list lags a newly opened window,
-        // and comparing it against an all-windows snapshot reported nothing
-        // new in exactly the race the guard exists for. Comments are stripped
-        // first, so the one explaining that lag cannot satisfy the check.
-        let activatorSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/WindowActivator.swift",
-            encoding: .utf8)) ?? ""
-        let activatorCode = activatorSource
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let activateBody: String = {
-            guard let start = activatorCode.range(of: "static func activate(_ item: SwitcherItem,"),
-                  let end = activatorCode.range(of: "static func activate(pid: pid_t,",
-                                                range: start.upperBound..<activatorCode.endIndex)
-            else { return "" }
-            return activatorCode[start.lowerBound..<end.lowerBound]
-                .components(separatedBy: .whitespacesAndNewlines)
-                .filter { !$0.isEmpty }
-                .joined(separator: " ")
-        }()
-        suite.expect(activateBody.contains("focusRetrySourcePID(")
-               && !activateBody.contains("frontmostApplication"),
-               "activation never adopts the frontmost app as a source on its own")
-        suite.expect(activateBody.contains(
-                "watchTargetMinimizeIfNeeded(windowID: windowID, targetPID: item.pid, "
-                + "targetWindowOwnerPID: windowOwnerPID, sourcePID: sourcePID,")
-               && activateBody.contains("sourcePID: sourcePID, app: app)"),
-               "only the session source arms the minimize restore and Space hops")
-        suite.expect(activateBody.contains("sourcePID: sourcePID, retrySourcePID: retrySourcePID,")
-               && activateBody.contains("sourcePID: retrySourcePID, state: retryState,"),
-               "focus retry guards use the handoff source while staging keeps the session source")
-        suite.expect(activatorCode.contains("activate(item, retry: retry, handoffSourcePID: handoffSourcePID)"),
-               "activation by pid forwards its source only as a handoff")
-        let dockPreviewActivationCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let dockActivateCalls = dockPreviewActivationCode
-            .components(separatedBy: "WindowActivator.activate(")
-            .dropFirst()
-        suite.expect(dockActivateCalls.count >= 3
-               && dockActivateCalls.allSatisfy {
-                   $0.prefix(200).contains("handoffSourcePID: NSWorkspace.shared.frontmostApplication")
-                       && !$0.prefix(200).contains(" sourcePID:")
-               },
-               "Dock Preview passes the frontmost app only as a focus handoff source")
-        let commitSessionCode: String = {
-            let source = ((try? String(
-                contentsOfFile: "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift",
-                encoding: .utf8)) ?? "")
-                .components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-            guard let start = source.range(of: "func commitSession()"),
-                  let end = source.range(of: "private func resumePendingCommitAfterClose()",
-                                         range: start.upperBound..<source.endIndex)
-            else { return "" }
-            return String(source[start.lowerBound..<end.lowerBound])
-        }()
-        let handoffCapture = commitSessionCode.range(
-            of: "let handoffSourcePID = NSWorkspace.shared.frontmostApplication")
-        let sessionEnd = commitSessionCode.range(of: "endSession()")
-        suite.expect(handoffCapture != nil && sessionEnd != nil
-               && handoffCapture!.lowerBound < sessionEnd!.lowerBound
-               && commitSessionCode.contains("sourcePID: source?.pid,")
-               && commitSessionCode.contains("handoffSourcePID: handoffSourcePID,"),
-               "App Switcher sessions without a source item keep the app in front as the handoff source")
+        // The activation runs as shipped over apps and steps that record what
+        // each step is handed and activate nothing; its delayed passes are run
+        // by hand. The session source is 20, the handoff app 30, the target 10.
+        do {
+            var hops: [pid_t?] = []
+            var watched: [pid_t?] = []
+            var staged: [pid_t?] = []
+            var guards: [WindowActivator.FocusRetryCheck] = []
+            var appRetrySources: [pid_t?] = []
+            var pending: [() -> Void] = []
+            let steps = WindowActivator.ActivationSteps<SwitcherActivationTests.App>(
+                calls: SwitcherActivationTests.calls,
+                openApplication: { _ in },
+                watchAppActivation: { _ in { source, _, _ in appRetrySources.append(source) } },
+                minimizedState: { _, _ in false },
+                beginSpaceHop: { _, _, _, source, _ in
+                    hops.append(source)
+                    return false
+                },
+                snapshot: { _ in [101] },
+                watchTargetMinimize: { watched.append($0.sourcePID) },
+                stageSourceBehindTarget: { staged.append($0.sourcePID) },
+                shouldContinueFocusRetry: { check in
+                    guards.append(check)
+                    return true
+                },
+                after: { _, work in pending.append(work) })
+            func runPending() {
+                while !pending.isEmpty {
+                    let work = pending.removeFirst()
+                    work()
+                }
+            }
+            func activate(_ item: SwitcherItem, retry: Bool = true, _ sources: SwitcherActivationSources) {
+                SwitcherActivationTests.reset()
+                hops = []
+                watched = []
+                staged = []
+                guards = []
+                appRetrySources = []
+                pending = []
+                WindowActivator.activate(item, retry: retry, sources: sources, steps: steps)
+                runPending()
+            }
+            let none: [pid_t?] = [nil]
+            let handoff: [pid_t?] = [30]
+            let session: [pid_t?] = [20]
+            let target = SwitcherItem.window(id: 77, title: "Target", appName: "Target", pid: 10,
+                                             isOnScreen: true, frame: .zero)
+            activate(target, SwitcherActivationSources(handoffSourcePID: 30))
+            suite.expect(hops == none && watched == none,
+                   "only the session source arms the minimize restore and Space hops")
+            suite.expect(guards.map(\.sourcePID) == handoff && staged == none + none,
+                   "focus retry guards use the handoff source while staging keeps the session source")
+            activate(target, SwitcherActivationSources(sourcePID: 20, handoffSourcePID: 30, sourceWindowID: 5))
+            let sessionStaged = staged == session + session
+            suite.expect(hops == session && watched == session && sessionStaged
+                         && guards.map(\.sourcePID) == session,
+                   "a session source reaches the hop, the minimize restore, staging and the retry guard")
+            activate(target, SwitcherActivationSources())
+            let nothingStaged = staged == none + none
+            suite.expect(hops == none && watched == none && nothingStaged
+                         && guards.map(\.sourcePID) == none,
+                   "activation never adopts the frontmost app as a source on its own")
+            // The fullscreen pass made without retries asks the same guard.
+            let fullscreenTarget = SwitcherItem.window(id: 77, title: "Target", appName: "Target", pid: 10,
+                                                       isOnScreen: true, isFullscreen: true, frame: .zero)
+            activate(fullscreenTarget, retry: false, SwitcherActivationSources(handoffSourcePID: 30))
+            suite.expect(guards.map(\.sourcePID) == handoff && staged == none && hops == none,
+                   "the single fullscreen pass guards with the handoff source and stages only the session source")
+            activate(.appOnly(appName: "Target", pid: 10),
+                     SwitcherActivationSources(sourceWasFullscreen: true, handoffSourcePID: 30))
+            suite.expect(appRetrySources == handoff && hops.isEmpty,
+                   "an app activated away from a fullscreen source retries with the handoff source")
+            SwitcherActivationTests.reset()
+            hops = []
+            watched = []
+            staged = []
+            guards = []
+            pending = []
+            WindowActivator.activate(pid: 10, windowID: 77, appName: "Target", handoffSourcePID: 30, steps: steps)
+            runPending()
+            suite.expect(hops == none && watched == none && guards.map(\.sourcePID) == handoff,
+                   "activation by pid forwards its source only as a handoff")
+            guards = []
+            WindowActivator.focusAfterSpaceHop(windowID: 77, appPID: 10, windowOwnerPID: 10, sourcePID: 20,
+                                               state: SwitcherWindowFocusRetryState(targetWindowID: 77,
+                                                                                    targetStartedMinimized: false,
+                                                                                    knownWindowIDs: [77]),
+                                               steps: steps)
+            suite.expect(guards.count == 1 && guards.first?.ignoresForeground == true
+                         && guards.first?.sourcePID == 20,
+                   "the hop's arrival pass asks the guard in the mode that ignores who is in front")
+        }
+        do {
+            var handed: [SwitcherActivationSources] = []
+            let item = SwitcherItem.window(id: 77, title: "Target", appName: "Target", pid: 10,
+                                           isOnScreen: true, frame: .zero)
+            DockPreviewActions.activate(item, frontmostPID: { 30 }, activate: { _, sources in handed.append(sources) })
+            suite.expect(handed == [SwitcherActivationSources(handoffSourcePID: 30)],
+                   "Dock Preview passes the frontmost app only as a focus handoff source")
+        }
+        // Letting go of a session reads the app in front before teardown and
+        // hands it over as the handoff only, next to the session's own source.
+        do {
+            var order: [String] = []
+            var handed: [SwitcherActivationSources] = []
+            func commit(_ selection: String?, _ sources: SwitcherActivationSources) {
+                order = []
+                handed = []
+                SwitcherSessionSteps.commit(selection, sources: sources,
+                                            frontmostPID: {
+                                                order.append("front")
+                                                return 30
+                                            },
+                                            endSession: { order.append("end") },
+                                            recordUse: { order.append("record:\($0)") },
+                                            activate: { item, sources in
+                                                order.append("activate:\(item)")
+                                                handed.append(sources)
+                                            })
+            }
+            commit("w", SwitcherActivationSources(sessionPID: nil, windowID: nil, windowOwnerPID: nil,
+                                                  isFullscreen: false))
+            suite.expect(order == ["front", "end", "record:w", "activate:w"]
+                         && handed == [SwitcherActivationSources(handoffSourcePID: 30)],
+                   "App Switcher sessions without a source item keep the app in front as the handoff source")
+            commit("w", SwitcherActivationSources(sessionPID: 20, windowID: 5, windowOwnerPID: 21,
+                                                  isFullscreen: false))
+            suite.expect(handed == [SwitcherActivationSources(sourcePID: 20, handoffSourcePID: 30,
+                                                              sourceWindowID: 5, sourceWindowOwnerPID: 21)],
+                   "a committed session keeps its own source as the activation's source")
+            commit("w", SwitcherActivationSources(sessionPID: 20, windowID: 5, windowOwnerPID: 21,
+                                                  isFullscreen: true))
+            suite.expect(handed == [SwitcherActivationSources(sourceWasFullscreen: true, sourcePID: 20,
+                                                              handoffSourcePID: 30, sourceWindowOwnerPID: 21)],
+                   "a fullscreen source window is never staged behind the target")
+            commit(nil, SwitcherActivationSources())
+            suite.expect(order == ["front", "end"] && handed.isEmpty,
+                   "letting go with nothing selected only ends the session")
+        }
         // The snapshot and the live list the retry compares it against are
         // taken in one scope, every window of the owner: the on-screen list
         // lags a window the app has just opened, so comparing it against an
@@ -5561,15 +5715,39 @@ enum SwitcherModelFeatureTests {
                    && hopArrivalPass(guardAllows: false) == ["guard"],
                    "the hop's arrival pass consults the retry guard before it raises the target")
         }
-        let spaceHopCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/SpaceHop.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(spaceHopCode.contains("state: self.focusState")
-               && spaceHopCode.contains("knownWindowIDs: WindowActivator.focusSnapshot(ownerPID:"),
-               "a hop snapshots the app's windows when it begins and hands that state to every pulse")
+        // A hop's pulses are scheduled by hand here and run in turn.
+        do {
+            var snapshotOwners: [pid_t] = []
+            let state = SpaceHop.arrivalFocusState(windowID: 77, windowOwnerPID: 21) { owner in
+                snapshotOwners.append(owner)
+                return [101, 102]
+            }
+            var delays: [TimeInterval] = []
+            var scheduled: [() -> Void] = []
+            var pulsed: [SwitcherWindowFocusRetryState] = []
+            var finished = 0
+            var live = true
+            SpaceHop.scheduleArrivalPulses(state: state,
+                                           schedule: { delay, work in
+                                               delays.append(delay)
+                                               scheduled.append(work)
+                                           },
+                                           isLive: { live },
+                                           pulse: { pulsed.append($0) },
+                                           finish: { finished += 1 })
+            let pulsedBeforeRunning = pulsed.count
+            for work in scheduled { work() }
+            let expectedDelays: [TimeInterval] = [0.15, 0.45, 0.9, 1.0]
+            let expectedKnown: Set<CGWindowID> = [77, 101, 102]
+            let everyPulseShares = pulsed.count == 3 && pulsed.allSatisfy { $0 === state }
+            suite.expect(snapshotOwners == [21] && state.knownWindowIDs == expectedKnown
+                         && pulsedBeforeRunning == 0 && delays == expectedDelays
+                         && everyPulseShares && finished == 1,
+                   "a hop snapshots the app's windows when it begins and hands that state to every pulse")
+            live = false
+            for work in scheduled.prefix(3) { work() }
+            suite.expect(pulsed.count == 3, "a cancelled hop's remaining pulses raise nothing")
+        }
         // Review of #1578: a hop across two or more desktops arrives with
         // whatever tops each desktop it passed in front. Reading that as "the
         // user moved on" would leave the window they picked behind that app,
@@ -5606,14 +5784,6 @@ enum SwitcherModelFeatureTests {
                                                          targetAppFocusedWindowID: 101,
                                                          ownPID: 99),
                "the ordinary passes still stand down when the user moved to another app")
-        let hopFocusCall: String = {
-            guard let start = activatorCode.range(of: "static func focusAfterSpaceHop(") else { return "" }
-            let rest = activatorCode[start.upperBound...]
-            let end = rest.range(of: "static func ")?.lowerBound ?? rest.endIndex
-            return String(rest[..<end])
-        }()
-        suite.expect(hopFocusCall.contains("ignoresForeground: true"),
-               "the hop's arrival pass asks the guard in the mode that ignores who is in front")
         suite.expect(SwitcherSupport.shouldContinueFocusRetry(targetPID: 10,
                                                         sourcePID: 20,
                                                         frontmostPID: 10,

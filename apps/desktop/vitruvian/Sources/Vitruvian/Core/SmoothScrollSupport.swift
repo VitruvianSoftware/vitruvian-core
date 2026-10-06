@@ -96,6 +96,30 @@ package enum SmoothScrollSupport {
         }
     }
 
+    /// What the tap does with a wheel event before measuring it.
+    package enum WheelEntry: Equatable {
+        /// Measure it and glide.
+        case glide
+        /// Hand it on untouched; a glide in flight goes on.
+        case passThrough
+        /// Hand it on untouched, ending a glide in flight first.
+        case passThroughEndingGlide
+    }
+
+    /// The App Switcher's scroll navigation and a stepped capture-loupe notch
+    /// each want the raw tick now, so the glide in flight ends before it
+    /// passes: a tail landing afterwards would move what the tick just did.
+    /// The glide's own frames, and anything else this process posts, pass
+    /// untouched and leave the glide alone. The loupe is asked only about a
+    /// tick that would otherwise glide.
+    package static func wheelEntry(switcherNavigating: Bool, isOwnEvent: Bool,
+                                   steppedLoupeWantsRawWheel: () -> Bool) -> WheelEntry {
+        if switcherNavigating { return .passThroughEndingGlide }
+        if isOwnEvent { return .passThrough }
+        if steppedLoupeWantsRawWheel() { return .passThroughEndingGlide }
+        return .glide
+    }
+
     /// The timer is only a wakeup cadence; elapsed time controls the motion.
     package static let frameInterval: TimeInterval = 1.0 / 60.0
 

@@ -124,8 +124,6 @@ enum TestGroups {
             }),
             ("repository", {
                 RepositoryFeatureTests.run(suite)
-                SourcePinLedgerContract.run(suite)
-                TestDoubleNameContract.run(suite)
                 TestRegistrationContract.run(suite)
             }),
             ("screenshots", {

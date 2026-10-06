@@ -19,7 +19,84 @@ import VitruvianDesign
 /// `lifecycleLock`, and the sleep observers live on the main thread, so it is
 /// `@unchecked Sendable`.
 package final class MouseClickDebounceService: @unchecked Sendable {
-    package static let shared = MouseClickDebounceService()
+    package static let shared = MouseClickDebounceService(environment: .live)
+
+    /// What the click filter reaches outside itself: its preferences, the
+    /// Accessibility grant, the session, sleep and wake, the main queue, the
+    /// thread that serves the tap and the tap. `live` is the Mac; a test hands
+    /// in doubles, runs a started thread's body itself and gets no tap, so no
+    /// real click is filtered.
+    package struct Environment: @unchecked Sendable {
+        /// Whether the feature is available and switched on.
+        package var featureWanted: @Sendable () -> Bool
+        /// The filter window the preference asks for, before sanitizing.
+        package var windowMilliseconds: @Sendable () -> Int
+        package var accessibilityGranted: @Sendable () -> Bool
+        package var session: SessionActivity
+        /// Where sleep and wake are posted.
+        package var workspaceNotifications: NotificationCenter
+        /// Runs work on the main queue.
+        package var main: @Sendable (@escaping @Sendable () -> Void) -> Void
+        /// Starts the thread that serves the tap.
+        package var startThread: @Sendable (@escaping @Sendable () -> Void) -> Void
+        /// Creates the tap whose callback feeds `owner`; nil when refused.
+        package var createTap: @Sendable (_ owner: MouseClickDebounceService) -> CFMachPort?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(featureWanted: @escaping @Sendable () -> Bool,
+                     windowMilliseconds: @escaping @Sendable () -> Int,
+                     accessibilityGranted: @escaping @Sendable () -> Bool,
+                     session: SessionActivity,
+                     workspaceNotifications: NotificationCenter,
+                     main: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
+                     startThread: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
+                     createTap: @escaping @Sendable (_ owner: MouseClickDebounceService) -> CFMachPort?) {
+            self.featureWanted = featureWanted
+            self.windowMilliseconds = windowMilliseconds
+            self.accessibilityGranted = accessibilityGranted
+            self.session = session
+            self.workspaceNotifications = workspaceNotifications
+            self.main = main
+            self.startThread = startThread
+            self.createTap = createTap
+        }
+
+        package static var live: Environment {
+            Environment(
+                featureWanted: {
+                    AppFeature.mouseClickDebounce.isAvailable
+                        && UserDefaults.standard.bool(forKey: DefaultsKey.mouseClickDebounceEnabled)
+                },
+                windowMilliseconds: {
+                    UserDefaults.standard.integer(forKey: DefaultsKey.mouseClickDebounceWindowMs)
+                },
+                accessibilityGranted: { AXIsProcessTrusted() },
+                session: .shared,
+                workspaceNotifications: NSWorkspace.shared.notificationCenter,
+                main: { work in DispatchQueue.main.async(execute: work) },
+                startThread: { body in
+                    let thread = Thread(block: body)
+                    thread.name = "Vitruvian Mouse Click Debounce"
+                    thread.qualityOfService = .userInteractive
+                    thread.start()
+                },
+                createTap: { owner in
+                    CGEvent.tapCreate(
+                        tap: .cghidEventTap,
+                        place: .headInsertEventTap,
+                        options: .defaultTap,
+                        eventsOfInterest: MouseClickDebounceService.eventMask,
+                        callback: { _, type, event, userInfo in
+                            guard let userInfo else { return Unmanaged.passUnretained(event) }
+                            let service = Unmanaged<MouseClickDebounceService>
+                                .fromOpaque(userInfo).takeUnretainedValue()
+                            return service.handle(type: type, event: event)
+                        },
+                        userInfo: Unmanaged.passUnretained(owner).toOpaque()
+                    )
+                })
+        }
+    }
 
     private static let ownProcessID = Int64(getpid())
 
@@ -35,14 +112,12 @@ package final class MouseClickDebounceService: @unchecked Sendable {
         .otherMouseUp,
     ].reduce(0) { $0 | (CGEventMask(1) << $1.rawValue) }
 
+    private let environment: Environment
     private let eventLock = NSLock()
     private let lifecycleLock = NSLock()
     private var tap: CFMachPort?
     private var tapRunLoop: CFRunLoop?
-    private var tapThread: Thread?
-    private var shouldStopTapThread = false
-    private var pendingStartAfterStop = false
-    private var lifecycleGeneration: UInt = 0
+    private var lifecycle = MouseClickDebounceLifecycle()
     private var sleepObservers: [NSObjectProtocol] = []
     private var state = MouseClickDebounceState()
     private var config = MouseClickDebounceConfig(
@@ -50,24 +125,24 @@ package final class MouseClickDebounceService: @unchecked Sendable {
         windowMilliseconds: Defaults.defaultMouseClickDebounceWindowMs
     )
 
-    private init() {
-        SessionActivity.shared.onChange { [weak self] _ in
+    package init(environment: Environment) {
+        self.environment = environment
+        environment.session.onChange { [weak self] _ in
             self?.syncWithPreferences()
         }
     }
 
     package func syncWithPreferences() {
-        let wanted = AppFeature.mouseClickDebounce.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.mouseClickDebounceEnabled)
+        let wanted = environment.featureWanted()
         let shouldRun = SessionActivitySupport.tapShouldRun(
             featureWanted: wanted,
-            accessibilityGranted: AXIsProcessTrusted(),
-            sessionIsActive: SessionActivity.shared.isActive
+            accessibilityGranted: environment.accessibilityGranted(),
+            sessionIsActive: environment.session.isActive
         )
         let nextConfig = MouseClickDebounceConfig(
             enabled: shouldRun,
             windowMilliseconds: Defaults.sanitizedMouseClickDebounceWindow(
-                UserDefaults.standard.integer(forKey: DefaultsKey.mouseClickDebounceWindowMs)
+                environment.windowMilliseconds()
             )
         )
         eventLock.withLock {
@@ -88,25 +163,11 @@ package final class MouseClickDebounceService: @unchecked Sendable {
     }
 
     private func start() {
-        let thread: Thread? = lifecycleLock.withLock {
-            if tapThread != nil {
-                if shouldStopTapThread {
-                    pendingStartAfterStop = true
-                }
-                return nil
-            }
-            shouldStopTapThread = false
-            pendingStartAfterStop = false
-            lifecycleGeneration &+= 1
-            let thread = Thread { [weak self] in
-                self?.runEventTap()
-            }
-            thread.name = "Vitruvian Mouse Click Debounce"
-            thread.qualityOfService = .userInteractive
-            tapThread = thread
-            return thread
+        let startsThread = lifecycleLock.withLock { lifecycle.requestStart() }
+        guard startsThread else { return }
+        environment.startThread { [weak self] in
+            self?.runEventTap()
         }
-        thread?.start()
     }
 
     private func stop() {
@@ -116,9 +177,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
         }
         let snapshot = lifecycleLock.withLock {
             () -> (runLoop: CFRunLoop?, tap: CFMachPort?) in
-            shouldStopTapThread = true
-            pendingStartAfterStop = false
-            lifecycleGeneration &+= 1
+            lifecycle.requestStop()
             return (tapRunLoop, tap)
         }
 
@@ -141,26 +200,14 @@ package final class MouseClickDebounceService: @unchecked Sendable {
                 tapRunLoop = runLoop
             }
             let shouldStopBeforeCreatingTap = lifecycleLock.withLock {
-                shouldStopTapThread
+                lifecycle.isStopping
             }
             guard !shouldStopBeforeCreatingTap else {
                 finishEventTapThread()
                 return
             }
 
-            guard let tap = CGEvent.tapCreate(
-                tap: .cghidEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: Self.eventMask,
-                callback: { _, type, event, userInfo in
-                    guard let userInfo else { return Unmanaged.passUnretained(event) }
-                    let service = Unmanaged<MouseClickDebounceService>
-                        .fromOpaque(userInfo).takeUnretainedValue()
-                    return service.handle(type: type, event: event)
-                },
-                userInfo: Unmanaged.passUnretained(self).toOpaque()
-            ) else {
+            guard let tap = environment.createTap(self) else {
                 finishEventTapThread()
                 return
             }
@@ -172,7 +219,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
             CFRunLoopAddSource(runLoop, source, .commonModes)
             CGEvent.tapEnable(tap: tap, enable: true)
 
-            let shouldStop = lifecycleLock.withLock { shouldStopTapThread }
+            let shouldStop = lifecycleLock.withLock { lifecycle.isStopping }
             if shouldStop {
                 CGEvent.tapEnable(tap: tap, enable: false)
             } else {
@@ -189,35 +236,33 @@ package final class MouseClickDebounceService: @unchecked Sendable {
         }
     }
 
+    /// The serving thread is gone. A start asked while it was on its way out
+    /// is made on the main queue, through the preferences, and only if no
+    /// newer lifecycle change came first.
     private func finishEventTapThread() {
         let restart = clearEventTapThread()
-        guard restart.shouldRestart else { return }
-        DispatchQueue.main.async { [weak self] in
+        guard restart.restart else { return }
+        environment.main { [weak self] in
             guard let self else { return }
             let isCurrent = self.lifecycleLock.withLock {
-                restart.generation == self.lifecycleGeneration
+                self.lifecycle.isCurrent(restart.generation)
             }
             guard isCurrent else { return }
             self.syncWithPreferences()
         }
     }
 
-    private func clearEventTapThread() -> (shouldRestart: Bool, generation: UInt) {
+    private func clearEventTapThread() -> (restart: Bool, generation: UInt) {
         lifecycleLock.withLock {
-            let shouldRestart = pendingStartAfterStop
-            let generation = lifecycleGeneration
             tap = nil
             tapRunLoop = nil
-            tapThread = nil
-            shouldStopTapThread = false
-            pendingStartAfterStop = false
-            return (shouldRestart, generation)
+            return lifecycle.threadFinished()
         }
     }
 
     private func installSleepObservers() {
         guard sleepObservers.isEmpty else { return }
-        let center = NSWorkspace.shared.notificationCenter
+        let center = environment.workspaceNotifications
         sleepObservers = [
             center.addObserver(forName: NSWorkspace.willSleepNotification,
                                object: nil, queue: .main) { [weak self] _ in
@@ -236,7 +281,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
     }
 
     private func removeSleepObservers() {
-        let center = NSWorkspace.shared.notificationCenter
+        let center = environment.workspaceNotifications
         for observer in sleepObservers {
             center.removeObserver(observer)
         }
@@ -245,29 +290,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            eventLock.withLock {
-                state.reset()
-            }
-            let stopping = lifecycleLock.withLock { shouldStopTapThread }
-            let shouldRearm = eventLock.withLock { config.enabled }
-                && SessionActivity.shared.isActive
-                && AXIsProcessTrusted()
-                && !stopping
-            let currentTap = lifecycleLock.withLock { tap }
-            if shouldRearm, let currentTap {
-                CGEvent.tapEnable(tap: currentTap, enable: true)
-            } else {
-                let recoveryGeneration = lifecycleLock.withLock { lifecycleGeneration }
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    let isCurrent = self.lifecycleLock.withLock {
-                        recoveryGeneration == self.lifecycleGeneration
-                    }
-                    guard isCurrent else { return }
-                    self.stop()
-                    self.syncWithPreferences()
-                }
-            }
+            tapWasDisabled()
             return Unmanaged.passUnretained(event)
         }
 
@@ -279,14 +302,50 @@ package final class MouseClickDebounceService: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
-        let shouldSuppress = eventLock.withLock {
+        return suppresses(input, at: EventTimestamp.nanoseconds(of: event))
+            ? nil : Unmanaged.passUnretained(event)
+    }
+
+    /// The tap's answer for one click event it filters: true swallows it.
+    package func suppresses(_ input: MouseClickDebounceInput, at timestampNanoseconds: UInt64) -> Bool {
+        eventLock.withLock {
             state.shouldSuppress(
                 button: input.button,
                 event: input.event,
-                timestampNanoseconds: EventTimestamp.nanoseconds(of: event),
+                timestampNanoseconds: timestampNanoseconds,
                 config: config
             )
         }
-        return shouldSuppress ? nil : Unmanaged.passUnretained(event)
+    }
+
+    /// The window server switched the tap off. Clicks went by unseen, so the
+    /// ownership kept for them is forgotten first; the tap then goes straight
+    /// back on only while it should run at all, and is otherwise rebuilt on
+    /// the main queue, unless a newer lifecycle change gets there first.
+    package func tapWasDisabled() {
+        eventLock.withLock {
+            state.reset()
+        }
+        let stopping = lifecycleLock.withLock { lifecycle.isStopping }
+        let shouldRearm = MouseClickDebounceLifecycle.rearmsDisabledTap(
+            enabled: eventLock.withLock { config.enabled },
+            sessionIsActive: environment.session.isActive,
+            accessibilityGranted: environment.accessibilityGranted(),
+            stopping: stopping)
+        let currentTap = lifecycleLock.withLock { tap }
+        if shouldRearm, let currentTap {
+            CGEvent.tapEnable(tap: currentTap, enable: true)
+        } else {
+            let recoveryGeneration = lifecycleLock.withLock { lifecycle.generation }
+            environment.main { [weak self] in
+                guard let self else { return }
+                let isCurrent = self.lifecycleLock.withLock {
+                    self.lifecycle.isCurrent(recoveryGeneration)
+                }
+                guard isCurrent else { return }
+                self.stop()
+                self.syncWithPreferences()
+            }
+        }
     }
 }

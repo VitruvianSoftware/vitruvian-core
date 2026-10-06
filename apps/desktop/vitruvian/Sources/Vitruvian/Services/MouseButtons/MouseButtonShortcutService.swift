@@ -22,7 +22,23 @@ import VitruvianDesign
 /// events this one already receives.
 @MainActor
 package final class MouseButtonShortcutService: ObservableObject {
-    package static let shared = MouseButtonShortcutService()
+    /// What the service asks of the rest of the app. `live` asks the real
+    /// App Switcher; tests pass a stand-in.
+    package struct Environment {
+        /// True while an open App Switcher steps its selection by wheel. The
+        /// side wheel is then the switcher's, and no shortcut takes it.
+        package var switcherNavigatesByWheel: @MainActor () -> Bool
+
+        package init(switcherNavigatesByWheel: @escaping @MainActor () -> Bool) {
+            self.switcherNavigatesByWheel = switcherNavigatesByWheel
+        }
+
+        package static var live: Environment {
+            Environment(switcherNavigatesByWheel: { AppSwitcher.shared.scrollNavigationActive })
+        }
+    }
+
+    package static let shared = MouseButtonShortcutService(environment: .live)
     /// Marks the press this service hands back to the system, so the tap it
     /// re-enters does not take it straight back. The window gesture tags its
     /// own replayed presses the same way.
@@ -88,7 +104,10 @@ package final class MouseButtonShortcutService: ObservableObject {
         var tracker: MouseSpacesGestureSupport.Tracker
     }
 
-    private init() {
+    private let environment: Environment
+
+    package init(environment: Environment) {
+        self.environment = environment
         // A switched-away session cannot keep a filter tap alive just to drain
         // a button: WindowServer would make the session on screen wait for it.
         // Tear down immediately on resign and rebuild from preferences on return.
@@ -305,7 +324,8 @@ package final class MouseButtonShortcutService: ObservableObject {
         isRunning = false
     }
 
-    private func handle(proxy: CGEventTapProxy?, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    /// The tap's answer to one event, on the main run loop that serves it.
+    package func handle(proxy: CGEventTapProxy?, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             sideWheelGesture.reset()
             preflightedSideWheelTimestamp = nil
@@ -537,7 +557,7 @@ package final class MouseButtonShortcutService: ObservableObject {
     }
 
     private func handleSideWheel(_ event: CGEvent) -> Unmanaged<CGEvent>? {
-        if AppSwitcher.shared.scrollNavigationActive {
+        if environment.switcherNavigatesByWheel() {
             return Unmanaged.passUnretained(event)
         }
         guard Self.hasActiveSideWheelInterest,

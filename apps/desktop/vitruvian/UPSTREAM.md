@@ -2322,6 +2322,42 @@ is that notice. Add an entry for every change to upstream files.
     `bazel/source_lints.py`, run as `source_lints_test`.
     `Tests/SourceNames.swift` lists the symbols, tools and format fields the
     Mac checks.
+- **2026-10-06**: Refactor step 7j (`REFACTOR.md`): the last source pins,
+  with no change in behavior.
+  - Switcher and Dock Preview wiring behind seams:
+    `Services/Switcher/AppSwitcher.swift` (`SwitcherTapEvent`,
+    `SwitcherSessionSteps`), `WindowActivator.swift` (`ActivationSteps`,
+    `SwitcherActivationSources`), `SpaceHop.swift`
+    (`scheduleArrivalPulses`), `Services/DockPreview/DockPreviewService.swift`
+    (`DockPreviewReattachment`, `DockPreviewActions`; the clamped edge move
+    names `animate: false` where it was implied).
+  - `Services/QuickTools/ScreenshotService.swift` (`route`/`restore` over
+    `PreviewRoute`, `previewAction`).
+  - Scrolling: `Services/SmoothScrollService.swift` (an `Environment`, and
+    the glide moved into `SmoothScrollGlide`), `Core/SmoothScrollSupport.swift`
+    (`wheelEntry`), `Services/MouseButtons/MouseButtonShortcutService.swift`
+    (an `Environment`).
+  - `Services/MouseClickDebounce/MouseClickDebounceService.swift` and
+    `MouseClickDebounceSupport.swift` (`MouseClickDebounceLifecycle`,
+    `init(environment:)`).
+  - `Services/CleaningMode/CleaningModeManager.swift` (an `Environment`,
+    `handle(_:)`).
+  - `Services/Display/BrightnessService.swift` (`Environment.isMainThread`,
+    `stateLockIsFree`).
+  - Command bar: `Services/CommandBar/CommandBarService.swift`,
+    `CommandBarInputSourceBorrowing.swift` (`CommandBarPresentationSteps`),
+    `CommandBarCatalog.swift` (`offersUninstall`, `uninstallableAppIDs`).
+  - Search: `Core/Settings/SettingsSearchSupport.swift` (`SearchFolding`),
+    used by `Core/CommandBar/CommandBarSupport.swift`,
+    `Core/Switcher/SwitcherSupport.swift` and
+    `Services/Clipboard/ClipboardHistorySupport.swift`.
+  - Recorder: `Services/Recorder/RecorderPointerSampler.swift` and
+    `RecorderTypingTrack.swift`, whose `start()` and `stop()` are
+    `@MainActor`.
+  - The absences these suites still read, and `TestDoubleNameTests`, move
+    into `bazel/source_lints.py`. `SourcePinLedgerTests` and
+    `Tests/source_pins.txt` are deleted, and the lint keeps the unit tests
+    from reading source text.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

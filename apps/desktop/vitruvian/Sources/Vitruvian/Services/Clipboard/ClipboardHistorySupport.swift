@@ -493,12 +493,9 @@ package enum ClipboardHistorySearch {
     }
 
     package static func normalized(_ value: String) -> String {
-        value
-            // No locale: Turkish folds a dotted I to a dotless one, and a
-            // search that inherited the Mac's locale would stop finding
-            // "ISTANBUL" for someone who typed "istanbul".
-            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                     locale: nil)
+        // `SearchFolding` takes no locale: one inherited from the Mac would
+        // stop "istanbul" finding "ISTANBUL" in Turkish.
+        SearchFolding.folded(value)
             .lowercased()
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\t", with: " ")

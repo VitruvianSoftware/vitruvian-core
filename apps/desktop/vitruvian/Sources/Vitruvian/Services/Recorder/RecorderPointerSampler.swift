@@ -17,7 +17,7 @@ import VitruvianDesign
 /// Nothing here exists between recordings: the thread, the monitor and the
 /// buffer are all created in `start()` and gone after `stop()`.
 ///
-/// `start()` and `stop()` run on the main thread, which alone touches the
+/// `start()` and `stop()` are main-actor, so only the main thread touches the
 /// thread and the monitor; everything the sampling thread and the monitor
 /// share sits under `lock`, so it is `@unchecked Sendable`.
 package final class RecorderPointerSampler: @unchecked Sendable {
@@ -55,6 +55,8 @@ package final class RecorderPointerSampler: @unchecked Sendable {
 
     // MARK: - Lifecycle
 
+    /// Main-actor: the click monitor is AppKit's, installed on the main thread.
+    @MainActor
     package func start() {
         guard thread == nil else { return }
         let generation = lock.withLock { () -> Int in
@@ -77,7 +79,12 @@ package final class RecorderPointerSampler: @unchecked Sendable {
         ) { [weak self] event in
             self?.record(event, generation: generation)
         }
+        startSamplingThread(generation: generation)
+    }
 
+    /// The sampling loop's closure is made here, outside the main actor,
+    /// because it runs on a thread of its own.
+    private func startSamplingThread(generation: Int) {
         let thread = Thread { [weak self] in
             self?.loop(generation: generation)
         }
@@ -87,7 +94,9 @@ package final class RecorderPointerSampler: @unchecked Sendable {
         thread.start()
     }
 
-    /// Stops sampling and hands over what was collected.
+    /// Stops sampling and hands over what was collected. Main-actor, like
+    /// `start()`: the monitor is removed where it was installed.
+    @MainActor
     package func stop() -> RecorderPointerTrack {
         thread = nil
         if let clickMonitor {
