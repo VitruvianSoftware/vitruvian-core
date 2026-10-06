@@ -759,6 +759,19 @@ def pointer_taps_run_off_the_main_thread(repo):
     return problems
 
 
+def menu_panel_switches_have_names(repo):
+    """A switch with a hidden label still gives VoiceOver its title, so an
+    empty one is read out as an unnamed switch. The menu panel names every
+    switch it draws."""
+    code = code_without_comments(repo.lines_at("Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift"))
+    if not code:
+        return ["the menu panel source reads back"]
+    unnamed = code.count('Toggle("", isOn:')
+    if unnamed:
+        return [f"every menu panel switch has a name for VoiceOver, found {unnamed} unnamed"]
+    return []
+
+
 def path_identity_rule_is_spelled_once(repo):
     """The leading-slash test IS the rule that tells a stored path from a
     bundle identifier. A second spelling of it drifts the day the rule learns
@@ -901,6 +914,7 @@ RULES = [
     stores_delete_only_what_they_own,
     tap_owners_follow_the_session,
     pointer_taps_run_off_the_main_thread,
+    menu_panel_switches_have_names,
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,
