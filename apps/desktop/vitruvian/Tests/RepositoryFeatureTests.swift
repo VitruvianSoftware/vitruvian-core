@@ -143,10 +143,9 @@ enum RepositoryFeatureTests {
     }
 
     /// Runs `HomebrewManager.awaitExit` with a 10 ms limit on a worker thread,
-    /// and reports what it asked and how often it stopped the command, or nil
-    /// when it was still waiting after five seconds.
-    private static func brewWait(_ finished: DispatchSemaphore,
-                                 silences: [TimeInterval]) -> (questions: Int, stops: Int)? {
+    /// and says how often it asked for the silence and stopped the command,
+    /// or that it was still waiting after five seconds.
+    private static func brewWait(_ finished: DispatchSemaphore, silences: [TimeInterval]) -> String {
         let waitLog = BrewWaitLog(silences: silences)
         let ended = DispatchSemaphore(value: 0)
         DispatchQueue.global().async {
@@ -154,8 +153,8 @@ enum RepositoryFeatureTests {
                                       silence: { waitLog.silence() }, stop: { waitLog.stops += 1 })
             ended.signal()
         }
-        guard ended.wait(timeout: .now() + 5) == .success else { return nil }
-        return (waitLog.questions, waitLog.stops)
+        guard ended.wait(timeout: .now() + 5) == .success else { return "still waiting" }
+        return "asked \(waitLog.questions), stopped \(waitLog.stops)"
     }
 
     /// A scratch folder for one script run; nothing is in it yet.
@@ -402,16 +401,16 @@ enum RepositoryFeatureTests {
         // stopped and the wait ends, one that keeps talking is waited for, and
         // one that has exited is not stopped at all.
         let brewNeverExits = DispatchSemaphore(value: 0)
-        let silentWait = brewWait(brewNeverExits, silences: [])
-        let talkingWait = brewWait(brewNeverExits, silences: [0, 0])
         // Signalled after it is made, so it ends back at its starting value.
         let brewExited = DispatchSemaphore(value: 0)
         brewExited.signal()
-        let exitedWait = brewWait(brewExited, silences: [])
-        suite.expect(silentWait?.questions == 1 && silentWait?.stops == 1
-                && talkingWait?.questions == 3 && talkingWait?.stops == 1
-                && exitedWait?.questions == 0 && exitedWait?.stops == 0,
-               "Homebrew operations wait on a bounded semaphore, not waitUntilExit")
+        let brewWaits = [
+            brewWait(brewNeverExits, silences: []),
+            brewWait(brewNeverExits, silences: [0, 0]),
+            brewWait(brewExited, silences: []),
+        ]
+        suite.expect(brewWaits == ["asked 1, stopped 1", "asked 3, stopped 1", "asked 0, stopped 0"],
+               "Homebrew operations wait on a bounded semaphore, not waitUntilExit: \(brewWaits)")
 
         suite.expect(HomebrewPackageKind.allCases == [.cask, .formula],
                "Homebrew package kinds keep casks before formulae")
@@ -1681,8 +1680,8 @@ enum RepositoryFeatureTests {
                 environment: ["PATH": pmsetStubs.path + ":/usr/bin:/bin", "PMSET_REPORT": pmsetReport])
             let scriptReads = String(decoding: sleepRead.output, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            suite.expect(pmsetStubWritten && reported && scriptReads == (setting ?? "")
-                    && report.map { SudoersSupport.sleepDisabled(inPmsetOutput: $0) == (setting == "1") } ?? true,
+            let appAgrees = report.map { SudoersSupport.sleepDisabled(inPmsetOutput: $0) == (setting == "1") } ?? true
+            suite.expect(pmsetStubWritten && reported && scriptReads == (setting ?? "") && appAgrees,
                    "script uninstall reads the sleep setting back for itself, as the app does "
                    + "(reported \(setting ?? "nothing"), read \(scriptReads.isEmpty ? "nothing" : scriptReads))")
         }

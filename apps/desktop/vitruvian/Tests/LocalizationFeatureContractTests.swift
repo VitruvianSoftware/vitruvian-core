@@ -412,10 +412,12 @@ enum LocalizationFeatureContractTests {
         let releaseHelperID = FanControlIdentifiers.helperID
         let helperTemplatePath = "Resources/com.vitruviansoftware.vitruvian.fan-control.plist"
         let helperTemplate = ShippedResource.dictionary(helperTemplatePath) ?? [:]
-        suite.expect((helperTemplate["Label"] as? String) == releaseHelperID
-                     && (helperTemplate["BundleProgram"] as? String)
-                        == "Contents/Library/LaunchServices/" + releaseHelperID
-                     && (helperTemplate["MachServices"] as? [String: Bool]) == [releaseHelperID: true],
+        let templateLabel = helperTemplate["Label"] as? String
+        let templateProgram = helperTemplate["BundleProgram"] as? String
+        let templateServices = helperTemplate["MachServices"] as? [String: Bool]
+        suite.expect(templateLabel == releaseHelperID
+                     && templateProgram == "Contents/Library/LaunchServices/\(releaseHelperID)"
+                     && templateServices == [releaseHelperID: true],
                "the helper template names the release service the app connects to")
         // The Developer build renames each of them so the two apps can run
         // side by side. A mention it missed would leave the Developer build
@@ -439,10 +441,12 @@ enum LocalizationFeatureContractTests {
         suite.expect(staged && rename.status == 0,
                "the Developer build's rename runs on the shipped helper plist: "
                + String(decoding: rename.output, as: UTF8.self))
-        suite.expect((renamed["Label"] as? String) == developerHelperID
-                     && (renamed["BundleProgram"] as? String)
-                        == "Contents/Library/LaunchServices/" + developerHelperID
-                     && (renamed["MachServices"] as? [String: Bool]) == [developerHelperID: true],
+        let renamedLabel = renamed["Label"] as? String
+        let renamedProgram = renamed["BundleProgram"] as? String
+        let renamedServices = renamed["MachServices"] as? [String: Bool]
+        suite.expect(renamedLabel == developerHelperID
+                     && renamedProgram == "Contents/Library/LaunchServices/\(developerHelperID)"
+                     && renamedServices == [developerHelperID: true],
                "the Developer build renames the helper's label, program and Mach service")
         let missedMentions = ShippedResource.strings(in: renamed).filter { $0.contains(releaseHelperID) }
         suite.expect(!renamed.isEmpty && missedMentions.isEmpty,
