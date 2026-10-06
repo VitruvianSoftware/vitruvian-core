@@ -3209,16 +3209,19 @@ enum PointerInputFeatureTests {
                     && !grantLog.actions.contains(.quitProtection),
                    "granting Accessibility starts quit protection without a relaunch")
         }
-        let smoothSchedulerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/SmoothScrollService.swift",
-            encoding: .utf8)) ?? ""
-        let smoothSchedulerCode = smoothSchedulerSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let steppedLoupeBypass = smoothSchedulerCode
-            .components(separatedBy: "if ScreenshotSelectionController.steppedLoupeNeedsRawWheel(")
-            .dropFirst().first?.components(separatedBy: "return").first ?? ""
-        suite.expect(steppedLoupeBypass.contains("stopGlide()"),
+        // The App Switcher's scroll navigation and a stepped loupe notch end
+        // the glide before the raw tick passes; the glide's own frames pass
+        // and leave it alone, without the loupe being asked.
+        var loupeAsked = false
+        let ownFrameEntry = SmoothScrollSupport.wheelEntry(switcherNavigating: false, isOwnEvent: true,
+                                                           steppedLoupeWantsRawWheel: { loupeAsked = true; return true })
+        suite.expect(SmoothScrollSupport.wheelEntry(switcherNavigating: false, isOwnEvent: false,
+                                                    steppedLoupeWantsRawWheel: { true }) == .passThroughEndingGlide
+                && SmoothScrollSupport.wheelEntry(switcherNavigating: false, isOwnEvent: false,
+                                                  steppedLoupeWantsRawWheel: { false }) == .glide
+                && SmoothScrollSupport.wheelEntry(switcherNavigating: true, isOwnEvent: false,
+                                                  steppedLoupeWantsRawWheel: { false }) == .passThroughEndingGlide
+                && ownFrameEntry == .passThrough && !loupeAsked,
                "entering stepped magnifier zoom cancels the fast glide before passing the raw notch")
         // A refused wheel tap gets one more look while a session switch
         // settles, and never a second: the inverter and smooth scrolling both
@@ -3229,21 +3232,90 @@ enum PointerInputFeatureTests {
         wheelTapRetry.reset()
         suite.expect(wheelTapRefusals == [true, false, false] && wheelTapRetry.refused(),
                "a refused wheel tap is retried once instead of polling forever")
-        suite.expect(smoothSchedulerCode.contains("screen.displayLink(")
-                && smoothSchedulerCode.contains("displayLink.add(to: .main, forMode: .common)")
-                && smoothSchedulerCode.contains("sender.timestamp")
-                && smoothSchedulerCode.contains("sender.duration"),
+
+        // The production glide over `GlideRig`: the screen under the pointer,
+        // its display links, the timer, the clock and the posted frames are
+        // the rig's. A tick is 400 pixels upward.
+        func glideTick(_ glide: SmoothScrollGlide) {
+            glide.feed(vertical: -10, horizontal: 0, step: 40, flags: [], redirected: false, continuous: false,
+                       response: SmoothScrollSupport.defaultResponse, coast: SmoothScrollSupport.defaultCoast)
+        }
+        // Two frames of one tick, the first lasting `duration` and the
+        // second arriving `gap` after it, as the display link reports them.
+        func pacedFrames(duration: TimeInterval, gap: TimeInterval) -> [Int32] {
+            let paced = GlideRig()
+            let pacedGlide = SmoothScrollGlide(environment: paced.environment)
+            glideTick(pacedGlide)
+            paced.fire("link:2", at: 10, duration: duration)
+            paced.fire("link:2", at: 10 + gap, duration: duration)
+            return paced.posted
+        }
+        let quickFrames = pacedFrames(duration: 1.0 / 120.0, gap: 1.0 / 120.0)
+        let longFirstFrame = pacedFrames(duration: 1.0 / 30.0, gap: 1.0 / 120.0)
+        let longGap = pacedFrames(duration: 1.0 / 120.0, gap: 1.0 / 30.0)
+        suite.expect(quickFrames.count == 2 && longFirstFrame.count == 2 && longGap.count == 2
+                && abs(longFirstFrame[0]) > abs(quickFrames[0]) && longGap[0] == quickFrames[0]
+                && abs(longGap[1]) > abs(quickFrames[1]),
                "smooth scrolling follows the active display's native cadence and elapsed frame time")
-        suite.expect(smoothSchedulerCode.contains("displayLink?.invalidate()")
-                && smoothSchedulerCode.contains("frameTimer?.invalidate()")
-                && smoothSchedulerCode.contains("removeScreenObserver()")
-                && smoothSchedulerCode.contains("removeSleepObserver()"),
-               "smooth scrolling releases either scheduler and its lifecycle observers on stop")
-        suite.expect(smoothSchedulerCode.contains("NSScreen.withMouse")
-                && smoothSchedulerCode.contains("didChangeScreenParametersNotification")
-                && smoothSchedulerCode.contains("Timer(timeInterval: SmoothScrollSupport.frameInterval"),
-               "smooth scrolling follows display changes and keeps a no-screen timer fallback")
-        let smoothTapDisabled = smoothSchedulerCode.components(separatedBy: "tapDisabledByTimeout")
+        do {
+            let rig = GlideRig()
+            let glide = SmoothScrollGlide(environment: rig.environment)
+            glide.attach()
+            glideTick(glide)
+            let pacedByDisplay = rig.started == ["link:2"] && glide.isGliding
+            rig.display = 3
+            rig.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            let followedDisplay = rig.started == ["link:2", "link:3"] && rig.invalidated == ["link:2"]
+            rig.fire("link:2", at: 11, duration: 1.0 / 120.0)
+            let replacedLinkIgnored = rig.posted.isEmpty
+            rig.hasScreen = false
+            rig.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            let fellBack = rig.started.last == "timer" && rig.invalidated == ["link:2", "link:3"]
+                && rig.posted.count == 1
+            rig.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            suite.expect(pacedByDisplay && followedDisplay && replacedLinkIgnored && fellBack
+                    && rig.started.filter { $0 == "timer" }.count == 1,
+                   "smooth scrolling follows display changes and keeps a no-screen timer fallback")
+
+            let postedBeforeSleep = rig.posted.count
+            rig.workspace.post(name: NSWorkspace.willSleepNotification, object: nil)
+            rig.fireTimers()
+            suite.expect(!glide.isGliding && rig.invalidated.last == "timer"
+                    && rig.posted.count == postedBeforeSleep,
+                   "smooth scrolling cannot carry a pre-sleep glide into the next wake")
+
+            // Stopping releases whichever scheduler runs, and the observers
+            // with it: afterwards neither a screen change nor sleep reaches a
+            // new glide.
+            glideTick(glide)
+            glide.detach()
+            let releasedTimer = !glide.isGliding && rig.invalidated.last == "timer"
+            rig.hasScreen = true
+            rig.display = 2
+            glideTick(glide)
+            glide.detach()
+            let releasedLink = !glide.isGliding && rig.invalidated.last == "link:2"
+            glideTick(glide)
+            let startedAfterStop = rig.started.count
+            rig.display = 3
+            rig.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            rig.workspace.post(name: NSWorkspace.willSleepNotification, object: nil)
+            suite.expect(releasedTimer && releasedLink && rig.started.count == startedAfterStop && glide.isGliding,
+                   "smooth scrolling releases either scheduler and its lifecycle observers on stop")
+            glide.stop()
+        }
+        // The disabled-tap branch decides with `SessionActivitySupport.tapShouldRun`
+        // (checked above) and ends the glide with `SmoothScrollGlide.stop()`
+        // (checked here). That the branch does both is still read: the
+        // tap-owner session check reads the same branch for its own wiring,
+        // and it goes behind a seam together with that check.
+        let smoothScrollSource = (try? String(
+            contentsOfFile: "Sources/Vitruvian/Services/SmoothScrollService.swift",
+            encoding: .utf8)) ?? ""
+        let smoothTapDisabled = smoothScrollSource.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+            .components(separatedBy: "tapDisabledByTimeout")
             .dropFirst().first?.components(separatedBy: "return").first ?? ""
         suite.expect(smoothTapDisabled.contains("tapDisabledByUserInput")
                 && smoothTapDisabled.contains("stopGlide()")
@@ -3252,10 +3324,6 @@ enum PointerInputFeatureTests {
                 && smoothTapDisabled.contains("AXIsProcessTrusted()")
                 && smoothTapDisabled.contains("SessionActivity.shared.isActive"),
                "a disabled smooth-scroll tap drops its tail and re-arms only while fully wanted")
-        let smoothSleep = smoothSchedulerCode.components(separatedBy: "willSleepNotification")
-            .dropFirst().first?.components(separatedBy: "private func removeSleepObserver").first ?? ""
-        suite.expect(smoothSleep.contains("stopGlide()"),
-               "smooth scrolling cannot carry a pre-sleep glide into the next wake")
         // Cleaning Mode leaves with the login session: a switched-away session
         // cannot keep a filter tap in the chain, so the lock ends at once, and
         // the features it suspended wait for the session to come back. A tap
@@ -3537,5 +3605,54 @@ nonisolated final class ClickFilterRig: @unchecked Sendable {
 
     func drainMain() {
         while !mainQueue.isEmpty { mainQueue.removeFirst()() }
+    }
+}
+
+/// The smooth-scroll glide's outside world for one test: the screen under
+/// the pointer, the display links and timers it starts, the clock and the
+/// frames it posts. Nothing reaches a screen or the event stream.
+final class GlideRig {
+    var hasScreen = true
+    var display: CGDirectDisplayID? = 2
+    /// Each scheduler started and invalidated, as "link:<display>" or "timer".
+    var started: [String] = []
+    var invalidated: [String] = []
+    /// The vertical distance of every posted frame.
+    var posted: [Int32] = []
+    let screens = NotificationCenter()
+    let workspace = NotificationCenter()
+    private var linkFrames: [String: @MainActor (TimeInterval, TimeInterval) -> Void] = [:]
+    private var timerFires: [@MainActor @Sendable () -> Void] = []
+
+    var environment: SmoothScrollGlide.Environment {
+        SmoothScrollGlide.Environment(
+            screenUnderPointer: { [unowned self] in
+                guard self.hasScreen else { return nil }
+                let label = "link:\(self.display ?? 0)"
+                return SmoothScrollGlide.Screen(displayID: self.display, startDisplayLink: { [unowned self] frame in
+                    self.started.append(label)
+                    self.linkFrames[label] = frame
+                    return SmoothScrollGlide.Scheduler(invalidate: { [unowned self] in self.invalidated.append(label) })
+                })
+            },
+            startTimer: { [unowned self] _, fire in
+                self.started.append("timer")
+                self.timerFires.append(fire)
+                return SmoothScrollGlide.Scheduler(invalidate: { [unowned self] in self.invalidated.append("timer") })
+            },
+            uptime: { 100 },
+            post: { [unowned self] vertical, _, _ in self.posted.append(vertical) },
+            screenNotifications: screens,
+            sleepNotifications: workspace)
+    }
+
+    /// A frame from the display link started under `label`.
+    func fire(_ label: String, at timestamp: TimeInterval, duration: TimeInterval) {
+        linkFrames[label]?(timestamp, duration)
+    }
+
+    /// One tick of every timer started so far.
+    func fireTimers() {
+        for fire in timerFires { fire() }
     }
 }

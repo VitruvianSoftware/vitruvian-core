@@ -48,29 +48,9 @@ package final class SmoothScrollService: ObservableObject {
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var displayLink: CADisplayLink?
-    private var frameTimer: Timer?
-    private var schedulerDisplayID: CGDirectDisplayID?
-    private var screenObserver: NSObjectProtocol?
-    private var sleepObserver: NSObjectProtocol?
-    /// Pure per-axis distance engine. The tap callback and timer both live on
-    /// the main run loop, so no lock is needed around its state.
-    private var engine = SmoothScrollSupport.Engine()
-    private var lastFrameTimestamp: TimeInterval?
-    private var currentResponse = SmoothScrollSupport.defaultResponse
-    private var currentCoast = SmoothScrollSupport.defaultCoast
-    /// Sub-pixel leftovers kept between frames, so a wheel that moves in
-    /// fractions of a pixel still travels its full distance.
-    private var carryVertical: Double = 0
-    private var carryHorizontal: Double = 0
-    /// Modifiers of the wheel event that started or fed the glide, replayed on
-    /// the synthetic events so apps can still react to them.
-    private var currentFlags: CGEventFlags = []
-    private var currentScrollRedirected = false
-    /// Whether the glide is being fed by continuous wheel events. The two
-    /// kinds measure their distance differently, so switching devices
-    /// mid-glide drops the tail rather than mixing the two budgets.
-    private var glideFromContinuous = false
+    /// The glide the swallowed ticks are replayed through. The tap callback
+    /// and the glide's frames both live on the main run loop.
+    private let glide = SmoothScrollGlide(environment: .live)
     /// This process's own id, compared against the one every event carries.
     /// The glide's mark is the first thing that keeps a replayed frame out of
     /// this tap; this is the second lock on the same door, because the only
@@ -117,8 +97,7 @@ package final class SmoothScrollService: ObservableObject {
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
-            installScreenObserver()
-            installSleepObserver()
+            glide.attach()
             MouseAppExceptions.shared.setSourceTracking(true, for: .smoothScroll)
             isRunning = true
             return
@@ -161,8 +140,7 @@ package final class SmoothScrollService: ObservableObject {
         _ = ScrollInverter.shared
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        installScreenObserver()
-        installSleepObserver()
+        glide.attach()
         isRunning = true
     }
 
@@ -171,8 +149,6 @@ package final class SmoothScrollService: ObservableObject {
         tapCreationRetryWork = nil
         tapCreationRetry.reset()
         MouseAppExceptions.shared.setSourceTracking(false, for: .smoothScroll)
-        removeScreenObserver()
-        removeSleepObserver()
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -187,7 +163,8 @@ package final class SmoothScrollService: ObservableObject {
         }
         tap = nil
         runLoopSource = nil
-        stopGlide()
+        // The glide's scheduler and its screen and sleep observers go with it.
+        glide.detach()
         isRunning = false
     }
 
@@ -216,24 +193,29 @@ package final class SmoothScrollService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         guard type == .scrollWheel else { return Unmanaged.passUnretained(event) }
-        if environment.switcherNavigatesByWheel() {
-            stopGlide()
-            return Unmanaged.passUnretained(event)
-        }
+        let switcherNavigating = environment.switcherNavigatesByWheel()
         // Our own glide stream coming back through the tap.
         let sourceProcessID = event.getIntegerValueField(.eventSourceUnixProcessID)
-        guard event.getIntegerValueField(.eventSourceUserData) != ScrollWheelSupport.syntheticTag,
-              sourceProcessID != Self.ownProcessID else {
-            return Unmanaged.passUnretained(event)
-        }
+        let isOwnEvent = event.getIntegerValueField(.eventSourceUserData) == ScrollWheelSupport.syntheticTag
+            || sourceProcessID == Self.ownProcessID
         // A stepped capture-loupe notch is a discrete command, so it must
         // reach the overlay now rather than being expanded into a delayed
         // glide. The opposite (fast) loupe mode intentionally keeps that
         // glide, including when Option temporarily swaps the two modes.
-        if ScreenshotSelectionController.steppedLoupeNeedsRawWheel(
-            optionPressed: event.flags.contains(.maskAlternate)) {
+        switch SmoothScrollSupport.wheelEntry(
+            switcherNavigating: switcherNavigating,
+            isOwnEvent: isOwnEvent,
+            steppedLoupeWantsRawWheel: {
+                ScreenshotSelectionController.steppedLoupeNeedsRawWheel(
+                    optionPressed: event.flags.contains(.maskAlternate))
+            }) {
+        case .passThroughEndingGlide:
             stopGlide()
             return Unmanaged.passUnretained(event)
+        case .passThrough:
+            return Unmanaged.passUnretained(event)
+        case .glide:
+            break
         }
         // Touch devices are already smooth; only mouse wheels glide. The
         // classification is shared with the scroll inverter, so mice that
@@ -403,12 +385,193 @@ package final class SmoothScrollService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        glide.feed(vertical: vertical, horizontal: horizontal, step: step,
+                   flags: event.flags, redirected: redirected, continuous: traits.isContinuous,
+                   response: SmoothScrollSupport.sanitizedResponse(
+                    defaults.integer(forKey: DefaultsKey.smoothScrollResponse)),
+                   coast: SmoothScrollSupport.sanitizedCoast(
+                    defaults.integer(forKey: DefaultsKey.smoothScrollCoast)))
+        // The tick itself is swallowed; the glide replays its distance.
+        return nil
+    }
+
+    // MARK: - Glide
+
+    private func stopGlide() {
+        glide.stop()
+    }
+}
+
+/// The glide that replays swallowed wheel ticks: the distance engine, the
+/// frame scheduler (the display link of the screen under the pointer, or a
+/// timer while there is none), the screen and sleep observers, and the frames
+/// it posts. `SmoothScrollService` feeds it from its tap; a test hands in an
+/// `Environment` of doubles, so no screen paces it and nothing is posted.
+@MainActor
+package final class SmoothScrollGlide {
+    /// A running frame scheduler.
+    package struct Scheduler {
+        package var invalidate: @MainActor () -> Void
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(invalidate: @escaping @MainActor () -> Void) {
+            self.invalidate = invalidate
+        }
+    }
+
+    /// The screen under the pointer, as the glide follows it.
+    package struct Screen {
+        /// Nil when the screen names no display to follow.
+        package var displayID: CGDirectDisplayID?
+        /// Starts that display's own link, which calls `frame` on the main
+        /// thread with each frame's timestamp and duration.
+        package var startDisplayLink: @MainActor (
+            _ frame: @escaping @MainActor (_ timestamp: TimeInterval, _ duration: TimeInterval) -> Void
+        ) -> Scheduler
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(displayID: CGDirectDisplayID?,
+                     startDisplayLink: @escaping @MainActor (
+                        _ frame: @escaping @MainActor (_ timestamp: TimeInterval, _ duration: TimeInterval) -> Void
+                     ) -> Scheduler) {
+            self.displayID = displayID
+            self.startDisplayLink = startDisplayLink
+        }
+    }
+
+    /// What the glide reaches outside itself. `live` is the Mac.
+    package struct Environment {
+        package var screenUnderPointer: @MainActor () -> Screen?
+        /// A repeating timer on the main run loop, for when no display can be
+        /// followed.
+        package var startTimer: @MainActor (_ interval: TimeInterval,
+                                            _ fire: @escaping @MainActor @Sendable () -> Void) -> Scheduler
+        /// The clock a timer's frames are measured on.
+        package var uptime: @MainActor () -> TimeInterval
+        /// Posts one frame, in whole pixels, with the wheel's modifiers.
+        package var post: @MainActor (_ vertical: Int32, _ horizontal: Int32, _ flags: CGEventFlags) -> Void
+        /// Where the screen-parameter change is posted.
+        package var screenNotifications: NotificationCenter
+        /// Where sleep is posted.
+        package var sleepNotifications: NotificationCenter
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(screenUnderPointer: @escaping @MainActor () -> Screen?,
+                     startTimer: @escaping @MainActor (_ interval: TimeInterval,
+                                                       _ fire: @escaping @MainActor @Sendable () -> Void) -> Scheduler,
+                     uptime: @escaping @MainActor () -> TimeInterval,
+                     post: @escaping @MainActor (_ vertical: Int32, _ horizontal: Int32, _ flags: CGEventFlags) -> Void,
+                     screenNotifications: NotificationCenter,
+                     sleepNotifications: NotificationCenter) {
+            self.screenUnderPointer = screenUnderPointer
+            self.startTimer = startTimer
+            self.uptime = uptime
+            self.post = post
+            self.screenNotifications = screenNotifications
+            self.sleepNotifications = sleepNotifications
+        }
+
+        @MainActor package static var live: Environment {
+            Environment(
+                screenUnderPointer: {
+                    guard let screen = NSScreen.withMouse else { return nil }
+                    let candidate = screen.displayID
+                    return Screen(displayID: candidate != 0 ? candidate : nil, startDisplayLink: { frame in
+                        let target = SmoothScrollLinkTarget(frame: frame)
+                        let link = screen.displayLink(target: target,
+                                                      selector: #selector(SmoothScrollLinkTarget.fire(_:)))
+                        link.add(to: .main, forMode: .common)
+                        // A scheduled display link retains its target until invalidated.
+                        return Scheduler(invalidate: { link.invalidate() })
+                    })
+                },
+                startTimer: { interval, fire in
+                    let timer = Timer(timeInterval: interval, repeats: true) { _ in
+                        // Added to the main run loop below, so it fires on the main thread.
+                        MainActor.assumeIsolated { fire() }
+                    }
+                    RunLoop.main.add(timer, forMode: .common)
+                    return Scheduler(invalidate: { timer.invalidate() })
+                },
+                uptime: { ProcessInfo.processInfo.systemUptime },
+                post: { vertical, horizontal, flags in
+                    guard let event = CGEvent(scrollWheelEvent2Source: nil,
+                                              units: .pixel,
+                                              wheelCount: 2,
+                                              wheel1: vertical,
+                                              wheel2: horizontal,
+                                              wheel3: 0) else { return }
+                    event.setIntegerValueField(.eventSourceUserData, value: ScrollWheelSupport.syntheticTag)
+                    event.flags = flags
+                    event.post(tap: .cghidEventTap)
+                },
+                screenNotifications: .default,
+                sleepNotifications: NSWorkspace.shared.notificationCenter)
+        }
+    }
+
+    private enum SchedulerKind: Equatable {
+        case none
+        case timer
+        case displayLink(CGDirectDisplayID)
+    }
+
+    private let environment: Environment
+    /// Pure per-axis distance engine.
+    private var engine = SmoothScrollSupport.Engine()
+    private var lastFrameTimestamp: TimeInterval?
+    private var currentResponse = SmoothScrollSupport.defaultResponse
+    private var currentCoast = SmoothScrollSupport.defaultCoast
+    /// Sub-pixel leftovers kept between frames, so a wheel that moves in
+    /// fractions of a pixel still travels its full distance.
+    private var carryVertical: Double = 0
+    private var carryHorizontal: Double = 0
+    /// Modifiers of the wheel event that started or fed the glide, replayed on
+    /// the synthetic events so apps can still react to them.
+    private var currentFlags: CGEventFlags = []
+    private var currentScrollRedirected = false
+    /// Whether the glide is being fed by continuous wheel events. The two
+    /// kinds measure their distance differently, so switching devices
+    /// mid-glide drops the tail rather than mixing the two budgets.
+    private var glideFromContinuous = false
+    private var scheduler: Scheduler?
+    private var schedulerKind = SchedulerKind.none
+    /// Tells the current scheduler's frames from a replaced one's.
+    private var schedulerGeneration: UInt = 0
+    private var screenObserver: NSObjectProtocol?
+    private var sleepObserver: NSObjectProtocol?
+
+    package init(environment: Environment) {
+        self.environment = environment
+    }
+
+    /// Whether distance is still waiting to be replayed.
+    package var isGliding: Bool { engine.isActive }
+
+    /// Follows the screens and sleep while the tap runs.
+    package func attach() {
+        installScreenObserver()
+        installSleepObserver()
+    }
+
+    /// The tap is gone: the observers go and the glide ends.
+    package func detach() {
+        removeScreenObserver()
+        removeSleepObserver()
+        stop()
+    }
+
+    /// Adds one swallowed tick's distance, `vertical` and `horizontal` scaled
+    /// by `step`, and makes sure a scheduler is replaying it. `flags` are the
+    /// wheel event's, replayed on every frame.
+    package func feed(vertical: Double, horizontal: Double, step: Double, flags: CGEventFlags,
+                      redirected: Bool, continuous: Bool, response: Int, coast: Int) {
         // Switching Shift while a glide is active changes the intended axis,
         // and switching between a discrete and a continuous wheel changes the
         // sign handling. Drop the old tail instead of fighting it.
-        if currentFlags.contains(.maskShift) != shiftPressed
+        if currentFlags.contains(.maskShift) != flags.contains(.maskShift)
             || currentScrollRedirected != redirected
-            || glideFromContinuous != traits.isContinuous {
+            || glideFromContinuous != continuous {
             engine.reset()
             carryVertical = 0
             carryHorizontal = 0
@@ -418,79 +581,65 @@ package final class SmoothScrollService: ObservableObject {
         carryVertical = SmoothScrollSupport.carry(carryVertical, continuing: verticalDistance)
         carryHorizontal = SmoothScrollSupport.carry(carryHorizontal, continuing: horizontalDistance)
         engine.add(vertical: verticalDistance, horizontal: horizontalDistance)
-        currentFlags = event.flags
+        currentFlags = flags
         currentScrollRedirected = redirected
-        currentResponse = SmoothScrollSupport.sanitizedResponse(
-            defaults.integer(forKey: DefaultsKey.smoothScrollResponse)
-        )
-        currentCoast = SmoothScrollSupport.sanitizedCoast(
-            defaults.integer(forKey: DefaultsKey.smoothScrollCoast)
-        )
-        glideFromContinuous = traits.isContinuous
+        currentResponse = response
+        currentCoast = coast
+        glideFromContinuous = continuous
         startGlideIfNeeded()
-        // The tick itself is swallowed; the glide replays its distance.
-        return nil
     }
 
-    // MARK: - Glide
-
-    private func startGlideIfNeeded() {
-        let screen = NSScreen.withMouse
-        var displayID: CGDirectDisplayID?
-        if let candidate = screen?.displayID, candidate != 0 {
-            displayID = candidate
-        }
-        if displayLink != nil, displayID == schedulerDisplayID { return }
-        if frameTimer != nil, displayID == nil { return }
-
-        stopFrameScheduler()
-        if let screen, let displayID {
-            let displayLink = screen.displayLink(
-                target: self,
-                selector: #selector(displayLinkDidFire(_:))
-            )
-            self.displayLink = displayLink
-            schedulerDisplayID = displayID
-            displayLink.add(to: .main, forMode: .common)
-            return
-        }
-
-        lastFrameTimestamp = ProcessInfo.processInfo.systemUptime - SmoothScrollSupport.frameInterval
-        let timer = Timer(timeInterval: SmoothScrollSupport.frameInterval, repeats: true) { [weak self] _ in
-            // Added to the main run loop below, so it fires on the main thread.
-            MainActor.assumeIsolated { self?.emitTimerFrame() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        frameTimer = timer
-        emitTimerFrame()
-    }
-
-    private func stopGlide() {
+    /// Ends the glide in flight: its scheduler and whatever distance is left.
+    package func stop() {
         stopFrameScheduler()
         engine.reset()
         carryVertical = 0
         carryHorizontal = 0
     }
 
+    private func startGlideIfNeeded() {
+        let screen = environment.screenUnderPointer()
+        let displayID = screen?.displayID
+        if case .displayLink(let current) = schedulerKind, displayID == current { return }
+        if schedulerKind == .timer, displayID == nil { return }
+
+        stopFrameScheduler()
+        if let screen, let displayID {
+            schedulerGeneration &+= 1
+            let generation = schedulerGeneration
+            scheduler = screen.startDisplayLink { [weak self] timestamp, duration in
+                self?.displayLinkFired(generation: generation, timestamp: timestamp, duration: duration)
+            }
+            schedulerKind = .displayLink(displayID)
+            return
+        }
+
+        lastFrameTimestamp = environment.uptime() - SmoothScrollSupport.frameInterval
+        schedulerGeneration &+= 1
+        scheduler = environment.startTimer(SmoothScrollSupport.frameInterval) { [weak self] in
+            self?.emitTimerFrame()
+        }
+        schedulerKind = .timer
+        emitTimerFrame()
+    }
+
     private func stopFrameScheduler() {
         // A scheduled display link retains its target until invalidated.
-        displayLink?.invalidate()
-        displayLink = nil
-        frameTimer?.invalidate()
-        frameTimer = nil
-        schedulerDisplayID = nil
+        scheduler?.invalidate()
+        scheduler = nil
+        schedulerKind = .none
         lastFrameTimestamp = nil
     }
 
-    @objc private func displayLinkDidFire(_ sender: CADisplayLink) {
-        guard let displayLink, sender === displayLink else { return }
-        let firstElapsed = sender.duration > 0 ? sender.duration : SmoothScrollSupport.frameInterval
-        emitFrame(at: sender.timestamp, firstElapsed: firstElapsed)
+    private func displayLinkFired(generation: UInt, timestamp: TimeInterval, duration: TimeInterval) {
+        guard case .displayLink = schedulerKind, generation == schedulerGeneration else { return }
+        let firstElapsed = duration > 0 ? duration : SmoothScrollSupport.frameInterval
+        emitFrame(at: timestamp, firstElapsed: firstElapsed)
     }
 
     private func emitTimerFrame() {
         emitFrame(
-            at: ProcessInfo.processInfo.systemUptime,
+            at: environment.uptime(),
             firstElapsed: SmoothScrollSupport.frameInterval
         )
     }
@@ -519,7 +668,7 @@ package final class SmoothScrollService: ObservableObject {
 
     private func installScreenObserver() {
         guard screenObserver == nil else { return }
-        screenObserver = NotificationCenter.default.addObserver(
+        screenObserver = environment.screenNotifications.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
@@ -534,26 +683,26 @@ package final class SmoothScrollService: ObservableObject {
 
     private func removeScreenObserver() {
         if let screenObserver {
-            NotificationCenter.default.removeObserver(screenObserver)
+            environment.screenNotifications.removeObserver(screenObserver)
         }
         screenObserver = nil
     }
 
     private func installSleepObserver() {
         guard sleepObserver == nil else { return }
-        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        sleepObserver = environment.sleepNotifications.addObserver(
             forName: NSWorkspace.willSleepNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             // Delivered on the main queue.
-            MainActor.assumeIsolated { self?.stopGlide() }
+            MainActor.assumeIsolated { self?.stop() }
         }
     }
 
     private func removeSleepObserver() {
         if let sleepObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver)
+            environment.sleepNotifications.removeObserver(sleepObserver)
         }
         sleepObserver = nil
     }
@@ -568,15 +717,7 @@ package final class SmoothScrollService: ObservableObject {
         carryVertical = up.carry
         carryHorizontal = across.carry
         guard up.pixels != 0 || across.pixels != 0 else { return }
-        guard let event = CGEvent(scrollWheelEvent2Source: nil,
-                                  units: .pixel,
-                                  wheelCount: 2,
-                                  wheel1: Self.pixelField(up.pixels),
-                                  wheel2: Self.pixelField(across.pixels),
-                                  wheel3: 0) else { return }
-        event.setIntegerValueField(.eventSourceUserData, value: ScrollWheelSupport.syntheticTag)
-        event.flags = currentFlags
-        event.post(tap: .cghidEventTap)
+        environment.post(Self.pixelField(up.pixels), Self.pixelField(across.pixels), currentFlags)
     }
 
     /// A frame's distance as the event field wants it, never trapping on a
@@ -585,5 +726,20 @@ package final class SmoothScrollService: ObservableObject {
         guard value.isFinite else { return 0 }
         return Int32(clamping: Int(min(max(value, -1_000_000), 1_000_000)))
     }
+}
 
+/// The Objective-C target a display link calls, handing each frame to the
+/// glide. Main-actor: the link is added to the main run loop.
+@MainActor
+private final class SmoothScrollLinkTarget: NSObject {
+    private let frame: @MainActor (_ timestamp: TimeInterval, _ duration: TimeInterval) -> Void
+
+    init(frame: @escaping @MainActor (_ timestamp: TimeInterval, _ duration: TimeInterval) -> Void) {
+        self.frame = frame
+        super.init()
+    }
+
+    @objc func fire(_ link: CADisplayLink) {
+        frame(link.timestamp, link.duration)
+    }
 }
