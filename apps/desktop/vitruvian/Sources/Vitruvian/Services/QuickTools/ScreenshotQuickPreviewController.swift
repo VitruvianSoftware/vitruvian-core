@@ -51,6 +51,68 @@ package final class ScreenshotQuickPreviewController {
         }
     }
 
+    /// Where the preview appears and the settings it reads to decide how.
+    /// `live` is the app's: its preferences, its island, and a floating panel
+    /// put on screen without activating the app. Tests swap in their own.
+    package struct Presentation {
+        package var defaults: UserDefaults
+        package var island: @MainActor () -> NotchService
+        /// The floating panel, before its content, for content of `size`.
+        package var makePanel: @MainActor (_ size: CGSize) -> NSPanel
+        /// Puts the floating panel on screen, handing it the keyboard only
+        /// when asked, and only once it is up.
+        package var present: @MainActor (_ panel: NSPanel, _ takesFocus: Bool) -> Void
+
+        package init(defaults: UserDefaults,
+                     island: @escaping @MainActor () -> NotchService,
+                     makePanel: @escaping @MainActor (_ size: CGSize) -> NSPanel,
+                     present: @escaping @MainActor (_ panel: NSPanel, _ takesFocus: Bool) -> Void) {
+            self.defaults = defaults
+            self.island = island
+            self.makePanel = makePanel
+            self.present = present
+        }
+
+        package static var live: Presentation {
+            Presentation(
+                defaults: .standard,
+                island: { NotchService.shared },
+                makePanel: { size in ScreenshotQuickPreviewController.makePanel(size: size) },
+                present: { panel, takesFocus in
+                    panel.orderFrontRegardless()
+                    // On by default: leaving the keyboard behind after a capture is what
+                    // #1463 reported, since Command-C and Command-S did nothing until a
+                    // click. Taking it costs the caret in the app being typed into
+                    // (#1089), so persistent previews always leave focus where it was;
+                    // a click can still hand focus to the preview explicitly.
+                    if takesFocus {
+                        panel.makeKey()
+                    }
+                })
+        }
+    }
+
+    /// What a click on the link button does. The island hides the menu
+    /// arrow, so a primary action there would leave the durations behind a
+    /// press and hold that nothing hints at: a click opens them, as it always
+    /// has. The floating preview shows its arrow and keeps a split button
+    /// whose click shares at once.
+    package enum ShareLinkClick {
+        case opensDurations
+        case sharesSavedLink
+    }
+
+    package static func shareLinkClick(embedded: Bool) -> ShareLinkClick {
+        embedded ? .opensDurations : .sharesSavedLink
+    }
+
+    /// A press on the floating preview while it is not key hands it the
+    /// keyboard, so its shortcuts start working; the press itself still
+    /// reaches the button under it.
+    package static func previewPanelTakesKeyboard(on type: NSEvent.EventType, isKeyWindow: Bool) -> Bool {
+        type == .leftMouseDown && !isKeyWindow
+    }
+
     private let capture: ScreenshotSelectionController.Capture
     private let strings: ScreenshotFeatureStrings
     private let defaultAction: ScreenshotDefaultAction
@@ -82,6 +144,7 @@ package final class ScreenshotQuickPreviewController {
     package private(set) var pointerInside = false
     private let scheduler: Scheduler
     private let links: ScreenshotLinkActions
+    private let presentation: Presentation
 
     package var protectedWindowIDs: Set<CGWindowID> {
         guard let panel, panel.isVisible, panel.windowNumber > 0 else { return [] }
@@ -99,7 +162,8 @@ package final class ScreenshotQuickPreviewController {
          shareFile: @escaping () -> URL?,
          onClose: @escaping () -> Void,
          scheduler: Scheduler = .main,
-         links: ScreenshotLinkActions = .live) {
+         links: ScreenshotLinkActions = .live,
+         presentation: Presentation = .live) {
         self.capture = capture
         self.strings = strings
         self.defaultAction = defaultAction
@@ -111,16 +175,17 @@ package final class ScreenshotQuickPreviewController {
         self.onClose = onClose
         self.scheduler = scheduler
         self.links = links
+        self.presentation = presentation
         model.disabledActions = completedActions.intersection([.save, .copy])
     }
 
     package func show(inNotch: Bool = true) {
         guard panel == nil, !shownInNotch, !closed else { return }
-        let wantsNotch = inNotch && NotchSupport.routes(.capture)
-            && NotchService.shared.acceptsSystemFeedback
+        let wantsNotch = inNotch && NotchSupport.routes(.capture, in: presentation.defaults)
+            && presentation.island().acceptsSystemFeedback
         let presentationPolicy = ScreenshotSupport.confirmationPreviewPresentationPolicy(
             dismissInterval: baseDismissDuration,
-            defaults: .standard)
+            defaults: presentation.defaults)
         let content = ScreenshotQuickPreviewView(
             image: Self.thumbnail(for: capture.image),
             strings: strings,
@@ -143,7 +208,7 @@ package final class ScreenshotQuickPreviewController {
             hoverChanged: { [weak self] inside in self?.hoverChanged(inside) },
             showsDismissButton: presentationPolicy.showsDismissButton,
             embedded: wantsNotch)
-        if wantsNotch, NotchService.shared.presentCapture(
+        if wantsNotch, presentation.island().presentCapture(
             id: presentationID, content: AnyView(content), actions: AnyView(content.toolbar), height: Self.size(showingLink: model.sharedRecord != nil).height,
             takeFocus: presentationPolicy.takesFocus,
             closeOnCollapse: presentationPolicy.closesOnCollapse,
@@ -158,13 +223,13 @@ package final class ScreenshotQuickPreviewController {
             close: { [weak self] in self?.close() },
             hover: { [weak self] inside in self?.hoverChanged(inside) }) {
             shownInNotch = true
-            if let window = NotchService.shared.presentationWindow { installKeyMonitor(for: window) }
+            if let window = presentation.island().presentationWindow { installKeyMonitor(for: window) }
             finishShowing()
             return
         }
         let host = NSHostingController(rootView: content)
         let size = Self.size(showingLink: model.sharedRecord != nil)
-        let panel = Self.makePanel(size: size)
+        let panel = presentation.makePanel(size)
         panel.contentViewController = host
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
@@ -179,15 +244,7 @@ package final class ScreenshotQuickPreviewController {
         panel.setFrame(frame, display: false)
         self.panel = panel
         installKeyMonitor(for: panel)
-        panel.orderFrontRegardless()
-        // On by default: leaving the keyboard behind after a capture is what
-        // #1463 reported, since Command-C and Command-S did nothing until a
-        // click. Taking it costs the caret in the app being typed into
-        // (#1089), so persistent previews always leave focus where it was;
-        // a click can still hand focus to the preview explicitly.
-        if presentationPolicy.takesFocus {
-            panel.makeKey()
-        }
+        presentation.present(panel, presentationPolicy.takesFocus)
         finishShowing()
     }
 
@@ -280,7 +337,7 @@ package final class ScreenshotQuickPreviewController {
         panel = nil
         if shownInNotch {
             shownInNotch = false
-            NotchService.shared.removeCapture(id: presentationID)
+            presentation.island().removeCapture(id: presentationID)
         }
         onClose()
     }
@@ -454,7 +511,7 @@ package final class ScreenshotQuickPreviewController {
 
     private func resizePanel(showingLink: Bool) {
         if shownInNotch {
-            NotchService.shared.updateCaptureHeight(id: presentationID, height: Self.size(showingLink: showingLink).height)
+            presentation.island().updateCaptureHeight(id: presentationID, height: Self.size(showingLink: showingLink).height)
             return
         }
         panel?.setFrame(previewFrame(for: Self.size(showingLink: showingLink)),
@@ -477,7 +534,7 @@ package final class ScreenshotQuickPreviewController {
             guard let self, let panel,
                   ScreenshotPreviewKeys.ownsKeys(
                     closed: self.closed, panelVisible: panel.isVisible, inPanel: event.window === panel,
-                    shownByIsland: !self.shownInNotch || NotchService.shared.isCaptureVisible(id: self.presentationID),
+                    shownByIsland: !self.shownInNotch || self.presentation.island().isCaptureVisible(id: self.presentationID),
                     hasSheet: panel.attachedSheet != nil, editingText: panel.firstResponder is NSText,
                     recordingShortcut: ShortcutCapture.isCapturing),
                   let command = ScreenshotPreviewKeys.command(keyCode: Int(event.keyCode), flags: event.modifierFlags,
@@ -503,7 +560,7 @@ private final class ScreenshotQuickPreviewPanel: OverlayPanel {
     /// press on a button itself, and a window's `mouseDown` never runs for the
     /// clicks a view has taken.
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown, !isKeyWindow {
+        if ScreenshotQuickPreviewController.previewPanelTakesKeyboard(on: event.type, isKeyWindow: isKeyWindow) {
             makeKey()
         }
         super.sendEvent(event)
@@ -771,15 +828,13 @@ private struct ScreenshotQuickPreviewView: View {
     }
 
     @ViewBuilder private var shareMenu: some View {
-        if embedded {
-            // The island hides the menu arrow, so a primary action would leave
-            // the durations behind a press and hold that nothing hints at. A
-            // click there opens the durations, as it always has.
+        switch ScreenshotQuickPreviewController.shareLinkClick(embedded: embedded) {
+        case .opensDurations:
             shareMenuChrome(Menu { shareDurations } label: { shareMenuLabel },
                             help: strings.shareSectionTitle)
                 .menuStyle(.borderlessButton).menuIndicator(.hidden)
                 .frame(width: 28, height: 28)
-        } else {
+        case .sharesSavedLink:
             shareMenuChrome(Menu { shareDurations } label: { shareMenuLabel } primaryAction: {
                 share(.saved())
             }, help: "\(strings.shareSectionTitle) · \(ScreenshotShareDuration.saved().title(strings))")

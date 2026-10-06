@@ -499,7 +499,12 @@ package struct RecorderEditorView: View {
     /// would be a guess, because a bitrate is a ceiling and screen content
     /// undershoots it hard; the resolution is a fact.
     private var outputSizeLabel: String {
-        let size = model.exportSize
+        Self.outputSizeText(for: model.exportSize)
+    }
+
+    /// An output size as both editors state one, with the multiplication
+    /// sign; nothing until there is a size to state.
+    package static func outputSizeText(for size: CGSize) -> String {
         guard size.width > 0 else { return "" }
         return "\(Int(size.width)) × \(Int(size.height))"
     }

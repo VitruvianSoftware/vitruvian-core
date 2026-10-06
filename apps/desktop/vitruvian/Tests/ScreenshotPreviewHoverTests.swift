@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import CoreGraphics
 import Foundation
 import VitruvianCore
@@ -21,7 +22,8 @@ enum ScreenshotPreviewHoverTests {
         var action: (Action) -> Set<Action> = { [$0] }
         private(set) var controller: ScreenshotQuickPreviewController!
 
-        init(clock: Scheduler, dismissInterval: TimeInterval? = 12) {
+        init(clock: Scheduler, dismissInterval: TimeInterval? = 12,
+             presentation: ScreenshotQuickPreviewController.Presentation = .live) {
             let pixels = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
                                    space: CGColorSpaceCreateDeviceRGB(),
                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
@@ -35,11 +37,72 @@ enum ScreenshotPreviewHoverTests {
                 scheduler: .init(async: { work in clock.async { work() } },
                                  after: { delay, work in
                                      clock.asyncAfter(deadline: .init(seconds: clock.now + delay), execute: work)
-                                 }))
+                                 }),
+                presentation: presentation)
         }
     }
 
+    /// The panel the preview built for itself, kept to read back.
+    final class PresentationLog {
+        var panel: PresentationRecordingPanel?
+    }
+
+    /// A panel that records how it is put on screen instead of going there.
+    final class PresentationRecordingPanel: NSPanel {
+        var calls: [String] = []
+        override func orderFrontRegardless() { calls.append("orderFrontRegardless") }
+        override func orderFront(_ sender: Any?) { calls.append("orderFront") }
+        override func makeKey() { calls.append("makeKey") }
+        override func makeKeyAndOrderFront(_ sender: Any?) { calls.append("makeKeyAndOrderFront") }
+    }
+
+    /// The floating preview, put on screen by the app's own presentation but
+    /// on a panel that only records it: how it appears, and what takes the
+    /// keyboard. The island's half runs in the capture controls checks.
+    static func presentationChecks(_ suite: TestSuite) {
+        let domain = "vitru.tests.screenshot-preview-presentation"
+        let defaults = UserDefaults(suiteName: "vitru.tests.screenshot-preview-presentation")!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let cases: [(interval: TimeInterval?, prefersFocus: Bool)] = [(3, true), (3, false), (nil, true)]
+        for (interval, prefersFocus) in cases {
+            defaults.set(prefersFocus, forKey: DefaultsKey.screenshotPreviewTakesFocus)
+            let log = PresentationLog()
+            var presentation = ScreenshotQuickPreviewController.Presentation.live
+            presentation.defaults = defaults
+            presentation.makePanel = { size in
+                let panel = PresentationRecordingPanel(contentRect: CGRect(origin: .zero, size: size),
+                                                       styleMask: [.borderless, .nonactivatingPanel],
+                                                       backing: .buffered, defer: true)
+                log.panel = panel
+                return panel
+            }
+            let preview = Preview(clock: Scheduler(), dismissInterval: interval, presentation: presentation)
+            preview.controller.show(inNotch: false)
+            let presented = log.panel?.calls ?? []
+            preview.controller.hoverChanged(true)
+            preview.controller.hoverChanged(false)
+            let policy = ScreenshotSupport.confirmationPreviewPresentationPolicy(dismissInterval: interval,
+                                                                                defaults: defaults)
+            suite.expect(presented.first == "orderFrontRegardless"
+                         && !presented.contains("orderFront") && !presented.contains("makeKeyAndOrderFront"),
+                         "the screenshot preview is presented without activating the app")
+            suite.expect(presented == (policy.takesFocus ? ["orderFrontRegardless", "makeKey"] : ["orderFrontRegardless"])
+                         && policy.takesFocus == (interval != nil && prefersFocus),
+                         "the screenshot preview takes key focus only behind the presentation policy, once the panel is on screen")
+            suite.expect(log.panel?.calls == presented,
+                         "hover never takes key focus; only the preferred presentation and the panel's own click hand-off may")
+            preview.controller.close()
+        }
+
+        suite.expect(ScreenshotQuickPreviewController.previewPanelTakesKeyboard(on: .leftMouseDown, isKeyWindow: false)
+                     && !ScreenshotQuickPreviewController.previewPanelTakesKeyboard(on: .leftMouseDown, isKeyWindow: true)
+                     && !ScreenshotQuickPreviewController.previewPanelTakesKeyboard(on: .mouseMoved, isKeyWindow: false)
+                     && !ScreenshotQuickPreviewController.previewPanelTakesKeyboard(on: .scrollWheel, isKeyWindow: false),
+                     "clicking the screenshot preview takes key focus and still delivers every preview button")
+    }
+
     static func run(_ suite: TestSuite) {
+        presentationChecks(suite)
         var clock = Scheduler()
         let editorPreview = Preview(clock: clock)
         var editorOpened = false

@@ -21,7 +21,9 @@ package final class RecentCaptureService: ObservableObject {
 
     // The default manager is safe from any thread; the SDK does not mark it Sendable.
     nonisolated(unsafe) private let manager = FileManager.default
-    private let hotkey = QuickToolHotkey(id: 21)
+    private lazy var hotkey: QuickToolHotkey = RecentCaptureService.historyShortcut(opening: { [weak self] in
+        self?.showHistoryWindow()
+    })
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recent-captures",
                                       qos: .utility)
     private let generationLock = NSLock()
@@ -43,8 +45,15 @@ package final class RecentCaptureService: ObservableObject {
         root = Self.cachesRoot(in: FileManager.default)
         store = RecentCaptureStore(directoryURL: root)
         thumbnailCache.countLimit = ScreenshotSupport.recentCaptureLimit
-        hotkey.onPress = { [weak self] in self?.showHistoryWindow() }
         reload()
+    }
+
+    /// The history shortcut, wired to open the palette. Its id is the one
+    /// the hand-assigned quick tool range keeps for it.
+    package static func historyShortcut(opening open: @escaping () -> Void) -> QuickToolHotkey {
+        let hotkey = QuickToolHotkey(id: 21)
+        hotkey.onPress = open
+        return hotkey
     }
 
     package func syncWithPreferences() {
@@ -100,19 +109,13 @@ package final class RecentCaptureService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
-    /// The history's panel, before its content: a floating overlay, which
-    /// window managers do not list.
-    package static func makePanel() -> NSPanel {
-        KeyableHistoryPanel(
+    /// The palette's panel, before its content.
+    package static func makeHistoryPanel() -> NSPanel {
+        let panel = KeyableHistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 468, height: 360),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
-    }
-
-    private func ensurePanel() -> NSPanel {
-        if let panel { return panel }
-        let panel = Self.makePanel()
         panel.title = FeatureStrings.recentCaptures(L10n.shared.language).title
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
@@ -125,6 +128,12 @@ package final class RecentCaptureService: ObservableObject {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        return panel
+    }
+
+    private func ensurePanel() -> NSPanel {
+        if let panel { return panel }
+        let panel = Self.makeHistoryPanel()
         let host = NSHostingController(rootView: ServiceViews.factory.recentCaptures(
             onClose: { [weak self] in self?.hideHistoryWindow() }))
         host.sizingOptions = .preferredContentSize
@@ -183,19 +192,30 @@ package final class RecentCaptureService: ObservableObject {
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 self?.hideHistoryWindow()
             }
-        panelActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        panelActivationObserver = Self.observeOtherAppActivation { [weak self] in
+            self?.hideHistoryWindow()
+        }
+    }
+
+    /// Runs `handler` when another app comes forward, which is when the
+    /// palette leaves. It never hides on deactivation, so it reads the
+    /// workspace's activations rather than this app resigning active; this
+    /// app, and the accessibility keyboard typing into it, do not count.
+    package static func observeOtherAppActivation(
+        in center: NotificationCenter = NSWorkspace.shared.notificationCenter,
+        ownBundleIdentifiers: [String?] = [Bundle.main.bundleIdentifier, AssistiveKeyboard.bundleID],
+        _ handler: @escaping @MainActor @Sendable () -> Void
+    ) -> NSObjectProtocol {
+        center.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
-            queue: .main) { [weak self] notification in
+            queue: .main) { notification in
                 // Read here: the notification itself never crosses to the main actor.
                 let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 // Delivered on the main queue.
                 MainActor.assumeIsolated {
-                    guard let app,
-                          app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                          app.bundleIdentifier != AssistiveKeyboard.bundleID
-                    else { return }
-                    self?.hideHistoryWindow()
+                    guard let app, !ownBundleIdentifiers.contains(app.bundleIdentifier) else { return }
+                    handler()
                 }
             }
     }

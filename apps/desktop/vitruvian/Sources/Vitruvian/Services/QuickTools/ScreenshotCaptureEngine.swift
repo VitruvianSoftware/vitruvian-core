@@ -180,21 +180,17 @@ package enum ScreenshotCaptureEngine {
         // the ordinary capture keeps the faster route.
         let onScreen = onScreenWindows()
         if let target = onScreen.first(where: { $0.id == windowID }),
-           let geometricPlan = ScreenshotCapturePolicy.attachedCapturePlan(
-               target: target, frontToBack: onScreen) {
-            var plan: ScreenshotCapturePolicy.AttachedCapturePlan? = geometricPlan
-            if Permissions.accessibilityGranted {
-                let confirmedIDs = accessibilityAttachedWindowIDs(
-                    targetWindowID: target.id,
-                    ownerPID: target.ownerPID,
-                    candidateWindowIDs: Array(geometricPlan.windowIDs.dropFirst()))
-                plan = ScreenshotCapturePolicy.confirmedAttachment(
-                    geometricPlan, confirmedIDs: confirmedIDs)
-            }
-            if let plan,
-               let composited = await captureAttached(plan) {
-                return composited
-            }
+           let plan = ScreenshotCapturePolicy.attachedCapturePlan(
+               target: target, frontToBack: onScreen,
+               accessibilityGranted: Permissions.accessibilityGranted,
+               confirmedIDs: { geometricPlan in
+                   accessibilityAttachedWindowIDs(
+                       targetWindowID: target.id,
+                       ownerPID: target.ownerPID,
+                       candidateWindowIDs: Array(geometricPlan.windowIDs.dropFirst()))
+               }),
+           let composited = await captureAttached(plan) {
+            return composited
         }
         var clippedFallback: CGImage?
         let capturedImage = await WindowPreviewProvider.captureViaWindowServer(windowID)
@@ -279,21 +275,17 @@ package enum ScreenshotCaptureEngine {
               elementsByID[targetWindowID] != nil
         else { return nil }
 
-        var confirmed: Set<CGWindowID> = []
+        // What AX answers for the candidates it resolved; the rule of which
+        // ones stay is `ScreenshotCapturePolicy`'s.
+        var subroles: [CGWindowID: String] = [:]
         for candidateID in candidateWindowIDs {
-            guard let element = elementsByID[candidateID] else {
-                // AX had no answer for this one — only a window AX positively identifies as standard is filtered out.
-                confirmed.insert(candidateID)
-                continue
+            if let element = elementsByID[candidateID],
+               let subrole = accessibilityString(element, kAXSubroleAttribute as CFString) {
+                subroles[candidateID] = subrole
             }
-            // The standard set matches what the auto-quit and enumeration paths already read.
-            if let subrole = accessibilityString(element, kAXSubroleAttribute as CFString),
-               subrole == (kAXStandardWindowSubrole as String) || subrole == "AXFullScreenWindow" {
-                continue
-            }
-            confirmed.insert(candidateID)
         }
-        return confirmed
+        return ScreenshotCapturePolicy.accessibilityAttachedWindowIDs(
+            candidateWindowIDs: candidateWindowIDs, subroles: subroles)
     }
 
     private static func accessibilityElements(_ element: AXUIElement,
@@ -325,13 +317,14 @@ package enum ScreenshotCaptureEngine {
         let windows = plan.windowIDs.compactMap { id in
             content.windows.first { $0.windowID == id }
         }
-        let hits = content.displays.filter { $0.frame.intersects(plan.bounds) }
         // A window straddling two displays has no single display to crop from,
         // while one hanging off a lone display's edge still does: the crop
         // clamps the part that is on screen.
+        let display = ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
+            displayFrames: content.displays.map(\.frame), bounds: plan.bounds)
+            .map { content.displays[$0] }
         guard windows.count == plan.windowIDs.count,
-              hits.count == 1,
-              let display = hits.first,
+              let display,
               let screen = NSScreen.screens.first(where: { $0.displayID == display.displayID }),
               let mainScreen = NSScreen.screens.first
         else { return nil }

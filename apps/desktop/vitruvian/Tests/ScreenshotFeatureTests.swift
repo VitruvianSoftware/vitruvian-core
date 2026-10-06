@@ -17,6 +17,24 @@ import VitruvianServices
 import VitruvianUI
 
 enum ScreenshotFeatureTests {
+    /// Counts what a check's closure was asked to do.
+    final class HistoryPaletteLog {
+        var count = 0
+    }
+
+    /// Scratch in the temporary area: a fresh path for `body`, removed with
+    /// whatever `body` left there as soon as `body` returns, so each scratch
+    /// is handed back before the run reports rather than left to a `defer`
+    /// at the end of the run.
+    static func withScratch<Result>(_ name: String, isDirectory: Bool = true,
+                                    _ body: (URL) -> Result) -> Result {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: isDirectory)
+        let result = body(scratch)
+        try? FileManager.default.removeItem(at: scratch)
+        return result
+    }
+
     static func run(_ suite: TestSuite) {
         let registrationDomain = UserDefaults.standard.volatileDomain(
             forName: UserDefaults.registrationDomain)
@@ -293,9 +311,6 @@ enum ScreenshotFeatureTests {
         suite.expect(ScreenshotCapturePolicy.attachedCapturePlan(
             target: capturedWindow, frontToBack: [capturedWindow]) == nil,
                "a window with nothing stacked on it keeps the ordinary single-window capture")
-        let captureEngineSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotCaptureEngine.swift",
-            encoding: .utf8)) ?? ""
         // A sheet is often exactly as wide as the window it drops out of, so
         // the rule has to take one that matches an edge rather than shrink from
         // it.
@@ -314,10 +329,27 @@ enum ScreenshotFeatureTests {
         suite.expect(ScreenshotCapturePolicy.attachedCapturePlan(
             target: capturedWindow, frontToBack: [sheet]) == nil,
                "a window missing from the list does not treat everything as stacked on it")
-        suite.expect(captureEngineSource.contains("$0.frame.intersects(plan.bounds)")
-                && captureEngineSource.contains("hits.count == 1")
-                && !captureEngineSource.contains(".contains(plan.bounds)"),
+        // The composite is cropped from one display, in window-server points.
+        let leftDisplay = CGRect(x: 0, y: 0, width: 1_000, height: 800)
+        let rightDisplay = CGRect(x: 1_000, y: 0, width: 1_000, height: 800)
+        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
+            displayFrames: [leftDisplay, rightDisplay], bounds: capturedWindow.frame) == 0
+                && ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
+                    displayFrames: [leftDisplay, rightDisplay],
+                    bounds: CGRect(x: 1_200, y: 100, width: 300, height: 200)) == 1,
+               "a window on one display is composited from that display")
+        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
+            displayFrames: [leftDisplay, rightDisplay],
+            bounds: CGRect(x: 900, y: 100, width: 300, height: 200)) == nil,
                "a window straddling two displays falls back to the single-window capture instead of a one-display slice")
+        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
+            displayFrames: [leftDisplay],
+            bounds: CGRect(x: 900, y: 100, width: 300, height: 200)) == 0,
+               "a window hanging off a lone display's edge is still composited from it, clamped")
+        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
+            displayFrames: [leftDisplay, rightDisplay],
+            bounds: CGRect(x: 3_000, y: 100, width: 300, height: 200)) == nil,
+               "a window on no display has nothing to be cropped from")
 
         let geometricAttachment = ScreenshotCapturePolicy.AttachedCapturePlan(
             windowIDs: [1, 6, 2], bounds: capturedWindow.frame)
@@ -333,33 +365,46 @@ enum ScreenshotFeatureTests {
             geometricAttachment, confirmedIDs: []) == nil,
                "Accessibility confirmation with no matching attachment drops the composite plan")
 
-        // The engine is outside the pure-helper test binary. Pin the permission
-        // gate before its AX call so window capture never starts an
-        // Accessibility round trip merely because geometry found a candidate.
-        let screenshotCaptureEngineSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotCaptureEngine.swift",
-            encoding: .utf8)) ?? ""
-        let captureWindowBody = (screenshotCaptureEngineSource
-            .components(separatedBy: "static func captureWindow(").last ?? "")
-            .components(separatedBy: "\n    /// On-screen windows").first ?? ""
-        let accessibilityGate = captureWindowBody.range(of: "if Permissions.accessibilityGranted {")
-        let attachmentConfirmation = captureWindowBody.range(
-            of: "accessibilityAttachedWindowIDs(")
-        suite.expect(accessibilityGate != nil && attachmentConfirmation != nil
-               && accessibilityGate!.lowerBound < attachmentConfirmation!.lowerBound,
+        // The engine asks Accessibility through the plan below, so window
+        // capture never starts an Accessibility round trip merely because
+        // geometry found a candidate.
+        var accessibilityQueries: [[CGWindowID]] = []
+        func plan(granted: Bool, frontToBack: [CaptureWindow],
+                  answer: Set<CGWindowID>?) -> ScreenshotCapturePolicy.AttachedCapturePlan? {
+            ScreenshotCapturePolicy.attachedCapturePlan(
+                target: capturedWindow, frontToBack: frontToBack,
+                accessibilityGranted: granted,
+                confirmedIDs: { geometric in
+                    accessibilityQueries.append(geometric.windowIDs)
+                    return answer
+                })
+        }
+        suite.expect(plan(granted: false, frontToBack: [sheet, capturedWindow], answer: [])
+                == ScreenshotCapturePolicy.AttachedCapturePlan(windowIDs: [1, 2], bounds: capturedWindow.frame)
+                && accessibilityQueries.isEmpty,
                "window capture checks its existing Accessibility grant before AX confirmation")
-        let accessibilityAttachedWindowIDsBody = (screenshotCaptureEngineSource
-            .components(separatedBy: "private static func accessibilityAttachedWindowIDs(").last ?? "")
-            .components(separatedBy: "\n    private static func accessibilityElements(").first ?? ""
-        let accessibilityAttachedWindowIDsCode = accessibilityAttachedWindowIDsBody
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let unresolvedCandidatePasses = accessibilityAttachedWindowIDsCode.range(of: "guard let element = elementsByID[candidateID] else {\n                confirmed.insert(candidateID)\n                continue\n            }")
-        let standardWindowFails = accessibilityAttachedWindowIDsCode.range(of: "if let subrole = accessibilityString(element, kAXSubroleAttribute as CFString),\n               subrole == (kAXStandardWindowSubrole as String) || subrole == \"AXFullScreenWindow\" {\n                continue\n            }\n            confirmed.insert(candidateID)")
-        let childrenPassIsAbsent = !accessibilityAttachedWindowIDsCode.contains("kAXChildrenAttribute")
-        suite.expect(unresolvedCandidatePasses != nil && standardWindowFails != nil && childrenPassIsAbsent,
+        suite.expect(plan(granted: true, frontToBack: [capturedWindow], answer: [])
+                == nil && accessibilityQueries.isEmpty,
+               "a window with nothing stacked on it never asks Accessibility")
+        suite.expect(plan(granted: true, frontToBack: [sheet, fullWidthSheet, capturedWindow], answer: [6])
+                == ScreenshotCapturePolicy.AttachedCapturePlan(windowIDs: [1, 6], bounds: capturedWindow.frame)
+                && accessibilityQueries == [[1, 6, 2]],
+               "with the grant, Accessibility confirms the geometric candidates it was shown")
+        suite.expect(plan(granted: true, frontToBack: [sheet, capturedWindow], answer: nil)
+                == ScreenshotCapturePolicy.AttachedCapturePlan(windowIDs: [1, 2], bounds: capturedWindow.frame)
+                && accessibilityQueries.count == 2,
+               "an Accessibility answer that names no window map leaves geometry alone")
+        // Which candidates stay once Accessibility answered: 21 it could not
+        // resolve, 22 a standard window, 23 a sheet, 24 full screen, 25 a
+        // dialog with a subrole of its own.
+        let answered = ScreenshotCapturePolicy.accessibilityAttachedWindowIDs(
+            candidateWindowIDs: [21, 22, 23, 24, 25],
+            subroles: [22: "AXStandardWindow", 23: "AXSheet", 24: "AXFullScreenWindow", 25: "AXDialog"])
+        suite.expect(answered == [21, 23, 25],
                "AX keeps unresolved candidates and excludes only identified standard windows")
+        suite.expect(ScreenshotCapturePolicy.accessibilityAttachedWindowIDs(
+            candidateWindowIDs: [21, 22], subroles: [:]) == [21, 22],
+               "candidates Accessibility could not read all stay in the capture")
 
         suite.expect(ScreenshotSupport.sanitizedDelay(5) == 5
                 && ScreenshotSupport.sanitizedDelay(7) == 0
@@ -875,16 +920,48 @@ enum ScreenshotFeatureTests {
         suite.expect(routePreview(.save, saved: true) == .shown(
                     dismissInterval: TimeInterval(ScreenshotSupport.defaultConfirmationPreviewDuration)),
                "a stored duration that is not a number falls back to the default instead of staying until dismissed")
-        let screenshotRouteBody = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "    private func route(_ capture:").dropFirst().first?
-            .components(separatedBy: "\n    }\n").first ?? ""
-        suite.expect(screenshotRouteBody.contains("guard case .shown(let dismissInterval) = ScreenshotSupport.quickPreviewPresentation(")
-                && screenshotRouteBody.contains("defaults: defaults)\n        else { return }\n        presentPreview(capture,")
-                && screenshotRouteBody.components(separatedBy: "presentPreview(").count == 2
-                && screenshotRouteBody.contains("dismissInterval: dismissInterval,"),
+        // What route presents after the default action ran, for every action
+        // and outcome, against the shared decision for the same inputs.
+        func routedPreviews(_ action: ScreenshotDefaultAction,
+                            performed: Set<ScreenshotQuickPreviewController.Action>) -> [TimeInterval?] {
+            var presented: [TimeInterval?] = []
+            ScreenshotService.presentRoutedPreview(after: action, saved: performed.contains(.save),
+                                                   performed: performed, defaults: routeDefaults) {
+                presented.append($0)
+            }
+            return presented
+        }
+        var routeFollowsDecision = true
+        for enabled in [true, false] {
+            routeDefaults.set(enabled, forKey: DefaultsKey.screenshotPreviewEnabled)
+            routeDefaults.set(10, forKey: DefaultsKey.screenshotPreviewDuration)
+            for action in [ScreenshotDefaultAction.none, .copy, .save, .saveAndCopy] {
+                let outcomes: [Set<ScreenshotQuickPreviewController.Action>] = [[], [.copy], [.save], [.save, .copy]]
+                for performed in outcomes {
+                    let expected: [TimeInterval?]
+                    switch ScreenshotSupport.quickPreviewPresentation(
+                        defaultAction: action, saved: performed.contains(.save),
+                        copied: performed.contains(.copy), defaults: routeDefaults) {
+                    case .hidden: expected = []
+                    case .shown(let dismissInterval): expected = [dismissInterval]
+                    }
+                    routeFollowsDecision = routeFollowsDecision
+                        && routedPreviews(action, performed: performed) == expected
+                }
+            }
+        }
+        routeDefaults.set(true, forKey: DefaultsKey.screenshotPreviewEnabled)
+        suite.expect(routeFollowsDecision
+                && routedPreviews(.copy, performed: [.copy]) == [10]
+                && routedPreviews(.copy, performed: []) == [ScreenshotSupport.recoveryPreviewDismissInterval],
                "route shows exactly the preview the shared decision asks for")
+        routeDefaults.set(false, forKey: DefaultsKey.screenshotPreviewEnabled)
+        suite.expect(routedPreviews(.save, performed: [.save]).isEmpty,
+               "route shows nothing when the shared decision hides the preview")
+        routeDefaults.set(true, forKey: DefaultsKey.screenshotPreviewEnabled)
+        routeDefaults.set(0, forKey: DefaultsKey.screenshotPreviewDuration)
+        suite.expect(routedPreviews(.saveAndCopy, performed: [.save, .copy]) == [nil],
+               "route keeps a preview until dismissed when the decision gives it no timer")
 
         // A gesture that ends with more than one release, like a drag made
         // with three fingers, delivers events after the capture is over.
@@ -942,31 +1019,51 @@ enum ScreenshotFeatureTests {
         suite.expect(ScreenCaptureTool.available(isAvailable: captureFeatures.contains)
                 == [.screenshot, .recording, .text, .color],
                "the capture chooser keeps a stable order for every installed mode")
-        let captureSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/ScreenCaptureSettings.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(captureSettingsSource.contains("selectedTool")
-                && captureSettingsSource.contains("ScreenCaptureToolPicker(tools: availableTools")
-                && captureSettingsSource.contains("ToolShortcutRows(tool: currentTool")
-                && captureSettingsSource.contains("RecentCapturesShortcutRows()"),
+        var topSectionsHoldBothShortcuts = true
+        for selected in ScreenCaptureTool.allCases {
+            let top = ScreenCaptureSettings.topSection(availableTools: ScreenCaptureTool.allCases,
+                                                       selectedTool: selected, historyAvailable: true)
+            topSectionsHoldBothShortcuts = topSectionsHoldBothShortcuts
+                && top.showsToolPicker && top.shortcutTool == selected && top.showsRecentCapturesShortcut
+        }
+        let colorOnlyTop = ScreenCaptureSettings.topSection(availableTools: [.color], selectedTool: .screenshot,
+                                                            historyAvailable: false)
+        suite.expect(topSectionsHoldBothShortcuts
+                && !colorOnlyTop.showsToolPicker && colorOnlyTop.shortcutTool == .color
+                && !colorOnlyTop.showsRecentCapturesShortcut,
                "the capture page keeps tool and shared-history shortcuts in the top section")
-        let recentCaptureServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(recentCaptureServiceSource.contains("QuickToolHotkey(id: 21)")
-                && recentCaptureServiceSource.contains(
-                    "hotkey.onPress = { [weak self] in self?.showHistoryWindow() }"),
+        let historyOpenings = HistoryPaletteLog()
+        let historyShortcut = RecentCaptureService.historyShortcut(opening: { historyOpenings.count += 1 })
+        historyShortcut.onPress?()
+        suite.expect(historyShortcut.id == 21 && historyOpenings.count == 1,
                "the history shortcut opens its window")
-        let recentCapturePaletteCode = recentCaptureServiceSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(recentCapturePaletteCode.contains("panel.hidesOnDeactivate = false")
-                && !recentCapturePaletteCode.contains("hidesOnDeactivate = true")
-                && recentCapturePaletteCode.contains("NSWorkspace.didActivateApplicationNotification")
-                && !recentCapturePaletteCode.contains("NSApplication.didResignActiveNotification")
-                && recentCapturePaletteCode.contains(
-                    "NSWorkspace.shared.notificationCenter.removeObserver("),
+        let historyPanel = RecentCaptureService.makeHistoryPanel()
+        suite.expect(!historyPanel.hidesOnDeactivate && historyPanel.canBecomeKey && historyPanel.isFloatingPanel
+                && historyPanel.styleMask.contains(.nonactivatingPanel) && historyPanel is OverlayPanel,
+               "a recent captures palette appears promptly from another app without activating this one")
+        // Activations as the workspace posts them, on a center of their own.
+        let activations = NotificationCenter()
+        let paletteDismissals = HistoryPaletteLog()
+        let thisApp = NSRunningApplication.current
+        func activate(_ app: NSRunningApplication?) {
+            var info: [AnyHashable: Any]?
+            if let app { info = [NSWorkspace.applicationUserInfoKey: app] }
+            activations.post(name: NSWorkspace.didActivateApplicationNotification, object: nil, userInfo: info)
+        }
+        let ownActivation = RecentCaptureService.observeOtherAppActivation(
+            in: activations, ownBundleIdentifiers: [thisApp.bundleIdentifier]) { paletteDismissals.count += 1 }
+        activate(thisApp)
+        activate(nil)
+        activations.post(name: NSApplication.didResignActiveNotification, object: nil)
+        let staysForOwnActivation = paletteDismissals.count == 0
+        activations.removeObserver(ownActivation)
+        let otherActivation = RecentCaptureService.observeOtherAppActivation(
+            in: activations, ownBundleIdentifiers: ["vitru.tests.another-app"]) { paletteDismissals.count += 1 }
+        activate(thisApp)
+        let leavesForOtherApp = paletteDismissals.count == 1
+        activations.removeObserver(otherActivation)
+        activate(thisApp)
+        suite.expect(staysForOwnActivation && leavesForOtherApp && paletteDismissals.count == 1,
                "a recent captures palette appears promptly and leaves when another app activates")
         suite.expect(!ScreenshotSupport.captureAvailabilityChanged(
                     activeTools: [.screenshot, .recording],
@@ -1159,26 +1256,6 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.offersRepeatLastRegion(isPickingColor: true,
                                                          storedRegionDisplayIsAvailable: true),
                "the colour picker has no region to repeat, matching repeatLastRegion's own guard")
-        let captureSelectionSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(captureSelectionSource.contains(
-            "override func mouseExited(with event: NSEvent) {\n        refreshPointerState()\n        refreshGuideVisibility()"),
-               "system chrome cannot hide the capture chooser while the pointer remains on its display")
-        suite.expect(captureSelectionSource.contains(
-            "screenCaptureOptions?.showsCaptureMenu == false ? 82 : 146")
-                && captureSelectionSource.contains(
-                    ".opacity(options.selectedTool == .recording ? 1 : 0)"),
-               "capture modes reserve the recording controls' height so the chooser never jumps")
-        suite.expect(captureSelectionSource.contains("screenCaptureToolDidChange()")
-                && captureSelectionSource.contains("!nextPolicy.sharesSource(with: capturePolicy)")
-                && captureSelectionSource.contains("adoptCapturePolicy(nextPolicy)")
-                && captureSelectionSource.contains("panel.update(frozenImage:")
-                && captureSelectionSource.contains("screenCaptureOptions?.onSelectionChange ="),
-               "a capture mode that needs other pixels gets them behind the panels, which stay on screen")
-        suite.expect(captureSelectionSource.contains("private var pointerIsInside = false")
-                && !captureSelectionSource.contains("|| bounds.contains(hoverPoint)"),
-               "the capture loupe draws on only the display that owns the current pointer")
         // The uploader tests run what these call. Here the calls themselves
         // are checked with comments removed: a new capture starts the latest
         // capture first, teardown invalidates pending uploads, and only a
@@ -1207,102 +1284,30 @@ enum ScreenshotFeatureTests {
                "discarding the preview of the latest capture withholds it, while a preview reopened from history does not")
         // In the island the menu arrow is hidden, so a click there must open
         // the durations rather than publish at once.
-        let shareMenuCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "@ViewBuilder private var shareMenu: some View {")
-            .dropFirst().first?.components(separatedBy: "private var shareDurations").first ?? ""
-        let embeddedShareMenu = shareMenuCode.components(separatedBy: "} else {").first ?? ""
-        let floatingShareMenu = shareMenuCode.components(separatedBy: "} else {").dropFirst().first ?? ""
-        suite.expect(embeddedShareMenu.contains("Menu { shareDurations } label: { shareMenuLabel },")
-                && !embeddedShareMenu.contains("primaryAction")
-                && floatingShareMenu.contains("primaryAction: {\n                share(.saved())"),
+        suite.expect(ScreenshotQuickPreviewController.shareLinkClick(embedded: true) == .opensDurations
+                && ScreenshotQuickPreviewController.shareLinkClick(embedded: false) == .sharesSavedLink,
                "the island's link button opens the durations on a click, while the floating preview keeps its split button")
-        let captureServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenCaptureService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!captureServiceSource.contains("replaceSelection"),
-               "the capture service does not cancel and recreate selection controllers when changing modes")
-        // The preview appears unasked for, so presenting it must not take the
-        // keyboard away from whatever the person is typing into. Its shortcuts
-        // read a local monitor, which is delivered nothing until the panel is
-        // key. Presenting stays silent unless the person opted in, and hover
-        // takes nothing either; a click hands the keyboard over in the panel's
-        // sendEvent because hosted SwiftUI content answers presses that never
-        // reach mouseDown. Comments are stripped so prose naming the API
-        // cannot answer for the code.
-        let quickPreviewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!quickPreviewSource.isEmpty, "the screenshot preview source reads back for its shape check")
-        let quickPreviewCode = quickPreviewSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        // Split at the hosting controller: the hover closure is built above it,
-        // so the presentation statements are what remains.
-        let presentBody = quickPreviewCode.components(separatedBy: "let host = NSHostingController")
-            .dropFirst().first?.components(separatedBy: "private func").first ?? ""
-        suite.expect(presentBody.contains("orderFrontRegardless()"),
-               "the screenshot preview is presented without activating the app")
-        // A click is the hand-off, and it is read in sendEvent because the
-        // hosted SwiftUI content answers presses that never reach mouseDown.
-        let panelBody = quickPreviewCode.components(separatedBy: "class ScreenshotQuickPreviewPanel")
-            .dropFirst().first?.components(separatedBy: "\n}").first ?? ""
-        // The preference keys the panel only after it is on screen, and the
-        // policy guard must stay immediately above the hand-off so an
-        // unconditional makeKey cannot slip past the behavior checks.
-        let presentLines = presentBody.components(separatedBy: "\n")
-        let orderFrontLine = presentLines.firstIndex { $0.contains("orderFrontRegardless()") } ?? -1
-        let makeKeyLine = presentLines.firstIndex { $0.contains("makeKey") } ?? -1
-        suite.expect(orderFrontLine >= 0 && makeKeyLine > orderFrontLine
-                && presentLines[makeKeyLine - 1].trimmingCharacters(in: .whitespaces)
-                    == "if presentationPolicy.takesFocus {",
-               "the screenshot preview takes key focus only behind the presentation policy, once the panel is on screen")
-        // The island reads the same policy: whether it takes the keyboard and
-        // whether a collapse closes the preview come from it, never a literal.
-        suite.expect(quickPreviewCode.contains("takeFocus: presentationPolicy.takesFocus,")
-                && quickPreviewCode.contains("closeOnCollapse: presentationPolicy.closesOnCollapse,"),
-               "the island preview takes the keyboard and closes on collapse exactly as the presentation policy says")
-        let makeKeyCount = quickPreviewCode.components(separatedBy: "makeKey").count - 1
-        let panelMakeKeyCount = panelBody.components(separatedBy: "makeKey").count - 1
-        suite.expect(makeKeyCount == panelMakeKeyCount + 1 && panelMakeKeyCount >= 1,
-               "hover never takes key focus; only the preferred presentation and the panel's own click hand-off may")
-        suite.expect(panelBody.contains("sendEvent") && panelBody.contains("leftMouseDown")
-                && panelBody.contains("makeKey") && panelBody.contains("super.sendEvent"),
-               "clicking the screenshot preview takes key focus and still delivers every preview button")
-
-        // With the controls in Dynamic Island, the island's panel holds key
-        // focus and the selection surface never becomes key on its own, so
-        // AppKit would spend the first click making it key and swallow it.
-        // The overlay view claims that click; comments are stripped so prose
-        // cannot answer for the code.
-        let selectionSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
-            encoding: .utf8)) ?? ""
-        let overlayViewBody = selectionSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-            .components(separatedBy: "class ScreenshotOverlayView").dropFirst().first?
-            .components(separatedBy: "\n}").first ?? ""
-        suite.expect(overlayViewBody.contains("acceptsFirstMouse") && overlayViewBody.contains("acceptsFirstMouse(for event: NSEvent?) -> Bool { true }"),
-               "the capture surface claims the first click so a drag works while Dynamic Island holds key focus")
         // Both editors state a size the same way. The recorder wrote
         // "1960x1274" beside a screenshot editor that already read
         // "2940 \u{00D7} 1912 px", and the letter x is the tell.
-        let recorderEditorSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Recorder/RecorderEditorView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!recorderEditorSource.isEmpty, "the recorder editor source reads back for its shape check")
-        suite.expect(recorderEditorSource.contains("\\(Int(size.width)) \u{00D7} \\(Int(size.height))"),
+        suite.expect(RecorderEditorView.outputSizeText(for: CGSize(width: 1_960, height: 1_274))
+                == "1960 \u{00D7} 1274"
+                && RecorderEditorView.outputSizeText(for: .zero).isEmpty,
                "the recorder states its output size with the multiplication sign")
         // A card that names itself twice reads like filler. The look cards had
         // borrowed the shape, pointer and background labels as subtitles, so
         // two of the three said their own name back in English.
-        let inspectorSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Recorder/RecorderInspector.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!inspectorSource.isEmpty, "the recorder inspector source reads back for its shape check")
-        suite.expect(!inspectorSource.contains("subtitle"),
-               "a look card carries one name, not a label borrowed from another control")
+        for language in AppLanguage.allCases {
+            let recorder = FeatureStrings.recorder(language)
+            let cards = RecorderInspector.lookCards(recorder)
+            let borrowed: Set<String> = [recorder.shapeLabel, recorder.pointerSectionLabel,
+                                         recorder.backgroundSectionLabel]
+            suite.expect(cards.map(\.look) == RecorderEditDocument.Look.allCases
+                    && cards.map(\.title) == [recorder.lookRaw, recorder.lookClean, recorder.lookStudio]
+                    && Set(cards.map(\.title)).count == cards.count
+                    && cards.allSatisfy { !$0.title.isEmpty && !borrowed.contains($0.title) },
+                   "a look card carries one name, not a label borrowed from another control (\(language.rawValue))")
+        }
         // A button says what it does. The empty zoom state had borrowed the
         // timeline lane's hint, so the button read "Click here to add a zoom"
         // while being the very thing the reader was already looking at.
@@ -1324,15 +1329,6 @@ enum ScreenshotFeatureTests {
         suite.expect(CommandBarMenuPath.crumb(appName: "Notes", path: ["", "View"])
                 == "Notes \u{203A} View",
                "an empty step leaves no dangling separator")
-        // The cleanup above is the only kind that survives exit(). A defer
-        // that removes a file here would look like housekeeping and do none.
-        let suiteSource = (try? String(contentsOfFile: "Tests/ScreenshotFeatureTests.swift",
-                                       encoding: .utf8)) ?? ""
-        suite.expect(!suiteSource.isEmpty, "the suite reads itself back for its own shape check")
-        // Split so the needle never matches the line that looks for it.
-        let deadCleanup = "defer { try? FileManager" + ".default.removeItem"
-        suite.expect(!suiteSource.contains(deadCleanup),
-               "scratch is handed back before the run reports, never by a defer this exit skips")
         // A word pinned to a fixed column has to be allowed to give: the
         // backdrop sliders were labelled in a 64-point column that the Turkish
         // and Spanish words for blur run past, so they were being cut.
@@ -1460,84 +1456,91 @@ enum ScreenshotFeatureTests {
                 && !ScreenshotSupport.isRecentCaptureCacheFileName("history.json")
                 && !ScreenshotSupport.isRecentCaptureCacheFileName("../\(recentID.uuidString).png"),
                "recent capture cleanup recognizes only app-owned UUID png names")
-        let dragRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ScreenshotDragTests-\(UUID().uuidString)", isDirectory: true)
         let dragData = Data([0x89, 0x50, 0x4E, 0x47])
-        let firstDrag = try? ScreenshotSupport.temporaryDragFile(
-            data: dragData, name: "Capture.png", directory: dragRoot)
-        let secondDrag = try? ScreenshotSupport.temporaryDragFile(
-            data: dragData, name: "Capture.png", directory: dragRoot)
-        suite.expect(firstDrag?.lastPathComponent == "Capture.png"
-                && firstDrag.flatMap { try? Data(contentsOf: $0) } == dragData,
-               "a screenshot drag writes the complete payload with its file name")
-        suite.expect(firstDrag != nil && secondDrag != nil && firstDrag != secondDrag,
-               "simultaneous screenshot drags receive separate temporary files")
-        let unrelatedDrag = dragRoot.appendingPathComponent("ScreenshotDrag-not-owned",
-                                                            isDirectory: true)
-        try? FileManager.default.createDirectory(at: unrelatedDrag,
-                                                 withIntermediateDirectories: true)
-        ScreenshotSupport.removeTemporaryDragDirectories(directory: dragRoot)
-        suite.expect(firstDrag.map { !FileManager.default.fileExists(atPath: $0.path) } == true
-                && secondDrag.map { !FileManager.default.fileExists(atPath: $0.path) } == true
-                && FileManager.default.fileExists(atPath: unrelatedDrag.path),
-               "temporary screenshot cleanup removes only app-owned drag directories")
-        try? FileManager.default.removeItem(at: dragRoot)
+        let handedBackDragRoot = withScratch("ScreenshotDragTests") { dragRoot -> URL in
+            let firstDrag = try? ScreenshotSupport.temporaryDragFile(
+                data: dragData, name: "Capture.png", directory: dragRoot)
+            let secondDrag = try? ScreenshotSupport.temporaryDragFile(
+                data: dragData, name: "Capture.png", directory: dragRoot)
+            suite.expect(firstDrag?.lastPathComponent == "Capture.png"
+                    && firstDrag.flatMap { try? Data(contentsOf: $0) } == dragData,
+                   "a screenshot drag writes the complete payload with its file name")
+            suite.expect(firstDrag != nil && secondDrag != nil && firstDrag != secondDrag,
+                   "simultaneous screenshot drags receive separate temporary files")
+            let unrelatedDrag = dragRoot.appendingPathComponent("ScreenshotDrag-not-owned",
+                                                                isDirectory: true)
+            try? FileManager.default.createDirectory(at: unrelatedDrag,
+                                                     withIntermediateDirectories: true)
+            ScreenshotSupport.removeTemporaryDragDirectories(directory: dragRoot)
+            suite.expect(firstDrag.map { !FileManager.default.fileExists(atPath: $0.path) } == true
+                    && secondDrag.map { !FileManager.default.fileExists(atPath: $0.path) } == true
+                    && FileManager.default.fileExists(atPath: unrelatedDrag.path),
+                   "temporary screenshot cleanup removes only app-owned drag directories")
+            return dragRoot
+        }
+        suite.expect(!FileManager.default.fileExists(atPath: handedBackDragRoot.path),
+               "scratch is handed back before the run reports, never by a defer this exit skips")
 
-        let copyRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ScreenshotCopyTests-\(UUID().uuidString)", isDirectory: true)
-        let staleCopy = try? ScreenshotSupport.copiedFile(
-            data: dragData, name: "Old.png", directory: copyRoot)
-        if let staleCopy {
-            try? FileManager.default.setAttributes(
-                [.modificationDate: Date(timeIntervalSince1970: 1)],
-                ofItemAtPath: staleCopy.path)
+        let handedBackCopyRoot = withScratch("ScreenshotCopyTests") { copyRoot -> URL in
+            let staleCopy = try? ScreenshotSupport.copiedFile(
+                data: dragData, name: "Old.png", directory: copyRoot)
+            if let staleCopy {
+                try? FileManager.default.setAttributes(
+                    [.modificationDate: Date(timeIntervalSince1970: 1)],
+                    ofItemAtPath: staleCopy.path)
+            }
+            let currentCopy = try? ScreenshotSupport.copiedFile(
+                data: dragData, name: "../Capture.png", directory: copyRoot)
+            let nextCopy = try? ScreenshotSupport.copiedFile(
+                data: dragData, name: "Capture.png", directory: copyRoot)
+            if let nextCopy {
+                ScreenshotSupport.pruneCopiedFiles(
+                    in: copyRoot, preserving: nextCopy,
+                    now: Date(timeIntervalSince1970: 100_000))
+            }
+            suite.expect(staleCopy.map { !FileManager.default.fileExists(atPath: $0.path) } == true,
+                   "copying a screenshot removes expired copied files")
+            suite.expect(currentCopy?.lastPathComponent == "Capture.png"
+                    && nextCopy?.lastPathComponent == "Capture 2.png"
+                    && currentCopy.flatMap { try? Data(contentsOf: $0) } == dragData,
+                   "copied screenshots stay as unique complete png files")
+            suite.expect(currentCopy.map { ScreenshotSupport.isCopiedScreenshot($0, in: copyRoot) } == true,
+                   "clipboard history recognizes a copied screenshot only inside its private cache")
+            suite.expect(currentCopy.map {
+                ClipboardHistoryCapturePolicy.isCopiedScreenshot([$0.path], in: copyRoot)
+            } == true
+                    && !ClipboardHistoryCapturePolicy.isCopiedScreenshot(
+                        ["/tmp/Other.png"], in: copyRoot),
+                   "an app-owned screenshot is never retained as a file when image capture rejects it")
+            let lateStaleCopy = copyRoot.appendingPathComponent("A.png")
+            let publishedCopy = copyRoot.appendingPathComponent("B.png")
+            let pruneVictims = ScreenshotSupport.copiedFilePruneVictims(
+                [
+                    .init(url: lateStaleCopy, date: Date(timeIntervalSince1970: 2), bytes: 6),
+                    .init(url: publishedCopy, date: Date(timeIntervalSince1970: 1), bytes: 6),
+                ],
+                preserving: publishedCopy,
+                maximumCount: 100,
+                maximumBytes: 10)
+            suite.expect(pruneVictims == [lateStaleCopy],
+                   "a late stale copy is pruned without evicting the published file")
+            let handedBackLink = withScratch("ScreenshotCopyLink", isDirectory: false) { copySymlink -> URL in
+                try? FileManager.default.createSymbolicLink(at: copySymlink,
+                                                             withDestinationURL: copyRoot)
+                let symlinkCopy = try? ScreenshotSupport.copiedFile(
+                    data: dragData, name: "Linked.png", directory: copySymlink)
+                suite.expect(symlinkCopy == nil
+                        && currentCopy.map { FileManager.default.fileExists(atPath: $0.path) } == true,
+                       "copied screenshots reject a symlink cache without touching its target")
+                return copySymlink
+            }
+            suite.expect(!FileManager.default.fileExists(atPath: handedBackLink.path)
+                    && FileManager.default.fileExists(atPath: copyRoot.path),
+                   "a scratch link is handed back without taking its target with it")
+            return copyRoot
         }
-        let currentCopy = try? ScreenshotSupport.copiedFile(
-            data: dragData, name: "../Capture.png", directory: copyRoot)
-        let nextCopy = try? ScreenshotSupport.copiedFile(
-            data: dragData, name: "Capture.png", directory: copyRoot)
-        if let nextCopy {
-            ScreenshotSupport.pruneCopiedFiles(
-                in: copyRoot, preserving: nextCopy,
-                now: Date(timeIntervalSince1970: 100_000))
-        }
-        suite.expect(staleCopy.map { !FileManager.default.fileExists(atPath: $0.path) } == true,
-               "copying a screenshot removes expired copied files")
-        suite.expect(currentCopy?.lastPathComponent == "Capture.png"
-                && nextCopy?.lastPathComponent == "Capture 2.png"
-                && currentCopy.flatMap { try? Data(contentsOf: $0) } == dragData,
-               "copied screenshots stay as unique complete png files")
-        suite.expect(currentCopy.map { ScreenshotSupport.isCopiedScreenshot($0, in: copyRoot) } == true,
-               "clipboard history recognizes a copied screenshot only inside its private cache")
-        suite.expect(currentCopy.map {
-            ClipboardHistoryCapturePolicy.isCopiedScreenshot([$0.path], in: copyRoot)
-        } == true
-                && !ClipboardHistoryCapturePolicy.isCopiedScreenshot(
-                    ["/tmp/Other.png"], in: copyRoot),
-               "an app-owned screenshot is never retained as a file when image capture rejects it")
-        let lateStaleCopy = copyRoot.appendingPathComponent("A.png")
-        let publishedCopy = copyRoot.appendingPathComponent("B.png")
-        let pruneVictims = ScreenshotSupport.copiedFilePruneVictims(
-            [
-                .init(url: lateStaleCopy, date: Date(timeIntervalSince1970: 2), bytes: 6),
-                .init(url: publishedCopy, date: Date(timeIntervalSince1970: 1), bytes: 6),
-            ],
-            preserving: publishedCopy,
-            maximumCount: 100,
-            maximumBytes: 10)
-        suite.expect(pruneVictims == [lateStaleCopy],
-               "a late stale copy is pruned without evicting the published file")
-        let copySymlink = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ScreenshotCopyLink-\(UUID().uuidString)")
-        try? FileManager.default.createSymbolicLink(at: copySymlink,
-                                                     withDestinationURL: copyRoot)
-        let symlinkCopy = try? ScreenshotSupport.copiedFile(
-            data: dragData, name: "Linked.png", directory: copySymlink)
-        suite.expect(symlinkCopy == nil
-                && currentCopy.map { FileManager.default.fileExists(atPath: $0.path) } == true,
-               "copied screenshots reject a symlink cache without touching its target")
-        try? FileManager.default.removeItem(at: copySymlink)
-        try? FileManager.default.removeItem(at: copyRoot)
+        suite.expect(!FileManager.default.fileExists(atPath: handedBackCopyRoot.path),
+               "scratch is handed back before the run reports, never by a defer this exit skips")
 
         var counterList = [
             ScreenshotSupport.Annotation(tool: .counter, number: 1),
@@ -1579,27 +1582,6 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.canReorder(layered, moving: UUID(), .forward)
                 && !ScreenshotSupport.canReorder([], moving: layered[0].id, .backward),
                "an annotation that is not there can never be reordered")
-        let screenshotEditorSource = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotEditorController.swift",
-            encoding: .utf8)) ?? "")
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let screenshotSupportSource = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
-            encoding: .utf8)) ?? "")
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(screenshotEditorSource.contains("if tool != .select, tool != .crop {\n            selectedID = nil\n        }"),
-               "the editor clears stale selection before creating a new annotation")
-        suite.expect(!screenshotEditorSource.contains("annotations.append(annotation)\n            selectedID = annotation.id\n            draftID = annotation.id")
-                && screenshotEditorSource.contains("} else if let draftID {\n                selectedID = draftID"),
-               "a shape is selected only after its drag ends")
-        suite.expect(screenshotSupportSource.contains("let color: ColorID?")
-                && screenshotSupportSource.contains("let stroke: StrokeID?")
-                && screenshotSupportSource.contains("let arrowStyle: ArrowStyleID?"),
-               "selection styles can leave controls untouched when a mark does not use them")
 
         let resized = ScreenshotSupport.resizedRect(CGRect(x: 10, y: 10, width: 100, height: 100),
                                                     dragging: .bottomRight,
@@ -1888,34 +1870,149 @@ enum ScreenshotFeatureTests {
                 && ScreenshotSupport.steppedTextSize(from: 96, up: true) == nil
                 && ScreenshotSupport.steppedTextSize(from: 10, up: false) == nil,
                "the size buttons step through the presets and stop at the ends")
-        suite.expect(screenshotEditorSource.contains("let strokeChanged = usesStroke && annotations[index].stroke != stroke")
-                && screenshotEditorSource.contains("if usesStroke { annotations[index].stroke = stroke }"),
+        // The editor's own model on a blank capture, driven as the canvas
+        // drives it. The choices it remembers are put back afterwards.
+        let rememberedEditorKeys = [DefaultsKey.screenshotLastTool, DefaultsKey.screenshotLastColor,
+                                    DefaultsKey.screenshotLastStroke, DefaultsKey.screenshotLastTextSize,
+                                    DefaultsKey.screenshotLastBlurLevel, DefaultsKey.screenshotLastArrowStyle,
+                                    DefaultsKey.screenshotLastSticker]
+        let rememberedEditorValues = rememberedEditorKeys.map { UserDefaults.standard.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(rememberedEditorKeys, rememberedEditorValues) {
+                if let value {
+                    UserDefaults.standard.set(value, forKey: key)
+                } else {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+        }
+        let editorCanvas = CGContext(data: nil, width: 400, height: 300, bitsPerComponent: 8, bytesPerRow: 0,
+                                     space: CGColorSpaceCreateDeviceRGB(),
+                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+        func dragInEditor(_ model: ScreenshotEditorModel, from start: CGPoint, to end: CGPoint) {
+            model.beginDrag(at: start)
+            model.continueDrag(to: end)
+            model.endDrag(at: end, isTap: false)
+        }
+        func tapInEditor(_ model: ScreenshotEditorModel, at point: CGPoint) {
+            model.beginDrag(at: point)
+            model.endDrag(at: point, isTap: true)
+        }
+
+        let shapeDrafts = ScreenshotEditorModel(image: editorCanvas, scale: 1)
+        shapeDrafts.tool = .rect
+        dragInEditor(shapeDrafts, from: CGPoint(x: 20, y: 20), to: CGPoint(x: 120, y: 100))
+        let firstShape = shapeDrafts.annotations.last?.id
+        shapeDrafts.beginDrag(at: CGPoint(x: 250, y: 150))
+        suite.expect(firstShape != nil && shapeDrafts.selectedID == nil,
+               "the editor clears stale selection before creating a new annotation")
+        shapeDrafts.continueDrag(to: CGPoint(x: 330, y: 230))
+        let secondShape = shapeDrafts.annotations.last?.id
+        let selectedMidDrag = shapeDrafts.selectedID
+        shapeDrafts.endDrag(at: CGPoint(x: 330, y: 230), isTap: false)
+        suite.expect(shapeDrafts.annotations.count == 2 && secondShape != firstShape
+                && selectedMidDrag == nil && shapeDrafts.selectedID == secondShape,
+               "a shape is selected only after its drag ends")
+
+        // A highlight has no thickness control: picking one changes nothing
+        // and leaves nothing to undo, and a colour pick keeps its thickness.
+        let highlightMarks = ScreenshotEditorModel(image: editorCanvas, scale: 1)
+        highlightMarks.tool = .highlight
+        highlightMarks.color = .yellow
+        highlightMarks.stroke = .small
+        dragInEditor(highlightMarks, from: CGPoint(x: 40, y: 40), to: CGPoint(x: 200, y: 80))
+        let drawnHighlight = highlightMarks.annotations.last
+        highlightMarks.stroke = .large
+        let afterThickness = highlightMarks.annotations
+        highlightMarks.color = .green
+        let recoloured = highlightMarks.annotations.last
+        highlightMarks.undo()
+        highlightMarks.undo()
+        suite.expect(drawnHighlight != nil && afterThickness == [drawnHighlight].compactMap { $0 }
+                && recoloured?.color == .green && recoloured?.stroke == .small
+                && highlightMarks.annotations.isEmpty,
                "picking text or a highlight never records a thickness edit it has no control for")
-        let screenshotEditorViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Screenshot/ScreenshotEditorView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(screenshotEditorViewSource.contains("isHovered || isActive ? 0.9 : 0.55"),
-               "tool shortcut labels stay visible on idle rail buttons")
-        suite.expect(screenshotEditorSource.contains("syncControls(to: hit)"),
-               "the editor synchronizes controls from the selected annotation")
-        let existingSelectionSource: String
-        if let start = screenshotEditorSource.range(of: "private func selectExistingAnnotation"),
-           let end = screenshotEditorSource.range(of: "private func updateDraft") {
-            existingSelectionSource = String(screenshotEditorSource[start.lowerBound..<end.lowerBound])
-        } else {
-            existingSelectionSource = ""
-        }
-        suite.expect(existingSelectionSource.contains("syncControls(to: hit)"),
+
+        // Picking a mark shows its look and leaves alone the controls it does
+        // not use.
+        let idleControls = ScreenshotEditorModel(image: editorCanvas, scale: 1)
+        idleControls.tool = .highlight
+        idleControls.color = .yellow
+        dragInEditor(idleControls, from: CGPoint(x: 40, y: 40), to: CGPoint(x: 200, y: 80))
+        idleControls.selectedID = nil
+        idleControls.color = .purple
+        idleControls.stroke = .large
+        idleControls.tool = .select
+        tapInEditor(idleControls, at: CGPoint(x: 120, y: 60))
+        suite.expect(idleControls.selectedID == idleControls.annotations.last?.id
+                && idleControls.color == .yellow && idleControls.stroke == .large,
+               "selection styles can leave controls untouched when a mark does not use them")
+
+        // A tap with a creation tool on an existing mark edits that mark: the
+        // controls take its look before it is selected, so the controls of the
+        // next mark are never written into it.
+        let creationTap = ScreenshotEditorModel(image: editorCanvas, scale: 1)
+        creationTap.tool = .arrow
+        creationTap.color = .blue
+        creationTap.stroke = .large
+        creationTap.arrowStyle = .open
+        dragInEditor(creationTap, from: CGPoint(x: 50, y: 150), to: CGPoint(x: 300, y: 150))
+        let tappedArrow = creationTap.annotations.last
+        creationTap.selectedID = nil
+        creationTap.color = .red
+        creationTap.stroke = .small
+        creationTap.arrowStyle = .filled
+        creationTap.tool = .text
+        tapInEditor(creationTap, at: CGPoint(x: 175, y: 150))
+        suite.expect(tappedArrow != nil && creationTap.selectedID == tappedArrow?.id
+                && creationTap.annotations == [tappedArrow].compactMap { $0 }
+                && creationTap.color == .blue && creationTap.stroke == .large && creationTap.arrowStyle == .open,
                "creation-tool taps synchronize controls before selecting the annotation")
-        let finishSelectionSource: String
-        if let start = screenshotEditorSource.range(of: "private func finishSelectDrag"),
-           let end = screenshotEditorSource.range(of: "private func selectExistingAnnotation") {
-            finishSelectionSource = String(screenshotEditorSource[start.lowerBound..<end.lowerBound])
-        } else {
-            finishSelectionSource = ""
-        }
-        suite.expect(finishSelectionSource.contains("syncControls(to: hit)"),
+
+        // Pressing a mark with the select tool shows its look even when the
+        // press becomes a move rather than a tap.
+        let selectPress = ScreenshotEditorModel(image: editorCanvas, scale: 1)
+        selectPress.tool = .rect
+        selectPress.color = .red
+        selectPress.stroke = .small
+        dragInEditor(selectPress, from: CGPoint(x: 20, y: 20), to: CGPoint(x: 120, y: 120))
+        selectPress.selectedID = nil
+        selectPress.color = .green
+        selectPress.stroke = .medium
+        selectPress.tool = .select
+        dragInEditor(selectPress, from: CGPoint(x: 60, y: 60), to: CGPoint(x: 70, y: 70))
+        suite.expect(selectPress.selectedID == selectPress.annotations.last?.id
+                && selectPress.color == .red && selectPress.stroke == .small
+                && selectPress.annotations.last?.rect == CGRect(x: 30, y: 30, width: 100, height: 100),
+               "the editor synchronizes controls from the selected annotation")
+
+        // A select-tool tap on the selected mark's grip, where another mark
+        // lies on top, picks that other mark, and the controls follow it.
+        let overlapping = ScreenshotEditorModel(image: editorCanvas, scale: 1)
+        overlapping.tool = .rect
+        overlapping.color = .red
+        overlapping.stroke = .small
+        dragInEditor(overlapping, from: CGPoint(x: 20, y: 20), to: CGPoint(x: 120, y: 120))
+        let lowerMark = overlapping.annotations.last
+        overlapping.selectedID = nil
+        overlapping.color = .blue
+        overlapping.stroke = .large
+        dragInEditor(overlapping, from: CGPoint(x: 110, y: 110), to: CGPoint(x: 200, y: 200))
+        let upperMark = overlapping.annotations.last
+        overlapping.selectedID = nil
+        overlapping.color = .red
+        overlapping.stroke = .small
+        overlapping.tool = .select
+        overlapping.selectedID = lowerMark?.id
+        tapInEditor(overlapping, at: CGPoint(x: 120, y: 120))
+        suite.expect(upperMark != nil && overlapping.selectedID == upperMark?.id
+                && overlapping.color == .blue && overlapping.stroke == .large
+                && overlapping.annotations == [lowerMark, upperMark].compactMap { $0 },
                "selection-tool taps synchronize controls for every selected mark")
+        suite.expect(ScreenshotEditorView.railShortcutLabelOpacity(isHovered: false, isActive: false) == 0.55
+                && ScreenshotEditorView.railShortcutLabelOpacity(isHovered: true, isActive: false) == 0.9
+                && ScreenshotEditorView.railShortcutLabelOpacity(isHovered: false, isActive: true) == 0.9,
+               "tool shortcut labels stay visible on idle rail buttons")
         suite.expect(abs(ScreenshotSupport.distance(from: CGPoint(x: 50, y: 10),
                                               toSegment: CGPoint(x: 0, y: 0),
                                               CGPoint(x: 100, y: 0)) - 10) < 0.001,
@@ -3114,17 +3211,26 @@ enum ScreenshotFeatureTests {
                 && MicMuteSupport.absentClaims(recorded: nil, present: ["mic-a"]).isEmpty
                 && MicMuteSupport.absentClaims(recorded: ["headset"], present: []) == ["headset"],
                "a sweep keeps the claim on a microphone this app muted that is unplugged right now, so it is released when it returns")
-        let micMuteServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/MicMuteService.swift",
-            encoding: .utf8)) ?? ""
-        let reapply = micMuteServiceSource.range(of: "private func reapplyIfNeeded() {")
-            .map { micMuteServiceSource[$0.lowerBound...] }
-            .flatMap { body in body.range(of: "\n    }\n").map { body[..<$0.lowerBound] } }
-            .map(String.init) ?? ""
-        suite.expect(reapply.contains("if wantsMute {") && !reapply.contains("micMuteActive")
-                && micMuteServiceSource.contains(
-                    "private func apply(muted: Bool, announce: Bool) {\n        wantsMute = muted"),
+        // The mute itself, on the audio rig its own contract drives: a
+        // microphone arriving while an unmute is still queued, with the saved
+        // flag still reading muted.
+        typealias MuteRig = MixerInputVolumeContract
+        MuteRig.HAL.reset()
+        MuteRig.HAL.levels[MuteRig.HAL.key(10)] = 0.5
+        MuteRig.HAL.muteService.setMuted(true)
+        MuteRig.Queue.drain()
+        let mutedBeforeChange = MuteRig.HAL.muteService.isMuted && MuteRig.HAL.silenced(10)
+            && MuteRig.HAL.defaults.bool(forKey: DefaultsKey.micMuteActive)
+        MuteRig.HAL.muteService.setMuted(false)
+        MuteRig.HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
+        let deviceChangeHeard = !MuteRig.Queue.main.work.isEmpty
+        MuteRig.Queue.main.run()
+        MuteRig.Queue.drain()
+        suite.expect(mutedBeforeChange && deviceChangeHeard && !MuteRig.HAL.muteService.isMuted
+                && MuteRig.HAL.levels[MuteRig.HAL.key(10)] == 0.5
+                && !MuteRig.HAL.defaults.bool(forKey: DefaultsKey.micMuteActive),
                "a device change re-asserts the mute request in flight, never the persisted flag it is about to replace")
+        MuteRig.HAL.finish()
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.radialMenuEnabled] as? Bool == false,
                "the radial menu ships off by default")

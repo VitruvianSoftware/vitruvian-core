@@ -35,7 +35,7 @@ enum OverlayPanelTests {
             ("the scrolling capture controls", QuickToolHUD.makeScrollingPanel()),
             ("the quick launcher", QuickLauncherService.makePanel()),
             ("the camera preview", CameraPreviewService.makePanel()),
-            ("the recent captures", RecentCaptureService.makePanel()),
+            ("the recent captures", RecentCaptureService.makeHistoryPanel()),
             ("the screenshot preview", ScreenshotQuickPreviewController.makePanel(size: frame.size)),
             ("the QR result", QRResultController.makePanel(size: frame.size)),
             ("the scratchpad", ScratchpadService.makePanel()),

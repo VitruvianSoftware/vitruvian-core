@@ -153,4 +153,48 @@ package enum ScreenshotCapturePolicy {
         return AttachedCapturePlan(windowIDs: [targetID] + attachedIDs,
                                    bounds: plan.bounds)
     }
+
+    /// The plan a capture of one clicked window draws: the geometric one,
+    /// narrowed by what Accessibility confirms only when the app already
+    /// holds that grant. Without it, window capture never starts an
+    /// Accessibility round trip merely because geometry found a candidate.
+    /// `confirmedIDs` is asked only then, with the geometric plan.
+    package static func attachedCapturePlan(
+        target: CaptureWindow,
+        frontToBack: [CaptureWindow],
+        accessibilityGranted: @autoclosure () -> Bool,
+        confirmedIDs: (AttachedCapturePlan) -> Set<CGWindowID>?) -> AttachedCapturePlan? {
+        guard let geometricPlan = attachedCapturePlan(target: target, frontToBack: frontToBack)
+        else { return nil }
+        guard accessibilityGranted() else { return geometricPlan }
+        return confirmedAttachment(geometricPlan, confirmedIDs: confirmedIDs(geometricPlan))
+    }
+
+    /// Subroles Accessibility gives the windows people work in. A candidate
+    /// it names this way is a window of its own, not something stacked on
+    /// the clicked one. The set matches what the auto-quit and enumeration
+    /// paths already read.
+    package static let standardWindowSubroles: Set<String> = ["AXStandardWindow", "AXFullScreenWindow"]
+
+    /// The geometric candidates Accessibility does not positively identify as
+    /// standard windows. `subroles` holds the subrole of each candidate
+    /// Accessibility resolved and could read; a candidate it had no answer
+    /// for stays in, since only a window it names as standard is filtered out.
+    package static func accessibilityAttachedWindowIDs(candidateWindowIDs: [CGWindowID],
+                                                       subroles: [CGWindowID: String]) -> Set<CGWindowID> {
+        Set(candidateWindowIDs.filter { id in
+            subroles[id].map { !standardWindowSubroles.contains($0) } ?? true
+        })
+    }
+
+    /// The one display a composited capture of `bounds` is cropped from: the
+    /// index of the only display frame it touches. A window straddling two
+    /// displays has no single display to crop from, while one hanging off a
+    /// lone display's edge still does, since the crop clamps the part that is
+    /// on screen. `nil` leaves the single-window routes to answer.
+    package static func attachedCaptureDisplayIndex(displayFrames: [CGRect],
+                                                    bounds: CGRect) -> Int? {
+        let hits = displayFrames.indices.filter { displayFrames[$0].intersects(bounds) }
+        return hits.count == 1 ? hits[0] : nil
+    }
 }

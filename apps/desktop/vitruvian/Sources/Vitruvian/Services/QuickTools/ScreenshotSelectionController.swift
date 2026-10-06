@@ -1340,6 +1340,20 @@ package final class ScreenshotOverlayView: NSView {
     package var showsFullScreenControl: Bool { !fullScreenHost.isHidden }
     package var fullScreenControlFrame: CGRect { fullScreenHost.frame }
 
+    /// The chooser's hint bar, which shows on the display holding the
+    /// pointer while nothing is being selected.
+    package var showsCaptureGuide: Bool { !guideHost.isHidden }
+    /// Where the hint bar is laid out, and the size its content asks for.
+    package var captureGuideFrame: CGRect { guideHost.frame }
+    package var captureGuideFittingSize: CGSize { guideHost.fittingSize }
+
+    /// The magnifier draws on the display that owns the pointer, never on
+    /// one the pointer only passed over, and only with pixels to magnify.
+    package var showsLoupe: Bool {
+        guard let controller else { return false }
+        return controller.loupeEnabled && !controller.spaceIsDown && pointerIsInside && loupeImage != nil
+    }
+
     private func pointerIsOverFullScreenControl(_ point: CGPoint) -> Bool {
         !fullScreenHost.isHidden && fullScreenHost.frame.contains(point)
     }
@@ -1414,8 +1428,7 @@ package final class ScreenshotOverlayView: NSView {
             context.fill(bounds)
         }
 
-        if controller.loupeEnabled, !controller.spaceIsDown,
-           pointerIsInside, let loupeImage {
+        if showsLoupe, let loupeImage {
             let point = isDragging ? lastDragPoint : hoverPoint
             drawCaptureLoupe(context,
                              image: loupeImage,
