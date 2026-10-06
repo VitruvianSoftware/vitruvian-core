@@ -83,6 +83,13 @@ class Repository:
             except (OSError, UnicodeDecodeError) as error:
                 self.unreadable.append(f"{path}: {error}")
         self.lines = {path: text.split("\n") for path, text in self.sources.items()}
+        tests = []
+        for root, _, files in os.walk(self.app_dir / "Tests", followlinks=True):
+            for name in files:
+                if name.endswith(".swift"):
+                    tests.append((Path(root) / name).relative_to(self.app_dir).as_posix())
+        self.test_paths = sorted(set(tests))
+        self.tests = {path: self.read_text(path) for path in self.test_paths}
         self.build_script = self.read_text("build.sh")
         self.uninstall_script = self.read_text("Tools/uninstall.sh")
         self.source_names = self.read_text("Tests/SourceNames.swift")
@@ -1032,6 +1039,130 @@ def build_signs_with_a_stable_identity(repo):
     return problems
 
 
+# --- The tests themselves -----------------------------------------------------
+
+# Declarations of a type, at any depth, as the Swift scanner read them: the
+# leading space, any attributes and modifiers, the keyword and the name.
+# `class func` and the like are members, not types.
+DECLARATION = re.compile(
+    r"^(\s*)(?:@\w+(?:\([^)]*\))?\s+)*"
+    r"(?:(?:private|fileprivate|internal|public|package|final|nonisolated|indirect|open)\s+)*"
+    r"(?:class|struct|enum|actor|protocol|typealias)\s+(?!func\b|var\b|let\b|subscript\b|init\b)([A-Za-z_]\w*)"
+)
+DECLARATION_KEYWORDS = ("class ", "struct ", "enum ", "actor ", "protocol ", "typealias ")
+# The Foundation types tests used to fake, beside the framework prefixes.
+FAKED_FOUNDATION_TYPES = {
+    "UserDefaults", "NotificationCenter", "DistributedNotificationCenter", "Bundle",
+    "ProcessInfo", "FileManager", "RunLoop", "Timer", "Thread", "OperationQueue",
+    "URLSession", "Date", "URL", "Data", "Calendar", "Locale",
+}
+
+
+def declarations(text):
+    """Each type declared in `text`, as (name, indented)."""
+    found = []
+    for line in text.split("\n"):
+        if not any(keyword in line for keyword in DECLARATION_KEYWORDS):
+            continue
+        match = DECLARATION.match(line)
+        if match:
+            found.append((match.group(2), match.group(1) != ""))
+    return found
+
+
+def is_system_name(name):
+    if name in FAKED_FOUNDATION_TYPES:
+        return True
+    return any(
+        name.startswith(prefix) and name[len(prefix):][:1].isupper()
+        for prefix in ("NS", "CG", "CF", "AX", "Dispatch")
+    )
+
+
+def test_types_do_not_shadow_real_ones(repo):
+    """No test declares a type named after a system type or one of the app's
+    own top-level types (REFACTOR.md step 4). A stand-in named like the real
+    thing shadows it for every line around it, which is how tests used to fake
+    a service's collaborators; the services now take them instead."""
+    problems = []
+    sample = declarations("\n".join([
+        "package final class Island {",
+        "    nonisolated enum DispatchQueue { static var main = 0 }",
+        "    @MainActor final class Window {}",
+        "    class func make() {}",
+        "    private typealias Moment = Double",
+        "}",
+    ]))
+    if sample != [("Island", False), ("DispatchQueue", True), ("Window", True), ("Moment", True)]:
+        problems.append("the scan finds nested and attributed declarations, and not class members")
+    if not (all(map(is_system_name, ["NSScreen", "NSEvent", "CGSConnectionID", "DispatchQueue",
+                                     "UserDefaults", "Bundle"]))
+            and not any(map(is_system_name, ["Display", "Pointer", "Clock", "Switches", "NSome",
+                                             "Bundler"]))):
+        problems.append("system names are the framework prefixes and the Foundation types tests used to fake")
+    production = {
+        name
+        for path in repo.swift_paths
+        for name, indented in declarations(repo.source(path))
+        if not indented
+    }
+    if len(production) <= 100 or len(repo.test_paths) <= 100:
+        problems.append("the sources and the tests read back from the app directory")
+    shadows = [
+        f"{path}: {name}"
+        for path in repo.test_paths
+        for name, _ in declarations(repo.tests[path])
+        if name in production or is_system_name(name)
+    ]
+    if shadows:
+        problems.append(f"no test type shadows a system type or one of the app's own: {shadows}")
+    return problems
+
+
+# What reading a file looks like in a test. `contentsOfFile` is never the
+# way a test reaches a resource any more; a path into Sources/ is never a
+# test's business at all.
+SOURCE_READS = ("contentsOf" + "File", '"Sources/', '"Sources"')
+
+
+def source_reads(path, text):
+    """Each line of a test that reads a source file as text, outside string
+    literals and comments."""
+    found = []
+    for number, line in enumerate(text.split("\n"), start=1):
+        if is_comment(line):
+            continue
+        for needle in SOURCE_READS:
+            at = line.find(needle)
+            # A mention inside a string literal is not a read: count the
+            # quotes before it, the way the ledger before this rule did.
+            if at >= 0 and line[:at].count('"') % 2 == 0:
+                found.append(f"{path}:{number}")
+                break
+    return found
+
+
+def unit_tests_read_no_source_text(repo):
+    """The unit tests run the code; none reads a source file as text
+    (REFACTOR.md step 7). How the code is written is checked here, by the
+    rules above, and nowhere in the tests."""
+    problems = []
+    sample = "\n".join([
+        "let text = try? String(" + "contentsOf" + 'File: "Sources/Vitruvian/App/AppDelegate.swift")',
+        "let files = FileManager.default.enumerator(atPath: " + '"Sources")',
+        '// a comment naming "Sources/Vitruvian" reads nothing',
+        'suite.expect(true, "a message about ' + "contentsOf" + 'File reads nothing")',
+    ])
+    if source_reads("sample", sample) != ["sample:1", "sample:2"]:
+        problems.append("the scan finds a source read and a walk of Sources/, and not prose")
+    if not repo.test_paths:
+        problems.append("the tests read back from the app directory")
+    reads = [read for path in repo.test_paths for read in source_reads(path, repo.tests[path])]
+    if reads:
+        problems.append(f"no unit test reads a source file as text, found {reads}")
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -1064,6 +1195,8 @@ RULES = [
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,
+    test_types_do_not_shadow_real_ones,
+    unit_tests_read_no_source_text,
 ]
 
 

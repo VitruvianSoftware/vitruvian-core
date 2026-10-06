@@ -105,7 +105,7 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   compiler enforces its switch arms, including `FeatureRuntime.runBinding(for:)`.
   Permission re-syncs derive from `permissions`. The compiler does **not**
   enforce these, so check each one:
-  - `AppDelegate`'s quit-cleanup list
+  - the quit cleanup: `AppDelegate`'s list and `QuitInputRelease`
   - `FeatureVisibilitySupport.features(for:)`
   - `Core/Defaults.swift` keys and defaults
   See `REFACTOR.md` for the plan to close those gaps too.
@@ -117,8 +117,10 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   Testing, one case per suite listed in `Tests/TestGroups.swift`. A new
   contract runs from a suite there or from a contract that already runs;
   `TestRegistrationTests` fails on one that nothing runs. Write behavioral
-  tests, not assertions on source text: `Tests/source_pins.txt` counts the
-  reads of source files that remain, and a new one fails until it is listed.
+  tests: no unit test reads a source file as text, and
+  `bazel/source_lints.py` (`source_lints_test`) fails on one that does. A
+  rule about how all of the code is written, not about what one piece of it
+  does, is a lint: add it there, with a mutation that shows it fails.
 
 ## Verifying
 
