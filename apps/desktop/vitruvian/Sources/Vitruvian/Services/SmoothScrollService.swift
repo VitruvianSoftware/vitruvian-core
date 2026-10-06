@@ -50,7 +50,7 @@ package final class SmoothScrollService: ObservableObject {
     private var runLoopSource: CFRunLoopSource?
     /// The glide the swallowed ticks are replayed through. The tap callback
     /// and the glide's frames both live on the main run loop.
-    private let glide = SmoothScrollGlide(environment: .live)
+    private lazy var glide = SmoothScrollGlide(environment: .live)
     /// This process's own id, compared against the one every event carries.
     /// The glide's mark is the first thing that keeps a replayed frame out of
     /// this tap; this is the second lock on the same door, because the only
