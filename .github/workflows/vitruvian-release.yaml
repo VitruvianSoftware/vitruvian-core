@@ -21,6 +21,10 @@
 # release-please for the Vitruvian macOS app:
 # 1. Authors release PRs from conventional commits under apps/desktop/vitruvian/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-vX.Y.Z).
+# 3. Builds the app from that tag, packages Vitruvian-X.Y.Z.dmg and attaches it
+#    to the release. Signing and notarization use the VITRUVIAN_SIGNING_* and
+#    VITRUVIAN_NOTARY_* secrets when they are set; without them the app is
+#    signed ad-hoc and the DMG is not notarized.
 name: vitruvian-release
 
 on:
@@ -74,3 +78,65 @@ jobs:
           config-file: apps/desktop/vitruvian/release-please-config.json
           manifest-file: apps/desktop/vitruvian/.release-please-manifest.json
           target-branch: main
+
+  package:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' || inputs.tag != '' }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    concurrency:
+      group: vitruvian-package-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Import the signing identity
+        env:
+          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+        run: apps/desktop/vitruvian/Tools/ci-setup-signing.sh
+
+      - name: Build the app
+        run: |
+          set -euo pipefail
+          flags=(--config=macos-app)
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            flags+=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${flags[@]}" //apps/desktop/vitruvian:Vitruvian
+          archive="$(bazel cquery "${flags[@]}" --output=files //apps/desktop/vitruvian:Vitruvian | grep '\.zip$' | head -1)"
+          test -f "$archive"
+          echo "ARCHIVE=$PWD/$archive" >> "$GITHUB_ENV"
+
+      - name: Package the DMG
+        env:
+          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: apps/desktop/vitruvian/Tools/package-release.sh "$ARCHIVE"
+
+      - name: Attach the DMG to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(apps/desktop/vitruvian/dist/Vitruvian-*.dmg)
+          if [ "${#dmgs[@]}" -ne 1 ]; then
+            echo "expected one DMG, found ${#dmgs[@]}" >&2
+            exit 1
+          fi
+          shasum -a 256 "${dmgs[0]}"
+          gh release upload "$TAG" "${dmgs[0]}" --clobber --repo "$GITHUB_REPOSITORY"
