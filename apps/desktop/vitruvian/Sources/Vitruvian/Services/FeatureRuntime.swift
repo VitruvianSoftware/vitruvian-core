@@ -400,6 +400,8 @@ package final class FeatureRuntime: ObservableObject {
         case .notchWatch: return islandExtension(stopping: .stopNotchWatch)
         case .scratchpad: return [.scratchpad]
         case .commandBar: return [.commandBar]
+        // Its hotkey, the auto-start and, on uninstall, stopping the bot.
+        case .nexusAgent: return [.nexusAgent]
         case .cleaner:
             let schedules: [FeatureBindingAction] = [.cleanerScheduler, .whatsAppScheduler, .whatsAppOrganizer]
             let keepsDownloads = AppFeature.cleaner.isAvailable(in: defaults)
@@ -494,6 +496,7 @@ package final class FeatureRuntime: ObservableObject {
         case .stopNotchWatch: NotchWatchService.shared.stop()
         case .scratchpad: ScratchpadService.shared.syncWithPreferences()
         case .commandBar: CommandBarService.shared.syncWithPreferences()
+        case .nexusAgent: NexusAgentService.shared.syncWithPreferences()
         case .cleanerScheduler: CleanerScheduler.shared.syncWithPreferences()
         case .whatsAppScheduler: WhatsAppDownloadScheduler.shared.syncWithPreferences()
         case .whatsAppOrganizer: WhatsAppDownloadOrganizer.shared.syncWithPreferences()
@@ -524,7 +527,7 @@ package enum FeatureBindingAction: Hashable, CaseIterable {
     case cameraPreview, wallpaper, radialMenu
     case notch, stopNotchTimer, stopNotchAccessories, stopNotchLyrics, notchQueue, notchAudioLevel
     case stopNotchNotifications, stopNotchDownloads, stopNotchCalendar, stopAgentUsage, stopNotchWatch
-    case scratchpad, commandBar
+    case scratchpad, commandBar, nexusAgent
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
     case appUpdates, monitorPlan, monitorAlerts, fanControl
 }

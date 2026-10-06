@@ -143,6 +143,10 @@ extension AppFeature {
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .wallpaper, .fanControl,
              .diskImageInstaller, .killProcess, .portManager:
             return .idle
+        // The bot is a process of its own; inside the app only a hotkey waits,
+        // and the log is read while its Settings page is open.
+        case .nexusAgent:
+            return .idle
         case .appUpdates:
             // The list is on demand; only a background schedule keeps a timer.
             return AppUpdatesSupport.CheckFrequency.sanitized(
