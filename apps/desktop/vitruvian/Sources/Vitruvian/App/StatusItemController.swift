@@ -67,7 +67,6 @@ final class StatusItemController {
     private static let mainAutosaveName = "VitruvianMenuBarItem"
     private static let metricAutosavePrefix = "VitruvianMetric"
     private static let clipboardPreviewAutosaveName = "VitruvianClipboardPreview"
-    private static let maxPlacementGeneration = 10_000
     private static let emptyStatusImage = NSImage()
 
     /// Cached so the countdown tooltip doesn't allocate a DateFormatter (expensive)
