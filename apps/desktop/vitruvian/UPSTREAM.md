@@ -55,17 +55,29 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
   deleted, and `build.sh` and `Tools/uninstall.sh` no longer touch legacy
   upstream app paths. The Cleaner also protects upstream's data namespaces.
 
-**Still blocking a first release:**
+**Cleared for the first release (2026-10-06):**
 
-- The public mirror `VitruvianSoftware/vitruvian`. The GPL requires offering the
-  source with every build, and the update feed points there.
-- Re-record `Resources/Gifs/*.gif` from the renamed app: they still show
-  upstream's planet mark.
-- A Developer ID signing identity and the release pipeline.
-- A decision on whether to run our own temporary-link and feedback backends, or
-  remove those features and their dead UI in the refactor.
-- `CHANGELOG.md` is upstream's history, shown in-app under Release notes. Start
-  Vitruvian's own changelog at its first version.
+- **Artwork:** `Resources/Gifs/highlights-notch.gif` lost the 8 pixel strip at
+  its left edge, the only place upstream's planet mark showed (in the menu bar).
+  `Resources/Gifs/commandBar.gif`, which showed the mark in the command bar and
+  which nothing loads, is deleted.
+- **Release pipeline:** `vitruvian-release.yaml` cuts each release, and the
+  `vitruvian` delivery unit (`publish.sh`) builds, signs, packages and attaches
+  `Vitruvian-X.Y.Z.dmg` to it.
+- **Source:** every release is a tag of this public repository, so the source
+  of each build is offered beside it, as the GPL requires.
+
+**Still open, not blocking:**
+
+- **A Developer ID signing identity and notary credentials.** Until they are
+  set as the `VITRUVIAN_SIGNING_*` and `VITRUVIAN_NOTARY_*` secrets, releases
+  are signed ad hoc and macOS asks before the first open.
+- **The public mirror `VitruvianSoftware/vitruvian`.** The update feed points
+  there, so update checks find nothing until it exists.
+- **The temporary-link and feedback backends:** run our own, or remove those
+  features and their dead UI.
+- **`CHANGELOG.md`:** release-please writes Vitruvian's entries above
+  upstream's history, which the app shows under Release notes.
 
 ## What the import left out
 
@@ -2396,6 +2408,11 @@ is that notice. Add an entry for every change to upstream files.
     The command bar's aliases and row shortcuts write or remove their
     encoded text. `WallpaperService.applyAllDisplays` reads its preference
     directly.
+- **2026-10-06**: First release:
+  - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
+    drop upstream's mark;
+  - `Resources/Gifs/commandBar.gif` deleted;
+  - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

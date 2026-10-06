@@ -12,6 +12,8 @@
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
 #   :source_lints_test    the rules over how the sources, build scripts and
 #                         tests are written (Linux-safe)
+#   :publish              builds the DMG and attaches it to a GitHub Release
+#                         (the `vitruvian` delivery unit below)
 #
 # Swift has no Gazelle, so this file is hand-written. Everything that needs an
 # Apple toolchain is `manual` + macOS-constrained so a Linux `bazel build //...`
@@ -26,7 +28,9 @@ load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hi
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load(
     ":bazel/sources.bzl",
@@ -552,4 +556,49 @@ pipeline_unit(
     ],
     tier = "L1",
     timeout_minutes = 60,
+)
+
+# Build + package + upload. The generated delivery workflow runs the script
+# directly (bash apps/desktop/vitruvian/publish.sh); this binary is the
+# break-glass path the README points at, and what the delivery() below names
+# as `run`. macOS only, like everything that builds the app.
+exports_files([
+    "Tools/ci-setup-signing.sh",
+    "publish.sh",
+])
+
+sh_binary(
+    name = "publish",
+    srcs = ["publish.sh"],
+    tags = ["manual"],
+)
+
+# Delivery unit: the DMG release ladder.
+#   beta        on every affected push to main -> rolling prerelease
+#               vitruvian-beta-latest (Vitruvian-beta.dmg clobbered, tag moved
+#               to HEAD);
+#   production  on the release-please release vitruvian-vX.Y.Z ->
+#               Vitruvian-X.Y.Z.dmg attached to that release.
+# Declared here because this package owns the artifact. The release-please
+# machinery that cuts the production tag lives in
+# .github/workflows/vitruvian-release.yaml (release machinery, not delivery --
+# the same split as iot-esp32-s3-release.yaml vs delivery.yaml).
+delivery(
+    name = "vitruvian",
+    environments = [
+        "beta",
+        "production",
+    ],
+    # Path-only mode: this regex IS the unit's complete trigger set
+    # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
+    extra_paths = ["apps/desktop/vitruvian/"],
+    # No GitHub Environment: the publish binds none; it uploads with the run's
+    # own GITHUB_TOKEN under a job-level contents: write.
+    github_environment = "",
+    kind = "publish",
+    legacy_job = "package",
+    legacy_workflow = ".github/workflows/vitruvian-release.yaml",
+    promotion = "release:vitruvian-v",
+    render = "transcribed",
+    run = "//apps/desktop/vitruvian:publish",
 )

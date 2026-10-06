@@ -78,6 +78,9 @@
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
+#   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
+#       paths:  apps/desktop/vitruvian/
+#       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -176,6 +179,7 @@ jobs:
       affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
       affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
       affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
+      affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@v7.0.1

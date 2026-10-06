@@ -1430,6 +1430,7 @@ func TestPublishersAreOneScriptEach(t *testing.T) {
 		{"charts", "tools/charts/publish.sh", "//tools/charts:publish"},
 		{"tabula-dev-latest", "apps/suites/tabula/extension/publish-dev-latest.sh", "//apps/suites/tabula/extension:publish-dev-latest"},
 		{"esp32-s3", "apps/embedded/esp32-s3/publish.sh", "//apps/embedded/esp32-s3:publish"},
+		{"vitruvian", "apps/desktop/vitruvian/publish.sh", "//apps/desktop/vitruvian:publish"},
 	} {
 		t.Run(tc.unit, func(t *testing.T) {
 			if !strings.Contains(generated, "run: bash "+tc.script) {

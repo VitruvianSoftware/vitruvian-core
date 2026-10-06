@@ -15,8 +15,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - **Never use upstream's brand or services.** No Vorssaint name, icon, bundle ID,
   update feed, upload/feedback server or community link in what the app shows or
   calls (see `TRADEMARKS.md`). Keep upstream's copyright lines, which are legal
-  notices, not branding. Publish nothing until the release blockers in
-  `UPSTREAM.md` are cleared.
+  notices, not branding. Releases ship as DMGs from the `vitruvian` delivery
+  unit (`publish.sh`); check anything that lands in the bundle (artwork, GIFs,
+  strings) for upstream's brand first.
 
 ## Building
 

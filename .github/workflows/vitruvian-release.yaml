@@ -21,6 +21,9 @@
 # release-please for the Vitruvian macOS app:
 # 1. Authors release PRs from conventional commits under apps/desktop/vitruvian/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-vX.Y.Z).
+# The DMG is NOT built here: that release fires the `vitruvian` unit's
+# production rung in the generated delivery.yaml, which attaches
+# Vitruvian-X.Y.Z.dmg (declared in apps/desktop/vitruvian/BUILD).
 name: vitruvian-release
 
 on:

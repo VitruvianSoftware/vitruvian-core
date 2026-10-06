@@ -5,15 +5,64 @@ window snapping, Dock previews, clipboard history, a Dynamic Island-style notch,
 screen capture and recording, AI agent usage tracking and more, all behind one
 menu-bar icon.
 
-> **Status: renamed, not yet released.** Vitruvian is a GPL-3.0-or-later fork of
+> **Status: released.** Vitruvian is a GPL-3.0-or-later fork of
 > [vorssaint-utils](https://github.com/vorssaint/vorssaint-utils), renamed with its
-> own bundle ID and icon. **Do not distribute any build yet**: the
-> public source mirror, signing and a release feed don't exist yet, and the
-> onboarding GIFs still show upstream's mark. See [`UPSTREAM.md`](UPSTREAM.md) for
-> provenance, the licensing rules and the remaining release blockers.
+> own bundle ID and icon. Each release on this repository's
+> [Releases](https://github.com/VitruvianSoftware/vitruvian-core/releases) page
+> (tags `vitruvian-vX.Y.Z`) carries `Vitruvian-X.Y.Z.dmg` and the source it was
+> built from. See [`UPSTREAM.md`](UPSTREAM.md) for provenance, the licensing
+> rules and what is still open.
 
 Requirements: macOS 14 or newer on Apple Silicon, and the Xcode pinned in the
 repository's `.xcode-version`.
+
+## Install
+
+1. Download `Vitruvian-X.Y.Z.dmg` from the latest `vitruvian-v*` release.
+2. Open it and drag Vitruvian into Applications.
+3. Open Vitruvian. Releases are not notarized yet, so macOS blocks the first
+   open. Allow it under System Settings › Privacy & Security › Open Anyway, or
+   remove the download's quarantine flag once:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Vitruvian.app
+   ```
+
+## Releases
+
+Two workflows share the work, the same split as the repository's other
+release-please components:
+
+- **`.github/workflows/vitruvian-release.yaml`** runs release-please over
+  conventional commits under `apps/desktop/vitruvian/`. A `feat` or `fix`
+  commit opens a release PR that bumps `CHANGELOG.md`, `Resources/Info.plist`
+  and `.release-please-manifest.json`. Merging that PR tags `vitruvian-vX.Y.Z`
+  and creates the GitHub Release.
+- **The `vitruvian` delivery unit** (declared in `BUILD`, rendered into the
+  generated `.github/workflows/delivery.yaml`) builds and publishes the DMG on
+  the `xcode-27` runner by running `publish.sh`:
+  - on every push to `main` that touches the app, `Vitruvian-beta.dmg` on the
+    rolling `vitruvian-beta-latest` prerelease;
+  - on each `vitruvian-v*` release, `Vitruvian-X.Y.Z.dmg` on that release.
+
+`publish.sh` builds the app and hands it to `Tools/package-release.sh`, which:
+
+- signs it: with the `VITRUVIAN_SIGNING_CERT_P12` /
+  `VITRUVIAN_SIGNING_CERT_PASSWORD` Developer ID when those secrets exist,
+  ad hoc otherwise;
+- notarizes it when the `VITRUVIAN_NOTARY_*` secrets exist;
+- packages the DMG with `Tools/make-dmg.sh`.
+
+To publish a release's DMG again, run `delivery.yaml` by hand from the release
+tag with unit `vitruvian` and environment `production`, or on a Mac, from a
+checkout of the tag:
+
+```sh
+GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian:publish
+```
+
+Tags before `vitruvian-v3.6.0` predate `publish.sh` and cannot be published
+this way.
 
 ## Build and test
 
@@ -79,8 +128,9 @@ module, and the app is now split into modules (see below). Use Bazel.
 | `Sources/HIDEventSystem/`, `Sources/VMStatisticsCompat/` | C module maps for private or compat headers |
 | `Tests/` | Upstream's custom test runner, `generate_sources.py` extractor and fixtures |
 | `Resources/` | Info.plist, entitlements, launchd plist, localized InfoPlist strings, brand masters, GIFs and images |
-| `Tools/` | Icon generator (run by the build) and upstream's signing, notarization and DMG scripts |
+| `Tools/` | Icon generator (run by the build), upstream's signing, notarization and DMG scripts, and `package-release.sh`, which signs and packages a Bazel-built app |
 | `bazel/` | Build glue: generated source lists, genrule scripts and test wrappers |
+| `publish.sh` | Builds the DMG and attaches it to a GitHub Release (the `vitruvian` delivery unit and `bazel run :publish`) |
 
 Architecture review notes and the planned refactor are tracked in the PRs that
 follow the import.
