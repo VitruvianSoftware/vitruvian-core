@@ -38,7 +38,7 @@ metadata:
     backstage.io/techdocs-ref: dir:.
     vitruvian.dev/release-model: monorepo-bazel
     vitruvian.dev/environments: development
-    vitruvian.dev/deploy-workflow: delivery.yaml
+    vitruvian.dev/deploy-workflow: delivery-esp32-s3.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/esp32-s3
       title: Source Tree

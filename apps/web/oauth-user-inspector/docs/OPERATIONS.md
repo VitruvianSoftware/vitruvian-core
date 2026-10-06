@@ -71,7 +71,7 @@ Three Pulumi stacks plus one platform stack own this app's infrastructure:
 
 ## Deploy pipeline
 
-Pipeline: [Unified Delivery Pipeline](../../../../docs/concepts/sdlc.md) ([`.github/workflows/delivery.yaml`](../../../../.github/workflows/delivery.yaml)).
+Pipeline: [Unified Delivery Pipeline](../../../../docs/concepts/sdlc.md) ([`.github/workflows/delivery-oauth-user-inspector.yaml`](../../../../.github/workflows/delivery-oauth-user-inspector.yaml)).
 
 **Trigger.** Push to `main` touching `apps/web/oauth-user-inspector/**` (excluding the
 identity stack), the zitadel-apps stack, or the workflow files; plus
@@ -239,7 +239,7 @@ match it exactly (trailing slash included). So:
 ### Deploy a code change
 
 1. Merge the change to `main` (via the merge queue). The push triggers
-   the delivery pipeline (`delivery.yaml`): `build` → `deploy-dev` runs automatically.
+   the delivery pipeline (`delivery-oauth-user-inspector.yaml`): `build` → `deploy-dev` runs automatically.
 2. Approve `deploy-nonprod`, then `deploy-prod` in the GitHub Actions UI when you
    want to promote. The **same digest** flows through all three — nonprod and
    prod are not rebuilt.
@@ -333,7 +333,7 @@ app stack accepts an `imageDigest` config key and a real `CLOUDFLARE_API_TOKEN`.
 | Build space (shared AR) | foundation `gcp-projects/modules/app_build_space` |
 | Zitadel OIDC client + SM sync | `infrastructure/pulumi/platform/zitadel-apps/main.go` |
 | GitHub Environments + WIF vars | `infrastructure/pulumi/platform/repo-config/main.go` (`oauthEnvironment`) |
-| Deploy pipeline | `.github/workflows/delivery.yaml` (see [SDLC](../../../../docs/concepts/sdlc.md)) |
+| Deploy pipeline | `.github/workflows/delivery-oauth-user-inspector.yaml` (see [SDLC](../../../../docs/concepts/sdlc.md)) |
 | Reusable blue-green deploy | `.github/workflows/_deploy-cloud-run.yaml` |
 | Reusable Zitadel apply | `.github/workflows/_zitadel-apps-apply.yaml` |
 | CI secret sync tool | `tools/sync-env-secrets/` |

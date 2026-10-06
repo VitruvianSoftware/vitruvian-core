@@ -23,7 +23,7 @@
 # Delivery is NOT here: the beta rolling prerelease (push to main) and the
 # production upload (release-please release) are the `esp32-s3` delivery unit
 # declared in apps/embedded/esp32-s3/BUILD and rendered into the generated
-# .github/workflows/delivery.yaml, under the orchestrator's gating and kill
+# .github/workflows/delivery-esp32-s3.yaml, under the orchestrator's gating and kill
 # switch. The release-please machinery that cuts the production tag is
 # iot-esp32-s3-release.yaml.
 name: iot-esp32-s3

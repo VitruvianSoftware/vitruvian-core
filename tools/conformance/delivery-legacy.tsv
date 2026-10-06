@@ -7,7 +7,7 @@
 # side-effect firewall): every workflow under .github/workflows/ matching
 #   pulumi up | bazel run ...:(deploy|up|apply) | helm push | gh release upload
 #   | docker push | oci_push
-# must be EITHER the generated .github/workflows/delivery.yaml OR listed here
+# must be EITHER an app's generated .github/workflows/delivery-<app>.yaml OR listed here
 # with a justification. A NEW unlisted match fails the check; a row whose
 # workflow no longer matches also fails (stale exception), the same policy
 # public-targets.tsv and version-pins.tsv apply -- so this file can only ever

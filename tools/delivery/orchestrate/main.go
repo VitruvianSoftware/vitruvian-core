@@ -260,6 +260,40 @@ func discover(cfg config) ([]unitMeta, error) {
 	return units, firstErr
 }
 
+// selectUnits narrows the discovered units to the ones named in names
+// (ORCHESTRATE_UNITS: space-separated, rendered into each app's workflow by
+// //tools/delivery/gen). Empty names means every unit.
+//
+// Each app's workflow judges only its own units, so one app's run never pays
+// for another app's target-determinator sweep. A named unit that discovery
+// did not find is KEPT, as a placeholder, and reported as an error: the
+// manifest then fails open with that unit affected. Dropping it would read as
+// "not affected" to every job that consumes its verdict.
+func selectUnits(units []unitMeta, names string) ([]unitMeta, error) {
+	wanted := strings.Fields(names)
+	if len(wanted) == 0 {
+		return units, nil
+	}
+	byName := make(map[string]unitMeta, len(units))
+	for _, u := range units {
+		byName[u.Name] = u
+	}
+	out := make([]unitMeta, 0, len(wanted))
+	var missing []string
+	for _, n := range wanted {
+		if u, ok := byName[n]; ok {
+			out = append(out, u)
+			continue
+		}
+		out = append(out, unitMeta{Name: n})
+		missing = append(missing, n)
+	}
+	if len(missing) > 0 {
+		return out, fmt.Errorf("ORCHESTRATE_UNITS names %s, which discovery did not find -- the workflow is stale against the delivery() declarations", strings.Join(missing, ", "))
+	}
+	return out, nil
+}
+
 // metadataRelPath maps a delivery-unit label to its metadata file's path
 // relative to bazel-bin: //pkg/sub:x.delivery_unit -> pkg/sub/x.delivery.json.
 func metadataRelPath(label string) (string, error) {
@@ -436,8 +470,12 @@ func orchestrate(cfg config) int {
 		failOpen = fmt.Sprintf("base %q does not resolve to a commit", base)
 	}
 
-	// --- 2. the universe.
+	// --- 2. the universe, narrowed to the units THIS workflow delivers.
 	units, err := discover(cfg)
+	if err != nil && failOpen == "" {
+		failOpen = err.Error()
+	}
+	units, err = selectUnits(units, cfg.env["ORCHESTRATE_UNITS"])
 	if err != nil && failOpen == "" {
 		failOpen = err.Error()
 	}

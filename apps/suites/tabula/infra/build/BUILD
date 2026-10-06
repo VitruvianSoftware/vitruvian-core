@@ -18,6 +18,7 @@ pulumi_project(
 # and the rung name are different facts here.
 delivery(
     name = "tabula-build-stack",
+    app = "tabula",
     environments = ["shared"],
     extra_paths = [
         "apps/suites/tabula/infra/build/",

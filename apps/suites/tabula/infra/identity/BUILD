@@ -27,7 +27,7 @@ pulumi_project(
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2). The generated
-# .github/workflows/delivery.yaml now owns the push lane; tabula-identity-stack.yaml
+# .github/workflows/delivery-tabula.yaml now owns the push lane; tabula-identity-stack.yaml
 # keeps only workflow_dispatch until Phase 3 deletes it.
 #
 # ALL THREE RUNGS DELIVER ON A PUSH, and that is not the cloud-run policy being
@@ -44,6 +44,7 @@ pulumi_project(
 # INPUT, because GitHub rejects `environment:` on a job that has `uses:`.
 delivery(
     name = "tabula-identity",
+    app = "tabula",
     environments = [
         "development",
         "nonproduction",

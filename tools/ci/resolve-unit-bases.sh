@@ -19,7 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# resolve-unit-bases.sh — per-unit durable diff bases for the delivery lane (#1842).
+# resolve-unit-bases.sh — per-unit durable diff bases for an app's delivery lane (#1842).
 #
 # THE PROBLEM resolve-deploy-base.sh cannot solve on its own. That script picks
 # ONE base: the head of the last push run that concluded `success`. Run-level
@@ -70,7 +70,16 @@
 # Environment:
 #   GH_TOKEN       token with `actions: read`.
 #   REPO           owner/repo (defaults to GITHUB_REPOSITORY).
-#   WORKFLOW_FILE  the workflow whose history to read, e.g. delivery.yaml.
+#   WORKFLOW_FILE  the workflow whose history to read, e.g. delivery-tabula.yaml.
+#   LEGACY_WORKFLOW_FILE
+#                  optional: the workflow that delivered these units BEFORE
+#                  WORKFLOW_FILE existed (delivery.yaml, before the per-app
+#                  split). While WORKFLOW_FILE has fewer than LOOKBACK push
+#                  runs, the window is filled with this one's newest runs,
+#                  AFTER WORKFLOW_FILE's own: every legacy run predates the
+#                  new workflow, so the window stays newest-first. Job ids are
+#                  the same in both, so a unit's last delivery is found
+#                  wherever it happened. Retires itself after LOOKBACK runs.
 #   WORKFLOW_PATH  the workflow file to parse for unit names
 #                  (default .github/workflows/$WORKFLOW_FILE).
 #   BRANCH         defaults to main.
@@ -113,10 +122,26 @@ conds="$(awk '
 ' "${WORKFLOW_PATH}")"
 [ -n "${conds}" ] || emit "{}" "no job conditions parsed from ${WORKFLOW_PATH}"
 
-runs="$("${GH_BIN}" run list --repo "${REPO}" -w "${WORKFLOW_FILE}" -b "${BRANCH}" \
-  -e push -L "${LOOKBACK}" --json databaseId,headSha --jq '.[] | "\(.databaseId) \(.headSha)"' 2>&1)"
-if [ $? -ne 0 ] || [ -z "${runs}" ]; then
-  emit "{}" "could not list runs for ${WORKFLOW_FILE}: ${runs}"
+list_runs() { # <workflow-file> <limit> -> "id sha" lines, newest first
+  "${GH_BIN}" run list --repo "${REPO}" -w "${1}" -b "${BRANCH}" \
+    -e push -L "${2}" --json databaseId,headSha --jq '.[] | "\(.databaseId) \(.headSha)"' 2>&1
+}
+
+runs="$(list_runs "${WORKFLOW_FILE}" "${LOOKBACK}")" \
+  || emit "{}" "could not list runs for ${WORKFLOW_FILE}: ${runs}"
+have="$(printf '%s\n' "${runs}" | grep -c .)"
+source_note="${WORKFLOW_FILE}"
+if [ -n "${LEGACY_WORKFLOW_FILE:-}" ] && [ "${LEGACY_WORKFLOW_FILE}" != "${WORKFLOW_FILE}" ] \
+  && [ "${have}" -lt "${LOOKBACK}" ]; then
+  # A legacy lookup failure only costs the fill: the workflow's own runs
+  # still decide.
+  if legacy="$(list_runs "${LEGACY_WORKFLOW_FILE}" "$((LOOKBACK - have))")" && [ -n "${legacy}" ]; then
+    runs="$(printf '%s\n%s\n' "${runs}" "${legacy}" | grep .)"
+    source_note="${WORKFLOW_FILE}, then ${LEGACY_WORKFLOW_FILE}"
+  fi
+fi
+if [ -z "${runs}" ]; then
+  emit "{}" "no push runs of ${WORKFLOW_FILE} to read"
 fi
 
 # TWO PASSES, and the order matters. First: per JOB, its NEWEST success (runs
@@ -182,4 +207,4 @@ for uu in ${units}; do
 done
 json="${json}}"
 
-emit "${json}" "per-unit bases from the last ${LOOKBACK} push runs of ${WORKFLOW_FILE}"
+emit "${json}" "per-unit bases from the last ${LOOKBACK} push runs of ${source_note}"

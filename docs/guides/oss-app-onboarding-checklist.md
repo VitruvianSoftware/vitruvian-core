@@ -107,10 +107,11 @@ workflow (**never** a local `pulumi up`).
       > time. Missing the deployer grant is a 403 that looks like a runtime
       > problem.
 - [ ] Apply via a `delivery()` unit in the stack's BUILD file (`kind = "pulumi"`,
-      `github_environment = "foundation-proj-{env}"`, `environments = ["shared"]`)
-      — the generated `delivery.yaml` then applies it as `sa-terraform-proj`
-      under the reviewer-gated `foundation-proj-shared` environment. Do NOT add
-      a per-app workflow; there is one delivery workflow and it is generated.
+      `app = "<app>"`, `github_environment = "foundation-proj-{env}"`,
+      `environments = ["shared"]`) — the app's generated `delivery-<app>.yaml`
+      then applies it as `sa-terraform-proj` under the reviewer-gated
+      `foundation-proj-shared` environment. Do NOT hand-write a workflow; each
+      app's delivery workflow is generated from its `delivery()` units.
 
 ---
 

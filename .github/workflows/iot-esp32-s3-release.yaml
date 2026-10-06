@@ -24,7 +24,7 @@
 #
 # This is RELEASE MACHINERY, not delivery (the same split as
 # tabula-release.yaml): it publishes no artifact. The release it cuts is what
-# the generated delivery.yaml's `esp32-s3-production` rung listens for, and the
+# the generated delivery-esp32-s3.yaml's `esp32-s3-production` rung listens for, and the
 # beta rolling prerelease is that unit's push rung. Nothing here matches the
 # conformance side-effect firewall, so it needs no delivery-legacy.tsv row.
 name: iot-esp32-s3-release

@@ -61,7 +61,7 @@ HEAD_SHA="$(git rev-parse HEAD)"
 
 # Unit metadata, exactly the shape delivery() emits.
 cat >"$repo/bazel-bin/oauth-user-inspector/infra/app/oauth-user-inspector.delivery.json" <<EOF
-{"schema":1,"name":"oauth-user-inspector","kind":"cloud-run",
+{"schema":1,"name":"oauth-user-inspector","app":"oauth-user-inspector","kind":"cloud-run",
  "environments":["development","nonproduction","production"],
  "extra_paths":["oauth-user-inspector/"],"exclude_paths":[],"graph_targets":[]}
 EOF
@@ -79,12 +79,19 @@ esac
 EOF
 # gh stub: \$STUB_INFLIGHT controls the in-flight count; \$STUB_DELIVERED_SHA is
 # the head sha of the run whose job succeeded (empty => no successful delivery).
+# \$STUB_DELIVERED_WF, when set, is the ONLY workflow whose history holds that
+# run. Every workflow queried is appended to \$STUB_LOG.
 cat >"$stubs/gh" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = "run" ] && [ "$2" = "list" ]; then
+  wf=""; prev=""
+  for a in "$@"; do [ "$prev" = "--workflow" ] && wf="$a"; prev="$a"; done
+  echo "$wf" >> "${STUB_LOG:-/dev/null}"
   case "$*" in
     *"length"*) echo "${STUB_INFLIGHT:-0}"; exit 0 ;;
-    *) [ -n "${STUB_DELIVERED_SHA:-}" ] && echo "111 ${STUB_DELIVERED_SHA}"; exit 0 ;;
+    *)
+      if [ -n "${STUB_DELIVERED_WF:-}" ] && [ "$wf" != "$STUB_DELIVERED_WF" ]; then exit 0; fi
+      [ -n "${STUB_DELIVERED_SHA:-}" ] && echo "111 ${STUB_DELIVERED_SHA}"; exit 0 ;;
   esac
 fi
 if [ "$1" = "api" ]; then
@@ -177,6 +184,30 @@ if [ "$rc" -eq 0 ] && [ "$out" = "IN_FLIGHT" ]; then
     pass "mid-convergence is not reported as drift (rc=$rc)"
 else
     fail "expected rc=0/IN_FLIGHT, got rc=$rc out='$out'"
+fi
+
+echo "--- each unit is read from its own app's workflow ---"
+log="$work/gh.log"; : >"$log"
+read -r rc out <<<"$(STUB_LOG="$log" run_drift 0 "$HEAD_SHA")"
+if grep -qx 'delivery-oauth-user-inspector.yaml' "$log" && ! grep -qx 'delivery.yaml' "$log"; then
+    pass "the unit's history is read from delivery-<app>.yaml, and the legacy one is not needed"
+else
+    fail "expected only delivery-oauth-user-inspector.yaml queried, got: $(tr '\n' ' ' <"$log")"
+fi
+
+echo "--- a unit last delivered before the per-app split ---"
+read -r rc out <<<"$(STUB_DELIVERED_WF=delivery.yaml run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q 'last delivered by delivery.yaml' "$work/err"; then
+    pass "a delivery found only in the legacy delivery.yaml counts (not UNKNOWN)"
+else
+    fail "expected OK from the legacy history, got rc=$rc out='$out'"
+    sed 's/^/      /' "$work/err" >&2
+fi
+read -r rc out <<<"$(STUB_DELIVERED_WF=delivery.yaml LEGACY_WORKFLOW_FILE= run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 1 ]; then
+    pass "with the legacy fallback disabled, that unit is UNKNOWN"
+else
+    fail "expected rc=1 with LEGACY_WORKFLOW_FILE empty, got rc=$rc out='$out'"
 fi
 
 echo "--- an unknown delivery state is NOT treated as healthy ---"

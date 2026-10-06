@@ -30,7 +30,7 @@ jobs on `release_created`); this document is that pattern made repo-wide.
 - **Apps** trigger promotion on the GitHub **Release** event, filtered to the
   component's tag (e.g. `oauth-user-inspector-v*`). release-please
   (`apps-release.yaml`, `tabula-release.yaml`) publishes the release when the PR
-  merges; that fires the generated `delivery.yaml`'s nonprod→prod rungs for
+  merges; that fires the nonprod→prod rungs in that app's generated `delivery-<app>.yaml` for
   the unit whose tag prefix matches.
 - **Foundation** gates its in-line deploy jobs on the release-please action's
   `release_created` output in the same run.
@@ -51,7 +51,7 @@ check first if a release lands but nonprod/prod do not move.
 
 **Fallback / break-glass.** The failure mode is benign: no auto-promotion, never
 a broken deploy. Promote any single environment directly with
-`.github/workflows/delivery.yaml`'s `workflow_dispatch` — it takes a `unit`, an
+the app's `.github/workflows/delivery-<app>.yaml` `workflow_dispatch` — it takes a `unit`, an
 `environment` and an `allow-unsoaked` override, so one dispatch delivers exactly
 one thing — whenever the release path is unavailable or you need an
 out-of-band deploy. (Before the delivery orchestrator each app had its own
@@ -90,7 +90,7 @@ artifact nonprod smoke-tested.
   mirrors of dev. That is the point of release-gating, but it means "is X in
   prod?" is "was X in a merged release?", not "is X on main?".
 - **Hotfixes** cut a release like anything else (release-please will open a
-  patch PR immediately). For a genuine emergency that cannot wait, `delivery.yaml`'s
+  patch PR immediately). For a genuine emergency that cannot wait, the app's `delivery-<app>.yaml`
   `workflow_dispatch` redeploys a single unit + environment directly.
 - **Releasing is not the same as publishing.** This page covers the *deploy*
   half — release-please cuts a release and the artifact rolls to Cloud Run. The

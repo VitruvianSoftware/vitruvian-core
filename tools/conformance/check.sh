@@ -1790,33 +1790,22 @@ check_deploy_sequencer_gate() {
   esac
 
   _missing=""
+  _gen_wfs="$(delivery_generated_workflows)"
+  _gen_callers=""
   for _wf in "$ROOT"/.github/workflows/*.yaml "$ROOT"/.github/workflows/*.yml; do
     [ -f "$_wf" ] || continue
     # Only the CALLERS of the reusable rollout workflow actually deploy.
     grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$_wf" 2>/dev/null || continue
 
-    # The GENERATED delivery workflow is a caller too, but it deliberately
-    # carries no trigger set of its own (a `push.paths` filter is what #1351
+    # The GENERATED delivery workflows are callers too, but they deliberately
+    # carry no trigger set of their own (a `push.paths` filter is what #1351
     # removed): each unit's relevance is decided by the orchestrator from that
     # unit's delivery(extra_paths). So check the coupling WHERE IT NOW LIVES --
-    # in the declarations -- rather than exempting the file, which would turn
-    # this guard vacuous for the workflow that ends up owning every rollout.
-    if [ ".github/workflows/${_wf##*/}" = "$DELIVERY_WORKFLOW_REL" ]; then
-      _decl_missing="$(
-        delivery_declaring_files | while IFS= read -r _bf; do
-          [ -n "$_bf" ] || continue
-          awk -v f="${_bf#"$ROOT"/}" '
-            /^delivery\(/ { in_d = 1; nm = ""; cloudrun = 0; seq = 0; next }
-            in_d && /^\)/ { if (cloudrun && !seq) print nm; in_d = 0; next }
-            in_d && nm == "" && /^[ \t]*name[ \t]*=[ \t]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); nm = v }
-            in_d && /^[ \t]*kind[ \t]*=[ \t]*"cloud-run"/ { cloudrun = 1 }
-            in_d && /"tools\/deploy\/"/ { seq = 1 }
-          ' "$_bf"
-        done
-      )"
-      if [ -n "$_decl_missing" ]; then
-        _missing="${_missing} $(basename "$_wf")(units:$(printf '%s' "$_decl_missing" | tr '\n' ',' ))"
-      fi
+    # in the declarations, once, below -- rather than exempting the files,
+    # which would turn this guard vacuous for the workflows that own every
+    # rollout.
+    if printf '%s\n' "$_gen_wfs" | grep -qxF ".github/workflows/${_wf##*/}"; then
+      _gen_callers="${_gen_callers} $(basename "$_wf")"
       continue
     fi
 
@@ -1827,6 +1816,24 @@ check_deploy_sequencer_gate() {
       _missing="${_missing} $(basename "$_wf")"
     fi
   done
+
+  if [ -n "$_gen_callers" ]; then
+    _decl_missing="$(
+      delivery_declaring_files | while IFS= read -r _bf; do
+        [ -n "$_bf" ] || continue
+        awk -v f="${_bf#"$ROOT"/}" '
+          /^delivery\(/ { in_d = 1; nm = ""; cloudrun = 0; seq = 0; next }
+          in_d && /^\)/ { if (cloudrun && !seq) print nm; in_d = 0; next }
+          in_d && nm == "" && /^[ \t]*name[ \t]*=[ \t]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); nm = v }
+          in_d && /^[ \t]*kind[ \t]*=[ \t]*"cloud-run"/ { cloudrun = 1 }
+          in_d && /"tools\/deploy\/"/ { seq = 1 }
+        ' "$_bf"
+      done
+    )"
+    if [ -n "$_decl_missing" ]; then
+      _missing="${_missing} delivery()(units:$(printf '%s' "$_decl_missing" | tr '\n' ',' ))"
+    fi
+  fi
 
   if [ -z "$_missing" ]; then
     emit "gate" "$GLYPH_OK" "$C_GREEN" "_deploy-cloud-run.yaml callers" "trigger on tools/deploy/" "all callers" \
@@ -1844,8 +1851,8 @@ check_deploy_sequencer_gate() {
 # Deploy durable-base guard (#1351, issue item 2). A workflow that gates a
 # Cloud-Run/publish lane on the affected engine (tools/ci/deploy-affected.sh,
 # directly or through //tools/delivery/orchestrate) diffs `BEFORE_REV` against
-# HEAD to decide whether to deploy. That lane -- since Phase 3, the generated
-# delivery.yaml -- deliberately COALESCES queued pushes onto one concurrency
+# HEAD to decide whether to deploy. That lane -- since Phase 3, each app's
+# generated delivery-<app>.yaml -- deliberately COALESCES queued pushes onto one concurrency
 # group — serializing on purpose, because
 # two commits racing the same live env + shared build Artifact Registry is
 # worse than a queued wait. That is the OPPOSITE shape from the postsubmit
@@ -1890,7 +1897,7 @@ check_deploy_durable_base() {
     #
     # TWO SIGNATURES since the delivery orchestrator (Phase 3): the engine is
     # still tools/ci/deploy-affected.sh, but the workflow that gates a lane on
-    # it is now the generated delivery.yaml, which runs it from Go
+    # it is now each app's generated delivery-<app>.yaml, which runs it from Go
     # (//tools/delivery/orchestrate) rather than from a `run:` line. Matching
     # only the old shape would have left this check scanning ONE dead reusable
     # after the per-app workflows were deleted -- green, and guarding nothing.
@@ -2005,7 +2012,7 @@ check_deploy_durable_base() {
   if [ "$found_any" -eq 0 ]; then
     emit "durable" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "0 matched" ">=1" \
       "no workflow invokes the affected engine (directly, or via //tools/delivery/orchestrate) — the parser or the workflow layout changed" \
-      "confirm the generated .github/workflows/delivery.yaml still runs 'bazel run //tools/delivery/orchestrate'"
+      "confirm the generated .github/workflows/delivery-<app>.yaml files still run 'bazel run //tools/delivery/orchestrate'"
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 }
@@ -2013,9 +2020,9 @@ check_deploy_durable_base() {
 # ---------------------------------------------------------------------------
 # Delivery-orchestrator guard (delivery-orchestrator design spec §4.4/§6.1).
 #
-# The orchestrator's premise is that ONE generated workflow
-# (.github/workflows/delivery.yaml, rendered by //tools/ci:gen from the
-# delivery() declarations in the Bazel graph) becomes the single delivery path.
+# The orchestrator's premise is that the GENERATED workflows -- one per app,
+# .github/workflows/delivery-<app>.yaml, rendered by //tools/ci:gen from the
+# delivery() declarations in the Bazel graph -- are the only delivery path.
 # That premise is only true while three things hold, and NONE of them is
 # self-evident from a green CI run:
 #
@@ -2083,7 +2090,23 @@ DELIVERY_LEGACY_FLOOR='.github/workflows/_deploy-cloud-run.yaml
 .github/workflows/tabula-data-stack.yaml
 .github/workflows/tabula-release.yaml
 .github/workflows/zitadel-apps-mcp-slack-apply.yaml'
-DELIVERY_WORKFLOW_REL=".github/workflows/delivery.yaml"
+# The generated delivery workflows, one per app (//tools/delivery/gen):
+# .github/workflows/delivery-<app>.yaml for every `app = "..."` a delivery()
+# block declares. Derived from the DECLARATIONS, never from the files on disk
+# or their banner: a banner is one line anyone can paste into a hand-written
+# workflow, and treating every banner-carrying file as generated would let it
+# through the side-effect firewall below. A file the declarations do not
+# account for is not generated, whatever it says about itself.
+delivery_generated_workflows() {
+  delivery_declaring_files | while IFS= read -r _dgw_bf; do
+    [ -n "$_dgw_bf" ] || continue
+    awk '
+      /^delivery\(/ { in_d = 1; next }
+      in_d && /^\)/ { in_d = 0; next }
+      in_d && /^[ \t]*app[ \t]*=[ \t]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); print ".github/workflows/delivery-" v ".yaml" }
+    ' "$_dgw_bf"
+  done | LC_ALL=C sort -u
+}
 # One definition of "state-mutating", shared by the sweep, the seeded TSV and
 # the fix text, so they cannot drift apart.
 # `tools/charts/publish.sh` is here for the same reason the verbs are: the
@@ -2156,7 +2179,8 @@ delivery_declaring_files() {
 # DATED RECORDS of what was true when they were written; rewriting history to
 # keep a grep green would destroy their value.
 # ---------------------------------------------------------------------------
-DELIVERY_DELETED_WORKFLOWS='oauth-user-inspector-deploy.yaml
+DELIVERY_DELETED_WORKFLOWS='delivery.yaml
+oauth-user-inspector-deploy.yaml
 tabula-deploy.yaml
 tabula-dev-latest.yaml
 charts-publish.yml
@@ -2183,13 +2207,13 @@ check_deleted_workflow_references() {
   done
 
   if [ -z "$_dwr_bad" ]; then
-    emit "delivery" "$GLYPH_OK" "$C_GREEN" "docs + CONTRIBUTING" "no dead refs" "delivery.yaml" \
+    emit "delivery" "$GLYPH_OK" "$C_GREEN" "docs + CONTRIBUTING" "no dead refs" "delivery-<app>.yaml" \
       "no living document points at a workflow Phase 3 deleted" ""
     OK_COUNT=$((OK_COUNT + 1)); return 0
   fi
-  emit "delivery" "$GLYPH_FAIL" "$C_RED" "${_dwr_bad# }" "deleted workflow" "delivery.yaml" \
+  emit "delivery" "$GLYPH_FAIL" "$C_RED" "${_dwr_bad# }" "deleted workflow" "delivery-<app>.yaml" \
     "a living document names a workflow Phase 3 deleted -- a runbook telling someone to dispatch it is an instruction that cannot be followed" \
-    "point the doc at .github/workflows/delivery.yaml (its workflow_dispatch takes a unit + an environment) or at the unit's break-glass 'bazel run' target"
+    "point the doc at the unit's app workflow, .github/workflows/delivery-<app>.yaml (its workflow_dispatch takes a unit + an environment), or at the unit's break-glass 'bazel run' target"
   OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
 }
 
@@ -2295,6 +2319,7 @@ EOF
   # --- (c) side-effect firewall. ---------------------------------------------
   _sidefx_seen=""
   _sidefx_count=0
+  _gen_wfs="$(delivery_generated_workflows)"
   if [ -d "$WORKFLOWS_DIR" ]; then
     for _wf in "$WORKFLOWS_DIR"/*.yaml "$WORKFLOWS_DIR"/*.yml; do
       [ -f "$_wf" ] || continue
@@ -2303,9 +2328,9 @@ EOF
       _sidefx_count=$((_sidefx_count + 1))
       _sidefx_seen="$_sidefx_seen$_wfrel
 "
-      if [ "$_wfrel" = "$DELIVERY_WORKFLOW_REL" ]; then
+      if printf '%s\n' "$_gen_wfs" | grep -qxF "$_wfrel"; then
         emit "delivery" "$GLYPH_OK" "$C_GREEN" "$_wfrel" "generated" "generated" \
-          "the generated delivery workflow is the sanctioned side-effect path" ""
+          "an app's generated delivery workflow is the sanctioned side-effect path" ""
         OK_COUNT=$((OK_COUNT + 1))
         continue
       fi
@@ -2318,7 +2343,7 @@ EOF
         PIN_COUNT=$((PIN_COUNT + 1))
       else
         emit "delivery" "$GLYPH_FAIL" "$C_RED" "$_wfrel" "unlisted" "orchestrated" \
-          "this workflow mutates state (matches: $DELIVERY_SIDE_EFFECT_RE) but is neither the generated delivery workflow nor a declared legacy exception -- it is a delivery path outside the orchestrator's gating, ladder and kill switch (#1794)" \
+          "this workflow mutates state (matches: $DELIVERY_SIDE_EFFECT_RE) but is neither an app's generated delivery workflow nor a declared legacy exception -- it is a delivery path outside the orchestrator's gating, ladder and kill switch (#1794)" \
           "declare a delivery() unit and regenerate, or add to delivery-legacy.tsv with justification"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
       fi
@@ -2366,27 +2391,52 @@ EOF
     fi
   fi
 
-  # --- (d) §6.1 level-1 rollback guarantee: the kill switch is present. ------
-  _genwf="$ROOT/$DELIVERY_WORKFLOW_REL"
-  if [ ! -f "$_genwf" ]; then
-    emit "delivery" "$GLYPH_FAIL" "$C_RED" "$DELIVERY_WORKFLOW_REL" "missing" "generated" \
-      "the generated delivery workflow is gone -- nothing renders the delivery() declarations, and the orchestrator has no entry point" \
-      "run 'bazel run //tools/ci:gen' and commit .github/workflows/delivery.yaml"
+  # --- (d) §6.1 level-1 rollback guarantee, per app workflow: each one the ---
+  # declarations call for exists, is generated, and carries the kill switch;
+  # and no generated workflow outlives the app that rendered it.
+  if [ -z "$_gen_wfs" ]; then
+    emit "delivery" "$GLYPH_FAIL" "$C_RED" "tools/delivery/defs.bzl" "0 apps" ">=1" \
+      "no delivery() block declares an app = \"...\" -- the macro or this parser drifted, so no generated workflow is checked at all" \
+      "confirm the delivery() calls still carry app = \"<app>\" on its own line"
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
-  elif ! grep -q "GENERATED by 'bazel run //tools/ci:gen'" "$_genwf" 2>/dev/null; then
-    emit "delivery" "$GLYPH_FAIL" "$C_RED" "$DELIVERY_WORKFLOW_REL" "hand-written" "generated" \
-      "the delivery workflow has lost its GENERATED banner -- it is being maintained by hand, which the next 'bazel run //tools/ci:gen' silently reverts" \
-      "regenerate with 'bazel run //tools/ci:gen'; put real changes in the delivery() declarations or //tools/delivery/gen"
-    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
-  elif ! grep -q "DELIVERY_ORCHESTRATOR_ENABLED == 'true'" "$_genwf" 2>/dev/null; then
-    emit "delivery" "$GLYPH_FAIL" "$C_RED" "$DELIVERY_WORKFLOW_REL" "no kill switch" "vars gate" \
-      "the orchestrate job does not carry the DELIVERY_ORCHESTRATOR_ENABLED condition -- spec §6.1 rollback level 1 (disable by flipping a repo variable, no commit) does not exist" \
-      "restore the job-level if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' in //tools/delivery/gen and regenerate"
-    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
-  else
-    emit "delivery" "$GLYPH_OK" "$C_GREEN" "$DELIVERY_WORKFLOW_REL" "kill switch" "vars gate" \
-      "generated, and disableable by flipping DELIVERY_ORCHESTRATOR_ENABLED (spec §6.1 rollback level 1)" ""
-    OK_COUNT=$((OK_COUNT + 1))
+  fi
+  while IFS= read -r _genrel; do
+    [ -n "$_genrel" ] || continue
+    _genwf="$ROOT/$_genrel"
+    if [ ! -f "$_genwf" ]; then
+      emit "delivery" "$GLYPH_FAIL" "$C_RED" "$_genrel" "missing" "generated" \
+        "a delivery() block declares this app, but its generated workflow is gone -- nothing renders the app's units, and the orchestrator has no entry point for them" \
+        "run 'bazel run //tools/ci:gen' and commit $_genrel"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif ! grep -q "GENERATED by 'bazel run //tools/ci:gen'" "$_genwf" 2>/dev/null; then
+      emit "delivery" "$GLYPH_FAIL" "$C_RED" "$_genrel" "hand-written" "generated" \
+        "the delivery workflow has lost its GENERATED banner -- it is being maintained by hand, which the next 'bazel run //tools/ci:gen' silently reverts" \
+        "regenerate with 'bazel run //tools/ci:gen'; put real changes in the delivery() declarations or //tools/delivery/gen"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif ! grep -q "DELIVERY_ORCHESTRATOR_ENABLED == 'true'" "$_genwf" 2>/dev/null; then
+      emit "delivery" "$GLYPH_FAIL" "$C_RED" "$_genrel" "no kill switch" "vars gate" \
+        "the orchestrate job does not carry the DELIVERY_ORCHESTRATOR_ENABLED condition -- spec §6.1 rollback level 1 (disable by flipping a repo variable, no commit) does not exist" \
+        "restore the job-level if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' in //tools/delivery/gen and regenerate"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+      emit "delivery" "$GLYPH_OK" "$C_GREEN" "$_genrel" "kill switch" "vars gate" \
+        "generated, and disableable by flipping DELIVERY_ORCHESTRATOR_ENABLED (spec §6.1 rollback level 1)" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    fi
+  done <<EOF
+$_gen_wfs
+EOF
+  if [ -d "$WORKFLOWS_DIR" ]; then
+    for _wf in "$WORKFLOWS_DIR"/delivery*.yaml; do
+      [ -f "$_wf" ] || continue
+      _wfrel=".github/workflows/${_wf##*/}"
+      printf '%s\n' "$_gen_wfs" | grep -qxF "$_wfrel" && continue
+      grep -q "GENERATED by 'bazel run //tools/ci:gen'" "$_wf" 2>/dev/null || continue
+      emit "delivery" "$GLYPH_FAIL" "$C_RED" "$_wfrel" "stale" "an app's workflow" \
+        "a generated delivery workflow that no delivery() app accounts for -- it still triggers on every push and release, delivering units nothing declares into it" \
+        "run 'bazel run //tools/ci:gen', which removes it, and commit the deletion"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    done
   fi
 }
 

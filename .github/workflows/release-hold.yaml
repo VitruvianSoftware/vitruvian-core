@@ -54,15 +54,15 @@ on:
   workflow_run:
     # Matched by workflow NAME (the `name:` field), not filename.
     #
-    # REPOINTED BY THE DELIVERY ORCHESTRATOR (spec §6, Phase 2). The
-    # development deploys these entries read now live in the GENERATED
-    # .github/workflows/delivery.yaml; tabula-deploy.yaml and
-    # oauth-user-inspector-deploy.yaml lost their `push:` triggers, so
-    # workflow_run would never fire for them again and this whole interlock
-    # would be silently dead — present, green, and enforcing nothing. The
-    # matrix's dev_job names moved with it (each is "<generated caller job
-    # id> / <_deploy-cloud-run.yaml's job id>", the check-run name).
-    workflows: [delivery]
+    # The development deploys these entries read live in each app's GENERATED
+    # workflow, .github/workflows/delivery-<app>.yaml: every app delivers
+    # through its own, so apps never share a queue. A workflow missing from
+    # this list would never fire this interlock for its app — present, green,
+    # and enforcing nothing — so TestReleaseHoldWatchesTheGeneratedDevLanes
+    # (//tools/delivery/gen) checks each entry's `source:` against the
+    # workflow that renders its dev_job. Each dev_job is "<generated caller
+    # job id> / <_deploy-cloud-run.yaml's job id>", the check-run name.
+    workflows: [delivery-tabula, delivery-oauth-user-inspector]
     types: [completed]
 
 permissions:
@@ -76,10 +76,11 @@ jobs:
     # single-env break-glass. Reacting to either would compare a release PR
     # against a run that never deployed development and hold it for no reason.
     #
-    # All three matrix entries now evaluate on every delivery run, because one
-    # workflow delivers every unit. That is safe by construction: each entry
-    # looks up ITS OWN job name in the run, and release-hold.sh treats "no such
-    # job" as "nothing deployable changed — leave the PR untouched".
+    # Every matrix entry starts on every listed workflow's run, and
+    # release-hold.sh skips an entry whose `source:` is not the workflow that
+    # triggered it. Within its own app's run, each entry looks up ITS OWN job
+    # name, and "no such job" means "nothing deployable changed — leave the PR
+    # untouched".
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
@@ -96,13 +97,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - source: delivery
+          - source: delivery-tabula
             component: tabula-api
             dev_job: tabula-api-development / deploy
-          - source: delivery
+          - source: delivery-tabula
             component: tabula-web
             dev_job: tabula-web-development / deploy
-          - source: delivery
+          - source: delivery-oauth-user-inspector
             component: oauth-user-inspector
             dev_job: oauth-user-inspector-development / deploy
     steps:

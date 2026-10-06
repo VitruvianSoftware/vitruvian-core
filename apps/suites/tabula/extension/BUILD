@@ -385,6 +385,7 @@ sh_binary(
 # script (spec §4.1).
 delivery(
     name = "tabula-dev-latest",
+    app = "tabula",
     environments = ["publish"],
     extra_paths = [
         "apps/suites/tabula/infra/app/",

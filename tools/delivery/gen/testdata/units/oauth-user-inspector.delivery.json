@@ -1,4 +1,5 @@
 {
+  "app": "oauth-user-inspector",
   "build": "",
   "build_context": "apps/web/oauth-user-inspector/",
   "changelog_inputs": {},

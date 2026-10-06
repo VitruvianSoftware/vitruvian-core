@@ -32,12 +32,23 @@
 # pin back. Apply the bump to the constant in main.go and run
 # `bazel run //tools/ci:gen`; the diff in this file then matches.
 #
-# PHASE 0 — SHADOW. This workflow decides nothing and delivers nothing. It
-# computes a delivery manifest (which units a push affects, and why) and
-# uploads it as an artifact. The hand-written delivery workflows remain
-# the acting path, so a wrong verdict here costs an artifact, not a
-# deploy. That is the whole point of shipping the detector before the
-# actuator: real main-branch data to A/B the verdicts against.
+# PHASE 2 — THE WHOLE LADDER ACTS (spec §6). This workflow is now the
+# delivery path for every unit below, on all three of its triggers:
+#   - push to main      -> the FIRST environment of every AFFECTED unit
+#                          (companions applied first, expand-before-serve);
+#   - release published -> nonproduction then production for the unit whose
+#                          tag prefix matches, each rung holding its legacy
+#                          interlocks (dev-soak, prior-rung success, the
+#                          production Environment's required reviewer);
+#   - workflow_dispatch -> exactly ONE unit into ONE environment.
+#
+# The legacy per-app workflows keep ONLY their own workflow_dispatch, as
+# dispatch-only shells pending their Phase-3 deletion; their `push:` and
+# `release:` triggers are gone, so nothing here races them.
+#
+# ROLLBACK (spec §6.1): flip the DELIVERY_ORCHESTRATOR_ENABLED repo
+# variable to false and every job below no-ops without a commit. Level 0
+# is the break-glass `bazel run` target, unchanged, per the runbook.
 #
 # Units declared today (sorted by name). The orchestrator re-derives this list
 # at run time from the Bazel graph — it is reproduced here so that adding,
@@ -47,49 +58,36 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  apps/embedded/esp32-s3/
-#       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
-#   - oauth-user-inspector  kind=cloud-run  run=//apps/web/oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
-#       paths:  apps/web/oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
-#       except: apps/web/oauth-user-inspector/infra/identity/ apps/web/oauth-user-inspector/catalog-info\.yaml apps/web/oauth-user-inspector/deploy/ apps/web/oauth-user-inspector/docs/ apps/web/oauth-user-inspector/mkdocs\.yml apps/web/oauth-user-inspector/CHANGELOG\.md
-#       soak:   promotion blocked while development is red
-#   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
-#       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
-#   - tabula-api  kind=cloud-run  run=//apps/suites/tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       build:  shared "tabula" → image-digest
-#       soak:   promotion blocked while development is red
-#       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
-#   - tabula-build-stack  kind=pulumi  run=//apps/suites/tabula/infra/build:up  envs=shared  promotion=push-all
-#       paths:  apps/suites/tabula/infra/build/
-#       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
-#   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/publish-dev-latest\.sh
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
-#   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  apps/suites/tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
-#       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
-#   - tabula-web  kind=cloud-run  run=//apps/suites/tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       build:  shared "tabula" → web-image-digest
-#       soak:   promotion blocked while development is red
-#   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
-#       paths:  apps/desktop/vitruvian/
-#       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
-#   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
-#       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
-name: delivery-fixture
+name: delivery-charts
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  # Manual, single unit + single environment (the escape hatch that
+  # replaces every legacy per-app workflow's own dispatch block). Every
+  # fan-out job below carries a dispatch arm naming ITS unit and ITS rung,
+  # so a dispatch delivers exactly one thing — never the whole ladder.
+  workflow_dispatch:
+    inputs:
+      unit:
+        description: Delivery unit to deliver (a companion is applied by dispatching the unit it expands for)
+        type: choice
+        required: true
+        options:
+          - charts
+      environment:
+        description: Target environment (single-env break-glass redeploy)
+        type: choice
+        required: true
+        default: publish
+        options:
+          - publish
+      allow-unsoaked:
+        description: Promote even if the unit's development deploy is RED (logged loudly; tools/ci/require-dev-soak.sh)
+        type: boolean
+        required: false
+        default: false
 
 # Least privilege AT THE WORKFLOW LEVEL: `contents: read` to check out and
 # `actions: read` so the orchestrator can resolve a durable diff base from
@@ -146,7 +144,7 @@ permissions:
 # runs of the SAME tag (a re-publish) still serialize, which is the case
 # that could actually race one environment.
 concurrency:
-  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}
+  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}
   cancel-in-progress: false
 
 jobs:
@@ -169,7 +167,7 @@ jobs:
     # push-only `gate` job skipped.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     outputs:
       # `manifest` is the whole delivery-manifest.json, compact, for a
       # consumer that needs more than a boolean (fromJSON in a future
@@ -177,16 +175,6 @@ jobs:
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
       affected_charts: ${{ steps.manifest.outputs.affected_charts }}
-      affected_esp32_s3: ${{ steps.manifest.outputs.affected_esp32_s3 }}
-      affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
-      affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
-      affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
-      affected_tabula_build_stack: ${{ steps.manifest.outputs.affected_tabula_build_stack }}
-      affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
-      affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
-      affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
-      affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
-      affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -203,7 +191,7 @@ jobs:
         id: durable-base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: delivery-fixture.yaml
+          WORKFLOW_FILE: delivery-charts.yaml
           LEGACY_WORKFLOW_FILE: delivery.yaml
         # Reads THIS workflow's last successful push run and uses its head
         # sha as the diff base, so a run evicted by this app's
@@ -217,7 +205,7 @@ jobs:
         id: unit-bases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: delivery-fixture.yaml
+          WORKFLOW_FILE: delivery-charts.yaml
           LEGACY_WORKFLOW_FILE: delivery.yaml
         # Refines the single base above, which is a RUN-level verdict: a run
         # whose delivery jobs were all skipped still concludes success and
@@ -246,7 +234,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 oauth-user-inspector oauth-user-inspector-identity tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
+          ORCHESTRATE_UNITS: charts
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@v7
@@ -257,3 +245,49 @@ jobs:
           # legacy workflows actually did, which is how each phase is
           # signed off before the legacy path is deleted.
           retention-days: 30
+
+  # ======== unit: charts → publish ========
+  # Declared in tools/charts/BUILD; break-glass target: //tools/charts:publish
+  # Transcribed from .github/workflows/charts-publish.yml job "publish" (that job no longer exists; see git history).
+
+  # Single rung: delivers on an affected push (and on a dispatch naming it).
+  charts-publish:
+    needs: [orchestrate]
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_charts == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'charts' && inputs.environment == 'publish'))
+    concurrency:
+      group: delivery-charts-publish
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          # The per-chart scoping inside publish.sh diffs against the
+          # pre-push tip; the default depth-1 clone has no such commit and
+          # the script would fail open to republishing every chart.
+          fetch-depth: 0
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Package and push charts
+        env:
+          # Per-chart scoping input. This is github.event.before, not the
+          # orchestrator's durable base: the script fails OPEN to publishing
+          # every chart when it cannot resolve it, and re-pushing an
+          # unchanged chart version is a harmless overwrite. Sharpening this
+          # to the durable base is a detection change, not a trigger change,
+          # and belongs with the Phase-3 preflight work.
+          BEFORE_REV: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+        run: bash tools/charts/publish.sh
+      - name: Visibility note
+        run: |
+          echo "New GHCR packages start private. Make each chart public once (UI or):"
+          echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public"

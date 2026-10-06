@@ -154,7 +154,7 @@ stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling)
 
 | Target | What it does |
 |---|---|
-| `//tools/ci:gen` (or `//tools/delivery/gen:gen`) | Regenerates the declarative delivery workflow (`.github/workflows/delivery.yaml`) from declared units |
+| `//tools/ci:gen` (or `//tools/delivery/gen:gen`) | Regenerates the declarative delivery workflows, one per app (`.github/workflows/delivery-<app>.yaml`), from declared units |
 | `//tools/delivery/orchestrate` | The decision and execution engine for graph-affected deployments on push to `main` |
 | `//tools/pipeline/plan` / `//tools/pipeline/gen` | Computes affected units and generates presubmit matrix jobs from `.pipeline.json` manifests |
 | `//tools/deploy:cloud-run` | The generic blue-green sequencer (candidate at 0% → smoke → promote). The reusable deploy workflow calls exactly this, so the same rollout runs from a workstation when Actions is down |

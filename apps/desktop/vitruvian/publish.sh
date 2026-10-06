@@ -5,7 +5,7 @@
 # Build, package and publish the Vitruvian DMG to a GitHub Release.
 #
 # ONE script, TWO triggers (delivery-orchestrator spec §4.1): the generated
-# .github/workflows/delivery.yaml runs it for the `vitruvian` unit, and the
+# .github/workflows/delivery-vitruvian.yaml runs it for the `vitruvian` unit, and the
 # break-glass path is `bazel run //apps/desktop/vitruvian:publish`. The rung
 # selects the grade:
 #

@@ -50,7 +50,7 @@ cloud_run_deploy(
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, spec §6). The generated
-# .github/workflows/delivery.yaml now owns tabula-api's ENTIRE ladder --
+# .github/workflows/delivery-tabula.yaml now owns tabula-api's ENTIRE ladder --
 # development on an affected push, nonproduction+production on a published
 # `tabula-api-v*` release -- and tabula-deploy.yaml has lost both its `push:`
 # and its `release:` triggers, keeping only workflow_dispatch as a shell
@@ -66,6 +66,7 @@ cloud_run_deploy(
 # gate encoded for both services).
 delivery(
     name = "tabula-api",
+    app = "tabula",
     # The `with:` map for _changelog-summary.yaml -- verbatim from
     # tabula-deploy.yaml's `changelog` job.
     changelog_inputs = {
