@@ -2413,6 +2413,16 @@ is that notice. Add an entry for every change to upstream files.
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
   - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-06**: Fix Quick Prompt recent sessions drawer:
+  - `NexusAgentService.readSessions`: removed `-readonly` from `/usr/bin/sqlite3`
+    arguments so SQLite can read conversations when `conversation_summaries.db`
+    has an active WAL file (`SQLITE_CANTOPEN` 14);
+  - `NexusAgentQuickPromptSession.sessionsDirectory`: return empty string when
+    `configuration.workingDirectory` is empty instead of falling back to home,
+    allowing all project workspace sessions to be listed;
+  - `NexusAgentSessionSummary.parse`: normalize paths and match both parent and
+    sub-directory workspace URIs, keeping all workspaces when directory is empty;
+  - `NexusAgentTests`: added test coverage for empty directory workspace matching.
 - **2026-10-06**: Release staging off `build/`:
   - `Tools/make-dmg.sh` takes the signed app as its argument instead of reading
     `build/stage/Vitruvian.app`, and renders the installer background into its

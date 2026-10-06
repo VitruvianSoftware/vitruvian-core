@@ -88,7 +88,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
             return
         }
         sessionFilter = ""
-        sessions = environment.listSessions(workingDirectory(for: configuration))
+        sessions = environment.listSessions(sessionsDirectory(for: configuration))
         mode = .sessions
     }
 
@@ -172,6 +172,14 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         guard !configured.isEmpty else { return environment.home }
         let expanded = NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
         return environment.fileExists(expanded) ? expanded : environment.home
+    }
+
+    /// The folder for recent sessions: empty when unset so all workspaces match.
+    package func sessionsDirectory(for configuration: NexusAgentConfiguration) -> String {
+        let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
+        guard !configured.isEmpty else { return "" }
+        let expanded = NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
+        return environment.fileExists(expanded) ? expanded : ""
     }
 
     // MARK: - Stream

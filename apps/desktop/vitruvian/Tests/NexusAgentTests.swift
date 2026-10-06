@@ -654,6 +654,9 @@ enum NexusAgentTests {
         suite.expect(NexusAgentSessionSummary.filter(sessions, by: "  ").count == 2
                      && NexusAgentSessionSummary.filter(sessions, by: "site deploy").map(\.id) == ["c1"],
                      "a blank filter keeps all; words match in any order")
+        let allSessions = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "")
+        suite.expect(allSessions.map(\.id) == ["c1", "c2", "c3"],
+                     "an empty directory keeps all sessions across workspaces: \(allSessions.map(\.id))")
     }
 
     private static func replyBlocks(_ suite: TestSuite) {

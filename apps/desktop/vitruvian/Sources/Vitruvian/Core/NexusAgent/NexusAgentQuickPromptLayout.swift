@@ -93,18 +93,24 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
 
     /// Rows from `sqlite3 -json`, keeping the top-level conversations for
     /// `directory` and those with no recorded folder, newest first.
+    /// An empty `directory` keeps all workspaces.
     package static func parse(_ data: Data, directory: String) -> [NexusAgentSessionSummary] {
         guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
-        let wanted = "file://" + URL(fileURLWithPath: directory).standardizedFileURL.path
+        let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        let wanted = trimmedDir.isEmpty ? nil : normalizePath(trimmedDir)
         let dates = ISO8601DateFormatter()
         dates.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plainDates = ISO8601DateFormatter()
         return rows.compactMap { row in
             guard let id = row["conversation_id"] as? String, !id.isEmpty else { return nil }
-            if let text = row["workspace_uris"] as? String, let raw = text.data(using: .utf8),
+            if let wanted,
+               let text = row["workspace_uris"] as? String, let raw = text.data(using: .utf8),
                let folders = try? JSONSerialization.jsonObject(with: raw) as? [String],
-               !folders.isEmpty, !folders.contains(wanted) {
-                return nil
+               !folders.isEmpty {
+                let normalizedFolders = folders.map(normalizePath)
+                if !normalizedFolders.contains(where: { folderMatches($0, target: wanted) }) {
+                    return nil
+                }
             }
             let title = [row["title"] as? String, row["preview"] as? String]
                 .compactMap { $0?.split(separator: "\n").first.map(String.init) }
@@ -114,6 +120,27 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                                             steps: (row["step_count"] as? NSNumber)?.intValue ?? 0,
                                             modified: dates.date(from: stamp) ?? plainDates.date(from: stamp))
         }
+    }
+
+    private static func normalizePath(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("file://") {
+            if let url = URL(string: trimmed) {
+                let path = url.standardizedFileURL.path
+                return (path.hasSuffix("/") && path.count > 1) ? String(path.dropLast()) : path
+            }
+            let stripped = String(trimmed.dropFirst("file://".count))
+            let path = URL(fileURLWithPath: stripped).standardizedFileURL.path
+            return (path.hasSuffix("/") && path.count > 1) ? String(path.dropLast()) : path
+        }
+        let path = URL(fileURLWithPath: trimmed).standardizedFileURL.path
+        return (path.hasSuffix("/") && path.count > 1) ? String(path.dropLast()) : path
+    }
+
+    private static func folderMatches(_ folderPath: String, target targetPath: String) -> Bool {
+        folderPath == targetPath
+            || folderPath.hasPrefix(targetPath + "/")
+            || targetPath.hasPrefix(folderPath + "/")
     }
 
     /// Sessions whose title holds every word of `filter`, ignoring case.
