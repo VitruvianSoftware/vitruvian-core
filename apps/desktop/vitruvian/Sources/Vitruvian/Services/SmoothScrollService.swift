@@ -23,7 +23,25 @@ import VitruvianDesign
 /// exists while the feature is off. Requires Accessibility.
 @MainActor
 package final class SmoothScrollService: ObservableObject {
-    package static let shared = SmoothScrollService()
+    /// What the service asks of the rest of the app. `live` asks the real
+    /// App Switcher; tests pass a stand-in.
+    package struct Environment {
+        /// True while an open App Switcher steps its selection by wheel. The
+        /// raw wheel is then the switcher's: no glide is started and the
+        /// event goes on untouched, since a glide's frames carry the mark the
+        /// switcher skips.
+        package var switcherNavigatesByWheel: @MainActor () -> Bool
+
+        package init(switcherNavigatesByWheel: @escaping @MainActor () -> Bool) {
+            self.switcherNavigatesByWheel = switcherNavigatesByWheel
+        }
+
+        package static var live: Environment {
+            Environment(switcherNavigatesByWheel: { AppSwitcher.shared.scrollNavigationActive })
+        }
+    }
+
+    package static let shared = SmoothScrollService(environment: .live)
 
     /// True while the event tap is installed.
     @Published package private(set) var isRunning = false
@@ -65,8 +83,10 @@ package final class SmoothScrollService: ObservableObject {
     private var lastGesturePhaseTimestamp: UInt64?
     private var tapCreationRetry = TapCreationRetry()
     private var tapCreationRetryWork: DispatchWorkItem?
+    private let environment: Environment
 
-    private init() {
+    package init(environment: Environment) {
+        self.environment = environment
         // Fast user switching: the tap goes back while this session is off
         // screen and is built again from the preferences on the way in.
         SessionActivity.shared.onChange { [weak self] _ in
@@ -171,7 +191,8 @@ package final class SmoothScrollService: ObservableObject {
         isRunning = false
     }
 
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    /// The tap's answer to one event, on the main run loop that serves it.
+    package func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // macOS disables taps that stall or when the session locks; re-arm,
         // unless this session is the one that was switched away from, where
         // the stall is the reason the tap was disabled and re-arming feeds it.
@@ -195,7 +216,7 @@ package final class SmoothScrollService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         guard type == .scrollWheel else { return Unmanaged.passUnretained(event) }
-        if AppSwitcher.shared.scrollNavigationActive {
+        if environment.switcherNavigatesByWheel() {
             stopGlide()
             return Unmanaged.passUnretained(event)
         }

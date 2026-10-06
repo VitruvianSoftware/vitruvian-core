@@ -99,6 +99,24 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
         }
     }
 
+    /// The upload shortcut is registered only while it and temporary links
+    /// are both on. Returns what the registration answered.
+    package func registerShortcut(_ register: (_ enabled: Bool) -> Bool) -> Bool {
+        register(ScreenshotSharingSupport.uploadShortcutEnabled(in: host.defaults))
+    }
+
+    /// Turning screenshots off. A pending shortcut upload loses its claim
+    /// first, so its link is revoked when it arrives instead of being copied;
+    /// then the preview and every editor showing a capture close.
+    package func end(closingPreview: () -> Void, closingEditor: (Editor) -> Void) {
+        invalidate()
+        closingPreview()
+        for editor in editors {
+            closingEditor(editor)
+        }
+        removeAllEditors()
+    }
+
     /// Any editor may be showing the latest capture, and what it exports is
     /// no longer the stored original, so the shortcut keeps that original
     /// back until a newer capture arrives.

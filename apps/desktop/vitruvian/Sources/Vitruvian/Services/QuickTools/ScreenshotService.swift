@@ -163,11 +163,13 @@ package final class ScreenshotService: ObservableObject {
             enabled: clipboardEnabled,
             shortcut: clipboardShortcut,
             storageKey: DefaultsKey.screenshotClipboardShortcut)
-        uploadShortcutRegistrationFailed = !uploadHotkey.sync(
-            enabled: ScreenshotSharingSupport.uploadShortcutEnabled(in: defaults),
-            shortcut: GlobalShortcut.saved(for: DefaultsKey.screenshotUploadShortcut,
-                                           fallback: .screenshotUploadDefault),
-            storageKey: DefaultsKey.screenshotUploadShortcut)
+        uploadShortcutRegistrationFailed = !latest.registerShortcut { enabled in
+            uploadHotkey.sync(
+                enabled: enabled,
+                shortcut: GlobalShortcut.saved(for: DefaultsKey.screenshotUploadShortcut,
+                                               fallback: .screenshotUploadDefault),
+                storageKey: DefaultsKey.screenshotUploadShortcut)
+        }
         latest.sync()
     }
 
@@ -195,13 +197,10 @@ package final class ScreenshotService: ObservableObject {
         QuickToolHUD.dismissScrollingCapture()
         session?.cancel()
         session = nil
-        latest.invalidate()
-        preview?.close()
-        preview = nil
-        for editor in latest.editors {
-            editor.close()
-        }
-        latest.removeAllEditors()
+        latest.end(closingPreview: {
+            preview?.close()
+            preview = nil
+        }, closingEditor: { $0.close() })
         ScreenshotPinController.shared.closeAll()
     }
 
@@ -427,37 +426,107 @@ package final class ScreenshotService: ObservableObject {
         let saved: SaveOutcome?
     }
 
+    private func route(_ capture: ScreenshotSelectionController.Capture) {
+        Self.route(capture, defaults: .standard, steps: previewRoute)
+    }
+
+    /// The steps a finished or restored capture takes toward its preview,
+    /// passed in so their order and what the preview is handed can be
+    /// checked. `Saved` is what the after-capture action saved.
+    package struct PreviewRoute<Capture, Saved> {
+        /// Makes a capture the latest one, and names the latest capture.
+        package var beginLatest: (Capture) -> Void
+        package var latestID: () -> UUID
+        package var closePreview: () -> Void
+        package var record: (Capture) -> Void
+        package var autoCopy: (Capture) -> Void
+        package var defaultAction: () -> ScreenshotDefaultAction
+        package var openEditor: (Capture) -> Void
+        package var runDefaultAction: (ScreenshotDefaultAction, Capture)
+            -> (performed: Set<ScreenshotQuickPreviewController.Action>, saved: Saved?)
+        /// Shows the preview. `latestCapture` names the latest capture its
+        /// discard withholds from the upload shortcut; nil withholds nothing.
+        package var presentPreview: (_ capture: Capture, _ defaultAction: ScreenshotDefaultAction,
+                                     _ saved: Saved?, _ performed: Set<ScreenshotQuickPreviewController.Action>,
+                                     _ dismissInterval: TimeInterval?, _ latestCapture: UUID?) -> Void
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(beginLatest: @escaping (Capture) -> Void, latestID: @escaping () -> UUID,
+                     closePreview: @escaping () -> Void, record: @escaping (Capture) -> Void,
+                     autoCopy: @escaping (Capture) -> Void,
+                     defaultAction: @escaping () -> ScreenshotDefaultAction,
+                     openEditor: @escaping (Capture) -> Void,
+                     runDefaultAction: @escaping (ScreenshotDefaultAction, Capture)
+                         -> (performed: Set<ScreenshotQuickPreviewController.Action>, saved: Saved?),
+                     presentPreview: @escaping (_ capture: Capture, _ defaultAction: ScreenshotDefaultAction,
+                                                _ saved: Saved?,
+                                                _ performed: Set<ScreenshotQuickPreviewController.Action>,
+                                                _ dismissInterval: TimeInterval?, _ latestCapture: UUID?) -> Void) {
+            self.beginLatest = beginLatest
+            self.latestID = latestID
+            self.closePreview = closePreview
+            self.record = record
+            self.autoCopy = autoCopy
+            self.defaultAction = defaultAction
+            self.openEditor = openEditor
+            self.runDefaultAction = runDefaultAction
+            self.presentPreview = presentPreview
+        }
+    }
+
+    private var previewRoute: PreviewRoute<ScreenshotSelectionController.Capture, SaveOutcome> {
+        PreviewRoute(
+            beginLatest: { self.latest.begin($0) },
+            latestID: { self.latest.id },
+            closePreview: { self.preview?.close() },
+            record: { RecentCaptureService.shared.recordScreenshot($0) },
+            autoCopy: { self.autoCopy($0) },
+            defaultAction: { ScreenshotDefaultAction.current },
+            openEditor: { self.openEditor(with: $0) },
+            runDefaultAction: { action, capture in
+                let result = self.runDefaultAction(action, capture: capture)
+                return (result.performed, result.saved)
+            },
+            presentPreview: { capture, defaultAction, saved, performed, dismissInterval, latestCapture in
+                self.presentPreview(capture,
+                                    defaultAction: defaultAction,
+                                    initialSaved: saved,
+                                    completedActions: performed,
+                                    dismissInterval: dismissInterval,
+                                    latestCapture: latestCapture)
+            })
+    }
+
     /// A finished capture runs its configured after-capture action first, then
     /// either stays quiet, shows a confirmation/recovery preview, or opens the
-    /// editor directly.
+    /// editor directly. It becomes the latest capture before anything else:
+    /// an editor it opens withholds it from the upload shortcut, and the
+    /// preview it shows names it, so discarding that preview withholds this
+    /// capture rather than the one before.
     ///
     /// The clipboard copy happens first and independently, so it also reaches
     /// the captures that open straight in the editor, where no preview button
     /// exists to reach for.
-    private func route(_ capture: ScreenshotSelectionController.Capture) {
-        latest.begin(capture)
-        preview?.close()
-        RecentCaptureService.shared.recordScreenshot(capture)
-        let defaults = UserDefaults.standard
+    package static func route<Capture, Saved>(_ capture: Capture, defaults: UserDefaults,
+                                              steps: PreviewRoute<Capture, Saved>) {
+        steps.beginLatest(capture)
+        steps.closePreview()
+        steps.record(capture)
         if defaults.bool(forKey: DefaultsKey.screenshotCopyToClipboard) {
-            autoCopy(capture)
+            steps.autoCopy(capture)
         }
-        let defaultAction = ScreenshotDefaultAction.current
+        let defaultAction = steps.defaultAction()
         if defaultAction == .edit {
-            openEditor(with: capture)
+            steps.openEditor(capture)
             return
         }
-        let result = runDefaultAction(defaultAction, capture: capture)
-        Self.presentRoutedPreview(after: defaultAction,
-                                  saved: result.saved != nil,
-                                  performed: result.performed,
-                                  defaults: defaults) { dismissInterval in
-            presentPreview(capture,
-                           defaultAction: defaultAction,
-                           initialSaved: result.saved,
-                           completedActions: result.performed,
-                           dismissInterval: dismissInterval,
-                           latestCapture: latest.id)
+        let result = steps.runDefaultAction(defaultAction, capture)
+        presentRoutedPreview(after: defaultAction,
+                             saved: result.saved != nil,
+                             performed: result.performed,
+                             defaults: defaults) { dismissInterval in
+            steps.presentPreview(capture, defaultAction, result.saved, result.performed,
+                                 dismissInterval, steps.latestID())
         }
     }
 
@@ -480,16 +549,106 @@ package final class ScreenshotService: ObservableObject {
         present(dismissInterval)
     }
 
-    /// A history item returns to the same floating preview without repeating
-    /// automatic copy or save actions that already ran when it was captured.
     package func restorePreview(_ capture: ScreenshotSelectionController.Capture) {
-        preview?.close()
-        presentPreview(capture,
-                       defaultAction: .none,
-                       initialSaved: nil,
-                       completedActions: [],
-                       dismissInterval: ScreenshotSupport.recoveryPreviewDismissInterval,
-                       latestCapture: nil)
+        Self.restore(capture, steps: previewRoute)
+    }
+
+    /// A history item returns to the same floating preview without repeating
+    /// automatic copy or save actions that already ran when it was captured,
+    /// and without any claim on the latest capture: discarding it withholds
+    /// nothing from the upload shortcut.
+    package static func restore<Capture, Saved>(_ capture: Capture, steps: PreviewRoute<Capture, Saved>) {
+        steps.closePreview()
+        steps.presentPreview(capture, .none, nil, [], ScreenshotSupport.recoveryPreviewDismissInterval, nil)
+    }
+
+    /// What the quick preview's buttons call on the service, passed in so
+    /// the preview's own bookkeeping can be checked. `Saved` is what a save
+    /// wrote.
+    package struct PreviewActions<Capture, Saved> {
+        package var edit: (Capture) -> Void
+        package var pin: (Capture) -> Void
+        package var copy: (Capture) -> Bool
+        package var save: (Capture) -> Saved?
+        package var saveAndCopy: (Capture) -> (outcome: Saved, copied: Bool)?
+        /// Takes back a file a save wrote.
+        package var trash: (Saved) -> Void
+        /// Withholds the latest capture from the upload shortcut while
+        /// `latestCapture` still names it; nil names nothing.
+        package var withholdLatest: (_ latestCapture: UUID?) -> Void
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(edit: @escaping (Capture) -> Void, pin: @escaping (Capture) -> Void,
+                     copy: @escaping (Capture) -> Bool, save: @escaping (Capture) -> Saved?,
+                     saveAndCopy: @escaping (Capture) -> (outcome: Saved, copied: Bool)?,
+                     trash: @escaping (Saved) -> Void,
+                     withholdLatest: @escaping (_ latestCapture: UUID?) -> Void) {
+            self.edit = edit
+            self.pin = pin
+            self.copy = copy
+            self.save = save
+            self.saveAndCopy = saveAndCopy
+            self.trash = trash
+            self.withholdLatest = withholdLatest
+        }
+    }
+
+    private var previewActions: PreviewActions<ScreenshotSelectionController.Capture, SaveOutcome> {
+        PreviewActions(
+            edit: { [weak self] in self?.openEditor(with: $0) },
+            pin: { ScreenshotPinController.shared.pin(image: $0.image, scale: $0.scale) },
+            copy: { [weak self] in self?.copyDirect($0) ?? false },
+            save: { [weak self] in self?.saveDirect($0) },
+            saveAndCopy: { [weak self] in self?.saveAndCopyDirect($0) },
+            trash: { saved in
+                // Into the actual Trash: the person may be discarding a
+                // file the HUD just announced as saved.
+                try? FileManager.default.trashItem(at: saved.url, resultingItemURL: nil)
+                if let consumed = saved.consumedNumber {
+                    Self.rewindNumberSequence(toReuse: consumed)
+                }
+            },
+            withholdLatest: { [weak self] in self?.latest.discard($0) })
+    }
+
+    /// The preview's button handler. What a save wrote is remembered, so a
+    /// discard can take it back, and a discard withholds the latest capture
+    /// only when the preview was made from it.
+    package static func previewAction<Capture, Saved>(for capture: Capture,
+                                                      initialSaved: Saved?,
+                                                      latestCapture: UUID?,
+                                                      actions: PreviewActions<Capture, Saved>)
+        -> (ScreenshotQuickPreviewController.Action) -> Set<ScreenshotQuickPreviewController.Action> {
+        var saved = initialSaved
+        return { action in
+            switch action {
+            case .edit:
+                actions.edit(capture)
+                return [.edit]
+            case .pin:
+                actions.pin(capture)
+                return [.pin]
+            case .copy:
+                return actions.copy(capture) ? [.copy] : []
+            case .save:
+                guard let outcome = actions.save(capture) else { return [] }
+                saved = outcome
+                return [.save]
+            case .saveAndCopy:
+                guard let result = actions.saveAndCopy(capture) else { return [] }
+                saved = result.outcome
+                return result.copied ? [.save, .copy] : [.save]
+            case .discard:
+                // If this capture was already written to disk — whether
+                // by the default action or a manual Save — Trash should
+                // undo that rather than leave an orphaned file behind.
+                if let saved {
+                    actions.trash(saved)
+                }
+                actions.withholdLatest(latestCapture)
+                return [.discard]
+            }
+        }
     }
 
     private func presentPreview(_ capture: ScreenshotSelectionController.Capture,
@@ -498,7 +657,8 @@ package final class ScreenshotService: ObservableObject {
                                 completedActions: Set<ScreenshotQuickPreviewController.Action>,
                                 dismissInterval: TimeInterval?,
                                 latestCapture: UUID?) {
-        var saved = initialSaved
+        let handle = Self.previewAction(for: capture, initialSaved: initialSaved,
+                                        latestCapture: latestCapture, actions: previewActions)
         let controller = ScreenshotQuickPreviewController(
             capture: capture,
             strings: strings,
@@ -506,40 +666,8 @@ package final class ScreenshotService: ObservableObject {
             completedActions: completedActions,
             dismissInterval: dismissInterval,
             action: { [weak self] action in
-                guard let self else { return [] }
-                switch action {
-                case .edit:
-                    self.openEditor(with: capture)
-                    return [.edit]
-                case .pin:
-                    ScreenshotPinController.shared.pin(image: capture.image, scale: capture.scale)
-                    return [.pin]
-                case .copy:
-                    return self.copyDirect(capture) ? [.copy] : []
-                case .save:
-                    guard let outcome = self.saveDirect(capture) else { return [] }
-                    saved = outcome
-                    return [.save]
-                case .saveAndCopy:
-                    guard let result = self.saveAndCopyDirect(capture) else { return [] }
-                    saved = result.outcome
-                    return result.copied ? [.save, .copy] : [.save]
-                case .discard:
-                    // If this capture was already written to disk — whether
-                    // by the default action or a manual Save — Trash should
-                    // undo that rather than leave an orphaned file behind.
-                    // Into the actual Trash: the person may be discarding a
-                    // file the HUD just announced as saved.
-                    if let saved {
-                        try? FileManager.default.trashItem(at: saved.url,
-                                                           resultingItemURL: nil)
-                        if let consumed = saved.consumedNumber {
-                            Self.rewindNumberSequence(toReuse: consumed)
-                        }
-                    }
-                    self.latest.discard(latestCapture)
-                    return [.discard]
-                }
+                guard self != nil else { return [] }
+                return handle(action)
             },
             share: { [weak self] duration, completion in
                 guard let self else {

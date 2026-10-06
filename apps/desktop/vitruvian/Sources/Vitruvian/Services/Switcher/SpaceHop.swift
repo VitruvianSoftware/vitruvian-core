@@ -56,17 +56,24 @@ package final class SpaceHop {
               SpaceWindowBridge.isParkedOnHiddenSpace(windowID, visibleSpaces: topology.visibleSpaces)
         else { return false }
         cancelPending()
-        // The app's windows before anything moves: a window it opens during the
-        // hop is the user's, and the arrival pulses must leave it in front.
-        let focusState = SwitcherWindowFocusRetryState(
-            targetWindowID: windowID,
-            targetStartedMinimized: false,
-            knownWindowIDs: WindowActivator.focusSnapshot(ownerPID: windowOwnerPID))
+        let focusState = arrivalFocusState(windowID: windowID, windowOwnerPID: windowOwnerPID,
+                                           snapshot: { WindowActivator.focusSnapshot(ownerPID: $0) })
         let hop = SpaceHop(windowID: windowID, appPID: appPID, windowOwnerPID: windowOwnerPID,
                            sourcePID: sourcePID, focusState: focusState, app: app)
         current = hop
         hop.start()
         return true
+    }
+
+    /// The app's windows before anything moves: a window it opens during the
+    /// hop is the user's, and the arrival pulses must leave it in front. Taken
+    /// once, as the hop begins, and handed to every pulse.
+    package static func arrivalFocusState(windowID: CGWindowID, windowOwnerPID: pid_t,
+                                          snapshot: (_ ownerPID: pid_t) -> Set<CGWindowID>)
+        -> SwitcherWindowFocusRetryState {
+        SwitcherWindowFocusRetryState(targetWindowID: windowID,
+                                      targetStartedMinimized: false,
+                                      knownWindowIDs: snapshot(windowOwnerPID))
     }
 
     package static func cancelPending() {
@@ -230,20 +237,38 @@ package final class SpaceHop {
         }
     }
 
-    /// Accessibility starts describing the window shortly after its Space
-    /// becomes visible; a couple of pulses cover the settling time.
     private func focusOnArrival() {
-        for delay in [0.15, 0.45, 0.9] {
-            schedule(after: delay) {
-                guard !self.cancelled, !self.app.isTerminated else { return }
+        Self.scheduleArrivalPulses(
+            state: focusState,
+            schedule: { self.schedule(after: $0, $1) },
+            isLive: { !self.cancelled && !self.app.isTerminated },
+            pulse: { state in
                 WindowActivator.focusAfterSpaceHop(windowID: self.windowID,
                                                    appPID: self.appPID,
                                                    windowOwnerPID: self.windowOwnerPID,
                                                    sourcePID: self.sourcePID,
-                                                   state: self.focusState)
+                                                   state: state)
+            },
+            finish: { self.finish() })
+    }
+
+    /// Accessibility starts describing the window shortly after its Space
+    /// becomes visible; a couple of pulses cover the settling time, then the
+    /// hop ends. Every pulse is handed the one state the hop took as it
+    /// began, so a window the app opened since ends them instead of being
+    /// covered by the target.
+    package static func scheduleArrivalPulses(state: SwitcherWindowFocusRetryState,
+                                              schedule: (_ delay: TimeInterval, _ work: @escaping () -> Void) -> Void,
+                                              isLive: @escaping () -> Bool,
+                                              pulse: @escaping (SwitcherWindowFocusRetryState) -> Void,
+                                              finish: @escaping () -> Void) {
+        for delay in [0.15, 0.45, 0.9] {
+            schedule(delay) {
+                guard isLive() else { return }
+                pulse(state)
             }
         }
-        schedule(after: 1.0) { self.finish() }
+        schedule(1.0) { finish() }
     }
 
     /// Whether some visible Space now contains the target window.

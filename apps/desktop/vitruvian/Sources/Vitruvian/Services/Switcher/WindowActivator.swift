@@ -8,6 +8,41 @@ import VitruvianDesign
 
 private let switcherAXPressedNotification = "AXPressed"
 
+/// The source apps one activation is handed. The session source is the
+/// window an App Switcher session opened over: it arms the minimize restore,
+/// the Space hop and the staging behind the target. The handoff is the app a
+/// caller saw in front, which only the delayed focus guards may treat as the
+/// source.
+package struct SwitcherActivationSources: Equatable {
+    package var sourceWasFullscreen: Bool
+    package var sourcePID: pid_t?
+    package var handoffSourcePID: pid_t?
+    package var sourceWindowID: CGWindowID?
+    package var sourceWindowOwnerPID: pid_t?
+
+    package init(sourceWasFullscreen: Bool = false,
+                 sourcePID: pid_t? = nil,
+                 handoffSourcePID: pid_t? = nil,
+                 sourceWindowID: CGWindowID? = nil,
+                 sourceWindowOwnerPID: pid_t? = nil) {
+        self.sourceWasFullscreen = sourceWasFullscreen
+        self.sourcePID = sourcePID
+        self.handoffSourcePID = handoffSourcePID
+        self.sourceWindowID = sourceWindowID
+        self.sourceWindowOwnerPID = sourceWindowOwnerPID
+    }
+
+    /// What a session that opened over this window hands over, before the
+    /// handoff is known. A fullscreen source owns its Space, so its window is
+    /// never staged behind the target.
+    package init(sessionPID: pid_t?, windowID: CGWindowID?, windowOwnerPID: pid_t?, isFullscreen: Bool) {
+        self.init(sourceWasFullscreen: isFullscreen,
+                  sourcePID: sessionPID,
+                  sourceWindowID: isFullscreen ? nil : windowID,
+                  sourceWindowOwnerPID: windowOwnerPID)
+    }
+}
+
 /// Brings a switcher selection to the front: unminimizes if needed, makes the
 /// exact window the app's focused/main Accessibility window and activates the
 /// owning app. The focus pass is repeated after activation because Space changes
@@ -30,6 +65,29 @@ package enum WindowActivator {
                          handoffSourcePID: pid_t? = nil,
                          sourceWindowID: CGWindowID? = nil,
                          sourceWindowOwnerPID: pid_t? = nil) {
+        activate(item, retry: retry,
+                 sources: SwitcherActivationSources(sourceWasFullscreen: sourceWasFullscreen,
+                                                    sourcePID: sourcePID,
+                                                    handoffSourcePID: handoffSourcePID,
+                                                    sourceWindowID: sourceWindowID,
+                                                    sourceWindowOwnerPID: sourceWindowOwnerPID))
+    }
+
+    package static func activate(_ item: SwitcherItem, retry: Bool = true, sources: SwitcherActivationSources) {
+        activate(item, retry: retry, sources: sources, steps: liveSteps)
+    }
+
+    /// The activation with its steps passed in. The session source, the
+    /// window an App Switcher session opened over, arms the minimize restore,
+    /// the Space hop and the staging behind the target. Only the delayed focus
+    /// guards may treat a caller's handoff app as the source, and nothing here
+    /// adopts the app in front on its own.
+    package static func activate<App: SwitcherActivatableApp>(_ item: SwitcherItem,
+                                                               retry: Bool = true,
+                                                               sources: SwitcherActivationSources,
+                                                               steps: ActivationSteps<App>) {
+        let sourceWasFullscreen = sources.sourceWasFullscreen
+        let sourcePID = sources.sourcePID
         let generation = beginActivation(for: item.pid)
         cancelPendingMinimizeRestore()
         SpaceHop.cancelPending()
@@ -39,13 +97,13 @@ package enum WindowActivator {
             return
         }
 
-        guard let app = NSRunningApplication(processIdentifier: item.pid) else { return }
+        guard let app = steps.calls.running(item.pid) else { return }
         // Only the delayed focus guards may treat a caller's handoff app as
         // the source. The minimize restore, source staging and Space hops stay
         // limited to the App Switcher session source.
         let retrySourcePID = SwitcherSupport.focusRetrySourcePID(
             sessionSourcePID: sourcePID,
-            handoffSourcePID: handoffSourcePID,
+            handoffSourcePID: sources.handoffSourcePID,
             targetPID: item.pid
         )
         let windowOwnerPID = item.windowOwnerPID
@@ -55,111 +113,79 @@ package enum WindowActivator {
             targetsSpecificWindow: item.windowID != nil
         )
         guard let windowID = item.windowID else {
-            let retryState = retry && sourceWasFullscreen
-                ? SwitcherAppActivationRetryState(targetPID: item.pid)
+            let scheduleRetries: ((pid_t?, SwitcherActivationPlan, UInt64) -> Void)? = retry && sourceWasFullscreen
+                ? steps.watchAppActivation(item.pid)
                 : nil
-            activateApp(app, plan: activationPlan)
-            if let bundleURL = app.bundleURL {
-                let configuration = NSWorkspace.OpenConfiguration()
-                configuration.activates = false
-                configuration.addsToRecentItems = false
-                configuration.promptsUserIfNeeded = false
-                NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration)
-            }
-            if let retryState {
-                scheduleAppActivationRetries(targetPID: item.pid,
-                                             sourcePID: retrySourcePID,
-                                             plan: activationPlan,
-                                             state: retryState,
-                                             generation: generation,
-                                             delays: Self.fullscreenFocusRetryDelays)
-            }
+            activateApp(app, plan: activationPlan, calls: steps.calls)
+            steps.openApplication(app)
+            scheduleRetries?(retrySourcePID, activationPlan, generation)
             return
         }
         let targetStartedMinimized = item.isMinimized
-            || windowIsMinimized(windowID: windowID, pid: windowOwnerPID)
+            || steps.minimizedState(windowID, windowOwnerPID) == true
         // A window parked on a Space that is not visible cannot be reached by
         // the Accessibility passes below; the hop travels there first and then
         // runs the same focus pass on arrival (issue #339). A minimized window
         // keeps its Accessibility element and can be deminiaturized directly
         // on the regular path without relying on Space shortcuts being enabled.
         if !targetStartedMinimized,
-           SpaceHop.beginIfNeeded(windowID: windowID,
-                                  appPID: item.pid,
-                                  windowOwnerPID: windowOwnerPID,
-                                  sourcePID: sourcePID,
-                                  app: app) {
+           steps.beginSpaceHop(windowID, item.pid, windowOwnerPID, sourcePID, app) {
             return
         }
         // Only paths that schedule a focus pass need a snapshot. Include all
         // of the owner's windows, even minimized, off-Space and auxiliary ones.
         let knownWindowIDs = retry || sourceWasFullscreen || item.isFullscreen
-            ? windowIDs(ownerPID: windowOwnerPID)
+            ? steps.snapshot(windowOwnerPID)
             : []
-        watchTargetMinimizeIfNeeded(windowID: windowID,
-                                    targetPID: item.pid,
-                                    targetWindowOwnerPID: windowOwnerPID,
-                                    sourcePID: sourcePID,
-                                    sourceWindowID: sourceWindowID,
-                                    sourceWindowOwnerPID: sourceWindowOwnerPID,
-                                    activationPlan: activationPlan)
-        prepareWindowForActivation(windowID: windowID, pid: windowOwnerPID)
+        let sourceReturn = SourceReturn(targetWindowID: windowID,
+                                        targetPID: item.pid,
+                                        targetWindowOwnerPID: windowOwnerPID,
+                                        sourcePID: sourcePID,
+                                        sourceWindowID: sources.sourceWindowID,
+                                        sourceWindowOwnerPID: sources.sourceWindowOwnerPID,
+                                        plan: activationPlan)
+        steps.watchTargetMinimize(sourceReturn)
+        _ = steps.calls.prepareWindow(windowID, windowOwnerPID)
         if sourceWasFullscreen || item.isFullscreen {
             let retryState = SwitcherWindowFocusRetryState(
                 targetWindowID: windowID,
                 targetStartedMinimized: targetStartedMinimized,
                 knownWindowIDs: knownWindowIDs
             )
-            retryState.observe(
-                targetMinimizedState: windowMinimizedState(windowID: windowID, pid: windowOwnerPID)
-            )
-            activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: windowOwnerPID)
+            retryState.observe(targetMinimizedState: steps.minimizedState(windowID, windowOwnerPID))
+            activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: windowOwnerPID,
+                        calls: steps.calls)
             guard retry else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.fullscreenFocusRetryDelays[0]) {
+                steps.after(Self.fullscreenFocusRetryDelays[0]) {
                     guard isCurrentActivation(generation),
-                          shouldContinueFocusRetry(windowID: windowID,
-                                                   targetPID: item.pid,
-                                                   targetWindowOwnerPID: windowOwnerPID,
-                                                   sourcePID: retrySourcePID,
-                                                   state: retryState,
-                                                   stopsWhenTargetFocused: false),
-                          let app = NSRunningApplication(processIdentifier: item.pid),
+                          steps.shouldContinueFocusRetry(FocusRetryCheck(windowID: windowID,
+                                                                         targetPID: item.pid,
+                                                                         targetWindowOwnerPID: windowOwnerPID,
+                                                                         sourcePID: retrySourcePID,
+                                                                         state: retryState,
+                                                                         stopsWhenTargetFocused: false)),
+                          let app = steps.calls.running(item.pid),
                           !app.isTerminated else { return }
-                    prepareWindowForActivation(windowID: windowID, pid: windowOwnerPID)
-                    activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: windowOwnerPID)
-                    stageSourceBehindTargetIfNeeded(targetWindowID: windowID,
-                                                    targetPID: item.pid,
-                                                    targetWindowOwnerPID: windowOwnerPID,
-                                                    sourcePID: sourcePID,
-                                                    sourceWindowID: sourceWindowID,
-                                                    sourceWindowOwnerPID: sourceWindowOwnerPID,
-                                                    activationPlan: activationPlan)
+                    _ = steps.calls.prepareWindow(windowID, windowOwnerPID)
+                    activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: windowOwnerPID,
+                                calls: steps.calls)
+                    steps.stageSourceBehindTarget(sourceReturn)
                 }
                 return
             }
-            scheduleFocusRetries(windowID: windowID,
-                                  targetPID: item.pid,
-                                  targetWindowOwnerPID: windowOwnerPID,
-                                  sourcePID: sourcePID,
-                                  retrySourcePID: retrySourcePID,
-                                  sourceWindowID: sourceWindowID,
-                                  sourceWindowOwnerPID: sourceWindowOwnerPID,
-                                  state: retryState,
-                                  activationPlan: activationPlan,
-                                  generation: generation,
-                                  delays: Self.fullscreenFocusRetryDelays,
-                                  stopsWhenTargetFocused: false)
+            scheduleFocusRetries(sourceReturn,
+                                 retrySourcePID: retrySourcePID,
+                                 state: retryState,
+                                 generation: generation,
+                                 delays: Self.fullscreenFocusRetryDelays,
+                                 stopsWhenTargetFocused: false,
+                                 steps: steps)
             return
         }
 
-        activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: windowOwnerPID)
-        stageSourceBehindTargetIfNeeded(targetWindowID: windowID,
-                                        targetPID: item.pid,
-                                        targetWindowOwnerPID: windowOwnerPID,
-                                        sourcePID: sourcePID,
-                                        sourceWindowID: sourceWindowID,
-                                        sourceWindowOwnerPID: sourceWindowOwnerPID,
-                                        activationPlan: activationPlan)
+        activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: windowOwnerPID,
+                    calls: steps.calls)
+        steps.stageSourceBehindTarget(sourceReturn)
 
         guard retry else { return }
         let retryState = SwitcherWindowFocusRetryState(
@@ -167,21 +193,14 @@ package enum WindowActivator {
             targetStartedMinimized: targetStartedMinimized,
             knownWindowIDs: knownWindowIDs
         )
-        retryState.observe(
-            targetMinimizedState: windowMinimizedState(windowID: windowID, pid: windowOwnerPID)
-        )
-        scheduleFocusRetries(windowID: windowID,
-                              targetPID: item.pid,
-                              targetWindowOwnerPID: windowOwnerPID,
-                              sourcePID: sourcePID,
-                              retrySourcePID: retrySourcePID,
-                              sourceWindowID: sourceWindowID,
-                              sourceWindowOwnerPID: sourceWindowOwnerPID,
-                              state: retryState,
-                              activationPlan: activationPlan,
-                              generation: generation,
-                              delays: [focusRetryDelay],
-                              stopsWhenTargetFocused: true)
+        retryState.observe(targetMinimizedState: steps.minimizedState(windowID, windowOwnerPID))
+        scheduleFocusRetries(sourceReturn,
+                             retrySourcePID: retrySourcePID,
+                             state: retryState,
+                             generation: generation,
+                             delays: [focusRetryDelay],
+                             stopsWhenTargetFocused: true,
+                             steps: steps)
     }
 
     package static func activate(pid: pid_t,
@@ -189,6 +208,19 @@ package enum WindowActivator {
                          appName: String,
                          retry: Bool = true,
                          handoffSourcePID: pid_t? = nil) {
+        activate(pid: pid, windowID: windowID, appName: appName, retry: retry,
+                 handoffSourcePID: handoffSourcePID, steps: liveSteps)
+    }
+
+    /// Activation by process, with its steps passed in. A caller that names
+    /// an app this way has no switcher session behind it, so the app it saw
+    /// in front is forwarded only as a focus handoff.
+    package static func activate<App: SwitcherActivatableApp>(pid: pid_t,
+                                                               windowID: CGWindowID?,
+                                                               appName: String,
+                                                               retry: Bool = true,
+                                                               handoffSourcePID: pid_t? = nil,
+                                                               steps: ActivationSteps<App>) {
         let item: SwitcherItem
         if let windowID {
             item = .window(id: windowID, title: appName, appName: appName,
@@ -196,7 +228,120 @@ package enum WindowActivator {
         } else {
             item = .appOnly(appName: appName, pid: pid)
         }
-        activate(item, retry: retry, handoffSourcePID: handoffSourcePID)
+        activate(item, retry: retry, sources: SwitcherActivationSources(handoffSourcePID: handoffSourcePID),
+                 steps: steps)
+    }
+
+    /// A selected window and the session source it was reached from: what the
+    /// minimize restore watches, and what staging raises just behind it.
+    package struct SourceReturn {
+        package let targetWindowID: CGWindowID
+        package let targetPID: pid_t
+        package let targetWindowOwnerPID: pid_t
+        package let sourcePID: pid_t?
+        package let sourceWindowID: CGWindowID?
+        package let sourceWindowOwnerPID: pid_t?
+        package let plan: SwitcherActivationPlan
+    }
+
+    /// What a delayed focus pass asks before it brings the target forward
+    /// again.
+    package struct FocusRetryCheck {
+        package let windowID: CGWindowID
+        package let targetPID: pid_t
+        package let targetWindowOwnerPID: pid_t
+        /// The app whose return to the front ends the retries.
+        package let sourcePID: pid_t?
+        package let state: SwitcherWindowFocusRetryState
+        /// Judges the app's own focus rather than who is in front.
+        package var ignoresForeground = false
+        package var stopsWhenTargetFocused = false
+    }
+
+    /// The steps an activation takes, each handed what it acts on. `live`
+    /// acts on real apps and windows; tests pass doubles that record what
+    /// each step was handed, chiefly which source app.
+    package struct ActivationSteps<App: SwitcherActivatableApp> {
+        package var calls: ActivationCalls<App>
+        /// Opens the app's bundle without activating it, so an app with no
+        /// window open gets one.
+        package var openApplication: (App) -> Void
+        /// Starts watching for the app to come forward, before it is asked
+        /// to; the call it returns schedules the retries once it was.
+        package var watchAppActivation: (_ targetPID: pid_t)
+            -> (_ sourcePID: pid_t?, _ plan: SwitcherActivationPlan, _ generation: UInt64) -> Void
+        package var minimizedState: (_ windowID: CGWindowID, _ pid: pid_t) -> Bool?
+        /// Hands the activation to a Space hop when the window sits on a
+        /// hidden Space; false when the regular path goes on.
+        package var beginSpaceHop: (_ windowID: CGWindowID, _ appPID: pid_t, _ windowOwnerPID: pid_t,
+                                    _ sourcePID: pid_t?, _ app: App) -> Bool
+        /// Every window the owner has, in the scope the retry guard compares.
+        package var snapshot: (_ ownerPID: pid_t) -> Set<CGWindowID>
+        package var watchTargetMinimize: (SourceReturn) -> Void
+        package var stageSourceBehindTarget: (SourceReturn) -> Void
+        package var shouldContinueFocusRetry: (FocusRetryCheck) -> Bool
+        /// Runs a delayed focus pass on the main thread.
+        package var after: (_ delay: TimeInterval, _ work: @escaping () -> Void) -> Void
+
+        package init(calls: ActivationCalls<App>,
+                     openApplication: @escaping (App) -> Void,
+                     watchAppActivation: @escaping (_ targetPID: pid_t)
+                         -> (_ sourcePID: pid_t?, _ plan: SwitcherActivationPlan, _ generation: UInt64) -> Void,
+                     minimizedState: @escaping (_ windowID: CGWindowID, _ pid: pid_t) -> Bool?,
+                     beginSpaceHop: @escaping (_ windowID: CGWindowID, _ appPID: pid_t, _ windowOwnerPID: pid_t,
+                                               _ sourcePID: pid_t?, _ app: App) -> Bool,
+                     snapshot: @escaping (_ ownerPID: pid_t) -> Set<CGWindowID>,
+                     watchTargetMinimize: @escaping (SourceReturn) -> Void,
+                     stageSourceBehindTarget: @escaping (SourceReturn) -> Void,
+                     shouldContinueFocusRetry: @escaping (FocusRetryCheck) -> Bool,
+                     after: @escaping (_ delay: TimeInterval, _ work: @escaping () -> Void) -> Void) {
+            self.calls = calls
+            self.openApplication = openApplication
+            self.watchAppActivation = watchAppActivation
+            self.minimizedState = minimizedState
+            self.beginSpaceHop = beginSpaceHop
+            self.snapshot = snapshot
+            self.watchTargetMinimize = watchTargetMinimize
+            self.stageSourceBehindTarget = stageSourceBehindTarget
+            self.shouldContinueFocusRetry = shouldContinueFocusRetry
+            self.after = after
+        }
+    }
+
+    private static var liveSteps: ActivationSteps<NSRunningApplication> {
+        ActivationSteps(
+            calls: liveActivation,
+            openApplication: { app in
+                guard let bundleURL = app.bundleURL else { return }
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = false
+                configuration.addsToRecentItems = false
+                configuration.promptsUserIfNeeded = false
+                NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration)
+            },
+            watchAppActivation: { targetPID in
+                let state = SwitcherAppActivationRetryState(targetPID: targetPID)
+                return { sourcePID, plan, generation in
+                    scheduleAppActivationRetries(targetPID: targetPID,
+                                                 sourcePID: sourcePID,
+                                                 plan: plan,
+                                                 state: state,
+                                                 generation: generation,
+                                                 delays: Self.fullscreenFocusRetryDelays)
+                }
+            },
+            minimizedState: { windowMinimizedState(windowID: $0, pid: $1) },
+            beginSpaceHop: { SpaceHop.beginIfNeeded(windowID: $0, appPID: $1, windowOwnerPID: $2,
+                                                    sourcePID: $3, app: $4) },
+            snapshot: { windowIDs(ownerPID: $0) },
+            watchTargetMinimize: { watchTargetMinimizeIfNeeded($0) },
+            stageSourceBehindTarget: { stageSourceBehindTargetIfNeeded($0) },
+            shouldContinueFocusRetry: { shouldContinueFocusRetry($0) },
+            after: { delay, work in
+                // Every pass is scheduled and run on the main thread.
+                nonisolated(unsafe) let work = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() }
+            })
     }
 
     package static func focusedWindowID(for pid: pid_t) -> CGWindowID? {
@@ -559,38 +704,34 @@ package enum WindowActivator {
         }
     }
 
-    private static func scheduleFocusRetries(windowID: CGWindowID,
-                                             targetPID: pid_t,
-                                             targetWindowOwnerPID: pid_t,
-                                             sourcePID: pid_t?,
-                                             retrySourcePID: pid_t?,
-                                             sourceWindowID: CGWindowID?,
-                                             sourceWindowOwnerPID: pid_t?,
-                                             state: SwitcherWindowFocusRetryState,
-                                             activationPlan: SwitcherActivationPlan,
-                                             generation: UInt64,
-                                             delays: [TimeInterval],
-                                             stopsWhenTargetFocused: Bool = false) {
+    /// The delayed focus passes after an activation. Each asks the guard
+    /// with the retry source, which may be a caller's handoff app, and stages
+    /// only the session source behind the target.
+    private static func scheduleFocusRetries<App: SwitcherActivatableApp>(_ sourceReturn: SourceReturn,
+                                                                          retrySourcePID: pid_t?,
+                                                                          state: SwitcherWindowFocusRetryState,
+                                                                          generation: UInt64,
+                                                                          delays: [TimeInterval],
+                                                                          stopsWhenTargetFocused: Bool,
+                                                                          steps: ActivationSteps<App>) {
+        let windowID = sourceReturn.targetWindowID
+        let targetPID = sourceReturn.targetPID
+        let targetWindowOwnerPID = sourceReturn.targetWindowOwnerPID
         for delay in delays {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            steps.after(delay) {
                 guard isCurrentActivation(generation),
-                      shouldContinueFocusRetry(windowID: windowID,
-                                               targetPID: targetPID,
-                                               targetWindowOwnerPID: targetWindowOwnerPID,
-                                               sourcePID: retrySourcePID,
-                                               state: state,
-                                               stopsWhenTargetFocused: stopsWhenTargetFocused),
-                      let app = NSRunningApplication(processIdentifier: targetPID),
+                      steps.shouldContinueFocusRetry(FocusRetryCheck(windowID: windowID,
+                                                                     targetPID: targetPID,
+                                                                     targetWindowOwnerPID: targetWindowOwnerPID,
+                                                                     sourcePID: retrySourcePID,
+                                                                     state: state,
+                                                                     stopsWhenTargetFocused: stopsWhenTargetFocused)),
+                      let app = steps.calls.running(targetPID),
                       !app.isTerminated else { return }
-                prepareWindowForActivation(windowID: windowID, pid: targetWindowOwnerPID)
-                activateApp(app, plan: activationPlan, windowID: windowID, windowOwnerPID: targetWindowOwnerPID)
-                stageSourceBehindTargetIfNeeded(targetWindowID: windowID,
-                                                targetPID: targetPID,
-                                                targetWindowOwnerPID: targetWindowOwnerPID,
-                                                sourcePID: sourcePID,
-                                                sourceWindowID: sourceWindowID,
-                                                sourceWindowOwnerPID: sourceWindowOwnerPID,
-                                                activationPlan: activationPlan)
+                _ = steps.calls.prepareWindow(windowID, targetWindowOwnerPID)
+                activateApp(app, plan: sourceReturn.plan, windowID: windowID, windowOwnerPID: targetWindowOwnerPID,
+                            calls: steps.calls)
+                steps.stageSourceBehindTarget(sourceReturn)
             }
         }
     }
@@ -650,6 +791,16 @@ package enum WindowActivator {
         return SwitcherSupport.focusRetryWindowIDs(in: raw, ownerPID: ownerPID)
     }
 
+    private static func shouldContinueFocusRetry(_ check: FocusRetryCheck) -> Bool {
+        shouldContinueFocusRetry(windowID: check.windowID,
+                                 targetPID: check.targetPID,
+                                 targetWindowOwnerPID: check.targetWindowOwnerPID,
+                                 sourcePID: check.sourcePID,
+                                 state: check.state,
+                                 ignoresForeground: check.ignoresForeground,
+                                 stopsWhenTargetFocused: check.stopsWhenTargetFocused)
+    }
+
     private static func shouldContinueFocusRetry(windowID: CGWindowID,
                                                  targetPID: pid_t,
                                                  targetWindowOwnerPID: pid_t,
@@ -684,6 +835,16 @@ package enum WindowActivator {
             stopsWhenTargetFocused: stopsWhenTargetFocused,
             ignoresForeground: ignoresForeground
         )
+    }
+
+    private static func watchTargetMinimizeIfNeeded(_ sourceReturn: SourceReturn) {
+        watchTargetMinimizeIfNeeded(windowID: sourceReturn.targetWindowID,
+                                    targetPID: sourceReturn.targetPID,
+                                    targetWindowOwnerPID: sourceReturn.targetWindowOwnerPID,
+                                    sourcePID: sourceReturn.sourcePID,
+                                    sourceWindowID: sourceReturn.sourceWindowID,
+                                    sourceWindowOwnerPID: sourceReturn.sourceWindowOwnerPID,
+                                    activationPlan: sourceReturn.plan)
     }
 
     private static func watchTargetMinimizeIfNeeded(windowID: CGWindowID,
@@ -821,6 +982,16 @@ package enum WindowActivator {
         return true
     }
 
+    private static func stageSourceBehindTargetIfNeeded(_ sourceReturn: SourceReturn) {
+        stageSourceBehindTargetIfNeeded(targetWindowID: sourceReturn.targetWindowID,
+                                        targetPID: sourceReturn.targetPID,
+                                        targetWindowOwnerPID: sourceReturn.targetWindowOwnerPID,
+                                        sourcePID: sourceReturn.sourcePID,
+                                        sourceWindowID: sourceReturn.sourceWindowID,
+                                        sourceWindowOwnerPID: sourceReturn.sourceWindowOwnerPID,
+                                        activationPlan: sourceReturn.plan)
+    }
+
     @discardableResult
     private static func stageSourceBehindTargetIfNeeded(targetWindowID: CGWindowID,
                                                         targetPID: pid_t,
@@ -902,6 +1073,17 @@ package enum WindowActivator {
                                    windowOwnerPID: pid_t,
                                    sourcePID: pid_t?,
                                    state: SwitcherWindowFocusRetryState) {
+        focusAfterSpaceHop(windowID: windowID, appPID: appPID, windowOwnerPID: windowOwnerPID,
+                           sourcePID: sourcePID, state: state, steps: liveSteps)
+    }
+
+    /// The hop's pass with its steps passed in.
+    package static func focusAfterSpaceHop<App: SwitcherActivatableApp>(windowID: CGWindowID,
+                                                                        appPID: pid_t,
+                                                                        windowOwnerPID: pid_t,
+                                                                        sourcePID: pid_t?,
+                                                                        state: SwitcherWindowFocusRetryState,
+                                                                        steps: ActivationSteps<App>) {
         focusAfterSpaceHop(windowID: windowID,
                            appPID: appPID,
                            windowOwnerPID: windowOwnerPID,
@@ -909,14 +1091,14 @@ package enum WindowActivator {
                            // way, so this pass judges the app's own focus rather
                            // than who is in front.
                            shouldContinue: {
-                               shouldContinueFocusRetry(windowID: windowID,
-                                                        targetPID: appPID,
-                                                        targetWindowOwnerPID: windowOwnerPID,
-                                                        sourcePID: sourcePID,
-                                                        state: state,
-                                                        ignoresForeground: true)
+                               steps.shouldContinueFocusRetry(FocusRetryCheck(windowID: windowID,
+                                                                              targetPID: appPID,
+                                                                              targetWindowOwnerPID: windowOwnerPID,
+                                                                              sourcePID: sourcePID,
+                                                                              state: state,
+                                                                              ignoresForeground: true))
                            },
-                           calls: liveActivation)
+                           calls: steps.calls)
     }
 
     /// The same pass with its guard and its system calls passed in. The guard
