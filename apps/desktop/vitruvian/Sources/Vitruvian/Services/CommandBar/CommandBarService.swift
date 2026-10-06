@@ -2572,7 +2572,7 @@ package final class CommandBarService: ObservableObject {
             }
             let killStrings = FeatureStrings.killProcess(L10n.shared.language)
             self.killProcessEntries = CommandBarCatalog.killProcessEntries(
-                KillProcessService.shared.entries, killStrings: killStrings)
+                KillProcessService.shared.sortedEntries, killStrings: killStrings)
             self.indexEntries()
             self.refreshResults()
         }

@@ -28,6 +28,25 @@ enum CommandBarFeatureTests {
         CommandBarTerminationContract.run(suite)
         CommandBarAppSortContract.run(suite)
         CommandBarCatalogRowContract.run(suite)
+        // Upstream #1978: the Command Bar lists processes in the Kill Process
+        // page's sort order (KillProcessService.sortedEntries), not raw order.
+        do {
+            func process(_ pid: pid_t, _ name: String, cpu: Double, memory: Double) -> KillProcessEntry {
+                KillProcessEntry(pid: pid, ppid: 1, name: name, path: "/Applications/\(name).app",
+                                 cpuPercent: cpu, memoryBytes: memory, isRegularApp: true,
+                                 bundleURL: nil, groupedCount: 1, isProtected: false, startedAt: nil)
+            }
+            let raw = [process(30, "Mail", cpu: 5, memory: 900),
+                       process(10, "Xcode", cpu: 1, memory: 100),
+                       process(20, "Browser", cpu: 40, memory: 500)]
+            for (sort, ascending, expected) in [(KillProcessService.SortBy.cpu, false, ["Browser", "Mail", "Xcode"]),
+                                                (.memory, false, ["Mail", "Browser", "Xcode"]),
+                                                (.name, true, ["Browser", "Mail", "Xcode"])] {
+                let names = KillProcessService.sorted(raw, by: sort, ascending: ascending).map(\.name)
+                suite.expect(names == expected,
+                       "processes list in the Kill Process page's \(sort) order, found \(names)")
+            }
+        }
         func pageVisible(_ page: SettingsPage, available: Set<AppFeature>) -> Bool {
             FeatureVisibilitySupport.isPageVisible(page) { available.contains($0) }
         }
@@ -2263,5 +2282,70 @@ enum CommandBarAppSortContract {
                                             shortcuts: ["safari": same, "mail": same], pins: [])
         suite.expect(tied.prefix(2).map(\.key) == ["mail", "safari"],
                      "equal shortcuts fall back to the name in either direction")
+    }
+}
+
+/// Runs the production Command Bar process load against a process list whose
+/// raw order matches none of the Kill Process page's sorts.
+enum CommandBarKillProcessOrderContract {
+    enum Preferences {
+        static var standard: Preferences.Type { Self.self }
+        static func bool(forKey: String) -> Bool { true }
+    }
+    enum Feature {
+        case killProcess
+        var isAvailable: Bool { true }
+    }
+    struct Lifecycle {
+        func acceptsHomeUpdates(_ id: UUID, isVisible: Bool) -> Bool { true }
+    }
+    struct Entry {
+        let pid: pid_t
+        let name: String
+        let cpuPercent: Double
+        let memoryBytes: Double
+    }
+    enum Catalog {
+        static func killProcessEntries(_ processes: [Entry], killStrings: KillProcessFeatureStrings) -> [String] {
+            processes.map(\.name)
+        }
+    }
+    final class Processes {
+        typealias KillProcessEntry = Entry
+        enum SortBy { case cpu, memory, name, pid }
+        static let shared = Processes()
+        var entries: [Entry] = []
+        var sortBy = SortBy.cpu
+        var sortAscending = false
+        func refresh(_ completion: @escaping () -> Void) { completion() }
+    }
+    class Fixture {
+        typealias UserDefaults = Preferences
+        typealias AppFeature = Feature
+        typealias KillProcessService = Processes
+        typealias CommandBarCatalog = Catalog
+        var killProcessEntries: [String] = []
+        var killProcessEntriesLoading = false
+        var presentationLifecycle = Lifecycle()
+        var presentationID = UUID()
+        var isVisible = true
+        func indexEntries() {}
+        func refreshResults() {}
+    }
+    static func run(_ suite: TestSuite) {
+        let processes = Processes.shared
+        processes.entries = [Entry(pid: 30, name: "Mail", cpuPercent: 5, memoryBytes: 900),
+                             Entry(pid: 10, name: "Xcode", cpuPercent: 1, memoryBytes: 100),
+                             Entry(pid: 20, name: "Browser", cpuPercent: 40, memoryBytes: 500)]
+        for (sort, ascending, expected) in [(Processes.SortBy.cpu, false, ["Browser", "Mail", "Xcode"]),
+                                            (.memory, false, ["Mail", "Browser", "Xcode"]),
+                                            (.name, true, ["Browser", "Mail", "Xcode"])] {
+            processes.sortBy = sort
+            processes.sortAscending = ascending
+            let service = Service()
+            service.loadKillProcessEntries(for: service.presentationID)
+            suite.expect(service.killProcessEntries == expected,
+                         "the Command Bar lists processes in the Kill Process page's \(sort) order, found \(service.killProcessEntries)")
+        }
     }
 }
