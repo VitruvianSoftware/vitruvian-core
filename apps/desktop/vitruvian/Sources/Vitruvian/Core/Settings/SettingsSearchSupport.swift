@@ -3,6 +3,28 @@
 
 import Foundation
 
+/// The one fold every search in the app compares through: Settings, the
+/// command bar, the App Switcher and the clipboard history.
+///
+/// It takes no locale, and has no way to be given one. A fold that followed
+/// the Mac's language would answer differently in Turkish, where a capital I
+/// folds to a dotless one, so "istanbul" would stop finding "ISTANBUL" for
+/// the people the app is translated for.
+package enum SearchFolding {
+    /// Case, accents and width: what most searches ignore.
+    package static let caseAccentAndWidth: String.CompareOptions = [
+        .caseInsensitive, .diacriticInsensitive, .widthInsensitive,
+    ]
+    /// Case and accents, the App Switcher's comparison.
+    package static let caseAndAccent: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+
+    /// `value` folded by `options`, the same on every Mac.
+    package static func folded(_ value: String,
+                               options: String.CompareOptions = SearchFolding.caseAccentAndWidth) -> String {
+        value.folding(options: options, locale: nil)
+    }
+}
+
 /// One destination-aware Settings search result. Its identity is structural,
 /// never derived from localized text or result ordering.
 package struct SettingsSearchItem: Identifiable {
@@ -382,11 +404,7 @@ package enum SettingsSearchSupport {
     }
 
     private static func fold(_ value: String) -> String {
-        // No locale: Turkish folds a dotted I to a dotless one, which would
-        // make this page search answer differently there.
-        value
-            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                     locale: nil)
+        SearchFolding.folded(value)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

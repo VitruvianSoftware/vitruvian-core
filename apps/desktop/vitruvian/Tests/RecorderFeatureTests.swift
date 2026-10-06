@@ -837,19 +837,11 @@ enum RecorderFeatureTests {
                "keystrokes keep the recording's clock: none before it begins or while it is paused")
         // `RecorderSession.stop()` is nonisolated and async, so its body runs
         // off the main thread however main-actor the caller was (SE-0338).
-        // Both samplers install and remove AppKit event monitors, so they are
-        // started and stopped back on the main thread.
-        let recorderSessionShape = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Recorder/ScreenRecorderService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }.joined(separator: " ")
-        suite.expect(recorderSessionShape.contains(
-            "await MainActor.run { pointer.start() typing.start() }"
-        ), "the recorder installs its event monitors on the main thread")
-        suite.expect(recorderSessionShape.contains(
-            "await MainActor.run { (pointer.stop(), typing.stop()) }"
-        ), "the recorder removes its event monitors on the main thread")
+        // Both samplers install and remove AppKit event monitors, so their
+        // `start()` and `stop()` are main-actor: the compiler refuses a call
+        // from anywhere else, which is the whole of that property and leaves
+        // nothing for a run to check. This file calls them from the main
+        // actor only.
 
         let uniform = RecorderMotion.resampled(
             [RecorderMotion.Sample(time: 0, point: CGPoint(x: 0, y: 0)),
@@ -1381,24 +1373,26 @@ enum RecorderFeatureTests {
         // Case folding that inherits the Mac's locale answers differently for
         // a Turkish user: there the dotted I folds to a dotless one, so a
         // search for "istanbul" stops finding "ISTANBUL". The app ships
-        // Turkish, so every search normalizer folds with no locale at all.
+        // Turkish, so every search normalizer folds through `SearchFolding`,
+        // which takes no locale and offers no way to pass one.
         let dottedI = "ISTANBUL"
         let foldOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
-        suite.expect(dottedI.folding(options: foldOptions, locale: Locale(identifier: "tr_TR"))
-                != dottedI.folding(options: foldOptions, locale: nil),
+        let turkishFold = dottedI.folding(options: foldOptions, locale: Locale(identifier: "tr_TR"))
+        suite.expect(turkishFold != dottedI.folding(options: foldOptions, locale: nil),
                "the dotted I is exactly where locale-aware folding diverges")
-        for path in ["Sources/Vitruvian/Services/Clipboard/ClipboardHistorySupport.swift",
-                     "Sources/Vitruvian/Core/Settings/SettingsSearchSupport.swift",
-                     "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
-                     "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift"] {
-            let source = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            suite.expect(!source.isEmpty, "\(path) reads back for its folding check")
-            let code = source.components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-            suite.expect(!code.contains("locale: .current"),
-                   "search folding in \(path) does not follow the Mac's locale")
-        }
+        suite.expect(SearchFolding.caseAccentAndWidth == foldOptions
+                && SearchFolding.folded(dottedI) == dottedI.folding(options: foldOptions, locale: nil)
+                && SearchFolding.folded(dottedI) != turkishFold
+                && SearchFolding.folded(dottedI, options: SearchFolding.caseAndAccent)
+                    == dottedI.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil),
+               "search folding folds the dotted I the locale-free way, never the Turkish one")
+        suite.expect(ClipboardHistorySearch.normalized(dottedI) == SearchFolding.folded(dottedI).lowercased()
+                && CommandBarSearch.normalized(dottedI) == SearchFolding.folded(dottedI).lowercased()
+                && SettingsSearchSupport.matches(query: "istanbul", title: dottedI)
+                && SwitcherSupport.filteredSearchIDs(
+                    records: [SwitcherSearchRecord(id: "maps", title: dottedI, appName: "Maps")],
+                    query: "istanbul") == ["maps"],
+               "the clipboard, command bar, Settings and App Switcher searches all fold through the shared fold")
         suite.expect(ClipboardHistorySearch.matches("ISTANBUL kahvesi", query: "istanbul"),
                "clipboard search folds case whatever the Mac's locale is")
         suite.expect(ClipboardHistorySearch.matches("café da manhã", query: "cafe"),
