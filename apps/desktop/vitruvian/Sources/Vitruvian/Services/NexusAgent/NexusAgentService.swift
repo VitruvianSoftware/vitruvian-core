@@ -641,13 +641,13 @@ extension NexusAgentService {
         session.send(session.draft, configuration: configuration, agentPath: agentPath)
     }
 
-    /// Reads agy's conversation index read-only; empty when agy has none.
+    /// Reads agy's conversation index; empty when agy has none.
     nonisolated static func readSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
         let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
         guard FileManager.default.fileExists(atPath: database) else { return [] }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = ["-json", "-readonly", database, NexusAgentSessionSummary.query]
+        process.arguments = ["-json", database, NexusAgentSessionSummary.query]
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
@@ -655,6 +655,7 @@ extension NexusAgentService {
         let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { return [] }
-        return NexusAgentSessionSummary.parse(data, directory: directory)
+        let filterDirectory = (directory.isEmpty || directory == home) ? "" : directory
+        return NexusAgentSessionSummary.parse(data, directory: filterDirectory)
     }
 }
