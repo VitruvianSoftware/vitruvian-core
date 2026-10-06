@@ -2054,12 +2054,11 @@ package final class CommandBarService: ObservableObject {
     /// feature instead of reaching the bar. This is the same pair the shortcut
     /// fields in Settings use, and it gives every key back, not only ours.
     private func beginCapturingShortcut(_ entry: CommandBarEntry) {
-        ShortcutCapture.begin()
         // The tap sits ahead of the app's own menu. Without it, Command Q
         // never reaches the local monitor. It quits Vitruvian instead of
         // landing on the card (issue #1193). When Accessibility cannot
         // create the tap, the monitor below still records as before.
-        ShortcutRecordingTap.begin { [weak self] keyCode, modifiers, _ in
+        ShortcutListening.live.begin { [weak self] keyCode, modifiers, _ in
             self?.handleCaptureKey(keyCode: keyCode, modifiers: modifiers)
         }
         mode = .capturingShortcut(entryID: entry.id)
@@ -2068,8 +2067,7 @@ package final class CommandBarService: ObservableObject {
     }
 
     private func endCapturingShortcut() {
-        ShortcutRecordingTap.end()
-        ShortcutCapture.end()
+        ShortcutListening.live.end()
     }
 
     /// One press while the capture card is up. Shared by the recording tap
@@ -2674,13 +2672,7 @@ package final class CommandBarService: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let space = CommandBarCatalog.readBootVolumeSpace()
             DispatchQueue.main.async {
-                guard let self else { return }
-                // The whole sample is stored before the comparison decides
-                // whether anything has to be redrawn, or the fields the guard
-                // does not compare would keep a reading from an older sample.
-                let changed = CommandBarCatalog.cachedBootVolumeSpace?.free != space?.free
-                CommandBarCatalog.cachedBootVolumeSpace = space
-                guard changed else { return }
+                guard let self, CommandBarCatalog.storeBootVolumeSpace(space) else { return }
                 if self.presentationLifecycle.acceptsSharedCacheCompletion(
                     startedBy: id, currentID: self.presentationID,
                     isVisible: self.isVisible) {
@@ -2700,18 +2692,9 @@ package final class CommandBarService: ObservableObject {
             let battery = SystemInfo.batterySnapshot()
             let memory = AppFeature.monitorMemory.isAvailable ? SystemInfo.memoryUsage() : nil
             DispatchQueue.main.async {
-                guard let self else { return }
-                // Stored first, compared after, for the reason the storage
-                // pass above gives: the guard names the three fields the row
-                // shows, and the rest of the sample would otherwise be left
-                // behind at whatever it was when those three last moved.
-                let changed = CommandBarCatalog.cachedBattery != battery
-                    || CommandBarCatalog.cachedMemory?.used != memory?.used
-                    || CommandBarCatalog.cachedMemory?.appUsed != memory?.appUsed
-                    || CommandBarCatalog.cachedMemory?.total != memory?.total
-                CommandBarCatalog.cachedBattery = battery
-                CommandBarCatalog.cachedMemory = memory
-                guard changed else { return }
+                guard let self,
+                      CommandBarCatalog.storeSystemAnswers(battery: battery, memory: memory)
+                else { return }
                 if self.presentationLifecycle.acceptsSharedCacheCompletion(
                     startedBy: id, currentID: self.presentationID,
                     isVisible: self.isVisible) {
@@ -2876,49 +2859,29 @@ package final class CommandBarService: ObservableObject {
                 return nil
             }
 
-            let navigationModifiers = event.modifierFlags
-                .intersection([.command, .option, .shift, .control])
-            if event.modifierFlags.contains(.command) {
-                // `characters` is the Command-aware key macOS resolves: it
-                // follows remapped Latin layouts and supplies the positional
-                // Latin equivalent when the active layout is non-Latin. Option
-                // rewrites it into the alternate glyph, and the app's own menu
-                // owns ⌥⌘H, so while Option is held the unmodified reading is
-                // the one that still names the key to swallow.
-                let key = (event.modifierFlags.contains(.option)
-                    ? event.charactersIgnoringModifiers
-                    : event.characters)?.lowercased()
-                switch key {
-                case "q", "w", "m", "h":
-                    // The app's menu owns these combinations and the panel is
-                    // key, so they would quit, close or hide Vitruvian while
-                    // the person believes they are acting on the app the bar
-                    // is floating over.
+            if let command = CommandBarKeys.commandKey(
+                characters: event.characters,
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                modifiers: event.modifierFlags) {
+                switch command {
+                case .appMenu:
                     return nil
-                case ",":
+                case .settings:
                     self.hide()
                     SettingsRouter.shared.page = .commandBar
                     appShell()?.openSettingsWindow()
                     return nil
-                case "k":
+                case .actions:
                     self.openActions()
                     return nil
-                case "p":
+                case .pin:
                     if let entry = self.selectedEntry, !entry.isAnswer,
                        CommandBarPreferences.acceptsPin(rowID: entry.id) {
                         self.togglePin(entry)
                     }
                     return nil
-                case "a" where navigationModifiers == [.command]:
-                    return NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: panel) ? nil : event
-                case "c" where navigationModifiers == [.command]:
-                    return NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: panel) ? nil : event
-                case "x" where navigationModifiers == [.command]:
-                    return NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: panel) ? nil : event
-                case "v" where navigationModifiers == [.command]:
-                    return NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: panel) ? nil : event
-                default:
-                    break
+                case .edit(let action):
+                    return NSApp.sendAction(action, to: nil, from: panel) ? nil : event
                 }
             }
             // ⌘Return shows the selected row where it lives. Guarded by the
@@ -2973,29 +2936,24 @@ package final class CommandBarService: ObservableObject {
             default:
                 // ⌘1…⌘9 run by position; plain digits belong to the field.
                 if event.modifierFlags.contains(.command),
-                   let index = Self.digitIndex(for: event.keyCode) {
+                   let index = CommandBarKeys.rowIndex(forKeyCode: event.keyCode) {
                     self.run(at: index)
                     return nil
                 }
-                if navigationModifiers == [.control],
-                   let key = event.charactersIgnoringModifiers?.lowercased() {
-                    // Match the typed letter so alternate keyboard layouts
-                    // follow the keys the person sees.
-                    switch key {
-                    case "n":
+                if let step = CommandBarKeys.controlStep(
+                    charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                    modifiers: event.modifierFlags) {
+                    if step > 0 {
                         // Same ↓ in the footer's own hint.
                         if case .actions = self.mode {
                             self.moveActionSelection(1)
                         } else if !self.peekHome() {
                             self.moveSelection(1)
                         }
-                        return nil
-                    case "p":
+                    } else {
                         if case .actions = self.mode { self.moveActionSelection(-1) } else { self.moveSelection(-1) }
-                        return nil
-                    default:
-                        break
                     }
+                    return nil
                 }
                 // Typing while a confirmation is up takes the confirmation
                 // down. Otherwise a destructive Return stays armed behind
@@ -3081,8 +3039,57 @@ package final class CommandBarService: ObservableObject {
     private static func mouseIsInside(_ panel: NSPanel) -> Bool {
         panel.frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)
     }
+}
 
-    private static func digitIndex(for keyCode: UInt16) -> Int? {
+/// What the bar's keyboard monitor reads a press as, before it acts on it.
+@MainActor
+package enum CommandBarKeys {
+    /// A Command combination the bar answers itself.
+    package enum CommandKey: Equatable {
+        /// ⌘Q, ⌘W, ⌘M or ⌘H. The app's menu owns these combinations and the
+        /// panel is key, so they would quit, close or hide Vitruvian while
+        /// the person believes they are acting on the app the bar is
+        /// floating over. Swallowed.
+        case appMenu
+        /// ⌘, opens the bar's own Settings page.
+        case settings
+        /// ⌘K opens the selected row's actions.
+        case actions
+        /// ⌘P pins or unpins the selected row.
+        case pin
+        /// ⌘A, ⌘C, ⌘X or ⌘V with Command alone: the standard editing command,
+        /// sent through the responder chain to the field being edited.
+        case edit(Selector)
+    }
+
+    /// The Command combination a press makes, or nil for any other press.
+    /// `characters` is the Command-aware key macOS resolves: it follows
+    /// remapped Latin layouts and supplies the positional Latin equivalent
+    /// when the active layout is non-Latin. Option rewrites it into the
+    /// alternate glyph, and the app's own menu owns ⌥⌘H, so while Option is
+    /// held the unmodified reading is the one that still names the key to
+    /// swallow.
+    package static func commandKey(characters: String?, charactersIgnoringModifiers: String?,
+                                   modifiers: NSEvent.ModifierFlags) -> CommandKey? {
+        guard modifiers.contains(.command) else { return nil }
+        let key = (modifiers.contains(.option) ? charactersIgnoringModifiers : characters)?.lowercased()
+        let commandAlone = modifiers.intersection([.command, .option, .shift, .control]) == [.command]
+        switch key {
+        case "q", "w", "m", "h": return .appMenu
+        case ",": return .settings
+        case "k": return .actions
+        case "p": return .pin
+        case "a" where commandAlone: return .edit(#selector(NSText.selectAll(_:)))
+        case "c" where commandAlone: return .edit(#selector(NSText.copy(_:)))
+        case "x" where commandAlone: return .edit(#selector(NSText.cut(_:)))
+        case "v" where commandAlone: return .edit(#selector(NSText.paste(_:)))
+        default: return nil
+        }
+    }
+
+    /// The row ⌘1…⌘9 runs: by the key's position, whatever the layout prints
+    /// on it, so a layout that types symbols on the top row still counts.
+    package static func rowIndex(forKeyCode keyCode: UInt16) -> Int? {
         switch Int(keyCode) {
         case kVK_ANSI_1: return 0
         case kVK_ANSI_2: return 1
@@ -3093,6 +3100,18 @@ package final class CommandBarService: ObservableObject {
         case kVK_ANSI_7: return 6
         case kVK_ANSI_8: return 7
         case kVK_ANSI_9: return 8
+        default: return nil
+        }
+    }
+
+    /// ⌃N moves the selection down (1) and ⌃P up (-1). The typed letter is
+    /// matched, so alternate keyboard layouts follow the keys the person sees.
+    package static func controlStep(charactersIgnoringModifiers: String?,
+                                    modifiers: NSEvent.ModifierFlags) -> Int? {
+        guard modifiers.intersection([.command, .option, .shift, .control]) == [.control] else { return nil }
+        switch charactersIgnoringModifiers?.lowercased() {
+        case "n": return 1
+        case "p": return -1
         default: return nil
         }
     }

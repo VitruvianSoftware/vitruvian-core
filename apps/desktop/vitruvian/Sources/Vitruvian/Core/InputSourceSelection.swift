@@ -42,6 +42,62 @@ package enum InputSourceSelection {
         return snapshots.first { $0.isASCIICapable && $0.isLayout }?.id
     }
 
+    // MARK: - The Super key's cycle
+
+    /// What one step of the cycle reads and does. `live()` is Text Input
+    /// Sources, read through the same plumbing as the Command Bar's borrowing.
+    package struct Cycle {
+        /// The enabled, selectable sources' ids, in the Input menu's order.
+        package var enabledIDs: [String]
+        /// The current source's id: nil when no source is current at all, and
+        /// empty when the current one has no id, which starts the cycle over.
+        package var currentSourceID: () -> String?
+        /// Selects an enabled source by its id.
+        package var select: (_ sourceID: String) -> Void
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(enabledIDs: [String],
+                     currentSourceID: @escaping () -> String?,
+                     select: @escaping (_ sourceID: String) -> Void) {
+            self.enabledIDs = enabledIDs
+            self.currentSourceID = currentSourceID
+            self.select = select
+        }
+
+        /// The Mac's sources, listed once for the step. TIS talks to the
+        /// text-input server from the main thread.
+        package static func live() -> Cycle {
+            let sources = InputSourceSelection.selectableInputSources()
+            return Cycle(
+                enabledIDs: sources.compactMap {
+                    InputSourceSelection.inputSourceString($0, property: kTISPropertyInputSourceID)
+                },
+                currentSourceID: {
+                    guard let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
+                    else { return nil }
+                    return InputSourceSelection.inputSourceString(current, property: kTISPropertyInputSourceID)
+                        ?? ""
+                },
+                select: { sourceID in
+                    guard let next = sources.first(where: {
+                        InputSourceSelection.inputSourceString($0, property: kTISPropertyInputSourceID) == sourceID
+                    }) else { return }
+                    _ = TISSelectInputSource(next)
+                })
+        }
+    }
+
+    /// Selects the enabled source after the current one, wrapping round, the
+    /// way the Super key cycles. Nothing happens when no source is current or
+    /// there is nothing to cycle to.
+    package static func selectNextSource(_ cycle: Cycle) {
+        guard let currentID = cycle.currentSourceID(),
+              let nextID = SuperKeySupport.nextInputSourceID(currentID: currentID.isEmpty ? nil : currentID,
+                                                             enabledIDs: cycle.enabledIDs)
+        else { return }
+        cycle.select(nextID)
+    }
+
     // MARK: - TIS access
 
     package static func currentSourceID() -> String? {

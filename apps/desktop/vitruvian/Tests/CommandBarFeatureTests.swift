@@ -496,10 +496,26 @@ enum CommandBarFeatureTests {
         suite.expect(SettingsBackupSupport.valueLooksRight(DefaultsKey.commandBarASCIILayoutEnabled, true)
                 && !SettingsBackupSupport.valueLooksRight(DefaultsKey.commandBarASCIILayoutEnabled, "yes"),
                "a restored ASCII layout switch has to be a switch, not text that looks like one")
-        let superKeySource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(superKeySource.contains("InputSourceSelection.selectableInputSources()"),
+        // The Super key's cycle lives with the bar's borrowing, so the two
+        // read the same enabled sources and select through the same calls.
+        var cycledSource: String? = "ru"
+        var cycleSelections: [String] = []
+        func superKeyCycle() -> InputSourceSelection.Cycle {
+            InputSourceSelection.Cycle(enabledIDs: ["abc", "ru", "kana"],
+                                       currentSourceID: { cycledSource },
+                                       select: { cycleSelections.append($0); cycledSource = $0 })
+        }
+        InputSourceSelection.selectNextSource(superKeyCycle())
+        InputSourceSelection.selectNextSource(superKeyCycle())
+        cycledSource = ""
+        InputSourceSelection.selectNextSource(superKeyCycle())
+        cycledSource = nil
+        InputSourceSelection.selectNextSource(superKeyCycle())
+        suite.expect(cycleSelections == ["kana", "abc", "abc"],
+               "the Super key cycle steps through the enabled sources, starts over from an unnamed one "
+               + "and leaves the keyboard alone with no source current")
+        suite.expect(InputSourceSelection.Cycle.live().enabledIDs
+                == InputSourceSelection.snapshots().map(\.id).filter { !$0.isEmpty },
                "the Super key cycle shares the TIS plumbing instead of its own copy")
 
         // MARK: The Mac's own Settings panes
@@ -1256,50 +1272,62 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarRowShortcuts.isUsable(
                     GlobalShortcut(keyCode: Int64(kVK_ANSI_Q), modifiers: [.command])),
                "Command Q is a real combination; the card has to be able to store it")
-        let commandBarSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift",
-            encoding: .utf8)) ?? ""
-        let commandBarCode = commandBarSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let monitorParts = (commandBarCode
-            .components(separatedBy: "private func installMonitors(for panel: NSPanel)")
-            .last ?? "").components(separatedBy: "\n    private func ")
-        let monitor = monitorParts.first ?? ""
-        suite.expect(monitorParts.count > 1
-                && monitor.contains("? event.charactersIgnoringModifiers")
-                && monitor.contains(": event.characters)?.lowercased()")
-                && monitor.contains("let key = event.charactersIgnoringModifiers?.lowercased()")
-                && !monitor.contains("case kVK_ANSI_Q")
-                && monitor.contains("digitIndex(for: event.keyCode)"),
+        // Command letters are read the way macOS resolves them for Command:
+        // a remapped Latin layout's letter, the Latin key under a non-Latin
+        // layout, and the unmodified key while Option rewrites the glyph.
+        // Control follows the typed letter, and ⌘1…⌘9 the key's position.
+        func command(_ characters: String?, ignoring: String? = nil,
+                     with modifiers: NSEvent.ModifierFlags = [.command]) -> CommandBarKeys.CommandKey? {
+            CommandBarKeys.commandKey(characters: characters,
+                                      charactersIgnoringModifiers: ignoring ?? characters,
+                                      modifiers: modifiers)
+        }
+        let commandLetters: [CommandBarKeys.CommandKey?] = [
+            command("q", ignoring: "й"),
+            command("Q", ignoring: "q", with: [.command, .shift]),
+            command("œ", ignoring: "q", with: [.command, .option]),
+            command("˙", ignoring: "h", with: [.command, .option]),
+            command("q", with: [.control]),
+        ]
+        let positionalRows: [Int?] = [kVK_ANSI_1, kVK_ANSI_9, kVK_ANSI_0].map {
+            CommandBarKeys.rowIndex(forKeyCode: UInt16($0))
+        }
+        let controlSteps: [Int?] = [
+            CommandBarKeys.controlStep(charactersIgnoringModifiers: "n", modifiers: [.control]),
+            CommandBarKeys.controlStep(charactersIgnoringModifiers: "P", modifiers: [.control]),
+            CommandBarKeys.controlStep(charactersIgnoringModifiers: "n", modifiers: [.control, .shift]),
+        ]
+        suite.expect(commandLetters == [.appMenu, .appMenu, .appMenu, .appMenu, nil]
+                && positionalRows == [0, 8, nil] && controlSteps == [1, -1, nil],
                "the Command Bar uses macOS Command letters while Control follows typed letters and digits stay positional")
-        suite.expect(monitor.contains("#selector(NSText.selectAll(_:))")
-                && monitor.contains("#selector(NSText.copy(_:))")
-                && monitor.contains("#selector(NSText.cut(_:))")
-                && monitor.contains("#selector(NSText.paste(_:))")
-                && monitor.contains("NSApp.sendAction"),
+        let editingCommands: [CommandBarKeys.CommandKey?] = [
+            command("a"), command("c"), command("x"), command("v"), command("v", with: [.command, .shift]),
+        ]
+        let editingSelectors: [CommandBarKeys.CommandKey?] = [
+            .edit(#selector(NSText.selectAll(_:))), .edit(#selector(NSText.copy(_:))),
+            .edit(#selector(NSText.cut(_:))), .edit(#selector(NSText.paste(_:))), nil,
+        ]
+        suite.expect(editingCommands == editingSelectors,
                "the Command Bar sends standard editing commands through its responder chain")
-        // Ends on the next declaration rather than naming a neighbour: a
-        // rename would find no separator, leave the slice running to end of
-        // file, and quietly restore the whole-file search.
-        let captureBeginParts = (commandBarCode
-            .components(separatedBy: "private func beginCapturingShortcut(")
-            .last ?? "").components(separatedBy: "\n    private func ")
-        let captureBegin = captureBeginParts.first ?? ""
-        suite.expect(captureBeginParts.count > 1,
-               "the Command Bar capture start finds the end of beginCapturingShortcut")
-        suite.expect(captureBegin.contains("ShortcutCapture.begin()")
-                && captureBegin.contains("ShortcutRecordingTap.begin"),
+        let barCommands: [CommandBarKeys.CommandKey?] = [command(","), command("k"), command("p")]
+        suite.expect(barCommands == [.settings, .actions, .pin],
+               "Command comma, K and P open Settings, open the actions and pin the row")
+        // The card listens through the same pair as the Settings fields: the
+        // app's keys step aside, then the tap goes ahead of the app's menu so
+        // Command Q reaches the card; leaving undoes both, tap first.
+        var listening: [String] = []
+        let listeningPair = ShortcutListening(suspendKeys: { listening.append("keys off") },
+                                              startTap: { _ in
+                                                  listening.append("tap on")
+                                                  return false
+                                              },
+                                              stopTap: { listening.append("tap off") },
+                                              restoreKeys: { listening.append("keys on") })
+        let tapStarted = listeningPair.begin { _, _, _ in }
+        suite.expect(listening == ["keys off", "tap on"] && !tapStarted,
                "the capture card starts the same pair Settings uses, so Command Q reaches it")
-        let captureEndParts = (commandBarCode
-            .components(separatedBy: "private func endCapturingShortcut()")
-            .last ?? "").components(separatedBy: "\n    private func ")
-        let captureEnd = captureEndParts.first ?? ""
-        suite.expect(captureEndParts.count > 1,
-               "the Command Bar capture stop finds the end of endCapturingShortcut")
-        suite.expect(captureEnd.contains("ShortcutRecordingTap.end()")
-                && captureEnd.contains("ShortcutCapture.end()"),
+        listeningPair.end()
+        suite.expect(listening == ["keys off", "tap on", "tap off", "keys on"],
                "leaving the card gives the keyboard back")
 
         // Dates and places, answered by the calendar this Mac carries.
@@ -1835,25 +1863,33 @@ enum CommandBarFeatureTests {
                     == CommandBarPreferences.aliasHit("Códex", query: "CÓD"),
                "folded letters ask an alias the same question the raw ones do")
 
-        // Both background passes guard on a few fields of a tuple they store
-        // whole. Returning before the store would leave every field the guard
-        // does not name at the reading it had when the named ones last moved.
-        for (pass, marker) in [("refreshStorageAnswer", "cachedBootVolumeSpace = space"),
-                               ("refreshSystemAnswers", "cachedMemory = memory")] {
-            let parts = (commandBarCode
-                .components(separatedBy: "private func \(pass)(").last ?? "")
-                .components(separatedBy: "\n    private func ")
-            let body = parts.first ?? ""
-            suite.expect(parts.count > 1, "\(pass) finds the end of its own body")
-            func offset(_ needle: String) -> Int {
-                body.range(of: needle)
-                    .map { body.distance(from: body.startIndex, to: $0.lowerBound) } ?? -1
-            }
-            let stored = offset(marker)
-            let guarded = offset("guard changed else { return }")
-            suite.expect(stored >= 0 && guarded > stored,
-                   "\(pass) stores the whole sample before it decides whether the rows changed")
-        }
+        // Both background passes compare a few fields of a sample they store
+        // whole. Returning before the store would leave every field the
+        // comparison does not name at the reading it had when the named ones
+        // last moved.
+        let keptSpace = CommandBarCatalog.cachedBootVolumeSpace
+        let keptBattery = CommandBarCatalog.cachedBattery
+        let keptMemory = CommandBarCatalog.cachedMemory
+        CommandBarCatalog.cachedBootVolumeSpace = (free: 10, total: 100)
+        let spaceRowMoved = CommandBarCatalog.storeBootVolumeSpace((free: 10, total: 200))
+        suite.expect(!spaceRowMoved && CommandBarCatalog.cachedBootVolumeSpace?.total == 200
+                && CommandBarCatalog.storeBootVolumeSpace((free: 20, total: 200)),
+               "refreshStorageAnswer stores the whole sample before it decides whether the rows changed")
+        let sampledBattery = BatteryInfo(percent: 50, isCharging: false, isOnBattery: true)
+        CommandBarCatalog.cachedBattery = sampledBattery
+        CommandBarCatalog.cachedMemory = (used: 1, appUsed: 1, total: 4, compressed: 0, cached: 0, swapUsed: nil)
+        let systemRowsMoved = CommandBarCatalog.storeSystemAnswers(
+            battery: sampledBattery,
+            memory: (used: 1, appUsed: 1, total: 4, compressed: 2, cached: 3, swapUsed: 5))
+        suite.expect(!systemRowsMoved && CommandBarCatalog.cachedMemory?.compressed == 2
+                && CommandBarCatalog.cachedMemory?.cached == 3 && CommandBarCatalog.cachedMemory?.swapUsed == 5
+                && CommandBarCatalog.storeSystemAnswers(
+                    battery: sampledBattery,
+                    memory: (used: 2, appUsed: 1, total: 4, compressed: 2, cached: 3, swapUsed: 5)),
+               "refreshSystemAnswers stores the whole sample before it decides whether the rows changed")
+        CommandBarCatalog.cachedBootVolumeSpace = keptSpace
+        CommandBarCatalog.cachedBattery = keptBattery
+        CommandBarCatalog.cachedMemory = keptMemory
 
     }
 }

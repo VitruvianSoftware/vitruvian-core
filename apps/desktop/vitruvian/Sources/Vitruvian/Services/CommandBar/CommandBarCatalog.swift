@@ -1342,6 +1342,33 @@ package enum CommandBarCatalog {
     nonisolated(unsafe) package static var cachedMemory: (used: UInt64, appUsed: UInt64, total: UInt64,
                               compressed: UInt64, cached: UInt64, swapUsed: UInt64?)?
 
+    /// Stores one background reading of the boot volume, then answers whether
+    /// its row has to be redrawn. The whole sample is stored before the
+    /// comparison, which names only the free space: deciding first would leave
+    /// the rest at whatever it was when the free space last moved.
+    package static func storeBootVolumeSpace(_ space: (free: UInt64, total: UInt64)?) -> Bool {
+        let changed = cachedBootVolumeSpace?.free != space?.free
+        cachedBootVolumeSpace = space
+        return changed
+    }
+
+    /// The same for the battery and memory pass: the comparison names the
+    /// three memory figures the row shows, and the whole sample is stored
+    /// before it.
+    package static func storeSystemAnswers(
+        battery: BatteryInfo?,
+        memory: (used: UInt64, appUsed: UInt64, total: UInt64,
+                 compressed: UInt64, cached: UInt64, swapUsed: UInt64?)?
+    ) -> Bool {
+        let changed = cachedBattery != battery
+            || cachedMemory?.used != memory?.used
+            || cachedMemory?.appUsed != memory?.appUsed
+            || cachedMemory?.total != memory?.total
+        cachedBattery = battery
+        cachedMemory = memory
+        return changed
+    }
+
     package static func readBootVolumeSpace() -> (free: UInt64, total: UInt64)? {
         let url = URL(fileURLWithPath: "/")
         guard let values = try? url.resourceValues(forKeys: [

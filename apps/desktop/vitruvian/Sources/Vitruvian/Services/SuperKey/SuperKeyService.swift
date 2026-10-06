@@ -891,19 +891,7 @@ package final class SuperKeyService: ObservableObject {
     /// or cancel on its own, the same way the Input menu does.
     nonisolated private static func selectNextInputSource() {
         let apply = {
-            let sources = InputSourceSelection.selectableInputSources()
-            let ids = sources.compactMap {
-                InputSourceSelection.inputSourceString($0, property: kTISPropertyInputSourceID)
-            }
-            guard let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return }
-            let currentID = InputSourceSelection.inputSourceString(current, property: kTISPropertyInputSourceID)
-            guard let nextID = SuperKeySupport.nextInputSourceID(currentID: currentID,
-                                                                 enabledIDs: ids),
-                  let next = sources.first(where: {
-                      InputSourceSelection.inputSourceString($0, property: kTISPropertyInputSourceID) == nextID
-                  })
-            else { return }
-            _ = TISSelectInputSource(next)
+            InputSourceSelection.selectNextSource(.live())
         }
         // TIS talks to the text-input server from the main thread. sync (not
         // async) keeps the switch ahead of the next keystroke this tap is
