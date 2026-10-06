@@ -68,7 +68,7 @@
     "@cesium/engine": "22.3.0",
     "prettier": "3.9.6",
     "puppeteer": "^25.10.0",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "vite": "^6.0.0",
     "vite-plugin-cesium": "^1.2.23"
   },
