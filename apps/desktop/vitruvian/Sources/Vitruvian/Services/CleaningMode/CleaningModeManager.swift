@@ -315,8 +315,7 @@ package final class CleaningModeManager: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let manager = Unmanaged<CleaningModeManager>.fromOpaque(userInfo).takeUnretainedValue()
-                // The tap's source is on the main run loop (below).
-                return MainActor.assumeIsolated { manager.handle(type: type, event: event) }
+                return manager.handle(type: type, event: event)
             },
             userInfo: Unmanaged.passUnretained(manager).toOpaque()
         ) else {
