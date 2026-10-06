@@ -212,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { _ in
-                FeatureRuntime.shared.sync(AppFeature.dependents(on: .accessibility))
+                FeatureRuntime.shared.permissionDidChange(.accessibility)
             }
             .store(in: &cancellables)
 
@@ -220,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { _ in
-                FeatureRuntime.shared.sync(AppFeature.dependents(on: .screenRecording))
+                FeatureRuntime.shared.permissionDidChange(.screenRecording)
             }
             .store(in: &cancellables)
 
@@ -331,20 +331,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         ExtraBrightnessService.shared.stop()
         ProcessUsageService.shared.stopNetworkMonitoring(force: true)
         URLCleanerService.shared.stop()
-        FocusFollowsMouseService.shared.stop()
-        WindowMaximizer.shared.stop()
-        WindowLayoutService.shared.suspend()
-        KeyboardDebounceService.shared.suspend()
-        MouseClickDebounceService.shared.suspend()
-        TextSnippetService.shared.suspend()
-        // Takes the Super key mapping back out before the process goes away.
-        SuperKeyService.shared.suspend()
-        // Dock's app and window switcher hotkeys persist after quit.
-        AppSwitcher.shared.suspend()
-        MouseButtonShortcutService.shared.suspend()
-        MiddleClickService.shared.suspend()
-        ScrollInverter.shared.suspend()
-        SmoothScrollService.shared.suspend()
+        // Forced off rather than synced: a held button's Up never comes now.
+        QuitInputRelease.releaseAll()
         if AppFeature.mouseAcceleration.isAvailable
             || MouseAccelerationRecovery.hasPendingEntries() {
             MouseAccelerationService.shared.stop()

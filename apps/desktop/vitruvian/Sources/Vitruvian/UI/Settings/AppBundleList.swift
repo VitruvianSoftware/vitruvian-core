@@ -65,22 +65,18 @@ package struct AppBundleList<Accessory: View>: View {
                     Image(nsImage: InstalledApps.icon(for: bundleID))
                         .resizable()
                         .frame(width: 18, height: 18)
-                    if let location = InstalledApps.location(for: bundleID) {
+                    if let caption = InstalledApps.listCaption(for: bundleID) {
                         // Path identities all display the file's own name —
                         // every bundled runtime is "java" (issue #1009) — so
-                        // the directory is what tells the rows apart. Sibling
-                        // runtimes share a long common prefix and differ in
-                        // the middle or tail, so the head is what truncation
-                        // must drop: cutting the middle would hide exactly
-                        // the component that differs.
+                        // the directory is what tells the rows apart.
                         VStack(alignment: .leading, spacing: 1) {
                             Text(InstalledApps.name(for: bundleID))
                                 .lineLimit(1)
-                            Text(location)
+                            Text(caption.text)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
-                                .truncationMode(.head)
+                                .truncationMode(caption.cut.truncationMode)
                         }
                         .help(bundleID)
                     } else {
@@ -150,20 +146,14 @@ package struct AppBundleList<Accessory: View>: View {
             // Closed first: a file with nothing to be named by is nothing to
             // add, but the sheet still did its job and has to go away.
             showingAppPicker = false
-            // What the picked file will be reported as once it runs (#1009),
-            // which is a bundle identifier or a path depending on the file,
-            // never on which of the two the sheet was pointed at. A list that
-            // takes only apps drops a path rather than storing an entry its
-            // own matcher would ignore.
-            guard let identity = MouseAppExceptionSupport.pickedIdentity(for: url),
-                  acceptsExecutables
-                      || !MouseAppExceptionSupport.isExecutablePathIdentity(identity) else { return }
+            guard let identity = MouseAppExceptionSupport.addedIdentity(
+                picked: url, acceptsExecutables: acceptsExecutables) else { return }
             onAdd(identity)
         } onSelectApp: { app in
             showingAppPicker = false
-            guard let identity = app.explicitIdentity ?? MouseAppExceptionSupport.pickedIdentity(for: app.url),
-                  acceptsExecutables
-                      || !MouseAppExceptionSupport.isExecutablePathIdentity(identity) else { return }
+            guard let identity = MouseAppExceptionSupport.addedIdentity(
+                picked: app.url, explicitIdentity: app.explicitIdentity,
+                acceptsExecutables: acceptsExecutables) else { return }
             onAdd(identity)
         } loadApps: { [reachesEveryApp, acceptsExecutables] in
             InstalledApps.installedBundleApplications(excluding: listed,
@@ -193,5 +183,15 @@ extension AppBundleList where Accessory == EmptyView {
                   onAdd: onAdd,
                   onRemove: onRemove,
                   accessory: { _ in EmptyView() })
+    }
+}
+
+extension InstalledApps.RowCaption.Cut {
+    /// The truncation a caption gets on screen.
+    var truncationMode: Text.TruncationMode {
+        switch self {
+        case .head: return .head
+        case .middle: return .middle
+        }
     }
 }

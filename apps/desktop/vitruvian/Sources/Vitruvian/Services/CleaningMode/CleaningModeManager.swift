@@ -85,12 +85,16 @@ package final class CleaningModeManager: ObservableObject {
         // ends it; suspended features resume only after this session returns.
         SessionActivity.shared.onChange { [weak self] active in
             guard let self else { return }
-            if active {
-                guard self.shouldRestoreSuspendedFeaturesOnSessionReturn else { return }
+            switch CleaningSessionSupport.sessionChanged(
+                isActive: active, locked: self.isActive,
+                featuresAwaitSession: self.shouldRestoreSuspendedFeaturesOnSessionReturn) {
+            case .keep:
+                break
+            case .endLockKeepingFeaturesSuspended:
+                self.deactivate(restoreSuspendedFeatures: false)
+            case .resumeSuspendedFeatures:
                 self.shouldRestoreSuspendedFeaturesOnSessionReturn = false
                 self.resumeSuspendedFeatures()
-            } else if self.isActive {
-                self.deactivate(restoreSuspendedFeatures: false)
             }
         }
     }
@@ -248,25 +252,27 @@ package final class CleaningModeManager: ObservableObject {
         // The system disables taps that stall or when the session locks; re-arm so
         // the keyboard stays locked instead of silently coming back.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if SessionActivity.shared.isActive, AXIsProcessTrusted(), let tap {
-                // A disabled tap creates an observation gap: any tracked mouseDown
-                // may already have received its real mouseUp while we were blind.
-                // Invalidate that incomplete sequence so no later unlock can wait
-                // forever for a release that already happened. If the user had
-                // already requested deactivation, fail open after the callback.
-                let shouldFinishUserDeactivation = mouseReleaseGate.deactivationPending
-                mouseReleaseGate.invalidateTrackedPresses()
-                CGEvent.tapEnable(tap: tap, enable: true)
-                if shouldFinishUserDeactivation {
-                    scheduleUserDeactivation()
+            let step = CleaningSessionSupport.tapDisabled(sessionIsActive: SessionActivity.shared.isActive,
+                                                          accessibilityGranted: AXIsProcessTrusted(),
+                                                          hasTap: tap != nil)
+            if case .endLock(let restoreSuspendedFeatures) = step {
+                DispatchQueue.main.async { [weak self] in
+                    self?.deactivate(restoreSuspendedFeatures: restoreSuspendedFeatures)
                 }
-                return nil
+                return Unmanaged.passUnretained(event)
             }
-            let restoreSuspendedFeatures = SessionActivity.shared.isActive
-            DispatchQueue.main.async { [weak self] in
-                self?.deactivate(restoreSuspendedFeatures: restoreSuspendedFeatures)
+            // A disabled tap creates an observation gap: any tracked mouseDown
+            // may already have received its real mouseUp while we were blind.
+            // Invalidate that incomplete sequence so no later unlock can wait
+            // forever for a release that already happened. If the user had
+            // already requested deactivation, fail open after the callback.
+            let shouldFinishUserDeactivation = mouseReleaseGate.deactivationPending
+            mouseReleaseGate.invalidateTrackedPresses()
+            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            if shouldFinishUserDeactivation {
+                scheduleUserDeactivation()
             }
-            return Unmanaged.passUnretained(event)
+            return nil
         }
 
         // Mouse clicks are never locked. Observe only their boundaries so a

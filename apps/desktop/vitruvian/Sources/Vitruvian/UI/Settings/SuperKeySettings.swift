@@ -6,6 +6,24 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
+/// The line under the Super key diagram while the feature is on. A refused
+/// mapping is named first: this page is the only place it shows, and the key
+/// can still read as paused or running while the mapping behind it was refused.
+package enum SuperKeyStatusLine: Equatable {
+    case refused(SuperKeyMappingFailure)
+    case paused
+    case active
+
+    /// What the page says, or nil while the feature is off or not up yet.
+    package static func current(enabled: Bool, failure: SuperKeyMappingFailure?,
+                                pausedForApplication: Bool, running: Bool) -> SuperKeyStatusLine? {
+        guard enabled else { return nil }
+        if let failure { return .refused(failure) }
+        if pausedForApplication { return .paused }
+        return running ? .active : nil
+    }
+}
+
 package struct SuperKeySettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -52,20 +70,11 @@ package struct SuperKeySettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 diagram
-                if enabled, let failure = superKey.mappingFailure {
-                    Label(text.mappingFailure(failure),
-                          systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else if enabled, superKey.isPausedForApplication {
-                    Label(FeatureStrings.mouseExceptions(l10n.language).pausedSuperKey,
-                          systemImage: "pause.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if enabled, superKey.isRunning {
-                    Label(text.activeNow, systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
+                if let status = SuperKeyStatusLine.current(enabled: enabled,
+                                                           failure: superKey.mappingFailure,
+                                                           pausedForApplication: superKey.isPausedForApplication,
+                                                           running: superKey.isRunning) {
+                    statusLabel(status)
                 }
             }
 
@@ -125,6 +134,26 @@ package struct SuperKeySettings: View {
         .animation(.easeInOut(duration: 0.18), value: enabled)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func statusLabel(_ status: SuperKeyStatusLine) -> some View {
+        switch status {
+        case .refused(let failure):
+            Label(text.mappingFailure(failure),
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        case .paused:
+            Label(FeatureStrings.mouseExceptions(l10n.language).pausedSuperKey,
+                  systemImage: "pause.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .active:
+            Label(text.activeNow, systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        }
     }
 
     private func keyCap(_ title: String, symbol: String?, wide: Bool) -> some View {

@@ -1002,28 +1002,38 @@ enum PointerInputFeatureTests {
                "focus follows mouse ships off with a safe delay")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.focusFollowsMouseDelay),
                "focus follows mouse preferences follow settings backups")
-        let focusFollowsMouseServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/FocusFollowsMouse/FocusFollowsMouseService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(focusFollowsMouseServiceSource.contains(".leftMouseDragged")
-                && focusFollowsMouseServiceSource.contains(".rightMouseDragged")
-                && focusFollowsMouseServiceSource.contains(".otherMouseDragged")
-                && focusFollowsMouseServiceSource.contains("NSEvent.pressedMouseButtons == 0"),
+        // Hover follows drags as well as plain moves, and holds off while any
+        // button or modifier is down, the middle and side buttons included.
+        let hoverMovement = FocusFollowsMouseService.movementEvents
+        suite.expect(hoverMovement.contains(.mouseMoved) && hoverMovement.contains(.leftMouseDragged)
+                && hoverMovement.contains(.rightMouseDragged) && hoverMovement.contains(.otherMouseDragged)
+                && FocusFollowsMouseService.nothingHeld(pressedMouseButtons: 0, modifierFlags: [])
+                && FocusFollowsMouseService.nothingHeld(pressedMouseButtons: 0, modifierFlags: .capsLock)
+                && !FocusFollowsMouseService.nothingHeld(pressedMouseButtons: 1 << 2, modifierFlags: [])
+                && !FocusFollowsMouseService.nothingHeld(pressedMouseButtons: 1 << 4, modifierFlags: [])
+                && !FocusFollowsMouseService.nothingHeld(pressedMouseButtons: 0, modifierFlags: .option),
                "focus follows mouse tracks drags and checks every held mouse button")
-        suite.expect(focusFollowsMouseServiceSource.contains("excludesPointerTarget(")
-                && focusFollowsMouseServiceSource.contains(
-                    ".focusFollowsMouse, at: evaluation.point"),
+        let hoverPoint = CGPoint(x: 40, y: 60)
+        suite.expect(FocusFollowsMouseSupport.leavesAlone(hoverPoint, excludes: { scope, point in
+                    scope == .focusFollowsMouse && point == hoverPoint
+                })
+                && !FocusFollowsMouseSupport.leavesAlone(hoverPoint, excludes: { scope, _ in
+                    scope != .focusFollowsMouse
+                }),
                "focus follows mouse leaves selected apps alone before querying Accessibility")
-        suite.expect(focusFollowsMouseServiceSource.contains("SessionActivity.shared.onChange")
-                && focusFollowsMouseServiceSource.contains(
-                    "sessionIsActive: SessionActivity.shared.isActive")
-                && focusFollowsMouseServiceSource.contains("AXIsProcessTrusted()"),
-               "focus follows mouse owns no monitor or timer in a switched-away or untrusted session")
-        suite.expect(!focusFollowsMouseServiceSource.isEmpty
-                && !focusFollowsMouseServiceSource.contains("AXUIElementCreateSystemWide"),
+        // Whether hover may own its monitor and timer at all is the answer
+        // SessionActivitySupport.tapShouldRun gives the taps, pinned above.
+        suite.expect(FocusFollowsMouseSupport.hitTestProcess(4242, ownProcessID: 7) == 4242
+                && FocusFollowsMouseSupport.hitTestProcess(7, ownProcessID: 7) == nil
+                && FocusFollowsMouseSupport.hitTestProcess(0, ownProcessID: 7) == nil
+                && FocusFollowsMouseSupport.hitTestProcess(-1, ownProcessID: 7) == nil,
                "focus follows mouse cannot re-enter its own Accessibility tree through a global hit test")
-        suite.expect(focusFollowsMouseServiceSource.contains(
-                "!SpaceWindowBridge.isParkedOnHiddenSpace(target.windowID)"),
+        suite.expect(FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
+                                                               targetAppIsFrontmost: false,
+                                                               isParkedOnHiddenSpace: { _ in false })
+                && !FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
+                                                              targetAppIsFrontmost: false,
+                                                              isParkedOnHiddenSpace: { $0 == 5 }),
                "focus follows mouse never hands a window on a hidden Space to the activator, which would travel")
 
         // A wheel that reports continuously already measures in points, and
@@ -1806,74 +1816,83 @@ enum PointerInputFeatureTests {
         suite.expect(MouseButtonShortcutSupport.spacesGestureButton() == nil,
                "with nothing configured the drag claims no button away from navigation")
 
-        let spacesServiceCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/MouseButtons/MouseButtonShortcutService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(spacesServiceCode.contains("if button == spacesButton {")
-                && spacesServiceCode.contains("return armSpacesGesture(event, button: button)"),
-               "the bound button's press is held back by the tap that already receives its drags")
-        suite.expect(spacesServiceCode.contains("guard gesture.tracker.didFire else {")
-                && spacesServiceCode.contains(
-                    "replaySpacesPress(gesture.down, proxy: proxy, at: event.location)"),
-               "a press that never fired goes back, so a tap on that button keeps its ordinary click")
-        suite.expect(spacesServiceCode.contains("SpaceWindowBridge.spaceShortcut(.left)")
-                && spacesServiceCode.contains("SpaceWindowBridge.overviewShortcut(.missionControl)")
-                && !spacesServiceCode.contains("DockSwipe"),
-               "the drag asks with the system's own registered combinations, never a simulated gesture")
-
-        let spaceBridgeCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/SpaceWindowBridge.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(spaceBridgeCode.contains("self == .left ? 79 : 81")
-                && spaceBridgeCode.contains("self == .missionControl ? 32 : 33")
-                && spaceBridgeCode.contains("CGSIsSymbolicHotKeyEnabled"),
-               "the Space steps and the overviews keep their system symbolic hotkey ids")
-
-        // The drag alone keeps the tap alive with the shortcut switch off, so
-        // the down path must read that switch itself and hand the click back
+        // The bound button's press goes through the same decision the tap
+        // makes. The drag alone keeps the tap alive with the shortcut switch
+        // off, so the press reads that switch itself and hands the click back
         // whole: a mapping left behind is inert and its button is the app's.
-        let spacesServiceLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/MouseButtons/MouseButtonShortcutService.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-        let isCodeLine: (String) -> Bool = {
-            !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
+        do {
+            let mapped = GlobalShortcut(keyCode: Int64(kVK_ANSI_K), modifiers: [.command])
+            func pressRoute(_ button: Int64, draining: Bool = false, capturing: Bool = false,
+                            excepted: Bool = false, shortcutsOn: Bool = true,
+                            mappings: [Int64: GlobalShortcut]) -> MouseButtonShortcutSupport.PressRoute {
+                MouseButtonShortcutSupport.route(press: button, isDraining: draining, isCapturing: capturing,
+                                                 isExcepted: { excepted }, spacesButton: 4,
+                                                 isAvailable: true, isEnabled: shortcutsOn,
+                                                 mappings: mappings, claimedByWheel: { _ in false })
+            }
+            suite.expect(pressRoute(4, mappings: [:]) == .holdForSpaces
+                    && pressRoute(4, shortcutsOn: false, mappings: [:]) == .holdForSpaces
+                    && pressRoute(4, excepted: true, mappings: [:]) == .pass
+                    && pressRoute(4, capturing: true, mappings: [:]) == .capture
+                    && pressRoute(4, draining: true, mappings: [:]) == .pass,
+                   "the bound button's press is held back by the tap that already receives its drags")
+            suite.expect(pressRoute(3, shortcutsOn: false, mappings: [3: mapped]) == .pass
+                    && pressRoute(3, mappings: [3: mapped]) == .fire(mapped),
+                   "a tap kept up for the drag alone never fires a mapping the shortcut switch turned "
+                       + "off, and that button's click passes through whole")
+        }
+        suite.expect(nudge.givesPressBack && !overviewPress.givesPressBack,
+               "a press that never fired goes back, so a tap on that button keeps its ordinary click")
+
+        // The drag presses what the system registered for each command, read
+        // back by its symbolic hotkey id, and nothing else.
+        do {
+            let registered = SpaceWindowBridge.SpaceShortcut(keyCode: 1, flags: [])
+            var askedHotKeys: [Int32] = []
+            let answers = [MouseSpacesGestureSupport.Action.spaceLeft, .spaceRight, .missionControl, .appExpose]
+                .map { action in
+                    MouseButtonShortcutService.registeredShortcut(
+                        for: action,
+                        space: { askedHotKeys.append($0.hotKeyID); return registered },
+                        overview: { askedHotKeys.append($0.hotKeyID); return nil })
+                }
+            suite.expect(askedHotKeys == [79, 81, 32, 33] && answers.map { $0 != nil } == [true, true, false, false],
+                   "the drag asks with the system's own registered combinations, never a simulated gesture")
+        }
+        suite.expect(SpaceWindowBridge.SpaceDirection.left.hotKeyID == 79
+                && SpaceWindowBridge.SpaceDirection.right.hotKeyID == 81
+                && SpaceWindowBridge.SpaceOverview.missionControl.hotKeyID == 32
+                && SpaceWindowBridge.SpaceOverview.appExpose.hotKeyID == 33,
+               "the Space steps and the overviews keep their system symbolic hotkey ids")
+        do {
+            var valueAsked: [Int32] = []
+            func registered(enabled: Bool, keyCode: UInt32) -> SpaceWindowBridge.SpaceShortcut? {
+                SpaceWindowBridge.registeredShortcut(79, isEnabled: { _ in enabled }, value: { id in
+                    valueAsked.append(id)
+                    return (keyCode: keyCode, modifiers: 0x40000)
+                })
+            }
+            let live = registered(enabled: true, keyCode: 124)
+            let switchedOff = registered(enabled: false, keyCode: 124)
+            let keyless = registered(enabled: true, keyCode: 0)
+            suite.expect(live?.keyCode == 124 && live?.flags == .maskControl
+                    && switchedOff == nil && keyless == nil && valueAsked == [79, 79],
+                   "a Spaces shortcut switched off in System Settings is never read back or pressed")
         }
 
-        // Per call site, not the last one seen: a second one added later must
-        // read the switch too, and a file that lost the call entirely has to
-        // fail rather than pass on an empty search.
-        var shortcutCallSites = 0
-        var callSitesMissingShortcutSwitch: [String] = []
-        for (index, line) in spacesServiceLines.enumerated()
-        where isCodeLine(line)
-            && line.contains("guard let shortcut = MouseButtonShortcutSupport.firesShortcut(") {
-            shortcutCallSites += 1
-            let window = spacesServiceLines[index...].prefix(7)
-            let readsSwitch = window.contains {
-                isCodeLine($0) && $0.contains(
-                    "isEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled)")
-            }
-            let passesPressOn = window.contains {
-                isCodeLine($0) && $0.contains("else { return Unmanaged.passUnretained(event) }")
-            }
-            if !readsSwitch || !passesPressOn {
-                callSitesMissingShortcutSwitch.append("MouseButtonShortcutService.swift:\(index + 1)")
-            }
-        }
-        suite.expect(shortcutCallSites > 0 && callSitesMissingShortcutSwitch.isEmpty,
-               "a tap kept up for the drag alone never fires a mapping the shortcut switch turned "
-                   + "off, and that button's click passes through whole: \(callSitesMissingShortcutSwitch)")
-        suite.expect(spacesServiceLines.contains {
-            isCodeLine($0) && $0.contains(
-                "let wanted = (enabled && !mappings.isEmpty) || isCapturing || spacesButton != nil")
-        }, "a capture holds the tap up by itself: the press asked for may be the drag's, "
-            + "whose switch is not the shortcut switch")
+        // A capture holds the tap up by itself, and so does a bound drag.
+        suite.expect(MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: false, hasMappings: false,
+                                                          isCapturing: true, spacesButton: nil)
+                && MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: false, hasMappings: true,
+                                                        isCapturing: false, spacesButton: 4)
+                && MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: true, hasMappings: true,
+                                                        isCapturing: false, spacesButton: nil)
+                && !MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: false, hasMappings: true,
+                                                         isCapturing: false, spacesButton: nil)
+                && !MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: true, hasMappings: false,
+                                                         isCapturing: false, spacesButton: nil),
+               "a capture holds the tap up by itself: the press asked for may be the drag's, "
+                   + "whose switch is not the shortcut switch")
 
 
         // A synthesized press has to carry the same flags a finger produces,
@@ -2185,15 +2204,18 @@ enum PointerInputFeatureTests {
                                     destination: UInt64.max)],
                "hidutil's signed no-action value keeps its unsigned HID meaning")
         // The page is the only place a refused mapping is visible, so the
-        // reason has to reach it and be spelled out there.
-        let superKeySettingsSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/SuperKeySettings.swift",
-            encoding: .utf8)) ?? ""
-        let failureMark = superKeySettingsSource.range(of: "superKey.mappingFailure")
-        let runningMark = superKeySettingsSource.range(of: "superKey.isRunning")
-        suite.expect(failureMark != nil && runningMark != nil
-                && failureMark!.lowerBound < runningMark!.lowerBound
-                && superKeySettingsSource.contains("text.mappingFailure(failure)"),
+        // reason has to reach it ahead of whatever the key itself reads as.
+        suite.expect(SuperKeyStatusLine.current(enabled: true, failure: .foreignMapping,
+                                                pausedForApplication: true, running: true)
+                == .refused(.foreignMapping)
+                && SuperKeyStatusLine.current(enabled: true, failure: nil,
+                                              pausedForApplication: true, running: true) == .paused
+                && SuperKeyStatusLine.current(enabled: true, failure: nil,
+                                              pausedForApplication: false, running: true) == .active
+                && SuperKeyStatusLine.current(enabled: true, failure: nil,
+                                              pausedForApplication: false, running: false) == nil
+                && SuperKeyStatusLine.current(enabled: false, failure: .systemRefused,
+                                              pausedForApplication: false, running: true) == nil,
                "the Super key page names a refused mapping ahead of the working state")
 
         var superKeyState = SuperKeySupport.State()
@@ -2247,48 +2269,68 @@ enum PointerInputFeatureTests {
                "holding it together with another modifier is not a tap either")
 
         // Drag chords read their modifiers off the mouse-down, not off any
-        // keyboard event (#888), so the service must classify mouse presses
-        // like other keys and stamp them from a tap at the HID stage — the
+        // keyboard event (#888), so the service classifies mouse presses
+        // like other keys and stamps them from a tap at the HID stage, the
         // one place guaranteed to run before every session tap that reads
-        // the flags. The service file is not in this binary; pin the shape.
-        let superKeyServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift",
-            encoding: .utf8)) ?? ""
-        let superKeyServiceCode = superKeyServiceSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(superKeyServiceCode.contains(".leftMouseDown, .rightMouseDown, .otherMouseDown")
-               && superKeyServiceCode.contains("mouseDownTypes.reduce(CGEventMask(0))")
-               && superKeyServiceCode.contains("mouseDownTypes.contains(type) { return .otherKey }")
-               && superKeyServiceCode.contains("let mouseTap = system.createTap(\n                .cghidEventTap,"),
-               "every mouse press while the super key is held carries the modifiers, stamped at the HID stage")
-        // A mouse event carries no keycode of its own: the field reads back as
-        // 0 on one, which is the keycode for A. The read lives inside classify,
-        // below the line that answers the mouse types, so no caller holds a
-        // phantom key it could hand to something that looks keys up.
-        let keycodeReads = superKeyServiceCode
-            .components(separatedBy: ".keyboardEventKeycode").count - 1
-        let mouseAnswer = superKeyServiceCode.range(of: "mouseDownTypes.contains(type)")?.lowerBound
-        let keycodeRead = superKeyServiceCode.range(of: ".keyboardEventKeycode")?.lowerBound
-        suite.expect(keycodeReads == 1
-               && mouseAnswer.flatMap({ answer in keycodeRead.map { answer < $0 } }) == true,
-               "a mouse press is answered before the super key ever reads a keycode")
+        // the flags. Moves and drags stay out of that tap.
+        do {
+            let pressMask = (CGEventMask(1) << CGEventType.leftMouseDown.rawValue)
+                | (CGEventMask(1) << CGEventType.rightMouseDown.rawValue)
+                | (CGEventMask(1) << CGEventType.otherMouseDown.rawValue)
+            let pressesAreKeys = SuperKeyService.mouseDownTypes.allSatisfy { type in
+                CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: .zero,
+                        mouseButton: .left)
+                    .map { SuperKeyService.classify(type: type, source: .capsLock, event: $0) == .otherKey }
+                    == true
+            }
+            suite.expect(SuperKeyService.mouseDownTypes == [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+                    && SuperKeyService.mouseEventMask == pressMask
+                    && SuperKeyService.mouseTapLocation == .cghidEventTap
+                    && pressesAreKeys,
+                   "every mouse press while the super key is held carries the modifiers, stamped at the HID stage")
+
+            // A mouse event carries no keycode of its own: the field reads
+            // back as whatever it holds, 0 (the keycode for A) as a rule. The
+            // mouse types are answered before the keycode is read, so even a
+            // press whose field holds the trigger's code is just another key.
+            func isTriggerDown(_ event: SuperKeySupport.Event) -> Bool {
+                guard case .triggerDown = event else { return false }
+                return true
+            }
+            let disguisedPress = CGEvent(mouseEventSource: nil, mouseType: .otherMouseDown,
+                                         mouseCursorPosition: .zero, mouseButton: .center)
+            disguisedPress?.setIntegerValueField(.keyboardEventKeycode, value: SuperKeySupport.triggerKeyCode)
+            let triggerPress = CGEvent(keyboardEventSource: nil,
+                                       virtualKey: CGKeyCode(SuperKeySupport.triggerKeyCode), keyDown: true)
+            suite.expect(disguisedPress?.getIntegerValueField(.keyboardEventKeycode) == SuperKeySupport.triggerKeyCode
+                    && disguisedPress.map {
+                        SuperKeyService.classify(type: .otherMouseDown, source: .capsLock, event: $0)
+                    } == .otherKey
+                    && triggerPress.map {
+                        isTriggerDown(SuperKeyService.classify(type: .keyDown, source: .capsLock, event: $0))
+                    } == true,
+                   "a mouse press is answered before the super key ever reads a keycode")
+        }
         // A refused mouse tap counts as dead so the health check rebuilds it,
         // but exactly once: the rebuild takes the healthy keyboard tap down
         // with it, and a system that refuses refuses the retry too, so an
         // unbounded flag would hiccup super-key input at whatever rate
         // syncWithPreferences fires. The count has to outlive the teardown its
-        // own value asked for, so the only place it is put back to zero is its
-        // own declaration — never the tap thread's reset block, which the
-        // rebuild runs and which would start the loop over.
-        let refusalResets = superKeyServiceCode
-            .components(separatedBy: "mouseTapRefusals = 0").count - 1
-        suite.expect(superKeyServiceCode.contains("?? (mouseTapRefusals == 1)")
-               && superKeyServiceCode.contains(
-                   "mouseTapRefusals = mouseTap == nil ? self.mouseTapRefusals + 1 : 0")
-               && refusalResets == 1,
-               "a refused mouse tap is worth one rebuild, and the count survives it")
+        // own value asked for, so only a created tap puts it back to zero.
+        do {
+            var refusals = SuperKeyMouseTapRefusals()
+            refusals.requested(created: false)
+            let firstRefusalRebuilds = refusals.tapsNeedRebuild(keyboardTapEnabled: true, mouseTapEnabled: nil)
+            refusals.requested(created: false)
+            let secondRefusalRebuilds = refusals.tapsNeedRebuild(keyboardTapEnabled: true, mouseTapEnabled: nil)
+            refusals.requested(created: true)
+            suite.expect(firstRefusalRebuilds && !secondRefusalRebuilds && refusals.count == 0
+                    && refusals.tapsNeedRebuild(keyboardTapEnabled: true, mouseTapEnabled: false)
+                    && refusals.tapsNeedRebuild(keyboardTapEnabled: false, mouseTapEnabled: true)
+                    && !refusals.tapsNeedRebuild(keyboardTapEnabled: true, mouseTapEnabled: true)
+                    && !refusals.tapsNeedRebuild(keyboardTapEnabled: nil, mouseTapEnabled: nil),
+                   "a refused mouse tap is worth one rebuild, and the count survives it")
+        }
 
         var noRepeatHoldState = SuperKeySupport.State()
         _ = noRepeatHoldState.decide(.triggerDown(
@@ -2682,80 +2724,85 @@ enum PointerInputFeatureTests {
 
         try? FileManager.default.removeItem(at: runningTestRoot)
 
-        // Both ends of that agreement live outside this binary: the picker
-        // stores from AppBundleList and the taps match from MouseAppExceptions.
-        // An identity resolved at one end and taken raw at the other silently
-        // matches nothing (issue #1009), so what each side may hand on is
-        // pinned rather than the spelling it happens to use today — a second
-        // way into the list, dropping a file onto it among them, has to go
-        // through the same resolver as the sheet does.
-        let pickerLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/AppBundleList.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-        var resolvedAddSites: [String] = []
-        var rawAddSites: [String] = []
-        for (index, line) in pickerLines.enumerated()
-        where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") && line.contains("onAdd(") {
-            let added = (line.components(separatedBy: "onAdd(").last?
-                .components(separatedBy: ")").first ?? "").trimmingCharacters(in: .whitespaces)
-            let nearbyLines = pickerLines[..<index].suffix(4)
-            if nearbyLines.contains(where: {
-                $0.contains("let \(added) =") && $0.contains("MouseAppExceptionSupport.")
-            }) {
-                resolvedAddSites.append("AppBundleList.swift:\(index + 1)")
-            } else {
-                rawAddSites.append("AppBundleList.swift:\(index + 1) adds \(added)")
-            }
+        // Both ends of that agreement go through the support enum: the picker
+        // stores only what it resolved, and the taps read a running program
+        // by the same rule. An identity resolved at one end and taken raw at
+        // the other silently matches nothing (issue #1009), so a pick reached
+        // through a link has to land on the same entry the running program
+        // reports, whichever way into the list it took.
+        do {
+            let pickedRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vitruvian-picked-\(getpid())", isDirectory: true)
+            let pickedProgram = pickedRoot.appendingPathComponent("bin/java")
+            let pickedLink = pickedRoot.appendingPathComponent("bin/java_link")
+            try? FileManager.default.createDirectory(at: pickedProgram.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: pickedProgram.path, contents: Data())
+            try? FileManager.default.createSymbolicLink(at: pickedLink, withDestinationURL: pickedProgram)
+            defer { try? FileManager.default.removeItem(at: pickedRoot) }
+            let resolvedProgram = MouseAppExceptionSupport.executablePathIdentity(pickedProgram.path)
+            suite.expect(resolvedProgram != nil
+                    && MouseAppExceptionSupport.addedIdentity(picked: pickedProgram, acceptsExecutables: true)
+                        == resolvedProgram
+                    && MouseAppExceptionSupport.addedIdentity(picked: pickedLink, acceptsExecutables: true)
+                        == resolvedProgram
+                    && MouseAppExceptionSupport.addedIdentity(picked: pickedProgram, acceptsExecutables: false) == nil
+                    && MouseAppExceptionSupport.addedIdentity(picked: pickedProgram,
+                                                              explicitIdentity: "com.example.running",
+                                                              acceptsExecutables: false) == "com.example.running"
+                    && MouseAppExceptionSupport.addedIdentity(picked: pickedProgram,
+                                                              explicitIdentity: "/opt/game/bin/java",
+                                                              acceptsExecutables: false) == nil,
+                   "every value the picker adds is one the support enum resolved")
+            suite.expect(MouseAppExceptions.identity(bundleID: nil, executableURL: pickedLink) == resolvedProgram
+                    && MouseAppExceptions.identity(bundleID: nil, executableURL: pickedLink) != pickedLink.path
+                    && MouseAppExceptions.identity(bundleID: "com.example.app", executableURL: pickedLink)
+                        == "com.example.app",
+                   "the taps read an executable path only through the support enum")
         }
-        suite.expect(!resolvedAddSites.isEmpty && rawAddSites.isEmpty,
-               "every value the picker adds is one the support enum resolved: \(rawAddSites)")
 
         // A list row's location caption is what tells path identities apart —
         // every bundled runtime displays as "java" (issue #1009) — and sibling
         // runtimes differ only after a long shared directory prefix, so the
-        // caption must truncate from the HEAD: cutting the middle or tail
-        // would hide the one component that differs. Neither picker is
-        // compiled into this binary, so their shapes are pinned here.
-        let appPickerLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Uninstall/AppPickerView.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-        let captionPickerLines = ["AppBundleList.swift": pickerLines,
-                                  "AppPickerView.swift": appPickerLines]
-        var captionFiles: [String] = []
-        for (file, lines) in captionPickerLines {
-            let sourceLines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            if sourceLines.contains(where: { $0.contains("InstalledApps.location(for:") })
-                && sourceLines.contains(where: { $0.contains(".truncationMode(") && $0.contains(".head") }) {
-                captionFiles.append(file)
-            }
+        // caption truncates from the HEAD: cutting the middle or tail would
+        // hide the one component that differs. Both pickers take it from here.
+        do {
+            let pathCaption = InstalledApps.RowCaption(text: "/opt/game/bin", cut: .head)
+            let pathRow = InstalledApps.InstalledApp(id: "/opt/game/bin/java", name: "java", bundleID: nil,
+                                                     url: URL(fileURLWithPath: "/opt/game/bin/java"),
+                                                     isSystem: false, explicitIdentity: "/opt/game/bin/java")
+            let bundleRow = InstalledApps.InstalledApp(id: "com.apple.TextEdit", name: "TextEdit",
+                                                       bundleID: "com.apple.TextEdit",
+                                                       url: URL(fileURLWithPath: "/Applications/TextEdit.app"),
+                                                       isSystem: true)
+            suite.expect(InstalledApps.listCaption(for: "/opt/game/bin/java") == pathCaption
+                    && InstalledApps.listCaption(for: "com.example.modeler") == nil
+                    && InstalledApps.pickerCaption(for: pathRow) == pathCaption
+                    && InstalledApps.pickerCaption(for: bundleRow)
+                        == InstalledApps.RowCaption(text: "com.apple.TextEdit", cut: .middle),
+                   "each path identity picker shows where its file sits and truncates from the head")
         }
-        suite.expect(captionFiles.count == captionPickerLines.count,
-               "each path identity picker shows where its file sits and truncates from the head: "
-                   + "\(captionFiles)")
 
-        var resolvedMatchSites: [String] = []
-        var rawMatchSites: [String] = []
-        let matcherLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/MouseExceptions/MouseAppExceptions.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-        for (index, line) in matcherLines.enumerated()
-        where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
-                && line.contains("executableURL") && line.contains(".path") {
-            if line.contains("MouseAppExceptionSupport.identity(")
-                || (index > 0 && matcherLines[index - 1].contains("MouseAppExceptionSupport.identity(")) {
-                resolvedMatchSites.append("MouseAppExceptions.swift:\(index + 1)")
-            } else {
-                rawMatchSites.append("MouseAppExceptions.swift:\(index + 1)")
-            }
+        // Every way into a list is sanitized by the one sanitizer: an
+        // identifier is trimmed, and a path keeps its exact file name, which
+        // may legally end in a space the running program reports too.
+        do {
+            let listDefaults = UserDefaults(suiteName: "vitru.tests.mouse-exception-lists")!
+            listDefaults.removePersistentDomain(forName: "vitru.tests.mouse-exception-lists")
+            defer { listDefaults.removePersistentDomain(forName: "vitru.tests.mouse-exception-lists") }
+            let listKey = MouseExceptionScope.middleClick.defaultsKey
+            listDefaults.set(["/opt/game/bin/java ", " com.example.a "], forKey: listKey)
+            let exceptionLists = MouseAppExceptions(defaults: listDefaults)
+            let loadedList = exceptionLists.list(.middleClick)
+            exceptionLists.add("/opt/other/bin/java ", to: .middleClick)
+            exceptionLists.add(" com.example.b ", to: .middleClick)
+            exceptionLists.add(" com.example.a", to: .middleClick)
+            let sanitizedList = ["/opt/game/bin/java ", "com.example.a", "/opt/other/bin/java ", "com.example.b"]
+            suite.expect(loadedList == ["/opt/game/bin/java ", "com.example.a"]
+                    && exceptionLists.list(.middleClick) == sanitizedList
+                    && listDefaults.stringArray(forKey: listKey) == sanitizedList,
+                   "the exception list is sanitized through the one sanitizer, never beside it")
         }
-        suite.expect(resolvedMatchSites.count == 1 && rawMatchSites.isEmpty,
-               "the taps read an executable path only through the support enum: "
-                   + "\(resolvedMatchSites) \(rawMatchSites)")
-        let matcherBody = matcherLines
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!matcherBody.isEmpty && !matcherBody.contains("trimmingCharacters"),
-               "the exception list is sanitized through the one sanitizer, never beside it")
 
         // The leading-slash test IS the rule that tells a stored path from a
         // bundle identifier. A second spelling of it drifts the day the rule
@@ -3036,21 +3083,18 @@ enum PointerInputFeatureTests {
                "a step still moves in the direction asked for")
 
         // MARK: Modifying mouse taps are handed back across a session switch
+        // The session watcher's two halves are driven above, through a private
+        // notification center. Mouse acceleration reads the session it starts
+        // in by the same rule as the watcher: unreadable counts as on screen.
+        suite.expect(MouseAccelerationService.sessionIsOnScreen(nil)
+                && MouseAccelerationService.sessionIsOnScreen([:])
+                && MouseAccelerationService.sessionIsOnScreen([onConsoleKey: true])
+                && !MouseAccelerationService.sessionIsOnScreen([onConsoleKey: false]),
+               "mouse acceleration shares the safe initial session-state fallback")
         // The tap owners cannot be reached from this list (they need the event
         // chain), so the wiring is pinned as text: each service follows the
         // session and asks before re-arming a tap the window server disabled.
         // Comments are stripped so prose naming the API cannot answer for it.
-        let sessionActivitySource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/SessionActivity.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(sessionActivitySource.contains("sessionDidResignActiveNotification")
-                && sessionActivitySource.contains("sessionDidBecomeActiveNotification"),
-               "the session watcher follows both halves of a fast user switch")
-        let mouseAccelerationSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/MouseAcceleration/MouseAccelerationService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(mouseAccelerationSource.contains("SessionActivitySupport.isOnConsole("),
-               "mouse acceleration shares the safe initial session-state fallback")
         for tapOwner in ["Sources/Vitruvian/Services/ScrollInverter.swift",
                          "Sources/Vitruvian/Services/SmoothScrollService.swift",
                          "Sources/Vitruvian/Services/MouseNavigation/MouseNavigationService.swift",
@@ -3102,13 +3146,29 @@ enum PointerInputFeatureTests {
         // a thread of their own. On the main run loop each of those events
         // waits for whatever this app is drawing or asking Accessibility,
         // which is felt as click lag in whatever app is in front.
-        let pointerTapSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/PointerTapRunLoop.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(pointerTapSource.contains("CFMachPortInvalidate"),
-               "the pointer thread hands back the port of every tap it gives up")
-        suite.expect(pointerTapSource.contains("qualityOfService = .userInteractive"),
-               "the pointer thread is scheduled as input work")
+        // A plain port stands in for a tap's: served by the pointer thread and
+        // given back, it is invalidated there, on a thread run as input work.
+        do {
+            var pointerPortContext = CFMachPortContext()
+            if let pointerPort = CFMachPortCreate(kCFAllocatorDefault, PointerTapHandBack.received,
+                                                  &pointerPortContext, nil),
+               let pointerSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, pointerPort, 0) {
+                CFMachPortSetInvalidationCallBack(pointerPort, PointerTapHandBack.invalidated)
+                PointerTapRunLoop.add(pointerSource)
+                PointerTapRunLoop.remove(pointerSource, invalidating: pointerPort)
+                let deadline = Date().addingTimeInterval(5)
+                while PointerTapHandBack.shared.handedBack == nil, Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.005)
+                }
+                let handedBack = PointerTapHandBack.shared.handedBack
+                suite.expect(!CFMachPortIsValid(pointerPort) && handedBack?.onMainThread == false,
+                       "the pointer thread hands back the port of every tap it gives up")
+                suite.expect(handedBack?.qualityOfService == .userInteractive,
+                       "the pointer thread is scheduled as input work")
+            } else {
+                suite.expect(false, "a plain mach port stands in for a tap's on the pointer thread")
+            }
+        }
         for pointerTapOwner in ["Sources/Vitruvian/Services/ScrollInverter.swift",
                                 "Sources/Vitruvian/Services/MiddleClick/MiddleClickService.swift"] {
             let source = (try? String(contentsOfFile: pointerTapOwner, encoding: .utf8)) ?? ""
@@ -3121,19 +3181,30 @@ enum PointerInputFeatureTests {
                    "\(pointerTapOwner) keeps its tap off the main run loop")
         }
 
-        let mouseTapAppDelegateSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/App/AppDelegate.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(mouseTapAppDelegateSource.contains("MouseButtonShortcutService.shared.suspend()"),
+        // A normal quit forces the mouse-button tap off with the other input
+        // taps instead of syncing it, which would wait for the Up of a button
+        // still held: that Up never reaches a process going away.
+        suite.expect(QuitInputRelease.allCases.contains(.mouseButtonShortcuts),
                "normal termination releases mouse-button tap state instead of waiting for a future Up")
-        let accessibilitySink = mouseTapAppDelegateSource
-            .components(separatedBy: "Permissions.shared.$accessibility")
-            .dropFirst().first?.components(separatedBy: "Permissions.shared.$screenRecording").first ?? ""
-        // The sink re-syncs every feature that declares Accessibility, so quit
-        // protection is covered by its catalog entry, not by a hand-kept list.
-        suite.expect(accessibilitySink.contains("AppFeature.dependents(on: .accessibility)")
-                     && AppFeature.dependents(on: .accessibility).contains(.quitWindowProtection),
-               "granting Accessibility starts quit protection without a relaunch")
+        // A grant re-syncs every feature that declares it, so quit protection
+        // is covered by its catalog entry, not by a hand-kept list.
+        do {
+            let grantDefaults = UserDefaults(suiteName: "vitru.tests.accessibility-grant")!
+            grantDefaults.removePersistentDomain(forName: "vitru.tests.accessibility-grant")
+            defer { grantDefaults.removePersistentDomain(forName: "vitru.tests.accessibility-grant") }
+            grantDefaults.set(true, forKey: AppFeature.quitWindowProtection.availabilityKey)
+            let grantLog = PointerGrantLog()
+            let grantRuntime = FeatureRuntime(environment: .init(
+                defaults: grantDefaults, perform: { grantLog.actions.append($0) },
+                availabilityDidChange: {}, savedPreferences: { [:] }))
+            grantRuntime.permissionDidChange(.accessibility)
+            let afterAccessibility = grantLog.actions
+            grantLog.actions.removeAll()
+            grantRuntime.permissionDidChange(.screenRecording)
+            suite.expect(afterAccessibility.contains(.quitProtection)
+                    && !grantLog.actions.contains(.quitProtection),
+                   "granting Accessibility starts quit protection without a relaunch")
+        }
         let smoothSchedulerSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/SmoothScrollService.swift",
             encoding: .utf8)) ?? ""
@@ -3145,15 +3216,15 @@ enum PointerInputFeatureTests {
             .dropFirst().first?.components(separatedBy: "return").first ?? ""
         suite.expect(steppedLoupeBypass.contains("stopGlide()"),
                "entering stepped magnifier zoom cancels the fast glide before passing the raw notch")
-        let scrollInverterSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/ScrollInverter.swift",
-            encoding: .utf8)) ?? ""
-        for (name, source) in [("scroll inverter", scrollInverterSource),
-                               ("smooth scroll", smoothSchedulerCode)] {
-            suite.expect(source.contains("guard !tapCreationRetryUsed")
-                    && source.contains("tapCreationRetryWork?.cancel()"),
-                   "\(name) retries tap creation once instead of polling forever")
-        }
+        // A refused wheel tap gets one more look while a session switch
+        // settles, and never a second: the inverter and smooth scrolling both
+        // ask this before scheduling a retry, and a working tap or a stop
+        // earns the next refusal its own.
+        var wheelTapRetry = TapCreationRetry()
+        let wheelTapRefusals = [wheelTapRetry.refused(), wheelTapRetry.refused(), wheelTapRetry.refused()]
+        wheelTapRetry.reset()
+        suite.expect(wheelTapRefusals == [true, false, false] && wheelTapRetry.refused(),
+               "a refused wheel tap is retried once instead of polling forever")
         suite.expect(smoothSchedulerCode.contains("screen.displayLink(")
                 && smoothSchedulerCode.contains("displayLink.add(to: .main, forMode: .common)")
                 && smoothSchedulerCode.contains("sender.timestamp")
@@ -3181,14 +3252,27 @@ enum PointerInputFeatureTests {
             .dropFirst().first?.components(separatedBy: "private func removeSleepObserver").first ?? ""
         suite.expect(smoothSleep.contains("stopGlide()"),
                "smooth scrolling cannot carry a pre-sleep glide into the next wake")
-        let cleaningModeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(cleaningModeSource.contains("SessionActivity.shared.onChange")
-                && cleaningModeSource.contains("deactivate(restoreSuspendedFeatures: false)")
-                && cleaningModeSource.contains("SessionActivity.shared.isActive")
-                && cleaningModeSource.contains("AXIsProcessTrusted()")
-                && cleaningModeSource.contains("CFMachPortInvalidate"),
+        // Cleaning Mode leaves with the login session: a switched-away session
+        // cannot keep a filter tap in the chain, so the lock ends at once, and
+        // the features it suspended wait for the session to come back. A tap
+        // the window server switched off goes back only into the session on
+        // screen, and only with Accessibility. Ending the lock invalidates the
+        // tap's port, as the repository contract requires of every tap owner.
+        suite.expect(CleaningSessionSupport.sessionChanged(isActive: false, locked: true,
+                                                           featuresAwaitSession: false)
+                == .endLockKeepingFeaturesSuspended
+                && CleaningSessionSupport.sessionChanged(isActive: false, locked: false,
+                                                         featuresAwaitSession: false) == .keep
+                && CleaningSessionSupport.sessionChanged(isActive: true, locked: false,
+                                                         featuresAwaitSession: true) == .resumeSuspendedFeatures
+                && CleaningSessionSupport.sessionChanged(isActive: true, locked: false,
+                                                         featuresAwaitSession: false) == .keep
+                && CleaningSessionSupport.tapDisabled(sessionIsActive: true, accessibilityGranted: true,
+                                                      hasTap: true) == .rearm
+                && CleaningSessionSupport.tapDisabled(sessionIsActive: false, accessibilityGranted: true,
+                                                      hasTap: true) == .endLock(restoreSuspendedFeatures: false)
+                && CleaningSessionSupport.tapDisabled(sessionIsActive: true, accessibilityGranted: false,
+                                                      hasTap: true) == .endLock(restoreSuspendedFeatures: true),
                "Cleaning Mode ends and releases its filter tap when the login session leaves the screen")
 
         // MARK: Command-Q / Command-W protection
@@ -3385,4 +3469,35 @@ private nonisolated final class PointerInputTestClock: @unchecked Sendable {
     func advance(by interval: TimeInterval) {
         lock.withLock { value += interval }
     }
+}
+
+/// What the thread that handed a port back looked like. Recorded on that
+/// thread and read on the main one, so the lock guards it.
+private nonisolated final class PointerTapHandBack: @unchecked Sendable {
+    static let shared = PointerTapHandBack()
+    /// A port nothing is ever sent to has nothing to receive.
+    static let received: CFMachPortCallBack = { _, _, _, _ in }
+    /// Written here, outside the main actor: the thread that invalidates the
+    /// port calls it, and a closure written in main-actor code would check for
+    /// the main thread first and stop the tests.
+    static let invalidated: CFMachPortInvalidationCallBack = { _, _ in
+        PointerTapHandBack.shared.record(Thread.current)
+    }
+
+    private let lock = NSLock()
+    private var recorded: (onMainThread: Bool, qualityOfService: QualityOfService)?
+
+    var handedBack: (onMainThread: Bool, qualityOfService: QualityOfService)? {
+        lock.withLock { recorded }
+    }
+
+    func record(_ thread: Thread) {
+        let observed = (onMainThread: thread.isMainThread, qualityOfService: thread.qualityOfService)
+        lock.withLock { recorded = observed }
+    }
+}
+
+/// The binding actions a runtime asked of the live services.
+private final class PointerGrantLog {
+    var actions: [FeatureBindingAction] = []
 }

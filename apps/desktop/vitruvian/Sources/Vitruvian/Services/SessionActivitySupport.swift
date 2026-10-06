@@ -40,3 +40,28 @@ package enum SessionActivitySupport {
         featureWanted && accessibilityGranted && sessionIsActive
     }
 }
+
+/// The one more look an event tap the system refused gets. A create can fail
+/// while a fast user switch is still settling, so the first refusal after a
+/// working tap, or after a stop, is retried once. A refusal after that is the
+/// answer until the tap works again or the feature stops: a system that keeps
+/// refusing is never polled.
+package struct TapCreationRetry {
+    private var used = false
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    /// Whether this refusal gets the retry. True once, then false until `reset`.
+    package mutating func refused() -> Bool {
+        guard !used else { return false }
+        used = true
+        return true
+    }
+
+    /// The tap was created, or the feature stopped: the next refusal starts a
+    /// new episode with its own retry.
+    package mutating func reset() {
+        used = false
+    }
+}

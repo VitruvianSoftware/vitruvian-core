@@ -11,6 +11,12 @@ import VitruvianDesign
 package final class FocusFollowsMouseService {
     package static let shared = FocusFollowsMouseService()
 
+    /// The pointer movement hover follows: plain moves and drags with any
+    /// button, since a drag is the pointer moving too.
+    package static let movementEvents: NSEvent.EventTypeMask = [
+        .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+    ]
+
     private let queryQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.focus-follows-mouse")
     private var timer: Timer?
     private var mouseMonitor: Any?
@@ -59,7 +65,7 @@ package final class FocusFollowsMouseService {
         }
         delayMilliseconds = Self.savedDelay()
         guard let mouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged],
+            matching: Self.movementEvents,
             handler: { [weak self] event in
                 guard let point = event.cgEvent?.location else { return }
                 self?.recordMovement(to: point)
@@ -117,8 +123,16 @@ package final class FocusFollowsMouseService {
     /// enough for a click or a shortcut to begin while it runs, and a pointer
     /// that never moved keeps the answer looking current.
     private var nothingIsHeldDown: Bool {
-        NSEvent.pressedMouseButtons == 0
-            && NSEvent.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
+        Self.nothingHeld(pressedMouseButtons: NSEvent.pressedMouseButtons,
+                         modifierFlags: NSEvent.modifierFlags)
+    }
+
+    /// No mouse button of any kind is down, and no modifier: a click, a drag
+    /// with the middle or a side button, or a shortcut may be beginning.
+    package static func nothingHeld(pressedMouseButtons: Int,
+                                    modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        pressedMouseButtons == 0
+            && modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
     }
 
     private func evaluateIfSettled() {
@@ -133,8 +147,9 @@ package final class FocusFollowsMouseService {
               let evaluation = state.nextEvaluation(
                   at: ProcessInfo.processInfo.systemUptime,
                   delayMilliseconds: delayMilliseconds),
-              !MouseAppExceptions.shared.excludesPointerTarget(
-                  .focusFollowsMouse, at: evaluation.point),
+              !FocusFollowsMouseSupport.leavesAlone(evaluation.point, excludes: {
+                  MouseAppExceptions.shared.excludesPointerTarget($0, at: $1)
+              }),
               let pointerWindowID = Self.receivingWindow(at: evaluation.point)
         else { return }
 
@@ -158,17 +173,12 @@ package final class FocusFollowsMouseService {
                       Self.receivingWindow(at: evaluation.point) == pointerWindowID,
                       let app = NSRunningApplication(processIdentifier: target.processID),
                       app.activationPolicy == .regular, !app.isTerminated,
-                      FocusFollowsMouseSupport.shouldActivate(
+                      FocusFollowsMouseSupport.handsToActivator(
                           targetWindowID: target.windowID,
                           focusedWindowID: target.focusedWindowID,
                           targetAppIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier
-                              == target.processID),
-                      // The window server reports a desktop switch only once
-                      // its animation ends, so a target it still parks on a
-                      // hidden Space is a switch in flight: the activator would
-                      // travel there and macOS replays the slide. Hover never
-                      // travels between desktops.
-                      !SpaceWindowBridge.isParkedOnHiddenSpace(target.windowID)
+                              == target.processID,
+                          isParkedOnHiddenSpace: { SpaceWindowBridge.isParkedOnHiddenSpace($0) })
                 else { return }
                 WindowActivator.activate(pid: target.processID,
                                          windowID: target.windowID,
@@ -191,10 +201,11 @@ package final class FocusFollowsMouseService {
 
     nonisolated
     private func target(at point: CGPoint, processID: pid_t) -> Target? {
-        guard processID > 0, processID != ProcessInfo.processInfo.processIdentifier else { return nil }
         // An app-scoped hit test cannot enter our tree if window stacking
         // changes after the ownership lookup. Never fall back to a global query.
-        let application = AXUIElementCreateApplication(processID)
+        guard let scope = FocusFollowsMouseSupport.hitTestProcess(
+            processID, ownProcessID: ProcessInfo.processInfo.processIdentifier) else { return nil }
+        let application = AXUIElementCreateApplication(scope)
         var rawElement: AXUIElement?
         guard AXUIElementCopyElementAtPosition(application, Float(point.x), Float(point.y), &rawElement) == .success,
               let rawElement

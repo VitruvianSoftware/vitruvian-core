@@ -102,22 +102,29 @@ package final class SuperKeyService: ObservableObject {
     private let lifecycleLock = NSLock()
     nonisolated(unsafe) private var tap: CFMachPort?
     nonisolated(unsafe) private var mouseTap: CFMachPort?
-    /// How many times in a row the mouse tap was asked for and refused. A
-    /// refusal is otherwise indistinguishable from never having asked, and the
-    /// keyboard half would keep working with drag chords quietly still broken.
-    /// Only the first one counts as a dead tap: the cure is a full rebuild, and
+    /// How many times in a row the mouse tap was asked for and refused. Only
+    /// the first one counts as a dead tap: the cure is a full rebuild, and
     /// that takes the healthy keyboard tap down with it, dropping held-key
-    /// state and letting events through untapped for the gap. A system that
-    /// refuses once refuses the retry too, so one is all it is worth — after
-    /// that the mouse half stays broken and the keyboard half is left alone.
-    /// Back to zero only when a tap is actually created, so a refusal after a
-    /// working stretch is a new episode with its own single retry.
-    nonisolated(unsafe) private var mouseTapRefusals = 0
+    /// state and letting events through untapped for the gap. After that the
+    /// mouse half stays broken and the keyboard half is left alone. Back to
+    /// zero only when a tap is actually created, so a refusal after a working
+    /// stretch is a new episode with its own single retry.
+    nonisolated(unsafe) private var mouseTapRefusals = SuperKeyMouseTapRefusals()
     /// The presses the mouse tap watches, one list for both the tap mask and
-    /// classify, so a button added later is added in one place.
-    nonisolated private static let mouseDownTypes: [CGEventType] = [
+    /// classify, so a button added later is added in one place. Moves and
+    /// drags stay out: chords are read on the press, and per-move tap work is
+    /// a known stutter source.
+    nonisolated package static let mouseDownTypes: [CGEventType] = [
         .leftMouseDown, .rightMouseDown, .otherMouseDown,
     ]
+    /// The mouse tap's mask: exactly `mouseDownTypes`.
+    nonisolated package static var mouseEventMask: CGEventMask {
+        mouseDownTypes.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
+    }
+    /// Where the mouse presses are stamped: the HID stage, which runs before
+    /// every session tap whatever the creation order, so consumers in this
+    /// process and clicks delivered to other apps all see the held modifiers.
+    nonisolated package static let mouseTapLocation: CGEventTapLocation = .cghidEventTap
     nonisolated(unsafe) private var tapRunLoop: CFRunLoop?
     nonisolated(unsafe) private var tapThread: Thread?
     nonisolated(unsafe) private var shouldStopTapThread = false
@@ -203,10 +210,8 @@ package final class SuperKeyService: ObservableObject {
         // the first refusal does, or every sync from here on would tear the
         // working keyboard tap down to ask a question already answered.
         let deadTap = lifecycleLock.withLock { () -> Bool in
-            let keyboardDead = tap.map { !CGEvent.tapIsEnabled(tap: $0) } ?? false
-            let mouseDead = mouseTap.map { !CGEvent.tapIsEnabled(tap: $0) }
-                ?? (mouseTapRefusals == 1)
-            return keyboardDead || mouseDead
+            mouseTapRefusals.tapsNeedRebuild(keyboardTapEnabled: tap.map { CGEvent.tapIsEnabled(tap: $0) },
+                                             mouseTapEnabled: mouseTap.map { CGEvent.tapIsEnabled(tap: $0) })
         }
         if deadTap || sourceChanged { stop() }
         start()
@@ -355,14 +360,11 @@ package final class SuperKeyService: ObservableObject {
             // and set their own flags on anything they send on, so a stamped
             // press changes nothing for them and every mouse shortcut is
             // reached by the same chord as every other click.
-            let mouseMask = Self.mouseDownTypes.reduce(CGEventMask(0)) {
-                $0 | (CGEventMask(1) << $1.rawValue)
-            }
             let mouseTap = system.createTap(
-                .cghidEventTap,
+                Self.mouseTapLocation,
                 .headInsertEventTap,
                 .defaultTap,
-                mouseMask,
+                Self.mouseEventMask,
                 { _, type, event, userInfo in
                     guard let userInfo else { return Unmanaged.passUnretained(event) }
                     let service = Unmanaged<SuperKeyService>.fromOpaque(userInfo)
@@ -374,7 +376,7 @@ package final class SuperKeyService: ObservableObject {
             var mouseSource: CFRunLoopSource?
             lifecycleLock.withLock {
                 self.mouseTap = mouseTap
-                self.mouseTapRefusals = mouseTap == nil ? self.mouseTapRefusals + 1 : 0
+                self.mouseTapRefusals.requested(created: mouseTap != nil)
             }
             if let mouseTap {
                 mouseSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, mouseTap, 0)
@@ -818,7 +820,7 @@ package final class SuperKeyService: ObservableObject {
         }
     }
 
-    nonisolated private static func classify(type: CGEventType, source: SuperKeySource,
+    nonisolated package static func classify(type: CGEventType, source: SuperKeySource,
                                  event: CGEvent) -> SuperKeySupport.Event {
         // A mouse press while the key is held behaves like any other key: the
         // modifiers ride along and the press cancels the solo action. Answered

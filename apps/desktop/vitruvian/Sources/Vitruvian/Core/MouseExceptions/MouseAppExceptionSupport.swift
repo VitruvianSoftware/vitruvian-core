@@ -210,6 +210,19 @@ package enum MouseAppExceptionSupport {
         return picked
     }
 
+    /// What a pick adds to an exception list, or nil for nothing. A row built
+    /// from a running program carries the identity it reports; anything else
+    /// is what the picked file will be reported as once it runs (#1009), a
+    /// bundle identifier or a path depending on the file, never on which of
+    /// the two the sheet was pointed at. A list that takes only apps drops a
+    /// path rather than storing an entry its own matcher would ignore.
+    package static func addedIdentity(picked url: URL, explicitIdentity: String? = nil,
+                                      acceptsExecutables: Bool) -> String? {
+        guard let identity = explicitIdentity ?? pickedIdentity(for: url),
+              acceptsExecutables || !isExecutablePathIdentity(identity) else { return nil }
+        return identity
+    }
+
     package static func sourceProcessID(_ rawValue: Int64) -> Int32? {
         guard rawValue > 0 else { return nil }
         return Int32(exactly: rawValue)

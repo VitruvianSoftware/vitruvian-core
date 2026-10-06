@@ -58,6 +58,39 @@ package enum FocusFollowsMouseSupport {
         guard let focusedWindowID else { return false }
         return focusedWindowID != targetWindowID
     }
+
+    /// Whether hover hands `target` to the activator at all. A window the
+    /// window server still parks on a hidden Space is a desktop switch in
+    /// flight, since the switch is reported only once its animation ends: the
+    /// activator would travel there and macOS replay the slide. Hover never
+    /// travels between desktops. `isParkedOnHiddenSpace` is asked last, as it
+    /// asks the window server.
+    package static func handsToActivator(targetWindowID: CGWindowID,
+                                         focusedWindowID: CGWindowID?,
+                                         targetAppIsFrontmost: Bool,
+                                         isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> Bool {
+        shouldActivate(targetWindowID: targetWindowID,
+                       focusedWindowID: focusedWindowID,
+                       targetAppIsFrontmost: targetAppIsFrontmost)
+            && !isParkedOnHiddenSpace(targetWindowID)
+    }
+
+    /// Whether hover leaves the app at `point` alone: it answers to its own
+    /// exception list (issue #358), asked before anything asks Accessibility
+    /// about that app, so an excepted app is never even queried.
+    package static func leavesAlone(_ point: CGPoint,
+                                    excludes: (MouseExceptionScope, CGPoint) -> Bool) -> Bool {
+        excludes(.focusFollowsMouse, point)
+    }
+
+    /// The process whose own Accessibility tree a hover hit test may enter, or
+    /// nil for none. Never this app's: entering our tree from the worker can
+    /// deadlock against the main thread. And always one app's tree, never a
+    /// system-wide element, which could wander into ours when windows restack
+    /// between the ownership lookup and the query.
+    package static func hitTestProcess(_ processID: pid_t, ownProcessID: pid_t) -> pid_t? {
+        processID > 0 && processID != ownProcessID ? processID : nil
+    }
 }
 
 package struct FocusFollowsMouseEvaluation: Equatable {

@@ -256,7 +256,7 @@ package final class MouseAccelerationService {
                 }
             },
         ]
-        sessionIsActive = Self.currentSessionIsActive()
+        sessionIsActive = Self.sessionIsOnScreen(CGSessionCopyCurrentDictionary() as? [String: Any])
     }
 
     private func removeLifecycleObservers() {
@@ -265,8 +265,11 @@ package final class MouseAccelerationService {
         lifecycleObservers = []
     }
 
-    private static func currentSessionIsActive() -> Bool {
-        SessionActivitySupport.isOnConsole(
-            CGSessionCopyCurrentDictionary() as? [String: Any])
+    /// Whether `session` is the one on screen, read the way `SessionActivity`
+    /// reads it at launch: a session that cannot be read counts as on screen.
+    /// A wrong "off" would never be corrected, because a session that is
+    /// already active gets no become-active notification.
+    package static func sessionIsOnScreen(_ session: [String: Any]?) -> Bool {
+        SessionActivitySupport.isOnConsole(session)
     }
 }

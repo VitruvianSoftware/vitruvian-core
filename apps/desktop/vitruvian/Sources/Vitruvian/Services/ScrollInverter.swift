@@ -43,7 +43,7 @@ package final class ScrollInverter: ObservableObject {
     /// Read and written solely on the tap callback, which is the pointer
     /// thread and nothing else, and reset by `stop` once the tap is gone.
     nonisolated(unsafe) private var wheel = WheelTapState()
-    private var tapCreationRetryUsed = false
+    private var tapCreationRetry = TapCreationRetry()
     private var tapCreationRetryWork: DispatchWorkItem?
 
     private init() {
@@ -107,8 +107,7 @@ package final class ScrollInverter: ObservableObject {
             setSourceTracking(false)
             isRunning = false
             // A create that fails during the session handoff gets one more look once the switch settles.
-            guard !tapCreationRetryUsed else { return }
-            tapCreationRetryUsed = true
+            guard tapCreationRetry.refused() else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.tapCreationRetryWork = nil
@@ -119,7 +118,7 @@ package final class ScrollInverter: ObservableObject {
             return
         }
 
-        tapCreationRetryUsed = false
+        tapCreationRetry.reset()
         tapCreationRetryWork?.cancel()
         tapCreationRetryWork = nil
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -138,7 +137,7 @@ package final class ScrollInverter: ObservableObject {
         ScrollWheelTarget.shared.setEnabled(false)
         tapCreationRetryWork?.cancel()
         tapCreationRetryWork = nil
-        tapCreationRetryUsed = false
+        tapCreationRetry.reset()
         setSourceTracking(false)
         let (port, source) = tapStateLock.withLock { () -> (CFMachPort?, CFRunLoopSource?) in
             let current = (tap, runLoopSource)
