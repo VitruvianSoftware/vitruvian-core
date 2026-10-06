@@ -87,7 +87,9 @@ class Repository:
         for root, _, files in os.walk(self.app_dir / "Tests", followlinks=True):
             for name in files:
                 if name.endswith(".swift"):
-                    tests.append((Path(root) / name).relative_to(self.app_dir).as_posix())
+                    tests.append(
+                        (Path(root) / name).relative_to(self.app_dir).as_posix()
+                    )
         self.test_paths = sorted(set(tests))
         self.tests = {path: self.read_text(path) for path in self.test_paths}
         self.build_script = self.read_text("build.sh")
@@ -812,9 +814,17 @@ def inverter_does_not_yield_to_the_switcher(repo):
     turned. The smooth scroller and the side-wheel shortcuts yield, through
     the environment their tests drive; the inverter is handed nothing that
     names the switcher, and never asks it."""
-    code = code_without_comments(repo.lines_at("Sources/Vitruvian/Services/ScrollInverter.swift"))
-    if not code or "scrollNavigationActive" in code or "switcherNavigatesByWheel" in code:
-        return ["scroll direction still transforms wheel events before they reach the open switcher"]
+    code = code_without_comments(
+        repo.lines_at("Sources/Vitruvian/Services/ScrollInverter.swift")
+    )
+    if (
+        not code
+        or "scrollNavigationActive" in code
+        or "switcherNavigatesByWheel" in code
+    ):
+        return [
+            "scroll direction still transforms wheel events before they reach the open switcher"
+        ]
     return []
 
 
@@ -823,7 +833,9 @@ def cleaning_mode_never_synthesizes_mouse_events(repo):
     posts a mouse event, and nothing reads the global button state, which
     cannot say which press the lock itself saw."""
     code = code_without_comments(
-        repo.lines_at("Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift")
+        repo.lines_at(
+            "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift"
+        )
     )
     problems = []
     if not code:
@@ -1049,12 +1061,32 @@ DECLARATION = re.compile(
     r"(?:(?:private|fileprivate|internal|public|package|final|nonisolated|indirect|open)\s+)*"
     r"(?:class|struct|enum|actor|protocol|typealias)\s+(?!func\b|var\b|let\b|subscript\b|init\b)([A-Za-z_]\w*)"
 )
-DECLARATION_KEYWORDS = ("class ", "struct ", "enum ", "actor ", "protocol ", "typealias ")
+DECLARATION_KEYWORDS = (
+    "class ",
+    "struct ",
+    "enum ",
+    "actor ",
+    "protocol ",
+    "typealias ",
+)
 # The Foundation types tests used to fake, beside the framework prefixes.
 FAKED_FOUNDATION_TYPES = {
-    "UserDefaults", "NotificationCenter", "DistributedNotificationCenter", "Bundle",
-    "ProcessInfo", "FileManager", "RunLoop", "Timer", "Thread", "OperationQueue",
-    "URLSession", "Date", "URL", "Data", "Calendar", "Locale",
+    "UserDefaults",
+    "NotificationCenter",
+    "DistributedNotificationCenter",
+    "Bundle",
+    "ProcessInfo",
+    "FileManager",
+    "RunLoop",
+    "Timer",
+    "Thread",
+    "OperationQueue",
+    "URLSession",
+    "Date",
+    "URL",
+    "Data",
+    "Calendar",
+    "Locale",
 }
 
 
@@ -1074,7 +1106,7 @@ def is_system_name(name):
     if name in FAKED_FOUNDATION_TYPES:
         return True
     return any(
-        name.startswith(prefix) and name[len(prefix):][:1].isupper()
+        name.startswith(prefix) and name[len(prefix) :][:1].isupper()
         for prefix in ("NS", "CG", "CF", "AX", "Dispatch")
     )
 
@@ -1085,21 +1117,51 @@ def test_types_do_not_shadow_real_ones(repo):
     thing shadows it for every line around it, which is how tests used to fake
     a service's collaborators; the services now take them instead."""
     problems = []
-    sample = declarations("\n".join([
-        "package final class Island {",
-        "    nonisolated enum DispatchQueue { static var main = 0 }",
-        "    @MainActor final class Window {}",
-        "    class func make() {}",
-        "    private typealias Moment = Double",
-        "}",
-    ]))
-    if sample != [("Island", False), ("DispatchQueue", True), ("Window", True), ("Moment", True)]:
-        problems.append("the scan finds nested and attributed declarations, and not class members")
-    if not (all(map(is_system_name, ["NSScreen", "NSEvent", "CGSConnectionID", "DispatchQueue",
-                                     "UserDefaults", "Bundle"]))
-            and not any(map(is_system_name, ["Display", "Pointer", "Clock", "Switches", "NSome",
-                                             "Bundler"]))):
-        problems.append("system names are the framework prefixes and the Foundation types tests used to fake")
+    sample = declarations(
+        "\n".join(
+            [
+                "package final class Island {",
+                "    nonisolated enum DispatchQueue { static var main = 0 }",
+                "    @MainActor final class Window {}",
+                "    class func make() {}",
+                "    private typealias Moment = Double",
+                "}",
+            ]
+        )
+    )
+    if sample != [
+        ("Island", False),
+        ("DispatchQueue", True),
+        ("Window", True),
+        ("Moment", True),
+    ]:
+        problems.append(
+            "the scan finds nested and attributed declarations, and not class members"
+        )
+    if not (
+        all(
+            map(
+                is_system_name,
+                [
+                    "NSScreen",
+                    "NSEvent",
+                    "CGSConnectionID",
+                    "DispatchQueue",
+                    "UserDefaults",
+                    "Bundle",
+                ],
+            )
+        )
+        and not any(
+            map(
+                is_system_name,
+                ["Display", "Pointer", "Clock", "Switches", "NSome", "Bundler"],
+            )
+        )
+    ):
+        problems.append(
+            "system names are the framework prefixes and the Foundation types tests used to fake"
+        )
     production = {
         name
         for path in repo.swift_paths
@@ -1115,7 +1177,9 @@ def test_types_do_not_shadow_real_ones(repo):
         if name in production or is_system_name(name)
     ]
     if shadows:
-        problems.append(f"no test type shadows a system type or one of the app's own: {shadows}")
+        problems.append(
+            f"no test type shadows a system type or one of the app's own: {shadows}"
+        )
     return problems
 
 
@@ -1147,17 +1211,29 @@ def unit_tests_read_no_source_text(repo):
     (REFACTOR.md step 7). How the code is written is checked here, by the
     rules above, and nowhere in the tests."""
     problems = []
-    sample = "\n".join([
-        "let text = try? String(" + "contentsOf" + 'File: "Sources/Vitruvian/App/AppDelegate.swift")',
-        "let files = FileManager.default.enumerator(atPath: " + '"Sources")',
-        '// a comment naming "Sources/Vitruvian" reads nothing',
-        'suite.expect(true, "a message about ' + "contentsOf" + 'File reads nothing")',
-    ])
+    sample = "\n".join(
+        [
+            "let text = try? String("
+            + "contentsOf"
+            + 'File: "Sources/Vitruvian/App/AppDelegate.swift")',
+            "let files = FileManager.default.enumerator(atPath: " + '"Sources")',
+            '// a comment naming "Sources/Vitruvian" reads nothing',
+            'suite.expect(true, "a message about '
+            + "contentsOf"
+            + 'File reads nothing")',
+        ]
+    )
     if source_reads("sample", sample) != ["sample:1", "sample:2"]:
-        problems.append("the scan finds a source read and a walk of Sources/, and not prose")
+        problems.append(
+            "the scan finds a source read and a walk of Sources/, and not prose"
+        )
     if not repo.test_paths:
         problems.append("the tests read back from the app directory")
-    reads = [read for path in repo.test_paths for read in source_reads(path, repo.tests[path])]
+    reads = [
+        read
+        for path in repo.test_paths
+        for read in source_reads(path, repo.tests[path])
+    ]
     if reads:
         problems.append(f"no unit test reads a source file as text, found {reads}")
     return problems
