@@ -21,7 +21,9 @@
 name: Pulumi run (captured)
 description: >-
   Select a Pulumi stack (creating it if missing) and run `pulumi preview` or
-  `pulumi up` with --diff --non-interactive, teeing the full output to a log
+  `pulumi up` with --diff --non-interactive (waiting out Pulumi Cloud's
+  account-wide concurrent-update 409 via
+  tools/pulumi/retry-concurrent-update.sh), teeing the full output to a log
   file and exposing the command's REAL exit code as `exit_code`. GitHub runs
   steps with `bash -eo pipefail`, so a bare `pulumi ... | tee log` step would
   either abort early (with -e, before the log is complete) or report tee's own
@@ -119,8 +121,13 @@ runs:
 
         echo "::group::pulumi ${PULUMI_COMMAND} ${args[*]} (${STACK})"
         : > "${out_file}"
+        # The pulumi command goes through the shared retry helper: the stacks
+        # share ONE Pulumi Cloud account that runs a single update at a time,
+        # so another app's apply can reject this one with a 409. The helper
+        # waits that out (and only that); every other failure is immediate.
         if pulumi stack select -c "${STACK}" 2>&1 | tee -a "${out_file}" && \
-           pulumi "${PULUMI_COMMAND}" "${args[@]}" 2>&1 | tee -a "${out_file}"; then
+           bash "${GITHUB_WORKSPACE}/tools/pulumi/retry-concurrent-update.sh" \
+             pulumi "${PULUMI_COMMAND}" "${args[@]}" 2>&1 | tee -a "${out_file}"; then
           ec="${PIPESTATUS[0]}"
         else
           ec="${PIPESTATUS[0]}"

@@ -160,8 +160,10 @@ jobs:
           pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
 
           if [ "$ACTION" = "up" ]; then
-            pulumi refresh --yes
-            pulumi up --yes
+            # Both are Pulumi Cloud updates, so both wait out the account-wide
+            # concurrent-update 409; any other failure is immediate.
+            bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi refresh --yes
+            bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi up --yes
           else
             pulumi preview --diff
           fi
@@ -203,7 +205,7 @@ jobs:
           # without it the output reports what Pulumi last WROTE, not what Zitadel
           # currently HOLDS. A server-side flip to BEARER would read as JWT forever
           # while every request is rejected.
-          pulumi refresh --yes
+          bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi refresh --yes
 
           # --show-secrets is REQUIRED here: the provider marks clientId secret, so
           # the named call alone prints `[secret]`. clientId is a public OIDC
