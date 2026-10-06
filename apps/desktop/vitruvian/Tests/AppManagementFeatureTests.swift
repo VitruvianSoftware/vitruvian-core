@@ -1589,7 +1589,11 @@ enum AppManagementFeatureTests {
         // buttons. No window is shown here.
         let installerStrings = FeatureStrings.diskImageInstaller(.enUS)
         let promptDefaults = UserDefaults(suiteName: "vitru.tests.disk-image-prompt")!
+        // Each option set the way the prompt is expected to answer, rather
+        // than left to its declared default.
+        promptDefaults.set(false, forKey: DefaultsKey.diskImageInstallerTrashesDownload)
         promptDefaults.set(true, forKey: DefaultsKey.diskImageInstallerRevealsApp)
+        promptDefaults.set(false, forKey: DefaultsKey.diskImageInstallerUseUserApplications)
         var promptWindows: [NSWindow] = []
         var promptAnswers: [DiskImageInstallerService.InstallChoice?] = []
         let installPrompt = DiskImageInstallerService.presentInstallPrompt(
