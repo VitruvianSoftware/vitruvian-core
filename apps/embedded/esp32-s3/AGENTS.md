@@ -40,9 +40,9 @@ protocol is [`docs/protocol.md`](docs/protocol.md); firmware and daemon move tog
   genrule.
 - **Release ladder** is the `esp32-s3` delivery unit declared in `BUILD` (`delivery(...)`):
   a PR runs `iot-esp32-s3.yaml`; a push to `main` publishes `esp32-s3-beta` (rolling
-  `esp32-s3-beta-latest` prerelease) through the generated `delivery.yaml`; release-please
+  `esp32-s3-beta-latest` prerelease) through the generated `delivery-esp32-s3.yaml`; release-please
   (`iot-esp32-s3-release.yaml`) cuts `esp32-s3-vX.Y.Z`, which publishes `esp32-s3-production`.
-  Editing the `delivery()` block means `bazel run //tools/ci:gen` to regenerate `delivery.yaml`.
+  Editing the `delivery()` block means `bazel run //tools/ci:gen` to regenerate `delivery-esp32-s3.yaml`.
   Break-glass: `bazel run //apps/embedded/esp32-s3:publish`
   (`GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z` for a release build).
 - **Protocol changes touch three places in one PR:** `src/` (firmware), `host_companion/`

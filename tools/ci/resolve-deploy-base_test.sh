@@ -37,10 +37,26 @@ fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
 fail() { printf '  ✗ %s\n' "$1" >&2; fails=$((fails + 1)); }
 
-# fake gh: ignores its args (the script under test always passes the same
-# shape); prints $FAKE_GH_OUT to stdout, or simulates a failure.
+# fake gh: prints $FAKE_GH_OUT to stdout, or simulates a failure. A query for
+# the legacy workflow (`-w legacy.yaml`) answers from $FAKE_LEGACY_OUT /
+# $FAKE_LEGACY_RC instead, and is logged, so a test can tell whether the
+# script consulted it at all.
 cat > "$work/fake-gh" <<'EOF'
 #!/usr/bin/env bash
+wf=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-w" ]; then wf="$2"; fi
+  shift
+done
+if [ "$wf" = "legacy.yaml" ]; then
+  echo "legacy" >> "${FAKE_GH_LOG:-/dev/null}"
+  if [ "${FAKE_LEGACY_RC:-0}" != "0" ]; then
+    echo "gh: HTTP 404 (legacy)" >&2
+    exit "${FAKE_LEGACY_RC}"
+  fi
+  printf '%s' "${FAKE_LEGACY_OUT:-}"
+  exit 0
+fi
 if [ "${FAKE_GH_RC:-0}" != "0" ]; then
   echo "gh: HTTP 502 (something went wrong)" >&2
   exit "${FAKE_GH_RC}"
@@ -85,6 +101,32 @@ if grep -q "::warning title=deploy-gate-durable-base-fallback::" "$work/stdout";
 else
   fail "gh error did not emit the expected warning annotation"
 fi
+
+echo "--- legacy workflow fallback (the per-app split's first runs) ---"
+expect "own success wins over the legacy workflow" "abc123def456" \
+  FAKE_GH_OUT=abc123def456 LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_OUT=0ld0ld
+log="$work/gh.log"; : > "$log"
+run FAKE_GH_OUT=abc123def456 LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_OUT=0ld0ld FAKE_GH_LOG="$log" >/dev/null
+if [ -s "$log" ]; then fail "legacy workflow queried although the workflow has its own success"; else
+  pass "legacy workflow not queried once the workflow has its own success"; fi
+expect "no own success yet resumes from the legacy workflow's last success" "0ld0ld" \
+  FAKE_GH_OUT="" LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_OUT=0ld0ld
+expect "no success in either workflow fails open" "" \
+  FAKE_GH_OUT="" LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_OUT=""
+expect "legacy lookup error fails open" "" \
+  FAKE_GH_OUT="" LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_RC=1
+run FAKE_GH_OUT="" LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_RC=1 >/dev/null
+if grep -q "::warning title=deploy-gate-durable-base-fallback::" "$work/stdout"; then
+  pass "legacy lookup error emits a titled warning annotation"
+else
+  fail "legacy lookup error did not warn"
+fi
+expect "own gh error does not consult the legacy workflow" "" \
+  FAKE_GH_RC=1 LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_OUT=0ld0ld
+: > "$log"
+run WORKFLOW_FILE=legacy.yaml LEGACY_WORKFLOW_FILE=legacy.yaml FAKE_LEGACY_OUT="" FAKE_GH_LOG="$log" >/dev/null
+if [ "$(wc -l < "$log")" -eq 1 ]; then pass "a legacy file equal to the workflow itself is not queried twice"; else
+  fail "a workflow fell back to its own history ($(wc -l < "$log") queries)"; fi
 
 echo "--- REPO resolution ---"
 out="$work/out3"; : > "$out"

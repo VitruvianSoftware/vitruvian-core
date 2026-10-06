@@ -603,6 +603,82 @@ func TestOrchestrate_TwoUnits_IndependentVerdicts(t *testing.T) {
 	}
 }
 
+// --- ORCHESTRATE_UNITS: one app's workflow judges only its own units ---------
+
+func twoUnitsFake(t *testing.T) fakeBazel {
+	t.Helper()
+	bin := t.TempDir()
+	hit := writeMeta(t, bin, decl("oauth-user-inspector", map[string]any{
+		"extra_paths": []string{"oauth-user-inspector/"},
+	}))
+	miss := writeMeta(t, bin, decl("tabula-api", map[string]any{
+		"extra_paths": []string{"tabula/api/"},
+	}))
+	return fakeBazel{labels: []string{hit, miss}, binDir: bin}
+}
+
+func TestOrchestrate_UnitFilter_JudgesOnlyTheNamedUnits(t *testing.T) {
+	r := harness{
+		repo: repoDeclared,
+		fake: twoUnitsFake(t),
+		env:  map[string]string{"ORCHESTRATE_UNITS": "tabula-api"},
+	}.run(t)
+
+	if r.code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", r.code, r.stdout)
+	}
+	if r.man.ComputedBy == computedByFailOpen {
+		t.Fatalf("manifest failed open (%s); a filter naming a discovered unit must decide normally", r.man.Reason)
+	}
+	if len(r.man.Units) != 1 {
+		t.Fatalf("units = %+v, want only tabula-api — another app's unit was judged in this workflow", r.man.Units)
+	}
+	if got := requireUnit(t, r.man, "tabula-api"); got.Affected {
+		t.Errorf("tabula-api affected = true, want false")
+	}
+	out := r.outputs(t)
+	if _, ok := out["affected_oauth_user_inspector"]; ok {
+		t.Errorf("an unselected unit still got a verdict output:\n%s", r.ghOutput)
+	}
+	if out["affected_tabula_api"] != "false" {
+		t.Errorf("affected_tabula_api = %q, want false", out["affected_tabula_api"])
+	}
+}
+
+// A unit the workflow names but the graph no longer declares means the
+// workflow is stale. It must fail OPEN with that unit present and affected:
+// dropping it would read as "not affected" to the jobs gated on it.
+func TestOrchestrate_UnitFilter_UnknownUnitFailsOpen(t *testing.T) {
+	r := harness{
+		repo: repoDeclared,
+		fake: twoUnitsFake(t),
+		env:  map[string]string{"ORCHESTRATE_UNITS": "tabula-api ghost"},
+	}.run(t)
+
+	assertFailOpen(t, r, "ghost")
+	requireUnit(t, r.man, "ghost")
+	requireUnit(t, r.man, "tabula-api")
+	if len(r.man.Units) != 2 {
+		t.Errorf("units = %+v, want exactly the two named units", r.man.Units)
+	}
+}
+
+// When discovery itself fails, the named units are still known — so unlike
+// the unfiltered case, each of them is listed and affected.
+func TestOrchestrate_UnitFilter_QueryFailureListsTheNamedUnits(t *testing.T) {
+	fake := twoUnitsFake(t)
+	fake.failQuery = true
+	r := harness{
+		repo: repoDeclared,
+		fake: fake,
+		env:  map[string]string{"ORCHESTRATE_UNITS": "oauth-user-inspector tabula-api"},
+	}.run(t)
+
+	assertFailOpen(t, r, "bazel query")
+	requireUnit(t, r.man, "oauth-user-inspector")
+	requireUnit(t, r.man, "tabula-api")
+}
+
 // ---------------------------------------------------------------------------
 // spec §5, row 1: "Orchestrator can't compute → fail-open, all units affected,
 // loud computed_by: fail-open annotation"

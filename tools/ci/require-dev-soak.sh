@@ -63,6 +63,12 @@
 #   WORKFLOW_FILE   workflow whose run history holds the dev deploy job.
 #                   Optional: defaults to the workflow that owns the CURRENT
 #                   run (see the resolution note below).
+#   LEGACY_WORKFLOW_FILE
+#                   optional: the workflow that deployed development BEFORE
+#                   WORKFLOW_FILE existed (delivery.yaml, before the per-app
+#                   split). Searched only when WORKFLOW_FILE holds no terminal
+#                   result for DEV_JOB_NAME, so the first promotion after the
+#                   split still reads real evidence instead of failing open.
 #   DEV_JOB_NAME    exact job name proving the dev deploy, e.g.
 #                   "deploy-dev / deploy" (per-SERVICE: tabula-api and
 #                   tabula-web have separate jobs, so one service's red
@@ -105,7 +111,7 @@ fi
 # inside the REUSABLE deploy workflow, but a reusable workflow's jobs execute
 # as part of the CALLER's run -- so GITHUB_RUN_ID is the caller's run, and
 # asking the API which workflow owns that run is exact for every caller
-# (the generated delivery.yaml, and any future caller) with no per-caller
+# (each generated delivery-<app>.yaml, and any future caller) with no per-caller
 # wiring.
 #
 # Deliberately NOT derived from GITHUB_WORKFLOW_REF: whether that resolves to
@@ -126,55 +132,67 @@ fi
 [ -n "${WORKFLOW_FILE}" ] || unknown "could not determine which workflow's history to search (no WORKFLOW_FILE, no resolvable GITHUB_RUN_ID, no GITHUB_WORKFLOW_REF)"
 echo "require-dev-soak[${DEV_JOB_NAME}]: searching ${WORKFLOW_FILE} on ${BRANCH} (repo ${REPO})"
 
-# Newest-first completed push runs. Only `push` runs deploy development (a
-# release run never does), so this is the history that carries the signal.
-runs="$("${GH_BIN}" run list --repo "${REPO}" -w "${WORKFLOW_FILE}" -b "${BRANCH}" \
-  -e push -s completed -L "${SCAN_LIMIT}" --json databaseId --jq '.[].databaseId' 2>&1)"
-rc=$?
-[ "${rc}" -eq 0 ] || unknown "gh run list failed (rc=${rc}): ${runs}"
-[ -n "${runs}" ] || unknown "no completed push-triggered run of ${WORKFLOW_FILE} on ${BRANCH} found"
+# scan <workflow-file>: decide from that workflow's history (pass/block exit),
+# or return when none of its runs reached a terminal state for this job.
+scan() {
+  local wf="$1" runs rc run_id jobs jrc conclusion
+  # Newest-first completed push runs. Only `push` runs deploy development (a
+  # release run never does), so this is the history that carries the signal.
+  runs="$("${GH_BIN}" run list --repo "${REPO}" -w "${wf}" -b "${BRANCH}" \
+    -e push -s completed -L "${SCAN_LIMIT}" --json databaseId --jq '.[].databaseId' 2>&1)"
+  rc=$?
+  [ "${rc}" -eq 0 ] || unknown "gh run list for ${wf} failed (rc=${rc}): ${runs}"
 
-# Walk newest -> oldest and let the FIRST run that actually reached a terminal
-# state for this job decide. Runs where the job never materialised (an older
-# workflow revision that predates the job, or a run cancelled before it was
-# scheduled) are not evidence either way, so they are skipped rather than
-# treated as a pass.
-while IFS= read -r run_id; do
-  [ -n "${run_id}" ] || continue
+  # Walk newest -> oldest and let the FIRST run that actually reached a
+  # terminal state for this job decide. Runs where the job never materialised
+  # (an older workflow revision that predates the job, or a run cancelled
+  # before it was scheduled) are not evidence either way, so they are skipped
+  # rather than treated as a pass.
+  while IFS= read -r run_id; do
+    [ -n "${run_id}" ] || continue
 
-  # Emit "<name>\t<conclusion>" and match the job name in bash: gh's --jq takes
-  # no --arg, so interpolating DEV_JOB_NAME into the filter would be a jq
-  # injection waiting to happen.
-  jobs="$("${GH_BIN}" run view "${run_id}" --repo "${REPO}" --json jobs \
-    --jq '.jobs[] | "\(.name)\t\(.conclusion)"' 2>&1)"
-  jrc=$?
-  if [ "${jrc}" -ne 0 ]; then
-    echo "require-dev-soak: could not read jobs for run ${run_id} (rc=${jrc}): ${jobs}" >&2
-    continue
-  fi
+    # Emit "<name>\t<conclusion>" and match the job name in bash: gh's --jq
+    # takes no --arg, so interpolating DEV_JOB_NAME into the filter would be a
+    # jq injection waiting to happen.
+    jobs="$("${GH_BIN}" run view "${run_id}" --repo "${REPO}" --json jobs \
+      --jq '.jobs[] | "\(.name)\t\(.conclusion)"' 2>&1)"
+    jrc=$?
+    if [ "${jrc}" -ne 0 ]; then
+      echo "require-dev-soak: could not read jobs for run ${run_id} (rc=${jrc}): ${jobs}" >&2
+      continue
+    fi
 
-  conclusion="$(printf '%s\n' "${jobs}" | awk -F'\t' -v want="${DEV_JOB_NAME}" \
-    '$1 == want { print $2; exit }')"
-  [ -n "${conclusion}" ] || continue
+    conclusion="$(printf '%s\n' "${jobs}" | awk -F'\t' -v want="${DEV_JOB_NAME}" \
+      '$1 == want { print $2; exit }')"
+    [ -n "${conclusion}" ] || continue
 
-  case "${conclusion}" in
-    success)
-      pass "development deploy '${DEV_JOB_NAME}' succeeded in run ${run_id}"
-      ;;
-    skipped)
-      pass "development deploy '${DEV_JOB_NAME}' was skipped in run ${run_id} (the graph gate found no deployable change — nothing to soak)"
-      ;;
-    failure | cancelled | timed_out | action_required | startup_failure)
-      block "development deploy '${DEV_JOB_NAME}' concluded '${conclusion}' in the most recent run that reached it (run ${run_id}: https://github.com/${REPO}/actions/runs/${run_id}). Promoting now would ship an artifact whose development deploy is RED. Fix development first, or set ALLOW_UNSOAKED=true to override deliberately."
-      ;;
-    *)
-      # An unrecognised conclusion is not evidence of health; keep looking
-      # rather than silently passing on it.
-      echo "require-dev-soak: unrecognised conclusion '${conclusion}' for run ${run_id}; continuing" >&2
-      ;;
-  esac
-done <<EOF
+    case "${conclusion}" in
+      success)
+        pass "development deploy '${DEV_JOB_NAME}' succeeded in run ${run_id} of ${wf}"
+        ;;
+      skipped)
+        pass "development deploy '${DEV_JOB_NAME}' was skipped in run ${run_id} of ${wf} (the graph gate found no deployable change — nothing to soak)"
+        ;;
+      failure | cancelled | timed_out | action_required | startup_failure)
+        block "development deploy '${DEV_JOB_NAME}' concluded '${conclusion}' in the most recent run that reached it (run ${run_id}: https://github.com/${REPO}/actions/runs/${run_id}). Promoting now would ship an artifact whose development deploy is RED. Fix development first, or set ALLOW_UNSOAKED=true to override deliberately."
+        ;;
+      *)
+        # An unrecognised conclusion is not evidence of health; keep looking
+        # rather than silently passing on it.
+        echo "require-dev-soak: unrecognised conclusion '${conclusion}' for run ${run_id}; continuing" >&2
+        ;;
+    esac
+  done <<EOF
 ${runs}
 EOF
+}
 
-unknown "scanned the last ${SCAN_LIMIT} completed push runs of ${WORKFLOW_FILE} without finding a terminal '${DEV_JOB_NAME}' result"
+scan "${WORKFLOW_FILE}"
+searched="${WORKFLOW_FILE}"
+if [ -n "${LEGACY_WORKFLOW_FILE:-}" ] && [ "${LEGACY_WORKFLOW_FILE}" != "${WORKFLOW_FILE}" ]; then
+  echo "require-dev-soak[${DEV_JOB_NAME}]: no terminal result in ${WORKFLOW_FILE}; searching ${LEGACY_WORKFLOW_FILE}, which deployed development before it"
+  scan "${LEGACY_WORKFLOW_FILE}"
+  searched="${WORKFLOW_FILE} and ${LEGACY_WORKFLOW_FILE}"
+fi
+
+unknown "scanned the last ${SCAN_LIMIT} completed push runs of ${searched} without finding a terminal '${DEV_JOB_NAME}' result"

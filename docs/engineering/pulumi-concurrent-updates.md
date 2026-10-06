@@ -36,7 +36,7 @@ merely overlapped, which this backend does not allow.
 
 ## Why delivery makes this more likely, not less
 
-`delivery.yaml` serializes **push** runs into a single concurrency group, but
+Each app's `delivery-<app>.yaml` serializes its **push** runs into one concurrency group, but
 by design it does *not* serialize:
 
 - **release runs**, which get one lane per tag (so two releases published in the

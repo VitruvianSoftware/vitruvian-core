@@ -53,7 +53,9 @@ import (
 // those ways, instead of diffing two YAML files by eye.
 
 const (
-	deliveryWorkflowRel = "../../../.github/workflows/delivery.yaml"
+	// workflowsDirRel holds the generated per-app workflows,
+	// delivery-<app>.yaml (generatedWorkflowRels, workflowWithJob).
+	workflowsDirRel = "../../../.github/workflows"
 
 	// The legacy jobs whose behaviour the generated development lane assumes.
 	legacyDeployJob    = "deploy-dev"
@@ -389,6 +391,66 @@ func sortedKeys(m map[string]string) []string {
 // these two files), and `GOWORK=off go test ./...` runs it from the checkout.
 // A missing file is a HARD FAILURE, never a skip: a parity guard that quietly
 // skips is indistinguishable from one that passes.
+// generatedWorkflowRels lists the committed generated delivery workflows —
+// every delivery-<app>.yaml carrying generatedBanner — sorted. None at all is
+// a failure: every test reading them would otherwise pass vacuously.
+func generatedWorkflowRels(t *testing.T) []string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(workflowsDirRel, workflowFilePrefix+"*.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, m := range matches {
+		if strings.Contains(mustRead(t, m), generatedBanner) {
+			out = append(out, m)
+		}
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		t.Fatalf("no generated %s<app>.yaml under %s — under `bazel test` they must be in the go_test's `data`", workflowFilePrefix, workflowsDirRel)
+	}
+	return out
+}
+
+// workflowWithJob returns the ONE generated workflow that renders job. A job
+// in two of them would be one unit delivered by two queues, which is exactly
+// what the per-app split must never produce.
+func workflowWithJob(t *testing.T, job string) string {
+	t.Helper()
+	var found []string
+	for _, rel := range generatedWorkflowRels(t) {
+		if contains(jobIDsOf(t, parseWorkflow(t, mustRead(t, rel))), job) {
+			found = append(found, rel)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("job %q is rendered by %d generated workflows (%v), want exactly 1", job, len(found), found)
+	}
+	return found[0]
+}
+
+// eachGeneratedWorkflow runs f once per generated workflow, as a subtest
+// named for its file — the whole delivery surface, one file at a time.
+func eachGeneratedWorkflow(t *testing.T, f func(t *testing.T, rel, src string)) {
+	t.Helper()
+	for _, rel := range generatedWorkflowRels(t) {
+		t.Run(filepath.Base(rel), func(t *testing.T) { f(t, rel, mustRead(t, rel)) })
+	}
+}
+
+// allGeneratedSources is every generated workflow's text, concatenated, for
+// an assertion about the delivery surface as a whole.
+func allGeneratedSources(t *testing.T) string {
+	t.Helper()
+	var b strings.Builder
+	for _, rel := range generatedWorkflowRels(t) {
+		b.WriteString(mustRead(t, rel))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func mustRead(t *testing.T, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(rel)
@@ -423,7 +485,7 @@ var buildJobDiffAllowlist = map[string]string{
 // deploying then would silently promote whatever digest the registry's `latest`
 // happens to hold.
 func TestGeneratedDeployConsumesTheGeneratedBuild(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+	generated := parseWorkflow(t, mustRead(t, workflowWithJob(t, genDeployJob)))
 
 	digest := jobWith(t, generated, genDeployJob)["image-digest"]
 	want := "${{ needs." + genBuildJob + ".outputs.image-digest }}"
@@ -633,7 +695,7 @@ type rungParity struct {
 // red run — it is tabula-web serving the API image, or a rollout with no image
 // ref at all, discovered in production.
 func TestSharedBuildFeedsEachUnitItsOwnDigest(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+	generated := parseWorkflow(t, mustRead(t, workflowWithJob(t, genTabulaBuildJob)))
 
 	declared := jobSubMap(t, generated, genTabulaBuildJob, "outputs")
 	for _, want := range []string{"image-digest", "web-image-digest"} {
@@ -676,8 +738,6 @@ func TestSharedBuildFeedsEachUnitItsOwnDigest(t *testing.T) {
 // either end fails this test instead of silently disarming the gate, which
 // fail-opens on a name that matches nothing.
 func TestGeneratedSoakJobsAreWired(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
 	callees := jobIDsOf(t, parseWorkflow(t, mustRead(t, deployCloudRunRel)))
 	if len(callees) != 1 {
 		t.Fatalf("_deploy-cloud-run.yaml declares %v jobs; the check-run name is \"<caller> / <callee>\" and this test assumes exactly one callee", callees)
@@ -689,12 +749,20 @@ func TestGeneratedSoakJobsAreWired(t *testing.T) {
 		{"tabula-web-require-dev-soak", "tabula-web-development"},
 	} {
 		t.Run(tc.job, func(t *testing.T) {
+			rel := workflowWithJob(t, tc.job)
+			generated := parseWorkflow(t, mustRead(t, rel))
 			env := jobEnvMap(t, generated, tc.job)
 			if got, want := env["DEV_JOB_NAME"], tc.devJob+" / "+callees[0]; got != want {
 				t.Errorf("%s scans DEV_JOB_NAME=%q, want %q — a name that matches nothing makes the gate fail-open forever", tc.job, got, want)
 			}
-			if got, want := env["WORKFLOW_FILE"], "delivery.yaml"; got != want {
-				t.Errorf("%s scans WORKFLOW_FILE=%q, want %q", tc.job, got, want)
+			// Its OWN app's workflow, which is where its development deploy
+			// runs: another app's history holds no such job, and the gate
+			// would fail open on every promotion.
+			if got, want := env["WORKFLOW_FILE"], filepath.Base(rel); got != want {
+				t.Errorf("%s scans WORKFLOW_FILE=%q, want its own workflow %q", tc.job, got, want)
+			}
+			if got, want := env["LEGACY_WORKFLOW_FILE"], legacyWorkflowFile; got != want {
+				t.Errorf("%s LEGACY_WORKFLOW_FILE=%q, want %q — the first promotion after the split would find no development result and fail open", tc.job, got, want)
 			}
 			if env["GH_TOKEN"] == "" {
 				t.Errorf("%s passes no GH_TOKEN — every `gh` call fails and the gate fail-opens", tc.job)
@@ -706,7 +774,7 @@ func TestGeneratedSoakJobsAreWired(t *testing.T) {
 			if perms["actions"] != "read" {
 				t.Errorf("%s permissions = %v, want actions: read (the script's `gh run list` needs it)", tc.job, perms)
 			}
-			block, ok := jobText(mustRead(t, deliveryWorkflowRel), tc.job)
+			block, ok := jobText(mustRead(t, rel), tc.job)
 			if !ok {
 				t.Fatalf("cannot isolate %s", tc.job)
 			}
@@ -736,7 +804,7 @@ func TestGeneratedSoakJobsAreWired(t *testing.T) {
 // published release of every unrelated component (the per-app workflow it came
 // from carried no `if:` because it could not see other components' releases).
 func TestGeneratedChangelogJobPassesDeclaredInputs(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+	generated := parseWorkflow(t, mustRead(t, workflowWithJob(t, "tabula-api-changelog")))
 
 	if got, want := jobScalar(t, generated, "tabula-api-changelog", "uses"), changelogWorkflow; got != want {
 		t.Errorf("tabula-api-changelog calls %q, want %q", got, want)
@@ -784,8 +852,8 @@ const releaseHoldRel = "../../../.github/workflows/release-hold.yaml"
 // TestReleaseHoldWatchesTheGeneratedDevLanes.
 //
 // PROVES: the release-PR hold still fires. It is a `workflow_run` consumer,
-// keyed on the deploy workflow's NAME and on job names inside that run — so
-// moving a development deploy into the generated workflow silently disarms it
+// keyed on each deploy workflow's NAME and on job names inside that run — so
+// moving a development deploy into another generated workflow silently disarms it
 // twice over: the trigger never fires again, and the job it looks for is not
 // called that any more. Nothing goes red when that happens; the interlock just
 // stops existing, which is how it was found dead after Phase 1 moved oauth's
@@ -793,38 +861,53 @@ const releaseHoldRel = "../../../.github/workflows/release-hold.yaml"
 // this test instead of quietly removing the guard.
 func TestReleaseHoldWatchesTheGeneratedDevLanes(t *testing.T) {
 	hold := parseWorkflow(t, mustRead(t, releaseHoldRel))
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-	genSrc := mustRead(t, deliveryWorkflowRel)
 
-	// 1. It must watch the workflow the development deploys now live in.
 	watched := ""
 	for _, l := range hold {
 		if l.key == "workflows" {
 			watched = l.value
 		}
 	}
-	wantName := ""
-	for _, l := range generated {
-		if l.indent == 0 && l.key == "name" {
-			wantName = l.value
+	// Each generated workflow's `name:`, and the job ids it renders.
+	nameOf := map[string]string{}
+	jobsOf := map[string][]string{}
+	for _, rel := range generatedWorkflowRels(t) {
+		lines := parseWorkflow(t, mustRead(t, rel))
+		for _, l := range lines {
+			if l.indent == 0 && l.key == "name" {
+				nameOf[rel] = unquote(l.value)
+			}
 		}
+		if nameOf[rel] == "" {
+			t.Fatalf("%s declares no top-level `name:`", rel)
+		}
+		jobsOf[rel] = jobIDsOf(t, lines)
 	}
-	if wantName == "" {
-		t.Fatal("the generated workflow declares no top-level `name:`")
-	}
-	if !strings.Contains(watched, wantName) {
-		t.Errorf("release-hold.yaml watches workflows: %s, which does not include %q — the workflow_run trigger would never fire and the hold would silently stop existing", watched, wantName)
+	workflowOfJob := func(job string) string {
+		for rel, jobs := range jobsOf {
+			if contains(jobs, job) {
+				return rel
+			}
+		}
+		return ""
 	}
 
-	// 2. Every job name in its matrix must be a real check-run name of the
-	//    generated workflow: "<caller job id> / <callee job id>".
+	// 1. Every matrix entry's dev_job must be a real check-run name,
+	//    "<caller job id> / <callee job id>", of a generated workflow; its
+	//    `source:` must be THAT workflow's name (release-hold.sh skips an
+	//    entry whose source is not the triggering workflow), and the trigger
+	//    must watch it, or the hold never fires for that app.
 	callees := jobIDsOf(t, parseWorkflow(t, mustRead(t, deployCloudRunRel)))
 	if len(callees) != 1 {
 		t.Fatalf("_deploy-cloud-run.yaml declares %v jobs; this test assumes exactly one callee", callees)
 	}
-	genJobs := jobIDsOf(t, generated)
 	covered := map[string]bool{}
+	source := ""
 	for _, l := range hold {
+		if l.key == "source" {
+			source = unquote(l.value)
+			continue
+		}
 		if l.key != "dev_job" {
 			continue
 		}
@@ -836,9 +919,16 @@ func TestReleaseHoldWatchesTheGeneratedDevLanes(t *testing.T) {
 		if callee != callees[0] {
 			t.Errorf("release-hold.yaml dev_job %q names callee %q, but %s declares %q", l.value, callee, deployCloudRunRel, callees[0])
 		}
-		if !contains(genJobs, caller) {
-			t.Errorf("release-hold.yaml dev_job %q names caller job %q, which the generated workflow does not declare (declares %v) — the lookup finds nothing and every release PR sails through unheld", l.value, caller, genJobs)
+		rel := workflowOfJob(caller)
+		if rel == "" {
+			t.Errorf("release-hold.yaml dev_job %q names caller job %q, which no generated workflow declares — the lookup finds nothing and every release PR sails through unheld", l.value, caller)
 			continue
+		}
+		if source != nameOf[rel] {
+			t.Errorf("release-hold.yaml entry for %q has source %q, but %s is named %q — release-hold.sh skips the entry on every run, so the hold never fires", l.value, source, rel, nameOf[rel])
+		}
+		if !strings.Contains(watched, nameOf[rel]) {
+			t.Errorf("release-hold.yaml watches workflows: %s, which does not include %q — the workflow_run trigger never fires for %q and its hold silently stops existing", watched, nameOf[rel], caller)
 		}
 		covered[caller] = true
 	}
@@ -846,17 +936,19 @@ func TestReleaseHoldWatchesTheGeneratedDevLanes(t *testing.T) {
 		t.Fatal("release-hold.yaml declares no dev_job entries — the parser or the file layout drifted")
 	}
 
-	// 3. ...and it must cover EVERY promoting unit. A unit with a soak gate is
+	// 2. ...and it must cover EVERY promoting unit. A unit with a soak gate is
 	//    exactly a unit whose release PR can auto-merge into a promotion, so
 	//    the two halves of the interlock must agree on the same set.
-	for _, job := range genJobs {
-		unit, isSoak := strings.CutSuffix(job, "-require-dev-soak")
-		if !isSoak {
-			continue
-		}
-		devJob := unit + "-" + firstEnvironmentOf(t, genSrc, unit)
-		if !covered[devJob] {
-			t.Errorf("%s promotes (it has a soak gate) but release-hold.yaml has no entry watching %q — its release PR can auto-merge while development is red, which is the gap require-dev-soak.sh exists to close from the other side", unit, devJob)
+	for rel, jobs := range jobsOf {
+		for _, job := range jobs {
+			unit, isSoak := strings.CutSuffix(job, "-require-dev-soak")
+			if !isSoak {
+				continue
+			}
+			devJob := unit + "-" + firstEnvironmentOf(t, mustRead(t, rel), unit)
+			if !covered[devJob] {
+				t.Errorf("%s promotes (it has a soak gate) but release-hold.yaml has no entry watching %q — its release PR can auto-merge while development is red, which is the gap require-dev-soak.sh exists to close from the other side", unit, devJob)
+			}
 		}
 	}
 }
@@ -1185,8 +1277,13 @@ func declaredInputs(t *testing.T, rel string) []string {
 // exactly what deleting the legacy workflows could have broken silently: a
 // `uses:` pointing at a file that no longer exists.
 func TestEveryLocalUseResolvesAndPassesDeclaredInputs(t *testing.T) {
-	src := mustRead(t, deliveryWorkflowRel)
+	eachGeneratedWorkflow(t, func(t *testing.T, _, src string) {
+		everyLocalUseResolves(t, src)
+	})
+}
 
+func everyLocalUseResolves(t *testing.T, src string) {
+	t.Helper()
 	for _, u := range localUses(t, src) {
 		rel := "../../../" + strings.TrimPrefix(u.path, "./")
 		target := rel
@@ -1219,7 +1316,7 @@ func TestEveryLocalUseResolvesAndPassesDeclaredInputs(t *testing.T) {
 // soak gate that is a blocked promotion, and for a publish it is a delivery
 // that silently stopped happening the day someone moved a file.
 func TestEveryRunScriptExists(t *testing.T) {
-	src := mustRead(t, deliveryWorkflowRel)
+	src := allGeneratedSources(t)
 	re := regexp.MustCompile(`(?m)^\s*run: (?:bash |\./)([A-Za-z0-9_./-]+\.sh)\s*$`)
 
 	found := re.FindAllStringSubmatch(src, -1)
@@ -1251,8 +1348,18 @@ func TestEveryRunScriptExists(t *testing.T) {
 // `workflow_run: workflows: [<deleted>]` is not an error GitHub reports — the
 // trigger simply never fires again, which is how the release-hold interlock
 // was found silently dead after Phase 1 moved a lane out from under it.
+// legacyHistoryRead is the one live reference to the deleted shared workflow
+// that is meant to stay: an env var naming it as the run history to read when
+// an app's own workflow has none yet. A deleted workflow's runs stay queryable
+// by file name, so this neither fires nor calls anything.
+var legacyHistoryRead = regexp.MustCompile(`^\s*LEGACY_WORKFLOW(_FILE)?: ` + regexp.QuoteMeta(legacyWorkflowFile) + `\s*$`)
+
 func TestDeletedLegacyWorkflowsAreGoneAndUnreferenced(t *testing.T) {
 	deleted := []string{
+		// The shared workflow every app delivered through before the per-app
+		// split. Its run HISTORY is still read, by name, as the fallback for
+		// an app workflow with none of its own yet (legacyHistoryRead below).
+		legacyWorkflowFile,
 		"oauth-user-inspector-deploy.yaml",
 		"tabula-deploy.yaml",
 		"tabula-dev-latest.yaml",
@@ -1301,6 +1408,9 @@ func TestDeletedLegacyWorkflowsAreGoneAndUnreferenced(t *testing.T) {
 				continue
 			}
 			for _, name := range deleted {
+				if name == legacyWorkflowFile && legacyHistoryRead.MatchString(line) {
+					continue
+				}
 				if strings.Contains(line, name) {
 					t.Errorf(".github/workflows/%s:%d actively references the deleted workflow %q — that trigger never fires, or that call fails the run at startup:\n  %s", e.Name(), i+1, name, strings.TrimSpace(line))
 				}
@@ -1319,7 +1429,10 @@ func TestDeletedLegacyWorkflowsAreGoneAndUnreferenced(t *testing.T) {
 // expanding a rung that is not about to be served is #1794's shape against a
 // stack whose force-replace deletes the live OIDC client.
 func TestGeneratedCompanionsCallTheirWorkhorse(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+	// The companions and the consumer they expand for render into ONE
+	// workflow (groupByApp): a companion job chained behind another
+	// workflow's deploy could not be expressed at all.
+	generated := parseWorkflow(t, mustRead(t, workflowWithJob(t, "zitadel-apps-development")))
 	spec, ok := companionWorkflows["zitadel-apps"]
 	if !ok {
 		t.Fatal("no zitadel-apps companion is registered — this guard is checking nothing")
@@ -1371,10 +1484,9 @@ func TestGeneratedCompanionsCallTheirWorkhorse(t *testing.T) {
 // app pattern would apply as the wrong identity (or fail at startup on a
 // non-existent Environment).
 func TestReusableRungsPassWhatTheCalleeDeclares(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
 	for _, u := range b2Units(t, renderReusable) {
 		t.Run(u.Name, func(t *testing.T) {
+			generated := parseWorkflow(t, mustRead(t, workflowWithJob(t, u.Name+"-"+u.Environments[0])))
 			spec, ok := reusableWorkflows[u.Name]
 			if !ok {
 				t.Fatalf("unit %q declares render=reusable but no workflow is registered", u.Name)
@@ -1420,7 +1532,7 @@ func TestReusableRungsPassWhatTheCalleeDeclares(t *testing.T) {
 // its `run` named a genrule that `bazel run` cannot execute — the last unit
 // where the delivered thing and the break-glass thing were different code.
 func TestPublishersAreOneScriptEach(t *testing.T) {
-	generated := mustRead(t, deliveryWorkflowRel)
+	generated := allGeneratedSources(t)
 	units, err := loadUnits(fixtureUnits)
 	if err != nil {
 		t.Fatalf("loadUnits: %v", err)
@@ -1490,13 +1602,13 @@ func TestPublishersAreOneScriptEach(t *testing.T) {
 // the pushed one anyway, so the veto could never fire.
 func TestPreflightRendersSkipIfUnchanged(t *testing.T) {
 	units := loadFixtures(t)
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
 
 	declared := 0
 	for _, u := range units {
 		if u.Kind != kindCloudRun {
 			continue
 		}
+		generated := parseWorkflow(t, mustRead(t, workflowWithJob(t, u.Name+"-"+u.Environments[0])))
 		for _, env := range u.Environments {
 			with := jobWith(t, generated, u.Name+"-"+env)
 			got, present := with["skip-if-unchanged"]

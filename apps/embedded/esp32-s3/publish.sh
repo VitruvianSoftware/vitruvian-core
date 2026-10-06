@@ -22,7 +22,7 @@
 # Build, stamp and publish the ESP32-S3 firmware bundle to a GitHub Release.
 #
 # ONE script, TWO triggers (delivery-orchestrator spec §4.1): the generated
-# .github/workflows/delivery.yaml runs it for the `esp32-s3` unit, and the
+# .github/workflows/delivery-esp32-s3.yaml runs it for the `esp32-s3` unit, and the
 # break-glass path is `bazel run //iot/esp32-s3:publish`. The rung selects the
 # grade:
 #

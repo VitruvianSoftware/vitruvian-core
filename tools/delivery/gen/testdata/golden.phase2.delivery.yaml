@@ -95,7 +95,7 @@
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
-name: delivery
+name: delivery-fixture
 
 on:
   push:
@@ -129,10 +129,10 @@ on:
         options:
           - development
           - nonproduction
-          - production
           - publish
           - beta
           - shared
+          - production
       allow-unsoaked:
         description: Promote even if the unit's development deploy is RED (logged loudly; tools/ci/require-dev-soak.sh)
         type: boolean
@@ -156,9 +156,16 @@ permissions:
   contents: read
   actions: read
 
-# State-mutation posture: one constant group, never cancel. Two delivery
-# runs must not race the same live environment, and a queued run must not be
-# cancelled mid-rollout.
+# State-mutation posture: one group per app, never cancel. Two delivery
+# runs of one app must not race the same live environment, and a queued run
+# must not be cancelled mid-rollout.
+#
+# ONE WORKFLOW PER APP, so apps never share a queue. The group keys on
+# github.workflow, which is this file's own name, so each app's
+# delivery-<app>.yaml is its own lane: a run of one app waiting on an
+# Environment approval holds back only that app's later pushes. When every
+# app shared one delivery.yaml, one approval-gated run held every app's
+# push lane, and the pushes queued behind it were evicted one after another.
 #
 # WHY WORKFLOW-LEVEL AND NOT PER-UNIT (spec §4.3 asks for
 # `delivery-<unit>-<env>` groups): every fan-out job below is a `uses:`
@@ -166,11 +173,10 @@ permissions:
 # `concurrency:` on the calling jobs in tabula-deploy.yaml and every
 # dispatch failed INSTANTLY with no runner assigned, reproducibly, even
 # with a static expression-free group string; workflow-level was the only
-# placement that worked. A constant group here is strictly STRONGER
-# serialization than per-unit groups (it also serializes unrelated units,
-# which at this scale costs nothing) — it can never let two runs touch one
-# environment at once. Revisit only with a live experiment, never by
-# reasoning from the docs.
+# placement that worked. A per-workflow group is strictly STRONGER
+# serialization than per-unit groups for the units inside one app — it can
+# never let two runs touch one environment at once. Revisit only with a
+# live experiment, never by reasoning from the docs.
 #
 # KNOWN CONSEQUENCE (#1351), MITIGATED FOR PUSHES: a coalescing group
 # means GitHub EVICTS an already-PENDING run when a newer one queues, and
@@ -252,18 +258,22 @@ jobs:
         id: durable-base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: delivery.yaml
+          WORKFLOW_FILE: delivery-fixture.yaml
+          LEGACY_WORKFLOW_FILE: delivery.yaml
         # Reads THIS workflow's last successful push run and uses its head
-        # sha as the diff base, so a run evicted by the constant
+        # sha as the diff base, so a run evicted by this app's
         # concurrency group above does not take its commit range to the
-        # grave. Always exits 0: an empty base_sha means "could not
-        # determine", and the step below falls back.
+        # grave (until the app has one, the shared delivery.yaml's, which
+        # delivered it before the per-app split). Always exits 0: an empty
+        # base_sha means "could not determine", and the step below falls
+        # back.
         run: bash tools/ci/resolve-deploy-base.sh
       - name: Resolve per-unit durable bases (#1842)
         id: unit-bases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: delivery.yaml
+          WORKFLOW_FILE: delivery-fixture.yaml
+          LEGACY_WORKFLOW_FILE: delivery.yaml
         # Refines the single base above, which is a RUN-level verdict: a run
         # whose delivery jobs were all skipped still concludes success and
         # still becomes the base, so a wrongly-skipped unit's commits fall
@@ -288,6 +298,10 @@ jobs:
           # The affected engine may build/query through the shared remote
           # cache; absent (e.g. a fork) it degrades to a local build.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          # The units THIS workflow delivers. The engine judges only these, so
+          # one app's workflow never pays for another app's target-determinator
+          # sweep. A name the engine cannot find fails the manifest open.
+          ORCHESTRATE_UNITS: charts esp32-s3 oauth-user-inspector oauth-user-inspector-identity tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@v7
@@ -604,7 +618,8 @@ jobs:
           # `deploy`. A name that matches nothing makes the gate fail-open
           # forever, i.e. visible and inert, which its own header calls
           # worse than no gate at all.
-          WORKFLOW_FILE: delivery.yaml
+          WORKFLOW_FILE: delivery-fixture.yaml
+          LEGACY_WORKFLOW_FILE: delivery.yaml
           DEV_JOB_NAME: oauth-user-inspector-development / deploy
           # Break-glass override, from the dispatch form first and the repo
           # variable second (an unset variable is falsy, so this ends at
@@ -972,7 +987,8 @@ jobs:
           # `deploy`. A name that matches nothing makes the gate fail-open
           # forever, i.e. visible and inert, which its own header calls
           # worse than no gate at all.
-          WORKFLOW_FILE: delivery.yaml
+          WORKFLOW_FILE: delivery-fixture.yaml
+          LEGACY_WORKFLOW_FILE: delivery.yaml
           DEV_JOB_NAME: tabula-api-development / deploy
           # Break-glass override, from the dispatch form first and the repo
           # variable second (an unset variable is falsy, so this ends at
@@ -1284,7 +1300,8 @@ jobs:
           # `deploy`. A name that matches nothing makes the gate fail-open
           # forever, i.e. visible and inert, which its own header calls
           # worse than no gate at all.
-          WORKFLOW_FILE: delivery.yaml
+          WORKFLOW_FILE: delivery-fixture.yaml
+          LEGACY_WORKFLOW_FILE: delivery.yaml
           DEV_JOB_NAME: tabula-web-development / deploy
           # Break-glass override, from the dispatch form first and the repo
           # variable second (an unset variable is falsy, so this ends at

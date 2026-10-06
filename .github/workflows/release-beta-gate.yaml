@@ -33,10 +33,11 @@
 # auto-merge is enabled here only once `vitruvian-beta` has SUCCEEDED for its
 # code.
 #
-# WHEN IT EVALUATES. On every push `delivery` run that completes on main (the
-# beta's result arrives), and on every release PR open/update (release-please
-# rebuilt it on newer code, so an earlier green beta no longer counts and
-# auto-merge is turned back off). workflow_dispatch re-runs it by hand.
+# WHEN IT EVALUATES. On every push `delivery-vitruvian` run that completes on
+# main (the beta's result arrives), and on every release PR open/update
+# (release-please rebuilt it on newer code, so an earlier green beta no longer
+# counts and auto-merge is turned back off). workflow_dispatch re-runs it by
+# hand.
 #
 # TOKEN CHOICE. Same as release-hold.yaml: auto-merge is enabled with the
 # vitruvian-copybara-sync App token, the bypass actor on the merge queue's
@@ -46,8 +47,8 @@ name: release-beta-gate
 
 on:
   workflow_run:
-    # Matched by workflow NAME: the generated delivery workflow.
-    workflows: [delivery]
+    # Matched by workflow NAME: vitruvian's generated delivery workflow.
+    workflows: [delivery-vitruvian]
     types: [completed]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -99,5 +100,8 @@ jobs:
           COMPONENT: vitruvian
           CODE_PATH: apps/desktop/vitruvian
           BETA_JOB: vitruvian-beta
-          WORKFLOW: delivery.yaml
+          WORKFLOW: delivery-vitruvian.yaml
+          # vitruvian delivered through the shared delivery.yaml before the
+          # per-app split; code that workflow built is judged by its runs.
+          LEGACY_WORKFLOW: delivery.yaml
         run: bash tools/ci/release-beta-gate.sh

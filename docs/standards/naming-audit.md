@@ -606,10 +606,10 @@ The Tabula system (`tabula/api/prisma/schema.prisma` and `tabula/api/openapi.yam
 
 | Workflow / Action File | Current Output Key | Standard Output Key | Context |
 |---|---|---|---|
-| `.github/workflows/delivery.yaml` | `affected_charts` | `affected-charts` | Orchestration matrix output |
-| `.github/workflows/delivery.yaml` | `affected_tabula_api` | `affected-tabula-api` | Orchestration matrix output |
-| `.github/workflows/delivery.yaml` | `affected_oauth_user_inspector` | `affected-oauth-user-inspector` | Orchestration matrix output |
-| `.github/workflows/delivery.yaml` | `affected_zitadel_apps` | `affected-zitadel-apps` | Orchestration matrix output |
+| `.github/workflows/delivery-charts.yaml` | `affected_charts` | `affected-charts` | Orchestration matrix output |
+| `.github/workflows/delivery-tabula.yaml` | `affected_tabula_api` | `affected-tabula-api` | Orchestration matrix output |
+| `.github/workflows/delivery-oauth-user-inspector.yaml` | `affected_oauth_user_inspector` | `affected-oauth-user-inspector` | Orchestration matrix output |
+| `.github/workflows/delivery-oauth-user-inspector.yaml` | `affected_zitadel_apps` | `affected-zitadel-apps` | Orchestration matrix output |
 | `.github/workflows/_foundation-release-please.yaml` | `release_created` | `release-created` | Release output |
 | `.github/actions/gcp-auth/action.yml` | `access_token` | `access-token` | Auth composite action |
 | `.github/actions/pulumi-run-captured/action.yml` | `exit_code` | `exit-code` | Execution action (sits next to `out-file`) |

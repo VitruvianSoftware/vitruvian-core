@@ -41,6 +41,7 @@ def delivery(
         run,
         environments,
         github_environment,
+        app,
         preview_enabled = True,
         preview_database = "",
         preview_compute = "cloud-run",
@@ -71,6 +72,12 @@ def delivery(
       run: the bazel run target that performs the delivery (the break-glass target).
       environments: ordered ladder, e.g. ["development", "nonproduction", "production"].
       github_environment: GitHub Environment name pattern; "{env}" is substituted.
+      app: the app this unit delivers, e.g. "tabula". Every app gets its own
+        generated workflow, .github/workflows/delivery-<app>.yaml, and so its
+        own queue: a run waiting on one app's Environment approval never holds
+        back another app. Units of ONE app share that workflow and its queue,
+        and two couplings require it (the generator refuses otherwise): units
+        consuming one shared_build, and a unit and its companions.
       build: optional BAZEL target that must build before delivery ("" = none).
       build_context: Docker build context directory for an app whose image is
         NOT a Bazel target (build = ""), e.g. "oauth-user-inspector/". The
@@ -173,6 +180,8 @@ def delivery(
     """
     if kind not in ("cloud-run", "pulumi", "publish"):
         fail("delivery(%s): unknown kind %r" % (name, kind))
+    if not app:
+        fail("delivery(%s): app must name the app this unit delivers (its workflow is .github/workflows/delivery-<app>.yaml)" % name)
     if not environments:
         fail("delivery(%s): environments must be a non-empty ladder" % name)
     if promotion and not promotion.startswith("release:"):
@@ -263,6 +272,7 @@ def delivery(
     meta = {
         "schema": 1,
         "name": name,
+        "app": app,
         "kind": kind,
         "run": run,
         "build": build,

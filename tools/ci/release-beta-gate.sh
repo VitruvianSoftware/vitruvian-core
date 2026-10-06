@@ -33,16 +33,23 @@
 #   COMPONENT   release-please component name, e.g. vitruvian
 #   CODE_PATH   the component's directory, e.g. apps/desktop/vitruvian
 #   BETA_JOB    exact delivery job name that must succeed, e.g. vitruvian-beta
-#   WORKFLOW    workflow file that runs BETA_JOB on push, e.g. delivery.yaml
+#   WORKFLOW    workflow file that runs BETA_JOB on push, e.g.
+#               delivery-vitruvian.yaml
+#   LEGACY_WORKFLOW
+#               optional: the workflow that ran BETA_JOB before WORKFLOW
+#               existed (delivery.yaml, before the per-app split). Read the
+#               same way, only when WORKFLOW has neither decided nor started
+#               BETA_JOB for the code, so a release of code built before the
+#               split is judged by the run that built it.
 #   GH_TOKEN    token gh authenticates as (pull-requests: write, actions: read)
 #
 # Which run counts: a release-please PR is ONE commit on top of the main commit
 # it releases, so that commit's first parent is what the release ships. The
 # newest commit at or before it that touched CODE_PATH is the code. The beta
 # that built it is not always in that commit's own run: push runs of WORKFLOW
-# share one concurrency group, so a run still queued when a newer push lands is
-# cancelled, and the newer run delivers its change (the orchestrator diffs from
-# its last successful run). So any push run whose commit has the same CODE_PATH
+# share one concurrency group (the app's own), so a run still queued when a
+# newer push lands is cancelled, and the newer run delivers its change (the
+# orchestrator diffs from its last successful run). So any push run whose commit has the same CODE_PATH
 # history counts. They are read newest first (the latest 20, then the code
 # commit's own runs by sha if it is older than that), and the newest one whose
 # BETA_JOB finished success or failure decides. A cancelled, skipped or
@@ -140,45 +147,67 @@ decide() {
   return 1
 }
 
-# 1. The newest push runs, newest first, back to the code commit's own run.
-#    Coalescing only ever hands a change to the next run or two, so 20 is
-#    plenty; an older code commit is found by sha below.
-runs="$(gh api "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?event=push&branch=main&per_page=20" \
-  --jq '.workflow_runs[] | "\(.id)\t\(.head_sha)"' 2>&1)" ||
-  indeterminate "could not list push ${WORKFLOW} runs: ${runs}"
-# Read after the runs, so no listed run is newer than this answer. When main
-# has no CODE_PATH change after CODE_SHA, every run newer than the code
-# commit's own built the same code, and no run needs its own lookup.
-LATEST_CODE="$(gh api "repos/${REPO}/commits?sha=main&path=${CODE_PATH}&per_page=1" \
-  --jq '.[0].sha // empty' 2>&1)" ||
-  indeterminate "could not find the last ${CODE_PATH} commit on main: ${LATEST_CODE}"
-SEEN_OWN=""
-while IFS=$'\t' read -r id sha; do
-  [ -n "$id" ] || continue
-  if [ "$sha" = "$CODE_SHA" ]; then
-    SEEN_OWN=1
-  elif [ "$LATEST_CODE" != "$CODE_SHA" ]; then
-    # main has moved past this release PR's code: only runs whose commit still
-    # has it count (a newer change's run is not the code this release ships).
-    at="$(gh api "repos/${REPO}/commits?sha=${sha}&path=${CODE_PATH}&per_page=1" \
-      --jq '.[0].sha // empty' 2>&1)" ||
-      indeterminate "could not find the last ${CODE_PATH} commit at ${sha}: ${at}"
-    [ "$at" = "$CODE_SHA" ] || continue
-  fi
-  decide "$id" && break
-  # Nothing older than the code commit's own run built this code.
-  [ -z "$SEEN_OWN" ] || break
-done <<<"$runs"
+LATEST_CODE=""
+LATEST_READ=""
 
-# 2. A release PR can outlive that window (held, or waiting on CI while main
-#    moves on). Its code commit's own runs are always found by sha.
-if [ -z "$CONCLUSION" ] && [ -z "$SEEN_OWN" ]; then
-  own="$(gh api "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?head_sha=${CODE_SHA}&event=push&per_page=10" \
-    --jq '.workflow_runs[].id' 2>&1)" ||
-    indeterminate "could not list push ${WORKFLOW} runs for ${CODE_SHA}: ${own}"
-  for id in $own; do
+# search <workflow>: steps 1 and 2 below against that workflow's push runs.
+# Sets RUN_ID/CONCLUSION when a run decided, WAITING_ON when one is running.
+search() {
+  local wf="$1" runs id sha at own seen_own=""
+  # 1. The newest push runs, newest first, back to the code commit's own run.
+  #    Coalescing only ever hands a change to the next run or two, so 20 is
+  #    plenty; an older code commit is found by sha below.
+  runs="$(gh api "repos/${REPO}/actions/workflows/${wf}/runs?event=push&branch=main&per_page=20" \
+    --jq '.workflow_runs[] | "\(.id)\t\(.head_sha)"' 2>&1)" ||
+    indeterminate "could not list push ${wf} runs: ${runs}"
+  # Read after the first runs listing, so no listed run is newer than this
+  # answer. When main has no CODE_PATH change after CODE_SHA, every run newer
+  # than the code commit's own built the same code, and no run needs its own
+  # lookup.
+  if [ -z "$LATEST_READ" ]; then
+    LATEST_CODE="$(gh api "repos/${REPO}/commits?sha=main&path=${CODE_PATH}&per_page=1" \
+      --jq '.[0].sha // empty' 2>&1)" ||
+      indeterminate "could not find the last ${CODE_PATH} commit on main: ${LATEST_CODE}"
+    LATEST_READ=1
+  fi
+  while IFS=$'\t' read -r id sha; do
+    [ -n "$id" ] || continue
+    if [ "$sha" = "$CODE_SHA" ]; then
+      seen_own=1
+    elif [ "$LATEST_CODE" != "$CODE_SHA" ]; then
+      # main has moved past this release PR's code: only runs whose commit
+      # still has it count (a newer change's run is not the code this release
+      # ships).
+      at="$(gh api "repos/${REPO}/commits?sha=${sha}&path=${CODE_PATH}&per_page=1" \
+        --jq '.[0].sha // empty' 2>&1)" ||
+        indeterminate "could not find the last ${CODE_PATH} commit at ${sha}: ${at}"
+      [ "$at" = "$CODE_SHA" ] || continue
+    fi
     decide "$id" && break
-  done
+    # Nothing older than the code commit's own run built this code.
+    [ -z "$seen_own" ] || break
+  done <<<"$runs"
+
+  # 2. A release PR can outlive that window (held, or waiting on CI while main
+  #    moves on). Its code commit's own runs are always found by sha.
+  if [ -z "$CONCLUSION" ] && [ -z "$seen_own" ]; then
+    own="$(gh api "repos/${REPO}/actions/workflows/${wf}/runs?head_sha=${CODE_SHA}&event=push&per_page=10" \
+      --jq '.workflow_runs[].id' 2>&1)" ||
+      indeterminate "could not list push ${wf} runs for ${CODE_SHA}: ${own}"
+    for id in $own; do
+      decide "$id" && break
+    done
+  fi
+}
+
+search "$WORKFLOW"
+# 3. Code built before WORKFLOW existed: the workflow that built it decides.
+#    Not while WORKFLOW is still running the beta for this code — that newer
+#    result is the one to wait for.
+if [ -z "$CONCLUSION" ] && [ -z "$WAITING_ON" ] && [ -n "${LEGACY_WORKFLOW:-}" ] &&
+   [ "$LEGACY_WORKFLOW" != "$WORKFLOW" ]; then
+  echo "No push ${WORKFLOW} run has run ${BETA_JOB} for ${CODE_SHA}; reading ${LEGACY_WORKFLOW}, which ran it before ${WORKFLOW} existed."
+  search "$LEGACY_WORKFLOW"
 fi
 
 case "$CONCLUSION" in

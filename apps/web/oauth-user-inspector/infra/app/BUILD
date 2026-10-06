@@ -47,7 +47,7 @@ cloud_run_deploy(
 )
 
 # Delivery unit. PHASE 2 (spec §6): the generated
-# .github/workflows/delivery.yaml now owns this unit's ENTIRE ladder —
+# .github/workflows/delivery-oauth-user-inspector.yaml now owns this unit's ENTIRE ladder —
 # development on an affected push, nonproduction→production on a published
 # `oauth-user-inspector-v*` release, each rung keeping its zitadel-apps
 # companion and its dev-soak interlock. oauth-user-inspector-deploy.yaml has
@@ -57,6 +57,7 @@ cloud_run_deploy(
 # legacy gate for as long as both files exist.
 delivery(
     name = "oauth-user-inspector",
+    app = "oauth-user-inspector",
     build = "",  # standalone Docker Buildx build; no bazel image target
     # How the image is produced. These two are the ONLY parts of the build the
     # declaration owns; the region and project come from the build GitHub

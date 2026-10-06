@@ -87,9 +87,10 @@ sh_binary(
 # Declared here because this package owns the artifact. The release-please
 # machinery that cuts the production tag lives in
 # .github/workflows/iot-esp32-s3-release.yaml (release machinery, not
-# delivery -- the same split as tabula-release.yaml vs delivery.yaml).
+# delivery -- the same split as tabula-release.yaml vs delivery-tabula.yaml).
 delivery(
     name = "esp32-s3",
+    app = "esp32-s3",
     environments = [
         "beta",
         "production",

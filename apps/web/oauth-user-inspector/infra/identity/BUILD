@@ -31,6 +31,7 @@ pulumi_project(
 # github_environment is the foundation pattern rather than the app one.
 delivery(
     name = "oauth-user-inspector-identity",
+    app = "oauth-user-inspector",
     environments = [
         "development",
         "nonproduction",

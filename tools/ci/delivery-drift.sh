@@ -48,16 +48,25 @@
 # artifact against the intended one needs per-environment cloud credentials and
 # is the stronger v2; this v1 needs no cloud auth at all.
 #
+# WHICH HISTORY: each app delivers through its own generated workflow,
+# .github/workflows/delivery-<app>.yaml, named by the unit's `app`. Before the
+# per-app split every unit delivered through one delivery.yaml, so a unit with
+# no success in its own workflow yet is looked up there (LEGACY_WORKFLOW_FILE)
+# rather than reported UNKNOWN for a delivery that did happen.
+#
 # Exit codes: 0 = no drift (or only in-flight), 1 = drift found, 2 = usage/setup
-# error. Env: REPO (owner/name), WORKFLOW_FILE (default delivery.yaml),
-# BRANCH (default main), RUN_SCAN_LIMIT (default 60),
-# DRIFT_IGNORE_IN_FLIGHT (set to any value to print the per-unit verdicts even
-# while a run is converging -- for an operator investigating, never for the
-# scheduled job, which would then report drift on every normal deploy).
+# error. Env: REPO (owner/name), WORKFLOW_FILE (overrides every unit's
+# delivery-<app>.yaml with one workflow), LEGACY_WORKFLOW_FILE (default
+# delivery.yaml; empty disables the fallback), BRANCH (default main),
+# RUN_SCAN_LIMIT (default 250), DRIFT_IGNORE_IN_FLIGHT (set to any value to
+# print the per-unit verdicts even while a run is converging -- for an operator
+# investigating, never for the scheduled job, which would then report drift on
+# every normal deploy).
 set -euo pipefail
 
 REPO="${REPO:-VitruvianSoftware/vitruvian-core}"
-WORKFLOW_FILE="${WORKFLOW_FILE:-delivery.yaml}"
+WORKFLOW_FILE="${WORKFLOW_FILE:-}"
+LEGACY_WORKFLOW_FILE="${LEGACY_WORKFLOW_FILE-delivery.yaml}"
 BRANCH="${BRANCH:-main}"
 # 60 was too small: three units (oauth-user-inspector-identity,
 # tabula-build-stack, tabula-identity) deploy rarely enough that their last real
@@ -77,20 +86,7 @@ command -v "$GH" >/dev/null 2>&1 || {
     exit 2
 }
 
-# --- 1. in-flight guard -------------------------------------------------------
-# A queued/running/waiting delivery run means the fleet is legitimately mid-
-# convergence; anything "behind" is behind on purpose. Reporting drift then
-# would train the reader to ignore this check, which is worse than not having
-# it. Note `waiting` counts: a run parked on an approval gate WILL deliver.
-IN_FLIGHT="$("$GH" run list --repo "$REPO" --workflow "$WORKFLOW_FILE" --branch "$BRANCH" \
-    --limit 20 --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting")] | length' 2>/dev/null || echo 0)"
-if [ "${IN_FLIGHT:-0}" -gt 0 ] && [ -z "${DRIFT_IGNORE_IN_FLIGHT:-}" ]; then
-    log "${IN_FLIGHT} delivery run(s) in flight -- the fleet is mid-convergence, not drifted"
-    echo "IN_FLIGHT"
-    exit 0
-fi
-
-# --- 2. discover the declared units -------------------------------------------
+# --- 1. discover the declared units -------------------------------------------
 # Identical query + metadata path convention to the orchestrator, so the two
 # always see the same set of units.
 LABELS="$("$BAZEL" query "$DELIVERY_QUERY" --output=label 2>/dev/null || true)"
@@ -105,11 +101,39 @@ fi
 }
 BIN_DIR="$("$BAZEL" info bazel-bin 2>/dev/null)"
 
+# --- 2. in-flight guard, per workflow -----------------------------------------
+# A queued/running/waiting run of a unit's workflow means that app is
+# legitimately mid-convergence; anything "behind" is behind on purpose.
+# Reporting drift then would train the reader to ignore this check, which is
+# worse than not having it. Note `waiting` counts: a run parked on an approval
+# gate WILL deliver. Per workflow, not global: apps deliver independently, and
+# one app parked on an approval for a day must not blind the check to the rest.
+in_flight() { # <workflow-file> -> count of queued/running/waiting runs
+    "$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
+        --limit 20 --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting")] | length' 2>/dev/null || echo 0
+}
+
+# last_delivered <workflow-file> <job-prefix> -> head sha of the newest run in
+# which a job named <job-prefix>* succeeded, or nothing.
+last_delivered() {
+    "$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
+        --limit "$RUN_SCAN_LIMIT" --json databaseId,headSha,createdAt \
+        --jq '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null |
+        while read -r rid rsha; do
+            if "$GH" api "repos/${REPO}/actions/runs/${rid}/jobs?per_page=100" --paginate \
+                --jq ".jobs[] | select((.name | startswith(\"${2}\")) and .conclusion == \"success\") | .name" 2>/dev/null | grep -q .; then
+                echo "$rsha"
+                break
+            fi
+        done || true
+}
+
 # --- 3. per-unit check --------------------------------------------------------
 HEAD_SHA="$(git rev-parse HEAD)"
 drift_found=0
 unknown_units=""
 checked=0
+in_flight_units=""
 
 for label in $LABELS; do
     # //pkg/sub:x.delivery_unit -> pkg/sub/x.delivery.json
@@ -127,27 +151,38 @@ for label in $LABELS; do
 
     name="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$meta")"
     first_env="$(python3 -c 'import json,sys; e=json.load(open(sys.argv[1])).get("environments") or [""]; print(e[0])' "$meta")"
+    app="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("app") or "")' "$meta")"
     [ -n "$name" ] || continue
+
+    wf="${WORKFLOW_FILE:-${app:+delivery-${app}.yaml}}"
+    if [ -z "$wf" ]; then
+        log "${name}: declares no app, so no workflow delivers it -- UNKNOWN"
+        drift_found=1
+        continue
+    fi
+    n_in_flight="$(in_flight "$wf")"
+    if [ "${n_in_flight:-0}" -gt 0 ] && [ -z "${DRIFT_IGNORE_IN_FLIGHT:-}" ]; then
+        log "${name}: ${n_in_flight} run(s) of ${wf} in flight -- mid-convergence, not checked"
+        in_flight_units="${in_flight_units}${in_flight_units:+, }${name}"
+        continue
+    fi
 
     # The generated job name for a unit's first rung. Cloud Run units call a
     # reusable workflow, so their job shows as "<unit>-<env> / <inner job>";
     # match on the prefix to cover both shapes.
     job_prefix="${name}-${first_env}"
 
-    last_sha="$("$GH" run list --repo "$REPO" --workflow "$WORKFLOW_FILE" --branch "$BRANCH" \
-        --limit "$RUN_SCAN_LIMIT" --json databaseId,headSha,createdAt \
-        --jq '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null |
-        while read -r rid rsha; do
-            if "$GH" api "repos/${REPO}/actions/runs/${rid}/jobs?per_page=100" --paginate \
-                --jq ".jobs[] | select((.name | startswith(\"${job_prefix}\")) and .conclusion == \"success\") | .name" 2>/dev/null | grep -q .; then
-                echo "$rsha"
-                break
-            fi
-        done || true)"
+    last_sha="$(last_delivered "$wf" "$job_prefix")"
+    searched="$wf"
+    if [ -z "$last_sha" ] && [ -n "$LEGACY_WORKFLOW_FILE" ] && [ "$LEGACY_WORKFLOW_FILE" != "$wf" ]; then
+        last_sha="$(last_delivered "$LEGACY_WORKFLOW_FILE" "$job_prefix")"
+        searched="${wf} or ${LEGACY_WORKFLOW_FILE}"
+        [ -z "$last_sha" ] || log "${name}: no delivery in ${wf} yet; last delivered by ${LEGACY_WORKFLOW_FILE}"
+    fi
 
     checked=$((checked + 1))
     if [ -z "$last_sha" ]; then
-        log "${name}: no successful ${first_env} delivery in the last ${RUN_SCAN_LIMIT} runs -- UNKNOWN"
+        log "${name}: no successful ${first_env} delivery in the last ${RUN_SCAN_LIMIT} runs of ${searched} -- UNKNOWN"
         drift_found=1
         continue
     fi
@@ -231,9 +266,14 @@ done
 
 log "checked ${checked} unit(s)"
 [ -z "$unknown_units" ] || log "NOT CHECKED (engine could not determine): ${unknown_units}"
+[ -z "$in_flight_units" ] || log "NOT CHECKED (their workflow is mid-convergence): ${in_flight_units}"
 if [ "$drift_found" -ne 0 ]; then
     echo "DRIFT"
     exit 1
+fi
+if [ "$checked" -eq 0 ] && [ -n "$in_flight_units" ]; then
+    echo "IN_FLIGHT"
+    exit 0
 fi
 echo "OK"
 exit 0

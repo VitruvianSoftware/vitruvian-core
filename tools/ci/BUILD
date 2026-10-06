@@ -23,9 +23,9 @@
 # visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-# `bazel run //tools/ci:gen` — regenerate the generated delivery workflow
-# (.github/workflows/delivery.yaml). Alias kept at the spec's name; the
-# implementation lives in //tools/delivery/gen.
+# `bazel run //tools/ci:gen` — regenerate the generated delivery workflows
+# (.github/workflows/delivery-<app>.yaml, one per app). Alias kept at the
+# spec's name; the implementation lives in //tools/delivery/gen.
 alias(
     name = "gen",
     actual = "//tools/delivery/gen",

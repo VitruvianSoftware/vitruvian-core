@@ -121,7 +121,7 @@ flowchart TD
         SHARED_TOOL["Shared tooling modified<br/>(tools/deploy/cloud-run.sh)"]
     end
 
-    subgraph Orchestrator["Delivery Orchestrator (.github/workflows/delivery.yaml)"]
+    subgraph Orchestrator["Delivery Orchestrator (.github/workflows/delivery-APP.yaml, one per app)"]
         EVAL{"Path match & graph evaluation<br/>(tools/ci/deploy-affected.sh)"}
     end
 

@@ -21,7 +21,7 @@
 
 # resolve-deploy-base.sh — find the durable diff base for a push-triggered
 # deploy lane whose concurrency group intentionally COALESCES queued pushes
-# (tabula-deploy, tabula-dev-latest, oauth-user-inspector-deploy; see #1351).
+# (each app's generated .github/workflows/delivery-<app>.yaml; see #1351).
 #
 # WHY NOT github.event.before: it is the tip of the PREVIOUS push, regardless
 # of whether that push's own run ever completed. GitHub evicts an
@@ -73,7 +73,15 @@
 #                   GITHUB_TOKEN is sufficient).
 #   REPO            owner/repo (defaults to GITHUB_REPOSITORY).
 #   WORKFLOW_FILE   the calling workflow's own filename, e.g.
-#                   delivery.yaml (required).
+#                   delivery-tabula.yaml (required).
+#   LEGACY_WORKFLOW_FILE
+#                   optional: the workflow that delivered these units BEFORE
+#                   WORKFLOW_FILE existed (delivery.yaml, before the per-app
+#                   split). Consulted only when WORKFLOW_FILE has no successful
+#                   push run yet, so a new workflow's first run re-diffs what
+#                   the old one never delivered instead of falling back to
+#                   github.event.before. Retires itself once WORKFLOW_FILE has
+#                   a success.
 #   BRANCH          defaults to main.
 #   GH_BIN          test hook (default: gh).
 #
@@ -103,8 +111,12 @@ fi
 # branch. `-s success` filters on conclusion (gh's --status flag accepts
 # conclusion values too); `-L 1` + `--json headSha` keeps the response to
 # exactly the field this script needs.
-result="$("${GH_BIN}" run list --repo "${REPO}" -w "${WORKFLOW_FILE}" -b "${BRANCH}" \
-  -e push -s success -L 1 --json headSha --jq '.[0].headSha // empty' 2>&1)"
+last_success() { # <workflow-file>
+  "${GH_BIN}" run list --repo "${REPO}" -w "${1}" -b "${BRANCH}" \
+    -e push -s success -L 1 --json headSha --jq '.[0].headSha // empty' 2>&1
+}
+
+result="$(last_success "${WORKFLOW_FILE}")"
 rc=$?
 
 if [ "${rc}" -ne 0 ]; then
@@ -112,8 +124,22 @@ if [ "${rc}" -ne 0 ]; then
   emit "" "gh run list failed (rc=${rc}): ${result}"
 fi
 
-if [ -z "${result}" ]; then
-  emit "" "no prior successful push-triggered run of ${WORKFLOW_FILE} found (first run, or every prior run failed/was evicted)"
+if [ -n "${result}" ]; then
+  emit "${result}" "last successful push-triggered run of ${WORKFLOW_FILE}"
 fi
 
-emit "${result}" "last successful push-triggered run of ${WORKFLOW_FILE}"
+# No success of its own yet: a workflow that took these units over from
+# LEGACY_WORKFLOW_FILE resumes from where that one last delivered.
+if [ -n "${LEGACY_WORKFLOW_FILE:-}" ] && [ "${LEGACY_WORKFLOW_FILE}" != "${WORKFLOW_FILE}" ]; then
+  legacy="$(last_success "${LEGACY_WORKFLOW_FILE}")"
+  rc=$?
+  if [ "${rc}" -ne 0 ]; then
+    echo "::warning title=deploy-gate-durable-base-fallback::no successful run of ${WORKFLOW_FILE} yet, and could not read ${LEGACY_WORKFLOW_FILE} (${legacy}); falling back to github.event.before"
+    emit "" "gh run list for ${LEGACY_WORKFLOW_FILE} failed (rc=${rc}): ${legacy}"
+  fi
+  if [ -n "${legacy}" ]; then
+    emit "${legacy}" "no successful push-triggered run of ${WORKFLOW_FILE} yet; last successful push-triggered run of ${LEGACY_WORKFLOW_FILE}, which delivered these units before it"
+  fi
+fi
+
+emit "" "no prior successful push-triggered run of ${WORKFLOW_FILE} found (first run, or every prior run failed/was evicted)"

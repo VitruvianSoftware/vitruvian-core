@@ -121,13 +121,13 @@ not speak mDNS, install `zeroconf` and the daemon will browse for
 
 The firmware is the `esp32-s3` **delivery unit** declared in `BUILD`
 (`delivery(...)`). Its two rungs are rendered into the generated
-`.github/workflows/delivery.yaml` by `bazel run //tools/ci:gen`, under the
+`.github/workflows/delivery-esp32-s3.yaml` by `bazel run //tools/ci:gen`, under the
 delivery orchestrator's affected-detection, gating and kill switch:
 
 ```text
 PR against main ──> iot-esp32-s3.yaml: bazel build //apps/embedded/esp32-s3:firmware
 
-Push to main ─────> delivery.yaml esp32-s3-beta            [BETA GRADE]
+Push to main ─────> delivery-esp32-s3.yaml esp32-s3-beta            [BETA GRADE]
    (affected)         publish.sh GRADE=beta
                       stamped 0.1.0-beta.<sha>, assets clobbered on the
                       rolling prerelease esp32-s3-beta-latest, tag moved to HEAD
@@ -136,7 +136,7 @@ Push to main ─────> iot-esp32-s3-release.yaml (release-please)
                       opens / updates the release PR; merging it cuts
                       the GitHub Release esp32-s3-vX.Y.Z
                                 │
-Release published ─> delivery.yaml esp32-s3-production     [PRODUCTION GRADE]
+Release published ─> delivery-esp32-s3.yaml esp32-s3-production     [PRODUCTION GRADE]
    (esp32-s3-v*)      publish.sh GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z
                       stamped X.Y.Z, assets attached to that release
 ```

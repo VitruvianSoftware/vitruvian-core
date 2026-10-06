@@ -30,6 +30,9 @@ pulumi_project(
 # path until Phase 1). The expand half of oauth's expand-before-serve pair.
 delivery(
     name = "zitadel-apps",
+    # A companion applies inside its consumer's ladder, so it delivers
+    # through the consumer's workflow (.github/workflows/delivery-oauth-user-inspector.yaml).
+    app = "oauth-user-inspector",
     environments = [
         "development",
         "nonproduction",

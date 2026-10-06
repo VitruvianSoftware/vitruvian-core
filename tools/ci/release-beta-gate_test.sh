@@ -58,6 +58,8 @@ case "$1 $2" in
         sha="${path#*commits?sha=}"
         answer "code.${sha%%&*}"
         ;;
+      */actions/workflows/legacy.yaml/*head_sha=*) answer ownruns.legacy ;;
+      */actions/workflows/legacy.yaml/*) answer runs.legacy ;;
       */actions/workflows/*head_sha=*) answer ownruns ;;
       */actions/workflows/*) answer runs ;;
       */actions/runs/*/jobs*)
@@ -82,9 +84,9 @@ fresh() { # a release PR on main commit main9, whose app code is app5
   fx code.main9 app5
 }
 
-run() {
+run() { # [env...]
   : > "$work/log"
-  env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" \
+  env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" "$@" \
     REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
     BETA_JOB="vitruvian-beta" WORKFLOW="delivery.yaml" \
     bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
@@ -175,6 +177,54 @@ if [ "$rc" = "0" ] && enabled && ! grep -qE 'sha=main1[02]&' "$work/log"; then
   ok "with main still on the release's code, newer runs count without a lookup each"
 else
   bad "current-code shortcut wrong (rc=$rc)"; show
+fi
+
+echo "--- code built before the per-app split (LEGACY_WORKFLOW) ---"
+# The new workflow has a run for the same code that skipped the beta (its diff
+# base already covered app5); the legacy workflow's own app5 run built it.
+fresh; fx code.main app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta completed skipped)"
+fx runs.legacy $'901\tapp5'; fx jobs.901 "$(beta completed success)"
+rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
+if [ "$rc" = "0" ] && enabled && grep -q 'actions/workflows/legacy.yaml/runs?event=push' "$work/log" \
+   && grep -q 'succeeded for app5 in run 901' "$work/stdout"; then
+  ok "code the legacy workflow built is judged by that run"
+else
+  bad "legacy workflow not consulted (rc=$rc)"; show
+fi
+
+rc="$(run)"
+if [ "$rc" = "0" ] && ! enabled && ! grep -q 'legacy.yaml' "$work/log"; then
+  ok "without LEGACY_WORKFLOW the legacy history is not read (and the PR waits)"
+else
+  bad "legacy read without LEGACY_WORKFLOW (rc=$rc)"; show
+fi
+
+fresh; fx code.main app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta in_progress '')"
+fx runs.legacy $'901\tapp5'; fx jobs.901 "$(beta completed success)"
+rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
+if [ "$rc" = "0" ] && ! enabled && grep -q "still running in run 905" "$work/stdout" && ! grep -q legacy.yaml "$work/log"; then
+  ok "a beta still running in the new workflow is waited for, not overridden by legacy history"
+else
+  bad "legacy history overrode a running beta (rc=$rc)"; show
+fi
+
+fresh; fx code.main app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta completed failure)"
+fx runs.legacy $'901\tapp5'; fx jobs.901 "$(beta completed success)"
+rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
+if [ "$rc" = "0" ] && ! enabled && grep -q '^pr comment 42' "$work/log" && ! grep -q 'legacy.yaml' "$work/log"; then
+  ok "the new workflow's own decision wins over older legacy history"
+else
+  bad "legacy history overrode the new workflow's verdict (rc=$rc)"; show
+fi
+
+fresh; fx code.main app5; fx runs ''; fx runs.legacy $'903\tmain12'; fx jobs.903 "$(beta completed skipped)"
+fx ownruns.legacy 901; fx jobs.901 "$(beta completed failure)"
+rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
+if [ "$rc" = "0" ] && grep -q '^api repos/owner/repo/actions/workflows/legacy.yaml/runs?head_sha=app5' "$work/log" \
+   && grep -q '^pr comment 42' "$work/log" && ! enabled; then
+  ok "the legacy workflow is searched by sha too"
+else
+  bad "legacy by-sha lookup missing (rc=$rc)"; show
 fi
 
 echo "--- success ---"

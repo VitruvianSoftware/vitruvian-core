@@ -39,7 +39,7 @@ release-please components:
   and `.release-please-manifest.json`. Merging that PR tags `vitruvian-vX.Y.Z`
   and creates the GitHub Release.
 - **The `vitruvian` delivery unit** (declared in `BUILD`, rendered into the
-  generated `.github/workflows/delivery.yaml`) builds and publishes the DMG on
+  generated `.github/workflows/delivery-vitruvian.yaml`) builds and publishes the DMG on
   the `xcode-27` runner by running `publish.sh`:
   - on every push to `main` that touches the app, `Vitruvian-beta.dmg` on the
     rolling `vitruvian-beta-latest` prerelease;
@@ -60,7 +60,7 @@ beta succeeds. Other components' release PRs still auto-merge on open
 - notarizes it when the `VITRUVIAN_NOTARY_*` secrets exist;
 - packages the DMG with `Tools/make-dmg.sh`.
 
-To publish a release's DMG again, run `delivery.yaml` by hand from the release
+To publish a release's DMG again, run `delivery-vitruvian.yaml` by hand from the release
 tag with unit `vitruvian` and environment `production`, or on a Mac, from a
 checkout of the tag:
 

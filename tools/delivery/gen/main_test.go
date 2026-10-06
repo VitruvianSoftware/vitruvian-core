@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -65,8 +66,10 @@ const (
 	goldenPhase2Path = "testdata/golden.phase2.delivery.yaml"
 
 	// The generated file's own basename, which render() puts in the
-	// durable-base resolver's WORKFLOW_FILE. main() derives it from --out.
-	testWorkflowFile = "delivery.yaml"
+	// durable-base resolver's WORKFLOW_FILE and derives the workflow's name
+	// from. main() renders one delivery-<app>.yaml per app; the goldens
+	// render every fixture unit into one file, as if they were one app.
+	testWorkflowFile = "delivery-fixture.yaml"
 )
 
 // mustRender renders or fails the test. render() returns an error for every
@@ -494,12 +497,15 @@ func TestEveryAffectedOutputNameIsOneTheOrchestratorEmits(t *testing.T) {
 		emitted[outputVarName(u.Name)] = u.Name
 	}
 
-	for _, src := range []struct{ what, body string }{
+	sources := []struct{ what, body string }{
 		{"rendered phase 1", mustRender(t, units, 1)},
-		// ...and the file actually committed, which is rendered from the REAL
-		// declarations rather than these fixtures.
-		{deliveryWorkflowRel, mustRead(t, deliveryWorkflowRel)},
-	} {
+	}
+	// ...and the files actually committed, which are rendered from the REAL
+	// declarations rather than these fixtures.
+	for _, rel := range generatedWorkflowRels(t) {
+		sources = append(sources, struct{ what, body string }{rel, mustRead(t, rel)})
+	}
+	for _, src := range sources {
 		found := affectedToken.FindAllStringSubmatch(src.body, -1)
 		if len(found) == 0 {
 			t.Errorf("%s references no affected_* output at all — the fan-out is ungated, or this test's pattern drifted", src.what)
@@ -1513,5 +1519,219 @@ func TestGateVarGuardsThePushArmOnly(t *testing.T) {
 	}
 	if dispatchStart >= 0 && gateAt > dispatchStart {
 		t.Errorf("%s-%s: %q sits inside the dispatch arm: %s", testUnit.Name, env, gate, cond)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// One workflow per app: grouping, the per-file shape, and pruning.
+// ---------------------------------------------------------------------------
+
+// TestGroupByAppGivesEveryAppItsOwnWorkflow pins the split the fixtures (the
+// real declarations) produce, so moving a unit between apps is a reviewed diff
+// here and not a side effect.
+func TestGroupByAppGivesEveryAppItsOwnWorkflow(t *testing.T) {
+	groups, err := groupByApp(loadFixtures(t))
+	if err != nil {
+		t.Fatalf("groupByApp: %v", err)
+	}
+	got := map[string][]string{}
+	for _, g := range groups {
+		if g.file != workflowFilePrefix+g.app+".yaml" {
+			t.Errorf("app %q renders into %q, want %q", g.app, g.file, workflowFilePrefix+g.app+".yaml")
+		}
+		got[g.app] = unitNames(g.units)
+	}
+	want := map[string][]string{
+		"charts":               {"charts"},
+		"esp32-s3":             {"esp32-s3"},
+		"oauth-user-inspector": {"oauth-user-inspector", "oauth-user-inspector-identity", "zitadel-apps"},
+		"tabula":               {"tabula-api", "tabula-build-stack", "tabula-dev-latest", "tabula-identity", "tabula-web"},
+		"vitruvian":            {"vitruvian"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("apps = %v\nwant   %v", got, want)
+	}
+}
+
+// A coupling that crosses apps cannot be rendered: `needs:` does not cross
+// workflows. Each is refused at generation time rather than rendered into a
+// workflow GitHub rejects, or one that deploys an empty image ref.
+func TestGroupByAppRefusesCouplingsAcrossApps(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		edit  func(us []unit)
+		match string
+	}{
+		{"no app", func(us []unit) { us[0].App = "" }, "declares no app"},
+		{"bad app name", func(us []unit) { us[0].App = "Tabula_App" }, "lowercase"},
+		{"shared build across apps", func(us []unit) {
+			for i := range us {
+				if us[i].Name == "tabula-web" {
+					us[i].App = "tabula-web"
+				}
+			}
+		}, "shared build"},
+		{"companion in another app", func(us []unit) {
+			for i := range us {
+				if us[i].Name == "zitadel-apps" {
+					us[i].App = "platform"
+				}
+			}
+		}, "companion"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			us := loadFixtures(t)
+			tc.edit(us)
+			_, err := groupByApp(us)
+			if err == nil || !strings.Contains(err.Error(), tc.match) {
+				t.Errorf("groupByApp error = %v, want one mentioning %q", err, tc.match)
+			}
+		})
+	}
+}
+
+// TestEachAppWorkflowIsSelfContained renders every app the way main() does and
+// checks what makes the files independent: the name (and so the queue) is the
+// app's own, every `needs:` resolves inside the file, the orchestrator judges
+// only this app's units, and the history readers know the shared workflow the
+// app delivered through before the split.
+func TestEachAppWorkflowIsSelfContained(t *testing.T) {
+	groups, err := groupByApp(loadFixtures(t))
+	if err != nil {
+		t.Fatalf("groupByApp: %v", err)
+	}
+	needsRe := regexp.MustCompile(`needs\.([a-z0-9-]+)\.`)
+	for _, g := range groups {
+		t.Run(g.app, func(t *testing.T) {
+			body, err := render(g.units, 2, g.file)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if !strings.Contains(body, "\nname: delivery-"+g.app+"\n") {
+				t.Errorf("workflow is not named delivery-%s — its queue (keyed on github.workflow) would not be its own", g.app)
+			}
+			if !strings.Contains(body, "group: delivery-${{ github.workflow }}") {
+				t.Error("the concurrency group no longer keys on github.workflow — apps would share a queue again")
+			}
+			lines := parseWorkflow(t, body)
+			jobs := jobIDsOf(t, lines)
+			for _, m := range needsRe.FindAllStringSubmatch(body, -1) {
+				if !contains(jobs, m[1]) {
+					t.Errorf("references needs.%s, which this workflow does not render — a coupling crossed apps", m[1])
+				}
+			}
+			units := strings.Join(unitNames(g.units), " ")
+			if got := stepEnv(t, body, "ORCHESTRATE_UNITS"); got != units {
+				t.Errorf("ORCHESTRATE_UNITS = %q, want this app's units %q", got, units)
+			}
+			if n := strings.Count(body, "LEGACY_WORKFLOW_FILE: "+legacyWorkflowFile+"\n"); n < 2 {
+				t.Errorf("LEGACY_WORKFLOW_FILE rendered %d time(s), want both durable-base resolvers (and every soak job) to read %s while the app has no history", n, legacyWorkflowFile)
+			}
+		})
+	}
+}
+
+// The shared workflow itself never falls back to its own history.
+func TestLegacyWorkflowDoesNotReadItself(t *testing.T) {
+	body, err := render(loadFixtures(t), 2, legacyWorkflowFile)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(body, "LEGACY_WORKFLOW_FILE") {
+		t.Error("the legacy workflow names itself as its own fallback history")
+	}
+}
+
+// stepEnv returns the value of the first `KEY: value` env line in body.
+func stepEnv(t *testing.T, body, key string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(key) + `: (.*)$`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no %s in the rendered workflow", key)
+	}
+	return m[1]
+}
+
+// TestWriteAppsPrunesOnlyGeneratedWorkflows: a stale generated workflow (the
+// pre-split delivery.yaml, or an app that no longer exists) is removed, a
+// hand-written one is never touched, and writing an app's workflow over a
+// hand-written namesake is refused.
+func TestWriteAppsPrunesOnlyGeneratedWorkflows(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(legacyWorkflowFile, generatedBanner+"\nname: delivery\n")
+	write("delivery-gone.yaml", generatedBanner+"\nname: delivery-gone\n")
+	write("delivery-drift.yaml", "name: delivery-drift\n")
+	write("ci.yaml", generatedBanner+"\n")
+
+	groups, err := groupByApp(loadFixtures(t))
+	if err != nil {
+		t.Fatalf("groupByApp: %v", err)
+	}
+	written, removed, err := writeApps(dir, groups, 2)
+	if err != nil {
+		t.Fatalf("writeApps: %v", err)
+	}
+	if len(written) != len(groups) {
+		t.Errorf("wrote %v, want one file per app (%d)", written, len(groups))
+	}
+	if want := []string{"delivery-gone.yaml", legacyWorkflowFile}; !reflect.DeepEqual(removed, want) {
+		t.Errorf("removed %v, want %v", removed, want)
+	}
+	for _, kept := range []string{"delivery-drift.yaml", "ci.yaml"} {
+		if _, err := os.Stat(filepath.Join(dir, kept)); err != nil {
+			t.Errorf("%s was removed: %v — only delivery*.yaml files carrying the banner are generated", kept, err)
+		}
+	}
+
+	// A second run changes nothing: what tidy-check relies on.
+	written, removed, err = writeApps(dir, groups, 2)
+	if err != nil || len(written) != 0 || len(removed) != 0 {
+		t.Errorf("second writeApps wrote %v, removed %v, err %v — want a no-op", written, removed, err)
+	}
+
+	// An app whose file name is taken by a hand-written workflow is refused.
+	us := loadFixtures(t)
+	for i := range us {
+		if us[i].Name == "charts" {
+			us[i].App = "drift"
+		}
+	}
+	groups, err = groupByApp(us)
+	if err != nil {
+		t.Fatalf("groupByApp: %v", err)
+	}
+	if _, _, err := writeApps(dir, groups, 2); err == nil || !strings.Contains(err.Error(), "not generated") {
+		t.Errorf("writeApps over hand-written delivery-drift.yaml: err = %v, want a refusal", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "delivery-drift.yaml")); string(b) != "name: delivery-drift\n" {
+		t.Errorf("the hand-written delivery-drift.yaml was overwritten:\n%s", b)
+	}
+}
+
+// TestDispatchNeverDefaultsToProduction: the dispatch form's default is its
+// first environment option, and each app now has its own form. An app whose
+// ladder has no development rung (vitruvian, esp32-s3: beta -> production)
+// must still default to its least consequential rung, never to production.
+func TestDispatchNeverDefaultsToProduction(t *testing.T) {
+	groups, err := groupByApp(loadFixtures(t))
+	if err != nil {
+		t.Fatalf("groupByApp: %v", err)
+	}
+	for _, g := range groups {
+		envs := dispatchEnvironments(g.units)
+		if len(envs) == 0 {
+			continue
+		}
+		if envs[0] == "production" {
+			t.Errorf("app %q: the dispatch form defaults to production (options %v)", g.app, envs)
+		}
+		if contains(envs, "production") && envs[len(envs)-1] != "production" {
+			t.Errorf("app %q: production is not the last dispatch option (options %v)", g.app, envs)
+		}
 	}
 }

@@ -44,6 +44,7 @@ cloud_run_deploy(
 # apps/suites/tabula/infra/app/BUILD for why both units carry the same detection inputs.
 delivery(
     name = "tabula-web",
+    app = "tabula",
     environments = [
         "development",
         "nonproduction",

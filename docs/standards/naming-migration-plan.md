@@ -210,10 +210,10 @@ All workflow files must strictly use `.yaml`:
 | WI8 | `.github/workflows/foundation-proj-deploy.yaml`| `business_unit` | `business-unit` | Input |
 | WI9 | `.github/workflows/foundation-proj-deploy.yaml`| `allow_destructive` | `allow-destructive` | Input |
 | WI10| `.github/workflows/pulumi-stack-reset.yaml` | `pulumi_dir` | `pulumi-dir` | Input |
-| WO1 | `.github/workflows/delivery.yaml` | `affected_charts` | `affected-charts` | Output |
-| WO2 | `.github/workflows/delivery.yaml` | `affected_tabula_api` | `affected-tabula-api` | Output |
-| WO3 | `.github/workflows/delivery.yaml` | `affected_oauth_user_inspector` | `affected-oauth-user-inspector` | Output |
-| WO4 | `.github/workflows/delivery.yaml` | `affected_zitadel_apps` | `affected-zitadel-apps` | Output |
+| WO1 | `.github/workflows/delivery-charts.yaml` | `affected_charts` | `affected-charts` | Output |
+| WO2 | `.github/workflows/delivery-tabula.yaml` | `affected_tabula_api` | `affected-tabula-api` | Output |
+| WO3 | `.github/workflows/delivery-oauth-user-inspector.yaml` | `affected_oauth_user_inspector` | `affected-oauth-user-inspector` | Output |
+| WO4 | `.github/workflows/delivery-oauth-user-inspector.yaml` | `affected_zitadel_apps` | `affected-zitadel-apps` | Output |
 | WO5 | `.github/workflows/_foundation-release-please.yaml` | `release_created` | `release-created` | Output |
 | WO6 | `.github/actions/gcp-auth/action.yml` | `access_token` | `access-token` | Action Output |
 | WO7 | `.github/actions/pulumi-run-captured/action.yml` | `exit_code` | `exit-code` | Action Output |

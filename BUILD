@@ -60,7 +60,7 @@ exports_files(
 # .github/ has no BUILD file, so its workflows belong to THIS package and must
 # be exported to be reachable as a `data` dep.
 #
-# //tools/delivery/gen's tests read the GENERATED delivery workflow and the
+# //tools/delivery/gen's tests read the GENERATED delivery workflows and the
 # REUSABLE workflows it calls, mechanically, on every test run: the generated
 # file must pass each callee exactly the inputs that callee declares, and the
 # promotion soak gate must scan a job name that actually exists. Reading frozen
@@ -69,8 +69,10 @@ exports_files(
 # this is not an invitation for other targets to depend on workflow files.
 #
 # The per-app LEGACY entries are gone: Phase 3 deleted those workflows, so the
-# only workflow files left here are the generated one, the reusables it calls,
-# and release-hold.yaml (which names generated job ids).
+# only workflow files left here are the reusables the generated workflows
+# call and release-hold.yaml (which names generated job ids). The generated
+# per-app workflows themselves come through //:workflow_files below, so a new
+# app's file needs no entry here.
 # The delivery guards scan the WHOLE workflow surface, not a hand-listed subset:
 # "no workflow actively references a deleted one" is only a real property if the
 # scan sees every workflow, and a per-file list would silently stop covering the
@@ -96,7 +98,6 @@ exports_files(
         ".github/workflows/_deploy-cloud-run.yaml",
         ".github/workflows/_oauth-identity-apply.yaml",
         ".github/workflows/_tabula-identity-apply.yaml",
-        ".github/workflows/delivery.yaml",
         ".github/workflows/release-hold.yaml",
     ],
     visibility = ["//tools/delivery/gen:__pkg__"],

@@ -36,6 +36,13 @@ case "$1 $2" in
     if [ -f "$W/api_workflow" ]; then cat "$W/api_workflow"; else exit 1; fi
     ;;
   "run list")
+    case " $* " in
+      *" -w legacy.yaml "*)
+        # The pre-split workflow's history (LEGACY_WORKFLOW_FILE).
+        cat "$W/runs.legacy.txt" 2>/dev/null
+        exit 0
+        ;;
+    esac
     if [ -f "$W/list_rc" ]; then
       echo "simulated gh failure" >&2
       exit "$(cat "$W/list_rc")"
@@ -69,7 +76,7 @@ run_gate() { # runs the script with a clean env; echoes output, returns its rc
     bash "$SCRIPT" 2>&1
 }
 
-reset() { rm -f "$WORK"/runs.txt "$WORK"/jobs.* "$WORK"/list_rc "$WORK"/api_workflow; }
+reset() { rm -f "$WORK"/runs.txt "$WORK"/runs.legacy.txt "$WORK"/jobs.* "$WORK"/list_rc "$WORK"/api_workflow; }
 
 # --- the core case this gate exists for: development is RED ----------------
 reset
@@ -82,6 +89,28 @@ echo "$out" | grep -q '::error' \
   && ok "blocking emits a GitHub ::error annotation" || bad "expected ::error:\n$out"
 echo "$out" | grep -q 'actions/runs/900' \
   && ok "the block names the offending run" || bad "expected the run URL:\n$out"
+
+# --- the per-app split: a new workflow with no result yet reads the legacy ---
+# workflow's history instead of failing open on the first promotion.
+reset
+printf '' >"$WORK/runs.txt"
+printf '700\n' >"$WORK/runs.legacy.txt"
+printf 'deploy-dev / deploy\tfailure\n' >"$WORK/jobs.700"
+out="$(LEGACY_WORKFLOW_FILE=legacy.yaml run_gate)"; rc=$?
+[ "$rc" -eq 1 ] && ok "with no own result, a red dev deploy in the legacy workflow still BLOCKS" \
+  || bad "expected the legacy history's red deploy to block, got $rc:\n$out"
+out="$(run_gate)"; rc=$?
+[ "$rc" -eq 0 ] && echo "$out" | grep -q 'indeterminate' \
+  && ok "without LEGACY_WORKFLOW_FILE the legacy history is not read" \
+  || bad "expected an indeterminate pass without the legacy file, got $rc:\n$out"
+reset
+printf '701\n' >"$WORK/runs.txt"
+printf 'deploy-dev / deploy\tsuccess\n' >"$WORK/jobs.701"
+printf '700\n' >"$WORK/runs.legacy.txt"
+printf 'deploy-dev / deploy\tfailure\n' >"$WORK/jobs.700"
+out="$(LEGACY_WORKFLOW_FILE=legacy.yaml run_gate)"; rc=$?
+[ "$rc" -eq 0 ] && ok "the workflow's own result wins over older legacy history" \
+  || bad "expected the own green result to decide, got $rc:\n$out"
 
 # --- healthy development promotes ------------------------------------------
 reset

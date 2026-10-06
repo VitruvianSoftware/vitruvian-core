@@ -46,7 +46,7 @@ sh_binary(
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2). The generated
-# .github/workflows/delivery.yaml now owns the push lane; charts-publish.yml
+# .github/workflows/delivery-charts.yaml now owns the push lane; charts-publish.yml
 # keeps only workflow_dispatch until Phase 3 deletes it.
 #
 # WHY THE TRIGGER MOVE IS A FIX, not just a re-plumbing: the legacy workflow
@@ -57,6 +57,7 @@ sh_binary(
 # fails open.
 delivery(
     name = "charts",
+    app = "charts",
     environments = ["publish"],
     extra_paths = [
         # The legacy `**/deploy/chart/**` glob, as the ERE the affected engine

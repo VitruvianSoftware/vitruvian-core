@@ -48,7 +48,7 @@ go_binary(
 #                    declarations, so a BUILD change elsewhere in the repo
 #                    cannot flip these.
 #   parity_test.go — DELIBERATELY NOT hermetic. It compares the REAL generated
-#                    delivery.yaml against the REAL legacy workflow it took the
+#                    delivery-<app>.yaml workflows against the REAL legacy workflow it took the
 #                    development lane from; freezing copies of those two would
 #                    let them drift apart while the guard stayed green, which
 #                    is the failure it exists to catch (spec §6, Phase 1).

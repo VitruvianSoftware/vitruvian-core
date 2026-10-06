@@ -33,7 +33,7 @@ fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
 fail() { printf '  ✗ %s\n' "$1" >&2; fails=$((fails + 1)); }
 
-# A workflow shaped like the generated delivery.yaml: two units where one name
+# A workflow shaped like a generated delivery-<app>.yaml: two units where one name
 # is a prefix of the other, a helper job gated on NO affected_* (the changelog
 # trap), and a release-gated rung that must not count as a push-lane delivery.
 mkwf() {
@@ -63,7 +63,20 @@ YAML
 mkgh() {
   cat > "$work/gh" <<'GH'
 #!/usr/bin/env bash
-if [ "$1" = "run" ]; then printf '%s\n' "$RUNS"; exit 0; fi
+if [ "$1" = "run" ]; then
+  wf=""; lim=1000
+  while [ $# -gt 0 ]; do
+    case "$1" in -w) wf="$2" ;; -L) lim="$2" ;; esac
+    shift
+  done
+  if [ "$wf" = "legacy.yaml" ]; then
+    [ "${LEGACY_RC:-0}" = "0" ] || exit 1
+    printf '%s\n' "${LEGACY_RUNS:-}" | grep . | head -n "$lim"
+  else
+    printf '%s\n' "$RUNS" | grep . | head -n "$lim"
+  fi
+  exit 0
+fi
 if [ "$1" = "api" ]; then
   id="$(sed -n 's#.*/runs/\([0-9]*\)/jobs.*#\1#p' <<<"$2")"
   var="JOBS_${id}"; printf '%s\n' "${!var}" | awk -F'\t' '$1=="success"{print $2}'
@@ -74,10 +87,11 @@ GH
   chmod +x "$work/gh"
 }
 
-run_it() { # -> prints the unit_bases JSON
-  ( cd "$1" && GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
+run_it() { # <dir> [env...] -> prints the unit_bases JSON
+  local dir="$1"; shift
+  ( cd "$dir" && env GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
       WORKFLOW_PATH=.github/workflows/wf.yaml LOOKBACK=10 \
-      GITHUB_OUTPUT=/dev/null bash "$SCRIPT" 2>&1 ) \
+      GITHUB_OUTPUT=/dev/null "$@" bash "$SCRIPT" 2>&1 ) \
     | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p'
 }
 
@@ -143,6 +157,47 @@ case "$got2" in
   *'"app"'*) fail "app has an un-succeeded rung and must be omitted: $got2" ;;
   *) pass "a unit with an un-succeeded rung is omitted (falls back to the single base)" ;;
 esac
+
+# The per-app split: the new workflow has one run, in which `app` was skipped.
+# Its last delivery happened in the legacy workflow, which must fill the window
+# BEHIND the new runs so `app` keeps that older base instead of being omitted.
+d6="$work/r6"; mkwf "$d6"
+export RUNS='700 shaNEW'
+export JOBS_700="success	app-identity-development
+skipped	app-build
+skipped	app-development"
+export LEGACY_RUNS='600 shaLEG
+550 shaOLDER'
+export JOBS_600="success	app-build
+success	app-development"
+export JOBS_550="success	app-identity-development"
+got6="$(run_it "$d6" LEGACY_WORKFLOW_FILE=legacy.yaml)"
+case "$got6" in
+  *'"app":"shaLEG"'*) pass "a unit last delivered by the legacy workflow keeps that base" ;;
+  *) fail "app should pin to the legacy run's shaLEG, got: $got6" ;;
+esac
+case "$got6" in
+  *'"app-identity":"shaNEW"'*) pass "the new workflow's own runs stay newest" ;;
+  *) fail "app-identity should be shaNEW (new run first), got: $got6" ;;
+esac
+got6b="$(run_it "$d6")"
+case "$got6b" in
+  *'"app"'*) fail "without the legacy file, app has no success to pin to: $got6b" ;;
+  *) pass "without LEGACY_WORKFLOW_FILE the legacy history is not read" ;;
+esac
+# The fill is capped at LOOKBACK: with LOOKBACK=1 the new run alone fills it.
+got6c="$(run_it "$d6" LEGACY_WORKFLOW_FILE=legacy.yaml LOOKBACK=1)"
+case "$got6c" in
+  *'"app"'*) fail "the legacy fill ignored LOOKBACK: $got6c" ;;
+  *) pass "the legacy fill only tops the window up to LOOKBACK" ;;
+esac
+# A legacy lookup failure costs only the fill.
+got6d="$(run_it "$d6" LEGACY_WORKFLOW_FILE=legacy.yaml LEGACY_RC=1)"
+case "$got6d" in
+  *'"app-identity":"shaNEW"'*) pass "a legacy lookup failure keeps the workflow's own verdicts" ;;
+  *) fail "legacy failure lost the own-run verdicts: $got6d" ;;
+esac
+unset LEGACY_RUNS
 
 # Fail-open: gh unusable -> {} so the caller behaves exactly as today.
 d3="$work/r3"; mkwf "$d3"
