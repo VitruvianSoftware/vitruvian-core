@@ -3554,11 +3554,17 @@ private final class PointerGrantLog {
 /// no real click is filtered. Only the test's own thread touches it.
 nonisolated final class ClickFilterRig: @unchecked Sendable {
     var wanted = true
-    let sessionCenter = NotificationCenter()
+    let sessionCenter: NotificationCenter
     let workspace = NotificationCenter()
-    lazy var session = SessionActivity(center: sessionCenter, initialIsActive: { true })
+    let session: SessionActivity
     var threads: [@Sendable () -> Void] = []
     var mainQueue: [@Sendable () -> Void] = []
+
+    init() {
+        let sessionCenter = NotificationCenter()
+        self.sessionCenter = sessionCenter
+        session = SessionActivity(center: sessionCenter, initialIsActive: { true })
+    }
 
     var environment: MouseClickDebounceService.Environment {
         MouseClickDebounceService.Environment(
