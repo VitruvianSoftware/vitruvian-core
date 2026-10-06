@@ -21,6 +21,9 @@ package struct NexusAgentQuickPromptView: View {
     @ObservedObject private var session = NexusAgentService.shared.session
     @ObservedObject private var l10n = L10n.shared
     @FocusState private var inputFocused: Bool
+    /// The pointer is over the pill, which is what brings the action buttons in.
+    @State private var isHoveringInput = false
+    @State private var sparklePulse = false
 
     package init() {}
 
@@ -55,18 +58,36 @@ package struct NexusAgentQuickPromptView: View {
 
     // MARK: - Pill
 
+    /// The action buttons show while the pointer is over the pill, and stay
+    /// while the sessions drawer is open.
+    private var showActionButtons: Bool {
+        isHoveringInput || session.mode == .sessions
+    }
+
     private var pill: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             inputBar
+            if showActionButtons {
+                actionButtons
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.8)),
+                        removal: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.8))
+                    ))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(height: Layout.compactHeight)
+        .clipped()
+        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showActionButtons)
+        .onHover { hovering in
+            isHoveringInput = hovering
+        }
     }
 
     private var inputBar: some View {
         HStack(spacing: 12) {
-            sparkles
+            pulsingSparkles
             TextField(strings.promptPlaceholder, text: $session.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 18, weight: .regular))
@@ -75,27 +96,127 @@ package struct NexusAgentQuickPromptView: View {
             if !session.draft.isEmpty {
                 clearButton
             }
-            sessionsButton
-            sendButton
+            pillSendButton
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
     }
 
     private var clearButton: some View {
         Button {
-            session.draft = ""
+            withAnimation(.easeOut(duration: 0.15)) { session.draft = "" }
         } label: {
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 14))
-                .foregroundStyle(Color.secondary.opacity(0.6))
+                .foregroundStyle(.quaternary)
         }
         .buttonStyle(.plain)
         .transition(.opacity.combined(with: .scale(scale: 0.8)))
+    }
+
+    /// The pill's sparkle breathes while the prompt is empty and holds
+    /// still once there is text.
+    private var pulsingSparkles: some View {
+        Image(systemName: "sparkles")
+            .font(.title2)
+            .foregroundStyle(.linearGradient(colors: [.blue, .purple],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+            .opacity(sparklePulse ? 0.5 : 1.0)
+            .onAppear {
+                guard session.draft.isEmpty else { return }
+                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                    sparklePulse = true
+                }
+            }
+            .onChange(of: session.draft.isEmpty) { _, isEmpty in
+                if isEmpty {
+                    withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                        sparklePulse = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        sparklePulse = false
+                    }
+                }
+            }
+            .onDisappear {
+                sparklePulse = false
+            }
+            .background(QuickPromptDragHandle())
+            .accessibilityHidden(true)
+    }
+
+    /// Recent sessions, plan mode and the working folder: the round buttons
+    /// that float in beside the input bar.
+    private var actionButtons: some View {
+        HStack(spacing: 8) {
+            ModularButtonView(icon: session.mode == .sessions ? "clock.fill" : "clock",
+                              isActive: session.mode == .sessions,
+                              help: strings.sessionsToggle) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    session.toggleSessions(configuration: service.configuration)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if session.mode != .sessions && !session.sessions.isEmpty {
+                    Text("\(session.sessions.count)")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 14, minHeight: 14)
+                        .background(Circle().fill(Color.blue))
+                        .offset(x: 4, y: -4)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityHidden(true)
+                }
+            }
+
+            ModularButtonView(icon: session.planMode ? "doc.text.fill" : "doc.text",
+                              isActive: session.planMode,
+                              help: session.planMode ? strings.planModeOn : strings.planModeOff,
+                              activeColor: .orange) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    session.planMode.toggle()
+                }
+            }
+
+            ModularButtonView(icon: "folder", isActive: false, help: strings.workingFolder) {
+                chooseWorkingFolder()
+            }
+        }
+    }
+
+    /// Picks the folder agy runs in, starting from the current one, and
+    /// saves it with the rest of the bot's settings.
+    private func chooseWorkingFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: session.workingDirectory(for: service.configuration))
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK, let url = panel.url {
+            var next = service.configuration
+            next.workingDirectory = url.path
+            service.save(next)
+        }
+        // A click in the folder panel counts as a click outside the prompt,
+        // which hides it; bring it back to where the user was.
+        service.showQuickPrompt()
+    }
+
+    @ViewBuilder
+    private var pillSendButton: some View {
+        if session.isRunning {
+            sendButton
+        } else {
+            SendButtonView(isEnabled: session.canSend, label: strings.send) {
+                service.sendQuickPrompt()
+            }
+        }
     }
 
     private var sparkles: some View {
@@ -343,6 +464,66 @@ private struct NexusAgentMessageBubble: View {
     private static func markdown(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+}
+
+/// A round action button beside the input bar, with a hover highlight.
+private struct ModularButtonView: View {
+    let icon: String
+    let isActive: Bool
+    let help: String
+    var activeColor: Color = .blue
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(isActive ? activeColor : Color.primary.opacity(isHovered ? 0.7 : 0.45))
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                )
+                .background(
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(isHovered ? 0.18 : 0.1), lineWidth: 0.5)
+                )
+                .scaleEffect(isHovered ? 1.08 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .contentShape(Circle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+/// The send arrow inside the input bar; it grows a little under the pointer.
+private struct SendButtonView: View {
+    let isEnabled: Bool
+    let label: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.title2)
+                .foregroundStyle(isEnabled ? (isHovered ? Color.blue.opacity(0.8) : Color.blue) : Color.gray)
+                .scaleEffect(isHovered && isEnabled ? 1.15 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .help(label)
+        .accessibilityLabel(label)
+        .onHover { isHovered = $0 }
     }
 }
 
