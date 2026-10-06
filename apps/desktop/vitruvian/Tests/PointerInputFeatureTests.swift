@@ -243,39 +243,116 @@ enum PointerInputFeatureTests {
                 && Defaults.sanitizedMouseClickDebounceWindow(0)
                     == Defaults.defaultMouseClickDebounceWindowMs,
                "mouse click debounce accepts any millisecond window from 5 to 100 ms")
+        // The tap thread's bookkeeping: a stop keeps the record of a thread
+        // still on its way out, so a start meanwhile cannot raise a second one
+        // beside it; that start is owed until the thread is gone, and any
+        // later lifecycle change makes the owed start stale.
+        var tapLifecycle = MouseClickDebounceLifecycle()
+        let firstStart = tapLifecycle.requestStart()
+        tapLifecycle.requestStop()
+        let startWhileStopping = tapLifecycle.requestStart()
+        suite.expect(firstStart && !startWhileStopping && tapLifecycle.hasTapThread
+                && tapLifecycle.restartsAfterStop,
+               "click debounce stops without erasing the record of a tap thread still on its way out")
+        let owedStart = tapLifecycle.threadFinished()
+        let owedWasCurrent = tapLifecycle.isCurrent(owedStart.generation)
+        tapLifecycle.requestStop()
+        suite.expect(owedStart.restart && owedWasCurrent && !tapLifecycle.hasTapThread
+                && !tapLifecycle.isCurrent(owedStart.generation),
+               "a start owed to an exiting tap thread is current until a newer lifecycle change")
+        suite.expect(MouseClickDebounceLifecycle.rearmsDisabledTap(enabled: true, sessionIsActive: true,
+                                                                  accessibilityGranted: true, stopping: false)
+                && !MouseClickDebounceLifecycle.rearmsDisabledTap(enabled: true, sessionIsActive: false,
+                                                                   accessibilityGranted: true, stopping: false)
+                && !MouseClickDebounceLifecycle.rearmsDisabledTap(enabled: true, sessionIsActive: true,
+                                                                   accessibilityGranted: false, stopping: false)
+                && !MouseClickDebounceLifecycle.rearmsDisabledTap(enabled: false, sessionIsActive: true,
+                                                                   accessibilityGranted: true, stopping: false)
+                && !MouseClickDebounceLifecycle.rearmsDisabledTap(enabled: true, sessionIsActive: true,
+                                                                   accessibilityGranted: true, stopping: true),
+               "a disabled click tap goes straight back on only while wanted, on screen, trusted and not stopping")
+
+        // The production service over `ClickFilterRig`: its session, sleep
+        // and wake, main queue and tap thread are the rig's, a started thread
+        // runs when the test says, and no tap is ever created.
+        do {
+            let rig = ClickFilterRig()
+            let service = MouseClickDebounceService(environment: rig.environment)
+            let ms: UInt64 = 1_000_000
+            let press = MouseClickDebounceInput(button: 0, event: .down)
+            let release = MouseClickDebounceInput(button: 0, event: .up)
+            service.syncWithPreferences()
+            suite.expect(rig.threads.count == 1, "a wanted click filter starts the thread that serves its tap")
+
+            let healthyClick = !service.suppresses(press, at: 100 * ms) && !service.suppresses(release, at: 105 * ms)
+            let bounce = service.suppresses(press, at: 110 * ms) && service.suppresses(release, at: 112 * ms)
+            rig.workspace.post(name: NSWorkspace.willSleepNotification, object: nil)
+            suite.expect(healthyClick && bounce && !service.suppresses(press, at: 115 * ms),
+                   "going to sleep forgets click ownership, so the first press after it is never taken for a bounce")
+            _ = service.suppresses(release, at: 117 * ms)
+
+            let bounceBeforeGap = service.suppresses(press, at: 120 * ms)
+            _ = service.suppresses(release, at: 121 * ms)
+            service.tapWasDisabled()
+            suite.expect(bounceBeforeGap && !service.suppresses(press, at: 125 * ms)
+                    && rig.mainQueue.count == 1,
+                   "click debounce resets before any safe tap re-arm, and rebuilds a tap it cannot re-arm")
+            _ = service.suppresses(release, at: 127 * ms)
+
+            // Stopping forgets ownership too, and is a lifecycle change the
+            // queued rebuild above must not outlive.
+            service.suspend()
+            suite.expect(!service.suppresses(press, at: 130 * ms),
+                   "click debounce resets ownership when it stops")
+            _ = service.suppresses(release, at: 131 * ms)
+            rig.drainMain()
+            rig.runThreads()
+            suite.expect(rig.mainQueue.isEmpty && rig.threads.isEmpty,
+                   "click debounce drops disabled-tap recovery after a newer lifecycle change")
+
+            // A wake hands the tap back and builds it again: the old thread is
+            // not replaced while it exits, and the start it is owed is made on
+            // the main queue, through the preferences, once it is gone.
+            service.syncWithPreferences()
+            rig.workspace.post(name: NSWorkspace.didWakeNotification, object: nil)
+            let oneThreadThroughWake = rig.threads.count == 1
+            rig.runThreads()
+            let restartQueued = rig.threads.isEmpty && rig.mainQueue.count == 1
+            rig.drainMain()
+            suite.expect(oneThreadThroughWake && restartQueued && rig.threads.count == 1,
+                   "click debounce restarts a woken tap on main once its old thread is gone")
+            rig.workspace.post(name: NSWorkspace.didWakeNotification, object: nil)
+            rig.runThreads()
+            let staleRestartQueued = rig.mainQueue.count == 1
+            service.suspend()
+            rig.drainMain()
+            suite.expect(staleRestartQueued && rig.threads.isEmpty,
+                   "click debounce serializes current restarts on main and drops stale ones")
+
+            // A switched-away session hands the tap back; its return builds it again.
+            service.syncWithPreferences()
+            rig.sessionCenter.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+            rig.runThreads()
+            let handedBack = rig.threads.isEmpty && rig.mainQueue.isEmpty
+            rig.sessionCenter.post(name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+            suite.expect(handedBack && rig.threads.count == 1,
+                   "click debounce follows the session: its tap goes while away and comes back on return")
+            service.suspend()
+            rig.runThreads()
+            rig.drainMain()
+        }
+
+        // An absence with no behaviour to run: the service itself schedules
+        // nothing, so a healthy click is never held back by a timer. Read here
+        // until the source lints take it.
         let clickDebounceServiceSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/MouseClickDebounce/MouseClickDebounceService.swift",
             encoding: .utf8)) ?? ""
         let clickDebounceServiceCode = clickDebounceServiceSource.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        suite.expect(clickDebounceServiceCode.contains("SessionActivity.shared.onChange")
-                && clickDebounceServiceCode.contains("willSleepNotification")
-                && clickDebounceServiceCode.contains("didWakeNotification"),
-               "click debounce wires session, sleep and tap teardown lifecycle hooks")
-        let clickDebounceStop = clickDebounceServiceCode.components(separatedBy: "private func stop()")
-            .dropFirst().first?.components(separatedBy: "private func runEventTap").first ?? ""
-        suite.expect(clickDebounceStop.contains("state.reset()")
-                && clickDebounceStop.contains("CFMachPortInvalidate")
-                && !clickDebounceStop.contains("tapThread = nil"),
-               "click debounce resets ownership without erasing a newer tap thread")
-        let clickDebounceFinish = clickDebounceServiceCode.components(
-            separatedBy: "private func finishEventTapThread"
-        ).dropFirst().first?.components(separatedBy: "private func clearEventTapThread").first ?? ""
-        suite.expect(clickDebounceFinish.contains("DispatchQueue.main.async")
-                && clickDebounceFinish.contains("restart.generation == self.lifecycleGeneration")
-                && clickDebounceFinish.contains("self.syncWithPreferences()")
-                && !clickDebounceFinish.contains("start("),
-               "click debounce serializes current restarts on main and drops stale ones")
-        let clickDebounceRearm = clickDebounceServiceCode.components(separatedBy: "tapDisabledByTimeout")
-            .dropFirst().first?.components(separatedBy: "return").first ?? ""
-        suite.expect(clickDebounceRearm.contains("state.reset()")
-                && clickDebounceRearm.contains("SessionActivity.shared.isActive"),
-               "click debounce resets before any safe tap re-arm")
-        suite.expect(clickDebounceServiceCode.contains(
-            "recoveryGeneration == self.lifecycleGeneration"
-        ), "click debounce drops disabled-tap recovery after a newer lifecycle change")
-        suite.expect(!clickDebounceServiceCode.contains("Timer(")
+        suite.expect(!clickDebounceServiceCode.isEmpty
+                && !clickDebounceServiceCode.contains("Timer(")
                 && !clickDebounceServiceCode.contains("asyncAfter"),
                "legacy click filtering adds no timer or delayed release to healthy clicks")
 
@@ -3427,4 +3504,38 @@ private nonisolated final class PointerTapHandBack: @unchecked Sendable {
 /// The binding actions a runtime asked of the live services.
 private final class PointerGrantLog {
     var actions: [FeatureBindingAction] = []
+}
+
+/// The click filter's outside world for one test: its preference, the
+/// session, sleep and wake, the main queue and the tap thread. A started
+/// thread waits here until the test runs its body, and no tap is created, so
+/// no real click is filtered. Only the test's own thread touches it.
+nonisolated final class ClickFilterRig: @unchecked Sendable {
+    var wanted = true
+    let sessionCenter = NotificationCenter()
+    let workspace = NotificationCenter()
+    lazy var session = SessionActivity(center: sessionCenter, initialIsActive: { true })
+    var threads: [@Sendable () -> Void] = []
+    var mainQueue: [@Sendable () -> Void] = []
+
+    var environment: MouseClickDebounceService.Environment {
+        MouseClickDebounceService.Environment(
+            featureWanted: { [unowned self] in self.wanted },
+            windowMilliseconds: { 25 },
+            accessibilityGranted: { true },
+            session: session,
+            workspaceNotifications: workspace,
+            main: { [unowned self] work in self.mainQueue.append(work) },
+            startThread: { [unowned self] body in self.threads.append(body) },
+            createTap: { _ in nil })
+    }
+
+    /// Runs each started thread to its end, as the tap thread would.
+    func runThreads() {
+        while !threads.isEmpty { threads.removeFirst()() }
+    }
+
+    func drainMain() {
+        while !mainQueue.isEmpty { mainQueue.removeFirst()() }
+    }
 }
