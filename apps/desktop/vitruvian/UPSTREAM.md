@@ -2374,6 +2374,14 @@ is that notice. Add an entry for every change to upstream files.
     `Core/`, `Services/`, `UI/` and `App/`.
   - `CleanerScheduler.recordRun` and WhatsApp's cleanup record write their
     `Int64` byte counts as `Int(_:)`, the type their preferences hold.
+- **2026-10-06**: Refactor step 8c (`REFACTOR.md`): text read and
+  written through its `Preference`, with no change in behavior.
+  - 117 `string(forKey:)` reads and 31 writes in 50 files across `Core/`,
+    `Services/` and `UI/`. A `?? fallback` after a read goes, because the
+    declared default takes its place.
+  - `WindowLayoutService` decodes the directional shortcut with
+    `GlobalShortcut(storageValue:)`. `UpdateShowcaseMedia` drops an
+    `if let` that a typed read no longer needs.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

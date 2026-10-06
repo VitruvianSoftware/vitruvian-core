@@ -5465,6 +5465,37 @@ reads `[Preferences.x]`. That is 72 reads, and 27 writes became
 - **Ledger after 8b:** `integer` and `double` are at zero, and writes
   (`set`) are down to 66.
 
+Landed (8c, text): every `string(forKey:)` on a declared preference outside
+`Core/Defaults.swift` now reads `[Preferences.x]`. That is 117 reads, and 31
+writes became `[Preferences.x] = value`, in 50 files.
+
+- **A typed read is never nil, so the code around each read changed:**
+  - **`?? fallback`, 61 reads:** the fallback goes, because the declared
+    default takes its place. Where they differed (28 reads), the fallback
+    was `""` and the text went to a sanitizer or
+    `Enum(rawValue:) ?? .case`, which turns `""` into a case.
+  - **Passed on, compared or stored, 54 reads:** these work as they are.
+    A parameter typed `String?` takes the text as well.
+  - **Changed by hand:**
+    - the window layout's directional shortcut, which decodes with
+      `GlobalShortcut(storageValue:)` rather than `.flatMap` on an optional;
+    - the update showcase's media override, which drops an `if let`;
+    - the radial menu's legacy migration, whose fallbacks equal the
+      declared defaults.
+- **In the app nothing changes:** a registered key never read as nil, so
+  each fallback was unreachable there.
+- **Where registration has not run,** a read now gives the declared default
+  where it gave the fallback. The notch's idle content is the one read whose
+  enum fell back to another case (`.none`): it now starts from `music`, as
+  the app always has.
+- **Writes:** each value is a `String`: a raw value, an encoder that returns
+  `String`, a path or a version. Two writes stay by key, because their
+  encoders return `String?` and a `nil` there removes the key. They go with
+  the resets.
+- **Left by key:** 18 text reads of state with no `Preference`.
+- **Ledger after 8c:** `string` is at zero, and writes (`set`) are down to
+  35.
+
 ## Not in scope
 
 Product decisions remain open:
