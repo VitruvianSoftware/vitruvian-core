@@ -5496,6 +5496,31 @@ writes became `[Preferences.x] = value`, in 50 files.
 - **Ledger after 8c:** `string` is at zero, and writes (`set`) are down to
   35.
 
+Landed (8d, lists, tables and data): every `stringArray`, `array`,
+`dictionary` and `data(forKey:)` on a declared preference outside
+`Core/Defaults.swift` now reads `[Preferences.x]`. That is 34 reads, and 33
+writes became `[Preferences.x] = value`, in 26 files.
+
+- **Each read's surroundings, as with text:**
+  - `?? []` and `?? [:]` go: every one of these preferences declares an
+    empty list or table, except the Auto Quit exceptions, whose sanitizer
+    adds the mandatory apps either way.
+  - `dictionary(forKey:) as? [String: String]` is the preference's own type,
+    and the one `raw?[…]` after it becomes `raw[…]`.
+  - Four `guard`/`if let data = …` reads of data now test `isEmpty` on the
+    typed value, which falls back to empty data. One is the recorder's
+    presets, which decode straight from it.
+  - Parameters typed `[Any]`, `[String: Any]` and `Data?` take the typed
+    value as it is.
+- **Writes:** each value has the preference's type: a sanitized list, a
+  sorted set, an encoder that returns `[String: String]`, or encoded `Data`.
+- **Left by key:** reads of state with no `Preference`, such as the radial
+  menu profiles, text snippets, the mixer's volumes and the brightness
+  paths.
+- **Ledger after 8d:** every getter is at zero. Two writes are left, the
+  command bar aliases and row shortcuts, whose encoders return `String?`,
+  and `nil` there removes the key.
+
 ## Not in scope
 
 Product decisions remain open:
