@@ -290,6 +290,53 @@ package enum HomebrewOperationResult: Equatable {
     case needsTerminal
 }
 
+/// How a brew operation ended, read from its exit status and its output.
+package enum HomebrewOperationEnd: Equatable {
+    case succeeded
+    case cancelled
+    /// sudo asked for a password: the command is offered to run in Terminal.
+    case needsTerminal
+    /// Homebrew refused a tap the user has not trusted yet.
+    case untrustedTap(String)
+    case failed
+
+    package init(status: Int32, cancelRequested: Bool, output: String) {
+        if status == 0 {
+            self = .succeeded
+        } else if cancelRequested {
+            self = .cancelled
+        } else if HomebrewCommandBuilder.needsTerminalFallback(output: output) {
+            self = .needsTerminal
+        } else if let tap = HomebrewCommandBuilder.untrustedTapName(fromOutput: output) {
+            self = .untrustedTap(tap)
+        } else {
+            self = .failed
+        }
+    }
+
+    /// How the installed and outdated lists are read again after this end.
+    /// brew reports a run as failed when it could not do all of it, not only
+    /// when it did none of it: one disabled package makes `upgrade` skip that
+    /// one, upgrade the rest and still exit non-zero, and a cask asking for a
+    /// password stops an `upgrade` that already moved the formulae. So a run
+    /// that stopped is read again too, keeping the reason it gave on screen
+    /// while the fresh state loads. An untrusted tap is not: the re-read
+    /// clears the trust prompt this end has just put up.
+    package var refresh: HomebrewRefresh? {
+        switch self {
+        case .succeeded: return .clearingError
+        case .cancelled, .needsTerminal, .failed: return .keepingError
+        case .untrustedTap: return nil
+        }
+    }
+}
+
+/// Whether reading the installed list again clears the error on screen.
+package enum HomebrewRefresh {
+    case clearingError
+    case keepingError
+}
+
 package struct HomebrewOperationStatus: Equatable {
     package var action: HomebrewOperation.Action
     package var package: HomebrewPackage?

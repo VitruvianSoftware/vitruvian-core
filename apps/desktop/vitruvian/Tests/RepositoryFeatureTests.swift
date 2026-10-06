@@ -16,113 +16,6 @@ import VitruvianServices
 import VitruvianUI
 
 enum RepositoryFeatureTests {
-    private nonisolated struct SourceRead: Sendable {
-        let path: String
-        let source: String?
-        let lines: [String]
-        let error: String?
-    }
-
-    /// The lock guards the reads, which the snapshot's workers append.
-    private nonisolated final class SourceReadCollector: @unchecked Sendable {
-        private let lock = NSLock()
-        private var reads: [SourceRead] = []
-
-        func append(contentsOf batch: [SourceRead]) {
-            lock.withLock { reads.append(contentsOf: batch) }
-        }
-
-        func sortedReads() -> [SourceRead] {
-            lock.withLock { reads.sorted { $0.path < $1.path } }
-        }
-    }
-
-    /// Nonisolated: it reads the sources on worker threads.
-    private nonisolated struct RepositorySnapshot {
-        let swiftPaths: [String]
-        let swiftSources: [String: String]
-        let swiftLines: [String: [String]]
-        let enumerationError: String?
-        let readTimedOut: Bool
-        let unreadablePaths: [String]
-        let emptyPaths: [String]
-
-        init(fileManager: FileManager = .default) {
-            let paths: [String]
-            var traversalError: String?
-            do {
-                paths = Array(Set(try fileManager.subpathsOfDirectory(atPath: "Sources")
-                    .filter { $0.hasSuffix(".swift") }
-                    .map { "Sources/" + $0 })).sorted()
-            } catch {
-                paths = []
-                traversalError = String(describing: error)
-            }
-
-            let workerCount = min(paths.count, max(1, min(8, ProcessInfo.processInfo.activeProcessorCount)))
-            let collector = SourceReadCollector()
-            let queue = OperationQueue()
-            queue.name = "RepositorySnapshot.SourceReads"
-            queue.qualityOfService = .userInitiated
-            queue.maxConcurrentOperationCount = max(1, workerCount)
-            let readGroup = DispatchGroup()
-            let operations: [Operation] = (0..<workerCount).map { workerIndex in
-                readGroup.enter()
-                return BlockOperation {
-                    defer { readGroup.leave() }
-                    var batch: [SourceRead] = []
-                    batch.reserveCapacity((paths.count + workerCount - 1) / workerCount)
-                    for index in stride(from: workerIndex, to: paths.count, by: workerCount) {
-                        let path = paths[index]
-                        do {
-                            let source = try String(contentsOfFile: path, encoding: .utf8)
-                            batch.append(SourceRead(path: path, source: source,
-                                                   lines: source.components(separatedBy: "\n"),
-                                                   error: nil))
-                        } catch {
-                            batch.append(SourceRead(path: path, source: nil, lines: [],
-                                                   error: String(describing: error)))
-                        }
-                    }
-                    collector.append(contentsOf: batch)
-                }
-            }
-            queue.addOperations(operations, waitUntilFinished: false)
-            let timedOut = readGroup.wait(timeout: .now() + 15) == .timedOut
-            if timedOut { queue.cancelAllOperations() }
-
-            let reads = collector.sortedReads()
-            let sources = Dictionary(uniqueKeysWithValues: reads.compactMap { read in
-                read.source.map { (read.path, $0) }
-            })
-            let lines = Dictionary(uniqueKeysWithValues: reads.compactMap { read in
-                read.source.map { _ in (read.path, read.lines) }
-            })
-
-            swiftPaths = paths
-            swiftSources = sources
-            swiftLines = lines
-            enumerationError = traversalError
-            readTimedOut = timedOut
-            unreadablePaths = reads.compactMap { read in
-                read.error.map { "\(read.path): \($0)" }
-            }
-            emptyPaths = reads.compactMap { read in
-                guard let source = read.source,
-                      source.rangeOfCharacter(from: .whitespacesAndNewlines.inverted) == nil else { return nil }
-                return read.path
-            }
-        }
-
-        func source(at path: String) -> String {
-            swiftSources[path] ?? ""
-        }
-
-        func lines(at path: String) -> [String] {
-            swiftLines[path] ?? []
-        }
-    }
-
     /// What a Homebrew wait asked its stand-ins, from the worker thread it
     /// runs on. Only that thread writes it, and the test reads it once the
     /// wait has ended.
@@ -177,42 +70,216 @@ enum RepositoryFeatureTests {
             && FileManager.default.createFile(atPath: path, contents: Data("scratch".utf8))
     }
 
+    /// A Homebrew whose install fails and whose lists come back empty. The
+    /// re-read after the failure runs, and the reason the failure gave is
+    /// still on screen once it has; with no brew at all a re-read keeps it
+    /// too, and only a plain refresh clears it.
+    private static func brewBannerSurvivesRefresh(_ suite: TestSuite) {
+        let folder = scratchFolder("brew")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let calls = folder.appendingPathComponent("calls.log")
+        let failure = "Error: sample-tool is disabled"
+        let staged = writeStub("brew", in: folder, """
+            echo "$1" >> "\(calls.path)"
+            case "$1" in
+                install) echo "\(failure)"; exit 1 ;;
+                info|outdated) echo '{"formulae":[],"casks":[]}' ;;
+            esac
+            """)
+        var standIn: String? = folder.appendingPathComponent("brew").path
+        let manager = HomebrewManager(locateBrew: { standIn })
+        func ran() -> [String] {
+            ((try? String(contentsOf: calls, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        }
+        manager.install(HomebrewPackage(kind: .cask, name: "sample-tool", displayName: "Sample Tool",
+                                        desc: nil, installedVersion: nil, stableVersion: nil, homepage: nil))
+        // The first brew run waits on the login shell for its environment.
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline,
+              !(ran().count >= 3 && !manager.isLoadingInstalled && !manager.isLoadingOutdated) {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        suite.expect(staged && ran() == ["install", "info", "outdated"]
+                && manager.operationStatus?.result == .failed && manager.errorMessage == failure,
+               "a failed operation re-reads the installed and outdated lists and keeps the reason it gave: "
+               + "ran \(ran()), showing \(manager.errorMessage ?? "nothing")")
+        standIn = nil
+        manager.refreshInstalled(clearingError: false)
+        let keptWithoutBrew = manager.errorMessage
+        manager.refreshInstalled()
+        suite.expect(keptWithoutBrew == failure && manager.errorMessage == nil && manager.brewPath == nil,
+               "both banner clears in refreshInstalled are behind its parameter, so the reason "
+               + "a failed operation gave survives the refresh that follows it")
+    }
+
+    /// What the bar learns from a search stays in this process: running a
+    /// row saves its use and remembers the search in memory, no query habit
+    /// is written back, and one stored by an earlier version is dropped.
+    private static func queryHabitsStayInMemory(_ suite: TestSuite) {
+        let defaults = UserDefaults(suiteName: "vitru.tests.query-habits")!
+        defaults.removePersistentDomain(forName: "vitru.tests.query-habits")
+        defer { defaults.removePersistentDomain(forName: "vitru.tests.query-habits") }
+        defaults.set("{}", forKey: DefaultsKey.commandBarQueryHabits)
+        CommandBarLearning.discardLegacyQueryHabits(in: defaults)
+        let recorder = CommandBarRunRecorder(host: .init(
+            field: {
+                CommandBarRunRecorder.Field(mode: .search, query: "what", savedQuery: "",
+                                            queryBeforeCompletion: nil, selectedText: "", isVisible: true)
+            },
+            hide: {}, type: { _ in }, defaults: defaults))
+        recorder.finish(CommandBarEntry(id: "app.whatever", title: "Whatever", subtitle: "",
+                                        icon: .symbol("app"), run: { _ in }),
+                        value: nil)
+        suite.expect(!recorder.queryHabitStore.store.isEmpty
+                && defaults.string(forKey: DefaultsKey.commandBarUsage) != nil
+                && defaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil,
+               "query learning never persists query habits: the search is learned in memory, "
+               + "its use is saved, and a stored habit is dropped")
+    }
+
+    /// What the real uninstall steps asked of the system. The steps run on the
+    /// test's own thread here, and only it touches the log.
+    private nonisolated final class TeardownLog: @unchecked Sendable {
+        var events: [String] = []
+        var readings: [(status: Int32, output: String)] = []
+        var flagged = true
+        var rule = false
+        var password = true
+        var fanDetached = true
+        var mouseRestored = true
+    }
+
+    private static func recordedCalls(_ log: TeardownLog) -> SelfUninstall.SystemCalls {
+        SelfUninstall.SystemCalls(
+            suspendInterceptor: { interceptor in
+                log.events.append("suspend \(interceptor)")
+                return interceptor != .mouseAcceleration || log.mouseRestored
+            },
+            resumeBrightnessKeys: { log.events.append("resume brightness keys") },
+            sleepFlagged: {
+                log.events.append("flag")
+                return log.flagged
+            },
+            probeSleep: {
+                log.events.append("probe")
+                if log.readings.isEmpty { return (1, "") }
+                return log.readings.removeFirst()
+            },
+            restoreSleepWithoutPassword: {
+                log.events.append("rule")
+                return log.rule
+            },
+            restoreSleepAsAdministrator: { prompt in
+                log.events.append("password: \(prompt)")
+                return log.password
+            },
+            detachFanHelper: {
+                log.events.append("fan helper")
+                return log.fanDetached
+            })
+    }
+
+    /// `SelfUninstall.Steps.system` is the real steps over the Mac's calls;
+    /// here they run over recorded ones.
+    private static func uninstallStepsAreTheRealOnes(_ suite: TestSuite) {
+        let sleepOff: (status: Int32, output: String) = (0, "System-wide power settings:\n SleepDisabled\t\t1\n")
+        let sleepOn: (status: Int32, output: String) = (0, "System-wide power settings:\n SleepDisabled\t\t0\n")
+        let restoring = TeardownLog()
+        restoring.readings = [sleepOff, sleepOn]
+        let restoringSteps = SelfUninstall.Steps.wired(to: recordedCalls(restoring))
+        let restored = restoringSteps.restoreSleepBeforeRemoval() && restoringSteps.detachFanControl()
+        let refusing = TeardownLog()
+        refusing.readings = [sleepOff, sleepOff]
+        refusing.fanDetached = false
+        let refusingSteps = SelfUninstall.Steps.wired(to: recordedCalls(refusing))
+        let refused = !refusingSteps.restoreSleepBeforeRemoval() && !refusingSteps.detachFanControl()
+        let asked: [String] = ["flag", "probe", "rule", "password: \(L10n.shared.s.adminPromptRecover)",
+                               "probe", "fan helper"]
+        suite.expect(restored && refused && restoring.events == asked && refusing.events == asked,
+               "in-app uninstall aborts unless fans and normal sleep are restored before removal: "
+               + "\(restoring.events), \(refusing.events)")
+
+        // `Vitruvian --uninstall` has no password dialog. What it prints about
+        // sleep follows the password-free restore, or a reading taken first
+        // that sleep is on: a restore result thrown away would print sleep as
+        // still off right after the rule put it back.
+        func commandLine(flagged: Bool = true, reading: (status: Int32, output: String), rule: Bool) -> String {
+            let log = TeardownLog()
+            log.flagged = flagged
+            log.readings = [reading]
+            log.rule = rule
+            let report = SelfUninstall.commandLineSleepReport(recordedCalls(log)) ?? "nothing"
+            return report + " after " + log.events.joined(separator: ", ")
+        }
+        let reports = [
+            commandLine(flagged: false, reading: sleepOff, rule: true),
+            commandLine(reading: sleepOff, rule: true),
+            commandLine(reading: sleepOff, rule: false),
+            commandLine(reading: sleepOn, rule: false),
+            commandLine(reading: (1, ""), rule: false),
+        ]
+        suite.expect(reports == [
+            "nothing after flag",
+            "UNINSTALL: normal sleep restored after flag, probe, rule",
+            "UNINSTALL: sleep is still disabled after flag, probe, rule",
+            "UNINSTALL: normal sleep restored after flag, probe, rule",
+            "UNINSTALL: sleep is still disabled after flag, probe, rule",
+        ], "neither uninstall path discards the result of restoring sleep: \(reports)")
+
+        // The permission teardown stops every input interceptor, Cleaning
+        // Mode first and at once: deactivating it later re-syncs the services
+        // it paused and re-arms the taps just stopped. The keyboard taps are
+        // among them, and the brightness keys come back with the rest.
+        let teardown = TeardownLog()
+        teardown.mouseRestored = false
+        let teardownSteps = SelfUninstall.Steps.wired(to: recordedCalls(teardown))
+        let released = teardownSteps.suspendInputInterceptors()
+        teardownSteps.resumeBrightness()
+        let interceptors = SelfUninstall.InputInterceptor.allCases
+        suite.expect(teardown.events.first == "suspend cleaningMode",
+               "permission reset removes the cleaning input tap synchronously, before the taps it would re-arm")
+        let keyboardTaps: [SelfUninstall.InputInterceptor] = [.textSnippets, .quitProtection, .brightnessKeys]
+        let stopsKeyboardTaps = keyboardTaps.allSatisfy { interceptors.contains($0) }
+        let everyStop: [String] = interceptors.map { "suspend \($0)" } + ["resume brightness keys"]
+        suite.expect(teardown.events == everyStop && stopsKeyboardTaps && !released,
+               "the permission teardown stops every persistent keyboard tap, and waits for mouse "
+               + "acceleration: \(teardown.events)")
+    }
+
+    /// The permission teardown stops the two brightness key taps and nothing
+    /// else of the display side: a revoked permission must not undo a dimmed
+    /// picture or bring back a display the user switched off.
+    private static func brightnessTeardownKeepsTheDisplays(_ suite: TestSuite) {
+        let desk = BrightnessRig.Desk()
+        defer { desk.tearDown() }
+        let panel = BrightnessRig.Display(id: 1, systemLevel: 0.5)
+        panel.builtIn = true
+        desk.displays = [panel, BrightnessRig.Display(id: 2), BrightnessRig.Display(id: 3)]
+        let service = BrightnessService(environment: desk.environment)
+        service.start()
+        desk.drain()
+        service.setBrightness(0.5, for: 2)
+        desk.drain()
+        if let third = service.displays.first(where: { $0.id == 3 }) {
+            service.toggleDisplay(third)
+        }
+        desk.drain()
+        let prepared = desk.configurations == ["off:3"] && !desk.display(2).gammaWrites.isEmpty
+        let suspendedBefore = service.inputTapsAreSuspended
+        desk.events = []
+        service.suspendInputTaps()
+        desk.drain()
+        suite.expect(prepared && !suspendedBefore && service.inputTapsAreSuspended && desk.events.isEmpty,
+               "the permission teardown holds the brightness key taps off and leaves the pictures and "
+               + "the displays as they were, found \(desk.events)")
+    }
+
     static func run(_ suite: TestSuite) {
         func expectEqual(_ actual: String, _ expected: String, _ label: String,
                          file: StaticString = #filePath, line: UInt = #line) {
             suite.expect(actual == expected, "\(label): got \(actual), expected \(expected)",
                          file: file, line: line)
         }
-        let repository = RepositorySnapshot()
-        suite.expect(repository.enumerationError == nil,
-               "the Swift source corpus is enumerable: \(repository.enumerationError ?? "")")
-        suite.expect(!repository.swiftPaths.isEmpty,
-               "the Swift source corpus contains files")
-        suite.expect(!repository.readTimedOut,
-               "the Swift source corpus finishes reading inside its bounded deadline")
-        suite.expect(repository.unreadablePaths.isEmpty,
-               "every Swift source is readable: \(repository.unreadablePaths)")
-        suite.expect(repository.emptyPaths.isEmpty,
-               "no Swift source is empty: \(repository.emptyPaths)")
-        let requiredSourcePaths = [
-            "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift",
-            "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift",
-            "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
-            "Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift",
-            "Sources/Vitruvian/Services/SelfUninstall.swift",
-            "Sources/Vitruvian/Services/Shelf/ShelfService.swift",
-            "Sources/Vitruvian/Support/Uninstaller.swift",
-            "Sources/Vitruvian/UI/Settings/URLCleanerSettings.swift",
-            "Sources/Vitruvian/UI/Theme.swift",
-        ]
-        let missingSourcePaths = requiredSourcePaths.filter {
-            repository.swiftSources[$0] == nil
-        }
-        suite.expect(missingSourcePaths.isEmpty,
-               "every directly inspected Swift source is present: \(missingSourcePaths)")
-        let buildScript = (try? String(contentsOfFile: "build.sh", encoding: .utf8)) ?? ""
-        suite.expect(!buildScript.isEmpty, "build.sh is readable for repository contracts")
-
         // MARK: URL cleaning
 
         expectEqual(URLCleaning.clean("https://example.com/path?utm_source=news&id=42&fbclid=abc")?.url ?? "",
@@ -238,16 +305,9 @@ enum RepositoryFeatureTests {
                     "https://example.com/?reference=one",
                     "URL cleaner does not treat custom parameter names as prefixes")
         // A grouped Form keeps a label column even for an empty label, which
-        // left every field on the right half of its row. The hint has to
-        // travel as `prompt:` and the label has to be hidden for a field to
-        // own its whole row.
-        let urlCleanerSettingsSource = repository.source(
-            at: "Sources/Vitruvian/UI/Settings/URLCleanerSettings.swift")
-        suite.expect(!urlCleanerSettingsSource.contains("TextField(l10n.s."),
-               "no Clean URL field spends its row on a label instead of the field")
-        suite.expect(urlCleanerSettingsSource.components(separatedBy: "TextField(").count
-                == urlCleanerSettingsSource.components(separatedBy: ".labelsHidden()").count,
-               "every Clean URL field hides its label so the field owns the row")
+        // left every field on the right half of its row; and the panels'
+        // outlines answer raised contrast. Both are drawn there.
+        SettingsLayoutContract.run(suite)
 
         // Rules are stored as a difference from the built-in tables, never as
         // a copy of them, so names a later version adds still reach someone
@@ -469,26 +529,27 @@ enum RepositoryFeatureTests {
 
         // brew exits non-zero when it could not do all of a run, not only when it
         // did none of it, so the installed and outdated lists have to be re-read
-        // after a failed operation too. Read from the source: the refresh happens
-        // inside a completion closure that no unit test can drive.
-        let managerSource = repository.source(
-            at: "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift")
-        suite.expect(!managerSource.isEmpty, "HomebrewManager source is readable for the refresh checks")
-        let managerCode = managerSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let refreshCalls = managerCode
-            .components(separatedBy: "self.refreshInstalled(clearingError: false)").count - 1
-        suite.expect(refreshCalls == 3,
+        // after a failed operation too, with the reason it gave still on screen.
+        let operationEnds = [
+            HomebrewOperationEnd(status: 1, cancelRequested: true, output: "Error: Interrupted"),
+            HomebrewOperationEnd(status: 1, cancelRequested: false,
+                                 output: "sudo: a terminal is required to read the password"),
+            HomebrewOperationEnd(status: 1, cancelRequested: false, output: "Error: sample-tool is disabled"),
+        ]
+        suite.expect(operationEnds == [.cancelled, .needsTerminal, .failed]
+                && operationEnds.allSatisfy { $0.refresh == .keepingError },
                "the cancelled, needs-terminal and failed operation paths all re-read, "
-               + "found \(refreshCalls)")
-        let guardedBannerClears = managerCode
-            .components(separatedBy: "if clearingError { errorMessage = nil }").count - 1
-        suite.expect(guardedBannerClears == 2,
-               "both banner clears in refreshInstalled are behind its parameter, so the reason "
-               + "a failed operation gave survives the refresh that follows it, found "
-               + "\(guardedBannerClears)")
+               + "found \(operationEnds)")
+        let succeededEnd = HomebrewOperationEnd(status: 0, cancelRequested: true, output: "")
+        let untrustedEnd = HomebrewOperationEnd(
+            status: 1, cancelRequested: false,
+            output: "Error: Refusing to load formula foo from untrusted tap someone/sometap.")
+        let succeededClears: Bool = succeededEnd == .succeeded && succeededEnd.refresh == .clearingError
+        let untrustedKeepsPrompt: Bool = untrustedEnd == .untrustedTap("someone/sometap")
+            && untrustedEnd.refresh == nil
+        suite.expect(succeededClears && untrustedKeepsPrompt,
+               "a successful operation re-reads with a clean banner, and an untrusted tap keeps its prompt")
+        brewBannerSurvivesRefresh(suite)
         suite.expect(HomebrewOperation.Action.install.runningSystemImage == "arrow.down.circle.fill",
                "Homebrew install status uses a download icon")
         suite.expect(HomebrewOperation.Action.uninstall.runningSystemImage == "trash.circle.fill",
@@ -949,286 +1010,6 @@ enum RepositoryFeatureTests {
                      && afterUninstall.map(\.id) == rankedPackages.map(\.id),
                      "Homebrew search returns to an installable result after uninstall")
 
-        // MARK: Repository-wide source contracts
-
-        // Reading a file is not a drawing step. The watermark logo was being
-        // decoded inside the preview's body, so every frame of an opacity
-        // drag re-read it from disk; it is loaded once per chosen file now,
-        // which is what a task is for.
-        let uiPrefix = "Sources/Vitruvian/UI/"
-        let allUIFiles = repository.swiftPaths.filter { $0.hasPrefix(uiPrefix) }
-        var decodingInBody: [String] = []
-        for path in allUIFiles {
-            let lines = repository.lines(at: path)
-            for (index, line) in lines.enumerated() {
-                let reads = line.contains("NSImage(contentsOfFile:")
-                    || line.contains("Data(contentsOf:")
-                guard reads else { continue }
-                let around = lines[max(0, index - 6)...min(lines.count - 1, index + 2)]
-                if !around.contains(where: { $0.contains(".task(") || $0.contains("func ")
-                                             || $0.contains("Task {") }) {
-                    decodingInBody.append("\(path):\(index + 1)")
-                }
-            }
-        }
-        suite.expect(decodingInBody.isEmpty,
-               "a view reads a file once, never while drawing (\(decodingInBody.joined(separator: ", ")))")
-
-        // An unpinned borderless Menu claims the free width of its row on
-        // macOS 15 and starves whatever shares that row (issue #569), so the
-        // rule is checked for every borderless menu in the app rather than for
-        // the one this fix touches. Kill Process is the one deliberate
-        // exception: its row controls take a shared minimum width so the Kill
-        // button and the menu beside it line up down the list.
-        let borderlessMenuException = "KillProcess/KillProcessView"
-        var unpinnedBorderlessMenus: [String] = []
-        let uiFiles = allUIFiles.filter { !$0.contains(" 2") }
-        for path in uiFiles where !path.contains(borderlessMenuException) {
-            let file = String(path.dropFirst(uiPrefix.count))
-            let lines = repository.lines(at: path)
-            for (index, line) in lines.enumerated()
-            where line.contains(".menuStyle(.borderlessButton)") {
-                // Read to the end of the menu's own modifier chain: the next
-                // line that is neither a modifier nor a comment belongs to
-                // something else.
-                var pinned = false
-                var cursor = index + 1
-                while cursor < lines.count {
-                    let text = lines[cursor].trimmingCharacters(in: .whitespaces)
-                    guard text.hasPrefix(".") || text.hasPrefix("//") else { break }
-                    if text.hasPrefix(".fixedSize()") { pinned = true; break }
-                    cursor += 1
-                }
-                if !pinned { unpinnedBorderlessMenus.append("\(file):\(index + 1)") }
-            }
-        }
-        suite.expect(!uiFiles.isEmpty && unpinnedBorderlessMenus.isEmpty,
-               "every borderless menu keeps its own size, across \(uiFiles.count) "
-               + "scanned files: \(unpinnedBorderlessMenus)")
-
-        // `waitUntilAllOperationsAreFinished` has no deadline, and the window
-        // walk that used it runs on the main thread while its operations run on
-        // the shared dispatch pool. Once unrelated work had taken every worker
-        // in that pool, not one operation started and the wait never returned,
-        // taking the whole app with it (issue #971).
-        let appPrefix = "Sources/Vitruvian/"
-        let appSources = repository.swiftPaths.filter {
-            $0.hasPrefix(appPrefix) && !$0.contains(" 2")
-        }
-        var unboundedOperationWaits: [String] = []
-        for path in appSources {
-            let file = String(path.dropFirst(appPrefix.count))
-            for (index, line) in repository.lines(at: path).enumerated()
-            where line.contains("waitUntilAllOperationsAreFinished") {
-                unboundedOperationWaits.append("\(file):\(index + 1)")
-            }
-        }
-        suite.expect(!appSources.isEmpty && unboundedOperationWaits.isEmpty,
-               "no operation queue is waited on without a deadline: \(unboundedOperationWaits)")
-
-        // Asking an application element for its role switches a Chromium app's
-        // renderers into full accessibility mode for the rest of the process's
-        // life. Both scans report real line numbers, so comments are excluded
-        // in the predicate rather than removed from the source.
-        func isCommentLine(_ line: String) -> Bool {
-            line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
-        }
-        var applicationRoleReads: [String] = []
-        for path in appSources {
-            let file = String(path.dropFirst(appPrefix.count))
-            let lines = repository.lines(at: path)
-            var applicationElements: Set<String> = []
-            for line in lines where line.contains("AXUIElementCreateApplication(") {
-                let assigned = (line.components(separatedBy: "=").first ?? "")
-                    .trimmingCharacters(in: .whitespaces)
-                    .components(separatedBy: " ")
-                guard assigned.count == 2, assigned[0] == "let" || assigned[0] == "var" else { continue }
-                applicationElements.insert(assigned[1])
-            }
-            for (index, line) in lines.enumerated()
-            where line.contains("kAXRoleAttribute")
-                && !isCommentLine(line)
-                && applicationElements.contains(where: { line.contains("(\($0), ") }) {
-                applicationRoleReads.append("\(file):\(index + 1)")
-            }
-        }
-        suite.expect(!appSources.isEmpty && applicationRoleReads.isEmpty,
-               "no application element is ever asked for its role: \(applicationRoleReads)")
-
-        // A walk up kAXParent reaches an application element without naming it,
-        // so every such walk must stop before asking that parent for its role.
-        var unguardedParentWalks: [String] = []
-        for path in appSources {
-            let file = String(path.dropFirst(appPrefix.count))
-            let lines = repository.lines(at: path)
-            for (index, line) in lines.enumerated()
-            where line.contains("role(of: parent)") && !isCommentLine(line) {
-                let guarded = lines[max(0, index - 3)..<index]
-                    .contains { $0.contains("isApplicationElement(parent)") && !isCommentLine($0) }
-                if !guarded { unguardedParentWalks.append("\(file):\(index + 1)") }
-            }
-        }
-        suite.expect(!appSources.isEmpty && unguardedParentWalks.isEmpty,
-               "a walk up the parent chain stops at the application element: \(unguardedParentWalks)")
-
-        // Availability is only ever written by the runtime that gates it, so a
-        // new install surface cannot walk around the hardware check.
-        var availabilityWriters: Set<String> = []
-        for path in repository.swiftPaths {
-            let writes = repository.lines(at: path).contains {
-                $0.contains(".set(") && $0.contains("availabilityKey")
-            }
-            if writes { availabilityWriters.insert((path as NSString).lastPathComponent) }
-        }
-        suite.expect(availabilityWriters == ["FeatureRuntime.swift",
-                                       "FeaturePresets.swift",
-                                       "Defaults.swift"],
-               "feature availability is written only where the hardware gate runs, "
-               + "found \(availabilityWriters.sorted())")
-
-        // A saved shelf may only be read through the loader that distinguishes
-        // an unreadable or partial store from a valid empty one.
-        let rawShelfStoreDecoders = repository.swiftPaths.compactMap { path in
-            repository.source(at: path).contains("decode([ShelfPersistedItem]")
-                ? (path as NSString).lastPathComponent : nil
-        }
-        suite.expect(!repository.swiftPaths.isEmpty && rawShelfStoreDecoders.isEmpty,
-               "the saved shelf is read only through ShelfPersistenceSupport.load, "
-               + "found a bare decode in \(rawShelfStoreDecoders.sorted()) "
-               + "across \(repository.swiftPaths.count) scanned files")
-
-        var bareActivationYields: [String] = []
-        for path in repository.swiftPaths
-        where (path as NSString).lastPathComponent != "ActivationHandoff.swift"
-            && repository.source(at: path).contains("yieldActivation") {
-            bareActivationYields.append((path as NSString).lastPathComponent)
-        }
-        suite.expect(!repository.swiftPaths.isEmpty && bareActivationYields.isEmpty,
-               "activation is yielded only through ActivationHandoff, "
-               + "found a bare yield in \(bareActivationYields.sorted()) "
-               + "across \(repository.swiftPaths.count) scanned files")
-
-        // Dropping the last Swift reference does not deregister an event tap;
-        // every literal tap creation needs a matching invalidation or removal.
-        var tapOwnersWithoutInvalidate: [String] = []
-        var tapOwners = 0
-        for path in appSources {
-            let code = repository.lines(at: path)
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-            let taps = code.components(separatedBy: "CGEvent.tapCreate").count - 1
-            guard taps > 0 else { continue }
-            tapOwners += 1
-            let invalidations = code.components(separatedBy: "CFMachPortInvalidate").count - 1
-                + (code.components(separatedBy: "PointerTapRunLoop.remove(").count - 1)
-            if invalidations < taps {
-                let file = String(path.dropFirst(appPrefix.count))
-                tapOwnersWithoutInvalidate.append("\(file) (\(taps) taps, \(invalidations) invalidated)")
-            }
-        }
-        suite.expect(tapOwners > 0 && tapOwnersWithoutInvalidate.isEmpty,
-               "every event tap owner invalidates its port on teardown, across "
-               + "\(tapOwners) scanned owners: \(tapOwnersWithoutInvalidate)")
-
-        // MARK: Localization source contracts
-
-        // Visible localization source uses typographic apostrophes rather than
-        // typewriter marks.
-        let localizationSourcePaths = repository.swiftPaths.filter { path in
-            let folder = (path as NSString).deletingLastPathComponent
-            let name = (path as NSString).lastPathComponent
-            return (folder == "Sources/Vitruvian/Core"
-                    || folder == "Sources/Vitruvian/Core/Localizations")
-                && (name.hasSuffix("Strings.swift") || name.hasPrefix("Strings+")
-                    || name == "Localization.swift")
-        }
-        var typewriterMarks: [String] = []
-        for path in localizationSourcePaths {
-            for (index, line) in repository.lines(at: path).enumerated() {
-                guard !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
-                guard let opening = line.firstIndex(of: "\""),
-                      let closing = line.lastIndex(of: "\""), opening < closing else { continue }
-                if line[opening..<closing].contains("'") {
-                    typewriterMarks.append("\(path):\(index + 1)")
-                }
-            }
-        }
-        suite.expect(typewriterMarks.isEmpty,
-               "visible text curls its apostrophes (\(typewriterMarks.prefix(6).joined(separator: ", ")))")
-
-        // French double punctuation and guillemets use non-breaking spaces.
-        // Declarations in a module of their own also say `package`, which the
-        // block search reads past.
-        func declarationText(_ line: String) -> String {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return trimmed.hasPrefix("package ") ? String(trimmed.dropFirst("package ".count)) : trimmed
-        }
-        func frenchLines(_ path: String) -> ArraySlice<String> {
-            let lines = repository.lines(at: path)
-            guard !path.hasSuffix("Strings+French.swift") else { return lines[...] }
-            guard let start = lines.firstIndex(where: {
-                declarationText($0).hasPrefix("static let fr = ")
-            }) else { return [][...] }
-            let end = lines[(start + 1)...].firstIndex {
-                declarationText($0).hasPrefix("static let ")
-            } ?? lines.endIndex
-            return lines[start..<end]
-        }
-        let frenchSources = repository.swiftPaths.filter { path in
-            path == "Sources/Vitruvian/Core/Localizations/Strings+French.swift"
-                || ((path as NSString).deletingLastPathComponent == "Sources/Vitruvian/Core"
-                    && path.hasSuffix("Strings.swift"))
-        }
-        var breakingFrench: [String] = []
-        var frenchBlocksNotFound: [String] = []
-        var scannedFrenchLines = 0
-        for path in frenchSources {
-            let block = frenchLines(path)
-            scannedFrenchLines += block.count
-            if block.isEmpty && repository.source(at: path).contains("let fr = ") {
-                frenchBlocksNotFound.append((path as NSString).lastPathComponent)
-            }
-            for line in block {
-                guard !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
-                guard let opening = line.firstIndex(of: "\""),
-                      let closing = line.lastIndex(of: "\""), opening < closing else { continue }
-                let body = String(line[line.index(after: opening)..<closing])
-                let breaks = [" ;", " :", " !", " ?", " \u{00BB}", "\u{00AB} "]
-                if breaks.contains(where: { body.contains($0) }) {
-                    breakingFrench.append((path as NSString).lastPathComponent)
-                }
-            }
-        }
-        suite.expect(breakingFrench.isEmpty,
-               "French keeps its punctuation on the line it belongs to (\(Set(breakingFrench).sorted().prefix(4).joined(separator: ", ")))")
-        suite.expect(scannedFrenchLines > 0 && frenchBlocksNotFound.isEmpty,
-               "the French check reads every French block, \(scannedFrenchLines) lines scanned, "
-               + "missed \(frenchBlocksNotFound.sorted().prefix(4))")
-
-        let themeSource = repository.source(at: "Sources/Vitruvian/UI/Theme.swift")
-        let raisedReads = themeSource
-            .components(separatedBy: "accessibilityDisplayShouldIncreaseContrast").count - 1
-        suite.expect(raisedReads == 2,
-               "both panel outlines answer raised contrast, and nothing else pretends to")
-
-        // Every formatted decimal explicitly chooses its locale. Long calls
-        // may put that locale on either of the next two lines.
-        var regionlessDecimals: [String] = []
-        for path in repository.swiftPaths {
-            let lines = repository.lines(at: path)
-            for (index, line) in lines.enumerated() {
-                let statement = lines[index...min(index + 2, lines.count - 1)].joined()
-                guard line.contains("String(format:"), !statement.contains("locale:") else { continue }
-                let piece = line.components(separatedBy: "String(format:").dropFirst().first ?? ""
-                let format = piece.components(separatedBy: "\"").dropFirst().first ?? ""
-                if format.contains("f") && format.contains("%") {
-                    regionlessDecimals.append("\(path):\(index + 1)")
-                }
-            }
-        }
-        suite.expect(regionlessDecimals.isEmpty,
-               "a decimal on screen names its region (\(regionlessDecimals.joined(separator: ", ")))")
-
         // Purgeable space is queried only for writable volumes: the bulk fetch
         // asks nothing that only a writable volume can answer, and a volume
         // that says it is read-only is not asked. The scratch folder's volume
@@ -1243,21 +1024,9 @@ enum RepositoryFeatureTests {
                "purgeable space is read only where there is something to purge")
 
         // Only localized fields that reach String(format:) need matching
-        // placeholders in every language.
-        var formatFields: Set<String> = []
-        for path in repository.swiftPaths {
-            for piece in repository.source(at: path).components(separatedBy: "String(format:").dropFirst() {
-                let head = piece.prefix(120)
-                guard let comma = head.firstIndex(of: ",") else { continue }
-                let expression = head[head.startIndex..<comma]
-                guard let dot = expression.lastIndex(of: ".") else { continue }
-                let name = expression[expression.index(after: dot)...]
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber }) {
-                    formatFields.insert(name)
-                }
-            }
-        }
+        // placeholders in every language. bazel/source_lints.py keeps the
+        // list equal to the fields the sources hand to String(format:).
+        let formatFields = Set(SourceNames.formatFields)
         suite.expect(formatFields.count > 10, "the format fields were found to compare (\(formatFields.count))")
         var mismatched: [String] = []
         for (language, strings) in LocalizationTests.languages where language != .enUS {
@@ -1277,14 +1046,9 @@ enum RepositoryFeatureTests {
                "every language fills a format the same way (\(mismatched.prefix(5).joined(separator: ", ")))")
 
         // Every literal SF Symbol name resolves on the test system.
-        var symbolNames: Set<String> = []
-        for path in repository.swiftPaths {
-            for piece in repository.source(at: path).components(separatedBy: "systemName: \"").dropFirst() {
-                guard let end = piece.firstIndex(of: "\"") else { continue }
-                let name = String(piece[piece.startIndex..<end])
-                if !name.isEmpty, !name.contains("\\") { symbolNames.insert(name) }
-            }
-        }
+        // bazel/source_lints.py keeps the list equal to the names the sources
+        // spell.
+        let symbolNames = Set(SourceNames.symbols)
         suite.expect(symbolNames.count > 80, "the symbol names were found (\(symbolNames.count))")
         var missingSymbols: [String] = []
         for name in symbolNames.sorted()
@@ -1294,180 +1058,16 @@ enum RepositoryFeatureTests {
         suite.expect(missingSymbols.isEmpty,
                "every symbol the app draws exists (\(missingSymbols.joined(separator: ", ")))")
 
-        // Every literal resource name requested by Swift is shipped or staged
-        // by the build.
-        var namedResources: Set<String> = []
-        for path in repository.swiftPaths {
-            let text = repository.source(at: path)
-            for marker in ["url(forResource: \"", "path(forResource: \"", "NSImage(named: \""] {
-                for piece in text.components(separatedBy: marker).dropFirst() {
-                    guard let end = piece.firstIndex(of: "\"") else { continue }
-                    let name = String(piece[piece.startIndex..<end])
-                    if !name.isEmpty, !name.contains("\\") { namedResources.insert(name) }
-                }
-            }
-        }
-        suite.expect(namedResources.count >= 5, "the named resources were found (\(namedResources.count))")
-        var shippedNames: Set<String> = []
-        for path in (try? FileManager.default.subpathsOfDirectory(atPath: "Resources")) ?? [] {
-            let file = (path as NSString).lastPathComponent
-            shippedNames.insert((file as NSString).deletingPathExtension)
-            shippedNames.insert(file)
-        }
-        suite.expect(!buildScript.isEmpty, "the build script reads back for its resource names")
-        for word in buildScript.components(separatedBy: CharacterSet(charactersIn: " \n\t\"'()")) {
-            let file = (word as NSString).lastPathComponent
-            guard !file.isEmpty else { continue }
-            shippedNames.insert((file as NSString).deletingPathExtension)
-            shippedNames.insert(file)
-        }
-        shippedNames.insert("CHANGELOG")
-        let absentResources = namedResources.filter { !shippedNames.contains($0) }.sorted()
-        suite.expect(absentResources.isEmpty,
-               "every file the app asks for by name is in the bundle (\(absentResources.joined(separator: ", ")))")
-
-        // Embedded Finder scripts are compiled only when they run, so verify
-        // that every multiline tell/repeat block balances here.
-        var unbalancedScripts: [String] = []
-        for path in repository.swiftPaths {
-            let text = repository.source(at: path)
-            for chunk in text.components(separatedBy: "\"\"\"").enumerated()
-            where chunk.offset % 2 == 1 && chunk.element.contains("tell application") {
-                let body = chunk.element.components(separatedBy: "\n")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                func opens(_ word: String, closing: String, inline: (String) -> Bool) -> Bool {
-                    let started = body.filter { $0.hasPrefix(word + " ") && !inline($0) }.count
-                    let ended = body.filter { $0 == closing }.count
-                    return started != ended
-                }
-                let name = (path as NSString).lastPathComponent
-                if opens("tell", closing: "end tell", inline: { $0.contains(" to ") }) {
-                    unbalancedScripts.append("\(name):tell")
-                }
-                if opens("repeat", closing: "end repeat", inline: { _ in false }) {
-                    unbalancedScripts.append("\(name):repeat")
-                }
-            }
-        }
-        suite.expect(unbalancedScripts.isEmpty,
-               "every embedded script closes what it opens (\(unbalancedScripts.joined(separator: ", ")))")
-
         // Absolute command-line tool paths embedded in Swift must exist.
-        var toolPaths: Set<String> = []
-        for path in repository.swiftPaths {
-            for piece in repository.source(at: path).components(separatedBy: "\"/").dropFirst() {
-                guard let end = piece.firstIndex(of: "\"") else { continue }
-                let candidate = "/" + piece[piece.startIndex..<end]
-                guard candidate.hasPrefix("/bin/") || candidate.hasPrefix("/usr/bin/")
-                        || candidate.hasPrefix("/usr/sbin/") else { continue }
-                guard !candidate.contains(" "), !candidate.contains("\\") else { continue }
-                toolPaths.insert(candidate)
-            }
-        }
+        // bazel/source_lints.py keeps the list equal to the paths the sources
+        // spell.
+        let toolPaths = Set(SourceNames.systemTools)
         suite.expect(toolPaths.count >= 15, "the system tools were found (\(toolPaths.count))")
         let missingTools = toolPaths.sorted().filter {
             !FileManager.default.fileExists(atPath: $0)
         }
         suite.expect(missingTools.isEmpty,
                "every system tool the app runs is where it expects (\(missingTools.joined(separator: ", ")))")
-
-        // User-file stores delete only paths whose ownership is established in
-        // the local scope immediately before removal.
-        var ungardedDeletes: [String] = []
-        let ownershipGuards = ["isShelfOwnedFile", "discardablePaths", "ownedPayloadURLs",
-                               "isRegularFile", "tempDir", "legacyDir", "root", "uuidString",
-                               "storeRoot", "contentsOfDirectory"]
-        for path in ["Sources/Vitruvian/Services/Shelf/ShelfService.swift",
-                     "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
-                     "Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift"] {
-            let lines = repository.lines(at: path)
-            suite.expect(!lines.isEmpty, "the store source reads back for its deletion check")
-            for (index, line) in lines.enumerated() where line.contains("removeItem(at:") {
-                let scope = lines[max(0, index - 10)...index].joined(separator: "\n")
-                if !ownershipGuards.contains(where: scope.contains) {
-                    ungardedDeletes.append("\((path as NSString).lastPathComponent):\(index + 1)")
-                }
-            }
-        }
-        suite.expect(ungardedDeletes.isEmpty,
-               "a file is deleted only after the app checks it owns it (\(ungardedDeletes.joined(separator: ", ")))")
-
-        // MARK: Result
-
-        // MARK: Every temp dir build.sh stages in is swept when the script ends
-        // `mktemp -d` lands outside the repo, so a dir the script does not
-        // remove survives the run — a successful one as much as a failed one.
-        // The sweep is therefore a trap, and a staging dir added later leaks on
-        // every build until it is named in cleanup(). The names are read out of
-        // the script so the two cannot drift apart.
-        // The trap has to be installed before the first dir exists: a failure
-        // between `mktemp -d` and a later `trap` leaks exactly as before.
-        let sweepInstalled = buildScript.range(of: "trap cleanup EXIT")?.lowerBound
-        let firstStaged = buildScript.range(of: "mktemp -d")?.lowerBound
-        suite.expect(sweepInstalled != nil && firstStaged != nil && sweepInstalled! < firstStaged!,
-               "build.sh installs the temp dir sweep before it stages the first dir")
-        // zsh runs the EXIT trap on HUP but not on INT or TERM, so the signals
-        // have to reach it through `exit` or Ctrl-C leaks the staged bundle.
-        let signalsRouted = buildScript.range(of: "trap 'exit 1' INT TERM HUP")?.lowerBound
-        suite.expect(signalsRouted != nil && firstStaged != nil && signalsRouted! < firstStaged!,
-               "build.sh routes interrupts through the sweep before it stages the first dir")
-        let cleanupBody = buildScript.components(separatedBy: "cleanup() {")
-            .dropFirst().first?.components(separatedBy: "\n}").first ?? ""
-        let stagedTempDirs = buildScript.components(separatedBy: "=\"$(mktemp -d)\"")
-            .dropLast()
-            .compactMap {
-                $0.split(whereSeparator: { $0.isNewline || $0 == " " || $0 == "\t" })
-                    .last.map(String.init)
-            }
-        suite.expect(!stagedTempDirs.isEmpty, "the staged temp dirs read back out of build.sh")
-        // A dir reached through a path suffix — `X="$(mktemp -d)/name"` — puts
-        // the parent in no variable at all, which is how the bundle staging dir
-        // leaked. Every call has to be captured whole to be sweepable.
-        suite.expect(buildScript.components(separatedBy: "mktemp -d").count - 1 == stagedTempDirs.count,
-               "every mktemp -d in build.sh is a whole capture — no path suffix, no other spelling")
-        for variable in Set(stagedTempDirs) {
-            suite.expect(cleanupBody.contains("\"$\(variable)\""),
-                   "temp dir \(variable) is swept by build.sh cleanup()")
-            // The sweep runs under `set -u` before the dir is staged: an entry
-            // whose variable is not empty first aborts cleanup() at that line,
-            // leaving everything listed below it unswept and the exit status
-            // untouched. The empty assignment is the third line of the pattern.
-            // The leading newline keeps ICON_TMP off STAGE_ICON_TMP.
-            let initialized = buildScript.range(of: "\n\(variable)=\"\"")?.lowerBound
-            suite.expect(initialized != nil && sweepInstalled != nil && initialized! < sweepInstalled!,
-                   "temp dir \(variable) is empty before the sweep is installed")
-        }
-
-        // MARK: An identity-less build that installs creates its stable signing identity
-        // An ad-hoc signature changes hash on every build, so macOS orphans
-        // Accessibility and Screen Recording grants on each rebuild while
-        // System Settings keeps showing them as granted. build.sh therefore
-        // routes identity-less installs through Tools/setup-signing.sh before
-        // signing. The needle is the invocation at the start of a command
-        // line: the ad-hoc fallback's advice string also names the script, and
-        // must not satisfy this check.
-        let runsSigningSetup = buildScript.components(separatedBy: "\n").contains {
-            $0.range(of: #"^\s*(if\s+!?\s*)?\./Tools/setup-signing\.sh"#,
-                     options: .regularExpression) != nil
-        }
-        suite.expect(runsSigningSetup,
-               "an identity-less build that installs invokes Tools/setup-signing.sh itself")
-        // The guard is on the install, not on the variant: a plain --install
-        // replaces the bundle under the released id, so it strands the grants
-        // on the app people actually use. CI never passes --install.
-        let buildScriptCode = buildScript.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
-        suite.expect(buildScriptCode.contains { $0.contains("(( DEV || INSTALL ))")
-                                            && $0.contains("developer_id_identity") },
-               "the signing setup guard covers every install, not only the Developer variant")
-        // MARK: The stable identity is judged by whether codesign can sign with it
-        // A find-identity listing names certificates codesign then rejects, and
-        // -v excludes every self-signed one, so neither spelling may decide.
-        suite.expect(!buildScriptCode.contains { $0.contains("find-identity") && $0.contains("$LEGACY_IDENTITY") },
-               "build.sh never decides the stable identity by a find-identity listing")
-        suite.expect(buildScriptCode.contains { $0.contains("cp /bin/echo") }
-                && buildScriptCode.contains { $0.contains("--sign \"$LEGACY_IDENTITY\" \"$probe\"") },
-               "build.sh asks codesign to sign a throwaway copy of /bin/echo with the stable identity")
 
         // MARK: Tools/setup-signing.sh runs end to end against the stock openssl
         // The setup script must run against the stock /usr/bin/openssl, which
@@ -1523,26 +1123,9 @@ enum RepositoryFeatureTests {
                "setup-signing.sh removes its probe and its work folder: \(signingLeftovers)")
 
         // MARK: Uninstallation paths stay aligned across SelfUninstall and Tools/uninstall.sh
-        let selfUninstallSource = repository.source(
-            at: "Sources/Vitruvian/Services/SelfUninstall.swift")
-        let uninstallScriptSource = (try? String(contentsOfFile: "Tools/uninstall.sh",
-                                                encoding: .utf8)) ?? ""
-        suite.expect(!selfUninstallSource.isEmpty && !uninstallScriptSource.isEmpty,
-               "uninstall sources read back for uninstallation alignment check")
-        suite.expect(selfUninstallSource.contains("CleaningModeManager.shared.deactivateForSystemTeardown()"),
-               "permission reset removes the cleaning input tap synchronously")
-        let queryHabitSupportSource = repository.source(
-            at: "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift")
-        let queryHabitServiceSource = repository.source(
-            at: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift")
-        suite.expect(!queryHabitSupportSource.isEmpty
-                && !queryHabitServiceSource.isEmpty
-                && !queryHabitSupportSource.contains("SecItem")
-                && !queryHabitSupportSource.contains("import Security")
-                && !selfUninstallSource.contains("removeInstallationKey")
-                && !uninstallScriptSource.contains("delete-generic-password")
-                && !queryHabitServiceSource.contains("DefaultsKey.commandBarQueryHabits"),
-               "query learning and uninstall never access Keychain or persist query habits")
+        // Neither query learning nor uninstall touches Keychain, which
+        // bazel/source_lints.py checks; what the bar learns is never stored.
+        queryHabitsStayInMemory(suite)
         // The script's own steps run here over scratch folders, against what
         // the app removes and looks for. First the files: everything the
         // in-app uninstall removes is staged in a scratch home, beside the
@@ -1601,22 +1184,10 @@ enum RepositoryFeatureTests {
         // failure there leaves `pmset disablesleep 1` set system-wide, and
         // removal deletes the flag that launch-time recovery reads before it
         // reads the setting, so nothing repairs it afterwards — a reinstall
-        // included.
-        let uninstallerSource = repository.source(
-            at: "Sources/Vitruvian/Support/Uninstaller.swift")
-        suite.expect(!uninstallerSource.isEmpty,
-               "uninstaller entry point reads back for the sleep restore check")
-        suite.expect(!selfUninstallSource.contains("_ = Sudoers.pmsetDisableSleep")
-                && !uninstallerSource.contains("_ = Sudoers.pmsetDisableSleep"),
-               "neither uninstall path discards the result of restoring sleep")
-        // The flows run through injected steps, and SelfUninstallTests checks
-        // that a failed sleep restore or fan detach stops them. The system's
-        // steps are the real restores.
-        suite.expect(selfUninstallSource.contains("restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() }")
-                && selfUninstallSource.contains("detachFanControl: { SelfUninstall.detachFanControl() }")
-                && selfUninstallSource.contains("FanControlService.restoreAndUnregisterForRemoval()")
-                && selfUninstallSource.contains("adminPromptRecover"),
-               "in-app uninstall aborts unless fans and normal sleep are restored before removal")
+        // included. The flows run through injected steps, and
+        // SelfUninstallTests checks that a failed sleep restore or fan detach
+        // stops them; the system's steps are the real restores.
+        uninstallStepsAreTheRealOnes(suite)
         // The real sleep restore reports success only when sleep was never the
         // app's to restore, or is known to be back: a flag that outlived the
         // setting asks for no password, a probe that did not answer says
@@ -1685,24 +1256,7 @@ enum RepositoryFeatureTests {
                    "script uninstall reads the sleep setting back for itself, as the app does "
                    + "(reported \(setting ?? "nothing"), read \(scriptReads.isEmpty ? "nothing" : scriptReads))")
         }
-        let brightnessSource = repository.source(
-            at: "Sources/Vitruvian/Services/Display/BrightnessService.swift")
-        let brightnessTapMethod = brightnessSource
-            .components(separatedBy: "    package func suspendInputTaps()").dropFirst().first?
-            .components(separatedBy: "    private func installFunctionKeyTap").first ?? ""
-        let brightnessTapCode = brightnessTapMethod.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(selfUninstallSource.contains("TextSnippetService.shared.suspend()")
-                && selfUninstallSource.contains("QuitProtectionService.shared.suspend()")
-                && selfUninstallSource.contains("BrightnessService.shared.suspendInputTaps()")
-                && selfUninstallSource.contains("BrightnessService.shared.resumeInputTaps()")
-                && brightnessTapCode.contains("inputTapsSuspended = true")
-                && brightnessTapCode.contains("removeKeyTap()")
-                && brightnessTapCode.contains("removeFunctionKeyTap()")
-                && !brightnessTapCode.contains("restoreManagedDisplays")
-                && !brightnessTapCode.contains("restoreAllGamma"),
-               "the permission teardown stops every persistent keyboard tap")
+        brightnessTeardownKeepsTheDisplays(suite)
 
         // MARK: Secure input
 

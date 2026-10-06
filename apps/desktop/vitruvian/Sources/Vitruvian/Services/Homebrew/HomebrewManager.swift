@@ -64,8 +64,22 @@ package final class HomebrewManager: ObservableObject {
         outdatedPackagesByID.count
     }
 
-    private init() {
-        brewPath = detectBrewPath()
+    /// Finds brew, or answers nil when it is not installed.
+    private let locateBrew: () -> String?
+
+    private convenience init() {
+        self.init(locateBrew: {
+            HomebrewCommandBuilder.candidatePaths.first {
+                FileManager.default.isExecutableFile(atPath: $0)
+            }
+        })
+    }
+
+    /// `shared` looks for brew in Homebrew's two prefixes; tests hand in a
+    /// stand-in.
+    package init(locateBrew: @escaping () -> String?) {
+        self.locateBrew = locateBrew
+        brewPath = locateBrew()
     }
 
     /// - Parameter clearingError: pass `false` when refreshing straight after a
@@ -383,7 +397,10 @@ package final class HomebrewManager: ObservableObject {
                 guard let self else { return }
                 self.activeProcess = nil
                 self.operation = nil
-                if status == 0 {
+                let end = HomebrewOperationEnd(status: status, cancelRequested: self.cancelRequested,
+                                               output: output)
+                switch end {
+                case .succeeded:
                     self.markOperationComplete(result: .succeeded,
                                                phase: .refreshing,
                                                activity: nil)
@@ -392,42 +409,34 @@ package final class HomebrewManager: ObservableObject {
                             self.clearSelection()
                         }
                     }
-                    self.refreshInstalled()
-                    if !action.clearsSelectionOnSuccess, let package {
-                        self.select(package)
-                    }
-                } else if self.cancelRequested {
+                case .cancelled:
                     self.markOperationComplete(result: .cancelled,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: nil)
-                    self.refreshInstalled(clearingError: false)
-                } else if HomebrewCommandBuilder.needsTerminalFallback(output: output) {
+                case .needsTerminal:
                     self.terminalFallbackCommand = HomebrewCommandBuilder.shellCommand(command)
                     self.markOperationComplete(result: .needsTerminal,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: HomebrewProgressParser.visibleError(from: output))
-                    // Same partly-done case: `upgrade` moves the formulae, then a
-                    // cask asks for a password and brew stops there.
-                    self.refreshInstalled(clearingError: false)
-                } else if let tap = HomebrewCommandBuilder.untrustedTapName(fromOutput: output) {
+                case .untrustedTap(let tap):
                     self.presentUntrustedTap(tap) { [weak self] in self?.perform(action, package: package) }
                     self.markOperationComplete(result: .failed,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: nil)
-                    // No refresh here: `refreshInstalled` calls `clearUntrustedTap()`,
-                    // which would drop the prompt and retry closure just installed.
-                } else {
+                case .failed:
                     let message = HomebrewProgressParser.visibleError(from: output)
                     self.errorMessage = message.isEmpty ? output.trimmingCharacters(in: .whitespacesAndNewlines) : message
                     self.markOperationComplete(result: .failed,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: self.errorMessage)
-                    // brew reports a run as failed when it could not do all of it,
-                    // not only when it did none of it: one disabled package makes
-                    // `upgrade` skip that one, upgrade the rest and still exit
-                    // non-zero. Re-read regardless, or the panel keeps showing the
-                    // versions from before a run that moved most of them.
-                    self.refreshInstalled(clearingError: false)
+                }
+                // Without a re-read the panel keeps showing the versions from
+                // before a run that moved most of them (see `refresh`).
+                if let refresh = end.refresh {
+                    self.refreshInstalled(clearingError: refresh == .clearingError)
+                }
+                if end == .succeeded, !action.clearsSelectionOnSuccess, let package {
+                    self.select(package)
                 }
                 self.cancelRequested = false
             }
@@ -677,9 +686,7 @@ package final class HomebrewManager: ObservableObject {
     }
 
     private func detectBrewPath() -> String? {
-        HomebrewCommandBuilder.candidatePaths.first {
-            FileManager.default.isExecutableFile(atPath: $0)
-        }
+        locateBrew()
     }
 
     /// Timeout for read-only Homebrew commands (info, search, outdated).

@@ -83,13 +83,17 @@ package enum PanelSurface {
 
     /// Raised contrast is asked for by someone who cannot see a hairline at a
     /// tenth of an opacity, so the outlines that separate one card from the
-    /// next are the ones that answer. A panel is rebuilt every time it opens,
-    /// which is when a change to this setting shows.
-    package static func border(for scheme: ColorScheme) -> Color {
-        let raised = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        return scheme == .light
-            ? Color.black.opacity(raised ? 0.24 : 0.09)
-            : Color.white.opacity(raised ? 0.28 : 0.11)
+    /// next are the ones that answer: this and `raisedBorder`, and no other
+    /// surface. A panel is rebuilt every time it opens, which is when a change
+    /// to this setting shows. `increasedContrast` is the system's setting
+    /// unless a caller passes one.
+    package static func border(
+        for scheme: ColorScheme,
+        increasedContrast: Bool = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    ) -> Color {
+        scheme == .light
+            ? Color.black.opacity(increasedContrast ? 0.24 : 0.09)
+            : Color.white.opacity(increasedContrast ? 0.28 : 0.11)
     }
 
     /// A control that sits ON a glass surface rather than in it: the system's
@@ -99,11 +103,13 @@ package enum PanelSurface {
         scheme == .light ? Color.white.opacity(0.88) : Color.white.opacity(0.14)
     }
 
-    package static func raisedBorder(for scheme: ColorScheme) -> Color {
-        let raised = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        return scheme == .light
-            ? Color.black.opacity(raised ? 0.22 : 0.07)
-            : Color.white.opacity(raised ? 0.32 : 0.16)
+    package static func raisedBorder(
+        for scheme: ColorScheme,
+        increasedContrast: Bool = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    ) -> Color {
+        scheme == .light
+            ? Color.black.opacity(increasedContrast ? 0.22 : 0.07)
+            : Color.white.opacity(increasedContrast ? 0.32 : 0.16)
     }
 
     package static func raisedShadow(for scheme: ColorScheme) -> Color {
