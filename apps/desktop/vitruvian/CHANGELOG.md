@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.8.0...vitruvian-v3.9.0) (2026-10-06)
+
+
+### Features
+
+* **vitruvian:** quick prompt hover actions and micro-animations from Nexus Agent ([#2787](https://github.com/VitruvianSoftware/vitruvian-core/issues/2787)) ([83c9345](https://github.com/VitruvianSoftware/vitruvian-core/commit/83c934583af84ec14afd8b59d92c04ad532bfe0a))
+
 ## [3.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.7.0...vitruvian-v3.8.0) (2026-10-06)
 
 
