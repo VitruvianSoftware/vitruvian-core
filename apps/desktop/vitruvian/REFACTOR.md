@@ -3,8 +3,8 @@
 
 # Vitruvian refactor plan
 
-Status: steps 1 to 7 have landed, and each says what it leaves on purpose.
-Step 8, which finishes typed preferences, is in progress. Each slice was a PR that built and tested green on the
+Status: **done**: steps 1 to 8 have landed, and each says what it leaves
+on purpose. Each slice was a PR that built and tested green on the
 `vitruvian-desktop-macos` unit before the next started. Steps are ordered so that
 each one makes the next safer: the compiler takes over checks that were done by
 hand, and only then does the code get moved around.
@@ -5372,7 +5372,7 @@ The rules about how the code is written (33 of them) run as
 `source_lints_test`, on any platform. Where a rule needs a Mac to finish,
 `Tests/SourceNames.swift` carries the names and the unit tests check them.
 
-## Step 8: preferences read through their type (in progress)
+## Step 8: preferences read through their type (done)
 
 Step 6 gave every registered preference a `Preference` with its default, and
 views took it. Services kept reading most of them by key: `bool`,
@@ -5548,6 +5548,31 @@ reach their preference through its type, in 13 files.
     included, which a typed whole-number read would treat as missing.
 - **Ledger after 8e:** `object` is at three, and every other call is at
   zero.
+
+What step 8 leaves, on purpose:
+- **Keys with no `Preference`.** These stay by key, because they are not
+  registered and a `Preference` is registered from its declaration.
+  - **Settings kept unregistered on purpose:**
+    - the menu panel orders and collapsed sections: an empty order means the
+      default one, and their migrations look for nothing stored;
+    - the language: unset follows the system;
+    - the lists the mixer, the launcher, the radial menu, the snippets and
+      the sound switcher keep as data.
+
+    Settings backup exports them by name.
+  - **State the app keeps rather than settings:**
+    - onboarding, update and migration markers;
+    - window sizes and bookmarks;
+    - saved volumes and brightness paths;
+    - developer switches.
+
+    Backup leaves them out.
+- **Three reads by key on declared preferences:** the beta channel's two
+  explicit-choice checks and the confirmation duration's read of any
+  number. They are listed in the ledger, so a fourth fails it.
+- **One `@AppStorage(DefaultsKey.x)` on a declared preference:** the beta
+  channel switch in Settings, which starts from whether the build is a
+  beta. Its declared default cannot say that.
 
 ## Not in scope
 
