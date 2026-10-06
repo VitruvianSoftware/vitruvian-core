@@ -100,6 +100,7 @@ class Repository:
             resources.extend(dirs)
             resources.extend(files)
         self.resource_names = resources
+        self.root_names = sorted(os.listdir(self.app_dir))
 
     def read_text(self, path):
         full = self.app_dir / path
@@ -1007,6 +1008,64 @@ def build_sweeps_its_temp_dirs(repo):
     return problems
 
 
+# The scripts the release runs on the macOS runner, from the delivery rung
+# (publish.sh) down.
+RELEASE_SCRIPTS = (
+    "publish.sh",
+    "Tools/package-release.sh",
+    "Tools/make-dmg.sh",
+    "Tools/notarize.sh",
+)
+
+# The first part of a relative path in a shell script: after whatever can
+# start a word there, after "./", or after the ${PKG}/ prefix publish.sh uses.
+_RELATIVE_PATH_ROOT = re.compile(
+    r"(?:^|(?<=[\s\"'=(:])|(?<=\./)|(?<=\$\{PKG\}/))([A-Za-z0-9_][A-Za-z0-9_.-]*)/",
+    re.M,
+)
+
+
+def relative_path_roots(text):
+    """The first part of every relative path a shell script names."""
+    return [match.group(1) for match in _RELATIVE_PATH_ROOT.finditer(text)]
+
+
+def release_scripts_have_no_case_twins(repo):
+    """macOS's filesystem is case-insensitive, so a release script that names
+    `build/` inside this package names its Bazel `BUILD` file, and
+    `mkdir -p build/stage` fails with "Not a directory". That is how the first
+    beta publish died. A relative path whose first part differs only in case
+    from something at the package root is that collision, whatever the name.
+    `BUILD` is always there; the test sandbox just does not carry it."""
+    problems = []
+    sample = "\n".join(
+        [
+            "mkdir -p build/stage",
+            'cp "${PKG}/build/x" dist/',
+            "./build/run",
+            "ls /usr/build/ Tools/notarize.sh",
+        ]
+    )
+    if relative_path_roots(sample) != ["build", "build", "dist", "build", "Tools"]:
+        problems.append(
+            "the scan finds relative path roots, and not parts of absolute paths"
+        )
+    roots = set(repo.root_names) | {"BUILD"}
+    for path in RELEASE_SCRIPTS:
+        text = repo.read_text(path)
+        if not text:
+            problems.append(f"{path} is readable for the release path check")
+            continue
+        for part in sorted(set(relative_path_roots(text))):
+            twins = sorted(r for r in roots if r.lower() == part.lower() and r != part)
+            if twins:
+                problems.append(
+                    f"{path} names {part}/, which is {twins[0]} on macOS's"
+                    " case-insensitive filesystem"
+                )
+    return problems
+
+
 def build_signs_with_a_stable_identity(repo):
     """An ad-hoc signature changes hash on every build, so macOS orphans
     Accessibility and Screen Recording grants on each rebuild while System
@@ -1390,6 +1449,7 @@ RULES = [
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,
+    release_scripts_have_no_case_twins,
     test_types_do_not_shadow_real_ones,
     unit_tests_read_no_source_text,
     preferences_are_reached_through_their_type,

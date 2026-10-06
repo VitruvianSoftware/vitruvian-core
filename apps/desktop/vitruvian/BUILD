@@ -525,8 +525,12 @@ py_test(
         package_name(),
     ],
     data = [
+        "Tools/make-dmg.sh",
+        "Tools/notarize.sh",
+        "Tools/package-release.sh",
         "Tools/uninstall.sh",
         "build.sh",
+        "publish.sh",
     ] + glob([
         "Resources/**",
         "Sources/**/*.swift",
