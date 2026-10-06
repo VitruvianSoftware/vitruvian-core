@@ -94,4 +94,9 @@ extension UserDefaults {
         get { object(forKey: preference.key).flatMap(Value.init(storedValue:)) ?? preference.defaultValue }
         set { set(newValue.storedValue, forKey: preference.key) }
     }
+
+    /// Forgets the stored value, so the preference reads its default again.
+    package func removeValue<Value>(for preference: Preference<Value>) {
+        removeObject(forKey: preference.key)
+    }
 }

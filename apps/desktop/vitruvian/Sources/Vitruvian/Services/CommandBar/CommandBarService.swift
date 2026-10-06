@@ -554,8 +554,11 @@ package final class CommandBarService: ObservableObject {
         guard AppFeature.commandBar.isAvailable else { return nil }
         if let shortcut, let message = rowShortcutIssue(shortcut, for: entry) { return message }
         let next = CommandBarRowShortcuts.setting(shortcut, for: entry.stableKey, in: rowShortcuts)
-        UserDefaults.standard.set(CommandBarRowShortcuts.encode(next),
-                                  forKey: DefaultsKey.commandBarRowShortcuts)
+        if let encoded = CommandBarRowShortcuts.encode(next) {
+            UserDefaults.standard[Preferences.commandBarRowShortcuts] = encoded
+        } else {
+            UserDefaults.standard.removeValue(for: Preferences.commandBarRowShortcuts)
+        }
         syncRowHotkeys()
         refreshAfterPreferenceChange()
         return nil
@@ -962,8 +965,11 @@ package final class CommandBarService: ObservableObject {
 
     package func setAlias(_ alias: String, for entry: CommandBarEntry) {
         let next = CommandBarPreferences.settingAlias(alias, for: entry.stableKey, in: storedAliases)
-        UserDefaults.standard.set(CommandBarPreferences.encodeAliases(next),
-                                  forKey: DefaultsKey.commandBarAliases)
+        if let encoded = CommandBarPreferences.encodeAliases(next) {
+            UserDefaults.standard[Preferences.commandBarAliases] = encoded
+        } else {
+            UserDefaults.standard.removeValue(for: Preferences.commandBarAliases)
+        }
         refreshAfterPreferenceChange()
     }
 
@@ -2829,7 +2835,7 @@ package final class CommandBarService: ObservableObject {
                             height: panel.frame.maxY - (screen.minY + screen.height * 0.72))
         let encoded = CommandBarPreferences.encodePositionOffset(offset)
         if encoded.isEmpty {
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
+            UserDefaults.standard.removeValue(for: Preferences.commandBarPositionOffset)
         } else {
             UserDefaults.standard[Preferences.commandBarPositionOffset] = encoded
         }
@@ -2840,7 +2846,7 @@ package final class CommandBarService: ObservableObject {
     /// returns the bar to the spot it opens on by default, with the same
     /// short slide it took on the way there.
     package func resetPanelPosition() {
-        UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
+        UserDefaults.standard.removeValue(for: Preferences.commandBarPositionOffset)
         hasCustomPosition = false
         guard let panel, panel.isVisible else { return }
         position(panel, animated: true)

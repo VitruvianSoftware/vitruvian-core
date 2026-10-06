@@ -213,11 +213,11 @@ package final class FanControlService: ObservableObject {
                     self.snapshot = retrySnapshot
                 }
                 if let failure { self.error = failure }
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlRecoveryNeeded)
+                UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
                 if !AppFeature.fanControl.isAvailable {
                     do {
                         try Self.appService.unregister()
-                        UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlHelperVersion)
+                        UserDefaults.standard.removeValue(for: Preferences.fanControlHelperVersion)
                         self.refreshAccessState()
                     } catch {
                         self.error = .helperUnavailable
@@ -236,7 +236,7 @@ package final class FanControlService: ObservableObject {
     private func restoreBeforeTermination() {
         send { proxy, reply in proxy.restoreAutomatic(withReply: reply) } completion: { response in
             if let response, response.succeeded, !response.snapshot.isCooling {
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlRecoveryNeeded)
+                UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
             }
         }
         // Losing the authenticated client connection is itself a restore
@@ -267,7 +267,7 @@ package final class FanControlService: ObservableObject {
         if status == .enabled || status == .requiresApproval {
             UserDefaults.standard[Preferences.fanControlHelperVersion] = helperVersion
         } else {
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlHelperVersion)
+            UserDefaults.standard.removeValue(for: Preferences.fanControlHelperVersion)
         }
         DispatchQueue.main.async { shared.refresh() }
         return status == .enabled
@@ -352,7 +352,7 @@ package final class FanControlService: ObservableObject {
             // protocol, even when the hardware itself is unsupported.
             UserDefaults.standard[Preferences.fanControlHelperVersion] = Self.helperVersion
             if response.succeeded, !response.snapshot.isCooling {
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlRecoveryNeeded)
+                UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
             }
         }
     }
@@ -431,7 +431,7 @@ package final class FanControlService: ObservableObject {
             }
             self.apply(response)
             if response.succeeded, !response.snapshot.isCooling {
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlRecoveryNeeded)
+                UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
                 self.stopIdleWorkIfPossible()
             }
         }
@@ -566,7 +566,7 @@ package final class FanControlService: ObservableObject {
             }
             do {
                 try Self.appService.unregister()
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlHelperVersion)
+                UserDefaults.standard.removeValue(for: Preferences.fanControlHelperVersion)
                 refreshAccessState()
             } catch {
                 self.error = .helperUnavailable
@@ -579,14 +579,14 @@ package final class FanControlService: ObservableObject {
             guard self.finishRequest(generation) else { return }
             self.isWorking = false
             guard let response, response.succeeded, !response.snapshot.isCooling else { return }
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlRecoveryNeeded)
+            UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
             guard !AppFeature.fanControl.isAvailable else {
                 self.stopIdleWorkIfPossible()
                 return
             }
             do {
                 try Self.appService.unregister()
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlHelperVersion)
+                UserDefaults.standard.removeValue(for: Preferences.fanControlHelperVersion)
                 self.refreshAccessState()
             } catch {
                 self.error = .helperUnavailable

@@ -1612,7 +1612,7 @@ package enum NotchSupport {
     package static func watchesMusicActivity(in defaults: UserDefaults = .standard) -> Bool {
         isEnabled(in: defaults) && modules(in: defaults).contains(.music)
             && idleContent(in: defaults) != .none
-            && (defaults.object(forKey: DefaultsKey.notchShowPlayingMusic) as? Bool ?? true)
+            && (defaults[Preferences.notchShowPlayingMusic])
     }
 
     package static func showsMusicActivity(isPlaying: Bool, in defaults: UserDefaults = .standard) -> Bool {
@@ -1620,12 +1620,12 @@ package enum NotchSupport {
     }
 
     package static func showsInCaptures(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: DefaultsKey.notchShowInCaptures) as? Bool ?? true
+        defaults[Preferences.notchShowInCaptures]
     }
 
     /// The closed island may cover the menus instead of giving way to them.
     package static func coversMenus(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: DefaultsKey.notchCoversMenus) as? Bool ?? true
+        defaults[Preferences.notchCoversMenus]
     }
 
     /// The closed island stays out of sight until the pointer reaches it, and
@@ -1747,7 +1747,7 @@ package enum NotchSupport {
     }
 
     package static func routesScratchpad(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && (defaults.object(forKey: DefaultsKey.notchScratchpad) as? Bool ?? true)
+        isEnabled(in: defaults) && (defaults[Preferences.notchScratchpad])
             && modules(in: defaults).contains(.scratchpad)
     }
 

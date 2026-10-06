@@ -1254,7 +1254,9 @@ KEYED_PREFERENCE_PATHS = {
 # `DefaultsKey`, by the `UserDefaults` call that does it (REFACTOR.md
 # step 8). A slice that moves some to `UserDefaults[Preferences.x]` lowers
 # its count here. The rule fails on one more, so no new access by key comes
-# in, and on one fewer, so each count stays exact.
+# in, and on one fewer, so each count stays exact. The three `object` reads
+# are on purpose: the update service asks whether a beta channel was ever
+# chosen (twice), and the confirmation duration reads any stored number.
 PREFERENCE_ACCESS_BY_KEY = {
     "array": 0,
     "bool": 0,
@@ -1262,9 +1264,9 @@ PREFERENCE_ACCESS_BY_KEY = {
     "dictionary": 0,
     "double": 0,
     "integer": 0,
-    "object": 25,
-    "removeObject": 18,
-    "set": 2,
+    "object": 3,
+    "removeObject": 0,
+    "set": 0,
     "string": 0,
     "stringArray": 0,
 }

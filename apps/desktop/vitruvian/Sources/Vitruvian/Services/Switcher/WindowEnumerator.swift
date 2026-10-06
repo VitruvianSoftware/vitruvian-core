@@ -108,7 +108,7 @@ package enum WindowEnumerator {
                 rawValue: defaults[Preferences.switcherMinimizedPlacement]
             ) ?? .normal
             treatHiddenAppsLikeMinimized = defaults[Preferences.switcherTreatHiddenAppsLikeMinimized]
-            showFullscreenWindows = defaults.object(forKey: DefaultsKey.switcherShowFullscreenWindows) as? Bool ?? true
+            showFullscreenWindows = defaults[Preferences.switcherShowFullscreenWindows]
         }
     }
 

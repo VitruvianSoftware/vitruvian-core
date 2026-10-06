@@ -43,6 +43,10 @@ enum PreferenceTests {
                      "a preference writes under its key, readable either way")
         defaults.set("seven", forKey: "count")
         suite.expect(defaults[count] == 3, "a value of another type reads as the declared default")
+        defaults[count] = 7
+        defaults.removeValue(for: count)
+        suite.expect(defaults[count] == 3 && defaults.object(forKey: "count") == nil,
+                     "removing a preference's value reads its declared default again")
 
         let apps = Preference("apps", default: ["com.example.first"])
         suite.expect(defaults[apps] == ["com.example.first"], "a missing list reads as its declared default")

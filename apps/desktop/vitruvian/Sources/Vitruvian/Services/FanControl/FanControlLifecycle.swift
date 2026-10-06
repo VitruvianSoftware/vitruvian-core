@@ -72,14 +72,14 @@ package struct FanControlLifecycle {
                 host.restore(false)
             }
         } else {
-            defaults.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
+            defaults.removeValue(for: Preferences.fanControlResumeConfiguration)
             host.restoreThenUnregister()
         }
     }
 
     /// The user's own return to System, the one stop a resume must honor.
     package func returnToSystem() {
-        defaults.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
+        defaults.removeValue(for: Preferences.fanControlResumeConfiguration)
         host.restore(false)
     }
 
@@ -87,7 +87,7 @@ package struct FanControlLifecycle {
     /// forgets it, so no later restart brings back an old choice.
     package func resumePreferenceDidChange() {
         guard defaults[Preferences.fanControlResume] else {
-            defaults.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
+            defaults.removeValue(for: Preferences.fanControlResumeConfiguration)
             return
         }
         // Only the control running now is kept, never an older one left
@@ -96,7 +96,7 @@ package struct FanControlLifecycle {
         if snapshot.isCooling, let configuration = snapshot.configuration {
             rememberForResume(configuration)
         } else {
-            defaults.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
+            defaults.removeValue(for: Preferences.fanControlResumeConfiguration)
         }
     }
 

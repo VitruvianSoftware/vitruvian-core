@@ -85,7 +85,7 @@ package final class UpdateService: ObservableObject {
     }
 
     package var autoCheckEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: DefaultsKey.autoCheckUpdates) as? Bool ?? true }
+        get { UserDefaults.standard[Preferences.autoCheckUpdates] }
         set {
             UserDefaults.standard[Preferences.autoCheckUpdates] = newValue
             configureAutomaticChecks()

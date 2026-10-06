@@ -1419,7 +1419,7 @@ package final class NotchService: ObservableObject {
     /// that off. Otherwise the reopening preference decides.
     package var reopeningDestination: (module: NotchModule, appPanel: Bool, sections: Bool) {
         if !expanded {
-            let opensActivity = defaults.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
+            let opensActivity = defaults[Preferences.notchOpensActivity]
             let activity = notice?.notificationID != nil ? NotchModule.notifications
                 : opensActivity ? compactActivity?.module : nil
             if let activity, modules.contains(activity) { return (activity, false, false) }
@@ -1445,7 +1445,7 @@ package final class NotchService: ObservableObject {
     /// unless the user turned off opening the visible activity, in which case
     /// the reopening choice decides here too.
     package func openActivity(_ module: NotchModule) {
-        let opensActivity = defaults.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
+        let opensActivity = defaults[Preferences.notchOpensActivity]
         if opensActivity { open(module) } else { open() }
     }
 

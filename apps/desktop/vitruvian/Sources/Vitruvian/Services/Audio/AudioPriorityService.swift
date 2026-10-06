@@ -154,7 +154,7 @@ package final class AudioPriorityService: ObservableObject {
         guard sanitized != outputPriorityUIDs else { return }
         let defaults = UserDefaults.standard
         if sanitized.isEmpty {
-            defaults.removeObject(forKey: DefaultsKey.audioPriorityOutputUIDs)
+            defaults.removeValue(for: Preferences.audioPriorityOutputUIDs)
         } else {
             defaults[Preferences.audioPriorityOutputUIDs] = sanitized
         }
@@ -171,7 +171,7 @@ package final class AudioPriorityService: ObservableObject {
         guard sanitized != inputPriorityUIDs else { return }
         let defaults = UserDefaults.standard
         if sanitized.isEmpty {
-            defaults.removeObject(forKey: DefaultsKey.audioPriorityInputUIDs)
+            defaults.removeValue(for: Preferences.audioPriorityInputUIDs)
         } else {
             defaults[Preferences.audioPriorityInputUIDs] = sanitized
         }
@@ -192,7 +192,7 @@ package final class AudioPriorityService: ObservableObject {
         guard !allPriorityUIDs.isEmpty else {
             if !deviceNames.isEmpty {
                 deviceNames = [:]
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.audioPriorityDeviceNames)
+                UserDefaults.standard.removeValue(for: Preferences.audioPriorityDeviceNames)
             }
             return
         }
