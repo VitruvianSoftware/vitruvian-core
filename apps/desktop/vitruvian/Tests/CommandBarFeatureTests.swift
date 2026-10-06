@@ -513,7 +513,8 @@ enum CommandBarFeatureTests {
 
             let apps = [taken, refused].map {
                 InstalledApps.InstalledApp(id: $0.path, name: $0.deletingPathExtension().lastPathComponent,
-                                           bundleID: nil, url: $0, isSystem: false)
+                                           bundleID: "org.vitruvian.fixture." + $0.deletingPathExtension().lastPathComponent,
+                                           url: $0, isSystem: false)
             }
             let scanned = CommandBarCatalog.uninstallableAppIDs(apps, listsUninstallable: true)
             let browse = CommandBarCatalog.uninstallEntries(apps, uninstallable: scanned,
