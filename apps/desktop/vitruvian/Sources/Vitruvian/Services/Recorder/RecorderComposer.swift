@@ -369,23 +369,12 @@ package final class RecorderComposer {
                                  composer: RecorderComposer?,
                                  sourceSize: CGSize,
                                  outputSize: CGSize,
-                                 playbackSpeed: Double = 1) async -> AVMutableVideoComposition? {
+                                 playbackSpeed: Double = 1,
+                                 filtered: FilteredComposition = RecorderComposer.filteredComposition)
+        async -> AVMutableVideoComposition? {
         if let composer {
-            // The handler may run concurrently; this composer only reads
-            // immutable state while rendering each frame.
-            nonisolated(unsafe) let threadSafeComposer = composer
             let timing = RecorderExportTiming(speed: playbackSpeed)
-            let composition = try? await AVMutableVideoComposition.videoComposition(
-                with: asset) { request in
-                    // Plans are built on the edited, unscaled clock. Map back
-                    // before looking up zooms, cursor shapes, captions and
-                    // privacy blurs, including frames on either side of a cut.
-                    let rendered = threadSafeComposer.render(
-                        request.sourceImage,
-                        at: timing.sourceTime(forOutputTime: CMTimeGetSeconds(request.compositionTime)))
-                    request.finish(with: rendered, context: nil)
-                }
-            guard let composition else { return nil }
+            guard let composition = await filtered(asset, composer, timing) else { return nil }
             composition.frameDuration = CMTime(value: 1,
                                                timescale: CMTimeScale(max(1, frameRate)))
             composition.renderSize = composer.canvasSize
@@ -400,6 +389,31 @@ package final class RecorderComposer {
                                 outputSize: outputSize,
                                 frameRate: frameRate,
                                 duration: duration)
+    }
+
+    /// Builds the composition that draws every frame of `asset` through
+    /// `composer`, with `timing` mapping the export clock back onto the
+    /// edit's. Nil when AVFoundation cannot build one.
+    package typealias FilteredComposition = @Sendable (
+        _ asset: AVAsset, _ composer: RecorderComposer, _ timing: RecorderExportTiming
+    ) async -> AVMutableVideoComposition?
+
+    /// AVFoundation's own filtering composition, the one every export and
+    /// preview uses.
+    package static let filteredComposition: FilteredComposition = { asset, composer, timing in
+        // The handler may run concurrently; this composer only reads
+        // immutable state while rendering each frame.
+        nonisolated(unsafe) let threadSafeComposer = composer
+        return try? await AVMutableVideoComposition.videoComposition(
+            with: asset) { request in
+                // Plans are built on the edited, unscaled clock. Map back
+                // before looking up zooms, cursor shapes, captions and
+                // privacy blurs, including frames on either side of a cut.
+                let rendered = threadSafeComposer.render(
+                    request.sourceImage,
+                    at: timing.sourceTime(forOutputTime: CMTimeGetSeconds(request.compositionTime)))
+                request.finish(with: rendered, context: nil)
+            }
     }
 
     package static func plainComposition(track: AVAssetTrack,

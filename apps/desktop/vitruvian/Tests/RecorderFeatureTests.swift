@@ -40,13 +40,25 @@ enum RecorderFeatureTests {
                 && !firstCloseNeedsDemotion && lastCloseNeedsDemotion
                 && !extraCloseNeedsDemotion && windowRetention.count == 0,
                "user-facing windows share one balanced app activation lifetime")
-        let appDelegateSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/App/AppDelegate.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(appDelegateSource.contains("if !settingsKeepsAppRegular {")
-                && appDelegateSource.contains("WindowActivationPolicy.retain()")
-                && appDelegateSource.contains("WindowActivationPolicy.release()"),
+        // Settings is shown again on every request while it is open, and
+        // closed once: the hold it takes has to follow the window, not the
+        // requests, or a second showing would keep the app in Command Tab
+        // after the window is gone.
+        var settingsActivations: [String] = []
+        var settingsActivation = WindowActivationClaim(
+            retain: { settingsActivations.append("retain") },
+            release: { settingsActivations.append("release") })
+        settingsActivation.windowShown()
+        settingsActivation.windowShown()
+        let heldWhileVisible = settingsActivation.isHeld
+        settingsActivation.windowClosed()
+        let heldAfterClose = settingsActivation.isHeld
+        settingsActivation.windowClosed()
+        settingsActivation.windowShown()
+        suite.expect(heldWhileVisible && !heldAfterClose && settingsActivation.isHeld
+                && settingsActivations == ["retain", "release", "retain"],
                "Settings retains Command Tab presence only while its window is visible")
+        settingsActivation.windowClosed()
         suite.expect(Defaults.registeredDefaults[DefaultsKey.recorderSystemAudio] as? Bool == true,
                "a recording carries the sound of the Mac unless the person turns it off")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.recorderMicrophone] as? Bool == false,
@@ -375,30 +387,9 @@ enum RecorderFeatureTests {
                 && (try? Data(contentsOf: exportDestination)) == exportedBytes,
                "an export that wrote no file at all leaves the saved recording as it is")
 
-        // An edit that cannot be composed stops the export. The plain path
-        // draws the recording untouched, so answering with it would hand back
-        // a file with the areas kept unreadable, and everything else drawn on
-        // the picture, missing.
-        let recorderComposerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Recorder/RecorderComposer.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!recorderComposerSource.isEmpty,
-               "the recorder composer source reads back for its shape check")
-        suite.expect(recorderComposerSource.contains(
-                    ") async -> AVMutableVideoComposition?"),
-               "a composition that cannot be built answers with nothing, never with the plain one")
-        let recorderExporterSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Recorder/RecorderExporter.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!recorderExporterSource.isEmpty,
-               "the recorder exporter source reads back for its shape check")
-        let compositionsAsked = recorderExporterSource
-            .components(separatedBy: "RecorderComposer.videoComposition(").count - 1
-        let compositionsGuarded = recorderExporterSource
-            .components(separatedBy: "guard let composition = await RecorderComposer.videoComposition(")
-            .count - 1
-        suite.expect(compositionsAsked > 0 && compositionsAsked == compositionsGuarded,
-               "an export stops when the edit cannot be composed, instead of saving the recording bare")
+        // An edit that cannot be composed stops the export instead of saving
+        // the recording bare: RecorderExportRenderingTests runs both outputs
+        // of the production exporter with a composition that cannot be built.
 
         suite.expect(RecorderSupport.canStart(freeBytes: 10_000_000_000)
                 && !RecorderSupport.canStart(freeBytes: 100_000_000),
@@ -811,19 +802,38 @@ enum RecorderFeatureTests {
 
         // The typing sampler fills an array from an NSEvent monitor callback
         // while the stop path reads it, so the append has to be under the
-        // lock: an unsynchronised one races the copy-on-write buffer. The
-        // recording's origin and pause state belong to its shared clock.
-        let typingSampler = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Recorder/RecorderTypingTrack.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }.joined(separator: " ")
-        suite.expect(typingSampler.contains("let lock = NSLock()"),
-               "the typing sampler guards its buffer the way the pointer sampler does")
-        suite.expect(typingSampler.contains(
-            "lock.withLock { guard let time = pauseClock.eventTime(now) "
-            + "else { return } times.append(time) }"
-        ), "the typing sampler appends a keystroke time only under the lock")
+        // lock: an unsynchronised one races the copy-on-write buffer, and
+        // eight typists at once lose keystrokes or crash. The recording's
+        // origin and pause state belong to its shared clock.
+        let typingClock = RecorderPauseClock()
+        typingClock.begin(at: 100)
+        let typingSampler = RecorderTypingSampler(pauseClock: typingClock)
+        let typists = DispatchGroup()
+        for typist in 0..<8 {
+            typists.enter()
+            Thread {
+                for press in 0..<2_000 {
+                    typingSampler.record(at: 101 + Double(typist) + Double(press) / 10_000)
+                }
+                typists.leave()
+            }.start()
+        }
+        suite.expect(typists.wait(timeout: .now() + 20) == .success,
+               "eight threads typing at once finish inside their deadline")
+        suite.expect(typingSampler.stop().times.count == 16_000,
+               "the typing sampler appends a keystroke time only under the lock")
+        let pausedTyping = RecorderPauseClock()
+        let pausedSampler = RecorderTypingSampler(pauseClock: pausedTyping)
+        pausedSampler.record(at: 99)
+        pausedTyping.begin(at: 100)
+        pausedSampler.record(at: 99.5)
+        pausedSampler.record(at: 101)
+        pausedTyping.pause(at: 102)
+        pausedSampler.record(at: 103)
+        pausedTyping.resume(at: 104)
+        pausedSampler.record(at: 105)
+        suite.expect(pausedSampler.stop().times == [1, 3],
+               "keystrokes keep the recording's clock: none before it begins or while it is paused")
         // `RecorderSession.stop()` is nonisolated and async, so its body runs
         // off the main thread however main-actor the caller was (SE-0338).
         // Both samplers install and remove AppKit event monitors, so they are
@@ -1356,14 +1366,15 @@ enum RecorderFeatureTests {
         suite.expect(accented.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
                 == ["Área", "Ímã", "Zebra"],
                "the localized compare is what puts them where a reader expects")
-        let onboardingSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!onboardingSource.isEmpty, "the onboarding source reads back for its sorting check")
-        let onboardingCode = onboardingSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!onboardingCode.contains(".sorted()\n"),
+        let permissionUsers = OnboardingFeatureNames.names(
+            [.screenshot, .screenRecorder, .cleaner], for: .screenRecording) { feature in
+            switch feature {
+            case .screenshot: return "Zebra"
+            case .screenRecorder: return "Área"
+            default: return "Ímã"
+            }
+        }
+        suite.expect(permissionUsers == "Área, Zebra",
                "onboarding sorts the names it shows by the rules of the language")
 
         // Case folding that inherits the Mac's locale answers differently for
@@ -1396,17 +1407,18 @@ enum RecorderFeatureTests {
         // battery answer is titled with a localized string, so a fixed English
         // "battery" matched nothing outside English and the chip led to an
         // empty list, which teaches the opposite of what an example is for.
-        let commandBarViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/CommandBar/CommandBarView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!commandBarViewSource.isEmpty, "the command bar view source reads back for its shape check")
-        // Comments are stripped so prose naming the old literal cannot fail
-        // for code that no longer uses it.
-        let commandBarViewCode = commandBarViewSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!commandBarViewCode.contains("\"battery\""),
-               "the command bar's battery example is the localized word, not a fixed English one")
+        for language in AppLanguage.allCases {
+            let bar = FeatureStrings.commandBar(language)
+            let word = bar.answerBatteryLabel.lowercased()
+            let examples = CommandBarView.examples(bar, hasBattery: true)
+            suite.expect(examples.contains(word) && (word == "battery" || !examples.contains("battery")),
+                   "the command bar's battery example is the localized word, not a fixed English one, "
+                   + "in \(language.rawValue)")
+        }
+        let englishBar = FeatureStrings.commandBar(.enUS)
+        suite.expect(!CommandBarView.examples(englishBar, hasBattery: false)
+                .contains(englishBar.answerBatteryLabel.lowercased()),
+               "a Mac without a battery is not offered the battery example")
 
         // A key glyph in front of a button label reads as that button's
         // shortcut, so neither command bar action button carries one.

@@ -69,6 +69,7 @@ nonisolated enum RecorderExportRenderingTests {
         await writer.finishWriting()
         suite.expect(writer.status == .completed, "the synthetic 60 fps master is written")
         try await audioAndGIF(suite, take: take)
+        await uncomposable(suite, take: take, folder: folder)
         // The last case ends protection in the removed interval. The frame
         // held immediately before the splice must retain the pre-cut blur.
         let cases: [(cuts: Bool, blurStart: Double, blurEnd: Double, protectedTime: Double, clearTime: Double)] = [
@@ -114,6 +115,25 @@ nonisolated enum RecorderExportRenderingTests {
                         "privacy coverage \(protected) at \(speed)x with cuts \(hasCuts), contrast \(contrast)")
                 }
             }
+        }
+    }
+
+    /// An edit that cannot be composed stops the export. The plain path
+    /// draws the recording untouched, so answering with it would hand back a
+    /// file with the areas kept unreadable, and everything else drawn on the
+    /// picture, missing.
+    private static func uncomposable(_ suite: TestSuite, take: RecorderTakeStore.Take,
+                                     folder: URL) async {
+        var blurred = RecorderEditDocument()
+        blurred.blurs = [RecorderBlurRegion(start: 0, end: 1, rect: CGRect(x: 0, y: 0, width: 1, height: 1))]
+        let exporter = RecorderExporter(filtered: { _, _, _ in nil })
+        for (output, name) in [(RecorderExporter.Output.video, "uncomposable.mp4"), (.gif, "uncomposable.gif")] {
+            let destination = folder.appendingPathComponent(name)
+            let failure = await exporter.export(take: take, document: blurred, output: output,
+                                                to: destination, progress: { _ in })
+            suite.expect(failure == .readFailed && !FileManager.default.fileExists(atPath: destination.path),
+                         "a \(name) export stops when the edit cannot be composed, instead of saving "
+                         + "the recording bare, found \(String(describing: failure))")
         }
     }
 

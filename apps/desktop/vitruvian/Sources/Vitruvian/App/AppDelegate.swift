@@ -78,7 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var isTerminating = false
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
-    private var settingsKeepsAppRegular = false
+    /// Settings keeps the app in Command Tab while its window is visible.
+    private lazy var settingsActivation = WindowActivationClaim()
     private var feedbackWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var supportIntroWindow: NSWindow?
@@ -1216,10 +1217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if let window = settingsWindow {
             presenter.positionSettingsWindow(window, force: createdWindow, on: targetScreen)
         }
-        if !settingsKeepsAppRegular {
-            settingsKeepsAppRegular = true
-            WindowActivationPolicy.retain()
-        }
+        settingsActivation.windowShown()
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
         // Reopening on the very page that was showing at close never runs
@@ -1736,10 +1734,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if window === settingsWindow {
             // Covers size changes that end without a live resize (zoom).
             saveSettingsWindowSize(window)
-            if settingsKeepsAppRegular {
-                settingsKeepsAppRegular = false
-                WindowActivationPolicy.release()
-            }
+            settingsActivation.windowClosed()
             // Whatever page was showing, its own onDisappear does not always
             // run before the window finishes closing; stop the poll from
             // here too rather than let it run until the app quits. The

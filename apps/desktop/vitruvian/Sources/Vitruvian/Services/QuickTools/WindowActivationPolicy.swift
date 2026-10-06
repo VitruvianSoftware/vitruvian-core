@@ -25,6 +25,38 @@ package struct WindowActivationRetention {
     }
 }
 
+/// One window's hold on the shared activation lifetime. Showing the window
+/// takes the hold once, however often it is shown again while it is open,
+/// and closing it gives the hold back once, so a window keeps the app in
+/// Command Tab exactly while it is visible and never past its close.
+@MainActor
+package struct WindowActivationClaim {
+    package private(set) var isHeld = false
+    private let retain: @MainActor () -> Void
+    private let release: @MainActor () -> Void
+
+    /// Takes and gives back the shared policy's hold; a test counts instead.
+    package init(retain: @escaping @MainActor () -> Void = { WindowActivationPolicy.retain() },
+                 release: @escaping @MainActor () -> Void = { WindowActivationPolicy.release() }) {
+        self.retain = retain
+        self.release = release
+    }
+
+    /// The window was shown: the first showing takes the hold.
+    package mutating func windowShown() {
+        guard !isHeld else { return }
+        isHeld = true
+        retain()
+    }
+
+    /// The window closed: gives back a hold it took, and nothing otherwise.
+    package mutating func windowClosed() {
+        guard isHeld else { return }
+        isHeld = false
+        release()
+    }
+}
+
 /// The app is normally accessory only, with no Dock icon and no place in
 /// Command Tab. While a user-facing window needs to remain reachable it becomes
 /// a regular app, then returns to its normal policy after the last one closes.
