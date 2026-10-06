@@ -143,27 +143,58 @@ package final class CleanerScheduler: ObservableObject {
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] phase in
-                guard let self else { return }
-                switch phase {
-                case .results:
-                    // The scan pre checks exactly the safe groups; an
-                    // automatic run takes that selection as is.
-                    if cleaner.selectedCount > 0 {
-                        cleaner.cleanSelected(escalate: false)
-                    } else {
-                        self.finishRun(freed: 0, failed: 0)
-                    }
-                case let .done(freed, failed):
-                    self.finishRun(freed: freed, failed: failed)
-                case .idle:
-                    // The user (or a reset) interrupted the automatic pass.
-                    self.runObserver = nil
-                    self.scheduleNext()
-                default:
-                    break
-                }
+                self?.perform(Self.automaticStep(after: phase, selectedCount: cleaner.selectedCount),
+                              on: cleaner)
             }
-        cleaner.scan(attended: false)
+        perform(Self.automaticStep(after: nil, selectedCount: 0), on: cleaner)
+    }
+
+    /// One step of an automatic pass.
+    package enum AutomaticStep: Equatable {
+        case scan(JunkCleaner.Pass)
+        case clean(JunkCleaner.Pass)
+        /// The pass is over: record and report this outcome.
+        case finish(freed: Int64, failed: Int)
+        /// The user (or a reset) interrupted the pass.
+        case interrupted
+        case wait
+    }
+
+    /// What an automatic pass does once the cleaner reaches `phase`; nil is
+    /// its start. Nobody watches the pass, so its scan and its clean are the
+    /// `.scheduled` ones: the clean never hands what the Trash refused to
+    /// Finder's administrator prompt, and what it left in place is reported
+    /// with what it freed.
+    package static func automaticStep(after phase: JunkCleaner.Phase?, selectedCount: Int) -> AutomaticStep {
+        guard let phase else { return .scan(.scheduled) }
+        switch phase {
+        case .results:
+            // The scan pre checks exactly the safe groups; an automatic run
+            // takes that selection as is.
+            return selectedCount > 0 ? .clean(.scheduled) : .finish(freed: 0, failed: 0)
+        case let .done(freed, failed):
+            return .finish(freed: freed, failed: failed)
+        case .idle:
+            return .interrupted
+        case .scanning, .cleaning:
+            return .wait
+        }
+    }
+
+    private func perform(_ step: AutomaticStep, on cleaner: JunkCleaner) {
+        switch step {
+        case let .scan(pass):
+            cleaner.scan(for: pass)
+        case let .clean(pass):
+            cleaner.cleanSelected(for: pass)
+        case let .finish(freed, failed):
+            finishRun(freed: freed, failed: failed)
+        case .interrupted:
+            runObserver = nil
+            scheduleNext()
+        case .wait:
+            break
+        }
     }
 
     private func finishRun(freed: Int64, failed: Int) {
@@ -189,6 +220,13 @@ package final class CleanerScheduler: ObservableObject {
     private func notifyIfWanted(freed: Int64, failed: Int) {
         guard UserDefaults.standard.bool(forKey: DefaultsKey.cleanerScheduleNotify) else { return }
         let strings = L10n.shared.s
+        Notifier.post(title: strings.cleanerScheduleTitle,
+                      body: Self.notificationBody(freed: freed, failed: failed, strings: strings))
+    }
+
+    /// What the notification says about a finished pass. Even a pass that
+    /// found nothing says so, as proof of life.
+    package static func notificationBody(freed: Int64, failed: Int, strings: Strings) -> String {
         var sentences: [String] = []
         if freed > 0 {
             sentences.append(String(format: strings.cleanerAutoNotificationFormat,
@@ -200,6 +238,6 @@ package final class CleanerScheduler: ObservableObject {
             sentences.append(strings.uninstallerSomeFailed)
         }
         if sentences.isEmpty { sentences.append(strings.cleanerNothingFound) }
-        Notifier.post(title: strings.cleanerScheduleTitle, body: sentences.joined(separator: " "))
+        return sentences.joined(separator: " ")
     }
 }

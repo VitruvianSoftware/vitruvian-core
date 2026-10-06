@@ -772,11 +772,8 @@ enum UtilitiesFeatureTests {
         suite.expect(adapterAfterWarning?.info[RadialNowPlayingSupport.titleKey] as? String == "Midnight City"
                 && adapterAfterWarning?.pid == 42 && adapterAfterWarning?.isPlaying == true,
                "a perl warning on the shared stderr pipe ahead of the adapter's JSON line still parses")
-        let nowPlayingBuildScript = (try? String(contentsOfFile: "build.sh", encoding: .utf8)) ?? ""
-        suite.expect(nowPlayingBuildScript.contains("Sources/NowPlayingAdapter/NowPlayingAdapter.swift")
-                && nowPlayingBuildScript.contains("Resources/now-playing.pl")
-                && nowPlayingBuildScript.contains("Contents/Frameworks/$NOW_PLAYING_ADAPTER"),
-               "build.sh compiles the Now Playing adapter and stages the library and its perl loader")
+        // That build.sh compiles the adapter and stages the library and its
+        // perl loader is checked by `sources_in_sync_test` (bazel/sync_sources.py).
         let radialQuickToggle = RadialMenuItem(kind: .quickToggle,
                                                payload: RadialMenuQuickToggle.darkMode.rawValue)
         suite.expect(RadialMenuSupport.sanitized([radialQuickToggle]) == [radialQuickToggle]
@@ -990,29 +987,19 @@ enum UtilitiesFeatureTests {
         profileTestDefaults.set(seedShortcut.storageValue, forKey: DefaultsKey.radialMenuShortcut)
         suite.expect(wheelShortcuts() == [wheelShortcut],
                "a role key changed after the wheels were saved leaves their shortcuts as they are")
+        profileTestDefaults.set(true, forKey: DefaultsKey.radialMenuEnabled)
+        let wheelsRow = RadialMenuShortcutsSummary(defaults: profileTestDefaults)
+        suite.expect(ShortcutsPageRows(feature: .radialMenu, roles: [.radialMenu]) == .radialMenuWheels
+                && ShortcutsPageRows(feature: .keepAwake, roles: [.keepAwake]) == .single(.keepAwake)
+                && wheelsRow.shortcuts == [wheelShortcut] && wheelsRow.isActive
+                && wheelsRow.manageDestination == AppFeature.radialMenu.settingsDestination,
+               "the Keyboard Shortcuts page shows the wheels' shortcuts and links to their page instead of recording the role key")
+        profileTestDefaults.set(false, forKey: DefaultsKey.radialMenuEnabled)
+        suite.expect(!RadialMenuShortcutsSummary(defaults: profileTestDefaults).isActive,
+               "the wheels' row reads inactive while the radial menu is off")
         profileTestDefaults.removeObject(forKey: DefaultsKey.radialMenuProfiles)
         suite.expect(wheelShortcuts() == [seedShortcut],
                "until a wheel is saved the role key is the shortcut the page lists")
-        let shortcutsPageCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/ShortcutsSettings.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let featureRowsCode = shortcutsPageCode
-            .components(separatedBy: "private func featureRows(").dropFirst().first?
-            .components(separatedBy: "\n    }\n").first ?? ""
-        let radialRowCode = shortcutsPageCode
-            .components(separatedBy: "private struct RadialMenuShortcutsRow").dropFirst().first?
-            .components(separatedBy: "\n}\n").first ?? ""
-        let radialRowComesFirst = featureRowsCode.range(of: "if feature == .radialMenu {").flatMap { radial in
-            featureRowsCode.range(of: "roleRow(").map { radial.lowerBound < $0.lowerBound }
-        } ?? false
-        suite.expect(radialRowComesFirst
-                && radialRowCode.contains("RadialMenuSupport.profileShortcuts()")
-                && radialRowCode.contains(".manageButton")
-                && !radialRowCode.contains("ShortcutRecorderButton"),
-               "the Keyboard Shortcuts page shows the wheels' shortcuts and links to their page instead of recording the role key")
         profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")
 
         let testImage = NSImage(size: NSSize(width: 16, height: 16))
@@ -1087,29 +1074,47 @@ enum UtilitiesFeatureTests {
         // so only one of them may decide whether the click is passed on: once
         // the button is claimed, nothing past that point hands an event back,
         // or the down and the up split.
-        let radialServiceCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/RadialMenu/RadialMenuService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let radialClaimedClick = radialServiceCode
-            .components(separatedBy: "if type == .otherMouseDown {")
-            .dropFirst().first?
-            .components(separatedBy: "private func hotkeyPressed").first ?? ""
-        suite.expect(!radialClaimedClick.isEmpty && !radialClaimedClick.contains("passUnretained"),
+        let sideButton = MouseButtonShortcutSupport.backButtonNumber
+        let sideWheel = RadialMenuProfile(name: "Side", mouseButton: RadialMenuMouseTrigger.back.rawValue)
+        var radialDecodes = 0
+        func radialTap(press: Bool, claimed: [Int64], wheels: [RadialMenuProfile],
+                       sessionActive: Bool = false, holdPhase: Bool = false,
+                       holdButton: Int64? = nil) -> RadialMenuSupport.MouseTapAction {
+            RadialMenuSupport.mouseTapAction(isPress: press, button: sideButton, claimed: claimed,
+                                             sessionActive: sessionActive, holdPhase: holdPhase,
+                                             holdButton: holdButton,
+                                             profiles: { radialDecodes += 1; return wheels })
+        }
+        suite.expect(radialTap(press: true, claimed: [sideButton], wheels: []) == .consume
+                && radialTap(press: false, claimed: [sideButton], wheels: []) == .consume,
                "a claimed side button keeps both halves of its click whatever the full decode says")
+        suite.expect(radialDecodes == 1
+                && radialTap(press: true, claimed: [], wheels: [sideWheel]) == .passOn
+                && radialDecodes == 1,
+               "a button no wheel claims goes on to the app without decoding the wheels")
+        suite.expect(radialTap(press: true, claimed: [sideButton], wheels: [sideWheel]) == .open(sideWheel)
+                && radialTap(press: true, claimed: [sideButton], wheels: [sideWheel],
+                             sessionActive: true) == .close
+                && radialTap(press: false, claimed: [sideButton], wheels: [sideWheel],
+                             sessionActive: true, holdPhase: true, holdButton: sideButton) == .endHold,
+               "a claimed side button opens its wheel, closes it, and ends a hold on release")
 
         // The tap is the only thing that ends a button-held wheel, so handing
         // it back on resign has to end the session too; a wheel left open
         // across the switch would come back in hold phase with no release
         // coming for it.
-        let radialSessionResign = radialServiceCode
-            .components(separatedBy: "SessionActivity.shared.onChange")
-            .dropFirst().first?
-            .components(separatedBy: "var sessionActive").first ?? ""
-        suite.expect(radialSessionResign.contains("endSession()"),
+        var radialSessionSteps: [String] = []
+        RadialMenuService.sessionChanged(active: false,
+                                         endSession: { radialSessionSteps.append("end") },
+                                         syncTap: { radialSessionSteps.append("sync") })
+        suite.expect(radialSessionSteps == ["end", "sync"],
                "the radial menu ends its session when the mouse tap is handed back on resign")
+        radialSessionSteps = []
+        RadialMenuService.sessionChanged(active: true,
+                                         endSession: { radialSessionSteps.append("end") },
+                                         syncTap: { radialSessionSteps.append("sync") })
+        suite.expect(radialSessionSteps == ["sync"],
+               "the radial menu builds its tap again on the way back in without ending anything")
         suite.expect(RadialMenuFaviconFetcher.faviconURL(
             for: "https://example.com:8443/path?q=1#part")?.absoluteString
                 == "https://example.com:8443/favicon.ico"
@@ -1275,48 +1280,85 @@ enum UtilitiesFeatureTests {
                "disk eject exclusions travel in backups")
 
         // MARK: A sleeping clock
-        for shareService in ["Sources/Vitruvian/Services/QuickTools/ScreenshotShareService.swift",
-                             "Sources/Vitruvian/Services/Recorder/RecordingShareService.swift"] {
-            let shareCode = ((try? String(contentsOfFile: shareService, encoding: .utf8)) ?? "")
-                .components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-            suite.expect(shareCode.contains("NSWorkspace.didWakeNotification"),
-                   "\(shareService) recomputes share link expiry on wake, which its sleeping clock missed")
+        // A link's expiry timer runs on a clock that stops while the Mac
+        // sleeps, so waking up has to recompute the list. Each service keeps
+        // its links in a scratch folder here and hears the wake on a private
+        // center; a link stored while it slept shows up only by that refresh.
+        let wakeRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-share-wake-\(UUID().uuidString)", isDirectory: true)
+        let wakeEndpoint = URL(string: "https://share.example.com")!
+        let wakeLater = Date().addingTimeInterval(3_600)
+        func storeLinks<Record: Encodable>(_ records: [Record], in folder: URL) {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? JSONEncoder().encode(records).write(to: folder.appendingPathComponent("records.json"))
         }
+        func waitForWake(until done: () -> Bool) {
+            let limit = Date(timeIntervalSinceNow: 2)
+            while !done(), Date() < limit {
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+            }
+        }
+        let screenshotLinks = wakeRoot.appendingPathComponent("screenshots", isDirectory: true)
+        let screenshotWake = NotificationCenter()
+        let firstShot = ScreenshotShareRecord(id: "first", endpoint: wakeEndpoint,
+                                              expiresAt: wakeLater, deleteToken: "a")
+        let secondShot = ScreenshotShareRecord(id: "second", endpoint: wakeEndpoint,
+                                               expiresAt: wakeLater.addingTimeInterval(60), deleteToken: "b")
+        storeLinks([firstShot], in: screenshotLinks)
+        let screenshotShares = ScreenshotShareService(storage: { screenshotLinks },
+                                                      wakeNotifications: screenshotWake)
+        let screenshotLinksBeforeWake = screenshotShares.records.map(\.id)
+        storeLinks([firstShot, secondShot], in: screenshotLinks)
+        screenshotWake.post(name: NSWorkspace.didWakeNotification, object: nil)
+        waitForWake { screenshotShares.records.count == 2 }
+        suite.expect(screenshotLinksBeforeWake == ["first"]
+                && screenshotShares.records.map(\.id) == ["first", "second"],
+               "ScreenshotShareService recomputes share link expiry on wake, which its sleeping clock missed")
+        let recordingLinks = wakeRoot.appendingPathComponent("recordings", isDirectory: true)
+        let recordingWake = NotificationCenter()
+        let firstClip = RecordingShareRecord(id: "first", endpoint: wakeEndpoint,
+                                             expiresAt: wakeLater, deleteToken: "a")
+        let secondClip = RecordingShareRecord(id: "second", endpoint: wakeEndpoint,
+                                              expiresAt: wakeLater.addingTimeInterval(60), deleteToken: "b")
+        storeLinks([firstClip], in: recordingLinks)
+        let recordingShares = RecordingShareService(storage: { recordingLinks },
+                                                    wakeNotifications: recordingWake)
+        let recordingLinksBeforeWake = recordingShares.records.map(\.id)
+        storeLinks([firstClip, secondClip], in: recordingLinks)
+        recordingWake.post(name: NSWorkspace.didWakeNotification, object: nil)
+        waitForWake { recordingShares.records.count == 2 }
+        suite.expect(recordingLinksBeforeWake == ["first"]
+                && recordingShares.records.map(\.id) == ["first", "second"],
+               "RecordingShareService recomputes share link expiry on wake, which its sleeping clock missed")
+        try? FileManager.default.removeItem(at: wakeRoot)
 
-        // The confirmation HUD is a hand-laid AppKit panel, so its width is
-        // pinned as source shape. It used to be a fixed 300pt, which clipped
-        // the longer translations. Sizing it from a separate
-        // NSString measurement of the same text would leave whatever inset
-        // the label's cell adds unaccounted for -- the labels have to be the
-        // ones asked.
-        let quitHUDSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(quitHUDSource.count > 1_000,
-               "the quit protection HUD source is readable (\(quitHUDSource.count) bytes)")
-        let quitHUDCode = quitHUDSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(quitHUDCode.contains("title.fittingSize.width")
-                && quitHUDCode.contains("detail.fittingSize.width"),
-               "the confirmation HUD takes its width from the labels that draw the text")
-        suite.expect(!quitHUDCode.contains("size(withAttributes:"),
-               "the confirmation HUD does not size itself from a separate text measurement")
-        let quitHUDShow = quitHUDCode
-            .components(separatedBy: "func show(title: String, detail: String").last ?? ""
-        let quitHUDShowBody = quitHUDShow.components(separatedBy: "\n    package func ").first ?? ""
-        if let filled = quitHUDShowBody.range(of: "content.update("),
-           let sized = quitHUDShowBody.range(of: "fittingSize(content)"),
-           let applied = quitHUDShowBody.range(of: "setContentSize(size)") {
-            suite.expect(filled.lowerBound < sized.lowerBound && sized.lowerBound < applied.lowerBound,
-                   "the confirmation HUD fills its labels, then measures them, then resizes")
-        } else {
-            suite.expect(false,
-                   "the confirmation HUD's show() fills the labels, measures them and resizes")
+        // The confirmation HUD's width used to be a fixed 300pt, which
+        // clipped the longer translations. Sizing it from a separate NSString
+        // measurement of the same text would leave whatever inset the label's
+        // cell adds unaccounted for -- the labels have to be the ones asked,
+        // after they hold the new text. `QuitProtectionHUDTests` lays the
+        // labels out at that size in every language.
+        let quitHUDContent = QuitProtectionHUD.ContentView(
+            frame: CGRect(origin: .zero, size: QuitProtectionHUD.minimumSize))
+        let quitHUDTitle = String(repeating: "Hold ⌘Q to quit ", count: 4)
+        var quitHUDResizes: [CGSize] = []
+        var quitHUDWidthAtResize: CGFloat = 0
+        let quitHUDSize = QuitProtectionHUD.fit(quitHUDContent, title: quitHUDTitle,
+                                                detail: "Release to cancel", showsProgress: false) { size in
+            quitHUDResizes.append(size)
+            quitHUDWidthAtResize = quitHUDContent.textWidth
         }
+        suite.expect(quitHUDResizes == [quitHUDSize]
+                && quitHUDSize == QuitProtectionHUD.fittingSize(quitHUDContent)
+                && quitHUDSize.width > QuitProtectionHUD.minimumSize.width,
+               "the confirmation HUD fills its labels, then measures them, then resizes")
+        quitHUDContent.setFrameSize(quitHUDSize)
+        quitHUDContent.layoutSubtreeIfNeeded()
+        let quitHUDLabels = quitHUDContent.subviews.compactMap { $0 as? NSTextField }
+        suite.expect(quitHUDLabels.count == 2
+                && quitHUDWidthAtResize == quitHUDLabels.map(\.fittingSize.width).max()
+                && quitHUDLabels.allSatisfy { $0.frame.width >= $0.fittingSize.width },
+               "the confirmation HUD takes its width from the labels that draw the text")
         // MARK: A dropped identifier
         suite.expect(QuickTogglesSupport.isExcluded(volumeName: "SD Card",
                                               volumeUUID: "1234-5678-ABCD",
@@ -1327,14 +1369,22 @@ enum UtilitiesFeatureTests {
                                                    mountPath: "/Volumes/SD Card",
                                                    excludedVolumes: ["1234-5678-abcd"]),
                "an excluded volume UUID is honoured only when the caller hands the UUID over")
-        let diskExclusionsListCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/DiskExclusionsList.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(diskExclusionsListCode.contains(".volumeUUIDStringKey")
-                && diskExclusionsListCode.contains("QuickTogglesSupport.isExcluded("),
+        // The exclusions picker reads each mounted volume with its UUID and
+        // asks the eject paths' own test.
+        func pickerDrive(_ name: String, uuid: String?, root: Bool = false) -> QuickTogglesSupport.Volume {
+            QuickTogglesSupport.Volume(name: name, uuid: uuid, mountPath: "/Volumes/" + name,
+                                       isInternal: false, isRemovable: true, isEjectable: true,
+                                       isLocal: true, isRootFileSystem: root)
+        }
+        suite.expect(QuickTogglesSupport.exclusionCandidates(
+                    [pickerDrive("USB Flash", uuid: "9999-AAAA"), pickerDrive(" SD Card ", uuid: "1234-5678-ABCD"),
+                     pickerDrive("Backup", uuid: nil), pickerDrive("Startup", uuid: nil, root: true),
+                     pickerDrive("USB Flash", uuid: "9999-AAAA")],
+                    excluded: ["1234-5678-abcd", "/Volumes/Backup"]) == ["USB Flash"],
                "the exclusions picker asks the shared exclusion test, UUID included, not a name-only one")
+        let startupVolume = QuickTogglesSupport.Volume(mountedAt: URL(fileURLWithPath: "/"))
+        suite.expect(startupVolume?.isRootFileSystem == true && startupVolume?.uuid?.isEmpty == false,
+               "the exclusions picker reads a mounted volume's UUID along with its flags")
 
     }
 }

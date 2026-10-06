@@ -150,6 +150,22 @@ package struct AppPickerView: View {
     }
 }
 
+extension AppPickerView {
+    /// The picker both uninstaller surfaces open. It lists only the apps the
+    /// uninstaller accepts (`UninstallerSupport.offeredApplications`), so
+    /// nothing it offers is then silently turned down. `installed` is what it
+    /// filters: the apps installed on this Mac.
+    package static func uninstaller(compact: Bool = false,
+                                    onCancel: @escaping () -> Void,
+                                    onSelect: @escaping (URL) -> Void,
+                                    installed: @escaping @Sendable () -> [InstalledApps.InstalledApp] = {
+                                        InstalledApps.installedApplications()
+                                    }) -> AppPickerView {
+        AppPickerView(compact: compact, onCancel: onCancel, onSelect: onSelect,
+                      loadApps: { UninstallerSupport.offeredApplications(from: installed()) })
+    }
+}
+
 private struct AppPickerRow: View {
     let app: InstalledApps.InstalledApp
     var compact: Bool

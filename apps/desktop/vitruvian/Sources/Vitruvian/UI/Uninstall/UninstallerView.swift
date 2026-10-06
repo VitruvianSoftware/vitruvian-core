@@ -105,16 +105,15 @@ package struct UninstallerView: View {
         }
         .padding(28)
         .sheet(isPresented: $showingAppPicker) {
-            AppPickerView {
+            AppPickerView.uninstaller {
                 showingAppPicker = false
             } onSelect: { url in
                 showingAppPicker = false
                 uninstaller.select(appURL: url)
-            } loadApps: { UninstallerSupport.offeredApplications() }
+            }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let app = urls.first(where: { $0.pathExtension == "app" }) ?? urls.first else { return false }
-            return uninstaller.select(appURL: app)
+            uninstaller.selectDropped(urls)
         } isTargeted: { dropTargeted = $0 }
     }
 
@@ -296,16 +295,17 @@ package struct UninstallerView: View {
     // MARK: Done
 
     private func doneState(freed: Int64, failed: [AppUninstaller.Leftover]) -> some View {
-        VStack(spacing: 16) {
+        let done = UninstallDoneContent(failed: failed, compact: false)
+        return VStack(spacing: 16) {
             Spacer()
-            Image(systemName: UninstallerSupport.doneSymbol(hasLeftovers: !failed.isEmpty))
+            Image(systemName: done.symbol)
                 .font(.system(size: 54))
                 .foregroundStyle(failed.isEmpty ? .green : .orange)
             Text(l10n.s.uninstallerDoneTitle).font(.system(size: 20, weight: .bold))
             Text(String(format: l10n.s.uninstallerFreedFormat, Self.byteString(freed)))
                 .font(.system(size: 13)).foregroundStyle(.secondary)
-            if !failed.isEmpty {
-                UninstallFailureNote(items: failed).frame(width: 360)
+            if let note = done.failureNote {
+                note.frame(width: 360)
             }
             Button(l10n.s.uninstallerAnother) { uninstaller.reset() }
                 .controlSize(.large)

@@ -99,13 +99,7 @@ package struct AutoQuitSettings: View {
     }
 
     private var sortedExceptions: [String] {
-        AutoQuitSupport.visibleExceptions(service.exceptions) {
-            InstalledApps.url(for: $0) != nil
-        }
-        .sorted {
-            InstalledApps.name(for: $0).localizedCaseInsensitiveCompare(InstalledApps.name(for: $1))
-                == .orderedAscending
-        }
+        AutoQuitSupport.listedExceptions(service.exceptions)
     }
 
     private var appPickerSheet: some View {

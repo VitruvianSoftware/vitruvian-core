@@ -40,13 +40,13 @@ package final class DiskImageInstallerService {
         }
     }
 
-    private enum InstallFailure {
+    package enum InstallFailure {
         case alreadyInstalled
         case verification
         case copy
     }
 
-    private enum InstallOutcome {
+    package enum InstallOutcome {
         case installed(downloadTrashed: Bool)
         case installedKeepingMount
         case installedKeepingDownload
@@ -178,19 +178,61 @@ package final class DiskImageInstallerService {
         promptActive = true
 
         let strings = FeatureStrings.diskImageInstaller(L10n.shared.language)
+        NSApp.activate(ignoringOtherApps: true)
+        installPrompt = Self.presentInstallPrompt(
+            appURL: candidate.appURL, displayName: candidate.displayName, strings: strings,
+            defaults: .standard, answer: { [weak self] choice in
+                guard let self else { return }
+                self.installPrompt = nil
+                guard let choice else {
+                    self.finishCurrentCandidate()
+                    return
+                }
+                self.beginInstall(candidate, strings: strings, trashingDownload: choice.trashesDownload,
+                                  revealingApp: choice.revealsApp,
+                                  useUserApplications: choice.usesUserApplications)
+            })
+    }
+
+    /// What the person chose in the install prompt.
+    package struct InstallChoice: Equatable {
+        package let trashesDownload: Bool
+        package let revealsApp: Bool
+        package let usesUserApplications: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(trashesDownload: Bool, revealsApp: Bool, usesUserApplications: Bool) {
+            self.trashesDownload = trashesDownload
+            self.revealsApp = revealsApp
+            self.usesUserApplications = usesUserApplications
+        }
+    }
+
+    /// Opens the install prompt for the app at `appURL`, its options read from
+    /// `defaults` and saved there when the person installs. `answer` gets the
+    /// choice, or nil for Cancel. `show` puts the alert's window on screen.
+    ///
+    /// Not runModal: this runs inside a main-queue block (the hop after the
+    /// mount check), and a modal loop started there holds back later
+    /// main-queue work, such as shortcut actions, until the alert closes.
+    /// Its modal panel mode also stops default-mode timers (issue #1665).
+    @discardableResult
+    package static func presentInstallPrompt(appURL: URL, displayName: String,
+                                             strings: DiskImageInstallerStrings, defaults: UserDefaults,
+                                             show: ((NSWindow) -> Void)? = nil,
+                                             answer: @escaping (InstallChoice?) -> Void) -> NonModalAlert {
         let alert = NSAlert()
         alert.messageText = strings.promptTitle
-        alert.icon = NSWorkspace.shared.icon(forFile: candidate.appURL.path)
+        alert.icon = NSWorkspace.shared.icon(forFile: appURL.path)
         alert.addButton(withTitle: strings.installButton)
         alert.addButton(withTitle: L10n.shared.s.uninstallerCancel)
 
-        let defaults = UserDefaults.standard
         let trashDownload = NSButton(checkboxWithTitle: strings.trashDownloadOption, target: nil, action: nil)
         trashDownload.state = defaults.bool(forKey: DefaultsKey.diskImageInstallerTrashesDownload) ? .on : .off
         let revealApp = NSButton(checkboxWithTitle: strings.revealAppOption, target: nil, action: nil)
         revealApp.state = defaults.bool(forKey: DefaultsKey.diskImageInstallerRevealsApp) ? .on : .off
         let destinationPrompt = DiskImageInstallDestinationPrompt(alert: alert, strings: strings,
-                                                                  displayName: candidate.displayName)
+                                                                  displayName: displayName)
         let userApplications = NSButton(checkboxWithTitle: strings.useUserApplications,
                                         target: destinationPrompt,
                                         action: #selector(DiskImageInstallDestinationPrompt.updateDestination(_:)))
@@ -203,27 +245,23 @@ package final class DiskImageInstallerService {
         options.frame = NSRect(origin: .zero, size: options.fittingSize)
         alert.accessoryView = options
 
-        // Not runModal: this runs inside a main-queue block (the hop after the
-        // mount check), and a modal loop started there holds back later
-        // main-queue work, such as shortcut actions, until the alert closes.
-        // Its modal panel mode also stops default-mode timers (issue #1665).
-        NSApp.activate(ignoringOtherApps: true)
-        installPrompt = NonModalAlert.present(alert, retaining: [destinationPrompt]) { [weak self] response in
-            guard let self else { return }
-            self.installPrompt = nil
+        let respond: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .alertFirstButtonReturn else {
-                self.finishCurrentCandidate()
+                answer(nil)
                 return
             }
-            let trashesDownload = trashDownload.state == .on
-            let revealsApp = revealApp.state == .on
-            let usesUserApplications = userApplications.state == .on
-            defaults.set(trashesDownload, forKey: DefaultsKey.diskImageInstallerTrashesDownload)
-            defaults.set(revealsApp, forKey: DefaultsKey.diskImageInstallerRevealsApp)
-            defaults.set(usesUserApplications, forKey: DefaultsKey.diskImageInstallerUseUserApplications)
-            self.beginInstall(candidate, strings: strings, trashingDownload: trashesDownload,
-                              revealingApp: revealsApp, useUserApplications: usesUserApplications)
+            let choice = InstallChoice(trashesDownload: trashDownload.state == .on,
+                                       revealsApp: revealApp.state == .on,
+                                       usesUserApplications: userApplications.state == .on)
+            defaults.set(choice.trashesDownload, forKey: DefaultsKey.diskImageInstallerTrashesDownload)
+            defaults.set(choice.revealsApp, forKey: DefaultsKey.diskImageInstallerRevealsApp)
+            defaults.set(choice.usesUserApplications, forKey: DefaultsKey.diskImageInstallerUseUserApplications)
+            answer(choice)
         }
+        if let show {
+            return NonModalAlert.present(alert, retaining: [destinationPrompt], show: show, completion: respond)
+        }
+        return NonModalAlert.present(alert, retaining: [destinationPrompt], completion: respond)
     }
 
     private func beginInstall(_ candidate: Candidate, strings: DiskImageInstallerStrings,
@@ -399,44 +437,57 @@ package final class DiskImageInstallerService {
     private func present(result: InstallResult, candidate: Candidate,
                          completion: @escaping () -> Void) {
         let strings = FeatureStrings.diskImageInstaller(L10n.shared.language)
+        NSApp.activate(ignoringOtherApps: true)
+        Self.presentResult(result.outcome, destinationURL: result.destinationURL, appURL: candidate.appURL,
+                           displayName: candidate.displayName, strings: strings, completion: completion)
+    }
+
+    /// Opens the alert that says how the install of `displayName`'s app went.
+    /// `show` puts the alert's window on screen. Not runModal either: this
+    /// runs inside the hop after the install.
+    @discardableResult
+    package static func presentResult(_ outcome: InstallOutcome, destinationURL: URL?, appURL: URL,
+                                      displayName: String, strings: DiskImageInstallerStrings,
+                                      show: ((NSWindow) -> Void)? = nil,
+                                      completion: @escaping () -> Void) -> NonModalAlert {
         let alert = NSAlert()
-        let folder = result.destinationURL?.deletingLastPathComponent().path == "/Applications"
+        let folder = destinationURL?.deletingLastPathComponent().path == "/Applications"
             ? strings.applicationsFolder : strings.userApplicationsFolder
-        alert.icon = NSWorkspace.shared.icon(forFile: result.destinationURL?.path
-                                              ?? candidate.appURL.path)
-        switch result.outcome {
+        alert.icon = NSWorkspace.shared.icon(forFile: destinationURL?.path ?? appURL.path)
+        switch outcome {
         case let .installed(downloadTrashed):
             alert.messageText = strings.installedTitle
             alert.informativeText = String(format: downloadTrashed
                                                ? strings.installedBodyFormat
                                                : strings.installedKeptDownloadBodyFormat,
-                                           candidate.displayName, folder)
+                                           displayName, folder)
         case .installedKeepingMount:
             alert.alertStyle = .warning
             alert.messageText = strings.installedTitle
             alert.informativeText = String(format: strings.installedKeepingMountBodyFormat,
-                                           candidate.displayName, folder)
+                                           displayName, folder)
         case .installedKeepingDownload:
             alert.alertStyle = .warning
             alert.messageText = strings.installedTitle
             alert.informativeText = String(format: strings.installedKeepingDownloadBodyFormat,
-                                           candidate.displayName, folder)
+                                           displayName, folder)
         case let .failed(failure):
             alert.alertStyle = .warning
             alert.messageText = strings.failedTitle
             switch failure {
             case .alreadyInstalled:
                 alert.informativeText = String(format: strings.alreadyInstalledBodyFormat,
-                                               candidate.displayName)
+                                               displayName)
             case .verification:
                 alert.informativeText = strings.verificationFailedBody
             case .copy:
                 alert.informativeText = strings.failedBody
             }
         }
-        // Not runModal either: this runs inside the hop after the install.
-        NSApp.activate(ignoringOtherApps: true)
-        NonModalAlert.present(alert) { _ in completion() }
+        if let show {
+            return NonModalAlert.present(alert, show: show) { _ in completion() }
+        }
+        return NonModalAlert.present(alert) { _ in completion() }
     }
 
     nonisolated

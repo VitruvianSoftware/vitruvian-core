@@ -116,12 +116,10 @@ package struct ShortcutsSettings: View {
     @ViewBuilder
     private func featureRows(_ feature: AppFeature, in group: FeatureGroup) -> some View {
         let roles = availableRoles.filter { $0.feature == feature && $0.group == group }
-        let count = feature == .windowLayout
-            ? WindowLayoutAction.shortcutActions.count + roles.count
-            : roles.count
-        if feature == .radialMenu {
+        switch ShortcutsPageRows(feature: feature, roles: roles) {
+        case .radialMenuWheels:
             RadialMenuShortcutsRow(text: text)
-        } else if count > 1 {
+        case let .group(count):
             featureHeader(feature, roles: roles, count: count, in: group)
             if expandedFeatures[group, default: []].contains(feature) {
                 if feature == .windowLayout {
@@ -155,8 +153,10 @@ package struct ShortcutsSettings: View {
                     }
                 }
             }
-        } else if let role = roles.first {
+        case let .single(role):
             roleRow(role)
+        case .nothing:
+            EmptyView()
         }
     }
 
@@ -313,35 +313,78 @@ private struct KeyboardBrightnessShortcutToggle: View {
     }
 }
 
-/// Each wheel answers to the shortcut saved in its own profile, and the radial
-/// menu's role key only seeds the first wheel until one is saved. A recorder for
-/// that key would then show a combination no wheel uses and change nothing, so
-/// the row lists what the wheels answer to and leaves the change to the Radial
+/// What one feature puts on the Keyboard Shortcuts page.
+package enum ShortcutsPageRows: Equatable {
+    /// The radial menu's wheels, listed with a link to their page
+    /// (`RadialMenuShortcutsSummary`), never a recorder for its role key.
+    case radialMenuWheels
+    /// A disclosure header over this many rows.
+    case group(count: Int)
+    /// One recorder row.
+    case single(GlobalShortcutRole)
+    case nothing
+
+    /// Window layout counts its layout actions among its rows.
+    package init(feature: AppFeature, roles: [GlobalShortcutRole]) {
+        let count = feature == .windowLayout
+            ? WindowLayoutAction.shortcutActions.count + roles.count
+            : roles.count
+        if feature == .radialMenu {
+            self = .radialMenuWheels
+        } else if count > 1 {
+            self = .group(count: count)
+        } else if let role = roles.first {
+            self = .single(role)
+        } else {
+            self = .nothing
+        }
+    }
+}
+
+/// What the Keyboard Shortcuts page shows for the radial menu. Each wheel
+/// answers to the shortcut saved in its own profile, and the radial menu's
+/// role key only seeds the first wheel until one is saved. A recorder for that
+/// key would then show a combination no wheel uses and change nothing, so the
+/// row lists what the wheels answer to and leaves the change to the Radial
 /// menu page.
+package struct RadialMenuShortcutsSummary: Equatable {
+    /// What the wheels answer to.
+    package let shortcuts: [GlobalShortcut]
+    package let isActive: Bool
+    /// Where the row's button goes: the page that owns the wheels.
+    package let manageDestination: FeatureSettingsDestination
+
+    package init(defaults: UserDefaults = .standard) {
+        let role = GlobalShortcutRole.radialMenu
+        shortcuts = RadialMenuSupport.profileShortcuts(defaults: defaults)
+        isActive = !shortcuts.isEmpty
+            && role.requiredEnableKeys.allSatisfy { defaults.bool(forKey: $0) }
+        manageDestination = role.feature.settingsDestination
+    }
+}
+
 private struct RadialMenuShortcutsRow: View {
     @ObservedObject private var l10n = L10n.shared
     let text: ShortcutSettingsStrings
 
     var body: some View {
         let role = GlobalShortcutRole.radialMenu
-        let shortcuts = RadialMenuSupport.profileShortcuts()
-        let active = !shortcuts.isEmpty
-            && role.requiredEnableKeys.allSatisfy { UserDefaults.standard.bool(forKey: $0) }
+        let summary = RadialMenuShortcutsSummary()
         HStack(alignment: .top, spacing: 8) {
             ShortcutRowLabel(title: role.title(l10n.s),
                              symbolName: role.feature.symbolName,
                              contextLabel: nil,
-                             statusText: active ? text.active : text.inactive,
-                             statusIsActive: active)
+                             statusText: summary.isActive ? text.active : text.inactive,
+                             statusIsActive: summary.isActive)
             Spacer()
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(shortcuts.isEmpty
+                Text(summary.shortcuts.isEmpty
                      ? l10n.s.shortcutNone
-                     : shortcuts.map(\.displayString).joined(separator: "\n"))
+                     : summary.shortcuts.map(\.displayString).joined(separator: "\n"))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
                 Button(FeatureStrings.radialMenu(l10n.language).manageButton) {
-                    SettingsRouter.shared.request(role.feature.settingsDestination,
+                    SettingsRouter.shared.request(summary.manageDestination,
                                                   sidebarFeature: role.feature)
                 }
             }

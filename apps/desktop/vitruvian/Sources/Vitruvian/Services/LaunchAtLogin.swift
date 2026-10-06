@@ -14,11 +14,7 @@ import VitruvianDesign
 package enum LaunchAtLogin {
     /// What the system holds for this app right now.
     package static var registration: LaunchAtLoginSupport.Registration {
-        switch SMAppService.mainApp.status {
-        case .enabled: return .enabled
-        case .requiresApproval: return .needsApproval
-        default: return .off
-        }
+        LaunchAtLoginSupport.Registration(SMAppService.mainApp.status)
     }
 
     /// What the system will actually do at the next login.
@@ -45,15 +41,50 @@ package enum LaunchAtLogin {
         }
     }
 
+    /// The system calls `setEnabled` makes and where it stores the wish.
+    /// `live` is this app's login item and the standard defaults.
+    package struct System {
+        package var register: () throws -> Void
+        package var unregister: () throws -> Void
+        package var registration: () -> LaunchAtLoginSupport.Registration
+        package var locationIsUnstable: () -> Bool
+        package var defaults: UserDefaults
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(register: @escaping () throws -> Void,
+                     unregister: @escaping () throws -> Void,
+                     registration: @escaping () -> LaunchAtLoginSupport.Registration,
+                     locationIsUnstable: @escaping () -> Bool,
+                     defaults: UserDefaults) {
+            self.register = register
+            self.unregister = unregister
+            self.registration = registration
+            self.locationIsUnstable = locationIsUnstable
+            self.defaults = defaults
+        }
+
+        package static var live: System {
+            System(register: { try SMAppService.mainApp.register() },
+                   unregister: { try SMAppService.mainApp.unregister() },
+                   registration: { LaunchAtLogin.registration },
+                   locationIsUnstable: { LaunchAtLogin.locationIsUnstable },
+                   defaults: .standard)
+        }
+    }
+
     package static func setEnabled(_ enabled: Bool) throws {
-        if enabled, locationIsUnstable { throw UnstableLocationError() }
-        UserDefaults.standard.set(enabled, forKey: DefaultsKey.launchAtLoginWanted)
+        try setEnabled(enabled, system: .live)
+    }
+
+    package static func setEnabled(_ enabled: Bool, system: System) throws {
+        if enabled, system.locationIsUnstable() { throw UnstableLocationError() }
+        system.defaults.set(enabled, forKey: DefaultsKey.launchAtLoginWanted)
         var failure: Error?
         do {
             if enabled {
-                try SMAppService.mainApp.register()
+                try system.register()
             } else {
-                try SMAppService.mainApp.unregister()
+                try system.unregister()
             }
         } catch {
             failure = error
@@ -62,16 +93,16 @@ package enum LaunchAtLogin {
         // leaves the app closed at login whether or not the call reports an
         // error. Only the user can approve it there, so the wish stays stored
         // and the message says where to finish the job.
-        if enabled, registration == .needsApproval { throw NeedsApprovalError() }
+        if enabled, system.registration() == .needsApproval { throw NeedsApprovalError() }
         // Only surface failures that leave the system out of step with the
         // user's choice. Unregistering an item that was already gone reports
         // an error even though the end state is exactly what the user asked
         // for.
-        if let failure, isEnabled != enabled {
+        if let failure, (system.registration() == .enabled) != enabled {
             // The stored intent must match what the user actually got;
             // keeping the failed wish would make the startup repair register
             // an item the UI showed as off.
-            UserDefaults.standard.set(isEnabled, forKey: DefaultsKey.launchAtLoginWanted)
+            system.defaults.set(system.registration() == .enabled, forKey: DefaultsKey.launchAtLoginWanted)
             throw failure
         }
     }
@@ -101,5 +132,18 @@ package enum LaunchAtLogin {
                     .resourceValues(forKeys: [.volumeIsReadOnlyKey])
                 return values?.volumeIsReadOnly ?? true
             })
+    }
+}
+
+extension LaunchAtLoginSupport.Registration {
+    /// Reads the system's status. An item awaiting approval is its own state,
+    /// neither working nor gone: it exists but is switched off in System
+    /// Settings, where only the user can turn it back on.
+    package init(_ status: SMAppService.Status) {
+        switch status {
+        case .enabled: self = .enabled
+        case .requiresApproval: self = .needsApproval
+        default: self = .off
+        }
     }
 }

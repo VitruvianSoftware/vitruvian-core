@@ -102,4 +102,87 @@ package enum QuickTogglesSupport {
         }
         return false
     }
+
+    /// What a mounted volume is read for. The UUID is among them: an
+    /// exclusion entered as a volume UUID matches only a volume read with it.
+    package static var volumeKeys: Set<URLResourceKey> {
+        [
+            .volumeIsInternalKey, .volumeIsRemovableKey,
+            .volumeIsEjectableKey, .volumeIsLocalKey,
+            .volumeIsRootFileSystemKey,
+            .volumeNameKey,
+            .volumeLocalizedNameKey,
+            .volumeUUIDStringKey,
+        ]
+    }
+
+    /// A mounted volume as the exclusions picker judges it.
+    package struct Volume: Equatable {
+        package var name: String
+        package var uuid: String?
+        package var mountPath: String
+        package var isInternal: Bool
+        package var isRemovable: Bool
+        package var isEjectable: Bool
+        package var isLocal: Bool
+        package var isRootFileSystem: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(name: String, uuid: String?, mountPath: String, isInternal: Bool,
+                     isRemovable: Bool, isEjectable: Bool, isLocal: Bool, isRootFileSystem: Bool) {
+            self.name = name
+            self.uuid = uuid
+            self.mountPath = mountPath
+            self.isInternal = isInternal
+            self.isRemovable = isRemovable
+            self.isEjectable = isEjectable
+            self.isLocal = isLocal
+            self.isRootFileSystem = isRootFileSystem
+        }
+
+        /// The volume mounted at `url`, read with `volumeKeys`; nil when it
+        /// cannot be read.
+        package init?(mountedAt url: URL) {
+            guard let values = try? url.resourceValues(forKeys: QuickTogglesSupport.volumeKeys) else {
+                return nil
+            }
+            self.init(name: values.volumeLocalizedName ?? values.volumeName ?? url.lastPathComponent,
+                      uuid: values.volumeUUIDString,
+                      mountPath: url.path,
+                      isInternal: values.volumeIsInternal ?? false,
+                      isRemovable: values.volumeIsRemovable ?? false,
+                      isEjectable: values.volumeIsEjectable ?? false,
+                      isLocal: values.volumeIsLocal ?? false,
+                      isRootFileSystem: values.volumeIsRootFileSystem ?? (url.path == "/"))
+        }
+    }
+
+    /// The drives the exclusions picker offers, sorted by name: those an
+    /// eject would take, minus any `excluded` already names. That is the same
+    /// test the eject paths use, so an entry the user typed as a volume UUID
+    /// or a mount path keeps its drive out of the picker just as its name does.
+    package static func exclusionCandidates(_ volumes: [Volume], excluded: [String]) -> [String] {
+        let currentExcluded = Set(excluded.map { $0.lowercased() })
+        var results: [String] = []
+        for volume in volumes {
+            let isOfferable = shouldOfferEject(
+                isInternal: volume.isInternal,
+                isRemovable: volume.isRemovable,
+                isEjectable: volume.isEjectable,
+                isLocal: volume.isLocal,
+                isRootFileSystem: volume.isRootFileSystem
+            )
+            guard isOfferable else { continue }
+            let trimmed = volume.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let alreadyExcluded = isExcluded(
+                volumeName: trimmed,
+                volumeUUID: volume.uuid,
+                mountPath: volume.mountPath,
+                excludedVolumes: currentExcluded)
+            if !trimmed.isEmpty, !alreadyExcluded, !results.contains(trimmed) {
+                results.append(trimmed)
+            }
+        }
+        return results.sorted()
+    }
 }

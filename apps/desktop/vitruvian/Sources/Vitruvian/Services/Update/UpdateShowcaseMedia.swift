@@ -89,7 +89,13 @@ package final class UpdateShowcaseMediaLoader: ObservableObject {
             return
         }
         try? FileManager.default.removeItem(at: cached)
+        download(startingWith: Self.startDownload)
+    }
 
+    /// Downloads the showcase into the cache. `start` opens the session that
+    /// runs the download with this delegate, starts its task and hands the
+    /// session back; `load()` passes `startDownload`.
+    package func download(startingWith start: (BoundedUpdateDownloadDelegate) -> URLSession) {
         state = .loading
         // The checksum is verified after the download, so it cannot stop a
         // response from filling the disk on the way there; the byte ceiling
@@ -131,13 +137,18 @@ package final class UpdateShowcaseMediaLoader: ObservableObject {
             state = .failed
             return
         }
+        session = start(delegate)
+    }
+
+    /// The release asset, over an ephemeral session.
+    nonisolated private static func startDownload(_ delegate: BoundedUpdateDownloadDelegate) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 12
         configuration.timeoutIntervalForResource = 120
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-        self.session = session
         session.dataTask(with: UpdateShowcaseInfo.remoteMediaURL).resume()
+        return session
     }
 
     package func cancel() {

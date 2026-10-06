@@ -9,6 +9,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
+import ServiceManagement
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
@@ -265,15 +266,27 @@ enum UpdateFeatureTests {
         // The showcase loader is a @StateObject, so it can be released without
         // `.onDisappear` running. Its session holds the download delegate, and
         // that delegate's deinit is what deletes the scratch file, so the
-        // release path has to invalidate the session too.
-        let showcaseSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Update/UpdateShowcaseMedia.swift",
-            encoding: .utf8)) ?? ""
-        let showcaseDeinitBody = (showcaseSource.components(separatedBy: "\n    deinit {")
-            .dropFirst().first ?? "").components(separatedBy: "\n    }").first ?? ""
-        suite.expect(showcaseDeinitBody.contains("session?.invalidateAndCancel()"),
+        // release path has to invalidate the session too. This download is
+        // never resumed: only cancelling it can end it.
+        weak var showcaseDelegate: BoundedUpdateDownloadDelegate?
+        var showcaseTask: URLSessionDataTask?
+        var showcaseLoader: UpdateShowcaseMediaLoader? = UpdateShowcaseMediaLoader()
+        showcaseLoader?.download { delegate in
+            showcaseDelegate = delegate
+            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+            showcaseTask = session.dataTask(with: URL(fileURLWithPath: "/dev/null"))
+            return session
+        }
+        let showcaseStarted = showcaseLoader?.state == .loading && showcaseDelegate != nil
+        showcaseLoader = nil
+        let showcaseDeadline = Date(timeIntervalSinceNow: 5)
+        while showcaseDelegate != nil || showcaseTask?.state != .completed, Date() < showcaseDeadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+        }
+        suite.expect(showcaseStarted && showcaseDelegate == nil,
                "a released showcase loader invalidates its session, freeing the delegate and its scratch file")
-        suite.expect(!showcaseDeinitBody.contains("finishTasksAndInvalidate"),
+        suite.expect(showcaseTask?.state == .completed
+                && (showcaseTask?.error as? URLError)?.code == .cancelled,
                "a released showcase loader cancels its download instead of letting it finish")
 
         suite.expect(SettingsSearchSupport.matches(query: "", title: "Monitor"),
@@ -1213,16 +1226,49 @@ enum UpdateFeatureTests {
                 && LaunchAtLoginSupport.startupAction(wanted: false, registration: .needsApproval,
                                                       locationIsUnstable: false) == .none,
                "an item awaiting approval in System Settings is never registered over (issue #260)")
-        // `SMAppService.Status` cannot be driven without a real login item, so
-        // what the service does with the third state is pinned by source. Both
-        // needles are public symbols, not a line's spelling.
-        let launchAtLoginSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/LaunchAtLogin.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(launchAtLoginSource.contains(".requiresApproval"),
+        suite.expect(LaunchAtLoginSupport.Registration(.requiresApproval) == .needsApproval
+                && LaunchAtLoginSupport.Registration(.enabled) == .enabled
+                && LaunchAtLoginSupport.Registration(.notRegistered) == .off
+                && LaunchAtLoginSupport.Registration(.notFound) == .off,
                "an approval-pending login item is read as its own state")
-        suite.expect(launchAtLoginSource.contains("throw NeedsApprovalError()"),
+        // The switch against a stand-in login item: registering succeeds, but
+        // System Settings still has the item switched off.
+        let loginDefaults = UserDefaults(suiteName: "vitru.tests.launch-at-login")!
+        var loginRegistration = LaunchAtLoginSupport.Registration.off
+        var loginRegistrations = 0
+        let loginSystem = LaunchAtLogin.System(
+            register: {
+                loginRegistrations += 1
+                loginRegistration = .needsApproval
+            },
+            unregister: { loginRegistration = .off },
+            registration: { loginRegistration },
+            locationIsUnstable: { false },
+            defaults: loginDefaults)
+        var approvalMissingSaid = false
+        do {
+            try LaunchAtLogin.setEnabled(true, system: loginSystem)
+        } catch is LaunchAtLogin.NeedsApprovalError {
+            approvalMissingSaid = true
+        } catch {}
+        suite.expect(approvalMissingSaid && loginRegistrations == 1
+                && loginDefaults.bool(forKey: DefaultsKey.launchAtLoginWanted),
                "turning launch at login on says so when only approval is missing")
+        loginRegistration = .off
+        var approvedEnableSaidNothing = true
+        do {
+            try LaunchAtLogin.setEnabled(true, system: LaunchAtLogin.System(
+                register: { loginRegistration = .enabled },
+                unregister: {},
+                registration: { loginRegistration },
+                locationIsUnstable: { false },
+                defaults: loginDefaults))
+        } catch {
+            approvedEnableSaidNothing = false
+        }
+        suite.expect(approvedEnableSaidNothing && loginRegistration == .enabled,
+               "an enable the system accepts says nothing")
+        loginDefaults.removePersistentDomain(forName: "vitru.tests.launch-at-login")
 
         // MARK: Release notes parsing
 

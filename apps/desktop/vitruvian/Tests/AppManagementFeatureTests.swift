@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import ApplicationServices
 import Carbon.HIToolbox
 import Combine
 import CoreAudio
@@ -16,6 +17,11 @@ import VitruvianServices
 import VitruvianUI
 
 enum AppManagementFeatureTests {
+    /// How many times AutoQuit's Space-change observer asked for new looks.
+    final class SpaceChangeTally {
+        var count = 0
+    }
+
     static func run(_ suite: TestSuite) {
         let registeredDefaults = Defaults.registeredDefaults
         suite.expect(registeredDefaults[DefaultsKey.extraBrightnessEnabled] as? Bool == false,
@@ -477,15 +483,26 @@ enum AppManagementFeatureTests {
         suite.expect(UninstallerSupport.acceptedApplicationIDs(listedApps)
                 == [editorApp.standardizedFileURL.path],
                "the command bar's uninstall list keeps only the apps the uninstaller accepts")
+        // Both uninstaller surfaces open this picker and hand their drops over
+        // this way.
+        let uninstallerPicker = AppPickerView.uninstaller(onCancel: {}, onSelect: { _ in },
+                                                          installed: { listedApps })
+        suite.expect(uninstallerPicker.loadApps().map(\.url) == [editorApp],
+               "the uninstaller's picker offers only the apps the shared selection checks accept")
+        let dropUninstaller = AppUninstaller(environment: .init(
+            background: { _, _ in }, main: { _ in }, scan: { _ in nil },
+            remove: { _ in (0, []) }, quit: { _ in }, packages: UninstallerFlowTests.Brew(),
+            notify: { _, _ in }))
+        let droppedNote = selectionFixture.appendingPathComponent("Notes.txt")
+        suite.expect(!dropUninstaller.selectDropped([])
+                && !dropUninstaller.selectDropped([URL(string: "https://example.com/App.app")!])
+                && !dropUninstaller.selectDropped([droppedNote, appleEditorApp])
+                && dropUninstaller.target == nil,
+               "the uninstaller springs a refused drop back instead of accepting it")
+        suite.expect(dropUninstaller.selectDropped([droppedNote, editorApp])
+                && dropUninstaller.target?.url == editorApp.standardizedFileURL,
+               "a drop hands the uninstaller the first app among the dropped files")
         try? FileManager.default.removeItem(at: selectionFixture)
-        for path in ["Sources/Vitruvian/UI/Uninstall/UninstallerView.swift",
-                     "Sources/Vitruvian/UI/MenuPanel/PanelUninstallerView.swift"] {
-            let pickerSource = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            suite.expect(pickerSource.contains("UninstallerSupport.offeredApplications()"),
-                   "\(path) offers only the apps the shared selection checks accept")
-            suite.expect(pickerSource.contains("return uninstaller.select(appURL: app)"),
-                   "\(path) springs a refused drop back instead of accepting it")
-        }
         let uninstallAppURL = URL(fileURLWithPath: "/Applications/Editor.app")
         suite.expect(UninstallerSupport.isNestedBundle(
                    URL(fileURLWithPath: "/Applications/Editor.app/Contents/Library/LoginItems/Background.app"),
@@ -805,67 +822,101 @@ enum AppManagementFeatureTests {
                "the previously inaccessible file is recognized as absent only after removal")
         try? FileManager.default.removeItem(at: absentFixture)
         try? FileManager.default.removeItem(at: safetyFixture)
-        func sourceBody(of source: String, from opening: String, to closing: String) -> String {
-            guard let start = source.range(of: opening),
-                  let end = source.range(of: closing, range: start.upperBound..<source.endIndex)
-            else { return "" }
-            return String(source[start.upperBound..<end.lowerBound])
-        }
         // Building the installed-apps oracle walks the application folders, and
         // the removal guard reads it under `.leftovers` alone — with leftover
         // rows unchecked by default, the common clean must not pay for that
-        // walk. JunkCleaner is not part of this test binary, so pin the gate
-        // and the premise that makes an empty oracle safe at their source.
-        let junkCleanerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Cleaner/JunkCleaner.swift",
-            encoding: .utf8)) ?? ""
-        let cleanSelectedBody = sourceBody(of: junkCleanerSource, from: "func cleanSelected(",
-                                           to: "static func mayRemove(")
-        suite.expect(cleanSelectedBody.contains("chosen.contains { $0.category == .leftovers }")
-               && cleanSelectedBody.contains("? Self.installedBundleIDs(places: places) : []")
-               && !cleanSelectedBody.contains("let installed = Self.installedBundleIDs("),
+        // walk, and an empty oracle is then safe for every other row.
+        let oracleRoot = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appendingPathComponent("vitruvian-cleaner-oracle-\(UUID().uuidString)", isDirectory: true)
+        let oracleCache = oracleRoot.appendingPathComponent("Library/Caches/com.vendor.editor", isDirectory: true)
+        let oraclePreference = oracleRoot.appendingPathComponent("Library/Preferences/com.vendor.editor.plist")
+        try? FileManager.default.createDirectory(at: oracleCache, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: oraclePreference.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? Data().write(to: oraclePreference)
+        let oracleCacheRow = JunkCleaner.Item(url: oracleCache, category: .caches, size: 1,
+                                              detail: "com.vendor.editor", recommended: true)
+        let oracleLeftoverRow = JunkCleaner.Item(url: oraclePreference, category: .leftovers, size: 1,
+                                                 detail: "com.vendor.editor", recommended: false)
+        var oracleBuilds = 0
+        let cacheOracle = JunkCleaner.installedOracle(for: [oracleCacheRow]) {
+            oracleBuilds += 1
+            return ["com.vendor.editor"]
+        }
+        suite.expect(cacheOracle.isEmpty && oracleBuilds == 0,
                "a clean builds the installed-apps oracle only when a leftover row is selected")
-        let mayRemoveBody = sourceBody(of: junkCleanerSource, from: "static func mayRemove(",
-                                       to: "private static func trashViaFinder")
-        let leftoverBranch = mayRemoveBody.range(of: "if item.category == .leftovers")
-        suite.expect(mayRemoveBody.components(separatedBy: "installed: installed").count == 2,
-               "the removal guard consults the installed-apps oracle exactly once")
-        suite.expect(leftoverBranch.map { branch in
-                   mayRemoveBody.range(of: "installed: installed",
-                                       range: branch.upperBound..<mayRemoveBody.endIndex) != nil
-               } == true,
+        let leftoverOracle = JunkCleaner.installedOracle(for: [oracleCacheRow, oracleLeftoverRow]) {
+            oracleBuilds += 1
+            return ["com.vendor.editor"]
+        }
+        suite.expect(leftoverOracle == ["com.vendor.editor"] && oracleBuilds == 1,
+               "a clean with a leftover row builds the installed-apps oracle once for the whole pass")
+        let oraclePlaces = JunkCleaner.Places(home: oracleRoot.path, screenshotFolders: { [] },
+                                              isRegistered: { _ in false })
+        suite.expect(JunkCleaner.mayRemove(oracleCacheRow, installed: [], places: oraclePlaces)
+                && JunkCleaner.mayRemove(oracleCacheRow, installed: ["com.vendor.editor"], places: oraclePlaces),
+               "the removal guard consults the installed-apps oracle for nothing but leftovers")
+        suite.expect(JunkCleaner.mayRemove(oracleLeftoverRow, installed: [], places: oraclePlaces)
+                && !JunkCleaner.mayRemove(oracleLeftoverRow, installed: ["com.vendor.editor"],
+                                          places: oraclePlaces),
                "the removal guard reads the installed-apps oracle inside its leftovers branch")
+        try? FileManager.default.removeItem(at: oracleRoot)
         // The known-application roster opens every installed app, and only the
-        // shared-data claims read it. AppUninstaller is not part of this test
-        // binary either, so pin the gate that keeps a removal that cannot claim
-        // shared data from paying for the roster.
-        let appUninstallerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Uninstall/AppUninstaller.swift",
-            encoding: .utf8)) ?? ""
-        let removeSelectedBody = sourceBody(of: appUninstallerSource, from: "func removeSelected()",
-                                            to: "func removeSelectedWithHomebrew(")
-        suite.expect(removeSelectedBody.contains("let knownApplications = mayClaimSharedData"),
+        // shared-data claims read it, so a removal that cannot claim shared
+        // data must not pay for the roster. Nothing is chosen, so nothing moves.
+        let rosterFixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-uninstaller-roster-\(UUID().uuidString)", isDirectory: true)
+        let rosterApp = rosterFixture.appendingPathComponent("Roster.app", isDirectory: true)
+        try? FileManager.default.createDirectory(at: rosterApp.appendingPathComponent("Contents"),
+                                                 withIntermediateDirectories: true)
+        if let data = try? PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.vendor.roster"], format: .xml, options: 0) {
+            try? data.write(to: rosterApp.appendingPathComponent("Contents/Info.plist"))
+        }
+        let rosterSelection = UninstallerSupport.selection(for: rosterApp)
+        var rosterBuilds = 0
+        func rosterRemoval(appIdentity: UninstallerSupport.FileIdentity?) -> AppUninstaller.Removal {
+            AppUninstaller.Removal(chosen: [], allowedPaths: [], targetURL: rosterSelection?.url,
+                                   targetIdentity: appIdentity, infoIdentity: rosterSelection?.infoIdentity,
+                                   alreadyFreed: 0, packageRemovedApplication: false)
+        }
+        _ = AppUninstaller.remove(rosterRemoval(appIdentity: UninstallerSupport.FileIdentity(device: 0, inode: 0))) { _ in
+            rosterBuilds += 1
+            return []
+        }
+        let rosterBuildsForReplacedApp = rosterBuilds
+        _ = AppUninstaller.remove(rosterRemoval(appIdentity: rosterSelection?.identity)) { _ in
+            rosterBuilds += 1
+            return []
+        }
+        suite.expect(rosterSelection != nil && rosterBuildsForReplacedApp == 0 && rosterBuilds == 1,
                "a removal builds the known-application roster only when it may claim shared data")
-        let finishHomebrewBody = sourceBody(of: appUninstallerSource,
-                                            from: "private func finishRemovalAfterHomebrew",
-                                            to: "private static func trashViaFinder")
-        suite.expect(!finishHomebrewBody.isEmpty,
-               "the Homebrew follow-up removal source reads back for its shape check")
-        // Package completion must preserve ownership of the remaining choices
-        // while counting the app only after its removal is confirmed.
-        let markedPackageRemoval = finishHomebrewBody.range(of: "homebrewRemovedApplication = true")
-        let firstRemoveSelected = finishHomebrewBody.range(of: "removeSelected()")
-        suite.expect(markedPackageRemoval != nil
-                && firstRemoveSelected.map { markedPackageRemoval!.upperBound < $0.lowerBound } == true
-                && finishHomebrewBody.contains("setInclude(false, for: app.id)")
-                && finishHomebrewBody.contains("isConfirmedAbsent")
-                && finishHomebrewBody.contains("homebrewRemovalSize = app.size"),
-               "after package removal the flag is set before trash, and size is credited only after confirmed absence")
-        suite.expect(removeSelectedBody.contains("try fm.trashItem(at: item.url, resultingItemURL: nil)")
-                && removeSelectedBody.contains("isConfirmedAbsent")
-                && removeSelectedBody.contains("stubborn.append(item)")
-                && removeSelectedBody.contains("freed += item.size"),
-               "a path is counted freed only when its absence is confirmed, not on a bare fileExists miss")
+        try? FileManager.default.removeItem(at: rosterFixture)
+        // A row the Trash move did not take counts as freed only once its
+        // absence is confirmed. `UninstallerFlowTests` drives the package
+        // follow-up: the flag is set before the trash, and the app's size is
+        // credited only after its confirmed absence.
+        let unmovedFixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-uninstaller-unmoved-\(UUID().uuidString)", isDirectory: true)
+        let unmovedParent = unmovedFixture.appendingPathComponent("Locked", isDirectory: true)
+        let unmovedFile = unmovedParent.appendingPathComponent("Kept.plist")
+        try? FileManager.default.createDirectory(at: unmovedParent, withIntermediateDirectories: true)
+        _ = FileManager.default.createFile(atPath: unmovedFile.path, contents: Data("x".utf8))
+        let unmovedGone = unmovedFixture.appendingPathComponent("Gone.plist")
+        suite.expect(UninstallerSupport.unmovedRow(at: unmovedGone, mayEscalate: true) == .freed
+                && UninstallerSupport.unmovedRow(at: unmovedGone, mayEscalate: false) == .freed
+                && UninstallerSupport.unmovedRow(at: unmovedFile, mayEscalate: true) == .stubborn
+                && UninstallerSupport.unmovedRow(at: unmovedFile, mayEscalate: false) == .failed,
+               "a row the Trash refused is freed when it is gone, and Finder's to move when it is still there")
+        if geteuid() != 0 {
+            let unmovedLocked = chmod(unmovedParent.path, 0) == 0
+            suite.expect(unmovedLocked
+                    && !FileManager.default.fileExists(atPath: unmovedFile.path)
+                    && UninstallerSupport.unmovedRow(at: unmovedFile, mayEscalate: true) == .failed,
+                   "a path is counted freed only when its absence is confirmed, not on a bare fileExists miss")
+            _ = chmod(unmovedParent.path, 0o700)
+        }
+        try? FileManager.default.removeItem(at: unmovedFixture)
         suite.expect(CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.editor.prefPane")
                 == "com.vendor.editor",
                "preference panes map to their owning bundle identifier")
@@ -961,26 +1012,27 @@ enum AppManagementFeatureTests {
                && registeredDefaults[DefaultsKey.cleanerScreenshotAgeDays] as? Int == 30
                && CleanerPolicy.sanitizedScreenshotAgeDays(-3) == 0,
                "forgotten screenshots start unchecked after a 30 day default")
-        // CleanerScheduler and CleanerView are outside this test binary, so
-        // pin escalation at the call sites: the unattended pass must never
-        // reach Finder's administrator prompt, and no default lets a later
-        // automatic caller inherit it.
-        let compact = { (path: String) -> String in
-            ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
-                .split(whereSeparator: \.isWhitespace).joined()
-        }
-        let schedulerCode = compact("Sources/Vitruvian/Services/Cleaner/CleanerScheduler.swift")
-        let cleanerViewCode = compact("Sources/Vitruvian/UI/Cleaner/CleanerView.swift")
-        suite.expect(schedulerCode.components(separatedBy: "cleanSelected(").count == 2
-               && schedulerCode.contains("cleanSelected(escalate:false)")
-               && schedulerCode.contains("notifyIfWanted(freed:freed,failed:failed)"),
+        // The unattended pass must never reach Finder's administrator prompt,
+        // and each caller says who a pass runs for, so no later automatic
+        // caller can inherit the manual pass's escalation.
+        let cleanerStrings = L10n.shared.s
+        suite.expect(CleanerScheduler.automaticStep(after: .results, selectedCount: 3) == .clean(.scheduled)
+               && !JunkCleaner.Pass.scheduled.escalates
+               && CleanerScheduler.automaticStep(after: .done(freed: 2_048, failed: 2), selectedCount: 0)
+                   == .finish(freed: 2_048, failed: 2)
+               && CleanerScheduler.notificationBody(freed: 2_048, failed: 2, strings: cleanerStrings)
+                   .contains(cleanerStrings.uninstallerSomeFailed),
                "the scheduled clean never escalates and reports what it left in place")
-        suite.expect(junkCleanerSource.contains("func cleanSelected(escalate: Bool) {")
-               && cleanerViewCode.components(separatedBy: "cleanSelected(").count == 2
-               && cleanerViewCode.contains("cleanSelected(escalate:true)"),
+        suite.expect(CleanerScheduler.automaticStep(after: .results, selectedCount: 0) == .finish(freed: 0, failed: 0)
+               && CleanerScheduler.automaticStep(after: .idle, selectedCount: 0) == .interrupted
+               && CleanerScheduler.automaticStep(after: .cleaning, selectedCount: 3) == .wait
+               && CleanerScheduler.notificationBody(freed: 0, failed: 0, strings: cleanerStrings)
+                   == cleanerStrings.cleanerNothingFound,
+               "an automatic pass with nothing selected finishes, a reset interrupts it, and an empty one says so")
+        suite.expect(JunkCleaner.Pass.manual.escalates,
                "cleanSelected has no default escalation and the manual clean still asks")
-        suite.expect(schedulerCode.contains("cleaner.scan(attended:false)")
-               && cleanerViewCode.contains("cleaner.scan(attended:true)"),
+        suite.expect(CleanerScheduler.automaticStep(after: nil, selectedCount: 0) == .scan(.scheduled)
+               && !JunkCleaner.Pass.scheduled.attended && JunkCleaner.Pass.manual.attended,
                "only a scan someone started reads the screenshot folders")
         suite.expect(CleanerPolicy.developerJunkPaths.contains("/Library/Developer/Xcode/iOS DeviceSupport")
                && CleanerPolicy.developerJunkPaths.contains("/Library/Developer/Xcode/watchOS DeviceSupport"),
@@ -1083,11 +1135,17 @@ enum AppManagementFeatureTests {
                "hiding Phone leaves other exceptions, including mandatory Finder, visible")
         suite.expect(Defaults.mandatoryAutoQuitExceptionBundleIDs.contains(Defaults.phoneBundleIdentifier),
                "Phone remains a mandatory quit exception even when hidden from the UI")
-        let autoQuitSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/AutoQuitSettings.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(autoQuitSettingsSource.contains("AutoQuitSupport.visibleExceptions")
-                && autoQuitSettingsSource.contains("InstalledApps.url(for:"),
+        suite.expect(AutoQuitSupport.listedExceptions(
+            ["com.example.zeta", Defaults.phoneBundleIdentifier, Defaults.finderBundleIdentifier, "com.example.alpha"],
+            isInstalled: { $0 != Defaults.phoneBundleIdentifier }, name: { $0 })
+                == [Defaults.finderBundleIdentifier, "com.example.alpha", "com.example.zeta"],
+               "the AutoQuit settings list hides an uninstalled Phone and sorts the rest by name")
+        let phoneIsInstalled = InstalledApps.url(for: Defaults.phoneBundleIdentifier) != nil
+        suite.expect(AutoQuitSupport.listedExceptions([Defaults.phoneBundleIdentifier, Defaults.finderBundleIdentifier])
+                == (phoneIsInstalled ? [Defaults.finderBundleIdentifier, Defaults.phoneBundleIdentifier].sorted {
+                        InstalledApps.name(for: $0).localizedCaseInsensitiveCompare(InstalledApps.name(for: $1))
+                            == .orderedAscending
+                    } : [Defaults.finderBundleIdentifier]),
                "the AutoQuit settings list filters exceptions through installation-aware visibility")
         suite.expect(registeredDefaults[DefaultsKey.panelCollapsedSections] == nil,
                "panel collapsed sections intentionally has no registered default")
@@ -1325,73 +1383,96 @@ enum AppManagementFeatureTests {
                "a window already registered on this observer stays watched across refreshes")
         suite.expect(!AutoQuitSupport.isWindowNotificationRegistered(.cannotComplete),
                "a window whose registration was refused is not watched")
-        let autoQuitServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/AutoQuit/AutoQuitService.swift",
-            encoding: .utf8)) ?? ""
-        let autoQuitServiceLines = autoQuitServiceSource.components(separatedBy: "\n")
-        func autoQuitServiceCodeLines(containing fragment: String) -> [Int] {
-            autoQuitServiceLines.enumerated().compactMap { index, line in
-                let code = line.trimmingCharacters(in: .whitespaces)
-                guard !code.hasPrefix("//"), code.contains(fragment) else { return nil }
-                return index + 1
+        // The retry has to stop: an app whose windows Accessibility can never
+        // describe would otherwise be looked at for as long as it runs. Each
+        // round's looks are offsets from its start, one pending at a time.
+        var deferredWork = AutoQuitDeferredWork()
+        let roundStart = DispatchTime(uptimeNanoseconds: 1_000_000_000)
+        let firstLook = deferredWork.nextLook(for: 42, now: roundStart)
+        let lookWhilePending = deferredWork.nextLook(for: 42, now: roundStart + 0.2)
+        let firstLookRuns = firstLook.map { deferredWork.runLook($0.token, for: 42) } == true
+        let firstLookRunsTwice = firstLook.map { deferredWork.runLook($0.token, for: 42) } == true
+        let secondLook = deferredWork.nextLook(for: 42, now: roundStart + 0.7)
+        _ = secondLook.map { deferredWork.runLook($0.token, for: 42) }
+        let thirdLook = deferredWork.nextLook(for: 42, now: roundStart + 1.7)
+        _ = thirdLook.map { deferredWork.runLook($0.token, for: 42) }
+        suite.expect(firstLook?.deadline == roundStart + 0.5 && lookWhilePending == nil
+                && firstLookRuns && !firstLookRunsTwice
+                && secondLook?.deadline == roundStart + 1.5 && thirdLook?.deadline == roundStart + 4.0
+                && deferredWork.nextLook(for: 42, now: roundStart + 5) == nil,
+               "the AutoQuit window-watch retry stays bounded and origin-based")
+        // A Space change starts a new round; a look armed in the old one is stale.
+        let staleLook = deferredWork.nextLook(for: 7, now: roundStart)
+        let rearmed = deferredWork.rearm()
+        let freshLook = deferredWork.nextLook(for: 7, now: roundStart + 10)
+        suite.expect(Set(rearmed) == [7, 42]
+                && staleLook.map { !deferredWork.runLook($0.token, for: 7) } == true
+                && freshLook?.deadline == (roundStart + 10) + 0.5,
+               "a Space change re-arms the AutoQuit window looks, and a look from the old round never runs")
+        let spaceChanges = SpaceChangeTally()
+        let spaceCenter = NotificationCenter()
+        let spaceToken = AutoQuitService.rearmOnSpaceChange(spaceCenter) { spaceChanges.count += 1 }
+        spaceCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        spaceCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        suite.expect(spaceChanges.count == 1, "AutoQuit re-arms its window looks when the visible Space changes")
+        spaceCenter.removeObserver(spaceToken)
+        // The count the retry reads must be windows actually watched, not
+        // windows Accessibility listed: AXObserverAddNotification can refuse,
+        // and a refused registration is exactly the state the retry exists
+        // for. Only the destroyed notification decides it.
+        let destroyed = kAXUIElementDestroyedNotification
+        let windowNotifications = [destroyed, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification]
+        var addedNotifications: [String] = []
+        suite.expect(AutoQuitSupport.watchWindow(notifications: windowNotifications, add: {
+                    addedNotifications.append($0)
+                    return $0 == destroyed ? .success : .cannotComplete
+                })
+                && AutoQuitSupport.watchWindow(notifications: windowNotifications, add: {
+                    $0 == destroyed ? .notificationAlreadyRegistered : .success
+                })
+                && !AutoQuitSupport.watchWindow(notifications: windowNotifications, add: {
+                    $0 == destroyed ? .cannotComplete : .success
+                })
+                && addedNotifications == windowNotifications,
+               "a window counts as watched when its destroy notification registered, whatever the others answer")
+        var serverAsks = 0
+        func windowRefresh(listed: Int, watched: Int, hadWindows: Bool = false,
+                           server: Bool? = nil) -> (foundUserWindow: Bool, needsRetry: Bool) {
+            AutoQuitSupport.windowRefresh(listedWindows: listed, watchedWindows: watched,
+                                          hadWindows: hadWindows) {
+                serverAsks += 1
+                return server
             }
         }
-        // The retry has to stop: an app whose windows Accessibility can never
-        // describe would otherwise be polled for as long as it runs. The
-        // service is not part of this test binary, so pin the load-bearing
-        // timing, stale-timer guard, and Space re-arm at their source lines.
-        let windowWatchRetryCode = [
-            "let serverWindow = windows.isEmpty ? hasWindowServerUserWindow(pid: pid) : nil",
-            "let foundUserWindow = !windows.isEmpty || serverWindow == true",
-            "private static let windowWatchRetryOffsets: [TimeInterval] = [0.5, 1.5, 4.0]",
-            "retry.attemptsScheduled < Self.windowWatchRetryOffsets.count else { return }",
-            "deadline: retry.origin + Self.windowWatchRetryOffsets[attempt]",
-            "retry.pendingTimerID == timerID",
-            "windowWatchRetries.removeAll()",
-            "NSWorkspace.activeSpaceDidChangeNotification",
-            "rearmWindowWatchRetries()",
-            // The count the retry reads must be windows actually watched, not
-            // windows Accessibility listed: AXObserverAddNotification can
-            // refuse, and a refused registration is exactly the state the
-            // retry exists for. Only the destroyed notification decides it.
-            "if watch(window: window, observer: observer, refcon: refcon) { watchedWindows += 1 }",
-            "needsWindowWatchRetry(registeredWindows: watchedWindows,",
-            "listedWindows: windows.count,",
-            "if notification == kAXUIElementDestroyedNotification {",
-            "watched = AutoQuitSupport.isWindowNotificationRegistered(result)",
-        ]
-        let missingWindowWatchRetryCode = windowWatchRetryCode.filter {
-            autoQuitServiceCodeLines(containing: $0).isEmpty
-        }
-        suite.expect(missingWindowWatchRetryCode.isEmpty,
-               "the AutoQuit window-watch retry stays bounded, origin-based, re-armed by Space changes, and counts only windows whose destroy notification registered: missing \(missingWindowWatchRetryCode)")
+        let allWatched = windowRefresh(listed: 2, watched: 2, server: true)
+        let oneRefused = windowRefresh(listed: 2, watched: 1)
+        let asksBeforeEmpty = serverAsks
+        let serverOnly = windowRefresh(listed: 0, watched: 0, server: true)
+        let hidden = windowRefresh(listed: 0, watched: 0, hadWindows: true, server: false)
+        suite.expect(allWatched == (true, false) && oneRefused == (true, true) && asksBeforeEmpty == 0
+                && serverOnly == (true, true) && hidden == (false, false) && serverAsks == 2,
+               "the AutoQuit window-watch retry counts only windows whose destroy notification registered, asking the window server only when Accessibility lists none")
         // Coalescing is only safe while the state it reads is torn down with
         // the app: a refresh left pending for a detached app would run against
         // an observer that is gone.
-        let refreshCoalescingCode = [
-            "guard pendingRefreshes.insert(pid).inserted else { return }",
-            "self.pendingRefreshes.remove(pid) != nil",
-            "pendingRefreshes.removeAll()",
-        ]
-        let missingRefreshCoalescingCode = refreshCoalescingCode.filter {
-            autoQuitServiceCodeLines(containing: $0).isEmpty
-        }
-        suite.expect(missingRefreshCoalescingCode.isEmpty,
-               "AutoQuit collapses a burst of notifications into one refresh and drops it when the app goes: missing \(missingRefreshCoalescingCode)")
-        // Two lines drop the pending refresh: the deferred block's own guard
-        // and `detach`. Losing the second is the case this counts.
-        suite.expect(autoQuitServiceCodeLines(containing: "pendingRefreshes.remove(pid)").count == 2,
+        suite.expect(deferredWork.requestRefresh(42) && !deferredWork.requestRefresh(42)
+                && deferredWork.takeRefresh(42) && !deferredWork.takeRefresh(42),
+               "AutoQuit collapses a burst of notifications into one refresh")
+        _ = deferredWork.requestRefresh(42)
+        let detachedLook = deferredWork.nextLook(for: 42, now: roundStart + 20)
+        deferredWork.detach(42)
+        suite.expect(!deferredWork.takeRefresh(42)
+                && detachedLook.map { !deferredWork.runLook($0.token, for: 42) } == true,
                "a pending AutoQuit refresh is dropped both when it runs and when the app is detached")
-        let closeCheckOffsetCode = [
-            "private static let closeCheckOffsets: [TimeInterval] = [0.35, 1.0, 2.2]",
-            "for offset in Self.closeCheckOffsets",
-            "DispatchQueue.main.asyncAfter(deadline: origin + offset)",
-        ]
-        let missingCloseCheckOffsetCode = closeCheckOffsetCode.filter {
-            autoQuitServiceCodeLines(containing: $0).isEmpty
-        }
-        suite.expect(missingCloseCheckOffsetCode.isEmpty,
-               "AutoQuit close checks remain offsets from one origin: missing \(missingCloseCheckOffsetCode)")
+        _ = deferredWork.requestRefresh(3)
+        let stoppedLook = deferredWork.nextLook(for: 3, now: roundStart)
+        deferredWork.removeAll()
+        suite.expect(!deferredWork.takeRefresh(3)
+                && stoppedLook.map { !deferredWork.runLook($0.token, for: 3) } == true,
+               "stopping AutoQuit drops every pending refresh and look")
+        suite.expect(AutoQuitSupport.closeCheckDeadlines(from: roundStart)
+                == [roundStart + 0.35, roundStart + 1.0, roundStart + 2.2],
+               "AutoQuit close checks remain offsets from one origin")
 
         // Attaching to a watched app must never ask its application element for
         // a role. A Chromium app (Electron, and the browsers) answers that by
@@ -1399,17 +1480,15 @@ enum AppManagementFeatureTests {
         // to rebuild and ship an accessibility tree on every DOM change for the
         // rest of its life — measured on an idle app that this feature only
         // ever needed a window count from (issue #953). Windows are the same
-        // liveness signal and leave that mode alone. Comments are stripped
-        // first: the note above the probe names the attribute it avoids, and a
-        // check that cannot tell prose from a call would go red for it.
-        let autoQuitServiceCode = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/AutoQuit/AutoQuitService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(autoQuitServiceCode.contains(
-                   "AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windows) == .cannotComplete"),
+        // liveness signal and leave that mode alone.
+        var probedAttributes: [String] = []
+        let busyApp = AutoQuitSupport.appIsBusy { attribute in
+            probedAttributes.append(attribute)
+            return .cannotComplete
+        }
+        suite.expect(busyApp && probedAttributes == [kAXWindowsAttribute]
+                && !AutoQuitSupport.appIsBusy { _ in .success }
+                && !AutoQuitSupport.appIsBusy { _ in .noValue },
                "AutoQuit probes a watched app for liveness by asking for its windows")
         // The same read reached the application element a second way, up the
         // parent chain of an element that never yields a window. Two files
@@ -1504,11 +1583,38 @@ enum AppManagementFeatureTests {
         suite.expect(dismissResponses == [.alertSecondButtonReturn] && weakTarget == nil,
                "dismissing answers once, ignores later clicks and releases what the alert retained")
 
-        let installerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/DiskImageInstaller/DiskImageInstallerService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!installerSource.isEmpty && !installerSource.contains(".runModal()")
-               && installerSource.components(separatedBy: "NonModalAlert.present(").count == 3,
+        // The installer opens both of its alerts inside a main-queue block,
+        // where a modal session would hold later main-queue work back: each
+        // returns with its alert open and unanswered, and answers through its
+        // buttons. No window is shown here.
+        let installerStrings = FeatureStrings.diskImageInstaller(.enUS)
+        let promptDefaults = UserDefaults(suiteName: "vitru.tests.disk-image-prompt")!
+        promptDefaults.set(true, forKey: DefaultsKey.diskImageInstallerRevealsApp)
+        var promptWindows: [NSWindow] = []
+        var promptAnswers: [DiskImageInstallerService.InstallChoice?] = []
+        let installPrompt = DiskImageInstallerService.presentInstallPrompt(
+            appURL: URL(fileURLWithPath: "/Applications/Fixture.app"), displayName: "Fixture",
+            strings: installerStrings, defaults: promptDefaults,
+            show: { promptWindows.append($0) }, answer: { promptAnswers.append($0) })
+        let promptOpened = installPrompt.isOpen && promptAnswers.isEmpty
+            && promptWindows == [installPrompt.alert.window]
+        var resultWindows: [NSWindow] = []
+        var resultAnswers = 0
+        let resultAlert = DiskImageInstallerService.presentResult(
+            .failed(.copy), destinationURL: nil, appURL: URL(fileURLWithPath: "/Applications/Fixture.app"),
+            displayName: "Fixture", strings: installerStrings,
+            show: { resultWindows.append($0) }, completion: { resultAnswers += 1 })
+        let resultOpened = resultAlert.isOpen && resultAnswers == 0
+            && resultWindows == [resultAlert.alert.window]
+        suite.expect(promptOpened && resultOpened,
                "the install prompt and the result alert both open without a modal session")
+        installPrompt.alert.buttons.first?.performClick(nil)
+        resultAlert.alert.buttons.first?.performClick(nil)
+        suite.expect(promptAnswers == [DiskImageInstallerService.InstallChoice(
+                    trashesDownload: false, revealsApp: true, usesUserApplications: false)]
+                && promptDefaults.bool(forKey: DefaultsKey.diskImageInstallerRevealsApp)
+                && !installPrompt.isOpen && resultAnswers == 1 && !resultAlert.isOpen,
+               "the install prompt answers with its options and the result alert through its OK button")
+        promptDefaults.removePersistentDomain(forName: "vitru.tests.disk-image-prompt")
     }
 }

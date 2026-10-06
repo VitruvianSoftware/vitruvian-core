@@ -27,7 +27,7 @@ package struct PanelUninstallerView: View {
             content
         }
         .dropDestination(for: URL.self) { urls, _ in
-            let selected = selectFirstApp(from: urls)
+            let selected = uninstaller.selectDropped(urls)
             if selected {
                 showingAppPicker = false
             }
@@ -117,12 +117,12 @@ package struct PanelUninstallerView: View {
     }
 
     private var appPickerState: some View {
-        AppPickerView(compact: true) {
+        AppPickerView.uninstaller(compact: true) {
             showingAppPicker = false
         } onSelect: { url in
             showingAppPicker = false
             uninstaller.select(appURL: url)
-        } loadApps: { UninstallerSupport.offeredApplications() }
+        }
         .panelCard()
     }
 
@@ -402,8 +402,9 @@ package struct PanelUninstallerView: View {
     }
 
     private func doneState(freed: Int64, failed: [AppUninstaller.Leftover]) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: UninstallerSupport.doneSymbol(hasLeftovers: !failed.isEmpty))
+        let done = UninstallDoneContent(failed: failed, compact: true)
+        return VStack(spacing: 10) {
+            Image(systemName: done.symbol)
                 .font(.system(size: 32))
                 .foregroundStyle(failed.isEmpty ? .green : .orange)
             Text(l10n.s.uninstallerDoneTitle)
@@ -411,8 +412,8 @@ package struct PanelUninstallerView: View {
             Text(String(format: l10n.s.uninstallerFreedFormat, Self.byteString(freed)))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            if !failed.isEmpty {
-                UninstallFailureNote(items: failed, compact: true)
+            if let note = done.failureNote {
+                note
             }
             Button(l10n.s.uninstallerAnother) {
                 uninstaller.reset()
@@ -429,13 +430,6 @@ package struct PanelUninstallerView: View {
             get: { uninstaller.items.first(where: { $0.id == item.id })?.include ?? false },
             set: { uninstaller.setInclude($0, for: item.id) }
         )
-    }
-
-    private func selectFirstApp(from urls: [URL]) -> Bool {
-        guard let app = urls.first(where: { $0.pathExtension == "app" }) ?? urls.first else {
-            return false
-        }
-        return uninstaller.select(appURL: app)
     }
 
     private func choose() {

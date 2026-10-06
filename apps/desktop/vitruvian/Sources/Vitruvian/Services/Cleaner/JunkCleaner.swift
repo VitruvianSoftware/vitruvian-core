@@ -177,7 +177,27 @@ package final class JunkCleaner: ObservableObject {
         phase = .idle
     }
 
+    /// Who a pass runs for, which decides what it may ask of the person at
+    /// the Mac. Every caller says which; nothing defaults to either.
+    package enum Pass: Equatable {
+        /// Started from the Cleaner by someone who is there to answer.
+        case manual
+        /// The schedule's: nobody watches it.
+        case scheduled
+
+        /// Only a pass someone started reads the screenshot folders, which
+        /// can ask for access.
+        package var attended: Bool { self == .manual }
+        /// Only a pass someone started hands what the Trash refused to
+        /// Finder, which is an administrator password prompt.
+        package var escalates: Bool { self == .manual }
+    }
+
     // MARK: - Scan
+
+    package func scan(for pass: Pass) {
+        scan(attended: pass.attended)
+    }
 
     /// `attended: false` is a pass nobody watches: it skips the screenshot
     /// search, which reads the user's own folders and can ask for access.
@@ -228,6 +248,10 @@ package final class JunkCleaner: ObservableObject {
 
     // MARK: - Clean
 
+    package func cleanSelected(for pass: Pass) {
+        cleanSelected(escalate: pass.escalates)
+    }
+
     /// `escalate: false` leaves whatever the Trash move refused in place
     /// instead of handing it to Finder, which is an administrator password
     /// prompt. No default: each caller says whether someone is there to answer.
@@ -239,15 +263,10 @@ package final class JunkCleaner: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let fm = FileManager.default
-            // One installed-apps oracle for the whole pass, and only when the
-            // selection can ask for it: building it walks the application
-            // folders, and `mayRemove` reads it under `.leftovers` alone, so a
-            // clean without leftover rows must not pay for the walk. Nothing
-            // can install an app mid-clean that this pass would have to
-            // respect. `stubborn` is a subset of `chosen`, so the second and
-            // third passes are covered by the same test.
-            let installed = chosen.contains { $0.category == .leftovers }
-                ? Self.installedBundleIDs(places: places) : []
+            // One installed-apps oracle for the whole pass. `stubborn` is a
+            // subset of `chosen`, so the second and third passes are covered
+            // by the same test.
+            let installed = Self.installedOracle(for: chosen) { Self.installedBundleIDs(places: places) }
             var freed: Int64 = 0
             var failed = 0
             var stubborn: [Item] = []
@@ -309,6 +328,17 @@ package final class JunkCleaner: ObservableObject {
                 self.phase = .done(freed: freed, failed: failed)
             }
         }
+    }
+
+    /// The installed-apps oracle a clean of `chosen` reads, built by `build`
+    /// only when the selection can ask for it: building it walks the
+    /// application folders, and `mayRemove` reads it under `.leftovers` alone,
+    /// so a clean without leftover rows must not pay for the walk. Nothing can
+    /// install an app mid-clean that the pass would have to respect, so one
+    /// oracle serves the whole pass.
+    nonisolated
+    package static func installedOracle(for chosen: [Item], build: () -> Set<String>) -> Set<String> {
+        chosen.contains { $0.category == .leftovers } ? build() : []
     }
 
     /// Exact match guard against ever removing a critical root, even if a

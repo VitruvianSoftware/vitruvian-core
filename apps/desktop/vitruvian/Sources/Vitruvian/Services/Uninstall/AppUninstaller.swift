@@ -330,6 +330,17 @@ package final class AppUninstaller: ObservableObject {
         return true
     }
 
+    /// Takes a drop onto either uninstaller surface: the first app among the
+    /// dropped files, or else the first file. The answer is the drop's, so an
+    /// app the uninstaller refuses springs back instead of landing.
+    @discardableResult
+    package func selectDropped(_ urls: [URL]) -> Bool {
+        guard let app = urls.first(where: { $0.pathExtension == "app" }) ?? urls.first else {
+            return false
+        }
+        return select(appURL: app)
+    }
+
     package func setInclude(_ include: Bool, for id: UUID) {
         guard !isRemoving else { return }
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
@@ -390,6 +401,16 @@ package final class AppUninstaller: ObservableObject {
     /// administrator prompt) for whatever this process may not move itself.
     nonisolated
     private static func remove(_ removal: Removal) -> (freed: Int64, failed: [Leftover]) {
+        remove(removal, roster: { knownApplicationURLs(candidateBundleIDs: $0) })
+    }
+
+    /// `roster` builds the known applications for these bundle identifiers.
+    /// Only the shared-data claims read it, and building it opens every
+    /// installed app, so it is built only when the removal may claim shared
+    /// data, the same gate the scan uses.
+    nonisolated
+    package static func remove(_ removal: Removal,
+                               roster: (Set<String>) -> [URL]) -> (freed: Int64, failed: [Leftover]) {
         let chosen = removal.chosen
         let allowedPaths = removal.allowedPaths
         let targetURL = removal.targetURL
@@ -413,9 +434,7 @@ package final class AppUninstaller: ObservableObject {
         let lookupBundleIDs = candidateBundleIDs.union(evidenceBundleIDs)
         // Only the shared-data claims below read this roster, and building
         // it opens every installed app. Same gate `select()` already uses.
-        let knownApplications = mayClaimSharedData
-            ? Self.knownApplicationURLs(candidateBundleIDs: lookupBundleIDs)
-            : []
+        let knownApplications = mayClaimSharedData ? roster(lookupBundleIDs) : []
         let knownApplicationIDs = Self.applicationBundleIdentifiers(in: knownApplications)
         let exclusiveBundleIDs = mayClaimSharedData ? targetURL.map {
             Self.exclusiveOwnedBundleIDs(
@@ -467,10 +486,9 @@ package final class AppUninstaller: ObservableObject {
                 // The package manager or another pass may have taken the path.
                 // Only a confirmed absence counts as success; a still-present
                 // path, or one we can no longer read, stays a failure.
-                if UninstallerSupport.isConfirmedAbsent(at: item.url) {
-                    freed += item.size
-                } else {
-                    failed.append(item)
+                switch UninstallerSupport.unmovedRow(at: item.url, mayEscalate: false) {
+                case .freed: freed += item.size
+                case .stubborn, .failed: failed.append(item)
                 }
                 continue
             }
@@ -478,12 +496,10 @@ package final class AppUninstaller: ObservableObject {
                 try fm.trashItem(at: item.url, resultingItemURL: nil)
                 freed += item.size
             } catch {
-                if UninstallerSupport.isConfirmedAbsent(at: item.url) {
-                    freed += item.size
-                } else if fm.fileExists(atPath: item.url.path) {
-                    stubborn.append(item)
-                } else {
-                    failed.append(item)
+                switch UninstallerSupport.unmovedRow(at: item.url, mayEscalate: true) {
+                case .freed: freed += item.size
+                case .stubborn: stubborn.append(item)
+                case .failed: failed.append(item)
                 }
             }
         }
@@ -504,10 +520,9 @@ package final class AppUninstaller: ObservableObject {
             })
             Self.trashViaFinder(stillSafe.map(\.url))
             for item in stillSafe {
-                if UninstallerSupport.isConfirmedAbsent(at: item.url) {
-                    freed += item.size
-                } else {
-                    failed.append(item)
+                switch UninstallerSupport.unmovedRow(at: item.url, mayEscalate: false) {
+                case .freed: freed += item.size
+                case .stubborn, .failed: failed.append(item)
                 }
             }
         }
