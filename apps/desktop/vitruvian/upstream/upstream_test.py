@@ -393,6 +393,18 @@ class PortTest(Base):
         self.assertIn("brand review", out)
         self.assertIn('"https://updates.vorssaint.com/feed"', self.fx.foo())
 
+    def test_forks_own_mentions_of_upstream_are_not_flagged(self):
+        foo = self.fx.mono / APP / "Sources/Vitruvian/Core/Foo.swift"
+        foo.write_text(
+            foo.read_text().replace(BODY, '// no link may contain "vorssaint"\n' + BODY)
+        )
+        run(self.fx.mono, "commit", "-qam", "own mention")
+        rc, out, _ = self.fx.tool(
+            "--no-fetch", "port", self.fx.b, "--report-dir", str(self.fx.tmp / "r")
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("brand review", out)
+
     def test_dry_run_changes_nothing(self):
         before = self.fx.foo()
         rc, out, _ = self.fx.tool(

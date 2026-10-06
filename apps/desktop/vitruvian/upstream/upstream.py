@@ -724,10 +724,12 @@ def port_commit(
         theirs = to_fork_bytes(upstream.blob(sha, new))
         if status == "A" and not target.exists():
             result = theirs
+            before = set()
             lines.append(f"- `{new}` -> `{rel}` ({how}): added")
         else:
             base = to_fork_bytes(upstream.blob(parent, old) if parent else b"")
             ours = target.read_bytes() if target.exists() else b""
+            before = set(ours.decode("utf-8", "replace").splitlines())
             result, conflicts = merge3(ours, base, theirs, labels)
             note = (
                 f" (upstream renamed it to `{new}`; the rename is not applied)"
@@ -744,7 +746,11 @@ def port_commit(
         if not dry_run:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(result)
+        # Only lines the port brings in: this fork's own lines that name
+        # upstream (tests asserting its links are gone) are not the port's.
         for n, l in brand_review(result.decode("utf-8", "replace")):
+            if l in before:
+                continue
             clean = False
             lines.append(f"  - brand review `{rel}:{n}`: `{l.strip()}`")
     lines.append("")
