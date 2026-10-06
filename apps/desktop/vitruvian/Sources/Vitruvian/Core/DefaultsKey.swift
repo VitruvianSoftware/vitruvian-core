@@ -708,6 +708,8 @@ package enum DefaultsKey {
     package static let nexusAgentShortcutEnabled = "nexusAgentShortcutEnabled"
     package static let nexusAgentShortcut = "nexusAgentShortcut"
     package static let nexusAgentAutoStart = "nexusAgentAutoStart"
+    /// Quick Prompt turns run agy in plan mode (read-only) while on.
+    package static let nexusAgentPlanMode = "nexusAgentPlanMode"
     // Machine state, never exported: a folder on this Mac.
     package static let nexusAgentBotDirectory = "nexusAgentBotDirectory"
     package static let panelUtilityNexusAgent = "panelUtilityNexusAgent"
