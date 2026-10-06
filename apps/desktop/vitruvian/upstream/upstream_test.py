@@ -291,6 +291,42 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual({k: loaded.rows[0][k] for k in upstream.COLUMNS}, rows[0])
 
 
+class PackageTest(unittest.TestCase):
+    def restore(self, merged, ours):
+        return upstream.restore_package(merged.encode(), ours.encode()).decode()
+
+    def test_new_declaration_follows_its_neighbours(self):
+        ours = "package enum Support {\n    package static func a() {}\n    package static func b() {}\n}\n"
+        merged = "enum Support {\n    static func a() {}\n    static func c() {}\n    static func b() {}\n}\n"
+        self.assertEqual(
+            self.restore(merged, ours),
+            "package enum Support {\n    package static func a() {}\n"
+            "    package static func c() {}\n    package static func b() {}\n}\n",
+        )
+
+    def test_private_locals_and_protocol_requirements_are_left_alone(self):
+        ours = (
+            "package protocol P {\n    func a()\n}\n"
+            "package struct S {\n    package func f() {\n        let x = 1\n    }\n"
+            "    package func g() {}\n}\n"
+        )
+        merged = (
+            "protocol P {\n    func a()\n    func b()\n}\n"
+            "struct S {\n    func f() {\n        let x = 1\n        let y = 2\n    }\n"
+            "    private func h() {}\n    func g() {}\n}\n"
+        )
+        out = self.restore(merged, ours)
+        self.assertIn("\n    func b()\n", out)
+        self.assertIn("\n        let y = 2\n", out)
+        self.assertIn("\n    private func h() {}\n", out)
+        self.assertIn("\n    package func g() {}\n", out)
+
+    def test_a_file_without_package_gets_none(self):
+        ours = "final class A {\n    func a() {}\n}\n"
+        merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"
+        self.assertEqual(self.restore(merged, ours), merged)
+
+
 class TriageTest(Base):
     def test_status_then_triage(self):
         fx = self.fx

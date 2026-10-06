@@ -603,26 +603,59 @@ def _decl_key(line):
     return (m.group(1), m.group(2), m.group(3)) if m else None
 
 
+ACCESS_RE = re.compile(r"\b(?:private|fileprivate|internal|public|open|package)\b")
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip(" \t"))
+
+
+def _in_protocol(lines, i):
+    """Whether line i sits directly in a protocol body (no modifiers there)."""
+    depth = _indent(lines[i])
+    for j in range(i - 1, -1, -1):
+        if lines[j].strip() and _indent(lines[j]) < depth:
+            key = _decl_key(lines[j])
+            return bool(key) and key[1] == "protocol"
+    return False
+
+
 def restore_package(merged, ours):
-    """Put back `package` on the lines, and declarations, that had it in ours."""
+    """Put back `package` on the lines, and declarations, that had it in ours,
+    and give a new declaration `package` where this fork's declarations of that
+    kind at that depth are `package` (what other modules use must be)."""
     exact = {}
     by_decl = collections.defaultdict(set)
+    by_level = collections.defaultdict(collections.Counter)
+    ours_bare = set()
     for raw in ours.decode("utf-8", "surrogateescape").splitlines(keepends=True):
         bare = PACKAGE_RE.sub(r"\1", raw)
+        ours_bare.add(bare)
         if bare != raw:
             exact.setdefault(bare, raw)
         key = _decl_key(bare)
         if key:
             by_decl[key].add(bare != raw)
+            by_level[(key[0], key[1])][bare != raw] += 1
+    lines = merged.decode("utf-8", "surrogateescape").splitlines(keepends=True)
     result = []
-    for line in merged.decode("utf-8", "surrogateescape").splitlines(keepends=True):
+    for i, line in enumerate(lines):
+        key = _decl_key(line)
         if line in exact:
             line = exact[line]
-        elif by_decl.get(_decl_key(line) or ()) == {True} and not PACKAGE_RE.match(
-            line
-        ):
-            at = ATTRIBUTES_RE.match(line).end()
-            line = line[:at] + "package " + line[at:]
+        elif key and not PACKAGE_RE.match(line):
+            known = by_decl.get(key)
+            level = by_level.get((key[0], key[1]), collections.Counter())
+            new_here = line not in ours_bare and known is None
+            if known == {True} or (
+                new_here
+                and key[1] != "extension"
+                and not ACCESS_RE.search(line[: line.find(key[1])])
+                and level[True] > level[False]
+                and not _in_protocol(lines, i)
+            ):
+                at = ATTRIBUTES_RE.match(line).end()
+                line = line[:at] + "package " + line[at:]
         result.append(line)
     return "".join(result).encode("utf-8", "surrogateescape")
 
