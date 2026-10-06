@@ -104,7 +104,9 @@ class Repository:
 
     def app_sources(self):
         """The app's own sources, without Finder's " 2" copies."""
-        return [p for p in self.swift_paths if p.startswith(APP_PREFIX) and " 2" not in p]
+        return [
+            p for p in self.swift_paths if p.startswith(APP_PREFIX) and " 2" not in p
+        ]
 
     def ui_sources(self):
         return [p for p in self.swift_paths if p.startswith(UI_PREFIX)]
@@ -130,7 +132,11 @@ def swift_sources_read_back(repo):
         problems.append("the Swift source corpus contains files")
     if repo.unreadable:
         problems.append(f"every Swift source is readable: {repo.unreadable}")
-    empty = [path for path, text in repo.sources.items() if not text.strip(WHITESPACES_AND_NEWLINES)]
+    empty = [
+        path
+        for path, text in repo.sources.items()
+        if not text.strip(WHITESPACES_AND_NEWLINES)
+    ]
     if empty:
         problems.append(f"no Swift source is empty: {empty}")
     return problems
@@ -199,7 +205,7 @@ def operation_waits_have_deadlines(repo):
     whole app with it (issue #971)."""
     sources = repo.app_sources()
     found = [
-        f"{path[len(APP_PREFIX):]}:{index + 1}"
+        f"{path[len(APP_PREFIX) :]}:{index + 1}"
         for path in sources
         for index, line in enumerate(repo.lines_at(path))
         if "waitUntilAllOperationsAreFinished" in line
@@ -231,7 +237,7 @@ def application_elements_are_not_asked_their_role(repo):
                 and not is_comment(line)
                 and any(f"({element}, " in line for element in elements)
             ):
-                found.append(f"{path[len(APP_PREFIX):]}:{index + 1}")
+                found.append(f"{path[len(APP_PREFIX) :]}:{index + 1}")
     if not sources or found:
         return [f"no application element is ever asked for its role: {found}"]
     return []
@@ -252,7 +258,7 @@ def parent_walks_stop_at_the_application(repo):
                 for x in lines[max(0, index - 3) : index]
             )
             if not guarded:
-                found.append(f"{path[len(APP_PREFIX):]}:{index + 1}")
+                found.append(f"{path[len(APP_PREFIX) :]}:{index + 1}")
     if not sources or found:
         return [f"a walk up the parent chain stops at the application element: {found}"]
     return []
@@ -325,7 +331,7 @@ def tap_owners_invalidate_their_ports(repo):
         )
         if invalidations < taps:
             found.append(
-                f"{path[len(APP_PREFIX):]} ({taps} taps, {invalidations} invalidated)"
+                f"{path[len(APP_PREFIX) :]} ({taps} taps, {invalidations} invalidated)"
             )
     if owners == 0 or found:
         return [
@@ -343,7 +349,10 @@ def keychain_is_never_touched(repo):
     found = []
     for path in repo.swift_paths:
         if not path.startswith(
-            ("Sources/Vitruvian/Core/CommandBar/", "Sources/Vitruvian/Services/CommandBar/")
+            (
+                "Sources/Vitruvian/Core/CommandBar/",
+                "Sources/Vitruvian/Services/CommandBar/",
+            )
         ):
             continue
         for needle in ("SecItem", "import Security"):
@@ -370,7 +379,8 @@ def visible_text_curls_its_apostrophes(repo):
     paths = [
         path
         for path in repo.swift_paths
-        if dirname(path) in ("Sources/Vitruvian/Core", "Sources/Vitruvian/Core/Localizations")
+        if dirname(path)
+        in ("Sources/Vitruvian/Core", "Sources/Vitruvian/Core/Localizations")
         and (
             basename(path).endswith("Strings.swift")
             or basename(path).startswith("Strings+")
@@ -404,7 +414,11 @@ def _french_lines(repo, path):
     if path.endswith("Strings+French.swift"):
         return lines
     start = next(
-        (i for i, x in enumerate(lines) if _declaration_text(x).startswith("static let fr = ")),
+        (
+            i
+            for i, x in enumerate(lines)
+            if _declaration_text(x).startswith("static let fr = ")
+        ),
         None,
     )
     if start is None:
@@ -426,7 +440,9 @@ def french_punctuation_stays_on_its_line(repo):
         path
         for path in repo.swift_paths
         if path == "Sources/Vitruvian/Core/Localizations/Strings+French.swift"
-        or (dirname(path) == "Sources/Vitruvian/Core" and path.endswith("Strings.swift"))
+        or (
+            dirname(path) == "Sources/Vitruvian/Core" and path.endswith("Strings.swift")
+        )
     ]
     breaks = [" ;", " :", " !", " ?", " »", "« "]
     breaking = []
@@ -634,7 +650,9 @@ def embedded_scripts_close_what_they_open(repo):
             body = [trim(x) for x in chunk.split("\n")]
 
             def unbalanced(word, closing, inline):
-                started = sum(1 for x in body if x.startswith(word + " ") and not inline(x))
+                started = sum(
+                    1 for x in body if x.startswith(word + " ") and not inline(x)
+                )
                 ended = sum(1 for x in body if x == closing)
                 return started != ended
 
@@ -651,8 +669,16 @@ def stores_delete_only_what_they_own(repo):
     """User-file stores delete only paths whose ownership is established in the
     local scope immediately before removal."""
     guards = [
-        "isShelfOwnedFile", "discardablePaths", "ownedPayloadURLs", "isRegularFile",
-        "tempDir", "legacyDir", "root", "uuidString", "storeRoot", "contentsOfDirectory",
+        "isShelfOwnedFile",
+        "discardablePaths",
+        "ownedPayloadURLs",
+        "isRegularFile",
+        "tempDir",
+        "legacyDir",
+        "root",
+        "uuidString",
+        "storeRoot",
+        "contentsOfDirectory",
     ]
     problems = []
     found = []
@@ -663,7 +689,9 @@ def stores_delete_only_what_they_own(repo):
     ]:
         lines = repo.lines_at(path)
         if not lines:
-            problems.append(f"the store source reads back for its deletion check ({path})")
+            problems.append(
+                f"the store source reads back for its deletion check ({path})"
+            )
         for index, line in enumerate(lines):
             if "removeItem(at:" not in line:
                 continue
@@ -707,8 +735,12 @@ SESSION_TAP_OWNERS = [
 # The taps that change or swallow events: one kept alive after Accessibility
 # is lost holds input it can no longer hand on.
 MODIFYING_TAP_OWNERS = [
-    "MouseNavigation", "MouseButtonShortcut", "MiddleClick", "QuitProtection",
-    "RadialMenu", "ShortcutRecordingTap",
+    "MouseNavigation",
+    "MouseButtonShortcut",
+    "MiddleClick",
+    "QuitProtection",
+    "RadialMenu",
+    "ShortcutRecordingTap",
 ]
 
 # The taps that filter ordinary clicks and wheel events are served by a thread
@@ -735,15 +767,23 @@ def tap_owners_follow_the_session(repo):
         rearm = code.split("tapDisabledByTimeout")
         rearm = rearm[1].split("return")[0] if len(rearm) > 1 else ""
         if "SessionActivity.shared.isActive" not in rearm:
-            problems.append(f"{owner} does not re-arm a disabled tap into a switched-away session")
-        if any(name in owner for name in MODIFYING_TAP_OWNERS) and "AXIsProcessTrusted()" not in rearm:
+            problems.append(
+                f"{owner} does not re-arm a disabled tap into a switched-away session"
+            )
+        if (
+            any(name in owner for name in MODIFYING_TAP_OWNERS)
+            and "AXIsProcessTrusted()" not in rearm
+        ):
             problems.append(
                 f"{owner} does not keep a modifying tap alive after Accessibility is lost"
             )
         # Switching a tap off leaves the process owning it, which is what the
         # window server waits on; teardown must invalidate the port, either
         # here or through the pointer thread that owns the source.
-        if "CFMachPortInvalidate" not in code and "PointerTapRunLoop.remove(" not in code:
+        if (
+            "CFMachPortInvalidate" not in code
+            and "PointerTapRunLoop.remove(" not in code
+        ):
             problems.append(f"{owner} hands its tap back rather than only disabling it")
     return problems
 
@@ -763,12 +803,16 @@ def menu_panel_switches_have_names(repo):
     """A switch with a hidden label still gives VoiceOver its title, so an
     empty one is read out as an unnamed switch. The menu panel names every
     switch it draws."""
-    code = code_without_comments(repo.lines_at("Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift"))
+    code = code_without_comments(
+        repo.lines_at("Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift")
+    )
     if not code:
         return ["the menu panel source reads back"]
     unnamed = code.count('Toggle("", isOn:')
     if unnamed:
-        return [f"every menu panel switch has a name for VoiceOver, found {unnamed} unnamed"]
+        return [
+            f"every menu panel switch has a name for VoiceOver, found {unnamed} unnamed"
+        ]
     return []
 
 
@@ -816,7 +860,9 @@ def build_sweeps_its_temp_dirs(repo):
     sweep = script.find("trap cleanup EXIT")
     first_staged = script.find("mktemp -d")
     if sweep < 0 or first_staged < 0 or not sweep < first_staged:
-        problems.append("build.sh installs the temp dir sweep before it stages the first dir")
+        problems.append(
+            "build.sh installs the temp dir sweep before it stages the first dir"
+        )
     # zsh runs the EXIT trap on HUP but not on INT or TERM, so the signals
     # have to reach it through `exit` or Ctrl-C leaks the staged bundle.
     signals = script.find("trap 'exit 1' INT TERM HUP")
@@ -849,7 +895,9 @@ def build_sweeps_its_temp_dirs(repo):
         # leading newline keeps ICON_TMP off STAGE_ICON_TMP.
         initialized = script.find(f'\n{variable}=""')
         if initialized < 0 or sweep < 0 or not initialized < sweep:
-            problems.append(f"temp dir {variable} is empty before the sweep is installed")
+            problems.append(
+                f"temp dir {variable} is empty before the sweep is installed"
+            )
     return problems
 
 
@@ -865,7 +913,9 @@ def build_signs_with_a_stable_identity(repo):
     problems = []
     # The invocation at the start of a command line: the ad-hoc fallback's
     # advice string also names the script, and must not satisfy this check.
-    if not any(re.search(r"^\s*(if\s+!?\s*)?\./Tools/setup-signing\.sh", x) for x in lines):
+    if not any(
+        re.search(r"^\s*(if\s+!?\s*)?\./Tools/setup-signing\.sh", x) for x in lines
+    ):
         problems.append(
             "an identity-less build that installs invokes Tools/setup-signing.sh itself"
         )
@@ -873,14 +923,18 @@ def build_signs_with_a_stable_identity(repo):
     # The guard is on the install, not on the variant: a plain --install
     # replaces the bundle under the released id, so it strands the grants on
     # the app people actually use. CI never passes --install.
-    if not any("(( DEV || INSTALL ))" in x and "developer_id_identity" in x for x in code):
+    if not any(
+        "(( DEV || INSTALL ))" in x and "developer_id_identity" in x for x in code
+    ):
         problems.append(
             "the signing setup guard covers every install, not only the Developer variant"
         )
     # A find-identity listing names certificates codesign then rejects, and -v
     # excludes every self-signed one, so neither spelling may decide.
     if any("find-identity" in x and "$LEGACY_IDENTITY" in x for x in code):
-        problems.append("build.sh never decides the stable identity by a find-identity listing")
+        problems.append(
+            "build.sh never decides the stable identity by a find-identity listing"
+        )
     if not (
         any("cp /bin/echo" in x for x in code)
         and any('--sign "$LEGACY_IDENTITY" "$probe"' in x for x in code)
