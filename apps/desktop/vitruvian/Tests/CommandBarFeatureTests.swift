@@ -468,22 +468,91 @@ enum CommandBarFeatureTests {
                                                   snapshots: [asciiCapableMethod, latinSource]) == latinSourceID,
                "an ASCII-capable input method still moves to a plain layout")
 
-        let commandBarServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(commandBarServiceSource.contains("inputSource.adoptASCIIInputSource()"),
-               "opening the bar borrows the ASCII layout")
-        suite.expect(commandBarServiceSource.contains("inputSource.restoreSuspendedInputSource()"),
-               "closing the bar gives the suspended input source back")
-        suite.expect(commandBarServiceSource.range(
-                of: #"AppFeature\.uninstaller\.isAvailable,\s*UninstallerSupport\.selection\(for:\s*app\.url\) != nil"#,
-                options: .regularExpression) != nil,
-               "the uninstall row is offered only for an app the uninstaller will take")
-        suite.expect(commandBarServiceSource.contains("uninstaller.select(appURL: url) || uninstaller.isRemoving"),
-               "the uninstall row still opens the page on a removal already running")
-        suite.expect(commandBarServiceSource.contains("UninstallerSupport.acceptedApplicationIDs(apps)")
-                && commandBarServiceSource.contains("uninstallable: uninstallableAppIDs"),
-               "the uninstall browse lists only the apps the background scan saw the uninstaller accept")
+        // Opening and closing borrow and return the layout through
+        // `CommandBarPresentationSteps`, checked in `CommandBarInputSourceContract`.
+
+        // The uninstall rows go through the uninstaller's own checks: the
+        // row's action, the browse the background scan fills, and the page an
+        // accepted row opens, which still opens on a removal already running.
+        // Disposable bundles stand in for apps, and the uninstaller's scan,
+        // removal and package manager are the flow tests' doubles.
+        do {
+            let fileManager = FileManager.default
+            let root = fileManager.temporaryDirectory.resolvingSymlinksInPath()
+                .appendingPathComponent("command-bar-uninstall-\(UUID().uuidString)", isDirectory: true)
+            let suiteName = "vitru.tests.command-bar-uninstall"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer {
+                defaults.removePersistentDomain(forName: suiteName)
+                try? fileManager.removeItem(at: root)
+            }
+            func makeApp(_ name: String) -> URL {
+                let app = root.appendingPathComponent(name + ".app", isDirectory: true)
+                let contents = app.appendingPathComponent("Contents", isDirectory: true)
+                try? fileManager.createDirectory(at: contents, withIntermediateDirectories: true)
+                if let data = try? PropertyListSerialization.data(fromPropertyList: [
+                    "CFBundleIdentifier": "org.vitruvian.fixture.\(name)",
+                    "CFBundlePackageType": "APPL", "CFBundleName": name,
+                ], format: .xml, options: 0) {
+                    try? data.write(to: contents.appendingPathComponent("Info.plist"), options: .atomic)
+                }
+                return app
+            }
+            let taken = makeApp("Taken")
+            let other = makeApp("Other")
+            // Named like an app, with no bundle inside: the checks refuse it.
+            let refused = root.appendingPathComponent("Refused.app", isDirectory: true)
+            try? fileManager.createDirectory(at: refused, withIntermediateDirectories: true)
+            defaults.set(true, forKey: AppFeature.uninstaller.availabilityKey)
+            defaults.set(true, forKey: DefaultsKey.uninstallerCommandBarEnabled)
+
+            suite.expect(CommandBarCatalog.offersUninstall(of: taken, defaults: defaults)
+                    && !CommandBarCatalog.offersUninstall(of: refused, defaults: defaults),
+                   "the uninstall row is offered only for an app the uninstaller will take")
+
+            let apps = [taken, refused].map {
+                InstalledApps.InstalledApp(id: $0.path, name: $0.deletingPathExtension().lastPathComponent,
+                                           bundleID: nil, url: $0, isSystem: false)
+            }
+            let scanned = CommandBarCatalog.uninstallableAppIDs(apps, listsUninstallable: true)
+            let browse = CommandBarCatalog.uninstallEntries(apps, uninstallable: scanned,
+                                                            bar: FeatureStrings.commandBar(L10n.shared.language),
+                                                            defaults: defaults)
+            suite.expect(browse.map(\.uninstallAppURL) == [taken]
+                    && CommandBarCatalog.uninstallableAppIDs(apps, listsUninstallable: false).isEmpty,
+                   "the uninstall browse lists only the apps the background scan saw the uninstaller accept")
+
+            defaults.set(false, forKey: AppFeature.uninstaller.availabilityKey)
+            suite.expect(!CommandBarCatalog.offersUninstall(of: taken, defaults: defaults),
+                   "an uninstaller that is not available offers no uninstall row")
+
+            let queue = UninstallerFlowTests.Queue()
+            let disk = UninstallerFlowTests.Disk()
+            let brew = UninstallerFlowTests.Brew()
+            let uninstaller = AppUninstaller(environment: .init(
+                background: { _, work in queue.pending.append(work) },
+                main: { work in queue.pending.append { MainActor.assumeIsolated { work() } } },
+                scan: { disk.leftovers($0) },
+                remove: { disk.remove($0) },
+                quit: { _ in },
+                packages: brew,
+                notify: { _, _ in }))
+            defer { queue.pending = [] }
+            suite.expect(!CommandBarUninstallReview.opensUninstallerPage(for: refused, in: uninstaller),
+                   "a refused app opens no uninstaller page while nothing is being removed")
+            suite.expect(CommandBarUninstallReview.opensUninstallerPage(for: taken, in: uninstaller)
+                    && uninstaller.target?.url == taken,
+                   "an uninstall row opens the page on the app it was offered for")
+            queue.drain()
+            brew.lookup?(nil)
+            uninstaller.removeSelected()
+            suite.expect(uninstaller.isRemoving
+                    && CommandBarUninstallReview.opensUninstallerPage(for: other, in: uninstaller)
+                    && uninstaller.target?.url == taken,
+                   "the uninstall row still opens the page on a removal already running")
+            queue.drain()
+        }
         for language in AppLanguage.allCases {
             let text = FeatureStrings.commandBar(language)
             let asciiRow = CommandBarSettings.asciiLayoutRow(text)
@@ -2007,6 +2076,29 @@ enum CommandBarInputSourceContract {
         Queue.drain()
         suite.expect(Sources.current == "original" && refused.suspendedInputSourceID == nil,
                      "a refused source switch never creates a restoration obligation")
+
+        // `CommandBarService` opens and closes through these steps, so the
+        // layout is borrowed once the first rows are built and before the
+        // panel is ordered in, and given back once the presentation's own
+        // work has stopped and before the panel goes.
+        var steps: [String] = []
+        let presentation = CommandBarPresentationSteps(inputSource: reset())
+        presentation.open(prepare: { () -> Int? in
+            steps.append("prepare on \(Sources.current)")
+            return 1
+        }, present: { _ in steps.append("present on \(Sources.current)") })
+        suite.expect(steps == ["prepare on original", "present on ascii"],
+                     "opening the bar borrows the ASCII layout")
+        presentation.close(stop: { steps.append("stop") },
+                           tearDown: { steps.append("tear down, \(Queue.jobs.count) restoration queued") })
+        Queue.drain()
+        suite.expect(Array(steps.suffix(2)) == ["stop", "tear down, 1 restoration queued"]
+                     && Sources.current == "original" && Sources.selected == ["ascii", "original"],
+                     "closing the bar gives the suspended input source back")
+        let unavailable = CommandBarPresentationSteps(inputSource: reset())
+        unavailable.open(prepare: { () -> Int? in nil }, present: { _ in steps.append("presented") })
+        suite.expect(Sources.selected.isEmpty && steps.last != "presented",
+                     "a bar that cannot open borrows nothing")
     }
 }
 

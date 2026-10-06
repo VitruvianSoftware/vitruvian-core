@@ -325,28 +325,32 @@ package final class CommandBarService: ObservableObject {
     }
 
     private func show(promptingFor stableKey: String?) {
-        guard AppFeature.commandBar.isAvailable else { return }
-        let panel = ensurePanel()
-        if AppFeature.textSnippets.isAvailable {
-            TextSnippetService.shared.setCommandBarVisible(true)
-        }
-        let id = beginPresentation()
-        if let stableKey { deferredRowShortcut.schedule(stableKey, for: id) }
-        reloadPreferenceCaches()
-        query = ""
-        refreshResults()
-        inputSource.adoptASCIIInputSource()
-        present(panel)
-        // Ordering the prepared panel is the keystroke path. Home is filled on
-        // the next main-loop turn, when a close or newer opening can supersede it.
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.presentationLifecycle.completeHomeHydration(
-                    id, isVisible: self.isVisible) else { return }
-            self.prepareHomeForCurrentPresentation()
+        presentationSteps.open(prepare: { () -> (panel: NSPanel, id: UUID)? in
+            guard AppFeature.commandBar.isAvailable else { return nil }
+            let panel = self.ensurePanel()
+            if AppFeature.textSnippets.isAvailable {
+                TextSnippetService.shared.setCommandBarVisible(true)
+            }
+            let id = self.beginPresentation()
+            if let stableKey { self.deferredRowShortcut.schedule(stableKey, for: id) }
+            self.reloadPreferenceCaches()
+            self.query = ""
             self.refreshResults()
-            self.runDeferredRowShortcutIfReady(for: id)
-        }
+            return (panel: panel, id: id)
+        }, present: { presentation in
+            self.present(presentation.panel)
+            // Ordering the prepared panel is the keystroke path. Home is filled on
+            // the next main-loop turn, when a close or newer opening can supersede it.
+            let id = presentation.id
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.presentationLifecycle.completeHomeHydration(
+                        id, isVisible: self.isVisible) else { return }
+                self.prepareHomeForCurrentPresentation()
+                self.refreshResults()
+                self.runDeferredRowShortcutIfReady(for: id)
+            }
+        })
     }
 
     @discardableResult
@@ -417,59 +421,65 @@ package final class CommandBarService: ObservableObject {
     }
 
     package func hide() {
-        if AppFeature.textSnippets.isAvailable {
-            TextSnippetService.shared.setCommandBarVisible(false)
-        }
-        deferredRowShortcut.cancel()
-        scriptRunner.reset()
-        fileSearch.reset()
-        // Closing while listening for a combination must give every global key
-        // back, or the whole app would go quiet until the next relaunch.
-        if case .capturingShortcut = mode { endCapturingShortcut() }
-        // Clearing the field on the way out would otherwise rebuild the whole
-        // browse list for a panel nobody can see.
-        isTearingDown = true
-        defer {
-            isTearingDown = false
-            rows = []
-            sectionTitles = [:]
-        }
-        inputSource.restoreSuspendedInputSource()
-        removeMonitors()
-        panel?.orderOut(nil)
-        // Leaving mid-review through this path (global shortcut, outside
-        // click) skips the reset stepBack() does for the same mode.
-        uninstallReview.close()
-        mode = .search
-        // A selection belongs to the moment the bar was opened. Keeping it
-        // would offer to act on text the person may have replaced since.
-        if !selectionEntries.isEmpty {
-            selectionEntries = []
-            selectionPreview = ""
-            selectedText = ""
-            indexEntries()
-        }
-        if !killProcessEntries.isEmpty {
-            killProcessEntries = []
-            indexEntries()
-        }
-        if !uninstallSelectionEntries.isEmpty {
-            uninstallSelectionEntries = []
-            indexEntries()
-        }
-        // What was typed is remembered for the next opening, where the first
-        // keystroke replaces it. It never reaches disk: the promise is that
-        // nothing typed here is saved, and memory is not saving.
-        lastQuery = query
-        query = ""
-        presentationLifecycle.hide()
-        clearIndex()
+        presentationSteps.close(stop: {
+            if AppFeature.textSnippets.isAvailable {
+                TextSnippetService.shared.setCommandBarVisible(false)
+            }
+            self.deferredRowShortcut.cancel()
+            self.scriptRunner.reset()
+            self.fileSearch.reset()
+            // Closing while listening for a combination must give every global key
+            // back, or the whole app would go quiet until the next relaunch.
+            if case .capturingShortcut = self.mode { self.endCapturingShortcut() }
+            // Clearing the field on the way out would otherwise rebuild the whole
+            // browse list for a panel nobody can see.
+            self.isTearingDown = true
+        }, tearDown: {
+            defer {
+                self.isTearingDown = false
+                self.rows = []
+                self.sectionTitles = [:]
+            }
+            self.removeMonitors()
+            self.panel?.orderOut(nil)
+            // Leaving mid-review through this path (global shortcut, outside
+            // click) skips the reset stepBack() does for the same mode.
+            self.uninstallReview.close()
+            self.mode = .search
+            // A selection belongs to the moment the bar was opened. Keeping it
+            // would offer to act on text the person may have replaced since.
+            if !self.selectionEntries.isEmpty {
+                self.selectionEntries = []
+                self.selectionPreview = ""
+                self.selectedText = ""
+                self.indexEntries()
+            }
+            if !self.killProcessEntries.isEmpty {
+                self.killProcessEntries = []
+                self.indexEntries()
+            }
+            if !self.uninstallSelectionEntries.isEmpty {
+                self.uninstallSelectionEntries = []
+                self.indexEntries()
+            }
+            // What was typed is remembered for the next opening, where the first
+            // keystroke replaces it. It never reaches disk: the promise is that
+            // nothing typed here is saved, and memory is not saving.
+            self.lastQuery = self.query
+            self.query = ""
+            self.presentationLifecycle.hide()
+            self.clearIndex()
+        })
     }
 
     // MARK: - The bar's own keyboard layout
 
     /// The ASCII layout borrowed for the length of a presentation.
     private lazy var inputSource: CommandBarInputSourceBorrowing = .init { [unowned self] in self.presentationID }
+
+    /// Opening borrows that layout and closing gives it back, between the
+    /// steps `show` and `hide` hand over.
+    private var presentationSteps: CommandBarPresentationSteps { .init(inputSource: inputSource) }
 
     package var hasBorrowedInputSource: Bool {
         inputSource.hasBorrowedInputSource
@@ -1756,7 +1766,7 @@ package final class CommandBarService: ObservableObject {
                     self?.confirmForceQuit(running, name: app.name)
                 })
             }
-            if AppFeature.uninstaller.isAvailable, UninstallerSupport.selection(for: app.url) != nil {
+            if CommandBarCatalog.offersUninstall(of: app.url) {
                 actions.append(RowAction(id: "uninstallApp",
                                          title: String(format: bar.uninstallAppFormat, app.name),
                                          symbolName: "trash") { [weak self] in
@@ -2023,13 +2033,10 @@ package final class CommandBarService: ObservableObject {
         KillProcessService.shared.killTree(process, force: false)
     }
 
-    /// The row is offered only for an app the shared checks accept, so the
-    /// one way `select` still says no is a removal already running. The page
-    /// opens on that removal instead of the bar closing on nothing.
+    /// See `CommandBarUninstallReview.opensUninstallerPage`.
     private func openUninstaller(for url: URL) {
         hide()
-        let uninstaller = AppUninstaller.shared
-        guard uninstaller.select(appURL: url) || uninstaller.isRemoving else { return }
+        guard CommandBarUninstallReview.opensUninstallerPage(for: url, in: AppUninstaller.shared) else { return }
         SettingsRouter.shared.page = .uninstaller
         appShell()?.openSettingsWindow()
     }
@@ -2370,8 +2377,8 @@ package final class CommandBarService: ObservableObject {
                 spotlightPaths: Self.spotlightApplicationPaths()))
             // The uninstall browse offers only what the uninstaller will
             // take, and its check reads the disk for every app.
-            let uninstallable = listsUninstallable
-                ? UninstallerSupport.acceptedApplicationIDs(apps) : []
+            let uninstallable = CommandBarCatalog.uninstallableAppIDs(
+                apps, listsUninstallable: listsUninstallable)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.appsLoading = false

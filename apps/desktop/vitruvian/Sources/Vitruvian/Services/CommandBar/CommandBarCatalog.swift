@@ -1091,6 +1091,24 @@ package enum CommandBarCatalog {
         }
     }
 
+    /// What the background app scan keeps for the uninstall browse: the apps
+    /// the uninstaller's own checks accept, and none while the browse is off.
+    /// The check reads every bundle from disk, so it runs with the scan.
+    package static func uninstallableAppIDs(_ apps: [InstalledApps.InstalledApp],
+                                            listsUninstallable: Bool) -> Set<String> {
+        listsUninstallable ? UninstallerSupport.acceptedApplicationIDs(apps) : []
+    }
+
+    /// Whether an app's row offers to uninstall it: only while the uninstaller
+    /// is available, and only for an app its own checks take, so the action
+    /// never leads to a page that refuses the app.
+    package static func offersUninstall(
+        of url: URL, defaults: UserDefaults = .standard,
+        uninstallerTakes: (URL) -> Bool = { UninstallerSupport.selection(for: $0) != nil }
+    ) -> Bool {
+        AppFeature.uninstaller.isAvailable(in: defaults) && uninstallerTakes(url)
+    }
+
     /// One row for whatever single app is selected in Finder's Applications
     /// folder, so uninstalling it never needs the bar's own picker first.
     /// An app the uninstaller would refuse gets no row.

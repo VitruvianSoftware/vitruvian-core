@@ -80,6 +80,14 @@ package final class CommandBarUninstallReview {
     }
 
     /// Return, or the review's own button.
+    /// Whether an uninstall row ends on the uninstaller's page. The row is
+    /// offered only for an app the shared checks accept, so the one way
+    /// `select` still says no is a removal already running; the page then
+    /// opens on that removal instead of the bar closing on nothing.
+    package static func opensUninstallerPage(for url: URL, in uninstaller: AppUninstaller) -> Bool {
+        uninstaller.select(appURL: url) || uninstaller.isRemoving
+    }
+
     package func submit() {
         switch host.mode() {
         case .uninstallReview(let id):

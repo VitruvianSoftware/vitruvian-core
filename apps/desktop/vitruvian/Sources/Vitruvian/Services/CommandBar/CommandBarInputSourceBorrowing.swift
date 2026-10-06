@@ -118,3 +118,34 @@ package final class CommandBarInputSourceBorrowing {
         suspendedInputSourceID = nil
     }
 }
+
+/// The order the bar opens and closes in, around the layout it borrows.
+/// Opening borrows the ASCII layout once the first rows are built and before
+/// the panel is ordered in, so the first keystroke already types on it;
+/// closing gives the person's own source back after what must stop with the
+/// presentation and before the monitors and the panel go. `CommandBarService`
+/// supplies the steps on either side.
+@MainActor
+package struct CommandBarPresentationSteps {
+    package let inputSource: CommandBarInputSourceBorrowing
+
+    package init(inputSource: CommandBarInputSourceBorrowing) {
+        self.inputSource = inputSource
+    }
+
+    /// `prepare` starts a presentation and builds its first rows, or answers
+    /// nil when the bar cannot open; `present` orders that presentation in.
+    package func open<Presentation>(prepare: () -> Presentation?, present: (Presentation) -> Void) {
+        guard let presentation = prepare() else { return }
+        inputSource.adoptASCIIInputSource()
+        present(presentation)
+    }
+
+    /// `stop` ends what may not outlive the presentation; `tearDown` takes the
+    /// monitors, the panel and its rows away.
+    package func close(stop: () -> Void, tearDown: () -> Void) {
+        stop()
+        inputSource.restoreSuspendedInputSource()
+        tearDown()
+    }
+}
