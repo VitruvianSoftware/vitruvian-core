@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.9.0...vitruvian-v3.10.0) (2026-10-06)
+
+
+### Features
+
+* **desktop:** restore quick prompt session history, preview, and title on resume ([#2791](https://github.com/VitruvianSoftware/vitruvian-core/issues/2791)) ([97dc460](https://github.com/VitruvianSoftware/vitruvian-core/commit/97dc460d06ee356a7f25a91a969a3a8b75fc67a0))
+
 ## [3.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.8.0...vitruvian-v3.9.0) (2026-10-06)
 
 
