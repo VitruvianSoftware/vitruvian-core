@@ -321,6 +321,19 @@ class PackageTest(unittest.TestCase):
         self.assertIn("\n    private func h() {}\n", out)
         self.assertIn("\n    package func g() {}\n", out)
 
+    def test_aligned_parameters_move_with_the_parenthesis(self):
+        ours = "package enum E {\n    package static func a() {}\n}\n"
+        merged = (
+            "enum E {\n    static func a() {}\n"
+            "    static func b(_ x: Int,\n                  y: Int) -> Int {\n"
+            "        x + y\n    }\n}\n"
+        )
+        self.assertIn(
+            "    package static func b(_ x: Int,\n                          y: Int) -> Int {\n"
+            "        x + y\n",
+            self.restore(merged, ours),
+        )
+
     def test_a_file_without_package_gets_none(self):
         ours = "final class A {\n    func a() {}\n}\n"
         merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"

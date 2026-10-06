@@ -656,6 +656,16 @@ def restore_package(merged, ours):
             ):
                 at = ATTRIBUTES_RE.match(line).end()
                 line = line[:at] + "package " + line[at:]
+                shift_from = i + 1
+                balance = line.count("(") - line.count(")")
+                # Parameters aligned under the opening parenthesis move with it.
+                while balance > 0 and shift_from < len(lines):
+                    nxt = lines[shift_from]
+                    if _indent(nxt) <= _indent(line):
+                        break
+                    lines[shift_from] = " " * len("package ") + nxt
+                    balance += nxt.count("(") - nxt.count(")")
+                    shift_from += 1
         result.append(line)
     return "".join(result).encode("utf-8", "surrogateescape")
 
