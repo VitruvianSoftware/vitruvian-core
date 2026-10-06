@@ -45,6 +45,13 @@ release-please components:
     rolling `vitruvian-beta-latest` prerelease;
   - on each `vitruvian-v*` release, `Vitruvian-X.Y.Z.dmg` on that release.
 
+The release PR waits for the beta. `.github/workflows/release-beta-gate.yaml`
+enables its auto-merge only once `vitruvian-beta` has succeeded for the code
+the release would tag. A failed beta holds the PR with `do-not-automerge` and a
+comment; a fix on `main` rebuilds the PR, and the gate releases it when that
+beta succeeds. Other components' release PRs still auto-merge on open
+(`release-pr-automerge.yaml`).
+
 `publish.sh` builds the app and hands it to `Tools/package-release.sh`, which:
 
 - signs it: with the `VITRUVIAN_SIGNING_CERT_P12` /
