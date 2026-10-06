@@ -74,12 +74,14 @@ package enum NexusAgentQuickPromptLayout {
 package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     package let id: String
     package let title: String
+    package let preview: String
     package let steps: Int
     package let modified: Date?
 
-    package init(id: String, title: String, steps: Int, modified: Date?) {
+    package init(id: String, title: String, preview: String = "", steps: Int, modified: Date?) {
         self.id = id
         self.title = title
+        self.preview = preview
         self.steps = steps
         self.modified = modified
     }
@@ -112,11 +114,13 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                     return nil
                 }
             }
-            let title = [row["title"] as? String, row["preview"] as? String]
+            let preview = (row["preview"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = [row["title"] as? String, preview]
                 .compactMap { $0?.split(separator: "\n").first.map(String.init) }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
             let stamp = row["last_modified_time"] as? String ?? ""
             return NexusAgentSessionSummary(id: id, title: String(title.prefix(100)),
+                                            preview: preview,
                                             steps: (row["step_count"] as? NSNumber)?.intValue ?? 0,
                                             modified: dates.date(from: stamp) ?? plainDates.date(from: stamp))
         }

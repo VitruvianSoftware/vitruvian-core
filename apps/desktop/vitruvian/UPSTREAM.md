@@ -2413,6 +2413,12 @@ is that notice. Add an entry for every change to upstream files.
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
   - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-06**: Restore Quick Prompt resumed session content and header parity:
+  - `NexusAgentSessionSummary`: retain `preview` property extracted from SQL `preview` column;
+  - `NexusAgentService`: add `readTranscript`, `parseTranscript`, and `extractUserPrompt` to parse conversation transcript turns from `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`;
+  - `NexusAgentQuickPromptSession.resume`: restore turn-by-turn history or seed initial preview and resumption notice bubble, track `sessionTitle` and `isResumed`;
+  - `NexusAgentQuickPromptView`: display `sessionTitle` and `Resumed` capsule badge in chat header;
+  - `NexusAgentTests`: test session preview retention, resumption messages, and transcript parsing.
 - **2026-10-06**: Fix Quick Prompt recent sessions drawer:
   - `NexusAgentService.readSessions`: removed `-readonly` from `/usr/bin/sqlite3`
     arguments so SQLite can read conversations when `conversation_summaries.db`
