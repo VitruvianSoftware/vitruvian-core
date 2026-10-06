@@ -77,7 +77,7 @@ package final class CleaningModeManager: ObservableObject {
     /// purpose — a gesture a deliberate user cannot complete protects nothing.
     private lazy var unlock = CleaningUnlockCounter(requiredKeyCode: Self.escapeKeyCode,
                                                     threshold: unlockThreshold,
-                                                    pressWindow: 6.0)
+                                                    pressWindow: CleaningUnlockCounter.shippedPressWindow)
 
     private init() {
         // A switched-away login session cannot keep a filter tap in the input

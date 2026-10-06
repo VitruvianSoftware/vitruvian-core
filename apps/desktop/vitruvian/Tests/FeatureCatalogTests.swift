@@ -202,10 +202,20 @@ enum FeatureCatalogTests {
         suite.expect(CleaningMouseReleaseGate.releaseWaitLimit > 0 && CleaningMouseReleaseGate.releaseWaitLimit <= 10,
                "a pending cleaning unlock has a short maximum wait")
 
-        // The counters above build their own windows, so nothing else here
-        // fails if the shipped constant regresses. Pin it at the source: the
-        // 2s window made the gesture impossible for anyone pressing Escape
-        // slower than once per two seconds (#697).
+        // The counters above build their own windows, so the shipped one is
+        // run here: the 2s window made the gesture impossible for anyone
+        // pressing Escape slower than once per two seconds (#697), and a
+        // window that never closed would let five Escapes spread across a
+        // whole wipe unlock.
+        func shippedUnlock(every gap: TimeInterval) -> Bool {
+            var counter = CleaningUnlockCounter(requiredKeyCode: escapeKeyCode, threshold: 5,
+                                                pressWindow: CleaningUnlockCounter.shippedPressWindow)
+            return (0..<5).map {
+                counter.registerKeyDown(code: escapeKeyCode, time: Double($0) * gap, isRepeat: false)
+            }.last == true
+        }
+        suite.expect(shippedUnlock(every: 5.5) && !shippedUnlock(every: 6.5),
+               "the shipped unlock counter keeps the forgiving 6s press window")
         let cleaningSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift",
             encoding: .utf8)) ?? ""
@@ -213,8 +223,7 @@ enum FeatureCatalogTests {
             .components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        suite.expect(!cleaningCode.isEmpty && cleaningCode.contains("pressWindow: 6.0"),
-               "the shipped unlock counter keeps the forgiving 6s press window")
+        suite.expect(!cleaningCode.isEmpty, "the cleaning mode source reads back for its shape checks")
 
         suite.expect(!cleaningCode.contains("CGEvent(mouseEventSource:"),
                "Cleaning Mode never synthesizes a global mouse release")
