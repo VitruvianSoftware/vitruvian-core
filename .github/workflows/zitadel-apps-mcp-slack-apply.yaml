@@ -99,6 +99,13 @@ jobs:
     environment: oauth-user-inspector-development
     env:
       DEPLOY_ENV: development
+      # Authenticate Pulumi's github:// plugin downloads (pulumi-resource-zitadel
+      # comes from github://api.github.com/pulumiverse) so the job does not hit
+      # the 60/hr/IP unauthenticated GitHub API rate limit CI runners routinely
+      # exhaust (intermittent 403s); GITHUB_TOKEN raises this to 5000/hr. Same
+      # class of fix as #756 / the identity-apply workflows. Seen live on
+      # delivery run 37446763025 (2026-10-06): "rate limit exceeded: 403".
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
