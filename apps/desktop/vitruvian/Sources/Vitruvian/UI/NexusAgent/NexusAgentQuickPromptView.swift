@@ -10,6 +10,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import WebKit
 
 /// The Spotlight-style Quick Prompt: a floating pill with the prompt, a
 /// recent-sessions drawer that opens under it, and the streaming chat with
@@ -440,7 +441,7 @@ package struct NexusAgentQuickPromptView: View {
     }
 }
 
-/// One chat bubble: prose with inline markdown, fenced code in its own box.
+/// One chat bubble: rich Markdown blocks (headings, lists, quotes, dividers) and interactive code/diagram cards.
 private struct NexusAgentMessageBubble: View {
     let message: NexusAgentChatMessage
 
@@ -452,14 +453,62 @@ private struct NexusAgentMessageBubble: View {
                 ForEach(Array(NexusAgentReplyBlock.parse(message.text).enumerated()), id: \.offset) { _, block in
                     switch block {
                     case .text(let text):
-                        Text(Self.markdown(text))
-                            .font(.system(size: 13))
-                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
-                    case .code(_, let body):
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            Text(body).font(.system(size: 12, design: .monospaced)).padding(8)
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(NexusAgentMarkdownBlock.parse(text).enumerated()), id: \.offset) { _, mdBlock in
+                                switch mdBlock {
+                                case .heading(let level, let headingText):
+                                    Text(Self.markdown(headingText))
+                                        .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
+                                        .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                        .padding(.vertical, 2)
+                                case .bulletItem(let bulletText):
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Image(systemName: "circle.fill")
+                                            .font(.system(size: 4))
+                                            .foregroundStyle(Color.accentColor)
+                                            .padding(.top, 6)
+                                        Text(Self.markdown(bulletText))
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                    }
+                                case .numberedItem(let number, let itemText):
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text("\(number).")
+                                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                                            .foregroundStyle(.secondary)
+                                            .padding(.top, 1)
+                                        Text(Self.markdown(itemText))
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                    }
+                                case .blockquote(let quoteText):
+                                    HStack(alignment: .top, spacing: 8) {
+                                        RoundedRectangle(cornerRadius: 1.5)
+                                            .fill(Color.accentColor.opacity(0.6))
+                                            .frame(width: 3)
+                                        Text(Self.markdown(quoteText))
+                                            .font(.system(size: 13))
+                                            .italic()
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.vertical, 2)
+                                case .divider:
+                                    Divider()
+                                        .opacity(0.4)
+                                        .padding(.vertical, 4)
+                                case .paragraph(let paragraphText):
+                                    Text(Self.markdown(paragraphText))
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                }
+                            }
                         }
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.25)))
+                    case .code(let language, let body):
+                        if let lang = language?.lowercased(), lang == "mermaid" {
+                            NexusAgentMermaidCard(source: body)
+                        } else {
+                            NexusAgentCodeBlockView(language: language, bodyText: body)
+                        }
                     }
                 }
             }
@@ -475,6 +524,277 @@ private struct NexusAgentMessageBubble: View {
     private static func markdown(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+}
+
+/// An interactive card rendering a Mermaid diagram with Diagram and Source toggle modes.
+private struct NexusAgentMermaidCard: View {
+    let source: String
+    @State private var mode: DiagramViewMode = .diagram
+    @State private var copied = false
+    @State private var renderFailed = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private enum DiagramViewMode: String, CaseIterable, Identifiable {
+        case diagram = "Diagram"
+        case source = "Source"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                Text("Diagram")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("", selection: $mode) {
+                    ForEach(DiagramViewMode.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .frame(width: 140)
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(source, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(copied ? Color.green : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy source")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.primary.opacity(0.04))
+
+            Divider().opacity(0.3)
+
+            if mode == .diagram && !renderFailed {
+                NexusAgentMermaidWebView(source: source, isDark: colorScheme == .dark, onRenderError: {
+                    renderFailed = true
+                })
+                .frame(minHeight: 180, idealHeight: 240, maxHeight: 420)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    if renderFailed {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
+                            Text("Diagram render failed — showing source")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 6)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(source)
+                            .font(.system(size: 11, design: .monospaced))
+                            .padding(8)
+                    }
+                }
+                .background(Color.black.opacity(0.25))
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.03)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+/// A WKWebView rendering a Mermaid diagram via self-contained HTML.
+private struct NexusAgentMermaidWebView: NSViewRepresentable {
+    let source: String
+    let isDark: Bool
+    let onRenderError: @MainActor () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onRenderError: onRenderError)
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.navigationDelegate = context.coordinator
+        loadDiagram(in: webView)
+        return webView
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        context.coordinator.onRenderError = onRenderError
+        loadDiagram(in: nsView)
+    }
+
+    private func loadDiagram(in webView: WKWebView) {
+        let escapedSource = source
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let theme = isDark ? "dark" : "default"
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 16px;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: auto;
+          }
+          .mermaid {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+          }
+          svg {
+            max-width: 100%;
+            height: auto;
+          }
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <script>
+          try {
+            mermaid.initialize({
+              startOnLoad: true,
+              theme: '\(theme)',
+              securityLevel: 'loose'
+            });
+          } catch(e) {
+            window.location.href = "vitruvian-error://error";
+          }
+        </script>
+        </head>
+        <body>
+        <div class="mermaid">
+        \(escapedSource)
+        </div>
+        </body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var onRenderError: @MainActor () -> Void
+
+        init(onRenderError: @escaping @MainActor () -> Void) {
+            self.onRenderError = onRenderError
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            onRenderError()
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            onRenderError()
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let url = navigationAction.request.url, url.scheme == "vitruvian-error" {
+                decisionHandler(.cancel)
+                onRenderError()
+                return
+            }
+            decisionHandler(.allow)
+        }
+    }
+}
+
+/// A styled monospaced code container with language badge, line numbers, and copy button.
+private struct NexusAgentCodeBlockView: View {
+    let language: String?
+    let bodyText: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                if let language = language, !language.isEmpty {
+                    Text(language.lowercased())
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.primary.opacity(0.08)))
+                } else {
+                    Text("code")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(bodyText, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 11))
+                        Text(copied ? "Copied" : "Copy")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(copied ? Color.green : Color.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.primary.opacity(0.04))
+
+            Divider().opacity(0.3)
+
+            let lines = bodyText.components(separatedBy: "\n")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        ForEach(0..<lines.count, id: \.self) { idx in
+                            Text("\(idx + 1)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Color.secondary.opacity(0.6))
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(0..<lines.count, id: \.self) { idx in
+                            Text(lines[idx].isEmpty ? " " : lines[idx])
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Color.primary)
+                        }
+                    }
+                }
+                .padding(10)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.25)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
