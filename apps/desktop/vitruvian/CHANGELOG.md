@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.10.0...vitruvian-v3.11.0) (2026-10-06)
+
+
+### Features
+
+* **desktop:** render rich markdown blocks and interactive mermaid diagrams in quick prompt ([#2793](https://github.com/VitruvianSoftware/vitruvian-core/issues/2793)) ([549693d](https://github.com/VitruvianSoftware/vitruvian-core/commit/549693d6dc51ef0b305f99445679e9d278722793))
+
 ## [3.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.9.0...vitruvian-v3.10.0) (2026-10-06)
 
 
