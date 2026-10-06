@@ -113,7 +113,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         let root = downloadsURL
             ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         guard let root else { return nil }
-        let configured = defaults.string(forKey: DefaultsKey.whatsAppOrganizerDestinationPath) ?? ""
+        let configured = defaults[Preferences.whatsAppOrganizerDestinationPath]
         let destination = configured.isEmpty
             ? root.appendingPathComponent("WhatsApp", isDirectory: true)
             : URL(fileURLWithPath: configured, isDirectory: true)
@@ -157,10 +157,9 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory),
                   isDirectory.boolValue else { return false }
-            UserDefaults.standard.set(destination.path,
-                                      forKey: DefaultsKey.whatsAppOrganizerDestinationPath)
+            UserDefaults.standard[Preferences.whatsAppOrganizerDestinationPath] = destination.path
         } else {
-            UserDefaults.standard.set("", forKey: DefaultsKey.whatsAppOrganizerDestinationPath)
+            UserDefaults.standard[Preferences.whatsAppOrganizerDestinationPath] = ""
         }
         syncWithPreferences()
         return true
@@ -297,12 +296,10 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
                     Self.saveUndoTransactions(Array(transactions.suffix(20)))
                 }
                 let defaults = UserDefaults.standard
-                defaults.set(Date().timeIntervalSince1970,
-                             forKey: DefaultsKey.whatsAppOrganizerLastRun)
-                defaults.set(result.moved, forKey: DefaultsKey.whatsAppOrganizerLastMoved)
-                defaults.set(result.duplicates,
-                             forKey: DefaultsKey.whatsAppOrganizerLastDuplicates)
-                defaults.set(result.failed, forKey: DefaultsKey.whatsAppOrganizerLastFailed)
+                defaults[Preferences.whatsAppOrganizerLastRun] = Date().timeIntervalSince1970
+                defaults[Preferences.whatsAppOrganizerLastMoved] = result.moved
+                defaults[Preferences.whatsAppOrganizerLastDuplicates] = result.duplicates
+                defaults[Preferences.whatsAppOrganizerLastFailed] = result.failed
                 self.phase = .done(moved: result.moved,
                                    duplicates: result.duplicates,
                                    failed: result.failed)
@@ -331,14 +328,13 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         return Settings(
             destination: destination,
             delayMinutes: WhatsAppDownloadSupport.sanitizedOrganizerDelayMinutes(
-                defaults.integer(forKey: DefaultsKey.whatsAppOrganizerDelayMinutes)),
+                defaults[Preferences.whatsAppOrganizerDelayMinutes]),
             categories: WhatsAppDownloadSupport.decodedCategories(
-                defaults.string(forKey: DefaultsKey.whatsAppOrganizerCategories)),
+                defaults[Preferences.whatsAppOrganizerCategories]),
             layout: WhatsAppOrganizerLayout(
-                rawValue: defaults.string(forKey: DefaultsKey.whatsAppOrganizerLayout) ?? "") ?? .flat,
+                rawValue: defaults[Preferences.whatsAppOrganizerLayout]) ?? .flat,
             duplicateAction: WhatsAppDuplicateAction(
-                rawValue: defaults.string(
-                    forKey: DefaultsKey.whatsAppOrganizerDuplicateAction) ?? "") ?? .trashNew)
+                rawValue: defaults[Preferences.whatsAppOrganizerDuplicateAction]) ?? .trashNew)
     }
 
     nonisolated private static func organize(root: URL, settings: Settings) -> RunResult {
@@ -634,20 +630,19 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
     }
 
     nonisolated private static func loadRecords() -> [Record] {
-        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.whatsAppOrganizerRecords),
-              !data.isEmpty else { return [] }
+        let data = UserDefaults.standard[Preferences.whatsAppOrganizerRecords]
+        guard !data.isEmpty else { return [] }
         return (try? JSONDecoder().decode([Record].self, from: data)) ?? []
     }
 
     nonisolated private static func saveRecords(_ records: [Record]) {
         let data = (try? JSONEncoder().encode(records)) ?? Data()
-        UserDefaults.standard.set(data, forKey: DefaultsKey.whatsAppOrganizerRecords)
+        UserDefaults.standard[Preferences.whatsAppOrganizerRecords] = data
     }
 
     nonisolated private static func loadUndoTransactions() -> [UndoTransaction] {
-        guard let data = UserDefaults.standard.data(
-            forKey: DefaultsKey.whatsAppOrganizerUndoTransaction),
-              !data.isEmpty else { return [] }
+        let data = UserDefaults.standard[Preferences.whatsAppOrganizerUndoTransaction]
+        guard !data.isEmpty else { return [] }
         return (try? JSONDecoder().decode([UndoTransaction].self, from: data)) ?? []
     }
 
@@ -660,8 +655,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
 
     nonisolated private static func saveUndoTransactions(_ transactions: [UndoTransaction]) {
         let data = (try? JSONEncoder().encode(transactions)) ?? Data()
-        UserDefaults.standard.set(data,
-                                  forKey: DefaultsKey.whatsAppOrganizerUndoTransaction)
+        UserDefaults.standard[Preferences.whatsAppOrganizerUndoTransaction] = data
     }
 
     nonisolated private static func recordMap(_ records: [Record]) -> [String: Record] {

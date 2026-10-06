@@ -214,7 +214,7 @@ package enum MouseButtonShortcutSupport {
         MouseSpacesGestureSupport.boundButton(
             isAvailable: defaults.bool(forKey: AppFeature.mouseButtonShortcuts.availabilityKey),
             isEnabled: defaults[Preferences.mouseSpacesGestureEnabled],
-            button: Int64(defaults.integer(forKey: DefaultsKey.mouseSpacesGestureButton)),
+            button: Int64(defaults[Preferences.mouseSpacesGestureButton]),
             hasShortcut: { hasActiveShortcut($0, defaults) },
             claimedByWheel: RadialMenuSupport.claimsMouseButton)
     }
@@ -223,8 +223,8 @@ package enum MouseButtonShortcutSupport {
     /// the shortcut switch is off is inert, so it holds no claim on a button.
     private static func hasActiveShortcut(_ button: Int64, _ defaults: UserDefaults) -> Bool {
         guard defaults[Preferences.mouseButtonShortcutsEnabled] else { return false }
-        let raw = defaults.dictionary(forKey: DefaultsKey.mouseButtonShortcuts) as? [String: String]
-        guard let stored = raw?[String(button)] else { return false }
+        let raw = defaults[Preferences.mouseButtonShortcuts]
+        guard let stored = raw[String(button)] else { return false }
         return GlobalShortcut(storageValue: stored) != nil
     }
 

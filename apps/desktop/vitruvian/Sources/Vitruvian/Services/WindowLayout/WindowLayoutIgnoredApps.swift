@@ -19,10 +19,10 @@ package final class WindowLayoutIgnoredApps: ObservableObject {
 
     package func reload() {
         let defaults = UserDefaults.standard
-        let raw = defaults.stringArray(forKey: DefaultsKey.windowLayoutIgnoredApps) ?? []
+        let raw = defaults[Preferences.windowLayoutIgnoredApps]
         let sanitized = Defaults.sanitizedBundleIdentifierList(raw)
         if raw != sanitized {
-            defaults.set(sanitized, forKey: DefaultsKey.windowLayoutIgnoredApps)
+            defaults[Preferences.windowLayoutIgnoredApps] = sanitized
         }
         apps = sanitized
     }
@@ -30,14 +30,13 @@ package final class WindowLayoutIgnoredApps: ObservableObject {
     package func add(_ bundleID: String) {
         let updated = Defaults.sanitizedBundleIdentifierList(apps + [bundleID])
         guard updated != apps else { return }
-        UserDefaults.standard.set(updated, forKey: DefaultsKey.windowLayoutIgnoredApps)
+        UserDefaults.standard[Preferences.windowLayoutIgnoredApps] = updated
         apps = updated
     }
 
     package func remove(_ bundleID: String) {
         guard apps.contains(bundleID) else { return }
-        UserDefaults.standard.set(apps.filter { $0 != bundleID },
-                                  forKey: DefaultsKey.windowLayoutIgnoredApps)
+        UserDefaults.standard[Preferences.windowLayoutIgnoredApps] = apps.filter { $0 != bundleID }
         reload()
     }
 

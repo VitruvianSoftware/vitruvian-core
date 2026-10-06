@@ -188,7 +188,7 @@ package final class NotchWatchService: ObservableObject {
     package func setCondition(_ condition: NotchWatchCondition) {
         guard condition != self.condition else { return }
         self.condition = condition
-        UserDefaults.standard.set(condition.rawValue, forKey: DefaultsKey.notchWatchCondition)
+        UserDefaults.standard[Preferences.notchWatchCondition] = condition.rawValue
         resetTracker()
     }
 

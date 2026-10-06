@@ -842,7 +842,7 @@ package enum RadialMenuSupport {
             return decoded.compactMap { RadialMenuMouseTrigger.sanitized($0.mouseButton).buttonNumber }
         }
         let legacy = RadialMenuMouseTrigger.sanitized(
-            defaults.string(forKey: DefaultsKey.radialMenuMouseButton))
+            defaults[Preferences.radialMenuMouseButton])
         return legacy.buttonNumber.map { [$0] } ?? []
     }
 
@@ -896,7 +896,7 @@ package enum RadialMenuSupport {
             }
         }
         return RadialMenuMouseTrigger.sanitized(
-            defaults.string(forKey: DefaultsKey.radialMenuMouseButton)) != .off
+            defaults[Preferences.radialMenuMouseButton]) != .off
     }
 
     /// Decodes profiles from JSON blob. If missing, checks for legacy
@@ -914,10 +914,8 @@ package enum RadialMenuSupport {
         }
         // Legacy items migration
         let legacyItemsData = defaults.data(forKey: DefaultsKey.radialMenuItems)
-        let legacyShortcut = defaults.string(forKey: DefaultsKey.radialMenuShortcut)
-            ?? GlobalShortcut.radialMenuDefault.storageValue
-        let legacyMouseButton = defaults.string(forKey: DefaultsKey.radialMenuMouseButton)
-            ?? RadialMenuMouseTrigger.off.rawValue
+        let legacyShortcut = defaults[Preferences.radialMenuShortcut]
+        let legacyMouseButton = defaults[Preferences.radialMenuMouseButton]
 
         let items = decode(legacyItemsData)
         let initialProfile = RadialMenuProfile(

@@ -805,7 +805,7 @@ package final class BrightnessService: ObservableObject {
 
     /// Read at each press, like the other key options.
     private var keyStep: BrightnessSupport.KeyStep {
-        .sanitized(environment.defaults.string(forKey: DefaultsKey.brightnessKeyStep))
+        .sanitized(environment.defaults[Preferences.brightnessKeyStep])
     }
 
     private func syncKeyboardBrightnessHotkeys() {

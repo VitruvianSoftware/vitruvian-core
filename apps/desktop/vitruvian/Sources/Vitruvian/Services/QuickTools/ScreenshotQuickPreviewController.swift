@@ -490,8 +490,7 @@ package final class ScreenshotQuickPreviewController {
             pointer: pointer,
             screens: screens,
             fallback: NSScreen.pointerVisibleFrame)
-        let storedPosition = UserDefaults.standard.string(
-            forKey: DefaultsKey.screenshotPreviewPosition) ?? ""
+        let storedPosition = UserDefaults.standard[Preferences.screenshotPreviewPosition]
         let position = ScreenshotSupport.QuickPreviewPosition(rawValue: storedPosition)
             ?? .automatic
         // With an after-capture action the preview is just a confirmation,

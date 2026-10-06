@@ -1419,12 +1419,12 @@ package final class NotchService: ObservableObject {
     /// that off. Otherwise the reopening preference decides.
     package var reopeningDestination: (module: NotchModule, appPanel: Bool, sections: Bool) {
         if !expanded {
-            let opensActivity = defaults.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
+            let opensActivity = defaults[Preferences.notchOpensActivity]
             let activity = notice?.notificationID != nil ? NotchModule.notifications
                 : opensActivity ? compactActivity?.module : nil
             if let activity, modules.contains(activity) { return (activity, false, false) }
             if defaults[Preferences.notchReturnHome] {
-                let saved = defaults.string(forKey: DefaultsKey.notchHomeModule) ?? ""
+                let saved = defaults[Preferences.notchHomeModule]
                 switch NotchReopeningDestination(rawValue: saved) {
                 case .appPanel: return (modules.contains(.controls) ? .controls : modules.first ?? .controls, true, false)
                 case .explore: return (selected, false, true)
@@ -1445,7 +1445,7 @@ package final class NotchService: ObservableObject {
     /// unless the user turned off opening the visible activity, in which case
     /// the reopening choice decides here too.
     package func openActivity(_ module: NotchModule) {
-        let opensActivity = defaults.object(forKey: DefaultsKey.notchOpensActivity) as? Bool ?? true
+        let opensActivity = defaults[Preferences.notchOpensActivity]
         if opensActivity { open(module) } else { open() }
     }
 
@@ -1607,7 +1607,7 @@ package final class NotchService: ObservableObject {
                 }
             }
             hoverWork = work
-            let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
+            let delay = NotchSupport.sanitizedHoverDelay(defaults[Preferences.notchHoverDelay])
             schedule(delay, work)
         } else if holdsNotification
                     || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
@@ -1679,7 +1679,7 @@ package final class NotchService: ObservableObject {
             self.provideHapticFeedback()
         }
         hoverWork = work
-        let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
+        let delay = NotchSupport.sanitizedHoverDelay(defaults[Preferences.notchHoverDelay])
         schedule(delay, work)
     }
 
@@ -2732,7 +2732,7 @@ package final class NotchService: ObservableObject {
     private static let hasLid = BrightnessService.lidClosed() != nil
 
     private var displayPreference: NotchDisplay {
-        NotchDisplay(rawValue: defaults.string(forKey: DefaultsKey.notchDisplay) ?? "") ?? .automatic
+        NotchDisplay(rawValue: defaults[Preferences.notchDisplay]) ?? .automatic
     }
 
     private func screenIndex(in screens: [NotchDisplayInfo]) -> Int? {
@@ -2814,13 +2814,13 @@ package final class NotchService: ObservableObject {
     private func baseGeometry(for screen: NotchDisplayInfo) -> NotchGeometry {
         NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaTop,
                       cameraWidth: screen.cameraWidth,
-                      layout: NotchSize(rawValue: defaults.string(forKey: DefaultsKey.notchSize) ?? "") ?? .spacious,
+                      layout: NotchSize(rawValue: defaults[Preferences.notchSize]) ?? .spacious,
                       menuBarHeight: menuBarMeasurements.height(
                          displayID: screen.id, frame: screen.frame,
                          visibleTop: screen.visibleFrame.maxY, scale: screen.backingScale,
                          statusBarThickness: statusBarThickness()),
-                      customWidth: defaults.double(forKey: DefaultsKey.notchCustomWidth),
-                      customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
+                      customWidth: defaults[Preferences.notchCustomWidth],
+                      customHeight: defaults[Preferences.notchCustomHeight],
                       cameraFit: NotchCameraFit.current(in: defaults), silhouette: NotchSilhouette.current(in: defaults),
                       capsuleFit: NotchCapsuleFit.current(in: defaults),
                       outline: defaults[Preferences.notchOutlineEnabled])

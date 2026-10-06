@@ -107,8 +107,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
         phase = .scanning
 
         let settings = Self.settingsSnapshot()
-        let excluded = Set(UserDefaults.standard.stringArray(
-            forKey: DefaultsKey.whatsAppDownloadsExclusions) ?? [])
+        let excluded = Set(UserDefaults.standard[Preferences.whatsAppDownloadsExclusions])
 
         queue.async { [weak self] in
             let result: Result<[Candidate], Error>
@@ -182,22 +181,18 @@ package final class WhatsAppDownloadManager: ObservableObject {
 
     package func exclude(_ id: String) {
         guard let index = candidates.firstIndex(where: { $0.id == id }) else { return }
-        var exclusions = Set(UserDefaults.standard.stringArray(
-            forKey: DefaultsKey.whatsAppDownloadsExclusions) ?? [])
+        var exclusions = Set(UserDefaults.standard[Preferences.whatsAppDownloadsExclusions])
         exclusions.insert(id)
-        UserDefaults.standard.set(Array(exclusions).sorted(),
-                                  forKey: DefaultsKey.whatsAppDownloadsExclusions)
+        UserDefaults.standard[Preferences.whatsAppDownloadsExclusions] = Array(exclusions).sorted()
         candidates[index].excluded = true
         candidates[index].include = false
     }
 
     package func removeExclusion(_ id: String) {
         guard let index = candidates.firstIndex(where: { $0.id == id }) else { return }
-        var exclusions = Set(UserDefaults.standard.stringArray(
-            forKey: DefaultsKey.whatsAppDownloadsExclusions) ?? [])
+        var exclusions = Set(UserDefaults.standard[Preferences.whatsAppDownloadsExclusions])
         exclusions.remove(id)
-        UserDefaults.standard.set(Array(exclusions).sorted(),
-                                  forKey: DefaultsKey.whatsAppDownloadsExclusions)
+        UserDefaults.standard[Preferences.whatsAppDownloadsExclusions] = Array(exclusions).sorted()
         candidates[index].excluded = false
         candidates[index].include = candidates[index].eligibleForRules
     }
@@ -260,10 +255,10 @@ package final class WhatsAppDownloadManager: ObservableObject {
 
     private func recordCleanup(moved: Int, bytes: Int64, failed: Int, automatic: Bool) {
         let defaults = UserDefaults.standard
-        defaults.set(Date().timeIntervalSince1970, forKey: DefaultsKey.whatsAppDownloadsLastCleanup)
-        defaults.set(moved, forKey: DefaultsKey.whatsAppDownloadsLastCleanupCount)
-        defaults.set(bytes, forKey: DefaultsKey.whatsAppDownloadsLastCleanupBytes)
-        defaults.set(failed, forKey: DefaultsKey.whatsAppDownloadsLastCleanupFailed)
+        defaults[Preferences.whatsAppDownloadsLastCleanup] = Date().timeIntervalSince1970
+        defaults[Preferences.whatsAppDownloadsLastCleanupCount] = moved
+        defaults[Preferences.whatsAppDownloadsLastCleanupBytes] = Int(bytes)
+        defaults[Preferences.whatsAppDownloadsLastCleanupFailed] = failed
         defaults[Preferences.whatsAppDownloadsLastCleanupAutomatic] = automatic
     }
 
@@ -276,12 +271,12 @@ package final class WhatsAppDownloadManager: ObservableObject {
 
     private static func settingsSnapshot() -> SettingsSnapshot {
         let defaults = UserDefaults.standard
-        let start = defaults.double(forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate)
+        let start = defaults[Preferences.whatsAppDownloadsAutomaticStartDate]
         return SettingsSnapshot(
             retentionDays: WhatsAppDownloadSupport.sanitizedRetentionDays(
-                defaults.integer(forKey: DefaultsKey.whatsAppDownloadsRetentionDays)),
+                defaults[Preferences.whatsAppDownloadsRetentionDays]),
             categories: WhatsAppDownloadSupport.decodedCategories(
-                defaults.string(forKey: DefaultsKey.whatsAppDownloadsCategories)),
+                defaults[Preferences.whatsAppDownloadsCategories]),
             includeExisting: defaults[Preferences.whatsAppDownloadsIncludeExisting],
             automaticStartDate: start > 0 ? Date(timeIntervalSince1970: start) : nil)
     }

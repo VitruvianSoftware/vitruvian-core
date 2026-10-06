@@ -43,7 +43,7 @@ package struct SwitcherAppRulesList: View {
 
     private static var savedRules: [String: SwitcherAppRule] {
         SwitcherAppRule.rules(
-            storedValue: UserDefaults.standard.dictionary(forKey: DefaultsKey.switcherAppRules))
+            storedValue: UserDefaults.standard[Preferences.switcherAppRules])
     }
 
     private func binding(for bundleID: String) -> Binding<SwitcherAppRule> {
@@ -59,7 +59,7 @@ package struct SwitcherAppRulesList: View {
 
     private func save(_ updated: [String: SwitcherAppRule]) {
         let stored = SwitcherAppRule.storedValue(updated)
-        UserDefaults.standard.set(stored, forKey: DefaultsKey.switcherAppRules)
+        UserDefaults.standard[Preferences.switcherAppRules] = stored
         rules = SwitcherAppRule.rules(storedValue: stored as [String: Any])
     }
 }

@@ -132,7 +132,7 @@ package final class UpdateIntroSequence {
     }
 
     package func markShowcaseSeen() {
-        host.defaults.set(UpdateShowcaseInfo.releaseVersion, forKey: DefaultsKey.updateShowcaseIntroVersion)
+        host.defaults[Preferences.updateShowcaseIntroVersion] = UpdateShowcaseInfo.releaseVersion
     }
 
     private func showHighlightsIfNeeded() -> Bool {
@@ -157,7 +157,7 @@ package final class UpdateIntroSequence {
 
     private func showShowcaseIfNeeded() -> Bool {
         guard host.version() == UpdateShowcaseInfo.releaseVersion,
-              host.defaults.string(forKey: DefaultsKey.updateShowcaseIntroVersion)
+              host.defaults[Preferences.updateShowcaseIntroVersion]
                 != UpdateShowcaseInfo.releaseVersion else {
             host.cleanupShowcaseCache()
             return false

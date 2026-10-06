@@ -473,7 +473,7 @@ package final class ExtraBrightnessService: ObservableObject {
         if let overlayWindow, !overlayWindow.isVisible { overlayWindow.orderFrontRegardless() }
         if let triggerWindow, !triggerWindow.isVisible { triggerWindow.orderFrontRegardless() }
         presentTrigger()
-        let level = Double(UserDefaults.standard.integer(forKey: DefaultsKey.extraBrightnessLevel)) / 100.0
+        let level = Double(UserDefaults.standard[Preferences.extraBrightnessLevel]) / 100.0
         let headroom = Double(screen.maximumExtendedDynamicRangeColorComponentValue)
         let potential = Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue)
         let engaged = headroom > ExtraBrightnessSupport.headroomThreshold

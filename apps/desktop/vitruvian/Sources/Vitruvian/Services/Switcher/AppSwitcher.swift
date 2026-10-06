@@ -1720,7 +1720,7 @@ package final class AppSwitcher: ObservableObject {
         }
         pendingShow = work
         let appearanceDelay = SwitcherSupport.appearanceDelay(
-            milliseconds: UserDefaults.standard.integer(forKey: DefaultsKey.switcherAppearanceDelay))
+            milliseconds: UserDefaults.standard[Preferences.switcherAppearanceDelay])
         DispatchQueue.main.asyncAfter(deadline: .now() + appearanceDelay, execute: work)
     }
 
@@ -1811,7 +1811,7 @@ package final class AppSwitcher: ObservableObject {
 
     private var screenPlacement: SwitcherScreenPlacement {
         SwitcherScreenPlacement.placement(
-            storedValue: UserDefaults.standard.string(forKey: DefaultsKey.switcherScreenPlacement))
+            storedValue: UserDefaults.standard[Preferences.switcherScreenPlacement])
     }
 
     /// The screen the panel is laid out on. Every choice falls back to the

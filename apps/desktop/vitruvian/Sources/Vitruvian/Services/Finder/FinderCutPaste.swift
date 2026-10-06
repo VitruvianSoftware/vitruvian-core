@@ -128,7 +128,7 @@ package final class FinderCutPaste: ObservableObject {
         let available = AppFeature.finderCutPaste.isAvailable
         cutPasteEnabled = available
             && UserDefaults.standard[Preferences.finderCutPasteEnabled]
-        showHUD = UserDefaults.standard.object(forKey: DefaultsKey.finderCutPasteShowHUD) as? Bool ?? true
+        showHUD = UserDefaults.standard[Preferences.finderCutPasteShowHUD]
         pasteImageAsFileEnabled = available
             && UserDefaults.standard[Preferences.finderPasteImageAsFile]
         if SessionActivitySupport.tapShouldRun(featureWanted: cutPasteEnabled || pasteImageAsFileEnabled,

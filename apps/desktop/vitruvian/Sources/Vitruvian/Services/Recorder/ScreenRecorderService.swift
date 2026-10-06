@@ -439,7 +439,7 @@ package final class ScreenRecorderService: ObservableObject {
     private func startCountdown(for region: RecorderSupport.Region, generation: Int) {
         guard pendingStartIsAuthorized(generation), session == nil, !isFinishing else { return }
         let delay = ScreenshotSupport.sanitizedDelay(
-            UserDefaults.standard.integer(forKey: DefaultsKey.recorderCountdown))
+            UserDefaults.standard[Preferences.recorderCountdown])
         guard delay > 0 else {
             beginRecording(region: region, generation: generation)
             return
@@ -477,7 +477,7 @@ package final class ScreenRecorderService: ObservableObject {
         }
         let defaults = UserDefaults.standard
         let frameRate = RecorderSupport.sanitizedFrameRate(
-            defaults.integer(forKey: DefaultsKey.recorderFrameRate))
+            defaults[Preferences.recorderFrameRate])
         let capturesSystemAudio = defaults[Preferences.recorderSystemAudio]
         let capturesMicrophone = defaults[Preferences.recorderMicrophone]
             && Permissions.shared.microphone == .granted
@@ -710,7 +710,7 @@ package final class ScreenRecorderService: ObservableObject {
                                 fileExtension: String) -> URL {
         let manager = FileManager.default
         var folder: URL?
-        let stored = UserDefaults.standard.string(forKey: DefaultsKey.recorderSaveFolder) ?? ""
+        let stored = UserDefaults.standard[Preferences.recorderSaveFolder]
         if !stored.isEmpty {
             let expanded = (stored as NSString).expandingTildeInPath
             var isDirectory: ObjCBool = false

@@ -239,7 +239,7 @@ package final class ScreenshotService: ObservableObject {
             return
         }
         let delay = ScreenshotSupport.sanitizedDelay(
-            UserDefaults.standard.integer(forKey: DefaultsKey.screenshotDelay))
+            UserDefaults.standard[Preferences.screenshotDelay])
         if delay > 0 {
             countdownMode = mode
             countdownRemaining = delay
@@ -996,7 +996,7 @@ package final class ScreenshotService: ObservableObject {
     nonisolated package static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, consumedNumber: Int?) {
         let manager = FileManager.default
         var folder: URL?
-        let stored = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveFolder) ?? ""
+        let stored = UserDefaults.standard[Preferences.screenshotSaveFolder]
         if !stored.isEmpty {
             let expanded = (stored as NSString).expandingTildeInPath
             var isDirectory: ObjCBool = false
@@ -1008,7 +1008,7 @@ package final class ScreenshotService: ObservableObject {
         var destination = folder
             ?? manager.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? manager.homeDirectoryForCurrentUser
-        let subfolderPattern = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveSubfolder) ?? ""
+        let subfolderPattern = UserDefaults.standard[Preferences.screenshotSaveSubfolder]
         let subfolder = ScreenshotSupport.expandSaveSubfolder(subfolderPattern, date: Date())
         if !subfolder.isEmpty {
             let dated = destination.appendingPathComponent(subfolder, isDirectory: true)
@@ -1032,16 +1032,16 @@ package final class ScreenshotService: ObservableObject {
     /// number sequence when the pattern actually uses it.
     nonisolated private static func fileName(strings: ScreenshotFeatureStrings) -> (name: String, consumedNumber: Int?) {
         let defaults = UserDefaults.standard
-        let pattern = (defaults.string(forKey: DefaultsKey.screenshotFileNamePattern) ?? "")
+        let pattern = (defaults[Preferences.screenshotFileNamePattern])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pattern.isEmpty else {
             return (ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date()), nil)
         }
 
         if ScreenshotSupport.fileNamePatternUsesNumber(pattern) {
-            let number = defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext)
+            let number = defaults[Preferences.screenshotFileNumberNext]
             let expanded = ScreenshotSupport.expandFileNamePattern(pattern, date: Date(), number: number)
-            defaults.set(number + 1, forKey: DefaultsKey.screenshotFileNumberNext)
+            defaults[Preferences.screenshotFileNumberNext] = number + 1
             return (expanded + ".png", number)
         } else {
             let expanded = ScreenshotSupport.expandFileNamePattern(pattern, date: Date(), number: 0)
@@ -1054,10 +1054,10 @@ package final class ScreenshotService: ObservableObject {
     /// so a rewind can never undo another capture's number.
     nonisolated package static func rewindNumberSequence(toReuse consumed: Int) {
         let defaults = UserDefaults.standard
-        guard defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext) == consumed + 1 else {
+        guard defaults[Preferences.screenshotFileNumberNext] == consumed + 1 else {
             return
         }
-        defaults.set(consumed, forKey: DefaultsKey.screenshotFileNumberNext)
+        defaults[Preferences.screenshotFileNumberNext] = consumed
     }
 }
 

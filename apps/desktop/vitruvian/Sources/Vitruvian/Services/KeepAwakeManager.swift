@@ -324,7 +324,7 @@ package final class KeepAwakeManager: ObservableObject {
         sessionMinutes = isActive ? minutes : nil
         guard isActive else { return }
         // Every entry point records the pick, so each switch restarts the same session.
-        system.defaults.set(minutes, forKey: DefaultsKey.defaultDuration)
+        system.defaults[Preferences.defaultDuration] = minutes
         system.defaults[Preferences.keepAwakeSwitchUsesUntil] = false
     }
 
@@ -336,7 +336,7 @@ package final class KeepAwakeManager: ObservableObject {
         sessionMinutes = nil
         guard isActive else { return }
         system.defaults[Preferences.keepAwakeSwitchUsesUntil] = true
-        system.defaults.set(date.timeIntervalSinceReferenceDate, forKey: DefaultsKey.keepAwakeUntilTime)
+        system.defaults[Preferences.keepAwakeUntilTime] = date.timeIntervalSinceReferenceDate
     }
 
     /// Restarts the last pick: the saved end time while it is still ahead,
@@ -344,11 +344,11 @@ package final class KeepAwakeManager: ObservableObject {
     /// tomorrow here, which would silently start a session of almost a day.
     package func startLastPick() {
         let defaults = system.defaults
-        let end = Date(timeIntervalSinceReferenceDate: defaults.double(forKey: DefaultsKey.keepAwakeUntilTime))
+        let end = Date(timeIntervalSinceReferenceDate: defaults[Preferences.keepAwakeUntilTime])
         if defaults[Preferences.keepAwakeSwitchUsesUntil], end > Date() {
             activate(until: end)
         } else {
-            activate(minutes: Defaults.sanitizedDefaultDuration(defaults.integer(forKey: DefaultsKey.defaultDuration)))
+            activate(minutes: Defaults.sanitizedDefaultDuration(defaults[Preferences.defaultDuration]))
         }
     }
 
@@ -385,7 +385,7 @@ package final class KeepAwakeManager: ObservableObject {
               system.defaults[Preferences.keepAwakeAutoStart],
               !isActive else { return }
         activate(minutes: Defaults.sanitizedDefaultDuration(
-            system.defaults.integer(forKey: DefaultsKey.defaultDuration)))
+            system.defaults[Preferences.defaultDuration]))
     }
 
     package func extend(minutes: Int) {
@@ -431,7 +431,7 @@ package final class KeepAwakeManager: ObservableObject {
     private func syncAutomationMonitoring() {
         let available = AppFeature.keepAwake.isAvailable(in: system.defaults)
         let selectedApps = Defaults.sanitizedBundleIdentifierList(
-            system.defaults.stringArray(forKey: DefaultsKey.keepAwakeRunningAppBundleIDs) ?? [])
+            system.defaults[Preferences.keepAwakeRunningAppBundleIDs])
         if runningAppBundleIDs != selectedApps { runningAppBundleIDs = selectedApps }
         syncScreenLockMonitoring()
         let observeScreens = available
@@ -713,7 +713,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     private func automaticSessionAllowedByBatteryProtection() -> Bool {
         let limit = Defaults.sanitizedBatteryLimit(
-            system.defaults.integer(forKey: DefaultsKey.batteryLimit)
+            system.defaults[Preferences.batteryLimit]
         )
         guard limit > 0,
               let battery = system.battery(),
@@ -1204,7 +1204,7 @@ package final class KeepAwakeManager: ObservableObject {
     /// The battery level while battery protection would end any session at
     /// once (on battery, at or below the limit); nil when a session can run.
     package func batteryProtectionPercent() -> Int? {
-        let limit = Defaults.sanitizedBatteryLimit(system.defaults.integer(forKey: DefaultsKey.batteryLimit))
+        let limit = Defaults.sanitizedBatteryLimit(system.defaults[Preferences.batteryLimit])
         guard limit > 0,
               let battery = system.battery(),
               battery.isOnBattery,
@@ -1224,7 +1224,7 @@ package final class KeepAwakeManager: ObservableObject {
         }
 
         let minutes = Defaults.sanitizedKeepAwakeMouseJiggleInterval(
-            system.defaults.integer(forKey: DefaultsKey.keepAwakeMouseJiggleInterval)
+            system.defaults[Preferences.keepAwakeMouseJiggleInterval]
         )
         let interval = TimeInterval(minutes * 60)
         if mouseJiggleTimer?.timeInterval == interval { return }

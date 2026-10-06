@@ -287,7 +287,7 @@ extension ScrollWheelSupport {
         guard isAvailable, defaults[Preferences.linearScrollEnabled], !isExcepted() else {
             return nil
         }
-        return sanitizedLinesPerNotch(defaults.integer(forKey: DefaultsKey.linearScrollLines))
+        return sanitizedLinesPerNotch(defaults[Preferences.linearScrollLines])
     }
 
     /// Clamps the persisted value to its allowed range (0 or garbage falls

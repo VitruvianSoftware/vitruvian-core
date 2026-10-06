@@ -28,7 +28,7 @@ package enum NotchWatchCondition: String, CaseIterable, Identifiable {
     }
 
     package static func saved(in defaults: UserDefaults = .standard) -> NotchWatchCondition {
-        NotchWatchCondition(rawValue: defaults.string(forKey: DefaultsKey.notchWatchCondition) ?? "") ?? .changes
+        NotchWatchCondition(rawValue: defaults[Preferences.notchWatchCondition]) ?? .changes
     }
 }
 

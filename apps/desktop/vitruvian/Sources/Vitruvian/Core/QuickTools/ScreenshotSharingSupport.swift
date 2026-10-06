@@ -11,7 +11,7 @@ package enum ScreenshotShareDuration: Int, CaseIterable, Codable, Identifiable {
     package var id: Int { rawValue }
 
     package static func saved(in defaults: UserDefaults = .standard) -> Self {
-        Self(rawValue: defaults.integer(forKey: DefaultsKey.screenshotUploadDuration)) ?? .oneHour
+        Self(rawValue: defaults[Preferences.screenshotUploadDuration]) ?? .oneHour
     }
 
     package func title(_ strings: ScreenshotFeatureStrings) -> String {

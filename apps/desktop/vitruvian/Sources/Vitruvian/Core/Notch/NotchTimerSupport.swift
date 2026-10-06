@@ -49,11 +49,11 @@ package struct NotchPomodoroConfiguration: Equatable {
     }
 
     package static func load(in defaults: UserDefaults = .standard) -> Self {
-        Self(focusMinutes: defaults.object(forKey: DefaultsKey.notchPomodoroFocusMinutes) as? Int ?? 25,
-             shortBreakMinutes: defaults.object(forKey: DefaultsKey.notchPomodoroShortBreakMinutes) as? Int ?? 5,
-             longBreakMinutes: defaults.object(forKey: DefaultsKey.notchPomodoroLongBreakMinutes) as? Int ?? 15,
-             longBreakInterval: defaults.object(forKey: DefaultsKey.notchPomodoroLongBreakInterval) as? Int ?? 4,
-             totalSessions: defaults.object(forKey: DefaultsKey.notchPomodoroTotalSessions) as? Int ?? 4)
+        Self(focusMinutes: defaults[Preferences.notchPomodoroFocusMinutes],
+             shortBreakMinutes: defaults[Preferences.notchPomodoroShortBreakMinutes],
+             longBreakMinutes: defaults[Preferences.notchPomodoroLongBreakMinutes],
+             longBreakInterval: defaults[Preferences.notchPomodoroLongBreakInterval],
+             totalSessions: defaults[Preferences.notchPomodoroTotalSessions])
     }
 }
 
@@ -184,7 +184,7 @@ package struct NotchTimerSession: Equatable {
 
 package enum NotchTimerSupport {
     package static func isSoundEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: DefaultsKey.notchTimerSoundEnabled) as? Bool ?? true
+        defaults[Preferences.notchTimerSoundEnabled]
     }
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
@@ -216,7 +216,7 @@ package enum NotchTimerSupport {
     package static let stopwatchLimit: TimeInterval = 100 * 3600 - 1
 
     package static func savedMode(in defaults: UserDefaults = .standard) -> NotchTimerMode {
-        NotchTimerMode(rawValue: defaults.string(forKey: DefaultsKey.notchTimerMode) ?? "") ?? .timer
+        NotchTimerMode(rawValue: defaults[Preferences.notchTimerMode]) ?? .timer
     }
 
     private static func wholeSeconds(_ value: TimeInterval, limit: TimeInterval,

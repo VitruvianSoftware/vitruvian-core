@@ -21,7 +21,7 @@ package final class AppAppearanceController: ObservableObject {
     @Published package var appearance: AppAppearance {
         didSet {
             guard appearance != oldValue else { return }
-            UserDefaults.standard.set(appearance.rawValue, forKey: DefaultsKey.appearance)
+            UserDefaults.standard[Preferences.appearance] = appearance.rawValue
             apply()
         }
     }
@@ -42,7 +42,7 @@ package final class AppAppearanceController: ObservableObject {
 
     private init() {
         appearance = AppAppearance.sanitized(
-            UserDefaults.standard.string(forKey: DefaultsKey.appearance)
+            UserDefaults.standard[Preferences.appearance]
         )
         liquidGlassEnabled = UserDefaults.standard[Preferences.liquidGlassEnabled]
         notchLiquidGlassEnabled = UserDefaults.standard[Preferences.notchLiquidGlassEnabled]

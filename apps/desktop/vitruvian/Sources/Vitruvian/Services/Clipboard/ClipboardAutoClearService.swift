@@ -124,7 +124,7 @@ package final class ClipboardAutoClearService {
 
     private func tick() {
         let delay = Defaults.sanitizedClipboardAutoClearDelay(
-            UserDefaults.standard.integer(forKey: DefaultsKey.clipboardAutoClearDelay))
+            UserDefaults.standard[Preferences.clipboardAutoClearDelay])
         readChangeCount { [weak self] count in
             guard let self else { return }
             switch ClipboardAutoClearSupport.decide(changeCount: count,

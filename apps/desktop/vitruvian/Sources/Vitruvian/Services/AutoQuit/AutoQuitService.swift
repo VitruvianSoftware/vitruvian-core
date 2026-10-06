@@ -912,10 +912,10 @@ package final class AutoQuitService: ObservableObject {
     // MARK: - Exceptions
 
     package func reloadExceptions() {
-        let raw = UserDefaults.standard.stringArray(forKey: DefaultsKey.autoQuitExceptions) ?? []
+        let raw = UserDefaults.standard[Preferences.autoQuitExceptions]
         let sanitized = Defaults.sanitizedAutoQuitExceptions(raw)
         if raw != sanitized {
-            UserDefaults.standard.set(sanitized, forKey: DefaultsKey.autoQuitExceptions)
+            UserDefaults.standard[Preferences.autoQuitExceptions] = sanitized
         }
         exceptions = sanitized
     }
@@ -925,14 +925,14 @@ package final class AutoQuitService: ObservableObject {
         guard !bundleID.isEmpty, !exceptions.contains(bundleID) else { return }
         var list = Defaults.sanitizedAutoQuitExceptions(exceptions)
         list.append(bundleID)
-        UserDefaults.standard.set(list, forKey: DefaultsKey.autoQuitExceptions)
+        UserDefaults.standard[Preferences.autoQuitExceptions] = list
         reloadExceptions()
     }
 
     package func removeException(_ bundleID: String) {
         guard !isMandatoryException(bundleID) else { return }
         let list = Defaults.sanitizedAutoQuitExceptions(exceptions.filter { $0 != bundleID })
-        UserDefaults.standard.set(list, forKey: DefaultsKey.autoQuitExceptions)
+        UserDefaults.standard[Preferences.autoQuitExceptions] = list
         reloadExceptions()
     }
 

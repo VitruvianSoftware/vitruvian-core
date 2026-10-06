@@ -93,14 +93,14 @@ package enum NotchAgentSupport {
 
     /// Every card in the saved order; cards added later join at the end.
     package static func orderedCards(in defaults: UserDefaults = .standard) -> [NotchAgentCard] {
-        let stored = (defaults.string(forKey: DefaultsKey.notchAgentsCardOrder) ?? "")
+        let stored = (defaults[Preferences.notchAgentsCardOrder])
             .split(separator: ",").compactMap { NotchAgentCard(rawValue: String($0)) }
         var seen = Set<NotchAgentCard>()
         return (stored + NotchAgentCard.allCases).filter { seen.insert($0).inserted }
     }
 
     package static func hiddenCards(in defaults: UserDefaults = .standard) -> Set<NotchAgentCard> {
-        Set((defaults.string(forKey: DefaultsKey.notchAgentsHiddenCards) ?? "")
+        Set((defaults[Preferences.notchAgentsHiddenCards])
             .split(separator: ",").compactMap { NotchAgentCard(rawValue: String($0)) })
     }
 
@@ -110,15 +110,15 @@ package enum NotchAgentSupport {
     }
 
     package static func period(in defaults: UserDefaults = .standard) -> AgentPeriod {
-        AgentPeriod(rawValue: defaults.string(forKey: DefaultsKey.notchAgentsPeriod) ?? "") ?? .today
+        AgentPeriod(rawValue: defaults[Preferences.notchAgentsPeriod]) ?? .today
     }
 
     package static func limitDisplay(in defaults: UserDefaults = .standard) -> NotchAgentLimitDisplay {
-        NotchAgentLimitDisplay(rawValue: defaults.string(forKey: DefaultsKey.notchAgentsLimitDisplay) ?? "") ?? .remaining
+        NotchAgentLimitDisplay(rawValue: defaults[Preferences.notchAgentsLimitDisplay]) ?? .remaining
     }
 
     package static func limitFocus(in defaults: UserDefaults = .standard) -> NotchAgentLimitFocus {
-        NotchAgentLimitFocus(rawValue: defaults.string(forKey: DefaultsKey.notchAgentsLimitFocus) ?? "") ?? .mostUsed
+        NotchAgentLimitFocus(rawValue: defaults[Preferences.notchAgentsLimitFocus]) ?? .mostUsed
     }
 
     /// The allowance the closed island shows: the window the person chose,
@@ -156,35 +156,35 @@ package enum NotchAgentSupport {
     }
 
     package static func showsLiveActivity(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && (defaults.object(forKey: DefaultsKey.notchAgentsLiveActivity) as? Bool ?? true)
+        isEnabled(in: defaults) && (defaults[Preferences.notchAgentsLiveActivity])
     }
 
     package static func readout(in defaults: UserDefaults = .standard) -> NotchAgentReadout {
-        NotchAgentReadout(rawValue: defaults.string(forKey: DefaultsKey.notchAgentsReadout) ?? "") ?? .elapsed
+        NotchAgentReadout(rawValue: defaults[Preferences.notchAgentsReadout]) ?? .elapsed
     }
 
     /// The shortest turn worth a notice when it ends; nil while those are off.
     package static func finishMinimum(in defaults: UserDefaults = .standard) -> TimeInterval? {
-        guard defaults.object(forKey: DefaultsKey.notchAgentsFinishAlert) as? Bool ?? true else { return nil }
-        let value = defaults.object(forKey: DefaultsKey.notchAgentsFinishMinimum) as? Double ?? defaultFinishMinimum
+        guard defaults[Preferences.notchAgentsFinishAlert] else { return nil }
+        let value = defaults[Preferences.notchAgentsFinishMinimum]
         return value.isFinite ? min(3600, max(0, value)) : defaultFinishMinimum
     }
 
     /// Percent used that earns a warning; nil while warnings are off.
     package static func limitThreshold(in defaults: UserDefaults = .standard) -> Double? {
-        guard defaults.object(forKey: DefaultsKey.notchAgentsLimitAlert) as? Bool ?? true else { return nil }
-        let value = defaults.object(forKey: DefaultsKey.notchAgentsLimitThreshold) as? Double ?? defaultLimitThreshold
+        guard defaults[Preferences.notchAgentsLimitAlert] else { return nil }
+        let value = defaults[Preferences.notchAgentsLimitThreshold]
         return value.isFinite ? min(100, max(1, value)) : defaultLimitThreshold
     }
 
     package static func dailyBudget(in defaults: UserDefaults = .standard) -> Double? {
-        let value = defaults.double(forKey: DefaultsKey.notchAgentsDailyBudget)
+        let value = defaults[Preferences.notchAgentsDailyBudget]
         return value.isFinite && value > 0 ? value : nil
     }
 
     /// Whether the public price list may be downloaded once a day.
     package static func updatesPrices(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: DefaultsKey.notchAgentsPriceUpdates) as? Bool ?? true
+        defaults[Preferences.notchAgentsPriceUpdates]
     }
 
     // MARK: Strip

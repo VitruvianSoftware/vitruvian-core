@@ -530,17 +530,17 @@ package final class CommandBarService: ObservableObject {
     /// decoding the same handful of strings over and over.
     private var storedAliases: [String: String] {
         CommandBarPreferences.decodeAliases(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarAliases))
+            UserDefaults.standard[Preferences.commandBarAliases])
     }
 
     private var storedPins: [String] {
         CommandBarPreferences.decodePins(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarPins) ?? "")
+            UserDefaults.standard[Preferences.commandBarPins])
     }
 
     package var rowShortcuts: [String: GlobalShortcut] {
         CommandBarRowShortcuts.decode(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarRowShortcuts))
+            UserDefaults.standard[Preferences.commandBarRowShortcuts])
     }
 
     package func rowShortcut(for entry: CommandBarEntry) -> GlobalShortcut? {
@@ -554,8 +554,11 @@ package final class CommandBarService: ObservableObject {
         guard AppFeature.commandBar.isAvailable else { return nil }
         if let shortcut, let message = rowShortcutIssue(shortcut, for: entry) { return message }
         let next = CommandBarRowShortcuts.setting(shortcut, for: entry.stableKey, in: rowShortcuts)
-        UserDefaults.standard.set(CommandBarRowShortcuts.encode(next),
-                                  forKey: DefaultsKey.commandBarRowShortcuts)
+        if let encoded = CommandBarRowShortcuts.encode(next) {
+            UserDefaults.standard[Preferences.commandBarRowShortcuts] = encoded
+        } else {
+            UserDefaults.standard.removeValue(for: Preferences.commandBarRowShortcuts)
+        }
         syncRowHotkeys()
         refreshAfterPreferenceChange()
         return nil
@@ -635,7 +638,7 @@ package final class CommandBarService: ObservableObject {
         // argument and nothing on screen. Direct execution bypasses result
         // filtering. Do nothing when the row is hidden or Links is disabled.
         if let link = CommandBarLinks.directRunScript(forStableKey: key, in: CommandBarLinks.decode(
-            UserDefaults.standard.data(forKey: DefaultsKey.commandBarLinks))) {
+            UserDefaults.standard[Preferences.commandBarLinks])) {
             guard !hiddenCache.contains(key), isEnabled(.links) else { return }
             CommandBarCatalog.runScriptDirectly(link)
             return
@@ -654,7 +657,7 @@ package final class CommandBarService: ObservableObject {
 
     private var storedHiddenKeys: Set<String> {
         CommandBarPreferences.decodeHidden(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarHidden) ?? "")
+            UserDefaults.standard[Preferences.commandBarHidden])
     }
 
     /// What was in the field, and what was selected, at the instant a row ran.
@@ -867,7 +870,7 @@ package final class CommandBarService: ObservableObject {
         // Before `reloadFileSearchCaches()`, which asks whether the Files
         // source is on.
         disabledCache = CommandBarPreferences.disabledSources(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarDisabledSources) ?? "")
+            from: UserDefaults.standard[Preferences.commandBarDisabledSources])
         runs.usage = CommandBarUsage.decode(
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         shortcutCache = rowShortcuts
@@ -879,8 +882,8 @@ package final class CommandBarService: ObservableObject {
     private func reloadFileSearchCaches() {
         // A cached answer belongs to the scopes and ignores that produced it.
         // Changing either invalidates pending and completed searches together.
-        let scopesRaw = UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileScopes) ?? ""
-        let ignoresRaw = UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileIgnores) ?? ""
+        let scopesRaw = UserDefaults.standard[Preferences.commandBarFileScopes]
+        let ignoresRaw = UserDefaults.standard[Preferences.commandBarFileIgnores]
         let enabled = isEnabled(.files)
         let signature = "\(enabled)\0\(scopesRaw)\0\(ignoresRaw)"
         guard signature != fileSearchPreferenceSignature else { return }
@@ -956,14 +959,17 @@ package final class CommandBarService: ObservableObject {
     /// list refreshes the instant the person changes their mind.
     package func togglePin(_ entry: CommandBarEntry) {
         let next = CommandBarPreferences.togglingPin(entry.stableKey, in: storedPins)
-        UserDefaults.standard.set(CommandBarPreferences.encodePins(next), forKey: DefaultsKey.commandBarPins)
+        UserDefaults.standard[Preferences.commandBarPins] = CommandBarPreferences.encodePins(next)
         refreshAfterPreferenceChange()
     }
 
     package func setAlias(_ alias: String, for entry: CommandBarEntry) {
         let next = CommandBarPreferences.settingAlias(alias, for: entry.stableKey, in: storedAliases)
-        UserDefaults.standard.set(CommandBarPreferences.encodeAliases(next),
-                                  forKey: DefaultsKey.commandBarAliases)
+        if let encoded = CommandBarPreferences.encodeAliases(next) {
+            UserDefaults.standard[Preferences.commandBarAliases] = encoded
+        } else {
+            UserDefaults.standard.removeValue(for: Preferences.commandBarAliases)
+        }
         refreshAfterPreferenceChange()
     }
 
@@ -978,8 +984,7 @@ package final class CommandBarService: ObservableObject {
 
     package func toggleHidden(_ entry: CommandBarEntry) {
         let next = CommandBarPreferences.togglingHidden(entry.stableKey, in: storedHiddenKeys)
-        UserDefaults.standard.set(CommandBarPreferences.encodeHidden(next),
-                                  forKey: DefaultsKey.commandBarHidden)
+        UserDefaults.standard[Preferences.commandBarHidden] = CommandBarPreferences.encodeHidden(next)
         refreshAfterPreferenceChange()
     }
 
@@ -1468,7 +1473,7 @@ package final class CommandBarService: ObservableObject {
         // that one link is hidden - a switched-off source must not still
         // spawn a process behind it.
         let savedLinks = CommandBarLinks.decode(
-            UserDefaults.standard.data(forKey: DefaultsKey.commandBarLinks))
+            UserDefaults.standard[Preferences.commandBarLinks])
         let scriptMatch = isEnabled(.links)
             ? CommandBarLinks.matchingScriptLink(in: savedLinks, query: trimmed)
             : nil
@@ -2809,7 +2814,7 @@ package final class CommandBarService: ObservableObject {
     /// open on.
     private var positionOffset: CGSize {
         CommandBarPreferences.decodePositionOffset(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarPositionOffset) ?? "")
+            UserDefaults.standard[Preferences.commandBarPositionOffset])
     }
 
     // MARK: - Moving the bar
@@ -2830,9 +2835,9 @@ package final class CommandBarService: ObservableObject {
                             height: panel.frame.maxY - (screen.minY + screen.height * 0.72))
         let encoded = CommandBarPreferences.encodePositionOffset(offset)
         if encoded.isEmpty {
-            UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
+            UserDefaults.standard.removeValue(for: Preferences.commandBarPositionOffset)
         } else {
-            UserDefaults.standard.set(encoded, forKey: DefaultsKey.commandBarPositionOffset)
+            UserDefaults.standard[Preferences.commandBarPositionOffset] = encoded
         }
         hasCustomPosition = !encoded.isEmpty
     }
@@ -2841,7 +2846,7 @@ package final class CommandBarService: ObservableObject {
     /// returns the bar to the spot it opens on by default, with the same
     /// short slide it took on the way there.
     package func resetPanelPosition() {
-        UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
+        UserDefaults.standard.removeValue(for: Preferences.commandBarPositionOffset)
         hasCustomPosition = false
         guard let panel, panel.isVisible else { return }
         position(panel, animated: true)

@@ -42,10 +42,10 @@ package final class KeyboardDebounceService: ObservableObject {
             enabled: AppFeature.keyboardDebounce.isAvailable
                 && UserDefaults.standard[Preferences.keyboardDebounceEnabled],
             globalWindowMs: Defaults.sanitizedKeyboardDebounceWindow(
-                UserDefaults.standard.integer(forKey: DefaultsKey.keyboardDebounceWindowMs)
+                UserDefaults.standard[Preferences.keyboardDebounceWindowMs]
             ),
             keyWindows: KeyboardDebounceConfig.decodeKeyWindows(
-                UserDefaults.standard.string(forKey: DefaultsKey.keyboardDebounceKeyWindows) ?? ""
+                UserDefaults.standard[Preferences.keyboardDebounceKeyWindows]
             )
         )
         eventLock.withLock {

@@ -118,7 +118,7 @@ package final class MonitorAlertService {
     private func evaluateCPU(_ snapshot: SystemSnapshot,
                              defaults: UserDefaults,
                              strings: MonitorAlertFeatureStrings) {
-        let threshold = Defaults.sanitizedPercent(defaults.integer(forKey: DefaultsKey.monitorAlertCPUThreshold),
+        let threshold = Defaults.sanitizedPercent(defaults[Preferences.monitorAlertCPUThreshold],
                                                   fallback: 90,
                                                   range: 50...100)
         guard cpuUsageGate.shouldAlert(reading: snapshot.cpuUsage,
@@ -131,7 +131,7 @@ package final class MonitorAlertService {
 
     private func lowDisk(from snapshot: SystemSnapshot,
                          defaults: UserDefaults) -> (name: String, threshold: Int)? {
-        let threshold = Defaults.sanitizedPercent(defaults.integer(forKey: DefaultsKey.monitorAlertDiskFreePercent),
+        let threshold = Defaults.sanitizedPercent(defaults[Preferences.monitorAlertDiskFreePercent],
                                                   fallback: 10,
                                                   range: 5...30)
         guard let device = snapshot.disk?.devices.first(where: { device in
@@ -145,7 +145,7 @@ package final class MonitorAlertService {
     private func evaluateCPUTemperature(_ snapshot: SystemSnapshot,
                                         defaults: UserDefaults,
                                         strings: MonitorAlertFeatureStrings) {
-        let threshold = Defaults.sanitizedPercent(defaults.integer(forKey: DefaultsKey.monitorAlertCPUTemperatureThreshold),
+        let threshold = Defaults.sanitizedPercent(defaults[Preferences.monitorAlertCPUTemperatureThreshold],
                                                   fallback: 90,
                                                   range: 70...105)
         guard cpuTemperatureGate.shouldAlert(reading: snapshot.cpuTemperature,
@@ -160,7 +160,7 @@ package final class MonitorAlertService {
 
     private func lowBattery(from snapshot: SystemSnapshot,
                             defaults: UserDefaults) -> Int? {
-        let threshold = Defaults.sanitizedPercent(defaults.integer(forKey: DefaultsKey.monitorAlertBatteryPercent),
+        let threshold = Defaults.sanitizedPercent(defaults[Preferences.monitorAlertBatteryPercent],
                                                   fallback: 15,
                                                   range: 5...50)
         guard let power = snapshot.power,
@@ -175,7 +175,7 @@ package final class MonitorAlertService {
                                             defaults: UserDefaults,
                                             strings: MonitorAlertFeatureStrings) {
         let threshold = Defaults.sanitizedPercent(
-            defaults.integer(forKey: DefaultsKey.monitorAlertBatteryTemperatureThreshold),
+            defaults[Preferences.monitorAlertBatteryTemperatureThreshold],
             fallback: 40,
             range: 30...50
         )
@@ -190,14 +190,14 @@ package final class MonitorAlertService {
     }
 
     private static func formattedTemperature(_ celsius: Double, defaults: UserDefaults) -> String {
-        let unit = TemperatureUnit(rawValue: defaults.string(forKey: DefaultsKey.temperatureUnit) ?? "") ?? .celsius
+        let unit = TemperatureUnit(rawValue: defaults[Preferences.temperatureUnit]) ?? .celsius
         return MetricFormat.temperature(celsius, unit: unit)
     }
 
     private func send(_ kind: MonitorAlertKind, title: String, body: String) {
         let now = Date()
         let minutes = Defaults.sanitizedMonitorAlertCooldown(
-            UserDefaults.standard.integer(forKey: DefaultsKey.monitorAlertCooldownMinutes)
+            UserDefaults.standard[Preferences.monitorAlertCooldownMinutes]
         )
         if let previous = lastSent[kind], now.timeIntervalSince(previous) < Double(minutes * 60) {
             return

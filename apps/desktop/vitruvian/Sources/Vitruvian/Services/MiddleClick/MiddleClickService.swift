@@ -108,7 +108,7 @@ package final class MiddleClickService: ObservableObject {
         let enabled = AppFeature.middleClick.isAvailable
             && defaults[Preferences.middleClickEnabled]
         let tap = enabled ? Defaults.sanitizedMiddleClickTapFingers(
-            defaults.integer(forKey: DefaultsKey.middleClickTapFingers)) : 0
+            defaults[Preferences.middleClickTapFingers]) : 0
         let radialMenuTap = MiddleClickSupport.radialMenuTapFingers(
             radialMenuWantsTap: AppFeature.radialMenu.isAvailable
                 && defaults[Preferences.radialMenuEnabled]

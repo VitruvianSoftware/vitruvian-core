@@ -144,7 +144,7 @@ package enum NotchSilhouette: String, CaseIterable {
     case capsule, notch
 
     package static func current(in defaults: UserDefaults = .standard) -> NotchSilhouette {
-        NotchSilhouette(rawValue: defaults.string(forKey: DefaultsKey.notchSilhouette) ?? "") ?? .capsule
+        NotchSilhouette(rawValue: defaults[Preferences.notchSilhouette]) ?? .capsule
     }
 }
 
@@ -181,8 +181,8 @@ package struct NotchCameraFit: Equatable {
     }
 
     package static func current(in defaults: UserDefaults = .standard) -> NotchCameraFit {
-        NotchCameraFit(width: defaults.double(forKey: DefaultsKey.notchCameraFitWidth),
-                       height: defaults.double(forKey: DefaultsKey.notchCameraFitHeight))
+        NotchCameraFit(width: defaults[Preferences.notchCameraFitWidth],
+                       height: defaults[Preferences.notchCameraFitHeight])
     }
 }
 
@@ -208,9 +208,9 @@ package struct NotchCapsuleFit: Equatable {
     }
 
     package static func current(in defaults: UserDefaults = .standard) -> NotchCapsuleFit {
-        NotchCapsuleFit(width: defaults.double(forKey: DefaultsKey.notchCapsuleFitWidth),
-                        height: defaults.double(forKey: DefaultsKey.notchCapsuleFitHeight),
-                        drop: defaults.double(forKey: DefaultsKey.notchCapsuleFitDrop))
+        NotchCapsuleFit(width: defaults[Preferences.notchCapsuleFitWidth],
+                        height: defaults[Preferences.notchCapsuleFitHeight],
+                        drop: defaults[Preferences.notchCapsuleFitDrop])
     }
 }
 
@@ -1298,7 +1298,8 @@ package struct NotchQuickAccessConfiguration: Equatable, Codable {
     }
 
     package static func stored(in defaults: UserDefaults = .standard) -> Self {
-        if let data = defaults.data(forKey: DefaultsKey.notchQuickAccessLayout), !data.isEmpty, data.count <= 32_768,
+        let data = defaults[Preferences.notchQuickAccessLayout]
+        if !data.isEmpty, data.count <= 32_768,
            let value = try? JSONDecoder().decode(Self.self, from: data), value.version == 1 {
             return value.sanitized()
         }
@@ -1592,9 +1593,9 @@ package enum NotchSupport {
     }
 
     package static func modules(in defaults: UserDefaults = .standard) -> [NotchModule] {
-        let hidden = Set((defaults.string(forKey: DefaultsKey.notchHiddenModules) ?? "")
+        let hidden = Set((defaults[Preferences.notchHiddenModules])
             .split(separator: ",").map(String.init))
-        let stored = (defaults.string(forKey: DefaultsKey.notchModuleOrder) ?? "")
+        let stored = (defaults[Preferences.notchModuleOrder])
             .split(separator: ",").compactMap { NotchModule(rawValue: String($0)) }
         var seen = Set<NotchModule>()
         return (stored + NotchModule.allCases).filter {
@@ -1611,7 +1612,7 @@ package enum NotchSupport {
     package static func watchesMusicActivity(in defaults: UserDefaults = .standard) -> Bool {
         isEnabled(in: defaults) && modules(in: defaults).contains(.music)
             && idleContent(in: defaults) != .none
-            && (defaults.object(forKey: DefaultsKey.notchShowPlayingMusic) as? Bool ?? true)
+            && (defaults[Preferences.notchShowPlayingMusic])
     }
 
     package static func showsMusicActivity(isPlaying: Bool, in defaults: UserDefaults = .standard) -> Bool {
@@ -1619,12 +1620,12 @@ package enum NotchSupport {
     }
 
     package static func showsInCaptures(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: DefaultsKey.notchShowInCaptures) as? Bool ?? true
+        defaults[Preferences.notchShowInCaptures]
     }
 
     /// The closed island may cover the menus instead of giving way to them.
     package static func coversMenus(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: DefaultsKey.notchCoversMenus) as? Bool ?? true
+        defaults[Preferences.notchCoversMenus]
     }
 
     /// The closed island stays out of sight until the pointer reaches it, and
@@ -1634,7 +1635,7 @@ package enum NotchSupport {
     }
 
     package static func idleContent(in defaults: UserDefaults = .standard) -> NotchIdleContent {
-        let choice = NotchIdleContent(rawValue: defaults.string(forKey: DefaultsKey.notchIdleContent) ?? "") ?? .none
+        let choice = NotchIdleContent(rawValue: defaults[Preferences.notchIdleContent]) ?? .none
         if choice == .battery, !AppFeature.monitorPower.isAvailable(in: defaults) { return .none }
         if choice == .music, !modules(in: defaults).contains(.music) { return .none }
         if choice == .agents, !NotchAgentSupport.isEnabled(in: defaults) { return .none }
@@ -1647,9 +1648,9 @@ package enum NotchSupport {
     }
 
     package static func controls(in defaults: UserDefaults = .standard) -> [NotchControlItem] {
-        let hidden = Set((defaults.string(forKey: DefaultsKey.notchHiddenControls) ?? NotchControlItem.defaultHidden)
+        let hidden = Set((defaults[Preferences.notchHiddenControls])
             .split(separator: ",").map(String.init))
-        let stored = (defaults.string(forKey: DefaultsKey.notchControlOrder) ?? "")
+        let stored = (defaults[Preferences.notchControlOrder])
             .split(separator: ",").compactMap { NotchControlItem(rawValue: String($0)) }
         var seen = Set<NotchControlItem>()
         return (stored + NotchControlItem.allCases).filter {
@@ -1746,7 +1747,7 @@ package enum NotchSupport {
     }
 
     package static func routesScratchpad(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && (defaults.object(forKey: DefaultsKey.notchScratchpad) as? Bool ?? true)
+        isEnabled(in: defaults) && (defaults[Preferences.notchScratchpad])
             && modules(in: defaults).contains(.scratchpad)
     }
 

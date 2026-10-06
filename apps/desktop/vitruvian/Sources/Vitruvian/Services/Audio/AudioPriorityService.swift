@@ -113,11 +113,11 @@ package final class AudioPriorityService: ObservableObject {
         outputPriorityEnabled = defaults[Preferences.audioPriorityOutputEnabled]
         inputPriorityEnabled = defaults[Preferences.audioPriorityInputEnabled]
         outputPriorityUIDs = Defaults.sanitizedAudioPriorityUIDs(
-            defaults.array(forKey: DefaultsKey.audioPriorityOutputUIDs) ?? [])
+            defaults[Preferences.audioPriorityOutputUIDs])
         inputPriorityUIDs = Defaults.sanitizedAudioPriorityUIDs(
-            defaults.array(forKey: DefaultsKey.audioPriorityInputUIDs) ?? [])
+            defaults[Preferences.audioPriorityInputUIDs])
         deviceNames = Defaults.sanitizedAudioPriorityDeviceNames(
-            defaults.dictionary(forKey: DefaultsKey.audioPriorityDeviceNames) ?? [:])
+            defaults[Preferences.audioPriorityDeviceNames])
     }
 
     // MARK: - Public API (UI)
@@ -154,9 +154,9 @@ package final class AudioPriorityService: ObservableObject {
         guard sanitized != outputPriorityUIDs else { return }
         let defaults = UserDefaults.standard
         if sanitized.isEmpty {
-            defaults.removeObject(forKey: DefaultsKey.audioPriorityOutputUIDs)
+            defaults.removeValue(for: Preferences.audioPriorityOutputUIDs)
         } else {
-            defaults.set(sanitized, forKey: DefaultsKey.audioPriorityOutputUIDs)
+            defaults[Preferences.audioPriorityOutputUIDs] = sanitized
         }
         outputPriorityUIDs = sanitized
         updateDeviceNames()
@@ -171,9 +171,9 @@ package final class AudioPriorityService: ObservableObject {
         guard sanitized != inputPriorityUIDs else { return }
         let defaults = UserDefaults.standard
         if sanitized.isEmpty {
-            defaults.removeObject(forKey: DefaultsKey.audioPriorityInputUIDs)
+            defaults.removeValue(for: Preferences.audioPriorityInputUIDs)
         } else {
-            defaults.set(sanitized, forKey: DefaultsKey.audioPriorityInputUIDs)
+            defaults[Preferences.audioPriorityInputUIDs] = sanitized
         }
         inputPriorityUIDs = sanitized
         updateDeviceNames()
@@ -192,7 +192,7 @@ package final class AudioPriorityService: ObservableObject {
         guard !allPriorityUIDs.isEmpty else {
             if !deviceNames.isEmpty {
                 deviceNames = [:]
-                UserDefaults.standard.removeObject(forKey: DefaultsKey.audioPriorityDeviceNames)
+                UserDefaults.standard.removeValue(for: Preferences.audioPriorityDeviceNames)
             }
             return
         }
@@ -207,7 +207,7 @@ package final class AudioPriorityService: ObservableObject {
         names = names.filter { allPriorityUIDs.contains($0.key) }
         if names != deviceNames {
             deviceNames = names
-            UserDefaults.standard.set(names, forKey: DefaultsKey.audioPriorityDeviceNames)
+            UserDefaults.standard[Preferences.audioPriorityDeviceNames] = names
         }
     }
 
@@ -286,14 +286,14 @@ package final class AudioPriorityService: ObservableObject {
         let sanitized = Defaults.sanitizedAudioPriorityUIDs(uids)
         guard sanitized != outputPriorityUIDs else { return }
         outputPriorityUIDs = sanitized
-        UserDefaults.standard.set(sanitized, forKey: DefaultsKey.audioPriorityOutputUIDs)
+        UserDefaults.standard[Preferences.audioPriorityOutputUIDs] = sanitized
     }
 
     private func storeInputPriorityUIDs(_ uids: [String]) {
         let sanitized = Defaults.sanitizedAudioPriorityUIDs(uids)
         guard sanitized != inputPriorityUIDs else { return }
         inputPriorityUIDs = sanitized
-        UserDefaults.standard.set(sanitized, forKey: DefaultsKey.audioPriorityInputUIDs)
+        UserDefaults.standard[Preferences.audioPriorityInputUIDs] = sanitized
     }
 
     /// Devices that are not connected now keep the plain hardware tier.

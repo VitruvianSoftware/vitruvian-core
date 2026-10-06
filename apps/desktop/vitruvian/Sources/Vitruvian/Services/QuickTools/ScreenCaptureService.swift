@@ -161,7 +161,7 @@ package final class ScreenCaptureService: ObservableObject {
         let showsCaptureMenu = selected.showsCaptureMenu(fromShortcut: fromShortcut)
         let delay = selected == .screenshot
             ? ScreenshotSupport.sanitizedDelay(
-                UserDefaults.standard.integer(forKey: DefaultsKey.screenshotDelay))
+                UserDefaults.standard[Preferences.screenshotDelay])
             : 0
         guard delay > 0 else {
             beginSelection(tools: tools, selected: selected, showsCaptureMenu: showsCaptureMenu)

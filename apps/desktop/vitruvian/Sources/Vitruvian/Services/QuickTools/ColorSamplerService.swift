@@ -44,7 +44,7 @@ package final class ColorSamplerService: ObservableObject {
     nonisolated package func formattedValue(_ color: NSColor) -> String? {
         guard let srgb = color.usingColorSpace(.sRGB) else { return nil }
         let format = ColorCopyFormat.sanitized(
-            UserDefaults.standard.string(forKey: DefaultsKey.colorPickerFormat) ?? "hex"
+            UserDefaults.standard[Preferences.colorPickerFormat]
         )
         return ColorValue.string(red: srgb.redComponent,
                                  green: srgb.greenComponent,

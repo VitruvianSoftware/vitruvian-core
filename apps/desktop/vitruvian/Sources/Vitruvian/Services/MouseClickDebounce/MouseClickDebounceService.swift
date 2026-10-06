@@ -68,7 +68,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
                         && UserDefaults.standard[Preferences.mouseClickDebounceEnabled]
                 },
                 windowMilliseconds: {
-                    UserDefaults.standard.integer(forKey: DefaultsKey.mouseClickDebounceWindowMs)
+                    UserDefaults.standard[Preferences.mouseClickDebounceWindowMs]
                 },
                 accessibilityGranted: { AXIsProcessTrusted() },
                 session: .shared,

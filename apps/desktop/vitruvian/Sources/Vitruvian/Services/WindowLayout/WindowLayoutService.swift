@@ -187,8 +187,8 @@ package final class WindowLayoutService: ObservableObject {
         let actionsEnabled = UserDefaults.standard[Preferences.windowLayoutShortcutsEnabled]
         let directional = includingDirectional
             && UserDefaults.standard[Preferences.windowDirectionalEnabled]
-            ? UserDefaults.standard.string(forKey: DefaultsKey.windowDirectionalShortcut)
-                .flatMap(GlobalShortcut.init(storageValue:)) : nil
+            ? GlobalShortcut(storageValue: UserDefaults.standard[Preferences.windowDirectionalShortcut])
+            : nil
         guard actionsEnabled || directional != nil else { return nil }
         switch WindowLayoutShortcutConflict.find(shortcut, directional: directional,
                                                  excluding: excluded,
@@ -853,8 +853,8 @@ package final class WindowLayoutService: ObservableObject {
     }
 
     private func registerDirectionalHotkey() {
-        guard let shortcut = UserDefaults.standard.string(forKey: DefaultsKey.windowDirectionalShortcut)
-            .flatMap(GlobalShortcut.init(storageValue:)) else {
+        guard let shortcut = GlobalShortcut(
+            storageValue: UserDefaults.standard[Preferences.windowDirectionalShortcut]) else {
             directionalShortcutRegistrationFailed = true
             return
         }
@@ -1346,7 +1346,7 @@ package final class WindowLayoutService: ObservableObject {
     private func edgeSnapConflictsWithWindowGesture(flags: CGEventFlags) -> Bool {
         guard UserDefaults.standard[Preferences.windowGestureEnabled] else { return false }
         let move = WindowGestureSupport.modifiers(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.windowGestureModifiers)
+            from: UserDefaults.standard[Preferences.windowGestureModifiers]
         )
         return WindowGestureSupport.modifiersMatch(eventFlags: flags, expected: move)
             || WindowGestureSupport.modifiersMatch(
@@ -1490,7 +1490,7 @@ package final class WindowLayoutService: ObservableObject {
 
     private var enabledEdgeSnapZones: Set<WindowEdgeSnapZone> {
         WindowEdgeSnapZone.enabledZones(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.windowEdgeSnapDisabledZones)
+            from: UserDefaults.standard[Preferences.windowEdgeSnapDisabledZones]
         )
     }
 
@@ -1782,7 +1782,7 @@ package final class WindowLayoutService: ObservableObject {
                               flags: CGEventFlags) -> (button: WindowPointerGesture.Button,
                                                        wantsResize: Bool)? {
         let moveModifiers = WindowGestureSupport.modifiers(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.windowGestureModifiers)
+            from: UserDefaults.standard[Preferences.windowGestureModifiers]
         )
         let resizeModifiers = WindowGestureSupport.resizeModifiers(from: moveModifiers)
         if type == .leftMouseDown,

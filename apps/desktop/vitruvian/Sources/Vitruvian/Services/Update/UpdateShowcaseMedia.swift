@@ -17,8 +17,7 @@ package enum UpdateShowcaseInfo {
 
     package static var localDeveloperMediaURL: URL? {
         guard AppInfo.isDeveloperBuild else { return nil }
-        if let raw = UserDefaults.standard.string(forKey: DefaultsKey.updateShowcaseMediaOverride),
-           let url = mediaURL(from: raw),
+        if let url = mediaURL(from: UserDefaults.standard[Preferences.updateShowcaseMediaOverride]),
            FileManager.default.fileExists(atPath: url.path) {
             return url
         }

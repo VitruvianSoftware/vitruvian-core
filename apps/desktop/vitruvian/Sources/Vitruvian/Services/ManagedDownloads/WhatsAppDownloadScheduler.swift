@@ -32,10 +32,9 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
             stop()
             return
         }
-        if defaults.double(forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate) <= 0,
+        if defaults[Preferences.whatsAppDownloadsAutomaticStartDate] <= 0,
            !defaults[Preferences.whatsAppDownloadsIncludeExisting] {
-            defaults.set(Date().timeIntervalSince1970,
-                         forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate)
+            defaults[Preferences.whatsAppDownloadsAutomaticStartDate] = Date().timeIntervalSince1970
         }
         installObservers()
         scheduleNext()
@@ -78,8 +77,7 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
               UserDefaults.standard[Preferences.whatsAppDownloadsAutomaticEnabled],
               UserDefaults.standard[Preferences.whatsAppDownloadsAccessConfirmed] else { return }
         let now = Date()
-        let lastStamp = UserDefaults.standard.double(
-            forKey: DefaultsKey.whatsAppDownloadsLastAutoRun)
+        let lastStamp = UserDefaults.standard[Preferences.whatsAppDownloadsLastAutoRun]
         let lastRun = lastStamp > 0 ? Date(timeIntervalSince1970: lastStamp) : nil
         let fireDate: Date
         if WhatsAppDownloadSupport.missedAutomaticCheck(now: now, lastRun: lastRun) {
@@ -151,8 +149,7 @@ package final class WhatsAppDownloadScheduler: ObservableObject {
 
     private func finishRun(moved: Int, bytes: Int64, failed: Int, notify: Bool = true) {
         runObserver = nil
-        UserDefaults.standard.set(Date().timeIntervalSince1970,
-                                  forKey: DefaultsKey.whatsAppDownloadsLastAutoRun)
+        UserDefaults.standard[Preferences.whatsAppDownloadsLastAutoRun] = Date().timeIntervalSince1970
         if notify, UserDefaults.standard[Preferences.whatsAppDownloadsNotify] {
             let strings = FeatureStrings.whatsAppDownloads(L10n.shared.language)
             let body = String(format: strings.notificationFormat, moved,

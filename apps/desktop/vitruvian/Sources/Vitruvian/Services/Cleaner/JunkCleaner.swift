@@ -751,7 +751,7 @@ package final class JunkCleaner: ObservableObject {
     nonisolated
     private static func screenshotSearch(places: Places) -> (folders: [URL], days: Int)? {
         let days = CleanerPolicy.sanitizedScreenshotAgeDays(
-            UserDefaults.standard.integer(forKey: DefaultsKey.cleanerScreenshotAgeDays))
+            UserDefaults.standard[Preferences.cleanerScreenshotAgeDays])
         guard days > 0 else { return nil }
         return (places.screenshotFolders(), days)
     }
@@ -764,7 +764,7 @@ package final class JunkCleaner: ObservableObject {
                                                  "com.apple.screencapture" as CFString) as? String
         var paths = [CleanerSupport.screenshotFolder(location: location, home: home)]
         if AppFeature.screenshot.isAvailable {
-            let stored = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveFolder) ?? ""
+            let stored = UserDefaults.standard[Preferences.screenshotSaveFolder]
             paths.append(stored.isEmpty ? home + "/Desktop" : (stored as NSString).expandingTildeInPath)
         }
         var seen = Set<String>()

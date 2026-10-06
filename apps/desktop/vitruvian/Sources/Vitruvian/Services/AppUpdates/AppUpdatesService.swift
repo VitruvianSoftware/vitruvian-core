@@ -152,17 +152,17 @@ package final class AppUpdatesService: ObservableObject {
     package init(environment: Environment = .live, network: Network = .live) {
         self.environment = environment
         self.network = network
-        let stamp = environment.defaults.double(forKey: DefaultsKey.appUpdatesLastCheck)
+        let stamp = environment.defaults[Preferences.appUpdatesLastCheck]
         lastCheck = stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
         rules = AppUpdatesSupport.decodedRules(
-            environment.defaults.string(forKey: DefaultsKey.appUpdatesRules))
+            environment.defaults[Preferences.appUpdatesRules])
     }
 
     // MARK: - Lifecycle
 
     package var frequency: AppUpdatesSupport.CheckFrequency {
         AppUpdatesSupport.CheckFrequency.sanitized(
-            environment.defaults.string(forKey: DefaultsKey.appUpdatesCheckFrequency))
+            environment.defaults[Preferences.appUpdatesCheckFrequency])
     }
 
     package func syncWithPreferences() {
@@ -381,8 +381,8 @@ package final class AppUpdatesService: ObservableObject {
         isChecking = false
         let now = Date()
         lastCheck = now
-        environment.defaults.set(now.timeIntervalSince1970, forKey: DefaultsKey.appUpdatesLastCheck)
-        environment.defaults.set(newItems.count, forKey: DefaultsKey.appUpdatesLastCount)
+        environment.defaults[Preferences.appUpdatesLastCheck] = now.timeIntervalSince1970
+        environment.defaults[Preferences.appUpdatesLastCount] = newItems.count
         if shouldFinishAutomatically {
             if notifyIfWanted(freshCount: fresh.count, total: newItems.count) {
                 announced = Set(newItems.map(\.id))
@@ -407,11 +407,11 @@ package final class AppUpdatesService: ObservableObject {
     }
 
     private func announcedIDs() -> Set<String> {
-        Set(environment.defaults.stringArray(forKey: DefaultsKey.appUpdatesNotifiedIDs) ?? [])
+        Set(environment.defaults[Preferences.appUpdatesNotifiedIDs])
     }
 
     private func saveAnnouncedIDs(_ ids: Set<String>) {
-        environment.defaults.set(ids.sorted(), forKey: DefaultsKey.appUpdatesNotifiedIDs)
+        environment.defaults[Preferences.appUpdatesNotifiedIDs] = ids.sorted()
     }
 
     // MARK: - Package manager source
@@ -700,14 +700,14 @@ package final class AppUpdatesService: ObservableObject {
     private func saveRules(_ newRules: [AppUpdatesSupport.UpdateRule]) {
         guard let raw = AppUpdatesSupport.encodedRules(newRules) else { return }
         rules = newRules
-        environment.defaults.set(raw, forKey: DefaultsKey.appUpdatesRules)
+        environment.defaults[Preferences.appUpdatesRules] = raw
         applyRules()
     }
 
     /// Settings restore and reset use the same preference as the panel.
     package func reloadRules() {
         let restored = AppUpdatesSupport.decodedRules(
-            environment.defaults.string(forKey: DefaultsKey.appUpdatesRules))
+            environment.defaults[Preferences.appUpdatesRules])
         guard restored != rules else { return }
         rules = restored
         hasCheckedThisSession = false
@@ -721,7 +721,7 @@ package final class AppUpdatesService: ObservableObject {
                                                           knownIDs: knownIDs, items: visible)
         knownIDs = Set(visible.map(\.id))
         items = visible
-        environment.defaults.set(visible.count, forKey: DefaultsKey.appUpdatesLastCount)
+        environment.defaults[Preferences.appUpdatesLastCount] = visible.count
         saveAnnouncedIDs(announcedIDs().intersection(knownIDs))
     }
 

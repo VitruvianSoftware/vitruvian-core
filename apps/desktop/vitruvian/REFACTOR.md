@@ -3,8 +3,8 @@
 
 # Vitruvian refactor plan
 
-Status: steps 1 to 7 have landed, and each says what it leaves on purpose.
-Step 8, which finishes typed preferences, is in progress. Each slice was a PR that built and tested green on the
+Status: **done**: steps 1 to 8 have landed, and each says what it leaves
+on purpose. Each slice was a PR that built and tested green on the
 `vitruvian-desktop-macos` unit before the next started. Steps are ordered so that
 each one makes the next safer: the compiler takes over checks that were done by
 hand, and only then does the code get moved around.
@@ -5372,7 +5372,7 @@ The rules about how the code is written (33 of them) run as
 `source_lints_test`, on any platform. Where a rule needs a Mac to finish,
 `Tests/SourceNames.swift` carries the names and the unit tests check them.
 
-## Step 8: preferences read through their type (in progress)
+## Step 8: preferences read through their type (done)
 
 Step 6 gave every registered preference a `Preference` with its default, and
 views took it. Services kept reading most of them by key: `bool`,
@@ -5425,7 +5425,9 @@ across 118 files, and 43 writes became `[Preferences.x] = value`.
   - 14 in `Core/Defaults.swift`.
 - **Tests:** a test that drives a service over a fresh suite now sees a
   switch's declared default where it saw `false`. The notch tests already
-  copy the registered `notch` defaults into their suite.
+  copy the registered `notch` defaults into their suite. One test relied on
+  `false`: the disk image install prompt's, which now sets all three of its
+  options.
 - **Checks that quoted the old spelling:** the smooth-scroll rule in
   `bazel/source_lints.py` and one mutation in `Tests/mutation_checks.py`
   now name `Preferences.x`.
@@ -5440,6 +5442,148 @@ across 118 files, and 43 writes became `[Preferences.x] = value`.
   - data (`data`): 8;
   - tables (`dictionary`): 6;
   - lists read as `array`: 2.
+
+Landed (8b, whole numbers and fractions): every `integer(forKey:)` and
+`double(forKey:)` on a declared preference outside `Core/Defaults.swift` now
+reads `[Preferences.x]`. That is 72 reads, and 27 writes became
+`[Preferences.x] = value`, in 38 files.
+
+- **The same script, by type:** it rewrites a read only where the getter
+  returns the preference's type. A write is rewritten only where the
+  preference holds a whole number or a fraction. Each value was checked to
+  have exactly that type: a count, a time interval, a size converted with
+  `Double(_:)`, or a parameter declared `Int`.
+- **Two writes say their conversion:** the cleaner's freed bytes and
+  WhatsApp cleanup's moved bytes are `Int64`, and their preferences hold
+  `Int`. They now write `Int(freed)` and `Int(bytes)`. The stored number is
+  the same on a 64-bit Mac.
+- **Defaults that differ from zero:** where registration has not run, as
+  in a test over a fresh suite, these reads now give the declared default.
+  Most of them, such as the battery limit and the clipboard history limit,
+  already went through a sanitizer that maps an unset `0` to that same
+  default.
+- **Left by key:** three reads of state with no `Preference`: the status
+  item placement generation and the settings window's saved size.
+- **Ledger after 8b:** `integer` and `double` are at zero, and writes
+  (`set`) are down to 66.
+
+Landed (8c, text): every `string(forKey:)` on a declared preference outside
+`Core/Defaults.swift` now reads `[Preferences.x]`. That is 117 reads, and 31
+writes became `[Preferences.x] = value`, in 50 files.
+
+- **A typed read is never nil, so the code around each read changed:**
+  - **`?? fallback`, 61 reads:** the fallback goes, because the declared
+    default takes its place. Where they differed (28 reads), the fallback
+    was `""` and the text went to a sanitizer or
+    `Enum(rawValue:) ?? .case`, which turns `""` into a case.
+  - **Passed on, compared or stored, 54 reads:** these work as they are.
+    A parameter typed `String?` takes the text as well.
+  - **Changed by hand:**
+    - the window layout's directional shortcut, which decodes with
+      `GlobalShortcut(storageValue:)` rather than `.flatMap` on an optional;
+    - the update showcase's media override, which drops an `if let`;
+    - the radial menu's legacy migration, whose fallbacks equal the
+      declared defaults.
+- **In the app nothing changes:** a registered key never read as nil, so
+  each fallback was unreachable there.
+- **Where registration has not run,** a read now gives the declared default
+  where it gave the fallback. The notch's idle content is the one read whose
+  enum fell back to another case (`.none`): it now starts from `music`, as
+  the app always has.
+- **Writes:** each value is a `String`: a raw value, an encoder that returns
+  `String`, a path or a version. Two writes stay by key, because their
+  encoders return `String?` and a `nil` there removes the key. They go with
+  the resets.
+- **Left by key:** 18 text reads of state with no `Preference`.
+- **Ledger after 8c:** `string` is at zero, and writes (`set`) are down to
+  35.
+
+Landed (8d, lists, tables and data): every `stringArray`, `array`,
+`dictionary` and `data(forKey:)` on a declared preference outside
+`Core/Defaults.swift` now reads `[Preferences.x]`. That is 34 reads, and 33
+writes became `[Preferences.x] = value`, in 26 files.
+
+- **Each read's surroundings, as with text:**
+  - `?? []` and `?? [:]` go: every one of these preferences declares an
+    empty list or table, except the Auto Quit exceptions, whose sanitizer
+    adds the mandatory apps either way.
+  - `dictionary(forKey:) as? [String: String]` is the preference's own type,
+    and the one `raw?[…]` after it becomes `raw[…]`.
+  - Four `guard`/`if let data = …` reads of data now test `isEmpty` on the
+    typed value, which falls back to empty data. One is the recorder's
+    presets, which decode straight from it.
+  - Parameters typed `[Any]`, `[String: Any]` and `Data?` take the typed
+    value as it is.
+- **Writes:** each value has the preference's type: a sanitized list, a
+  sorted set, an encoder that returns `[String: String]`, or encoded `Data`.
+- **Left by key:** reads of state with no `Preference`, such as the radial
+  menu profiles, text snippets, the mixer's volumes and the brightness
+  paths.
+- **Ledger after 8d:** every getter is at zero. Two writes are left, the
+  command bar aliases and row shortcuts, whose encoders return `String?`,
+  and `nil` there removes the key.
+
+Landed (8e, presence checks and resets): 21 `object(forKey:) as? T ??
+fallback` reads, 18 `removeObject(forKey:)` resets and the last two writes
+reach their preference through its type, in 13 files.
+
+- **`object(forKey:) as? Bool ?? true`:** this is how code got the right
+  default where registration had not run, which a typed read now does on
+  its own. Every one of the 21 fallbacks equals its declared default: the
+  notch switches, the Pomodoro lengths, the agent alerts and thresholds,
+  automatic update checks, the switcher's full-screen windows and the
+  cut-and-paste HUD.
+- **Resets:** `UserDefaults.removeValue(for:)` (`Core/Preference.swift`)
+  forgets the stored value, so the preference reads its default again.
+  `PreferenceTests` checks that. The fan helper's version and recovery
+  flag, the resume configuration and the audio priority lists use it.
+- **The last two writes:** the command bar aliases and row shortcuts now
+  write the encoded text, or remove the value when the encoder returns
+  `nil`, as `set(nil, forKey:)` did.
+- **The wallpaper's all-displays switch:** its getter answered `true` when
+  nothing was stored, and its declared default is `true`. It is now the
+  typed read.
+- **Three reads stay by key, on purpose:**
+  - the update service asks twice whether a beta channel was ever chosen,
+    which only `object(forKey:) == nil` can say;
+  - the confirmation preview's duration reads any stored number, a fraction
+    included, which a typed whole-number read would treat as missing.
+- **Ledger after 8e:** `object` is at three, and every other call is at
+  zero.
+
+What step 8 leaves, on purpose:
+- **Keys with no `Preference`.** These stay by key, because they are not
+  registered and a `Preference` is registered from its declaration.
+  - **Settings kept unregistered on purpose:**
+    - the menu panel orders and collapsed sections: an empty order means the
+      default one, and their migrations look for nothing stored;
+    - the language: unset follows the system;
+    - the lists the mixer, the launcher, the radial menu, the snippets and
+      the sound switcher keep as data.
+
+    Settings backup exports them by name.
+  - **State the app keeps rather than settings:**
+    - onboarding, update and migration markers;
+    - window sizes and bookmarks;
+    - saved volumes and brightness paths;
+    - developer switches.
+
+    Backup leaves them out.
+- **Three reads by key on declared preferences:** the beta channel's two
+  explicit-choice checks and the confirmation duration's read of any
+  number. They are listed in the ledger, so a fourth fails it.
+- **One `@AppStorage(DefaultsKey.x)` on a declared preference:** the beta
+  channel switch in Settings, which starts from whether the build is a
+  beta. Its declared default cannot say that.
+- **Values of another type read as the default.** The app writes each
+  preference with its type, so this only touches a value written by hand
+  (`defaults write` without `-int`, say) or left by an old build.
+  - `integer` and `double(forKey:)` parsed text, and `string(forKey:)`
+    turned numbers into text. A typed read gives the declared default
+    instead.
+  - A list or table with one element of another type now reads as empty,
+    where the audio priority lists and the switcher rules used to drop just
+    that element.
 
 ## Not in scope
 

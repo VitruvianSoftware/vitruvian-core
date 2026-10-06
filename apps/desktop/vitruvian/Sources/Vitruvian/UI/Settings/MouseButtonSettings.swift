@@ -21,7 +21,7 @@ package struct MouseButtonShortcutsSection: View {
     @AppStorage(Preferences.mouseSpacesGestureFollowsDrag) private var spacesFollowsDrag: Bool
 
     @State private var mappings = MouseButtonShortcutSupport.decode(
-        UserDefaults.standard.dictionary(forKey: DefaultsKey.mouseButtonShortcuts) as? [String: String])
+        UserDefaults.standard[Preferences.mouseButtonShortcuts])
     /// A button that was just captured and is waiting for its first key
     /// combination. Nothing persists until the combination lands, so backing
     /// out leaves no half-made row behind.
@@ -362,8 +362,7 @@ package struct MouseButtonShortcutsSection: View {
     }
 
     private func persist() {
-        UserDefaults.standard.set(MouseButtonShortcutSupport.encode(mappings),
-                                  forKey: DefaultsKey.mouseButtonShortcuts)
+        UserDefaults.standard[Preferences.mouseButtonShortcuts] = MouseButtonShortcutSupport.encode(mappings)
         MouseButtonShortcutService.shared.syncWithPreferences()
     }
 }

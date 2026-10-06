@@ -321,7 +321,7 @@ package final class SmoothScrollService: ObservableObject {
             // never translates continuous events, apps react to the replayed
             // Shift flag.
             let userStep = Double(SmoothScrollSupport.sanitizedStep(
-                defaults.integer(forKey: DefaultsKey.smoothScrollStep)))
+                defaults[Preferences.smoothScrollStep]))
             let verticalFixedPoint = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
             let verticalPoint = Double(event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1))
             let horizontalFixedPoint = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2)
@@ -379,7 +379,7 @@ package final class SmoothScrollService: ObservableObject {
             vertical = axes.vertical * invertVertical
             horizontal = axes.horizontal * invertHorizontal
             step = Double(SmoothScrollSupport.sanitizedStep(
-                defaults.integer(forKey: DefaultsKey.smoothScrollStep)))
+                defaults[Preferences.smoothScrollStep]))
         }
         guard vertical != 0 || horizontal != 0 else {
             return Unmanaged.passUnretained(event)
@@ -388,9 +388,9 @@ package final class SmoothScrollService: ObservableObject {
         glide.feed(vertical: vertical, horizontal: horizontal, step: step,
                    flags: event.flags, redirected: redirected, continuous: traits.isContinuous,
                    response: SmoothScrollSupport.sanitizedResponse(
-                    defaults.integer(forKey: DefaultsKey.smoothScrollResponse)),
+                    defaults[Preferences.smoothScrollResponse]),
                    coast: SmoothScrollSupport.sanitizedCoast(
-                    defaults.integer(forKey: DefaultsKey.smoothScrollCoast)))
+                    defaults[Preferences.smoothScrollCoast]))
         // The tick itself is swallowed; the glide replays its distance.
         return nil
     }

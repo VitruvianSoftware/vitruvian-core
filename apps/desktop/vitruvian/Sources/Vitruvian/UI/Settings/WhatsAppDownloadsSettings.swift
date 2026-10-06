@@ -657,8 +657,7 @@ package struct WhatsAppDownloadsSettings: View {
     private func enableAutomation(includeExisting: Bool) {
         let defaults = UserDefaults.standard
         defaults[Preferences.whatsAppDownloadsIncludeExisting] = includeExisting
-        defaults.set(Date().timeIntervalSince1970,
-                     forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate)
+        defaults[Preferences.whatsAppDownloadsAutomaticStartDate] = Date().timeIntervalSince1970
         automatic = true
         if notify { Notifier.requestPermission() }
         WhatsAppDownloadScheduler.shared.syncWithPreferences()

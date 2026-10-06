@@ -90,7 +90,7 @@ package final class TextSnippetService: @unchecked Sendable {
     /// which name wins when the stored one is not available.
     private static func preferredExpansionSound() -> AlertSound? {
         TextSnippetSupport.resolvedSoundName(
-            stored: UserDefaults.standard.string(forKey: DefaultsKey.snippetSoundName))
+            stored: UserDefaults.standard[Preferences.snippetSoundName])
             .flatMap { AlertSound(name: $0) }
     }
 

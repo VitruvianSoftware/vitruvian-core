@@ -325,7 +325,7 @@ private final class MusicReplacementLauncher {
         guard now - lastLaunch > 1.0 else { return }
         lastLaunch = now
 
-        let path = UserDefaults.standard.string(forKey: DefaultsKey.musicBlockReplacementPath) ?? ""
+        let path = UserDefaults.standard[Preferences.musicBlockReplacementPath]
         guard !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
         // The replacement must never be the app being blocked, or the two

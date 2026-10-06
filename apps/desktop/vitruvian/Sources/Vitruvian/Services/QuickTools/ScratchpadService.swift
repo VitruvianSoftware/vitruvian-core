@@ -261,7 +261,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         let defaults = environment.defaults
         let defaultName = FeatureStrings.scratchpad(L10n.shared.language).pageTitle
         let retention = ScratchpadRetention.sanitized(
-            defaults.string(forKey: DefaultsKey.scratchpadRetention))
+            defaults[Preferences.scratchpadRetention])
         do {
             let loaded = try store.load(defaultName: defaultName, retention: retention, now: Date())
             apply(loaded)

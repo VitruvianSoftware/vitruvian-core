@@ -171,9 +171,9 @@ package final class URLCleanerService: ObservableObject {
     nonisolated private static var rules: URLCleaning.Rules {
         let defaults = UserDefaults.standard
         return URLCleaning.rules(
-            globalNames: defaults.string(forKey: DefaultsKey.urlCleanerCustomParameters),
-            siteNames: defaults.string(forKey: DefaultsKey.urlCleanerSiteParameters),
-            disabledNames: defaults.string(forKey: DefaultsKey.urlCleanerDisabledParameters))
+            globalNames: defaults[Preferences.urlCleanerCustomParameters],
+            siteNames: defaults[Preferences.urlCleanerSiteParameters],
+            disabledNames: defaults[Preferences.urlCleanerDisabledParameters])
     }
 
     @discardableResult

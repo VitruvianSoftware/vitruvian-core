@@ -91,7 +91,7 @@ package final class KillProcessService: ObservableObject {
     private var pendingRestartURL: URL?
 
     private init() {
-        sortBy = SortBy(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.killProcessSortBy) ?? "cpu") ?? .cpu
+        sortBy = SortBy(rawValue: UserDefaults.standard[Preferences.killProcessSortBy]) ?? .cpu
         sortAscending = UserDefaults.standard[Preferences.killProcessSortAscending]
         groupRelated = UserDefaults.standard[Preferences.killProcessGroupRelated]
     }
@@ -135,7 +135,7 @@ package final class KillProcessService: ObservableObject {
             sortBy = value
             sortAscending = value == .name
         }
-        UserDefaults.standard.set(sortBy.rawValue, forKey: DefaultsKey.killProcessSortBy)
+        UserDefaults.standard[Preferences.killProcessSortBy] = sortBy.rawValue
         UserDefaults.standard[Preferences.killProcessSortAscending] = sortAscending
     }
 
