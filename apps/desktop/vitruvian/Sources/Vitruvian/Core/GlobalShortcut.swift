@@ -234,11 +234,9 @@ package struct GlobalShortcut: Equatable, Hashable {
     // layer, matching how the system numbers its own capture keys.
     package static let screenRecorderDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_5),
                                                       modifiers: [.control, .option, .command])
-    // G for the agent, on the same free control-option-command layer. The
-    // standalone Nexus Agent app keeps its own Command-Shift-G, so both can
-    // run side by side without fighting for the key.
-    package static let nexusAgentDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_G),
-                                                  modifiers: [.control, .option, .command])
+    // Control-Space for the Quick Prompt spotlight HUD.
+    package static let nexusAgentDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
+                                                  modifiers: [.control])
 
     package static func saved(for key: String, fallback: GlobalShortcut) -> GlobalShortcut {
         if let raw = UserDefaults.standard.string(forKey: key),

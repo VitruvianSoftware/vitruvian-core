@@ -134,6 +134,7 @@ enum SourceNames {
         "square.and.arrow.up",
         "square.grid.2x2",
         "star.fill",
+        "stop.fill",
         "sun.max.fill",
         "terminal",
         "text.badge.plus",

@@ -487,7 +487,9 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         removeMonitors()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
             guard let self, let panel, event.window === panel else { return event }
-            guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let isCmdW = flags == .command && event.charactersIgnoringModifiers == "w"
+            guard event.keyCode == UInt16(kVK_Escape) || isCmdW else { return event }
             // Mid-composition Esc belongs to the input method.
             if let editor = panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
             self.hideQuickPrompt()

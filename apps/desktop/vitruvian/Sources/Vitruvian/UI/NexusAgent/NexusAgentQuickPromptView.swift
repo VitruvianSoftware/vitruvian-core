@@ -56,36 +56,75 @@ package struct NexusAgentQuickPromptView: View {
     // MARK: - Pill
 
     private var pill: some View {
+        HStack(spacing: 0) {
+            inputBar
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(height: Layout.compactHeight)
+    }
+
+    private var inputBar: some View {
         HStack(spacing: 12) {
             sparkles
             TextField(strings.promptPlaceholder, text: $session.draft)
                 .textFieldStyle(.plain)
-                .font(.system(size: 18))
+                .font(.system(size: 18, weight: .regular))
                 .focused($inputFocused)
                 .onSubmit { if session.canSend { service.sendQuickPrompt() } }
+            if !session.draft.isEmpty {
+                clearButton
+            }
             sessionsButton
-            planButton
             sendButton
         }
-        .padding(.horizontal, 20)
-        .frame(height: Layout.compactHeight)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+        )
+    }
+
+    private var clearButton: some View {
+        Button {
+            session.draft = ""
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.secondary.opacity(0.6))
+        }
+        .buttonStyle(.plain)
+        .transition(.opacity.combined(with: .scale(scale: 0.8)))
     }
 
     private var sparkles: some View {
         Image(systemName: "sparkles")
-            .font(.system(size: 20, weight: .semibold))
-            .foregroundStyle(LinearGradient(colors: [.purple, .blue, .cyan],
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(LinearGradient(colors: [.blue, .purple],
                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-            .frame(width: 28, height: 28)
+            .frame(width: 24, height: 24)
             .background(QuickPromptDragHandle())
             .accessibilityHidden(true)
     }
 
     private var sessionsButton: some View {
-        modeButton(icon: "clock.arrow.circlepath", active: session.mode == .sessions,
-                   tint: .accentColor, help: strings.sessionsToggle) {
+        Button {
             session.toggleSessions(configuration: service.configuration)
+        } label: {
+            Image(systemName: session.mode == .sessions ? "chevron.down" : "chevron.up")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.primary.opacity(session.mode == .sessions ? 0.85 : 0.55))
+                .frame(width: 26, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(session.mode == .sessions ? 0.16 : 0.08))
+                )
         }
+        .buttonStyle(.plain)
+        .help(strings.sessionsToggle)
+        .accessibilityLabel(strings.sessionsToggle)
+        .accessibilityAddTraits(session.mode == .sessions ? .isSelected : [])
     }
 
     private var planButton: some View {
@@ -99,10 +138,11 @@ package struct NexusAgentQuickPromptView: View {
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(active ? tint : Color.secondary)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(active ? tint.opacity(0.15) : Color.primary.opacity(0.05)))
+                .frame(width: 26, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(active ? tint.opacity(0.18) : Color.primary.opacity(0.06)))
         }
         .buttonStyle(.plain)
         .help(help)
@@ -113,42 +153,48 @@ package struct NexusAgentQuickPromptView: View {
     @ViewBuilder
     private var sendButton: some View {
         if session.isRunning {
-            circleButton(icon: "stop.fill", enabled: true, label: strings.stopReply) { session.stop() }
-        } else {
-            circleButton(icon: "arrow.up", enabled: session.canSend, label: strings.send) {
-                service.sendQuickPrompt()
+            Button { session.stop() } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(Color.red))
             }
+            .buttonStyle(.plain)
+            .help(strings.stopReply)
+            .accessibilityLabel(strings.stopReply)
+        } else {
+            Button { service.sendQuickPrompt() } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(session.canSend ? Color.white : Color.primary.opacity(0.35))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(session.canSend ? Color.accentColor : Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .disabled(!session.canSend)
+            .help(strings.send)
+            .accessibilityLabel(strings.send)
         }
-    }
-
-    private func circleButton(icon: String, enabled: Bool, label: String,
-                              action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(Color.white)
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(enabled ? Color.accentColor : Color.secondary.opacity(0.3)))
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .help(label)
-        .accessibilityLabel(label)
     }
 
     // MARK: - Sessions drawer
 
     private var drawer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
-                TextField(strings.sessionsFilter, text: $session.sessionFilter)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
+                    TextField(strings.sessionsFilter, text: $session.sessionFilter)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
+
+                planButton
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
             ScrollView {
                 LazyVStack(spacing: 6) {
                     if session.filteredSessions.isEmpty {
