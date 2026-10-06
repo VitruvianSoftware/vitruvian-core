@@ -126,6 +126,17 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   rule about how all of the code is written, not about what one piece of it
   does, is a lint: add it there, with a mutation that shows it fails.
 
+## Porting from upstream
+
+- Follow `UPSTREAM.md`, "Tracking and porting upstream". Start a port with
+  `bazel run //apps/desktop/vitruvian:track_upstream -- port <sha>...`. Never copy
+  upstream files over this tree: that undoes the rename and the refactor.
+- Update the ledger (`upstream/ledger.tsv`) in the same PR: `ported` with the PR
+  number, or `skipped` with why. `bazel test //apps/desktop/vitruvian:upstream_test`
+  checks it.
+- A port is not done while the tool's report lists a brand-review line. Nothing
+  may point at upstream's brand, servers, update feed or repository.
+
 ## Verifying
 
 `bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests

@@ -5,10 +5,11 @@ This directory is a fork of **vorssaint-utils**, a macOS menu-bar utility app.
 | | |
 | --- | --- |
 | Upstream | <https://github.com/vorssaint/vorssaint-utils> |
-| Imported commit | `aa6ddcb901acb0a61f6bfc9ed4753c6fbffcf958` (2026-10-02, "chore(agents): update AI price list") |
+| Imported commit | `aa6ddcb901acb0a61f6bfc9ed4753c6fbffcf958` (2026-10-02, "chore(agents): update AI price list"). Upstream has since rewritten it as `e80abdb1`, with the same tree. |
 | Upstream version at import | 3.4.1-beta.1 (build 96) |
 | Imported on | 2026-10-02 |
 | License | GPL-3.0-or-later (see [`LICENSE`](LICENSE)) |
+| Tracked through | [`upstream/ledger.tsv`](upstream/ledger.tsv): every upstream commit since, and what this fork did with it (see "Tracking and porting upstream") |
 
 ## Licensing: this directory is GPL, not Apache
 
@@ -2447,19 +2448,100 @@ is that notice. Add an entry for every change to upstream files.
     and puts each file back however the run ends.
   - Its `func toggle()` fixture reads `package func toggle()`, as
     `NotchService` has since step 3.2e-2.
+- **2026-10-06**: Upstream tracking (see "Tracking and porting upstream"):
+  added `upstream/` (the ledger, `upstream.py` and its tests) and the
+  `track_upstream` and `upstream_test` targets in `BUILD`. No upstream file
+  changed.
 
-## Syncing from upstream
+## Tracking and porting upstream
 
-There is no automatic sync. To take a later upstream commit:
+Upstream ships fixes and features most days: 150 commits landed in the four days
+after the import. This fork keeps up with a ledger, a tool and a daily watch.
 
-1. `git archive` that commit into a scratch directory and drop the paths listed
-   above.
-2. Diff it against this directory. Port the changes, keeping this repo's own
-   modifications.
-3. Run `bazel run //apps/desktop/vitruvian:sync_sources` (in case `build.sh`
-   changed its source lists), then build and test (see `README.md`).
-4. Update the commit and version in the table above, and add an entry under
-   Modifications.
+- **The ledger**, [`upstream/ledger.tsv`](upstream/ledger.tsv), lists every
+  upstream commit since the import, oldest first, and what this fork did with it:
+  - `pending`: not decided, or worth porting but not ported yet;
+  - `ported`: its ref is the PR that ported it;
+  - `skipped`: its ref says why.
 
-Once the refactor diverges from upstream, cherry-picking individual fixes will
-be more practical than taking whole commits.
+  Its `# base` line is the upstream commit the import matches, with its tree.
+- **The tool**, run as `bazel run //apps/desktop/vitruvian:track_upstream -- <command>`:
+  - `status` lists the upstream commits not yet in the ledger, and how many are
+    pending.
+  - `triage` adds them to the ledger. A commit that touches only paths the import
+    left out (CI, upstream's README and changelog, brand artwork) is marked
+    `skipped`; the rest are `pending`.
+  - `show <sha>` prints an upstream commit, with where each of its files lives in
+    this tree.
+  - `port <sha>...` applies upstream commits to this tree. It is a first pass; see
+    "Porting" below.
+
+  `bazel test //apps/desktop/vitruvian:upstream_test` tests the tool and checks
+  the ledger's format.
+- **The watch**, `.github/workflows/vitruvian-upstream-watch.yaml`, runs daily. It
+  keeps one issue, "Upstream vorssaint-utils: commits to triage and port", that
+  lists the untriaged and pending commits. It comments when new upstream commits
+  appear, and closes the issue when nothing is left.
+
+Upstream rewrites its history now and then: the import's commit `aa6ddcb9` was
+replaced by `e80abdb1`, with the same tree, after the import. The tool follows
+such rewrites. It finds the base again by its tree, and ledger rows by their
+`git patch-id`.
+
+### Triage
+
+Run `triage` and commit the ledger, then decide each pending commit:
+
+- **Port** fixes and features that apply to this fork.
+- **Skip**, with the reason as the ref:
+  - upstream's brand, servers, update feed, community links or donation prompts,
+    which the fork must never use (`TRADEMARKS.md`);
+  - code this fork removed, such as `BundleMigration` and the upstream install
+    migrations;
+  - upstream's release bookkeeping: version bumps, changelog and release notes;
+  - what the refactor already covers.
+- **Leave pending** what is worth porting but not ported yet.
+
+### Porting
+
+1. Group pending commits by feature (one upstream PR, or a feature and its
+   follow-up fixes) and port each group in its own PR, oldest first: later
+   commits build on earlier ones.
+2. Run `port <sha>...` to apply them in order. For each file the tool:
+   - finds where the file lives now (the refactor renamed or split most of them);
+   - rewrites upstream's names to this fork's;
+   - three-way merges the upstream change into this fork's copy, ignoring the
+     `package` modifiers the module split added.
+
+   It never rewrites upstream's domains, repository or services. Any line that
+   still names upstream is reported for brand review. Its `report.md` lists what
+   is left: conflicts, files it could not place (with the upstream patch), binary
+   files (check them for upstream's brand before copying), and upstream renames
+   and deletions. On 2026-10-06, applying each of the 126 pending commits on its
+   own to this tree:
+   - 32 commits applied cleanly;
+   - of the files the commits change, 405 merged or were added cleanly and 341
+     have conflicts to resolve.
+
+   The conflicts are mostly where the refactor rewrote the code, and in source-pin
+   tests this fork replaced. Porting in order lowers the count.
+3. Finish the port by hand:
+   - Resolve the conflicts against the refactored code (`REFACTOR.md`).
+   - Keep the Swift 6 rules in `AGENTS.md`.
+   - Give a new declaration `package` when another module uses it.
+   - Port upstream's tests as behavioural tests: a test that reads source text
+     fails `source_lints_test`.
+   - Keep upstream's notice (`Copyright (C) 2026 Vorssaint`) on files that are
+     upstream's code.
+4. If `build.sh` changed, run `bazel run //apps/desktop/vitruvian:sync_sources`.
+   Then build and test (see `README.md`).
+5. In the same PR, set each ported commit's ledger row to `ported` with the PR
+   number (`#1234`). Set any commit dropped while porting to `skipped`, with why.
+6. Title the commit `fix(vitruvian): ...` or `feat(vitruvian): ...`, because
+   release-please writes the release notes from these. End the message with
+   `Upstream-Commit: vorssaint/vorssaint-utils@<sha>` for each upstream commit,
+   and `Co-authored-by:` for each upstream author.
+
+The ledger is the dated record of what was ported from upstream. "Modifications"
+above still logs this fork's own changes, including any change of behaviour a
+port makes beyond upstream's.
