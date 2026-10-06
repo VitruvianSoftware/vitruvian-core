@@ -1097,3 +1097,48 @@ reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accep
 id = "GHSA-g84c-rxfj-3j2c"
 ignoreUntil = 2026-10-23
 reason = "npm webpack-dev-middleware (7.4.5). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+# 2026-10-06: the nightly full-tree scan went red on 39 npm advisories
+# published 2026-09-03..2026-10-06. Every one with a fix inside the major the
+# lockfile already uses was cleared by a root pnpm override (package.json
+# "pnpm.overrides"). What remains below cannot be cleared that way: the fix is
+# only in a newer major that the depending package does not accept (forcing it
+# would ship an untested breaking release under that package), or no fixed
+# release exists at all. The no-fix entries are time-boxed, NOT PERMANENT:
+# these are ordinary bugs awaiting a release, not packages unsafe by design, so
+# the next review should find a fix to take.
+
+[[IgnoredVulns]]
+id = "GHSA-238p-pmpm-9mq7"
+ignoreUntil = 2026-10-23
+reason = "npm katex (0.16.47), via mermaid 11.16.1 in pnpm-lock.yaml and the devx docs site (apps/cli/devx/docs/package-lock.json). Advisory published 2026-10-05. Fixed only in 0.18.2, and mermaid's latest release (12.1.0) still requires ^0.16.47. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-7mx3-vvmw-hjmv"
+ignoreUntil = 2026-10-23
+reason = "npm @graphql-tools/utils (8.9.0, 8.13.1), via @graphql-tools/merge 8.3.1, @graphql-tools/schema 8.5.1 and mockttp 3.17.2. Advisory published 2026-10-05. Fixed only in 12.0.1, four majors above what those packages accept. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-c475-qrg2-pj4r"
+ignoreUntil = 2026-10-23
+reason = "npm basic-ftp (5.3.1), via get-uri 6.0.5. Advisory published 2026-10-01. Fixed only in 6.2.1, and get-uri's latest release (8.0.1) still requires ^5.3.1. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rj75-hqrm-r3gf"
+ignoreUntil = 2026-10-23
+reason = "npm postcss-selector-parser (6.1.4), via cssnano 5 plugins (postcss-calc 8.2.4, postcss-merge-rules 5.1.4 and others). Advisory published 2026-10-05. Fixed only in 7.1.6; the 7.x copies are overridden to it, the 6.x ones cannot be. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-10-23
+reason = "npm braces (3.0.3), via micromatch 4.0.8 and chokidar 3.6.0. Advisory published 2026-09-18. No fixed release: 3.0.3 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up the fix. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-86w9-cpqp-85rv"
+ignoreUntil = 2026-10-23
+reason = "npm node-forge (1.4.0), via selfsigned 2.4.1, mockttp 3.17.2 and @backstage/backend-defaults 0.17.6. Advisory published 2026-09-03. No fixed release: 1.4.0 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up the fix. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+ignoreUntil = 2026-10-23
+reason = "npm sprintf-js (1.0.3 via argparse 1.0.10, 1.1.3 via roarr 2.15.4). Advisory published 2026-09-24. No fixed release: 1.1.3 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up the fix. Accepted until next quarter dependency update."
