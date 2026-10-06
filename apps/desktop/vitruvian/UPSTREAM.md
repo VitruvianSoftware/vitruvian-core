@@ -2240,8 +2240,26 @@ is that notice. Add an entry for every change to upstream files.
     (`WindowLayoutSettledFrames`), `Services/Audio/MixerRender.swift` and
     `AppVolumeMixer.swift` (`renderCycle`, `MixerEngineTeardown`),
     `UI/KeepAwakeAutomationView.swift` (`KeepAwakeMatchModePicker`).
+  - App management and utilities: `Services/Uninstall/AppUninstaller.swift`
+    and `UninstallerSupport.swift`, `UI/Uninstall/AppPickerView.swift` and
+    `UninstallerView.swift`, `UI/MenuPanel/PanelUninstallerView.swift`,
+    `UI/SharedUI.swift`, `Services/Cleaner/JunkCleaner.swift` and
+    `CleanerScheduler.swift`, `UI/Cleaner/CleanerView.swift`,
+    `Services/AutoQuit/AutoQuitService.swift` and `AutoQuitSupport.swift`,
+    `UI/Settings/AutoQuitSettings.swift`,
+    `Services/DiskImageInstaller/DiskImageInstallerService.swift`,
+    `Services/QuitProtection/QuitProtectionHUD.swift`,
+    `Core/RadialMenu/RadialMenuSupport.swift` and
+    `Services/RadialMenu/RadialMenuService.swift`,
+    `UI/Settings/ShortcutsSettings.swift` and `DiskExclusionsList.swift`,
+    `Services/QuickTools/QuickTogglesSupport.swift` and
+    `ScreenshotShareService.swift`, `Services/Recorder/RecordingShareService.swift`,
+    `Services/Update/UpdateShowcaseMedia.swift`, `Services/LaunchAtLogin.swift`.
+    `UninstallerSupport.offeredApplications()` without arguments and
+    `PanelUninstallerView.selectFirstApp`, now unused, are removed.
   - The suites that read those files as text check the code instead:
-    `ShelfFeatureTests`, `OverlayPanelTests`, `ScrollHorizontalModifierTests`,
+    `AppManagementFeatureTests`, `StorageFeatureTests`,
+    `UtilitiesFeatureTests`, `UpdateFeatureTests`, `ShelfFeatureTests`, `OverlayPanelTests`, `ScrollHorizontalModifierTests`,
     `NotchScreenRefreshTests`, `NotchWatchTests`, `ClipboardFeatureTests`,
     `SettingsFeatureTests`, `WindowLayoutFeatureTests`,
     `PreferencesFeatureTests`, `MixerFeatureTests`,
