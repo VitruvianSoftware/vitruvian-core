@@ -201,3 +201,133 @@ package enum NexusAgentReplyBlock: Equatable, Sendable {
         return blocks
     }
 }
+
+/// Structured Markdown block elements parsed from prose.
+package enum NexusAgentMarkdownBlock: Equatable, Sendable {
+    case heading(level: Int, text: String)
+    case bulletItem(text: String)
+    case numberedItem(number: String, text: String)
+    case blockquote(text: String)
+    case divider
+    case paragraph(text: String)
+
+    /// Parses a markdown text string into structured blocks.
+    package static func parse(_ text: String) -> [NexusAgentMarkdownBlock] {
+        var blocks: [NexusAgentMarkdownBlock] = []
+        var paragraphLines: [String] = []
+        var quoteLines: [String] = []
+
+        func flushQuote() {
+            guard !quoteLines.isEmpty else { return }
+            let joined = quoteLines.joined(separator: "\n").trimmingCharacters(in: .newlines)
+            if !joined.isEmpty {
+                blocks.append(.blockquote(text: joined))
+            }
+            quoteLines = []
+        }
+
+        func flushParagraph() {
+            guard !paragraphLines.isEmpty else { return }
+            let joined = paragraphLines.joined(separator: "\n").trimmingCharacters(in: .newlines)
+            if !joined.isEmpty {
+                blocks.append(.paragraph(text: joined))
+            }
+            paragraphLines = []
+        }
+
+        func flushAll() {
+            flushQuote()
+            flushParagraph()
+        }
+
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                flushAll()
+            } else if isDivider(trimmed) {
+                flushAll()
+                blocks.append(.divider)
+            } else if let (level, headingText) = parseHeading(trimmed) {
+                flushAll()
+                blocks.append(.heading(level: level, text: headingText))
+            } else if let bullet = parseBullet(trimmed) {
+                flushAll()
+                blocks.append(.bulletItem(text: bullet))
+            } else if let (num, itemText) = parseNumbered(trimmed) {
+                flushAll()
+                blocks.append(.numberedItem(number: num, text: itemText))
+            } else if isBlockquote(trimmed) {
+                flushParagraph()
+                quoteLines.append(blockquoteContent(trimmed))
+            } else {
+                flushQuote()
+                paragraphLines.append(trimmed)
+            }
+        }
+        flushAll()
+        return blocks
+    }
+
+    private static func isDivider(_ trimmed: String) -> Bool {
+        let stripped = trimmed.filter { !$0.isWhitespace }
+        guard stripped.count >= 3 else { return false }
+        return stripped.allSatisfy { $0 == "-" }
+            || stripped.allSatisfy { $0 == "*" }
+            || stripped.allSatisfy { $0 == "_" }
+    }
+
+    private static func parseHeading(_ trimmed: String) -> (level: Int, text: String)? {
+        guard trimmed.hasPrefix("#") else { return nil }
+        var level = 0
+        var index = trimmed.startIndex
+        while index < trimmed.endIndex && trimmed[index] == "#" {
+            level += 1
+            index = trimmed.index(after: index)
+        }
+        guard level >= 1 && level <= 6, index < trimmed.endIndex, trimmed[index] == " " || trimmed[index] == "\t" else {
+            return nil
+        }
+        let headingText = String(trimmed[index...]).trimmingCharacters(in: .whitespaces)
+        return (level, headingText)
+    }
+
+    private static func parseBullet(_ trimmed: String) -> String? {
+        if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
+            return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    private static func parseNumbered(_ trimmed: String) -> (number: String, text: String)? {
+        var digits = ""
+        var index = trimmed.startIndex
+        while index < trimmed.endIndex && trimmed[index].isNumber {
+            digits.append(trimmed[index])
+            index = trimmed.index(after: index)
+        }
+        guard !digits.isEmpty, index < trimmed.endIndex else { return nil }
+        let delimiter = trimmed[index]
+        guard delimiter == "." || delimiter == ")" else { return nil }
+        index = trimmed.index(after: index)
+        guard index < trimmed.endIndex, trimmed[index] == " " || trimmed[index] == "\t" else { return nil }
+        while index < trimmed.endIndex && (trimmed[index] == " " || trimmed[index] == "\t") {
+            index = trimmed.index(after: index)
+        }
+        let itemText = String(trimmed[index...]).trimmingCharacters(in: .whitespaces)
+        return (digits, itemText)
+    }
+
+    private static func isBlockquote(_ trimmed: String) -> Bool {
+        trimmed.hasPrefix("> ") || trimmed == ">"
+    }
+
+    private static func blockquoteContent(_ trimmed: String) -> String {
+        if trimmed.hasPrefix("> ") {
+            return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        } else if trimmed == ">" {
+            return ""
+        }
+        return trimmed
+    }
+}
+

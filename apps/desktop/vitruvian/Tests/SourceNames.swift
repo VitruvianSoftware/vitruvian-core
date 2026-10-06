@@ -107,6 +107,7 @@ enum SourceNames {
         "photo",
         "photo.badge.plus",
         "photo.fill",
+        "point.3.connected.trianglepath.dotted",
         "pin",
         "pin.fill",
         "pin.slash.fill",

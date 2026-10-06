@@ -26,6 +26,7 @@ enum NexusAgentTests {
         sessionIndex(suite)
         transcriptParsing(suite)
         replyBlocks(suite)
+        markdownBlocks(suite)
     }
 
     // MARK: - .env
@@ -689,5 +690,81 @@ enum NexusAgentTests {
             .text("Partial"), .code(language: nil, body: "still streaming"),
         ], "an unclosed fence while streaming is code to the end")
         suite.expect(NexusAgentReplyBlock.parse("") == [], "an empty reply has no blocks")
+    }
+
+    private static func markdownBlocks(_ suite: TestSuite) {
+        // Headings
+        suite.expect(NexusAgentMarkdownBlock.parse("# Heading 1") == [.heading(level: 1, text: "Heading 1")],
+                     "heading 1 parses correctly")
+        suite.expect(NexusAgentMarkdownBlock.parse("## Heading 2") == [.heading(level: 2, text: "Heading 2")],
+                     "heading 2 parses correctly")
+        suite.expect(NexusAgentMarkdownBlock.parse("### Heading 3") == [.heading(level: 3, text: "Heading 3")],
+                     "heading 3 parses correctly")
+        suite.expect(NexusAgentMarkdownBlock.parse("#NotAHeading") == [.paragraph(text: "#NotAHeading")],
+                     "hash without space is treated as paragraph")
+
+        // Bullet list items
+        suite.expect(NexusAgentMarkdownBlock.parse("* item") == [.bulletItem(text: "item")],
+                     "asterisk bullet item parses")
+        suite.expect(NexusAgentMarkdownBlock.parse("- item") == [.bulletItem(text: "item")],
+                     "dash bullet item parses")
+        suite.expect(NexusAgentMarkdownBlock.parse("+ item") == [.bulletItem(text: "item")],
+                     "plus bullet item parses")
+
+        // Numbered list items
+        suite.expect(NexusAgentMarkdownBlock.parse("1. item") == [.numberedItem(number: "1", text: "item")],
+                     "numbered item 1. parses")
+        suite.expect(NexusAgentMarkdownBlock.parse("2. item") == [.numberedItem(number: "2", text: "item")],
+                     "numbered item 2. parses")
+        suite.expect(NexusAgentMarkdownBlock.parse("1) item") == [.numberedItem(number: "1", text: "item")],
+                     "numbered item 1) parses")
+
+        // Blockquotes
+        suite.expect(NexusAgentMarkdownBlock.parse("> quote line 1\n> quote line 2") == [
+            .blockquote(text: "quote line 1\nquote line 2"),
+        ], "contiguous quote lines merge into a single blockquote")
+
+        // Dividers
+        suite.expect(NexusAgentMarkdownBlock.parse("---") == [.divider],
+                     "dash divider parses")
+        suite.expect(NexusAgentMarkdownBlock.parse("***") == [.divider],
+                     "asterisk divider parses")
+
+        // Whitespace and empty
+        suite.expect(NexusAgentMarkdownBlock.parse("").isEmpty, "empty text produces no blocks")
+        suite.expect(NexusAgentMarkdownBlock.parse("   \n\n\t  ").isEmpty, "whitespace produces no blocks")
+
+        // Mixed document
+        let doc = """
+        # Title
+
+        Body paragraph.
+
+        - Bullet A
+        - Bullet B
+
+        > A quoted notice
+
+        ---
+        1. First
+        2. Second
+        """
+        let parsed = NexusAgentMarkdownBlock.parse(doc)
+        suite.expect(parsed == [
+            .heading(level: 1, text: "Title"),
+            .paragraph(text: "Body paragraph."),
+            .bulletItem(text: "Bullet A"),
+            .bulletItem(text: "Bullet B"),
+            .blockquote(text: "A quoted notice"),
+            .divider,
+            .numberedItem(number: "1", text: "First"),
+            .numberedItem(number: "2", text: "Second"),
+        ], "mixed document parses into structured blocks: \(parsed)")
+
+        // Mermaid detection in reply blocks
+        let reply = "```mermaid\ngraph TD\nA --> B\n```"
+        suite.expect(NexusAgentReplyBlock.parse(reply) == [
+            .code(language: "mermaid", body: "graph TD\nA --> B"),
+        ], "mermaid code fence retains mermaid language")
     }
 }

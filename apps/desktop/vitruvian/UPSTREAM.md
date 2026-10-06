@@ -2413,6 +2413,11 @@ is that notice. Add an entry for every change to upstream files.
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
   - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-06**: Rich Markdown blocks and interactive Mermaid diagrams in Quick Prompt:
+  - `NexusAgentQuickPromptLayout`: added `NexusAgentMarkdownBlock` enum (`heading`, `bulletItem`, `numberedItem`, `blockquote`, `divider`, `paragraph`) with block parser;
+  - `NexusAgentQuickPromptView`: updated `NexusAgentMessageBubble` to render structured Markdown blocks (headings with proportional scale, custom styled bullets and numbered items, blockquote callouts, dividers), added `NexusAgentMermaidCard` with `WKWebView` rendering and Diagram/Source toggle, and added styled `NexusAgentCodeBlockView` with language tags and line numbers;
+  - `SourceNames`: added `point.3.connected.trianglepath.dotted` SF symbol;
+  - `NexusAgentTests`: added comprehensive test suite for `NexusAgentMarkdownBlock.parse` and Mermaid code fence detection.
 - **2026-10-06**: Restore Quick Prompt resumed session content and header parity:
   - `NexusAgentSessionSummary`: retain `preview` property extracted from SQL `preview` column;
   - `NexusAgentService`: add `readTranscript`, `parseTranscript`, and `extractUserPrompt` to parse conversation transcript turns from `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`;
