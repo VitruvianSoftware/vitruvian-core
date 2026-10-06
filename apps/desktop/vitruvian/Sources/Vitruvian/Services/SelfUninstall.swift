@@ -74,23 +74,86 @@ package enum SelfUninstall {
             self.background = background
         }
 
-        package static let system = Steps(
-            suspendInputInterceptors: { SelfUninstall.suspendInputInterceptors() },
-            restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() },
-            detachFanControl: { SelfUninstall.detachFanControl() },
-            detachLoginItem: { SelfUninstall.detachLoginItem() },
-            removeSudoersRule: { SelfUninstall.removeSudoersRuleIfPresent(then: $0) },
-            resetTCC: { SelfUninstall.resetTCC() },
-            removePreferences: { SelfUninstall.removePreferences() },
-            trashOwnBundleAndQuit: { SelfUninstall.trashOwnBundleAndQuit() },
-            fanHelperIsRegistered: { FanControlService.hasRegisteredHelperForRemoval },
-            restoreFanRegistration: { FanControlService.restoreRegistrationAfterFailedRemoval() },
-            refreshPermissions: { Permissions.shared.refresh() },
-            resumeKeepAwake: { KeepAwakeManager.shared.resumeAfterSystemTeardown() },
-            resumeFeatures: { FeatureRuntime.shared.sync(AppFeature.allCases) },
-            resumeBrightness: { BrightnessService.shared.resumeInputTaps() },
-            main: { work in DispatchQueue.main.async { work() } },
-            background: { work in DispatchQueue.global(qos: .userInitiated).async { work() } })
+        package static let system = Steps.wired(to: .live)
+
+        /// The real steps over the system calls they make. `system` is them
+        /// over the Mac's; tests pass recorders to check that the input
+        /// teardown, the sleep restore and the fan detach are the real ones.
+        package static func wired(to calls: SystemCalls) -> Steps {
+            Steps(
+                suspendInputInterceptors: { SelfUninstall.suspendInputInterceptors(calls) },
+                restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval(calls) },
+                detachFanControl: { calls.detachFanHelper() },
+                detachLoginItem: { SelfUninstall.detachLoginItem() },
+                removeSudoersRule: { SelfUninstall.removeSudoersRuleIfPresent(then: $0) },
+                resetTCC: { SelfUninstall.resetTCC() },
+                removePreferences: { SelfUninstall.removePreferences() },
+                trashOwnBundleAndQuit: { SelfUninstall.trashOwnBundleAndQuit() },
+                fanHelperIsRegistered: { FanControlService.hasRegisteredHelperForRemoval },
+                restoreFanRegistration: { FanControlService.restoreRegistrationAfterFailedRemoval() },
+                refreshPermissions: { Permissions.shared.refresh() },
+                resumeKeepAwake: { KeepAwakeManager.shared.resumeAfterSystemTeardown() },
+                resumeFeatures: { FeatureRuntime.shared.sync(AppFeature.allCases) },
+                resumeBrightness: { calls.resumeBrightnessKeys() },
+                main: { work in DispatchQueue.main.async { work() } },
+                background: { work in DispatchQueue.global(qos: .userInitiated).async { work() } })
+        }
+    }
+
+    /// The Accessibility-backed input interceptors the teardown stops, in the
+    /// order it stops them. Cleaning Mode goes first: deactivating it re-syncs
+    /// the services it paused back to their preferences, so after the others
+    /// it would re-arm the very taps this teardown just stopped.
+    package enum InputInterceptor: CaseIterable, Sendable {
+        case cleaningMode, scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration
+        case mouseNavigation, mouseButtonShortcuts, windowMaximizer, windowLayout, pointerDisplay
+        case appSwitcher, dockPreview, brightnessKeys, autoQuit, finderCutPaste, finderRename
+        case keyboardDebounce, mouseClickDebounce, superKey, dockClick, middleClick, quitProtection
+        case pastePlain, snippetLibrary, textSnippets, screenCapture, recentCaptures, quickLauncher
+        case screenText, cameraPreview, radialMenu, scratchpad, commandBar, preciseVolumeRoller, micMute
+    }
+
+    /// What the real steps ask of the Mac: the input teardown, the brightness
+    /// keys, the closed-lid flag, `pmset`, the two ways sleep goes back and
+    /// the fan helper. `live` is the Mac.
+    package struct SystemCalls: Sendable {
+        /// Stops one interceptor; false only when it cannot be let go yet.
+        package var suspendInterceptor: @MainActor @Sendable (InputInterceptor) -> Bool
+        package var resumeBrightnessKeys: @MainActor @Sendable () -> Void
+        /// Whether a closed-lid session left sleep for the app to restore.
+        package var sleepFlagged: @Sendable () -> Bool
+        /// `pmset -g`.
+        package var probeSleep: @Sendable () -> (status: Int32, output: String)
+        /// Through the password-free rule, if it is installed.
+        package var restoreSleepWithoutPassword: @Sendable () -> Bool
+        /// Through the password dialog, which asks with `prompt`.
+        package var restoreSleepAsAdministrator: @Sendable (_ prompt: String) -> Bool
+        package var detachFanHelper: @Sendable () -> Bool
+
+        package init(suspendInterceptor: @escaping @MainActor @Sendable (InputInterceptor) -> Bool,
+                     resumeBrightnessKeys: @escaping @MainActor @Sendable () -> Void,
+                     sleepFlagged: @escaping @Sendable () -> Bool,
+                     probeSleep: @escaping @Sendable () -> (status: Int32, output: String),
+                     restoreSleepWithoutPassword: @escaping @Sendable () -> Bool,
+                     restoreSleepAsAdministrator: @escaping @Sendable (_ prompt: String) -> Bool,
+                     detachFanHelper: @escaping @Sendable () -> Bool) {
+            self.suspendInterceptor = suspendInterceptor
+            self.resumeBrightnessKeys = resumeBrightnessKeys
+            self.sleepFlagged = sleepFlagged
+            self.probeSleep = probeSleep
+            self.restoreSleepWithoutPassword = restoreSleepWithoutPassword
+            self.restoreSleepAsAdministrator = restoreSleepAsAdministrator
+            self.detachFanHelper = detachFanHelper
+        }
+
+        package static let live = SystemCalls(
+            suspendInterceptor: { SelfUninstall.suspend($0) },
+            resumeBrightnessKeys: { BrightnessService.shared.resumeInputTaps() },
+            sleepFlagged: { UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag) },
+            probeSleep: { Shell.run("/usr/bin/pmset", ["-g"]) },
+            restoreSleepWithoutPassword: { Sudoers.pmsetDisableSleep(false) },
+            restoreSleepAsAdministrator: { AdminShell.runSync("pmset disablesleep 0", prompt: $0) },
+            detachFanHelper: { FanControlService.restoreAndUnregisterForRemoval() })
     }
 
     /// Resets every TCC permission the app holds, drops the login item and the
@@ -208,62 +271,72 @@ package enum SelfUninstall {
 
     // MARK: - Steps (each scoped to this app only)
 
-    /// Tears down every Accessibility-backed input interceptor. MUST run on the
-    /// main thread and BEFORE permissions are reset: otherwise revoking
-    /// Accessibility while an event tap is still live makes the tap's callback
-    /// block on an AX call, which stalls the OS input queue and freezes the
-    /// keyboard and clicks (only the mouse cursor keeps moving). Each `stop`/
-    /// `suspend`/`deactivate` is idempotent, so calling it when a service is
-    /// already off is a no-op.
+    /// Tears down every Accessibility-backed input interceptor, all of them,
+    /// in `InputInterceptor` order. MUST run on the main thread and BEFORE
+    /// permissions are reset: otherwise revoking Accessibility while an event
+    /// tap is still live makes the tap's callback block on an AX call, which
+    /// stalls the OS input queue and freezes the keyboard and clicks (only
+    /// the mouse cursor keeps moving). False when one could not be let go.
     // Both callers run it from the main queue.
     @MainActor
-    private static func suspendInputInterceptors() -> Bool {
-        // Deactivating Cleaning Mode re-syncs the services it paused back to
-        // their preferences, so it has to happen before the suspends below,
-        // or it would re-arm the very taps this teardown just stopped.
-        CleaningModeManager.shared.deactivateForSystemTeardown()
-        ScrollInverter.shared.suspend()
-        FocusFollowsMouseService.shared.stop()
-        SmoothScrollService.shared.suspend()
+    private static func suspendInputInterceptors(_ calls: SystemCalls) -> Bool {
+        var released = true
+        for interceptor in InputInterceptor.allCases {
+            if !calls.suspendInterceptor(interceptor) { released = false }
+        }
+        return released
+    }
+
+    /// Stops one interceptor, at once. Each `stop`/`suspend`/`deactivate` is
+    /// idempotent, so calling it when a service is already off is a no-op.
+    @MainActor
+    private static func suspend(_ interceptor: InputInterceptor) -> Bool {
+        switch interceptor {
+        case .cleaningMode: CleaningModeManager.shared.deactivateForSystemTeardown()
+        case .scrollInverter: ScrollInverter.shared.suspend()
+        case .focusFollowsMouse: FocusFollowsMouseService.shared.stop()
+        case .smoothScroll: SmoothScrollService.shared.suspend()
         // Its machine-local recovery journal is deleted by a full uninstall,
         // so the uninstall cannot continue until every HID value is restored.
-        let mouseAccelerationRestored = MouseAccelerationService.shared.stop()
-        MouseNavigationService.shared.suspend()
-        MouseButtonShortcutService.shared.suspend()
-        WindowMaximizer.shared.stop()
-        WindowLayoutService.shared.suspend()
-        PointerDisplayService.shared.suspend()
-        AppSwitcher.shared.suspend()
-        DockPreviewService.shared.stop()
-        BrightnessService.shared.suspendInputTaps()
-        AutoQuitService.shared.suspend()
-        FinderCutPaste.shared.suspend()
-        FinderRenameService.shared.suspend()
-        KeyboardDebounceService.shared.suspend()
-        MouseClickDebounceService.shared.suspend()
+        case .mouseAcceleration: return MouseAccelerationService.shared.stop()
+        case .mouseNavigation: MouseNavigationService.shared.suspend()
+        case .mouseButtonShortcuts: MouseButtonShortcutService.shared.suspend()
+        case .windowMaximizer: WindowMaximizer.shared.stop()
+        case .windowLayout: WindowLayoutService.shared.suspend()
+        case .pointerDisplay: PointerDisplayService.shared.suspend()
+        case .appSwitcher: AppSwitcher.shared.suspend()
+        case .dockPreview: DockPreviewService.shared.stop()
+        case .brightnessKeys: BrightnessService.shared.suspendInputTaps()
+        case .autoQuit: AutoQuitService.shared.suspend()
+        case .finderCutPaste: FinderCutPaste.shared.suspend()
+        case .finderRename: FinderRenameService.shared.suspend()
+        case .keyboardDebounce: KeyboardDebounceService.shared.suspend()
+        case .mouseClickDebounce: MouseClickDebounceService.shared.suspend()
         // Also takes the Super key mapping back out, synchronously, so the
         // key is never left remapped behind a tap that is about to die.
-        SuperKeyService.shared.suspend()
-        DockClickService.shared.suspend()
-        MiddleClickService.shared.suspend()
-        QuitProtectionService.shared.suspend()
-        PastePlainService.shared.suspend()
-        SnippetLibraryService.shared.suspend()
-        TextSnippetService.shared.suspend()
-        ScreenCaptureService.shared.suspend()
-        RecentCaptureService.shared.suspend()
-        QuickLauncherService.shared.suspend()
-        ScreenTextService.shared.suspend()
-        CameraPreviewService.shared.suspend()
-        RadialMenuService.shared.suspend()
-        ScratchpadService.shared.suspend()
-        CommandBarService.shared.suspend()
-        PreciseVolumeRollerService.shared.suspend()
-        // Leaving the mic cut after the app is gone would strand the user
-        // with a silent input and no indicator anywhere.
-        MicMuteService.shared.unmuteForTeardown()
-        MicMuteService.shared.suspend()
-        return mouseAccelerationRestored
+        case .superKey: SuperKeyService.shared.suspend()
+        case .dockClick: DockClickService.shared.suspend()
+        case .middleClick: MiddleClickService.shared.suspend()
+        case .quitProtection: QuitProtectionService.shared.suspend()
+        case .pastePlain: PastePlainService.shared.suspend()
+        case .snippetLibrary: SnippetLibraryService.shared.suspend()
+        case .textSnippets: TextSnippetService.shared.suspend()
+        case .screenCapture: ScreenCaptureService.shared.suspend()
+        case .recentCaptures: RecentCaptureService.shared.suspend()
+        case .quickLauncher: QuickLauncherService.shared.suspend()
+        case .screenText: ScreenTextService.shared.suspend()
+        case .cameraPreview: CameraPreviewService.shared.suspend()
+        case .radialMenu: RadialMenuService.shared.suspend()
+        case .scratchpad: ScratchpadService.shared.suspend()
+        case .commandBar: CommandBarService.shared.suspend()
+        case .preciseVolumeRoller: PreciseVolumeRollerService.shared.suspend()
+        case .micMute:
+            // Leaving the mic cut after the app is gone would strand the user
+            // with a silent input and no indicator anywhere.
+            MicMuteService.shared.unmuteForTeardown()
+            MicMuteService.shared.suspend()
+        }
+        return true
     }
 
     @discardableResult
@@ -271,10 +344,6 @@ package enum SelfUninstall {
         guard steps.detachFanControl() else { return false }
         steps.detachLoginItem()
         return true
-    }
-
-    private static func detachFanControl() -> Bool {
-        FanControlService.restoreAndUnregisterForRemoval()
     }
 
     private static func detachLoginItem() {
@@ -295,13 +364,30 @@ package enum SelfUninstall {
     /// reads the flag before it reads the setting. This is the last chance
     /// anything has, which is why it may ask for the password the launch-time
     /// recovery would have asked for.
-    private static func restoreSleepBeforeRemoval() -> Bool {
-        restoreSleep(flagged: UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag),
-                     probe: { Shell.run("/usr/bin/pmset", ["-g"]) },
-                     restoreWithoutPassword: { Sudoers.pmsetDisableSleep(false) },
+    private static func restoreSleepBeforeRemoval(_ calls: SystemCalls) -> Bool {
+        restoreSleep(flagged: calls.sleepFlagged(),
+                     probe: calls.probeSleep,
+                     restoreWithoutPassword: calls.restoreSleepWithoutPassword,
                      restoreAsAdministrator: {
-                         AdminShell.runSync("pmset disablesleep 0", prompt: L10n.shared.s.adminPromptRecover)
+                         calls.restoreSleepAsAdministrator(L10n.shared.s.adminPromptRecover)
                      })
+    }
+
+    /// What `Vitruvian --uninstall` prints about sleep, or nil when no
+    /// closed-lid session left it to restore. That path runs before the app
+    /// has a password dialog, so only the password-free rule can put sleep
+    /// back; a reading taken first, that answered and answered "on", counts as
+    /// restored too. A probe that did not answer proves nothing. The script
+    /// reads the setting back itself rather than trusting the line.
+    package static func commandLineSleepReport(_ calls: SystemCalls) -> String? {
+        guard calls.sleepFlagged() else { return nil }
+        let probe = calls.probeSleep()
+        let restored = calls.restoreSleepWithoutPassword()
+            || (probe.status == 0
+                && !SudoersSupport.sleepDisabled(inPmsetOutput: probe.output))
+        return restored
+            ? "UNINSTALL: normal sleep restored"
+            : "UNINSTALL: sleep is still disabled"
     }
 
     /// `restoreSleepBeforeRemoval` with the system passed in: `flagged` is the

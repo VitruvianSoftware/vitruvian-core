@@ -6,6 +6,26 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
+/// Where each panel hangs a window's name in its band. Both panels draw the
+/// name through `ScrollingTitle`; pinning it to the leading edge in both left
+/// a grid card's name and the app name under it on two different axes, which
+/// reads as a broken card rather than a choice.
+package enum WindowNamePlacement: Sendable {
+    /// Centred under an App Switcher grid thumbnail, over the app name under
+    /// it, like every other label in the switcher.
+    case switcherGrid
+    /// On the leading edge of a Dock preview card's band, beside its two
+    /// buttons.
+    case dockPreview
+
+    package var alignment: Alignment {
+        switch self {
+        case .switcherGrid: return .center
+        case .dockPreview: return .leading
+        }
+    }
+}
+
 /// The window's name, scrolled instead of clipped while the pointer is on the
 /// card. A middle ellipsis is what a long name looks like at rest, and it eats
 /// exactly the part that tells two windows of one app apart -- but the pointer
@@ -33,6 +53,13 @@ package struct ScrollingTitle: View {
         self.width = width
         self.alignment = alignment
         self.scrolls = scrolls
+    }
+
+    /// The name hung where its panel hangs it; see `WindowNamePlacement`.
+    package init(text: String, weight: Font.Weight, width: CGFloat,
+                 placement: WindowNamePlacement, scrolls: Bool) {
+        self.init(text: text, weight: weight, width: width,
+                  alignment: placement.alignment, scrolls: scrolls)
     }
 
     private var shouldScroll: Bool {

@@ -10,6 +10,8 @@
 #   :selftest             the assembled app's `--selftest` health check
 #   :fan_helper_selftest  the fan helper's own `--selftest`
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
+#   :source_lints_test    the rules over how the sources and build scripts are
+#                         written (Linux-safe)
 #
 # Swift has no Gazelle, so this file is hand-written. Everything that needs an
 # Apple toolchain is `manual` + macOS-constrained so a Linux `bazel build //...`
@@ -506,6 +508,29 @@ py_test(
     main = "bazel/sync_sources.py",
 )
 
+# Rules over how all of the code is written, not what one piece of it does: an
+# API that never appears, every SF Symbol and system tool named, the build
+# script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
+# sources as text, so they run here rather than in the unit tests.
+py_test(
+    name = "source_lints_test",
+    size = "small",
+    srcs = ["bazel/source_lints.py"],
+    args = [
+        "--app-dir",
+        package_name(),
+    ],
+    data = [
+        "Tests/SourceNames.swift",
+        "Tools/uninstall.sh",
+        "build.sh",
+    ] + glob([
+        "Resources/**",
+        "Sources/**/*.swift",
+    ]),
+    main = "bazel/source_lints.py",
+)
+
 # --- Pipeline -----------------------------------------------------------------
 
 pipeline_unit(
@@ -521,6 +546,7 @@ pipeline_unit(
         ":Vitruvian",
         ":fan_helper_selftest",
         ":selftest",
+        ":source_lints_test",
         ":sources_in_sync_test",
         ":unit_tests",
     ],

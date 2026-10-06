@@ -1013,22 +1013,23 @@ enum WindowLayoutFeatureTests {
                "window layout top twice still maximizes while the side cycle is on")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.windowLayoutSideRepeatCyclesThirds] as? Bool == false,
                "window layout side repeat cycling stays off by default")
-        let sideRepeatSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/WindowLayoutSettings.swift",
-            encoding: .utf8)) ?? ""
-        let sideRepeatSettingsCode = sideRepeatSettingsSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(sideRepeatSettingsCode.contains("Preferences.windowLayoutSideRepeatCyclesThirds")
-                && sideRepeatSettingsCode.contains("text.sideRepeatCycle")
-                && sideRepeatSettingsCode.contains("text.sideRepeatCycleCaption"),
-               "window layout settings expose the side repeat cycle toggle with its caption")
+        for language in AppLanguage.allCases {
+            let text = FeatureStrings.windowLayout(language)
+            let sideRepeatRow = WindowLayoutSettings.sideRepeatRow(text)
+            suite.expect(sideRepeatRow.preference.key == DefaultsKey.windowLayoutSideRepeatCyclesThirds
+                    && sideRepeatRow.title == text.sideRepeatCycle && !sideRepeatRow.title.isEmpty
+                    && sideRepeatRow.caption == text.sideRepeatCycleCaption && !sideRepeatRow.caption.isEmpty,
+                   "window layout settings expose the side repeat cycle toggle with its caption "
+                   + "in \(language.rawValue)")
+        }
+        // The switch the page shows is the setting the service follows.
+        let sideRepeatKey = WindowLayoutSettings.sideRepeatRow(FeatureStrings.windowLayout(.enUS)).preference.key
         let cycleDefaults = UserDefaults(suiteName: "vitru.tests.window-layout-side-repeat")!
-        cycleDefaults.set(true, forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
+        cycleDefaults.set(true, forKey: sideRepeatKey)
         let cyclesWhenOn = WindowLayoutSideRepeat.cyclesThirds(in: cycleDefaults)
-        cycleDefaults.set(false, forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
+        cycleDefaults.set(false, forKey: sideRepeatKey)
         suite.expect(cyclesWhenOn && !WindowLayoutSideRepeat.cyclesThirds(in: cycleDefaults),
-               "window layout service reads the side repeat cycle from its setting")
+               "window layout service reads the side repeat cycle from the setting its switch writes")
         cycleDefaults.removePersistentDomain(forName: "vitru.tests.window-layout-side-repeat")
         let settledHalf = WindowLayoutFrame(origin: CGPoint(x: 0, y: 40), size: CGSize(width: 720, height: 860))
         let widenedHalf = WindowLayoutFrame(origin: settledHalf.origin, size: CGSize(width: 1080, height: 860))

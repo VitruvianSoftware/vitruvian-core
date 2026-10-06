@@ -389,7 +389,7 @@ private struct DockPreviewCard: View {
     }
 
     private var hasStatusBadges: Bool {
-        window.isMinimized || window.isFullscreen || window.isOnHiddenSpace
+        !window.statusBadges.isEmpty
     }
 
     private var showsAppBadge: Bool {
@@ -513,7 +513,7 @@ private struct DockPreviewCard: View {
         Button {
             onTogglePinned()
         } label: {
-            Label(isPanelPinned ? l10n.s.dockPreviewUnpinPanel : l10n.s.dockPreviewPinPanel,
+            Label(DockPreviewSupport.pinMenuTitle(isPanelPinned: isPanelPinned, strings: l10n.s),
                   systemImage: isPanelPinned ? "pin.slash" : "pin")
         }
         Divider()
@@ -524,36 +524,22 @@ private struct DockPreviewCard: View {
         }
     }
 
-    /// The title and the two window controls, side by side under the picture.
-    /// The controls used to float over the thumbnail in a capsule a third of
-    /// its height. The room they take here is held whether or not they are
-    /// drawn, so the title does not shift as the pointer arrives.
+    /// The title and the two window controls, side by side under the picture,
+    /// in the order `DockPreviewSupport.cardTitleBand` gives. The controls used
+    /// to float over the thumbnail in a capsule a third of its height. The
+    /// room they take here is held whether or not they are drawn, so the title
+    /// does not shift as the pointer arrives.
     private var titleBand: some View {
         HStack(alignment: .top, spacing: 4) {
-            VStack(alignment: .leading, spacing: 2) {
-                // Full strength whether or not the card is selected. The App
-                // Switcher dims an unselected name because a grid of them is
-                // read at a glance and the selection has to carry; a Dock
-                // preview holds the windows of one app, where the name is the
-                // only thing telling them apart.
-                ScrollingTitle(text: window.displayTitle,
-                               weight: isSelected ? .semibold : .regular,
-                               width: DockPreviewSupport.cardTitleTextWidth,
-                               alignment: .leading,
-                               scrolls: isHovering)
-                    .foregroundStyle(.primary)
-                if let subtitle = window.displaySubtitle {
-                    Text(subtitle)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(.secondary)
+            ForEach(DockPreviewSupport.cardTitleBand, id: \.self) { item in
+                switch item {
+                case .name:
+                    nameLines
+                case .closeButton:
+                    closeButton
+                case .minimizeButton:
+                    minimizeButton
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 4) {
-                closeButton
-                minimizeButton
             }
         }
         .frame(width: DockPreviewSupport.cardThumbnailWidth,
@@ -561,16 +547,33 @@ private struct DockPreviewCard: View {
                alignment: .top)
     }
 
-    @ViewBuilder
+    private var nameLines: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // Full strength whether or not the card is selected. The App
+            // Switcher dims an unselected name because a grid of them is
+            // read at a glance and the selection has to carry; a Dock
+            // preview holds the windows of one app, where the name is the
+            // only thing telling them apart.
+            ScrollingTitle(text: window.displayTitle,
+                           weight: isSelected ? .semibold : .regular,
+                           width: DockPreviewSupport.cardTitleTextWidth,
+                           placement: .dockPreview,
+                           scrolls: isHovering)
+                .foregroundStyle(.primary)
+            if let subtitle = window.displaySubtitle {
+                Text(subtitle)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var statusBadges: some View {
-        if window.isMinimized {
-            statusBadge(systemName: "minus.rectangle")
-        }
-        if window.isFullscreen {
-            statusBadge(systemName: "arrow.up.left.and.arrow.down.right")
-        }
-        if window.isOnHiddenSpace {
-            statusBadge(systemName: "rectangle.stack")
+        ForEach(window.statusBadges, id: \.self) { badge in
+            statusBadge(systemName: badge.systemImage)
         }
     }
 

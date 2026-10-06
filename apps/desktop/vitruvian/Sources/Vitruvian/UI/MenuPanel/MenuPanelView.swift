@@ -56,14 +56,42 @@ package struct MenuPanelView: View {
         max(360, (visibleHeight ?? 760) - 28)
     }
 
-    package var body: some View {
-        Group {
+    /// Which of its layouts the panel shows.
+    package enum Mode: Equatable {
+        /// Inside the island, at the size the island gives it.
+        case embedded(CGSize)
+        /// The popover's sections, one at a time.
+        case navigable
+        /// The popover's detail for one metric.
+        case metric
+
+        package init(notchSize: CGSize?, showsMetric: Bool) {
             if let notchSize {
-                embeddedPanel(size: notchSize)
-            } else if selectedMetric != nil {
-                metricPanel
+                self = .embedded(notchSize)
+            } else if showsMetric {
+                self = .metric
             } else {
-                navigablePanel
+                self = .navigable
+            }
+        }
+
+        /// Whether the layout wears the panel's glass surface, the one that
+        /// reaches the popover's arrow (`panelGlassSurface`). Both layouts the
+        /// popover hosts do; the island's copy sits on the surface the island
+        /// supplies.
+        package var wearsGlassSurface: Bool {
+            if case .embedded = self { return false }
+            return true
+        }
+    }
+
+    package var body: some View {
+        let mode = Mode(notchSize: notchSize, showsMetric: selectedMetric != nil)
+        Group {
+            if mode.wearsGlassSurface {
+                panel(for: mode).panelGlassSurface()
+            } else {
+                panel(for: mode)
             }
         }
         .onAppear {
@@ -92,6 +120,18 @@ package struct MenuPanelView: View {
         }
         .onChange(of: focusedSection) { _, section in
             if let section { selectedSection = section }
+        }
+    }
+
+    @ViewBuilder
+    private func panel(for mode: Mode) -> some View {
+        switch mode {
+        case .embedded(let size):
+            embeddedPanel(size: size)
+        case .metric:
+            metricPanel
+        case .navigable:
+            navigablePanel
         }
     }
 
@@ -172,7 +212,6 @@ package struct MenuPanelView: View {
         }
         .padding(12)
         .frame(width: 332, height: navigablePanelHeight)
-        .panelGlassSurface()
     }
 
     private var metricPanel: some View {
@@ -193,7 +232,6 @@ package struct MenuPanelView: View {
         }
         .padding(12)
         .frame(width: 332, height: metricPanelHeight)
-        .panelGlassSurface()
     }
 
     /// The major sections in the user's saved order. Reading `sectionOrderRaw`

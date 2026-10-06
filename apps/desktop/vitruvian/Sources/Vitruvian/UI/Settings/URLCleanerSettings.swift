@@ -7,6 +7,33 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
+/// Every text field on the Clean URL page. A grouped Form keeps a label
+/// column even for an empty label, which left every field on the right half
+/// of its row, so the hint travels as `prompt:`, the label is hidden and the
+/// field owns its whole row. The label is still read out by VoiceOver.
+package struct URLCleanerField: View {
+    private let text: Binding<String>
+    private let prompt: Text
+    private let label: String
+    private let submit: () -> Void
+
+    package init(text: Binding<String>, prompt: Text, accessibilityLabel label: String,
+                 onSubmit submit: @escaping () -> Void) {
+        self.text = text
+        self.prompt = prompt
+        self.label = label
+        self.submit = submit
+    }
+
+    package var body: some View {
+        TextField("", text: text, prompt: prompt)
+            .textFieldStyle(.roundedBorder)
+            .labelsHidden()
+            .accessibilityLabel(label)
+            .onSubmit { submit() }
+    }
+}
+
 package struct URLCleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = URLCleanerService.shared
@@ -105,11 +132,8 @@ package struct URLCleanerSettings: View {
 
             Section(l10n.s.urlCleanerManualTitle) {
                 HStack(spacing: 8) {
-                    TextField("", text: $input, prompt: Text(l10n.s.urlCleanerInputPlaceholder))
-                        .textFieldStyle(.roundedBorder)
-                        .labelsHidden()
-                        .accessibilityLabel(l10n.s.urlCleanerInputPlaceholder)
-                        .onSubmit { clean() }
+                    URLCleanerField(text: $input, prompt: Text(l10n.s.urlCleanerInputPlaceholder),
+                                    accessibilityLabel: l10n.s.urlCleanerInputPlaceholder) { clean() }
                     Button {
                         clearInput()
                     } label: {
@@ -184,12 +208,11 @@ package struct URLCleanerSettings: View {
     private func addParameterRow(site: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                TextField("", text: parameterDraftBinding(for: site),
-                          prompt: Text(l10n.s.urlCleanerRulesParameterPlaceholder))
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                    .accessibilityLabel(l10n.s.urlCleanerRulesParameterPlaceholder)
-                    .onSubmit { addParameter(to: site) }
+                URLCleanerField(text: parameterDraftBinding(for: site),
+                                prompt: Text(l10n.s.urlCleanerRulesParameterPlaceholder),
+                                accessibilityLabel: l10n.s.urlCleanerRulesParameterPlaceholder) {
+                    addParameter(to: site)
+                }
                 Button(l10n.s.urlCleanerRulesAddButton) { addParameter(to: site) }
                     .disabled(URLCleaning.parameterName(from: parameterDrafts[site] ?? "") == nil)
             }
@@ -203,17 +226,11 @@ package struct URLCleanerSettings: View {
     /// there is nothing to store or to list until one is typed.
     private var addSiteRow: some View {
         HStack(spacing: 8) {
-            TextField("", text: $siteDraft, prompt: Text(verbatim: "example.com"))
-                .textFieldStyle(.roundedBorder)
-                .labelsHidden()
-                .accessibilityLabel(l10n.s.urlCleanerRulesAddSite)
-                .onSubmit { addSite() }
-            TextField("", text: $siteParameterDraft,
-                      prompt: Text(l10n.s.urlCleanerRulesParameterPlaceholder))
-                .textFieldStyle(.roundedBorder)
-                .labelsHidden()
-                .accessibilityLabel(l10n.s.urlCleanerRulesParameterPlaceholder)
-                .onSubmit { addSite() }
+            URLCleanerField(text: $siteDraft, prompt: Text(verbatim: "example.com"),
+                            accessibilityLabel: l10n.s.urlCleanerRulesAddSite) { addSite() }
+            URLCleanerField(text: $siteParameterDraft,
+                            prompt: Text(l10n.s.urlCleanerRulesParameterPlaceholder),
+                            accessibilityLabel: l10n.s.urlCleanerRulesParameterPlaceholder) { addSite() }
             Button(l10n.s.urlCleanerRulesAddButton) { addSite() }
                 .disabled(URLCleaning.siteKey(from: siteDraft) == nil
                             || URLCleaning.parameterName(from: siteParameterDraft) == nil)

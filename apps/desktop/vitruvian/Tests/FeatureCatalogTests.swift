@@ -680,15 +680,32 @@ enum FeatureCatalogTests {
             "automationFinder", "automationTerminal", "automationPlayback", "audioCapture", "microphone", "camera",
             "appManagement", "calendar",
         ], "permission portal contains every supported permission")
-        let onboardingViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-        let additionalPermissionsAlignment =
-            #"DisclosureGroup\(isExpanded: \$showingOtherPermissions\) \{\s+"#
-            + #"VStack\(alignment: \.leading, spacing: 14\)"#
-        suite.expect(onboardingViewSource.range(
-            of: additionalPermissionsAlignment,
-            options: .regularExpression) != nil,
+        // The production list lays out two rows of differing widths, without
+        // a window, and each row reports where it starts.
+        var permissionRowEdges: [Int: CGFloat] = [:]
+        let otherPermissionRows = OnboardingOtherPermissionsList {
+            ForEach([40, 160], id: \.self) { (width: Int) in
+                Color.clear
+                    .frame(width: CGFloat(width), height: 10)
+                    .background(GeometryReader { (proxy: GeometryProxy) in
+                        Color.clear
+                            .onAppear { permissionRowEdges[width] = proxy.frame(in: CoordinateSpace.global).minX }
+                            .onChange(of: proxy.frame(in: CoordinateSpace.global).minX) {
+                                permissionRowEdges[width] = proxy.frame(in: CoordinateSpace.global).minX
+                            }
+                    })
+            }
+        }
+        let otherPermissionsHost = NSHostingView(rootView: otherPermissionRows)
+        otherPermissionsHost.sizingOptions = []
+        otherPermissionsHost.frame = CGRect(x: 0, y: 0, width: 400, height: 80)
+        otherPermissionsHost.layoutSubtreeIfNeeded()
+        let permissionRowsDeadline = Date().addingTimeInterval(2)
+        while permissionRowEdges.count < 2, Date() < permissionRowsDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        suite.expect(permissionRowEdges.count == 2 && permissionRowEdges[40] == permissionRowEdges[160],
                "the additional onboarding permission rows share one leading edge")
         suite.expect(FeaturePreset.essential.features.flatMap(\.onboardingPermissions).isEmpty,
                "the essential first-run choice asks for no broad permission")
@@ -743,31 +760,38 @@ enum FeatureCatalogTests {
         suite.expect(FeaturePreset.allCases.allSatisfy { !$0.features.contains(.fanControl) },
                "no first-run preset installs a feature whose hardware the Mac may lack")
 
-        let featureHubSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/FeatureHubSettings.swift",
-            encoding: .utf8)) ?? ""
-        let onboardingFeatureSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(featureHubSource.contains("installBlockedReason")
-                && onboardingFeatureSource.contains("installBlockedReason"),
-               "both feature pickers refuse an unsupported install from the same rule")
-        suite.expect(featureHubSource.contains("installableCount"),
+        // A Mac without fans, over its own defaults. Both feature pickers ask
+        // the runtime that owns the install gate why a row cannot be
+        // installed, so what they refuse is what the gate refuses.
+        let fanlessDefaults = UserDefaults(suiteName: "vitru.tests.feature-hub-fanless")!
+        fanlessDefaults.removePersistentDomain(forName: "vitru.tests.feature-hub-fanless")
+        for feature in AppFeature.allCases { fanlessDefaults.set(false, forKey: feature.availabilityKey) }
+        let fanless = FeatureRuntime(environment: .init(
+            defaults: fanlessDefaults, perform: { _ in }, availabilityDidChange: {}, savedPreferences: { [:] },
+            hardwareUnsupportedReason: { $0 == .fanControl ? "no fans" : nil }))
+        let refusedBeforeInstall = AppFeature.allCases.filter { fanless.installBlockedReason($0) != nil }
+        fanless.setAllAvailable(true)
+        suite.expect(refusedBeforeInstall == [.fanControl]
+                && fanless.installBlockedReason(.fanControl) == "no fans"
+                && AppFeature.allCases.filter { !fanlessDefaults.bool(forKey: $0.availabilityKey) } == [.fanControl],
+               "both feature pickers refuse an unsupported install from the same rule as the install gate")
+        let fanlessTally = FeatureHubTally(fanless)
+        suite.expect(fanlessTally.installed == AppFeature.allCases.count - 1
+                && fanlessTally.total == fanlessTally.installed
+                && !fanlessTally.canInstallAll && fanlessTally.canUninstallAll,
                "the hub counts against what this Mac can install, so install-all can finish")
+        fanlessDefaults.set(true, forKey: AppFeature.fanControl.availabilityKey)
+        let keptTally = FeatureHubTally(fanless)
+        suite.expect(fanless.installBlockedReason(.fanControl) == nil
+                && keptTally.total == AppFeature.allCases.count && !keptTally.canInstallAll,
+               "an install that predates the hardware check is never refused and still counts")
+        fanlessDefaults.removePersistentDomain(forName: "vitru.tests.feature-hub-fanless")
         // Issue #2270: nested in the page's plain stack, the lazy stack resized
         // it as group cards came into view and could keep redoing its layout
-        // until Settings froze. A source check on the page's `content` with
-        // comment lines dropped: it keeps that structure from coming back, not
-        // the scrolling itself, which only a scroll run shows.
-        let hubContentCode = featureHubSource
-            .components(separatedBy: "private var content: some View {").dropFirst().first?
-            .components(separatedBy: "\n    }\n").first ?? ""
-        let compactHubContent = hubContentCode.split(separator: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined()
-            .filter { !$0.isWhitespace }
-        suite.expect(compactHubContent.components(separatedBy: "LazyVStack(").count == 2
-                && compactHubContent.contains("ScrollView{LazyVStack("),
+        // until Settings froze. The page's view type is that structure, read
+        // without drawing it: the scroll view holds the lazy stack itself.
+        suite.expect(FeatureHubScrollPage<Color>.Body.self
+                == ScrollView<ModifiedContent<LazyVStack<Color>, FeatureHubColumn>>.self,
                "the hub's one lazy stack is its scroll view's own content, never nested in another stack")
         suite.expect(AppFeature.diskImageInstaller.group == .clipboardFiles
                 && AppFeature.diskImageInstaller.enabledKeys.isEmpty
@@ -2373,10 +2397,12 @@ enum FeatureCatalogTests {
                 && !SettingsBackupSupport.exportKeys().contains(
                     DefaultsKey.brightnessExtendedDimmingPaths),
                "the per-monitor extended dimming choice stays on this Mac")
-        for surface in ["Sources/Vitruvian/UI/Settings/EnergySettings.swift",
-                        "Sources/Vitruvian/UI/MenuPanel/BrightnessSection.swift"] {
-            let source = (try? String(contentsOfFile: surface, encoding: .utf8)) ?? ""
-            suite.expect(source.contains("SoftwareDimmingButton(display: display"),
+        // A display row's view type is what the row draws, read without
+        // drawing it or starting the brightness service.
+        let dimmingChoice = String(reflecting: SoftwareDimmingButton.self)
+        for (surface, row) in [("the Energy page", String(reflecting: EnergyDisplayRow.Body.self)),
+                               ("the panel", String(reflecting: BrightnessPanelDisplayRow.Body.self))] {
+            suite.expect(row.contains(dimmingChoice),
                    "\(surface) offers the software dimming choice on its display rows")
         }
         let oneDisplay = BrightnessSupport.DisplayTopology(online: [1], active: [1])

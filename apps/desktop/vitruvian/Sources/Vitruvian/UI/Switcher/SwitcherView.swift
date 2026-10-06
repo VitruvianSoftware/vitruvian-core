@@ -43,6 +43,34 @@ private extension View {
     }
 }
 
+/// The hairline that sets the windowless apps apart in the icon row, hung on
+/// the leading edge of the tile after each boundary. There is one only where
+/// the boundary decision puts it. It is a mark, not a target: drawn in the
+/// system's separator colour, it takes no pointer, so the tiles either side
+/// keep their hover and click, and VoiceOver passes over it.
+package struct SwitcherWindowlessDivider: View {
+    package static var color: NSColor { .separatorColor }
+    package static let takesPointer = false
+    package static let isReadAloud = false
+
+    /// The divider for the tile of `pid`, or nil where no boundary falls.
+    /// `boundaries` are the apps `SwitcherSupport.windowlessAppDividerPIDs`
+    /// found in the row.
+    package init?(before pid: pid_t, boundaries: Set<pid_t>) {
+        guard boundaries.contains(pid) else { return nil }
+    }
+
+    package var body: some View {
+        Rectangle()
+            .fill(Color(nsColor: Self.color))
+            .frame(width: 1, height: SwitcherIconRowLayout.iconSize)
+            // Occupy the existing gap so scrolling and hit targets stay aligned.
+            .offset(x: -(SwitcherIconRowLayout.spacing + 1) / 2)
+            .allowsHitTesting(Self.takesPointer)
+            .accessibilityHidden(!Self.isReadAloud)
+    }
+}
+
 /// Content of the switcher panel: a grid of large window cards with live
 /// thumbnails, hover/keyboard selection and an optional springy highlight.
 package struct SwitcherView: View {
@@ -471,14 +499,8 @@ package struct SwitcherView: View {
                                      switcher.commitSession()
                                  })
                     .overlay(alignment: .leading) {
-                        if dividerPIDs.contains(group.pid) {
-                            Rectangle()
-                                .fill(Color(nsColor: .separatorColor))
-                                .frame(width: 1, height: SwitcherIconRowLayout.iconSize)
-                                // Occupy the existing gap so scrolling and hit targets stay aligned.
-                                .offset(x: -(SwitcherIconRowLayout.spacing + 1) / 2)
-                                .allowsHitTesting(false)
-                                .accessibilityHidden(true)
+                        if let divider = SwitcherWindowlessDivider(before: group.pid, boundaries: dividerPIDs) {
+                            divider
                         }
                     }
                     .onHover { hovering in
@@ -898,7 +920,7 @@ private struct WindowCard: View {
     }
 
     private var hasStatusBadges: Bool {
-        window.isMinimized || window.isFullscreen || window.isOnHiddenSpace
+        !window.statusBadges.isEmpty
     }
 
     /// Without a thumbnail the app icon already fills the card, so the small
@@ -982,7 +1004,7 @@ private struct WindowCard: View {
                     ScrollingTitle(text: window.displayTitle,
                                    weight: isSelected ? .semibold : .regular,
                                    width: SwitcherGridCard.titleWidth,
-                                   alignment: .center,
+                                   placement: .switcherGrid,
                                    scrolls: isHovering)
                         .foregroundStyle(isSelected ? .primary : .secondary)
                     if let subtitle = window.displaySubtitle {
@@ -1040,16 +1062,9 @@ private struct WindowCard: View {
         }
     }
 
-    @ViewBuilder
     private var statusBadges: some View {
-        if window.isMinimized {
-            statusBadge(systemName: "minus.rectangle")
-        }
-        if window.isFullscreen {
-            statusBadge(systemName: "arrow.up.left.and.arrow.down.right")
-        }
-        if window.isOnHiddenSpace {
-            statusBadge(systemName: "rectangle.stack")
+        ForEach(window.statusBadges, id: \.self) { badge in
+            statusBadge(systemName: badge.systemImage)
         }
     }
 

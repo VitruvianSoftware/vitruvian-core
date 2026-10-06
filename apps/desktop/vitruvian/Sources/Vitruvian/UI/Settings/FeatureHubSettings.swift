@@ -56,54 +56,45 @@ package struct FeatureHubSettings: View {
     }
 
     private var content: some View {
-        // The lazy stack has to be the scroll view's own content (issue
-        // #2270). Nested in a plain stack, it resized that stack each time a
-        // card came into view: scrolling stalled for up to a second, and the
-        // layout could keep redoing itself until Settings froze.
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(hub.pageTitle).font(.title2.bold())
-                    Text(tab == .features ? hub.intro : hub.permissionsIntro)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Picker(hub.pageTitle, selection: $tab) {
-                    Text(hub.tabFeatures).tag(Tab.features)
-                    Text(hub.tabPermissions).tag(Tab.permissions)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                // The restart notice comes first, whichever tab is open:
-                // uninstalling anything makes it impossible to miss.
-                if features.needsRestartToUnload {
-                    restartCard
-                }
-                if tab == .features {
-                    summaryCard
-                    neverUsedCard
-                    dynamicIslandCard
-                    presetsCard
-                    ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
-                        groupCard(group)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(hub.footerNote)
-                        Text(hub.energyHelp)
-                    }
-                    .font(.caption)
+        FeatureHubScrollPage {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(hub.pageTitle).font(.title2.bold())
+                Text(tab == .features ? hub.intro : hub.permissionsIntro)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    SettingsCard {
-                        PermissionsPortalSections(hub: hub)
-                    }
+            }
+            Picker(hub.pageTitle, selection: $tab) {
+                Text(hub.tabFeatures).tag(Tab.features)
+                Text(hub.tabPermissions).tag(Tab.permissions)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            // The restart notice comes first, whichever tab is open:
+            // uninstalling anything makes it impossible to miss.
+            if features.needsRestartToUnload {
+                restartCard
+            }
+            if tab == .features {
+                summaryCard
+                neverUsedCard
+                dynamicIslandCard
+                presetsCard
+                ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
+                    groupCard(group)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(hub.footerNote)
+                    Text(hub.energyHelp)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                SettingsCard {
+                    PermissionsPortalSections(hub: hub)
                 }
             }
-            .frame(maxWidth: 760)
-            .frame(maxWidth: .infinity)
-            .padding(22)
         }
         .alert(confirmingPreset.map { presetName($0) } ?? "",
                isPresented: Binding(get: { confirmingPreset != nil },
@@ -196,22 +187,22 @@ package struct FeatureHubSettings: View {
 
     /// The tally as a bar, with the two bulk actions beside it.
     private var summaryCard: some View {
-        SettingsCard {
+        let tally = FeatureHubTally(features)
+        return SettingsCard {
             HStack(spacing: 12) {
-                Text(String(format: hub.activeCountFormat,
-                            features.availableCount, features.installableCount))
+                Text(String(format: hub.activeCountFormat, tally.installed, tally.total))
                     .font(.headline)
                 Spacer(minLength: 12)
                 Button(hub.installAllButton) {
                     FeatureRuntime.shared.setAllAvailable(true)
                 }
-                .disabled(features.availableCount == features.installableCount)
+                .disabled(!tally.canInstallAll)
                 Button(hub.uninstallAllButton) {
                     FeatureRuntime.shared.setAllAvailable(false)
                 }
-                .disabled(features.availableCount == 0)
+                .disabled(!tally.canUninstallAll)
             }
-            InstalledShareBar(installed: features.availableCount, total: features.installableCount)
+            InstalledShareBar(installed: tally.installed, total: tally.total)
         }
     }
 
@@ -436,6 +427,60 @@ package struct FeatureHubSettings: View {
     }
 }
 
+/// The hub's scrolling column. Its lazy stack has to be the scroll view's own
+/// content (issue #2270): nested in a plain stack, it resized that stack each
+/// time a card came into view, scrolling stalled for up to a second, and the
+/// layout could keep redoing itself until Settings froze.
+package struct FeatureHubScrollPage<Content: View>: View {
+    private let content: Content
+
+    package init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    package var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 20) {
+                content
+            }
+            .modifier(FeatureHubColumn())
+        }
+    }
+}
+
+/// The hub's column: at most 760 points wide, centered in the page, inside
+/// the page margin.
+package struct FeatureHubColumn: ViewModifier {
+    package init() {}
+
+    package func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
+            .padding(22)
+    }
+}
+
+/// The hub's tally and its two bulk buttons. It counts against what this Mac
+/// can install (`FeatureRuntime.installableCount`), not the whole catalog: on
+/// a Mac missing some hardware, install all would otherwise stay one short of
+/// its own disabled condition forever.
+package struct FeatureHubTally {
+    package let installed: Int
+    package let total: Int
+
+    @MainActor
+    package init(_ runtime: FeatureRuntime) {
+        installed = runtime.availableCount
+        total = runtime.installableCount
+    }
+
+    /// Install all still has something to install.
+    package var canInstallAll: Bool { installed != total }
+    /// Uninstall all still has something to uninstall.
+    package var canUninstallAll: Bool { installed != 0 }
+}
+
 private extension FeatureGroup {
     var symbolName: String {
         switch self {
@@ -531,7 +576,7 @@ private struct FeatureHubRow: View {
     /// Set only while this Mac cannot run the feature and it is not yet
     /// installed, so an install that predates the check keeps an ordinary
     /// row with its settings and the switch reachable.
-    private var unsupportedReason: String? { feature.installBlockedReason }
+    private var unsupportedReason: String? { features.installBlockedReason(feature) }
 
     private var accessibilityTitle: String {
         let title = feature.hubTitle(l10n.s, hub: hub)

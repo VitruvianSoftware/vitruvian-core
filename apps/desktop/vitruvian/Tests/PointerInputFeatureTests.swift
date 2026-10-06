@@ -2805,26 +2805,8 @@ enum PointerInputFeatureTests {
         }
 
         // The leading-slash test IS the rule that tells a stored path from a
-        // bundle identifier. A second spelling of it drifts the day the rule
-        // learns a new shape — a ~ path, a file URL — so every file that
-        // handles an identity asks isExecutablePathIdentity instead of
-        // re-testing the prefix.
-        var slashRuleSites: [String] = []
-        for file in ["Core/MouseExceptions/MouseAppExceptionSupport.swift",
-                     "Services/InstalledApps.swift",
-                     "Core/Defaults.swift"] {
-            let ruleLines = ((try? String(contentsOfFile: "Sources/Vitruvian/\(file)",
-                                          encoding: .utf8)) ?? "").components(separatedBy: "\n")
-            if ruleLines.count <= 1 { slashRuleSites.append("\(file) unreadable") }
-            for (index, line) in ruleLines.enumerated()
-            where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
-                    && line.contains("hasPrefix(\"/\")") {
-                slashRuleSites.append("\(file):\(index + 1)")
-            }
-        }
-        suite.expect(slashRuleSites.count == 1
-                && slashRuleSites[0].hasPrefix("Core/MouseExceptions/MouseAppExceptionSupport.swift:"),
-               "the leading-slash rule is spelled once, inside isExecutablePathIdentity: \(slashRuleSites)")
+        // bundle identifier, spelled once, inside isExecutablePathIdentity
+        // (bazel/source_lints.py checks that no other file re-tests it).
         suite.expect(MouseAppExceptionSupport.sourceProcessID(42) == 42
                 && MouseAppExceptionSupport.sourceProcessID(0) == nil
                 && MouseAppExceptionSupport.sourceProcessID(-1) == nil
@@ -3092,55 +3074,9 @@ enum PointerInputFeatureTests {
                 && !MouseAccelerationService.sessionIsOnScreen([onConsoleKey: false]),
                "mouse acceleration shares the safe initial session-state fallback")
         // The tap owners cannot be reached from this list (they need the event
-        // chain), so the wiring is pinned as text: each service follows the
-        // session and asks before re-arming a tap the window server disabled.
-        // Comments are stripped so prose naming the API cannot answer for it.
-        for tapOwner in ["Sources/Vitruvian/Services/ScrollInverter.swift",
-                         "Sources/Vitruvian/Services/SmoothScrollService.swift",
-                         "Sources/Vitruvian/Services/MouseNavigation/MouseNavigationService.swift",
-                         "Sources/Vitruvian/Services/MouseButtons/MouseButtonShortcutService.swift",
-                         "Sources/Vitruvian/Services/MiddleClick/MiddleClickService.swift",
-                         "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift",
-                         "Sources/Vitruvian/Services/RadialMenu/RadialMenuService.swift",
-                         "Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
-                         "Sources/Vitruvian/Services/WindowMaximizer.swift",
-                         "Sources/Vitruvian/Services/Finder/FinderCutPaste.swift",
-                         "Sources/Vitruvian/Services/Finder/FinderRenameService.swift",
-                         "Sources/Vitruvian/Services/KeyboardDebounce/KeyboardDebounceService.swift",
-                         "Sources/Vitruvian/Services/SuperKey/SuperKeyService.swift",
-                         "Sources/Vitruvian/Services/ShortcutRecordingTap.swift",
-                         "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift",
-                         "Sources/Vitruvian/Services/Snippets/TextSnippetService.swift",
-                         "Sources/Vitruvian/Services/Audio/PreciseVolumeRollerService.swift",
-                         "Sources/Vitruvian/Services/DockClick/DockClickService.swift",
-                         "Sources/Vitruvian/Services/Display/BrightnessService.swift"] {
-            let source = (try? String(contentsOfFile: tapOwner, encoding: .utf8)) ?? ""
-            suite.expect(!source.isEmpty, "\(tapOwner) reads back for its session-switch check")
-            let code = source.components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-            suite.expect(code.contains("SessionActivity.shared.onChange"),
-                   "\(tapOwner) rebuilds its tap when the session comes back")
-            let rearm = code.components(separatedBy: "tapDisabledByTimeout")
-                .dropFirst().first?.components(separatedBy: "return").first ?? ""
-            suite.expect(rearm.contains("SessionActivity.shared.isActive"),
-                   "\(tapOwner) does not re-arm a disabled tap into a switched-away session")
-            if tapOwner.contains("MouseNavigation")
-                || tapOwner.contains("MouseButtonShortcut")
-                || tapOwner.contains("MiddleClick")
-                || tapOwner.contains("QuitProtection")
-                || tapOwner.contains("RadialMenu")
-                || tapOwner.contains("ShortcutRecordingTap") {
-                suite.expect(rearm.contains("AXIsProcessTrusted()"),
-                       "\(tapOwner) does not keep a modifying tap alive after Accessibility is lost")
-            }
-            // Switching a tap off leaves the process owning it, which is what
-            // the window server waits on; teardown must invalidate the port,
-            // either here or through the pointer thread that owns the source.
-            suite.expect(code.contains("CFMachPortInvalidate")
-                    || code.contains("PointerTapRunLoop.remove("),
-                   "\(tapOwner) hands its tap back rather than only disabling it")
-        }
+        // chain): bazel/source_lints.py checks that each one follows the
+        // session, asks before re-arming a tap the window server disabled, and
+        // hands its port back on teardown.
 
         // The taps that filter ordinary clicks and wheel events are served by
         // a thread of their own. On the main run loop each of those events
@@ -3169,17 +3105,8 @@ enum PointerInputFeatureTests {
                 suite.expect(false, "a plain mach port stands in for a tap's on the pointer thread")
             }
         }
-        for pointerTapOwner in ["Sources/Vitruvian/Services/ScrollInverter.swift",
-                                "Sources/Vitruvian/Services/MiddleClick/MiddleClickService.swift"] {
-            let source = (try? String(contentsOfFile: pointerTapOwner, encoding: .utf8)) ?? ""
-            let code = source.components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                .joined(separator: "\n")
-            suite.expect(code.contains("PointerTapRunLoop.add("),
-                   "\(pointerTapOwner) serves its tap on the pointer thread")
-            suite.expect(!code.contains("CFRunLoopGetMain()"),
-                   "\(pointerTapOwner) keeps its tap off the main run loop")
-        }
+        // The inverter and middle click serve their taps there, never on the
+        // main run loop, which bazel/source_lints.py checks.
 
         // A normal quit forces the mouse-button tap off with the other input
         // taps instead of syncing it, which would wait for the Up of a button

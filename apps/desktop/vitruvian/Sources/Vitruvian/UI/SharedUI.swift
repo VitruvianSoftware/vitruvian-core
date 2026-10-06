@@ -188,4 +188,13 @@ extension View {
     package func disclosureIndent() -> some View {
         padding(.leading, 25)
     }
+
+    /// A slider's name in the fixed column that keeps a stack of sliders
+    /// aligned. Some languages' words run past the column, so every name in
+    /// it may shrink a little to fit rather than be cut.
+    package func sliderColumnLabel(width: CGFloat) -> some View {
+        lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .frame(width: width, alignment: .leading)
+    }
 }

@@ -112,8 +112,7 @@ package struct ScratchpadView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+                    .modifier(ScratchpadIconTarget())
             }
             .buttonStyle(.plain)
             .disabled(!service.canCreatePad)
@@ -131,8 +130,7 @@ package struct ScratchpadView: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+                    .modifier(ScratchpadIconTarget())
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -184,10 +182,10 @@ package struct ScratchpadView: View {
                 .frame(height: 24)
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
                 .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    ScratchpadHitTarget.tabShape
                         .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(ScratchpadHitTarget.tabShape)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -260,8 +258,7 @@ package struct ScratchpadView: View {
             } label: {
                 Image(systemName: service.isPinned ? "pin.fill" : "pin")
                     .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+                    .modifier(ScratchpadIconTarget())
             }
             .buttonStyle(.plain)
             .foregroundStyle(service.isPinned ? Color.accentColor : Color.secondary)
@@ -273,8 +270,7 @@ package struct ScratchpadView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+                    .modifier(ScratchpadIconTarget())
             }
             .buttonStyle(.plain)
             .help(l10n.s.menuClose)
@@ -382,6 +378,37 @@ package struct ScratchpadView: View {
         .buttonStyle(.plain)
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+/// Where the scratchpad's small controls take a click: across the whole
+/// padded frame each is laid out in, not only on the ink of its glyph, which
+/// left a pin or a plus a few points wide to aim at.
+@MainActor
+package enum ScratchpadHitTarget {
+    /// The side of the square an icon control in the header or the tab bar is
+    /// laid out and hit in.
+    package static let iconSide: CGFloat = 22
+    /// An icon control is hit across its whole square, corners included.
+    package static var iconShape: Rectangle { Rectangle() }
+    /// A tab is hit across the rounded tab it draws when selected, padding
+    /// included, whether or not it is drawn: an unselected tab paints nothing
+    /// behind its name.
+    package static var tabShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+    }
+}
+
+/// An icon control's padded square, hit across all of it; see
+/// `ScratchpadHitTarget`.
+@MainActor
+package struct ScratchpadIconTarget: ViewModifier {
+    package init() {}
+
+    package func body(content: Content) -> some View {
+        content
+            .frame(width: ScratchpadHitTarget.iconSide, height: ScratchpadHitTarget.iconSide)
+            .contentShape(ScratchpadHitTarget.iconShape)
     }
 }
 

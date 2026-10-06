@@ -224,7 +224,6 @@ enum TestGroups {
                 WindowServerCaptureContract.run(suite)
             }),
             ("keep-awake", {
-                MenuPanelToggleLabelContract.run(suite)
                 KeepAwakeLidSleepTests.run { suite.expect($0, $1) }
                 KeepAwakeTimerHandoffTests.run { suite.expect($0, $1) }
             }),

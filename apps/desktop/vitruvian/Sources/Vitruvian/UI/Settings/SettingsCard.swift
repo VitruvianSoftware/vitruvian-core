@@ -177,6 +177,32 @@ package struct SettingsMenuRow<Value: Hashable, Options: View>: View {
     }
 }
 
+/// A form's switch over one stored preference, with its caption on the row
+/// under it. For a setting that needs no live sync: what reads the
+/// preference reads it again each time it acts. A page builds the row from
+/// a function of its own, so the preference it writes and the words it shows
+/// can be read back without drawing the page.
+package struct PreferenceSwitchRow: View {
+    package let preference: Preference<Bool>
+    package let title: String
+    package let caption: String
+    @AppStorage private var isOn: Bool
+
+    package init(_ preference: Preference<Bool>, title: String, caption: String) {
+        self.preference = preference
+        self.title = title
+        self.caption = caption
+        _isOn = AppStorage(preference)
+    }
+
+    package var body: some View {
+        Toggle(title, isOn: $isOn)
+        Text(caption)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+}
+
 /// A switch pushed to the trailing edge with its label at the leading one,
 /// so a shared control that carries its own label lines up with the rows
 /// around it on a redesigned page.

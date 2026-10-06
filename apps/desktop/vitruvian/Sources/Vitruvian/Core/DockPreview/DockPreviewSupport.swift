@@ -158,6 +158,14 @@ package enum DockPreviewWindowOrder: Equatable {
     }
 }
 
+/// One part of the band under a Dock Preview card's picture; see
+/// `DockPreviewSupport.cardTitleBand`.
+package enum DockPreviewCardBandItem: Hashable, Sendable {
+    case name
+    case closeButton
+    case minimizeButton
+}
+
 package enum DockPreviewSupport {
     package static func handlesMiddleClick(eventType: NSEvent.EventType, buttonNumber: Int,
                                    point: CGPoint, visibleRect: CGRect, isHidden: Bool) -> Bool {
@@ -512,9 +520,24 @@ package enum DockPreviewSupport {
         isPinned
     }
 
+    /// The band under a card's picture, leading to trailing: the window's name,
+    /// then its close and minimize buttons. It is the one place a card names
+    /// its window or draws those controls. The card used to draw the name both
+    /// over the thumbnail and under it, and float the two buttons over the
+    /// picture in a capsule a third of its height: the name said the same
+    /// thing twice per window, and the buttons covered what they act on.
+    package static let cardTitleBand: [DockPreviewCardBandItem] = [.name, .closeButton, .minimizeButton]
+
     /// The room the window's name has in the title band: the band less the two
     /// controls beside it, whose place is held whether or not they are drawn.
     package static var cardTitleTextWidth: CGFloat { cardThumbnailWidth - 40 }
+
+    /// The card menu's pin item. Pinning is offered by name in every card's
+    /// menu rather than by a bare pushpin on the card, whose band holds only
+    /// the name and the two window controls.
+    package static func pinMenuTitle(isPanelPinned: Bool, strings: Strings) -> String {
+        isPanelPinned ? strings.dockPreviewUnpinPanel : strings.dockPreviewPinPanel
+    }
 
     /// Whether a name is longer than the room it has. Measured against the font
     /// it is drawn in rather than a layout pass, so the answer is the same

@@ -1417,6 +1417,9 @@ package final class BrightnessService: ObservableObject {
         syncKeyTap()
     }
 
+    /// Whether the permission teardown is holding both key taps off.
+    package var inputTapsAreSuspended: Bool { tapsAreSuspended() }
+
     nonisolated private func installFunctionKeyTap() {
         let thread = keyThreadLock.withLock { () -> Thread? in
             guard !inputTapsSuspended else { return nil }

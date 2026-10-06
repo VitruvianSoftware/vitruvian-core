@@ -39,11 +39,11 @@ enum ScrollingTitleMotionTests {
 
     /// Both panels draw their window names through this one view and hang it
     /// differently: centred under a grid thumbnail, on the leading edge beside
-    /// a Dock preview card's buttons. A short name rests where it is told to.
+    /// a Dock preview card's buttons. A short name rests where it is told to,
+    /// and where its panel's `WindowNamePlacement` tells it to.
     private static func restingPlacement(_ suite: TestSuite) {
-        func inkStart(_ alignment: Alignment) -> Int? {
-            let renderer = ImageRenderer(content: ScrollingTitle(text: "Mail", weight: .regular, width: 160,
-                                                                 alignment: alignment, scrolls: false))
+        func firstInkColumn(_ title: ScrollingTitle) -> Int? {
+            let renderer = ImageRenderer(content: title)
             renderer.scale = 1
             guard let image = renderer.cgImage, image.width > 0,
                   let alpha = SwitcherSupport.alphaGrid(of: image, gridSize: image.width) else { return nil }
@@ -51,6 +51,10 @@ enum ScrollingTitleMotionTests {
             return (0..<side).first { column in
                 (0..<side).contains { row in alpha[row * side + column] > 0 }
             }
+        }
+        func inkStart(_ alignment: Alignment) -> Int? {
+            firstInkColumn(ScrollingTitle(text: "Mail", weight: .regular, width: 160,
+                                          alignment: alignment, scrolls: false))
         }
         let leading = inkStart(.leading)
         let centred = inkStart(.center)
@@ -61,5 +65,21 @@ enum ScrollingTitleMotionTests {
             suite.expect(leading < 8 && centred > leading + 40 && trailing > centred + 40,
                          "the shared name view is told where to sit instead of always taking the leading edge")
         }
+        // Each panel hangs the name by its own placement, the way its card
+        // builds it. Pinning it to the leading edge in both left a grid card's
+        // name and the app name under it on two different axes, which reads as
+        // a broken card rather than a choice.
+        func placed(_ placement: WindowNamePlacement) -> Int? {
+            firstInkColumn(ScrollingTitle(text: "Mail", weight: .regular, width: 160,
+                                          placement: placement, scrolls: false))
+        }
+        let grid = placed(.switcherGrid)
+        let dock = placed(.dockPreview)
+        suite.expect(grid != nil && dock != nil,
+                     "the App Switcher and the Dock preview both draw their name through it")
+        suite.expect(WindowNamePlacement.switcherGrid.alignment == .center && grid != nil && grid == centred,
+                     "a grid card centres the window's name over the app name under it")
+        suite.expect(WindowNamePlacement.dockPreview.alignment == .leading && dock != nil && dock == leading,
+                     "a Dock preview card keeps the name on the leading edge, beside its two buttons")
     }
 }

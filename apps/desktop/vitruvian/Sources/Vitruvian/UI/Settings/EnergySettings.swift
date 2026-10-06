@@ -316,7 +316,7 @@ package struct EnergySettings: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(brightness.displays) { display in
-                        displayRow(display)
+                        EnergyDisplayRow(display: display)
                     }
                 }
                 if let failure = brightness.displayControlFailure {
@@ -384,43 +384,6 @@ package struct EnergySettings: View {
             brightnessKeyStep = step.rawValue
             if step != .standard { Permissions.shared.requestAccessibility() }
             BrightnessService.shared.syncWithPreferences()
-        }
-    }
-
-    private func displayRow(_ display: BrightnessDisplay) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(display.isActive ? Color.accentColor : Color.secondary)
-                .frame(width: 26, height: 26)
-                .background((display.isActive ? Color.accentColor : Color.secondary).opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            Text(display.name)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(minWidth: 80, alignment: .leading)
-            if display.isActive, display.method != nil {
-                Slider(value: Binding(get: { display.brightness },
-                                      set: { BrightnessService.shared.setBrightness(
-                                          $0, for: display.id,
-                                          showOSD: brightnessOSDEnabled) }),
-                       in: 0...1)
-                    .disabled(brightness.isDisplayPending(display.id))
-                    .accessibilityLabel(display.name)
-                Text("\(Int((display.brightness * 100).rounded()))%")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 52, alignment: .trailing)
-            } else {
-                Spacer()
-                if !display.isActive {
-                    Text(FeatureStrings.brightness(l10n.language).displayOff)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .trailing)
-                }
-            }
-            SoftwareDimmingButton(display: display)
-            DisplayPowerButton(display: display)
         }
     }
 
@@ -500,5 +463,56 @@ package struct EnergySettings: View {
 
     private var displaySleepStrings: KeepAwakeDisplaySleepStrings {
         FeatureStrings.keepAwakeDisplaySleep(l10n.language)
+    }
+}
+
+/// One display on the Energy page: its name, its slider, and the same
+/// dimming choice and power button the panel's rows carry. The slider is just
+/// as dead here as in the panel, so the way out has to be here too.
+package struct EnergyDisplayRow: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var brightness = BrightnessService.shared
+    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled: Bool
+    package let display: BrightnessDisplay
+
+    package init(display: BrightnessDisplay) {
+        self.display = display
+    }
+
+    package var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(display.isActive ? Color.accentColor : Color.secondary)
+                .frame(width: 26, height: 26)
+                .background((display.isActive ? Color.accentColor : Color.secondary).opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Text(display.name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(minWidth: 80, alignment: .leading)
+            if display.isActive, display.method != nil {
+                Slider(value: Binding(get: { display.brightness },
+                                      set: { BrightnessService.shared.setBrightness(
+                                          $0, for: display.id,
+                                          showOSD: brightnessOSDEnabled) }),
+                       in: 0...1)
+                    .disabled(brightness.isDisplayPending(display.id))
+                    .accessibilityLabel(display.name)
+                Text("\(Int((display.brightness * 100).rounded()))%")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .trailing)
+            } else {
+                Spacer()
+                if !display.isActive {
+                    Text(FeatureStrings.brightness(l10n.language).displayOff)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 52, alignment: .trailing)
+                }
+            }
+            SoftwareDimmingButton(display: display)
+            DisplayPowerButton(display: display)
+        }
     }
 }

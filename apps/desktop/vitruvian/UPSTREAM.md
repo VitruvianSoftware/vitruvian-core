@@ -2285,6 +2285,43 @@ is that notice. Add an entry for every change to upstream files.
     `RecorderFeatureTests`, `RecorderExportRenderingTests`,
     `CommandBarFeatureTests`, `KeyboardFeatureTests`,
     `FeatureCatalogTests` and `PointerInputFeatureTests`.
+- **2026-10-06**: Refactor step 7i (`REFACTOR.md`): source pins turned
+  behavioral, second part, with no change in behavior.
+  - Settings and onboarding views read their decisions from values:
+    `UI/Settings/CommandBarSettings.swift` (`CommandBarSettingsActions`,
+    `shortcutToggleTitle`, `asciiLayoutRow`), `WindowLayoutSettings.swift`
+    (`sideRepeatRow`), `SettingsCard.swift` (`PreferenceSwitchRow`),
+    `FeatureHubSettings.swift` (`FeatureHubTally`, `FeatureHubScrollPage`,
+    `FeatureHubColumn`), `EnergySettings.swift` (`EnergyDisplayRow`),
+    `UI/MenuPanel/BrightnessSection.swift` (`BrightnessPanelDisplayRow`),
+    `UI/Onboarding/OnboardingView.swift` (`OnboardingOtherPermissionsList`).
+    `Services/FeatureRuntime.swift`'s `Environment` takes the hardware
+    reading, and `installBlockedReason(_:)` moves there from `AppFeature`.
+  - Switcher, Dock preview and panels: `Core/DockPreview/DockPreviewSupport.swift`
+    (`cardTitleBand`, `pinMenuTitle`), `Core/Switcher/SwitcherModels.swift`
+    (`statusBadges`), `UI/Switcher/DockPreviewPanelView.swift`,
+    `ScrollingTitle.swift` (`WindowNamePlacement`), `SwitcherView.swift`
+    (`SwitcherWindowlessDivider`), `UI/Theme.swift` (`PanelSurfaceFit`,
+    and borders that take `increasedContrast:`),
+    `UI/MenuPanel/MenuPanelView.swift` (`Mode`).
+  - Screenshot and scratchpad: `UI/SharedUI.swift` (`sliderColumnLabel`),
+    used by `UI/Screenshot/ScreenshotBackdropPopover.swift`,
+    `ScreenshotWatermarkPopover.swift` and `UI/Recorder/RecorderInspector.swift`;
+    `UI/Scratchpad/ScratchpadView.swift` (`ScratchpadIconTarget`,
+    `ScratchpadHitTarget`).
+  - `RepositoryFeatureTests`' single-file rules:
+    `UI/Settings/URLCleanerSettings.swift` (`URLCleanerField`),
+    `Core/Homebrew/HomebrewSupport.swift` and
+    `Services/Homebrew/HomebrewManager.swift` (`HomebrewOperationEnd`,
+    `init(locateBrew:)`), `Services/SelfUninstall.swift`
+    (`Steps.wired(to:)`, `SystemCalls`, `InputInterceptor`,
+    `commandLineSleepReport`, used by `Support/Uninstaller.swift`),
+    `Services/Display/BrightnessService.swift` (`inputTapsAreSuspended`).
+  - Its repository-wide rules, and the one in
+    `Tests/MenuPanelToggleLabelTests.swift` (deleted), move into the new
+    `bazel/source_lints.py`, run as `source_lints_test`.
+    `Tests/SourceNames.swift` lists the symbols, tools and format fields the
+    Mac checks.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

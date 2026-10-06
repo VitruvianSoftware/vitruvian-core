@@ -262,9 +262,7 @@ package struct ScreenshotWatermarkPopover: View {
             .font(.system(size: 12))
             // The column keeps the controls aligned; Russian and Turkish run
             // past it, so the label gives a little rather than being cut.
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
-            .frame(width: 80, alignment: .leading)
+            .sliderColumnLabel(width: 80)
             .foregroundStyle(isOn ? .secondary : .tertiary)
     }
 

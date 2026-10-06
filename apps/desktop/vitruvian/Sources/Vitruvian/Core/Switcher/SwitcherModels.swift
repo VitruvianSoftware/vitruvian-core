@@ -185,6 +185,18 @@ package struct SwitcherItem: Identifiable, Equatable {
         return label
     }
 
+    /// The badges a card draws along the bottom of this window's picture, in
+    /// order: the App Switcher's grid card and the Dock preview card show the
+    /// same ones. A window that lives on another desktop is badged as such,
+    /// which `spokenLabel` says to the reader.
+    package var statusBadges: [WindowStatusBadge] {
+        var badges: [WindowStatusBadge] = []
+        if isMinimized { badges.append(.minimized) }
+        if isFullscreen { badges.append(.fullscreen) }
+        if isOnHiddenSpace { badges.append(.otherDesktop) }
+        return badges
+    }
+
     /// Prefer an explicitly declared alternate icon, otherwise use the system
     /// bundle icon. Reuse the image only while a switcher session is open.
     @preconcurrency @MainActor
@@ -259,5 +271,22 @@ package struct SwitcherItem: Identifiable, Equatable {
         self.isFullscreen = isFullscreen
         self.isOnHiddenSpace = isOnHiddenSpace
         self.frame = frame
+    }
+}
+
+/// A state a window card badges in the corner of its picture.
+package enum WindowStatusBadge: Hashable, Sendable {
+    case minimized
+    case fullscreen
+    /// The window lives only on desktops that are not showing.
+    case otherDesktop
+
+    /// The symbol the badge draws.
+    package var systemImage: String {
+        switch self {
+        case .minimized: return "minus.rectangle"
+        case .fullscreen: return "arrow.up.left.and.arrow.down.right"
+        case .otherDesktop: return "rectangle.stack"
+        }
     }
 }
