@@ -107,10 +107,10 @@ package struct FanControlLifecycle {
         // safety stop had already handed the fans back and left no button.
         guard AppFeature.fanControl.isAvailable(in: defaults),
               defaults[Preferences.fanControlResume],
-              defaults.string(forKey: DefaultsKey.fanControlMode)
+              defaults[Preferences.fanControlMode]
                 != FanControlMode.system.rawValue else { return nil }
         return FanControlConfiguration.decodeResume(
-            defaults.string(forKey: DefaultsKey.fanControlResumeConfiguration) ?? "")
+            defaults[Preferences.fanControlResumeConfiguration])
     }
 
     /// A resume never asks for approval or opens System Settings: without an
@@ -125,14 +125,14 @@ package struct FanControlLifecycle {
     /// would hold the recovery flag that blocks its registration swap, so a
     /// resume waits for Fan Control to open and register it first.
     private var helperAwaitsRegistration: Bool {
-        let installed = defaults.string(forKey: DefaultsKey.fanControlHelperVersion) ?? ""
+        let installed = defaults[Preferences.fanControlHelperVersion]
         return !installed.isEmpty && installed != helperVersion
     }
 
     package func rememberForResume(_ configuration: FanControlConfiguration) {
         guard defaults[Preferences.fanControlResume],
               let stored = FanControlConfiguration.encodeResume(configuration) else { return }
-        defaults.set(stored, forKey: DefaultsKey.fanControlResumeConfiguration)
+        defaults[Preferences.fanControlResumeConfiguration] = stored
     }
 
     package func stopIdleWorkIfPossible() {

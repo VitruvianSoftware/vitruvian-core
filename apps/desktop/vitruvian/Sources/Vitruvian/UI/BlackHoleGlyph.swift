@@ -43,7 +43,7 @@ package enum BlackHoleGlyph {
     /// The symbol named in the menu bar settings, empty for the mark.
     package static var chosenSymbolName: String {
         Defaults.sanitizedMenuBarIconSymbol(
-            UserDefaults.standard.string(forKey: DefaultsKey.menuBarIconSymbol))
+            UserDefaults.standard[Preferences.menuBarIconSymbol])
     }
 
     /// What every state starts from: the chosen symbol, or the bundled mark

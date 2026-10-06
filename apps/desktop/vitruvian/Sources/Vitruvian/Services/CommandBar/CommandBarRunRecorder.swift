@@ -84,7 +84,7 @@ package final class CommandBarRunRecorder {
         guard let base = CommandBarPreferences.emojiIdentity(fromRowID: entry.id),
               CommandBarEmoji.acceptsSkinTone(base) else { return [] }
         let current = CommandBarPreferences.skinTone(
-            from: host.defaults.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
+            from: host.defaults[Preferences.commandBarEmojiSkinTone])
         return CommandBarEmoji.SkinTone.allCases.filter { $0 != current }.map { tone in
             let character = CommandBarEmoji.applying(tone, to: base)
             return CommandBarService.RowAction(id: "emojiSkinTone.\(tone.rawValue)",

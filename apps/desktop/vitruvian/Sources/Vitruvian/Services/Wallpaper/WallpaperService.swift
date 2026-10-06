@@ -134,7 +134,7 @@ package final class WallpaperService: ObservableObject {
 
     package func setFilter(_ filter: WallpaperSupport.Filter) {
         self.filter = filter
-        UserDefaults.standard.set(filter.rawValue, forKey: DefaultsKey.wallpaperFilter)
+        UserDefaults.standard[Preferences.wallpaperFilter] = filter.rawValue
         preparePageThumbs(for: filter, around: 1)
     }
 
@@ -565,7 +565,7 @@ package final class WallpaperService: ObservableObject {
     }
 
     private func loadFilter() {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.wallpaperFilter) ?? ""
+        let raw = UserDefaults.standard[Preferences.wallpaperFilter]
         filter = WallpaperSupport.Filter(rawValue: raw) ?? .all
     }
 

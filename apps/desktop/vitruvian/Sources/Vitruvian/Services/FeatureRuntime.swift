@@ -415,7 +415,7 @@ package final class FeatureRuntime: ObservableObject {
             return [.monitorPlan, .monitorAlerts]
         case .fanControl:
             let needsRecovery = defaults[Preferences.fanControlRecoveryNeeded]
-            let hasRegisteredHelper = !(defaults.string(forKey: DefaultsKey.fanControlHelperVersion) ?? "").isEmpty
+            let hasRegisteredHelper = !(defaults[Preferences.fanControlHelperVersion]).isEmpty
             let syncsHelper = needsRecovery || (!AppFeature.fanControl.isAvailable(in: defaults) && hasRegisteredHelper)
             return syncsHelper ? [.monitorPlan, .fanControl] : [.monitorPlan]
         // On-demand tools: they check what they need each time they run, so

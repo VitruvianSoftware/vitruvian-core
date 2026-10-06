@@ -1264,8 +1264,8 @@ PREFERENCE_ACCESS_BY_KEY = {
     "integer": 0,
     "object": 25,
     "removeObject": 18,
-    "set": 66,
-    "string": 117,
+    "set": 35,
+    "string": 0,
     "stringArray": 18,
 }
 

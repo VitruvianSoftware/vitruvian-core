@@ -216,7 +216,7 @@ package enum NotchTimerSupport {
     package static let stopwatchLimit: TimeInterval = 100 * 3600 - 1
 
     package static func savedMode(in defaults: UserDefaults = .standard) -> NotchTimerMode {
-        NotchTimerMode(rawValue: defaults.string(forKey: DefaultsKey.notchTimerMode) ?? "") ?? .timer
+        NotchTimerMode(rawValue: defaults[Preferences.notchTimerMode]) ?? .timer
     }
 
     private static func wholeSeconds(_ value: TimeInterval, limit: TimeInterval,

@@ -113,7 +113,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         let root = downloadsURL
             ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         guard let root else { return nil }
-        let configured = defaults.string(forKey: DefaultsKey.whatsAppOrganizerDestinationPath) ?? ""
+        let configured = defaults[Preferences.whatsAppOrganizerDestinationPath]
         let destination = configured.isEmpty
             ? root.appendingPathComponent("WhatsApp", isDirectory: true)
             : URL(fileURLWithPath: configured, isDirectory: true)
@@ -157,10 +157,9 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory),
                   isDirectory.boolValue else { return false }
-            UserDefaults.standard.set(destination.path,
-                                      forKey: DefaultsKey.whatsAppOrganizerDestinationPath)
+            UserDefaults.standard[Preferences.whatsAppOrganizerDestinationPath] = destination.path
         } else {
-            UserDefaults.standard.set("", forKey: DefaultsKey.whatsAppOrganizerDestinationPath)
+            UserDefaults.standard[Preferences.whatsAppOrganizerDestinationPath] = ""
         }
         syncWithPreferences()
         return true
@@ -331,12 +330,11 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
             delayMinutes: WhatsAppDownloadSupport.sanitizedOrganizerDelayMinutes(
                 defaults[Preferences.whatsAppOrganizerDelayMinutes]),
             categories: WhatsAppDownloadSupport.decodedCategories(
-                defaults.string(forKey: DefaultsKey.whatsAppOrganizerCategories)),
+                defaults[Preferences.whatsAppOrganizerCategories]),
             layout: WhatsAppOrganizerLayout(
-                rawValue: defaults.string(forKey: DefaultsKey.whatsAppOrganizerLayout) ?? "") ?? .flat,
+                rawValue: defaults[Preferences.whatsAppOrganizerLayout]) ?? .flat,
             duplicateAction: WhatsAppDuplicateAction(
-                rawValue: defaults.string(
-                    forKey: DefaultsKey.whatsAppOrganizerDuplicateAction) ?? "") ?? .trashNew)
+                rawValue: defaults[Preferences.whatsAppOrganizerDuplicateAction]) ?? .trashNew)
     }
 
     nonisolated private static func organize(root: URL, settings: Settings) -> RunResult {

@@ -19,7 +19,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     @Published package var editingTextID: UUID?
     @Published package var tool: ScreenshotSupport.Tool {
         didSet {
-            UserDefaults.standard.set(tool.rawValue, forKey: DefaultsKey.screenshotLastTool)
+            UserDefaults.standard[Preferences.screenshotLastTool] = tool.rawValue
             if tool != .select { clearTextSelection() }
             if tool != oldValue, tool != .select {
                 selectedID = nil
@@ -42,13 +42,13 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     @Published package private(set) var qrReading: BarcodeDetector.Reading?
     @Published package var color: ScreenshotSupport.ColorID {
         didSet {
-            UserDefaults.standard.set(color.rawValue, forKey: DefaultsKey.screenshotLastColor)
+            UserDefaults.standard[Preferences.screenshotLastColor] = color.rawValue
             applyStyleToSelection()
         }
     }
     @Published package var stroke: ScreenshotSupport.StrokeID {
         didSet {
-            UserDefaults.standard.set(stroke.rawValue, forKey: DefaultsKey.screenshotLastStroke)
+            UserDefaults.standard[Preferences.screenshotLastStroke] = stroke.rawValue
             applyStyleToSelection()
         }
     }
@@ -66,15 +66,13 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
     @Published package var arrowStyle: ScreenshotSupport.ArrowStyleID {
         didSet {
-            UserDefaults.standard.set(arrowStyle.rawValue,
-                                      forKey: DefaultsKey.screenshotLastArrowStyle)
+            UserDefaults.standard[Preferences.screenshotLastArrowStyle] = arrowStyle.rawValue
             applyStyleToSelection()
         }
     }
     @Published package var sticker: ScreenshotSupport.StickerID {
         didSet {
-            UserDefaults.standard.set(sticker.rawValue,
-                                      forKey: DefaultsKey.screenshotLastSticker)
+            UserDefaults.standard[Preferences.screenshotLastSticker] = sticker.rawValue
             applyStickerToSelection()
         }
     }
@@ -88,8 +86,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// corner sliders), persisted as JSON and applied live on the canvas.
     @Published package var backdropStyle: ScreenshotSupport.BackdropStyle {
         didSet {
-            UserDefaults.standard.set(backdropStyle.encoded(),
-                                      forKey: DefaultsKey.screenshotBackdropStyle)
+            UserDefaults.standard[Preferences.screenshotBackdropStyle] = backdropStyle.encoded()
             reloadBackdropImageIfNeeded()
             refreshDirtyState()
         }
@@ -97,9 +94,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// Custom backdrops the user chose to keep.
     @Published package private(set) var backdropPresets: [ScreenshotSupport.BackdropStyle] {
         didSet {
-            UserDefaults.standard.set(
-                ScreenshotSupport.encodedBackdropPresets(backdropPresets),
-                forKey: DefaultsKey.screenshotBackdropPresets)
+            UserDefaults.standard[Preferences.screenshotBackdropPresets] = ScreenshotSupport.encodedBackdropPresets(backdropPresets)
         }
     }
     /// Loaded image for an image-kind backdrop; nil when missing on disk,
@@ -109,8 +104,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// backdrop and applied live on the canvas.
     @Published package var watermarkStyle: ScreenshotSupport.WatermarkStyle {
         didSet {
-            UserDefaults.standard.set(watermarkStyle.encoded(),
-                                      forKey: DefaultsKey.screenshotWatermarkStyle)
+            UserDefaults.standard[Preferences.screenshotWatermarkStyle] = watermarkStyle.encoded()
             reloadWatermarkImageIfNeeded()
             refreshDirtyState()
         }
@@ -121,9 +115,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// Watermarks the user chose to keep.
     @Published package private(set) var watermarkPresets: [ScreenshotSupport.WatermarkStyle] {
         didSet {
-            UserDefaults.standard.set(
-                ScreenshotSupport.encodedWatermarkPresets(watermarkPresets),
-                forKey: DefaultsKey.screenshotWatermarkPresets)
+            UserDefaults.standard[Preferences.screenshotWatermarkPresets] = ScreenshotSupport.encodedWatermarkPresets(watermarkPresets)
         }
     }
     @Published package var cropDraft: CGRect?
@@ -181,30 +173,30 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         self.scale = scale
         let defaults = UserDefaults.standard
         var lastTool = ScreenshotSupport.Tool(
-            rawValue: defaults.string(forKey: DefaultsKey.screenshotLastTool) ?? "") ?? .arrow
+            rawValue: defaults[Preferences.screenshotLastTool]) ?? .arrow
         if lastTool == .select || lastTool == .crop { lastTool = .arrow }
         tool = lastTool
         color = ScreenshotSupport.ColorID.sanitized(
-            defaults.string(forKey: DefaultsKey.screenshotLastColor))
+            defaults[Preferences.screenshotLastColor])
         stroke = ScreenshotSupport.StrokeID.sanitized(
-            defaults.string(forKey: DefaultsKey.screenshotLastStroke))
+            defaults[Preferences.screenshotLastStroke])
         textSize = ScreenshotSupport.sanitizedTextSize(
             defaults[Preferences.screenshotLastTextSize])
         blurLevel = ScreenshotSupport.BlurStrength.startingLevel(
             remembered: defaults[Preferences.screenshotLastBlurLevel])
         arrowStyle = ScreenshotSupport.ArrowStyleID.sanitized(
-            defaults.string(forKey: DefaultsKey.screenshotLastArrowStyle))
+            defaults[Preferences.screenshotLastArrowStyle])
         sticker = ScreenshotSupport.StickerID.sanitized(
-            defaults.string(forKey: DefaultsKey.screenshotLastSticker))
+            defaults[Preferences.screenshotLastSticker])
         annotationShadowsEnabled = defaults[Preferences.screenshotAnnotationShadows]
-        let rawStyle = defaults.string(forKey: DefaultsKey.screenshotBackdropStyle) ?? ""
+        let rawStyle = defaults[Preferences.screenshotBackdropStyle]
         backdropStyle = ScreenshotSupport.BackdropStyle.decoded(rawStyle)
         backdropPresets = ScreenshotSupport.decodedBackdropPresets(
-            defaults.string(forKey: DefaultsKey.screenshotBackdropPresets))
+            defaults[Preferences.screenshotBackdropPresets])
         watermarkStyle = ScreenshotSupport.WatermarkStyle.decoded(
-            defaults.string(forKey: DefaultsKey.screenshotWatermarkStyle))
+            defaults[Preferences.screenshotWatermarkStyle])
         watermarkPresets = ScreenshotSupport.decodedWatermarkPresets(
-            defaults.string(forKey: DefaultsKey.screenshotWatermarkPresets))
+            defaults[Preferences.screenshotWatermarkPresets])
         pixelated = [:]
         reloadBackdropImageIfNeeded()
         reloadWatermarkImageIfNeeded()
@@ -1256,8 +1248,8 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = Int(event.keyCode)
 
-        let orderRaw = UserDefaults.standard.string(forKey: DefaultsKey.screenshotToolOrder)
-        let bindingsRaw = UserDefaults.standard.string(forKey: DefaultsKey.screenshotToolShortcuts)
+        let orderRaw = UserDefaults.standard[Preferences.screenshotToolOrder]
+        let bindingsRaw = UserDefaults.standard[Preferences.screenshotToolShortcuts]
         let enabled = UserDefaults.standard[Preferences.screenshotToolShortcutsEnabled]
         let number = event.characters?.first.flatMap { Int(String($0)) }
         if let tool = ScreenshotSupport.Tool.shortcutTool(

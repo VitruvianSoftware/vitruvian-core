@@ -144,7 +144,7 @@ package enum NotchSilhouette: String, CaseIterable {
     case capsule, notch
 
     package static func current(in defaults: UserDefaults = .standard) -> NotchSilhouette {
-        NotchSilhouette(rawValue: defaults.string(forKey: DefaultsKey.notchSilhouette) ?? "") ?? .capsule
+        NotchSilhouette(rawValue: defaults[Preferences.notchSilhouette]) ?? .capsule
     }
 }
 
@@ -1592,9 +1592,9 @@ package enum NotchSupport {
     }
 
     package static func modules(in defaults: UserDefaults = .standard) -> [NotchModule] {
-        let hidden = Set((defaults.string(forKey: DefaultsKey.notchHiddenModules) ?? "")
+        let hidden = Set((defaults[Preferences.notchHiddenModules])
             .split(separator: ",").map(String.init))
-        let stored = (defaults.string(forKey: DefaultsKey.notchModuleOrder) ?? "")
+        let stored = (defaults[Preferences.notchModuleOrder])
             .split(separator: ",").compactMap { NotchModule(rawValue: String($0)) }
         var seen = Set<NotchModule>()
         return (stored + NotchModule.allCases).filter {
@@ -1634,7 +1634,7 @@ package enum NotchSupport {
     }
 
     package static func idleContent(in defaults: UserDefaults = .standard) -> NotchIdleContent {
-        let choice = NotchIdleContent(rawValue: defaults.string(forKey: DefaultsKey.notchIdleContent) ?? "") ?? .none
+        let choice = NotchIdleContent(rawValue: defaults[Preferences.notchIdleContent]) ?? .none
         if choice == .battery, !AppFeature.monitorPower.isAvailable(in: defaults) { return .none }
         if choice == .music, !modules(in: defaults).contains(.music) { return .none }
         if choice == .agents, !NotchAgentSupport.isEnabled(in: defaults) { return .none }
@@ -1647,9 +1647,9 @@ package enum NotchSupport {
     }
 
     package static func controls(in defaults: UserDefaults = .standard) -> [NotchControlItem] {
-        let hidden = Set((defaults.string(forKey: DefaultsKey.notchHiddenControls) ?? NotchControlItem.defaultHidden)
+        let hidden = Set((defaults[Preferences.notchHiddenControls])
             .split(separator: ",").map(String.init))
-        let stored = (defaults.string(forKey: DefaultsKey.notchControlOrder) ?? "")
+        let stored = (defaults[Preferences.notchControlOrder])
             .split(separator: ",").compactMap { NotchControlItem(rawValue: String($0)) }
         var seen = Set<NotchControlItem>()
         return (stored + NotchControlItem.allCases).filter {

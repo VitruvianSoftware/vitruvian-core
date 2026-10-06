@@ -281,7 +281,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
             retentionDays: WhatsAppDownloadSupport.sanitizedRetentionDays(
                 defaults[Preferences.whatsAppDownloadsRetentionDays]),
             categories: WhatsAppDownloadSupport.decodedCategories(
-                defaults.string(forKey: DefaultsKey.whatsAppDownloadsCategories)),
+                defaults[Preferences.whatsAppDownloadsCategories]),
             includeExisting: defaults[Preferences.whatsAppDownloadsIncludeExisting],
             automaticStartDate: start > 0 ? Date(timeIntervalSince1970: start) : nil)
     }

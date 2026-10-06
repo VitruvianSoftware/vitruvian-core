@@ -996,7 +996,7 @@ package final class ScreenshotService: ObservableObject {
     nonisolated package static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, consumedNumber: Int?) {
         let manager = FileManager.default
         var folder: URL?
-        let stored = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveFolder) ?? ""
+        let stored = UserDefaults.standard[Preferences.screenshotSaveFolder]
         if !stored.isEmpty {
             let expanded = (stored as NSString).expandingTildeInPath
             var isDirectory: ObjCBool = false
@@ -1008,7 +1008,7 @@ package final class ScreenshotService: ObservableObject {
         var destination = folder
             ?? manager.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? manager.homeDirectoryForCurrentUser
-        let subfolderPattern = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveSubfolder) ?? ""
+        let subfolderPattern = UserDefaults.standard[Preferences.screenshotSaveSubfolder]
         let subfolder = ScreenshotSupport.expandSaveSubfolder(subfolderPattern, date: Date())
         if !subfolder.isEmpty {
             let dated = destination.appendingPathComponent(subfolder, isDirectory: true)
@@ -1032,7 +1032,7 @@ package final class ScreenshotService: ObservableObject {
     /// number sequence when the pattern actually uses it.
     nonisolated private static func fileName(strings: ScreenshotFeatureStrings) -> (name: String, consumedNumber: Int?) {
         let defaults = UserDefaults.standard
-        let pattern = (defaults.string(forKey: DefaultsKey.screenshotFileNamePattern) ?? "")
+        let pattern = (defaults[Preferences.screenshotFileNamePattern])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pattern.isEmpty else {
             return (ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date()), nil)

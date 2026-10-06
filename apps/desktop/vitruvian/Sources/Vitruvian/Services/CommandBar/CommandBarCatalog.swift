@@ -1277,7 +1277,7 @@ package enum CommandBarCatalog {
         if AppFeature.monitorMemory.isAvailable,
            let memory = cachedMemory, memory.total > 0 {
             let metric = Defaults.sanitizedMonitorMemoryMetric(
-                UserDefaults.standard.string(forKey: DefaultsKey.monitorMemoryMetric) ?? "")
+                UserDefaults.standard[Preferences.monitorMemoryMetric])
             let selected = MetricFormat.selectedMemory(used: memory.used,
                                                        app: memory.appUsed,
                                                        metric: metric)
@@ -1439,7 +1439,7 @@ package enum CommandBarCatalog {
                                      type: @escaping @MainActor (String) -> Void = { typeAtCursor($0) })
         -> [CommandBarEntry] {
         let tone = CommandBarPreferences.skinTone(
-            from: defaults.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
+            from: defaults[Preferences.commandBarEmojiSkinTone])
         return CommandBarEmoji.emoji.map { emoji in
             let character = CommandBarEmoji.applying(tone, to: emoji.character)
             return CommandBarEntry(

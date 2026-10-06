@@ -630,7 +630,7 @@ package enum ShelfDockPlacement: String {
     /// so the top center placement waits until it is off.
     package static func current(in defaults: UserDefaults = .standard) -> Self {
         guard !NotchSupport.isEnabled(in: defaults),
-              defaults.string(forKey: DefaultsKey.shelfDockPlacement) == Self.topCenter.rawValue
+              defaults[Preferences.shelfDockPlacement] == Self.topCenter.rawValue
         else { return .menuBar }
         return .topCenter
     }

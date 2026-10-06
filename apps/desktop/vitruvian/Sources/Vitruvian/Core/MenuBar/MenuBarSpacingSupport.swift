@@ -11,7 +11,7 @@ package enum MenuBarMetricSpacing: String, CaseIterable {
     case standard, compact
 
     package static var current: MenuBarMetricSpacing {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarMetricSpacing) ?? ""
+        let raw = UserDefaults.standard[Preferences.menuBarMetricSpacing]
         return MenuBarMetricSpacing(rawValue: Defaults.sanitizedMenuBarMetricSpacing(raw)) ?? .standard
     }
 }
@@ -25,7 +25,7 @@ package enum MenuBarMetricAppearance: String, CaseIterable {
     package var allowsCombinedTemperatures: Bool { self == .values }
 
     package static var current: MenuBarMetricAppearance {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarMetricAppearance) ?? ""
+        let raw = UserDefaults.standard[Preferences.menuBarMetricAppearance]
         let appearance = Defaults.sanitizedMenuBarMetricAppearance(raw)
         return MenuBarMetricAppearance(rawValue: appearance) ?? .values
     }
@@ -101,13 +101,13 @@ package enum MenuBarUsageBarSupport {
                                 defaults: UserDefaults = .standard) -> String {
         switch level {
         case .normal:
-            return sanitizedColorHex(defaults.string(forKey: DefaultsKey.menuBarUsageBarNormalColor),
+            return sanitizedColorHex(defaults[Preferences.menuBarUsageBarNormalColor],
                                      fallback: defaultNormalColor)
         case .elevated:
-            return sanitizedColorHex(defaults.string(forKey: DefaultsKey.menuBarUsageBarElevatedColor),
+            return sanitizedColorHex(defaults[Preferences.menuBarUsageBarElevatedColor],
                                      fallback: defaultElevatedColor)
         case .critical:
-            return sanitizedColorHex(defaults.string(forKey: DefaultsKey.menuBarUsageBarCriticalColor),
+            return sanitizedColorHex(defaults[Preferences.menuBarUsageBarCriticalColor],
                                      fallback: defaultCriticalColor)
         }
     }

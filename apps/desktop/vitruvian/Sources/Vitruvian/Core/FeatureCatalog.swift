@@ -90,9 +90,7 @@ extension AppFeature {
 
     package var monitorsPermissionChanges: Bool {
         monitorsPermissionChanges(
-            edgeSnapDisabledZones: UserDefaults.standard.string(
-                forKey: DefaultsKey.windowEdgeSnapDisabledZones
-            ),
+            edgeSnapDisabledZones: UserDefaults.standard[Preferences.windowEdgeSnapDisabledZones],
             boolFor: UserDefaults.standard.bool(forKey:)
         )
     }
@@ -145,7 +143,7 @@ extension AppFeature {
         case .textSnippets: return "text.append"
         case .superKey:
             return SuperKeySource.sanitized(
-                UserDefaults.standard.string(forKey: DefaultsKey.superKeySource)
+                UserDefaults.standard[Preferences.superKeySource]
             ).systemImage
         case .mouseClickDebounce: return "cursorarrow.click"
         case .quitWindowProtection: return "shield.lefthalf.filled"

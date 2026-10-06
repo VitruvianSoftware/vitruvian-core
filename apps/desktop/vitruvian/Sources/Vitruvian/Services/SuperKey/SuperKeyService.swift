@@ -179,13 +179,13 @@ package final class SuperKeyService: ObservableObject {
     package func syncWithPreferences() {
         let defaults = system.defaults
         let action = SuperKeySoloAction.sanitized(
-            defaults.string(forKey: DefaultsKey.superKeySoloAction)
+            defaults[Preferences.superKeySoloAction]
         )
         let modifiers = SuperKeySupport.modifiers(
-            from: defaults.string(forKey: DefaultsKey.superKeyModifiers)
+            from: defaults[Preferences.superKeyModifiers]
         )
         let source = SuperKeySource.sanitized(
-            defaults.string(forKey: DefaultsKey.superKeySource)
+            defaults[Preferences.superKeySource]
         )
         let sourceChanged = self.source != source
         stateLock.withLock {

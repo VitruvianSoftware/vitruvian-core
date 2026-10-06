@@ -155,14 +155,14 @@ package final class AppUpdatesService: ObservableObject {
         let stamp = environment.defaults[Preferences.appUpdatesLastCheck]
         lastCheck = stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
         rules = AppUpdatesSupport.decodedRules(
-            environment.defaults.string(forKey: DefaultsKey.appUpdatesRules))
+            environment.defaults[Preferences.appUpdatesRules])
     }
 
     // MARK: - Lifecycle
 
     package var frequency: AppUpdatesSupport.CheckFrequency {
         AppUpdatesSupport.CheckFrequency.sanitized(
-            environment.defaults.string(forKey: DefaultsKey.appUpdatesCheckFrequency))
+            environment.defaults[Preferences.appUpdatesCheckFrequency])
     }
 
     package func syncWithPreferences() {
@@ -700,14 +700,14 @@ package final class AppUpdatesService: ObservableObject {
     private func saveRules(_ newRules: [AppUpdatesSupport.UpdateRule]) {
         guard let raw = AppUpdatesSupport.encodedRules(newRules) else { return }
         rules = newRules
-        environment.defaults.set(raw, forKey: DefaultsKey.appUpdatesRules)
+        environment.defaults[Preferences.appUpdatesRules] = raw
         applyRules()
     }
 
     /// Settings restore and reset use the same preference as the panel.
     package func reloadRules() {
         let restored = AppUpdatesSupport.decodedRules(
-            environment.defaults.string(forKey: DefaultsKey.appUpdatesRules))
+            environment.defaults[Preferences.appUpdatesRules])
         guard restored != rules else { return }
         rules = restored
         hasCheckedThisSession = false

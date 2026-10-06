@@ -80,13 +80,13 @@ package enum MenuBarMetric: String, CaseIterable, Identifiable {
     ]
 
     package static func order(in defaults: UserDefaults) -> [MenuBarMetric] {
-        let raw = defaults.string(forKey: DefaultsKey.menuBarMetricOrder) ?? ""
+        let raw = defaults[Preferences.menuBarMetricOrder]
         return Defaults.sanitizedMenuBarMetricOrder(raw).compactMap(MenuBarMetric.init(rawValue:))
     }
 
     package static func setOrder(_ order: [MenuBarMetric], in defaults: UserDefaults = .standard) {
         let raw = order.map(\.rawValue).joined(separator: ",")
-        defaults.set(raw, forKey: DefaultsKey.menuBarMetricOrder)
+        defaults[Preferences.menuBarMetricOrder] = raw
     }
 
     /// The hub feature this metric belongs to; temperatures ride with their
@@ -137,7 +137,7 @@ package enum MenuBarPreset: String, CaseIterable {
     case readable, dense
 
     package static var current: MenuBarPreset {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarPreset) ?? ""
+        let raw = UserDefaults.standard[Preferences.menuBarPreset]
         let preset = Defaults.sanitizedMenuBarPreset(raw)
         return MenuBarPreset(rawValue: preset) ?? .dense
     }
@@ -149,7 +149,7 @@ package enum MemoryMenuBarStyle: String, CaseIterable {
     case dot, percent, both
 
     package static var current: MemoryMenuBarStyle {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarMemoryStyle) ?? ""
+        let raw = UserDefaults.standard[Preferences.menuBarMemoryStyle]
         let style = Defaults.sanitizedMenuBarMemoryStyle(raw)
         return MemoryMenuBarStyle(rawValue: style) ?? .percent
     }
@@ -163,7 +163,7 @@ package enum MonitorMemoryMetric: String, CaseIterable {
     case used, app
 
     package static var current: MonitorMemoryMetric {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.monitorMemoryMetric) ?? ""
+        let raw = UserDefaults.standard[Preferences.monitorMemoryMetric]
         let metric = Defaults.sanitizedMonitorMemoryMetric(raw)
         return MonitorMemoryMetric(rawValue: metric) ?? .used
     }
@@ -187,7 +187,7 @@ package enum MenuBarLabelStyle: String, CaseIterable {
     case compact, classic
 
     package static var current: MenuBarLabelStyle {
-        let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarLabelStyle) ?? ""
+        let raw = UserDefaults.standard[Preferences.menuBarLabelStyle]
         let style = Defaults.sanitizedMenuBarLabelStyle(raw)
         return MenuBarLabelStyle(rawValue: style) ?? .compact
     }
@@ -1346,13 +1346,13 @@ package enum MenuBarRenderer {
     }
 
     private static func temperatureCompact(_ celsius: Double) -> String {
-        let unit = TemperatureUnit(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.temperatureUnit) ?? "")
+        let unit = TemperatureUnit(rawValue: UserDefaults.standard[Preferences.temperatureUnit])
             ?? .celsius
         return MetricFormat.temperatureCompact(celsius, unit: unit)
     }
 
     private static func temperatureLabel(_ component: String) -> String {
-        let unit = TemperatureUnit(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.temperatureUnit) ?? "")
+        let unit = TemperatureUnit(rawValue: UserDefaults.standard[Preferences.temperatureUnit])
             ?? .celsius
         return component + MetricFormat.temperatureUnitSuffix(unit)
     }

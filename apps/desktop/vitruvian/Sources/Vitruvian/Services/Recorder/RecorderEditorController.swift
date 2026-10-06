@@ -194,10 +194,10 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
             let defaults = environment.defaults
             document = RecorderEditDocument(
                 quality: RecorderSupport.sanitizedQuality(
-                    defaults.string(forKey: DefaultsKey.recorderQuality)).rawValue,
+                    defaults[Preferences.recorderQuality]).rawValue,
                 keepsSystemAudio: defaults[Preferences.recorderSystemAudio],
                 gifSize: RecorderSupport.sanitizedGIFSize(
-                    defaults.string(forKey: DefaultsKey.recorderGIFSize)).rawValue,
+                    defaults[Preferences.recorderGIFSize]).rawValue,
                 gifFrameRate: RecorderSupport.sanitizedGIFFrameRate(
                     defaults[Preferences.recorderGIFFrameRate]),
                 zoomEnabled: defaults[Preferences.recorderAutomaticZoom])
@@ -1364,7 +1364,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     package func loadBackdropPresets() {
         backdropPresets = ScreenshotSupport.decodedBackdropPresets(
-            environment.defaults.string(forKey: DefaultsKey.screenshotBackdropPresets))
+            environment.defaults[Preferences.screenshotBackdropPresets])
     }
 
     package func saveCurrentBackdropAsPreset() {
@@ -1394,8 +1394,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     private func persistPresets() {
-        environment.defaults.set(ScreenshotSupport.encodedBackdropPresets(backdropPresets),
-                                  forKey: DefaultsKey.screenshotBackdropPresets)
+        environment.defaults[Preferences.screenshotBackdropPresets] = ScreenshotSupport.encodedBackdropPresets(backdropPresets)
     }
 
     // MARK: - Export
@@ -1608,7 +1607,7 @@ package final class RecorderEditorController: NSObject, NSWindowDelegate {
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            UserDefaults.standard.set(url.path, forKey: DefaultsKey.recorderSaveFolder)
+            UserDefaults.standard[Preferences.recorderSaveFolder] = url.path
         }
     }
 

@@ -102,8 +102,7 @@ extension AppFeature {
         case .windowLayout:
             let edgeSnapRuns = UserDefaults.standard[Preferences.windowEdgeSnapEnabled]
                 && !WindowEdgeSnapZone.enabledZones(
-                    from: UserDefaults.standard.string(
-                        forKey: DefaultsKey.windowEdgeSnapDisabledZones)
+                    from: UserDefaults.standard[Preferences.windowEdgeSnapDisabledZones]
                 ).isEmpty
             return UserDefaults.standard[Preferences.windowGestureEnabled]
                 || edgeSnapRuns
@@ -136,7 +135,7 @@ extension AppFeature {
             return defaults[Preferences.brightnessKeysEnabled]
                 || defaults[Preferences.brightnessOSDEnabled]
                 || BrightnessSupport.KeyStep.sanitized(
-                    defaults.string(forKey: DefaultsKey.brightnessKeyStep)) != .standard
+                    defaults[Preferences.brightnessKeyStep]) != .standard
                 ? .keyboard : .idle
         case .mouseAcceleration, .pastePlain, .soundOutputSwitcher, .audioPriority, .micMute,
              .bluetoothSleep, .keepAwake, .quickLauncher, .quickToggles, .colorPicker,
@@ -147,7 +146,7 @@ extension AppFeature {
         case .appUpdates:
             // The list is on demand; only a background schedule keeps a timer.
             return AppUpdatesSupport.CheckFrequency.sanitized(
-                UserDefaults.standard.string(forKey: DefaultsKey.appUpdatesCheckFrequency)) == .off
+                UserDefaults.standard[Preferences.appUpdatesCheckFrequency]) == .off
                 ? .idle : .periodic
         }
     }

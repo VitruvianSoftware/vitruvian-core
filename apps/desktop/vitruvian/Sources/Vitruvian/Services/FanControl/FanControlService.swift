@@ -119,8 +119,7 @@ package final class FanControlService: ObservableObject {
             isWorking = true
             do {
                 try Self.appService.register()
-                UserDefaults.standard.set(Self.helperVersion,
-                                          forKey: DefaultsKey.fanControlHelperVersion)
+                UserDefaults.standard[Preferences.fanControlHelperVersion] = Self.helperVersion
                 refreshAccessState()
                 isWorking = false
                 if accessState == .requiresApproval {
@@ -266,7 +265,7 @@ package final class FanControlService: ObservableObject {
         }
         let status = service.status
         if status == .enabled || status == .requiresApproval {
-            UserDefaults.standard.set(helperVersion, forKey: DefaultsKey.fanControlHelperVersion)
+            UserDefaults.standard[Preferences.fanControlHelperVersion] = helperVersion
         } else {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlHelperVersion)
         }
@@ -351,8 +350,7 @@ package final class FanControlService: ObservableObject {
             self.apply(response)
             // Any decoded reply proves that the installed helper speaks this
             // protocol, even when the hardware itself is unsupported.
-            UserDefaults.standard.set(Self.helperVersion,
-                                      forKey: DefaultsKey.fanControlHelperVersion)
+            UserDefaults.standard[Preferences.fanControlHelperVersion] = Self.helperVersion
             if response.succeeded, !response.snapshot.isCooling {
                 UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlRecoveryNeeded)
             }
@@ -474,7 +472,7 @@ package final class FanControlService: ObservableObject {
     /// is registered again. This runs once per app build and only when the user
     /// opens an already-authorized Fan Control surface.
     private func replaceRegistrationIfNeeded() -> Bool {
-        let installed = UserDefaults.standard.string(forKey: DefaultsKey.fanControlHelperVersion) ?? ""
+        let installed = UserDefaults.standard[Preferences.fanControlHelperVersion]
         let current = Self.helperVersion
         guard !installed.isEmpty, installed != current,
               registrationAttemptedVersion != current,
@@ -490,7 +488,7 @@ package final class FanControlService: ObservableObject {
                 }
                 do {
                     try Self.appService.register()
-                    UserDefaults.standard.set(current, forKey: DefaultsKey.fanControlHelperVersion)
+                    UserDefaults.standard[Preferences.fanControlHelperVersion] = current
                     self.isWorking = false
                     self.refreshAccessState()
                     if self.accessState == .enabled { self.requestStatus() }

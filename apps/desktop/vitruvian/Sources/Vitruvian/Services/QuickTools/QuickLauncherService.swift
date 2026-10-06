@@ -130,8 +130,7 @@ package final class QuickLauncherService: ObservableObject {
     /// one under the pointer, and the rail kept scrolling by itself.
     @Published package private(set) var keyboardIndex: Int?
     @Published package private(set) var presentationID = UUID()
-    @Published package private(set) var hiddenItemsRaw: String = UserDefaults.standard.string(
-        forKey: DefaultsKey.quickLauncherHiddenItems) ?? ""
+    @Published package private(set) var hiddenItemsRaw: String = UserDefaults.standard[Preferences.quickLauncherHiddenItems]
 
     private let hotkey = QuickToolHotkey(id: 14)
     private var panel: NSPanel?
@@ -199,7 +198,7 @@ package final class QuickLauncherService: ObservableObject {
             ids.remove(item.rawValue)
         }
         hiddenItemsRaw = QuickToolsSupport.serializeHiddenIDs(ids)
-        UserDefaults.standard.set(hiddenItemsRaw, forKey: DefaultsKey.quickLauncherHiddenItems)
+        UserDefaults.standard[Preferences.quickLauncherHiddenItems] = hiddenItemsRaw
         clampSelection()
     }
 

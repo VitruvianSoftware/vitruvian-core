@@ -1424,7 +1424,7 @@ package final class NotchService: ObservableObject {
                 : opensActivity ? compactActivity?.module : nil
             if let activity, modules.contains(activity) { return (activity, false, false) }
             if defaults[Preferences.notchReturnHome] {
-                let saved = defaults.string(forKey: DefaultsKey.notchHomeModule) ?? ""
+                let saved = defaults[Preferences.notchHomeModule]
                 switch NotchReopeningDestination(rawValue: saved) {
                 case .appPanel: return (modules.contains(.controls) ? .controls : modules.first ?? .controls, true, false)
                 case .explore: return (selected, false, true)
@@ -2732,7 +2732,7 @@ package final class NotchService: ObservableObject {
     private static let hasLid = BrightnessService.lidClosed() != nil
 
     private var displayPreference: NotchDisplay {
-        NotchDisplay(rawValue: defaults.string(forKey: DefaultsKey.notchDisplay) ?? "") ?? .automatic
+        NotchDisplay(rawValue: defaults[Preferences.notchDisplay]) ?? .automatic
     }
 
     private func screenIndex(in screens: [NotchDisplayInfo]) -> Int? {
@@ -2814,7 +2814,7 @@ package final class NotchService: ObservableObject {
     private func baseGeometry(for screen: NotchDisplayInfo) -> NotchGeometry {
         NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaTop,
                       cameraWidth: screen.cameraWidth,
-                      layout: NotchSize(rawValue: defaults.string(forKey: DefaultsKey.notchSize) ?? "") ?? .spacious,
+                      layout: NotchSize(rawValue: defaults[Preferences.notchSize]) ?? .spacious,
                       menuBarHeight: menuBarMeasurements.height(
                          displayID: screen.id, frame: screen.frame,
                          visibleTop: screen.visibleFrame.maxY, scale: screen.backingScale,

@@ -389,7 +389,7 @@ package final class RadialMenuService: ObservableObject {
 
         let shortcut = GlobalShortcut(storageValue: profile.shortcut) ?? .radialMenuDefault
         let activationMode = RadialMenuActivationMode.sanitized(
-            defaults.string(forKey: DefaultsKey.radialMenuActivationMode))
+            defaults[Preferences.radialMenuActivationMode])
         let startsHeld = activationMode.startsHeld(
             requestedHold: hold,
             hasHeldButton: heldButton != nil,

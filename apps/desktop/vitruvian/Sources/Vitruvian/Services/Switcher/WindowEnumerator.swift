@@ -101,11 +101,11 @@ package enum WindowEnumerator {
 
         package init(defaults: UserDefaults) {
             windowlessApps = SwitcherWindowlessApps.mode(
-                storedValue: defaults.string(forKey: DefaultsKey.switcherWindowlessApps),
+                storedValue: defaults[Preferences.switcherWindowlessApps],
                 takeOverSystemShortcuts: defaults[Preferences.switcherTakeOverSystemShortcuts])
             currentSpaceOnly = defaults[Preferences.switcherCurrentSpaceOnly]
             minimizedPlacement = WindowSwitchMinimizedPlacement(
-                rawValue: defaults.string(forKey: DefaultsKey.switcherMinimizedPlacement) ?? ""
+                rawValue: defaults[Preferences.switcherMinimizedPlacement]
             ) ?? .normal
             treatHiddenAppsLikeMinimized = defaults[Preferences.switcherTreatHiddenAppsLikeMinimized]
             showFullscreenWindows = defaults.object(forKey: DefaultsKey.switcherShowFullscreenWindows) as? Bool ?? true

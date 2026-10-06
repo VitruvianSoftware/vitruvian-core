@@ -530,17 +530,17 @@ package final class CommandBarService: ObservableObject {
     /// decoding the same handful of strings over and over.
     private var storedAliases: [String: String] {
         CommandBarPreferences.decodeAliases(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarAliases))
+            UserDefaults.standard[Preferences.commandBarAliases])
     }
 
     private var storedPins: [String] {
         CommandBarPreferences.decodePins(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarPins) ?? "")
+            UserDefaults.standard[Preferences.commandBarPins])
     }
 
     package var rowShortcuts: [String: GlobalShortcut] {
         CommandBarRowShortcuts.decode(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarRowShortcuts))
+            UserDefaults.standard[Preferences.commandBarRowShortcuts])
     }
 
     package func rowShortcut(for entry: CommandBarEntry) -> GlobalShortcut? {
@@ -654,7 +654,7 @@ package final class CommandBarService: ObservableObject {
 
     private var storedHiddenKeys: Set<String> {
         CommandBarPreferences.decodeHidden(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarHidden) ?? "")
+            UserDefaults.standard[Preferences.commandBarHidden])
     }
 
     /// What was in the field, and what was selected, at the instant a row ran.
@@ -867,7 +867,7 @@ package final class CommandBarService: ObservableObject {
         // Before `reloadFileSearchCaches()`, which asks whether the Files
         // source is on.
         disabledCache = CommandBarPreferences.disabledSources(
-            from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarDisabledSources) ?? "")
+            from: UserDefaults.standard[Preferences.commandBarDisabledSources])
         runs.usage = CommandBarUsage.decode(
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         shortcutCache = rowShortcuts
@@ -879,8 +879,8 @@ package final class CommandBarService: ObservableObject {
     private func reloadFileSearchCaches() {
         // A cached answer belongs to the scopes and ignores that produced it.
         // Changing either invalidates pending and completed searches together.
-        let scopesRaw = UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileScopes) ?? ""
-        let ignoresRaw = UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileIgnores) ?? ""
+        let scopesRaw = UserDefaults.standard[Preferences.commandBarFileScopes]
+        let ignoresRaw = UserDefaults.standard[Preferences.commandBarFileIgnores]
         let enabled = isEnabled(.files)
         let signature = "\(enabled)\0\(scopesRaw)\0\(ignoresRaw)"
         guard signature != fileSearchPreferenceSignature else { return }
@@ -956,7 +956,7 @@ package final class CommandBarService: ObservableObject {
     /// list refreshes the instant the person changes their mind.
     package func togglePin(_ entry: CommandBarEntry) {
         let next = CommandBarPreferences.togglingPin(entry.stableKey, in: storedPins)
-        UserDefaults.standard.set(CommandBarPreferences.encodePins(next), forKey: DefaultsKey.commandBarPins)
+        UserDefaults.standard[Preferences.commandBarPins] = CommandBarPreferences.encodePins(next)
         refreshAfterPreferenceChange()
     }
 
@@ -978,8 +978,7 @@ package final class CommandBarService: ObservableObject {
 
     package func toggleHidden(_ entry: CommandBarEntry) {
         let next = CommandBarPreferences.togglingHidden(entry.stableKey, in: storedHiddenKeys)
-        UserDefaults.standard.set(CommandBarPreferences.encodeHidden(next),
-                                  forKey: DefaultsKey.commandBarHidden)
+        UserDefaults.standard[Preferences.commandBarHidden] = CommandBarPreferences.encodeHidden(next)
         refreshAfterPreferenceChange()
     }
 
@@ -2809,7 +2808,7 @@ package final class CommandBarService: ObservableObject {
     /// open on.
     private var positionOffset: CGSize {
         CommandBarPreferences.decodePositionOffset(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarPositionOffset) ?? "")
+            UserDefaults.standard[Preferences.commandBarPositionOffset])
     }
 
     // MARK: - Moving the bar
@@ -2832,7 +2831,7 @@ package final class CommandBarService: ObservableObject {
         if encoded.isEmpty {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
         } else {
-            UserDefaults.standard.set(encoded, forKey: DefaultsKey.commandBarPositionOffset)
+            UserDefaults.standard[Preferences.commandBarPositionOffset] = encoded
         }
         hasCustomPosition = !encoded.isEmpty
     }
