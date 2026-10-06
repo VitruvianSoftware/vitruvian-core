@@ -347,6 +347,12 @@ package enum SettingsDirectory {
                                       title: FeatureStrings.portManager(language).title,
                                       icon: "network",
                                       keywords: ["port", "ports", "listening", "socket", "PID", "kill port"]),
+                SettingsDirectoryItem(page: .nexusAgent,
+                                      title: FeatureStrings.nexusAgent(language).title,
+                                      icon: "paperplane",
+                                      keywords: [FeatureStrings.nexusAgent(language).quickPromptTitle,
+                                                 FeatureStrings.nexusAgent(language).botSection,
+                                                 "Telegram", "bot", "agy", "Antigravity", "AI", "agent"]),
             ]),
             (categories.utilities, [
                 SettingsDirectoryItem(page: .notch,

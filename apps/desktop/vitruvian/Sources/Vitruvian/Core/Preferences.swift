@@ -345,6 +345,11 @@ package enum Preferences {
     package static let recorderSharingEnabled = Preference(DefaultsKey.recorderSharingEnabled, default: true)
     package static let panelUtilityScreenRecorder = Preference(DefaultsKey.panelUtilityScreenRecorder, default: true)
     package static let panelUtilityPortManager = Preference(DefaultsKey.panelUtilityPortManager, default: true)
+    package static let nexusAgentShortcutEnabled = Preference(DefaultsKey.nexusAgentShortcutEnabled, default: false)
+    package static let nexusAgentAutoStart = Preference(DefaultsKey.nexusAgentAutoStart, default: false)
+    /// Empty means the bot's standard home, `~/.config/nexus-agent`.
+    package static let nexusAgentBotDirectory = Preference(DefaultsKey.nexusAgentBotDirectory, default: "")
+    package static let panelUtilityNexusAgent = Preference(DefaultsKey.panelUtilityNexusAgent, default: true)
     package static let screenshotShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenshotShowCaptureMenuOnShortcut, default: true)
     package static let recorderShowCaptureMenuOnShortcut = Preference(DefaultsKey.recorderShowCaptureMenuOnShortcut, default: true)
     package static let screenOCRShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenOCRShowCaptureMenuOnShortcut, default: true)
@@ -711,6 +716,8 @@ package enum Preferences {
         DefaultsKey.cameraPreviewShortcut, default: GlobalShortcut.cameraPreviewDefault.storageValue)
     package static let scratchpadShortcut = Preference(
         DefaultsKey.scratchpadShortcut, default: GlobalShortcut.scratchpadDefault.storageValue)
+    package static let nexusAgentShortcut = Preference(
+        DefaultsKey.nexusAgentShortcut, default: GlobalShortcut.nexusAgentDefault.storageValue)
     package static let commandBarShortcut = Preference(
         DefaultsKey.commandBarShortcut, default: GlobalShortcut.commandBarDefault.storageValue)
     package static let quickLauncherShortcut = Preference(

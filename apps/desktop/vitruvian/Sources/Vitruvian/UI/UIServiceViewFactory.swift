@@ -45,6 +45,10 @@ package struct UIServiceViewFactory: ServiceViewFactory {
         AnyView(ScratchpadView())
     }
 
+    package func nexusAgentQuickPrompt() -> AnyView {
+        AnyView(NexusAgentQuickPromptView())
+    }
+
     package func quickLauncher() -> AnyView {
         AnyView(QuickLauncherView())
     }

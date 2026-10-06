@@ -702,6 +702,16 @@ package enum DefaultsKey {
     package static let panelUtilityScreenRecorder = "panelUtilityScreenRecorder"
     package static let panelUtilityPortManager = "panelUtilityPortManager"
 
+    // Nexus Agent — the Telegram bot and the Quick Prompt. The bot's own
+    // settings (token, allowed users, agent options) live in its .env file,
+    // never here, so the token stays out of preferences and backups.
+    package static let nexusAgentShortcutEnabled = "nexusAgentShortcutEnabled"
+    package static let nexusAgentShortcut = "nexusAgentShortcut"
+    package static let nexusAgentAutoStart = "nexusAgentAutoStart"
+    // Machine state, never exported: a folder on this Mac.
+    package static let nexusAgentBotDirectory = "nexusAgentBotDirectory"
+    package static let panelUtilityNexusAgent = "panelUtilityNexusAgent"
+
     // Window Layout — snapping, global shortcuts and optional pointer gestures.
     package static let windowLayoutShortcutsEnabled = "windowLayoutShortcutsEnabled"
     package static let windowDirectionalEnabled = "windowDirectionalEnabled"

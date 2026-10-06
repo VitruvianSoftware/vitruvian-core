@@ -110,7 +110,7 @@ package enum SelfUninstall {
         case appSwitcher, dockPreview, brightnessKeys, autoQuit, finderCutPaste, finderRename
         case keyboardDebounce, mouseClickDebounce, superKey, dockClick, middleClick, quitProtection
         case pastePlain, snippetLibrary, textSnippets, screenCapture, recentCaptures, quickLauncher
-        case screenText, cameraPreview, radialMenu, scratchpad, commandBar, preciseVolumeRoller, micMute
+        case screenText, cameraPreview, radialMenu, scratchpad, commandBar, nexusAgent, preciseVolumeRoller, micMute
     }
 
     /// What the real steps ask of the Mac: the input teardown, the brightness
@@ -329,6 +329,7 @@ package enum SelfUninstall {
         case .radialMenu: RadialMenuService.shared.suspend()
         case .scratchpad: ScratchpadService.shared.suspend()
         case .commandBar: CommandBarService.shared.suspend()
+        case .nexusAgent: NexusAgentService.shared.suspend()
         case .preciseVolumeRoller: PreciseVolumeRollerService.shared.suspend()
         case .micMute:
             // Leaving the mic cut after the app is gone would strand the user
