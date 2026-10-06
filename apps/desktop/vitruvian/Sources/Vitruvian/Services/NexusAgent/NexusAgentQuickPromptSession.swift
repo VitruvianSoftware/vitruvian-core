@@ -3,7 +3,7 @@
 //
 // Adapted from the standalone Nexus Agent app (apps/desktop/nexus-agent,
 // MIT, Copyright (c) 2026 VitruvianSoftware): the streaming chat of its
-// Quick Prompt window, without the session browser.
+// Quick Prompt window: the pill, the recent-sessions drawer and the chat.
 
 import Foundation
 import VitruvianCore
@@ -47,6 +47,14 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     @Published package var draft = ""
     /// Bumped when the prompt is shown, so the view puts the caret back.
     @Published package var focusSerial = 0
+    /// Pill, drawer or chat; the service sizes the panel to match.
+    @Published package private(set) var mode: NexusAgentQuickPromptMode = .compact
+    @Published package private(set) var sessions: [NexusAgentSessionSummary] = []
+    @Published package var sessionFilter = ""
+    /// Turns run with `--mode plan` (read-only) while on. Remembered.
+    @Published package var planMode: Bool {
+        didSet { environment.defaults[Preferences.nexusAgentPlanMode] = planMode }
+    }
 
     private let environment: NexusAgentService.Environment
     private var running: NexusAgentRunningAgent?
@@ -61,6 +69,41 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
 
     package init(environment: NexusAgentService.Environment) {
         self.environment = environment
+        self.planMode = environment.defaults[Preferences.nexusAgentPlanMode]
+    }
+
+    /// Send is offered only for a prompt with text and no turn in flight.
+    package var canSend: Bool {
+        !isRunning && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    package var filteredSessions: [NexusAgentSessionSummary] {
+        NexusAgentSessionSummary.filter(sessions, by: sessionFilter)
+    }
+
+    /// Opens the drawer with a fresh list from agy, or closes it again.
+    package func toggleSessions(configuration: NexusAgentConfiguration) {
+        if mode == .sessions {
+            mode = messages.isEmpty ? .compact : .chat
+            return
+        }
+        sessionFilter = ""
+        sessions = environment.listSessions(workingDirectory(for: configuration))
+        mode = .sessions
+    }
+
+    /// Continues a past conversation: the next turn passes its id to agy.
+    package func resume(_ summary: NexusAgentSessionSummary) {
+        newChat()
+        conversationID = summary.id
+        mode = .chat
+    }
+
+    /// The agy flags for this turn: plan mode overrides the bot's approval mode.
+    package func turnConfiguration(_ configuration: NexusAgentConfiguration) -> NexusAgentConfiguration {
+        var turn = configuration
+        if planMode { turn.approvalMode = .plan }
+        return turn
     }
 
     private var strings: NexusAgentFeatureStrings { FeatureStrings.nexusAgent(L10n.shared.language) }
@@ -71,6 +114,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRunning else { return }
         draft = ""
+        mode = .chat
         messages.append(NexusAgentChatMessage(role: .user, text: text))
         guard let agentPath else {
             messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
@@ -87,7 +131,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         messages.append(reply)
         isRunning = true
         activity = nil
-        let arguments = NexusAgentSupport.agentArguments(prompt: text, configuration: configuration,
+        let arguments = NexusAgentSupport.agentArguments(prompt: text, configuration: turnConfiguration(configuration),
                                                          conversationID: conversationID)
         let childEnvironment = NexusAgentSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
@@ -119,6 +163,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         replyID = nil
         conversationID = nil
         messages = []
+        mode = .compact
     }
 
     /// The bot's folder setting, `~` expanded; home when unset or gone.

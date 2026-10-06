@@ -59,6 +59,13 @@ package struct NexusAgentFeatureStrings {
     package let replyStopped: String
     package let emptyReply: String
     package let agentFailed: String
+    package let sessionsToggle: String
+    package let planModeOn: String
+    package let planModeOff: String
+    package let sessionsFilter: String
+    package let noSessions: String
+    package let followUpPlaceholder: String
+    package let untitledSession: String
 
     package func approvalModeName(_ mode: NexusAgentApprovalMode) -> String {
         switch mode {
@@ -149,7 +156,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "The Antigravity CLI (agy) was not found.",
         quickPromptSection: "Quick Prompt",
         quickPromptCaption: "Ask the agent from anywhere. Replies stream into a floating panel.",
-        promptPlaceholder: "Ask the agent…",
+        promptPlaceholder: "Ask Antigravity anything...",
         send: "Send",
         stopReply: "Stop",
         newChat: "New chat",
@@ -157,7 +164,14 @@ extension NexusAgentFeatureStrings {
         working: "Working…",
         replyStopped: "Reply stopped.",
         emptyReply: "The agent returned no reply.",
-        agentFailed: "The agent stopped with an error."
+        agentFailed: "The agent stopped with an error.",
+        sessionsToggle: "Recent sessions",
+        planModeOn: "Plan mode on (read-only)",
+        planModeOff: "Turn on plan mode",
+        sessionsFilter: "Filter sessions",
+        noSessions: "No recent sessions",
+        followUpPlaceholder: "Ask a follow-up…",
+        untitledSession: "Untitled"
     )
 
     package static let ptBR = NexusAgentFeatureStrings(
@@ -207,7 +221,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "A CLI do Antigravity (agy) não foi encontrada.",
         quickPromptSection: "Prompt rápido",
         quickPromptCaption: "Pergunte ao agente de qualquer lugar. As respostas aparecem num painel flutuante.",
-        promptPlaceholder: "Pergunte ao agente…",
+        promptPlaceholder: "Pergunte qualquer coisa ao Antigravity...",
         send: "Enviar",
         stopReply: "Parar",
         newChat: "Nova conversa",
@@ -215,7 +229,14 @@ extension NexusAgentFeatureStrings {
         working: "Trabalhando…",
         replyStopped: "Resposta interrompida.",
         emptyReply: "O agente não respondeu nada.",
-        agentFailed: "O agente parou com um erro."
+        agentFailed: "O agente parou com um erro.",
+        sessionsToggle: "Sessões recentes",
+        planModeOn: "Modo de plano ativado (somente leitura)",
+        planModeOff: "Ativar modo de plano",
+        sessionsFilter: "Filtrar sessões",
+        noSessions: "Nenhuma sessão recente",
+        followUpPlaceholder: "Faça uma pergunta de acompanhamento…",
+        untitledSession: "Sem título"
     )
 
     package static let tr = NexusAgentFeatureStrings(
@@ -265,7 +286,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Antigravity CLI (agy) bulunamadı.",
         quickPromptSection: "Hızlı İstem",
         quickPromptCaption: "Ajana her yerden sorun. Yanıtlar yüzen bir panelde akar.",
-        promptPlaceholder: "Ajana sorun…",
+        promptPlaceholder: "Antigravity’ye her şeyi sorun...",
         send: "Gönder",
         stopReply: "Durdur",
         newChat: "Yeni sohbet",
@@ -273,7 +294,14 @@ extension NexusAgentFeatureStrings {
         working: "Çalışıyor…",
         replyStopped: "Yanıt durduruldu.",
         emptyReply: "Ajan yanıt vermedi.",
-        agentFailed: "Ajan bir hatayla durdu."
+        agentFailed: "Ajan bir hatayla durdu.",
+        sessionsToggle: "Son oturumlar",
+        planModeOn: "Plan modu açık (salt okunur)",
+        planModeOff: "Plan modunu aç",
+        sessionsFilter: "Oturumları filtrele",
+        noSessions: "Son oturum yok",
+        followUpPlaceholder: "Devam sorusu sorun…",
+        untitledSession: "Adsız"
     )
 
     package static let ru = NexusAgentFeatureStrings(
@@ -323,7 +351,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Antigravity CLI (agy) не найден.",
         quickPromptSection: "Быстрый запрос",
         quickPromptCaption: "Обращайтесь к агенту откуда угодно. Ответы появляются в плавающей панели.",
-        promptPlaceholder: "Спросите агента…",
+        promptPlaceholder: "Спросите Antigravity о чём угодно...",
         send: "Отправить",
         stopReply: "Остановить",
         newChat: "Новый чат",
@@ -331,7 +359,14 @@ extension NexusAgentFeatureStrings {
         working: "Работает…",
         replyStopped: "Ответ остановлен.",
         emptyReply: "Агент ничего не ответил.",
-        agentFailed: "Агент остановился с ошибкой."
+        agentFailed: "Агент остановился с ошибкой.",
+        sessionsToggle: "Недавние сеансы",
+        planModeOn: "Режим плана включён (только чтение)",
+        planModeOff: "Включить режим плана",
+        sessionsFilter: "Фильтр сеансов",
+        noSessions: "Нет недавних сеансов",
+        followUpPlaceholder: "Задайте уточняющий вопрос…",
+        untitledSession: "Без названия"
     )
 
     package static let es = NexusAgentFeatureStrings(
@@ -381,7 +416,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "No se encontró la CLI de Antigravity (agy).",
         quickPromptSection: "Prompt rápido",
         quickPromptCaption: "Pregunta al agente desde cualquier lugar. Las respuestas llegan a un panel flotante.",
-        promptPlaceholder: "Pregunta al agente…",
+        promptPlaceholder: "Pregunta lo que quieras a Antigravity...",
         send: "Enviar",
         stopReply: "Detener",
         newChat: "Nueva conversación",
@@ -389,7 +424,14 @@ extension NexusAgentFeatureStrings {
         working: "Trabajando…",
         replyStopped: "Respuesta detenida.",
         emptyReply: "El agente no devolvió ninguna respuesta.",
-        agentFailed: "El agente se detuvo con un error."
+        agentFailed: "El agente se detuvo con un error.",
+        sessionsToggle: "Sesiones recientes",
+        planModeOn: "Modo plan activado (solo lectura)",
+        planModeOff: "Activar modo plan",
+        sessionsFilter: "Filtrar sesiones",
+        noSessions: "No hay sesiones recientes",
+        followUpPlaceholder: "Haz una pregunta de seguimiento…",
+        untitledSession: "Sin título"
     )
 
     package static let sk = NexusAgentFeatureStrings(
@@ -439,7 +481,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Antigravity CLI (agy) sa nenašlo.",
         quickPromptSection: "Rýchla výzva",
         quickPromptCaption: "Pýtajte sa agenta odkiaľkoľvek. Odpovede prichádzajú do plávajúceho panela.",
-        promptPlaceholder: "Opýtajte sa agenta…",
+        promptPlaceholder: "Opýtajte sa Antigravity na čokoľvek...",
         send: "Odoslať",
         stopReply: "Zastaviť",
         newChat: "Nový rozhovor",
@@ -447,7 +489,14 @@ extension NexusAgentFeatureStrings {
         working: "Pracuje…",
         replyStopped: "Odpoveď zastavená.",
         emptyReply: "Agent nevrátil žiadnu odpoveď.",
-        agentFailed: "Agent sa zastavil s chybou."
+        agentFailed: "Agent sa zastavil s chybou.",
+        sessionsToggle: "Nedávne relácie",
+        planModeOn: "Režim plánu zapnutý (iba na čítanie)",
+        planModeOff: "Zapnúť režim plánu",
+        sessionsFilter: "Filtrovať relácie",
+        noSessions: "Žiadne nedávne relácie",
+        followUpPlaceholder: "Položte doplňujúcu otázku…",
+        untitledSession: "Bez názvu"
     )
 
     package static let de = NexusAgentFeatureStrings(
@@ -497,7 +546,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Die Antigravity-CLI (agy) wurde nicht gefunden.",
         quickPromptSection: "Schnell-Prompt",
         quickPromptCaption: "Frag den Agenten von überall. Antworten erscheinen in einem schwebenden Fenster.",
-        promptPlaceholder: "Frag den Agenten…",
+        promptPlaceholder: "Frag Antigravity alles...",
         send: "Senden",
         stopReply: "Stoppen",
         newChat: "Neuer Chat",
@@ -505,7 +554,14 @@ extension NexusAgentFeatureStrings {
         working: "Arbeitet…",
         replyStopped: "Antwort gestoppt.",
         emptyReply: "Der Agent hat nichts geantwortet.",
-        agentFailed: "Der Agent wurde mit einem Fehler beendet."
+        agentFailed: "Der Agent wurde mit einem Fehler beendet.",
+        sessionsToggle: "Letzte Sitzungen",
+        planModeOn: "Planmodus an (nur lesen)",
+        planModeOff: "Planmodus einschalten",
+        sessionsFilter: "Sitzungen filtern",
+        noSessions: "Keine letzten Sitzungen",
+        followUpPlaceholder: "Stell eine Folgefrage…",
+        untitledSession: "Ohne Titel"
     )
 
     package static let fr = NexusAgentFeatureStrings(
@@ -555,7 +611,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "La CLI Antigravity (agy) est introuvable.",
         quickPromptSection: "Prompt rapide",
         quickPromptCaption: "Interrogez l’agent depuis n’importe où. Les réponses s’affichent dans un panneau flottant.",
-        promptPlaceholder: "Demandez à l’agent…",
+        promptPlaceholder: "Demandez n’importe quoi à Antigravity...",
         send: "Envoyer",
         stopReply: "Arrêter",
         newChat: "Nouvelle conversation",
@@ -563,7 +619,14 @@ extension NexusAgentFeatureStrings {
         working: "Travail en cours…",
         replyStopped: "Réponse interrompue.",
         emptyReply: "L’agent n’a rien répondu.",
-        agentFailed: "L’agent s’est arrêté sur une erreur."
+        agentFailed: "L’agent s’est arrêté sur une erreur.",
+        sessionsToggle: "Sessions récentes",
+        planModeOn: "Mode plan activé (lecture seule)",
+        planModeOff: "Activer le mode plan",
+        sessionsFilter: "Filtrer les sessions",
+        noSessions: "Aucune session récente",
+        followUpPlaceholder: "Posez une question de suivi…",
+        untitledSession: "Sans titre"
     )
 
     package static let it = NexusAgentFeatureStrings(
@@ -613,7 +676,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "La CLI di Antigravity (agy) non è stata trovata.",
         quickPromptSection: "Prompt rapido",
         quickPromptCaption: "Chiedi all’agente da qualsiasi punto. Le risposte arrivano in un pannello mobile.",
-        promptPlaceholder: "Chiedi all’agente…",
+        promptPlaceholder: "Chiedi qualsiasi cosa ad Antigravity...",
         send: "Invia",
         stopReply: "Ferma",
         newChat: "Nuova chat",
@@ -621,7 +684,14 @@ extension NexusAgentFeatureStrings {
         working: "Al lavoro…",
         replyStopped: "Risposta interrotta.",
         emptyReply: "L’agente non ha restituito alcuna risposta.",
-        agentFailed: "L’agente si è fermato con un errore."
+        agentFailed: "L’agente si è fermato con un errore.",
+        sessionsToggle: "Sessioni recenti",
+        planModeOn: "Modalità piano attiva (sola lettura)",
+        planModeOff: "Attiva la modalità piano",
+        sessionsFilter: "Filtra sessioni",
+        noSessions: "Nessuna sessione recente",
+        followUpPlaceholder: "Fai una domanda di approfondimento…",
+        untitledSession: "Senza titolo"
     )
 
     package static let ja = NexusAgentFeatureStrings(
@@ -671,7 +741,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Antigravity CLI (agy) が見つかりません。",
         quickPromptSection: "クイックプロンプト",
         quickPromptCaption: "どこからでもエージェントに質問できます。返答はフローティングパネルに表示されます。",
-        promptPlaceholder: "エージェントに質問…",
+        promptPlaceholder: "Antigravity に何でも質問...",
         send: "送信",
         stopReply: "停止",
         newChat: "新しいチャット",
@@ -679,7 +749,14 @@ extension NexusAgentFeatureStrings {
         working: "作業中…",
         replyStopped: "返答を停止しました。",
         emptyReply: "エージェントから返答がありませんでした。",
-        agentFailed: "エージェントはエラーで停止しました。"
+        agentFailed: "エージェントはエラーで停止しました。",
+        sessionsToggle: "最近のセッション",
+        planModeOn: "プランモード オン(読み取り専用)",
+        planModeOff: "プランモードをオンにする",
+        sessionsFilter: "セッションを絞り込む",
+        noSessions: "最近のセッションはありません",
+        followUpPlaceholder: "追加で質問…",
+        untitledSession: "無題"
     )
 
     package static let ko = NexusAgentFeatureStrings(
@@ -729,7 +806,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Antigravity CLI(agy)를 찾을 수 없습니다.",
         quickPromptSection: "빠른 프롬프트",
         quickPromptCaption: "어디서나 에이전트에게 질문하세요. 답변은 떠 있는 패널에 표시됩니다.",
-        promptPlaceholder: "에이전트에게 질문…",
+        promptPlaceholder: "Antigravity에게 무엇이든 물어보세요...",
         send: "보내기",
         stopReply: "중지",
         newChat: "새 채팅",
@@ -737,7 +814,14 @@ extension NexusAgentFeatureStrings {
         working: "작업 중…",
         replyStopped: "답변을 중지했습니다.",
         emptyReply: "에이전트가 답변하지 않았습니다.",
-        agentFailed: "에이전트가 오류로 중지되었습니다."
+        agentFailed: "에이전트가 오류로 중지되었습니다.",
+        sessionsToggle: "최근 세션",
+        planModeOn: "계획 모드 켜짐(읽기 전용)",
+        planModeOff: "계획 모드 켜기",
+        sessionsFilter: "세션 필터",
+        noSessions: "최근 세션 없음",
+        followUpPlaceholder: "후속 질문하기…",
+        untitledSession: "제목 없음"
     )
 
     package static let uk = NexusAgentFeatureStrings(
@@ -787,7 +871,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "Antigravity CLI (agy) не знайдено.",
         quickPromptSection: "Швидкий запит",
         quickPromptCaption: "Звертайтеся до агента звідусіль. Відповіді з’являються на плаваючій панелі.",
-        promptPlaceholder: "Запитайте агента…",
+        promptPlaceholder: "Запитайте Antigravity про що завгодно...",
         send: "Надіслати",
         stopReply: "Зупинити",
         newChat: "Новий чат",
@@ -795,7 +879,14 @@ extension NexusAgentFeatureStrings {
         working: "Працює…",
         replyStopped: "Відповідь зупинено.",
         emptyReply: "Агент нічого не відповів.",
-        agentFailed: "Агент зупинився з помилкою."
+        agentFailed: "Агент зупинився з помилкою.",
+        sessionsToggle: "Нещодавні сеанси",
+        planModeOn: "Режим плану ввімкнено (лише читання)",
+        planModeOff: "Увімкнути режим плану",
+        sessionsFilter: "Фільтр сеансів",
+        noSessions: "Немає нещодавніх сеансів",
+        followUpPlaceholder: "Поставте уточнювальне запитання…",
+        untitledSession: "Без назви"
     )
 
     package static let zhHans = NexusAgentFeatureStrings(
@@ -845,7 +936,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "未找到 Antigravity CLI (agy)。",
         quickPromptSection: "快速提问",
         quickPromptCaption: "随时随地向智能体提问。回复会显示在浮动面板中。",
-        promptPlaceholder: "向智能体提问…",
+        promptPlaceholder: "向 Antigravity 提问任何问题...",
         send: "发送",
         stopReply: "停止",
         newChat: "新对话",
@@ -853,7 +944,14 @@ extension NexusAgentFeatureStrings {
         working: "正在处理…",
         replyStopped: "回复已停止。",
         emptyReply: "智能体没有返回回复。",
-        agentFailed: "智能体因错误而停止。"
+        agentFailed: "智能体因错误而停止。",
+        sessionsToggle: "最近的会话",
+        planModeOn: "计划模式已开启(只读)",
+        planModeOff: "开启计划模式",
+        sessionsFilter: "筛选会话",
+        noSessions: "没有最近的会话",
+        followUpPlaceholder: "继续提问…",
+        untitledSession: "无标题"
     )
 
     package static let zhTW = NexusAgentFeatureStrings(
@@ -903,7 +1001,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "找不到 Antigravity CLI (agy)。",
         quickPromptSection: "快速提問",
         quickPromptCaption: "隨時隨地向代理程式提問。回覆會顯示在浮動面板中。",
-        promptPlaceholder: "向代理程式提問…",
+        promptPlaceholder: "向 Antigravity 提出任何問題...",
         send: "傳送",
         stopReply: "停止",
         newChat: "新對話",
@@ -911,7 +1009,14 @@ extension NexusAgentFeatureStrings {
         working: "正在處理…",
         replyStopped: "回覆已停止。",
         emptyReply: "代理程式沒有傳回回覆。",
-        agentFailed: "代理程式因錯誤而停止。"
+        agentFailed: "代理程式因錯誤而停止。",
+        sessionsToggle: "最近的工作階段",
+        planModeOn: "計畫模式已開啟(唯讀)",
+        planModeOff: "開啟計畫模式",
+        sessionsFilter: "篩選工作階段",
+        noSessions: "沒有最近的工作階段",
+        followUpPlaceholder: "繼續提問…",
+        untitledSession: "未命名"
     )
 
     package static let zhHK = NexusAgentFeatureStrings(
@@ -961,7 +1066,7 @@ extension NexusAgentFeatureStrings {
         missingAgent: "找不到 Antigravity CLI (agy)。",
         quickPromptSection: "快速提問",
         quickPromptCaption: "隨時隨地向代理程式提問。回覆會在浮動面板中顯示。",
-        promptPlaceholder: "向代理程式提問…",
+        promptPlaceholder: "向 Antigravity 提出任何問題...",
         send: "傳送",
         stopReply: "停止",
         newChat: "新對話",
@@ -969,6 +1074,13 @@ extension NexusAgentFeatureStrings {
         working: "正在處理…",
         replyStopped: "回覆已停止。",
         emptyReply: "代理程式沒有傳回回覆。",
-        agentFailed: "代理程式因錯誤而停止。"
+        agentFailed: "代理程式因錯誤而停止。",
+        sessionsToggle: "最近的工作階段",
+        planModeOn: "計劃模式已開啟(唯讀)",
+        planModeOff: "開啟計劃模式",
+        sessionsFilter: "篩選工作階段",
+        noSessions: "沒有最近的工作階段",
+        followUpPlaceholder: "繼續提問…",
+        untitledSession: "未命名"
     )
 }

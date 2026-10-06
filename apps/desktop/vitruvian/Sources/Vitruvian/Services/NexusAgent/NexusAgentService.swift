@@ -7,6 +7,7 @@
 
 import AppKit
 import Carbon.HIToolbox
+import Combine
 import Darwin
 import SwiftUI
 import VitruvianCore
@@ -60,6 +61,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                                   _ environment: [String: String],
                                   _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
+        /// agy's recent conversations for a folder, newest first.
+        package var listSessions: (_ directory: String) -> [NexusAgentSessionSummary]
 
         package init(defaults: UserDefaults,
                      home: String,
@@ -79,7 +82,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                      openFile: @escaping (String) -> Void,
                      launchAgent: @escaping (String, [String], String, [String: String],
                                              @escaping @MainActor @Sendable (Data) -> Void,
-                                             @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent) {
+                                             @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent,
+                     listSessions: @escaping (String) -> [NexusAgentSessionSummary] = { _ in [] }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -96,6 +100,7 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
             self.schedule = schedule
             self.openFile = openFile
             self.launchAgent = launchAgent
+            self.listSessions = listSessions
         }
 
         package static var live: Environment {
@@ -116,7 +121,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                 launchBot: NexusAgentService.launchNode,
                 schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } },
                 openFile: { NSWorkspace.shared.open(URL(fileURLWithPath: $0)) },
-                launchAgent: NexusAgentService.launchAgentProcess)
+                launchAgent: NexusAgentService.launchAgentProcess,
+                listSessions: { NexusAgentService.readSessions(home: home, directory: $0) })
         }
     }
 
@@ -138,6 +144,7 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
     private var pollTimer: Timer?
     private var didAutoStart = false
     private var panel: NSPanel?
+    private var modeObserver: AnyCancellable?
     private var keyMonitor: Any?
     private var localClickMonitor: Any?
     private var outsideClickMonitor: Any?
@@ -386,8 +393,9 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         load()
         let panel = ensurePanel()
         installMonitors(for: panel)
-        if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(panel.frame) }) {
-            center(panel)
+        if !panel.isVisible || !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(panel.frame) }) {
+            apply(session.mode, to: panel, frame: NexusAgentQuickPromptLayout.initialFrame(
+                for: session.mode, screen: NSScreen.pointerVisibleFrame), animated: false)
         }
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -408,8 +416,9 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyablePromptPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
-                                       styleMask: [.borderless, .nonactivatingPanel, .resizable],
+        let size = NexusAgentQuickPromptLayout.size(for: session.mode)
+        let panel = KeyablePromptPanel(contentRect: NSRect(origin: .zero, size: size),
+                                       styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                                        backing: .buffered,
                                        defer: false)
         panel.title = "Vitruvian"
@@ -421,30 +430,55 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         panel.isOpaque = false
         panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        panel.minSize = NSSize(width: 380, height: 280)
         panel.delegate = self
         let host = NSHostingController(rootView: ServiceViews.factory.nexusAgentQuickPrompt())
         host.sizingOptions = []
         panel.contentViewController = host
-        panel.setContentSize(NSSize(width: 520, height: 420))
-        center(panel)
         self.panel = panel
+        apply(session.mode, to: panel, frame: NexusAgentQuickPromptLayout.initialFrame(
+            for: session.mode, screen: NSScreen.pointerVisibleFrame), animated: false)
+        // Pill, drawer and chat each have their own size; the panel follows.
+        modeObserver = session.$mode.removeDuplicates().dropFirst().sink { [weak self, weak panel] mode in
+            guard let self, let panel else { return }
+            let screen = panel.screen?.visibleFrame ?? NSScreen.pointerVisibleFrame
+            self.apply(mode, to: panel, frame: NexusAgentQuickPromptLayout.frame(
+                for: mode, from: panel.frame, screen: screen), animated: panel.isVisible)
+        }
         return panel
     }
 
-    package func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        NSSize(width: max(380, frameSize.width), height: max(280, frameSize.height))
+    /// Sizes the panel for `mode`; only the chat can be resized by hand.
+    private func apply(_ mode: NexusAgentQuickPromptMode, to panel: NSPanel, frame: CGRect, animated: Bool) {
+        typealias Layout = NexusAgentQuickPromptLayout
+        if Layout.isResizable(mode) {
+            panel.styleMask.insert(.resizable)
+            panel.minSize = Layout.chatMinimumSize
+            panel.maxSize = Layout.chatMaximumSize
+        } else {
+            panel.styleMask.remove(.resizable)
+            panel.minSize = frame.size
+            panel.maxSize = frame.size
+        }
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            panel.setFrame(frame, display: true, animate: false)
+            return
+        }
+        let spring = CASpringAnimation()
+        spring.stiffness = Layout.springStiffness
+        spring.damping = Layout.springDamping
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = spring.settlingDuration
+            // Ease out with a small overshoot, like the spring it times.
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.25, 0.64, 1)
+            panel.animator().setFrame(frame, display: true)
+        }
     }
 
-    private func center(_ panel: NSPanel) {
-        let size = panel.frame.size
-        let screen = NSScreen.pointerVisibleFrame
-        let x = screen.midX - size.width / 2
-        let y = screen.minY + (screen.height - size.height) * 0.6
-        panel.setFrame(NSRect(x: max(screen.minX + 16, min(x, screen.maxX - size.width - 16)),
-                              y: max(screen.minY + 16, min(y, screen.maxY - size.height - 16)),
-                              width: size.width, height: size.height),
-                       display: true, animate: false)
+    package func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        typealias Layout = NexusAgentQuickPromptLayout
+        guard Layout.isResizable(session.mode) else { return sender.frame.size }
+        return NSSize(width: min(max(Layout.chatMinimumSize.width, frameSize.width), Layout.chatMaximumSize.width),
+                      height: min(max(Layout.chatMinimumSize.height, frameSize.height), Layout.chatMaximumSize.height))
     }
 
     /// Esc closes the prompt, and so does a click outside it. A reply in
@@ -603,5 +637,22 @@ extension NexusAgentService {
     /// Sends the draft as one Quick Prompt turn with the bot's settings.
     package func sendQuickPrompt() {
         session.send(session.draft, configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Reads agy's conversation index read-only; empty when agy has none.
+    nonisolated static func readSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
+        let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
+        guard FileManager.default.fileExists(atPath: database) else { return [] }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-json", "-readonly", database, NexusAgentSessionSummary.query]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return [] }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return [] }
+        return NexusAgentSessionSummary.parse(data, directory: directory)
     }
 }

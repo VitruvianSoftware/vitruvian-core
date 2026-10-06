@@ -347,6 +347,7 @@ package enum Preferences {
     package static let panelUtilityPortManager = Preference(DefaultsKey.panelUtilityPortManager, default: true)
     package static let nexusAgentShortcutEnabled = Preference(DefaultsKey.nexusAgentShortcutEnabled, default: false)
     package static let nexusAgentAutoStart = Preference(DefaultsKey.nexusAgentAutoStart, default: false)
+    package static let nexusAgentPlanMode = Preference(DefaultsKey.nexusAgentPlanMode, default: false)
     /// Empty means the bot's standard home, `~/.config/nexus-agent`.
     package static let nexusAgentBotDirectory = Preference(DefaultsKey.nexusAgentBotDirectory, default: "")
     package static let panelUtilityNexusAgent = Preference(DefaultsKey.panelUtilityNexusAgent, default: true)

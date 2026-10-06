@@ -21,6 +21,10 @@ enum NexusAgentTests {
         autoStart(suite)
         configurationSaving(suite)
         quickPrompt(suite)
+        quickPromptLayout(suite)
+        quickPromptModes(suite)
+        sessionIndex(suite)
+        replyBlocks(suite)
     }
 
     // MARK: - .env
@@ -250,6 +254,8 @@ enum NexusAgentTests {
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
         var agentTerminations = 0
+        var sessionList: [NexusAgentSessionSummary] = []
+        var listedDirectories: [String] = []
         let home = "/Users/rig"
         let state = "/Users/rig/Library/Application Support/NexusAgent"
         var bot: String { home + "/.config/nexus-agent" }
@@ -316,6 +322,10 @@ enum NexusAgentTests {
                     agentOutput = onOutput
                     agentExit = onExit
                     return NexusAgentRunningAgent(terminate: { [unowned self] in agentTerminations += 1 })
+                },
+                listSessions: { [unowned self] directory in
+                    listedDirectories.append(directory)
+                    return sessionList
                 })
         }
     }
@@ -524,5 +534,136 @@ enum NexusAgentTests {
         session.send("sixth", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
         rig.agentExit?(0)
         suite.expect(session.messages.last?.text == strings.emptyReply, "a run with no reply says so")
+    }
+
+    // MARK: - Quick Prompt pill, drawer and chat
+
+    private static func quickPromptLayout(_ suite: TestSuite) {
+        typealias Layout = NexusAgentQuickPromptLayout
+        let screen = CGRect(x: 0, y: 25, width: 1440, height: 875)
+        let pill = Layout.initialFrame(for: .compact, screen: screen)
+        suite.expect(pill.size == CGSize(width: 680, height: 72) && Layout.cornerRadius == 22,
+                     "the pill is 680 by 72 with 22 pt corners: \(pill)")
+        suite.expect(pill.midX == screen.midX && pill.maxY < screen.maxY
+                     && pill.minY > screen.minY + screen.height * 2 / 3
+                     && abs((screen.maxY - pill.maxY) - screen.height * 0.18) < 0.5,
+                     "the pill sits centred in the upper third, 18% below the top: \(pill)")
+        let offset = CGRect(x: -1920, y: 0, width: 1920, height: 1080)
+        let other = Layout.initialFrame(for: .compact, screen: offset)
+        suite.expect(offset.contains(other) && other.midX == offset.midX,
+                     "on a second screen the pill opens on that screen: \(other)")
+
+        let drawer = Layout.frame(for: .sessions, from: pill, screen: screen)
+        suite.expect(drawer.size == CGSize(width: 680, height: 340) && drawer.maxY == pill.maxY
+                     && drawer.midX == pill.midX,
+                     "the drawer grows the panel to 680 by 340 downward, keeping its top: \(drawer)")
+        let chat = Layout.frame(for: .chat, from: drawer, screen: screen)
+        suite.expect(chat.size == CGSize(width: 680, height: 500) && chat.maxY == pill.maxY,
+                     "the chat grows the panel to 680 by 500, keeping its top: \(chat)")
+        let back = Layout.frame(for: .compact, from: chat, screen: screen)
+        suite.expect(back == pill, "back to the pill returns to the same frame: \(back)")
+        suite.expect(Layout.isResizable(.chat) && !Layout.isResizable(.compact) && !Layout.isResizable(.sessions)
+                     && Layout.chatMinimumSize.width < 680 && Layout.chatMaximumSize.height > 500,
+                     "only the chat can be resized, around its 680 by 500 size")
+
+        let low = CGRect(x: 0, y: 0, width: 800, height: 500)
+        let lowChat = Layout.frame(for: .chat, from: Layout.initialFrame(for: .compact, screen: low), screen: low)
+        suite.expect(low.contains(lowChat), "on a short screen the chat stays on screen: \(lowChat)")
+    }
+
+    private static func quickPromptModes(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let agy = "/opt/agy-test/agy"
+        suite.expect(session.mode == .compact && !session.planMode, "the prompt opens as the pill, plan mode off")
+
+        session.draft = "   "
+        suite.expect(!session.canSend, "send is off for a blank prompt")
+        session.draft = "hi"
+        suite.expect(session.canSend, "send is on once there is text")
+
+        rig.files[rig.home + "/work"] = ""
+        rig.sessionList = [
+            NexusAgentSessionSummary(id: "a", title: "Fix the build", steps: 4, modified: nil),
+            NexusAgentSessionSummary(id: "b", title: "Write release notes", steps: 2, modified: nil),
+        ]
+        session.toggleSessions(configuration: NexusAgentConfiguration(workingDirectory: "~/work"))
+        suite.expect(session.mode == .sessions && session.sessions.count == 2
+                     && rig.listedDirectories == [rig.home + "/work"],
+                     "the sessions button opens the drawer with agy's sessions for the bot's folder")
+        session.sessionFilter = "BUILD"
+        suite.expect(session.filteredSessions.map(\.id) == ["a"], "the filter narrows the drawer by title")
+        session.toggleSessions(configuration: NexusAgentConfiguration())
+        suite.expect(session.mode == .compact, "the sessions button closes the drawer again")
+
+        session.planMode = true
+        suite.expect(rig.defaults[Preferences.nexusAgentPlanMode],
+                     "plan mode is remembered")
+        suite.expect(NexusAgentQuickPromptSession(environment: rig.environment).planMode,
+                     "a new prompt starts with the remembered plan mode")
+        session.send("plan it", configuration: NexusAgentConfiguration(approvalMode: .yolo), agentPath: agy)
+        let planned = rig.agentRuns.last?.arguments ?? []
+        suite.expect(session.mode == .chat && planned.contains("plan")
+                     && !planned.contains("--dangerously-skip-permissions"),
+                     "sending opens the chat, and plan mode runs agy with --mode plan: \(planned)")
+        suite.expect(!session.canSend, "send is off while a reply streams")
+        rig.agentOutput?(Data(#"{"event":"init","conversation_id":"conv-9"}"#.utf8 + [0x0A]))
+        rig.agentExit?(0)
+
+        session.planMode = false
+        session.draft = "and then?"
+        session.send(session.draft, configuration: NexusAgentConfiguration(approvalMode: .yolo), agentPath: agy)
+        let followUp = rig.agentRuns.last?.arguments ?? []
+        suite.expect(session.mode == .chat && followUp.prefix(2) == ["-p", "and then?"]
+                     && followUp.suffix(2) == ["--conversation", "conv-9"]
+                     && followUp.contains("--dangerously-skip-permissions") && !followUp.contains("plan"),
+                     "a follow-up continues the chat, back on the bot's own approval mode: \(followUp)")
+        rig.agentExit?(0)
+
+        session.newChat()
+        suite.expect(session.mode == .compact && session.conversationID == nil, "new chat goes back to the pill")
+        session.toggleSessions(configuration: NexusAgentConfiguration())
+        session.resume(rig.sessionList[1])
+        suite.expect(session.mode == .chat && session.conversationID == "b" && session.messages.isEmpty,
+                     "picking a session opens the chat on that conversation")
+        session.send("more", configuration: NexusAgentConfiguration(), agentPath: agy)
+        suite.expect(rig.agentRuns.last?.arguments.suffix(2) == ["--conversation", "b"],
+                     "the next turn continues the picked session")
+        rig.agentExit?(0)
+        session.toggleSessions(configuration: NexusAgentConfiguration())
+        session.toggleSessions(configuration: NexusAgentConfiguration())
+        suite.expect(session.mode == .chat, "closing the drawer over a conversation returns to the chat")
+    }
+
+    private static func sessionIndex(_ suite: TestSuite) {
+        let rows = """
+        [{"conversation_id":"c1","title":"","preview":"Deploy the site\\nmore","step_count":7,
+          "last_modified_time":"2026-10-01T09:30:00.250Z","workspace_uris":"[\\"file:///Users/me/work\\"]"},
+         {"conversation_id":"c2","title":"Elsewhere","step_count":1,"workspace_uris":"[\\"file:///tmp/other\\"]"},
+         {"conversation_id":"c3","title":"Anywhere","step_count":2,"last_modified_time":"2026-10-01T09:30:00Z"},
+         {"conversation_id":"","title":"broken"}]
+        """
+        let sessions = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "/Users/me/work/")
+        suite.expect(sessions.map(\.id) == ["c1", "c3"], "the drawer keeps this folder's and folderless sessions: \(sessions.map(\.id))")
+        suite.expect(sessions.first?.title == "Deploy the site" && sessions.first?.steps == 7
+                     && sessions.first?.modified != nil && sessions.last?.modified != nil,
+                     "an untitled session shows its first prompt line, and both date forms parse")
+        suite.expect(NexusAgentSessionSummary.parse(Data("not json".utf8), directory: "/").isEmpty,
+                     "an unreadable index lists nothing")
+        suite.expect(NexusAgentSessionSummary.filter(sessions, by: "  ").count == 2
+                     && NexusAgentSessionSummary.filter(sessions, by: "site deploy").map(\.id) == ["c1"],
+                     "a blank filter keeps all; words match in any order")
+    }
+
+    private static func replyBlocks(_ suite: TestSuite) {
+        let reply = "Run **this**:\n```swift\nlet x = 1\n\nprint(x)\n```\nDone."
+        suite.expect(NexusAgentReplyBlock.parse(reply) == [
+            .text("Run **this**:"), .code(language: "swift", body: "let x = 1\n\nprint(x)"), .text("Done."),
+        ], "prose and fenced code split apart, blank lines kept inside code: \(NexusAgentReplyBlock.parse(reply))")
+        suite.expect(NexusAgentReplyBlock.parse("Partial\n```\nstill streaming") == [
+            .text("Partial"), .code(language: nil, body: "still streaming"),
+        ], "an unclosed fence while streaming is code to the end")
+        suite.expect(NexusAgentReplyBlock.parse("") == [], "an empty reply has no blocks")
     }
 }
