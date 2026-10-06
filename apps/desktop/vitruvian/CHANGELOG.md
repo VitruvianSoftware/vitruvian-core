@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.6.0...vitruvian-v3.7.0) (2026-10-06)
+
+
+### Features
+
+* **vitruvian:** integrate nexus agent as a native desktop feature ([#2766](https://github.com/VitruvianSoftware/vitruvian-core/issues/2766)) ([12cb6d3](https://github.com/VitruvianSoftware/vitruvian-core/commit/12cb6d3cf20ad38da4574c1268bddf863155b506))
+
+
+### Bug Fixes
+
+* **vitruvian:** stage the release DMG outside build/, which is BUILD on macOS ([#2764](https://github.com/VitruvianSoftware/vitruvian-core/issues/2764)) ([bdade22](https://github.com/VitruvianSoftware/vitruvian-core/commit/bdade2259d2d0a65db01d54259e63533c1e86f54))
+
 ## [3.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.5.1...vitruvian-v3.6.0) (2026-10-06)
 
 
