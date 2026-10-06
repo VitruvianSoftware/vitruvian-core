@@ -362,7 +362,18 @@ package struct NexusAgentQuickPromptView: View {
     private var chatHeader: some View {
         HStack(spacing: 8) {
             sparkles
-            Text(strings.quickPromptTitle).font(.system(size: 13, weight: .semibold))
+            Text(session.sessionTitle ?? strings.quickPromptTitle)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if session.isResumed && !session.isRunning {
+                Text("Resumed")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.accentColor.opacity(0.85))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+            }
             Spacer()
             sessionsButton
             Button(strings.newChat) { session.newChat() }

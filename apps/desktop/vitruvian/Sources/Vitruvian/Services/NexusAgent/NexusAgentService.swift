@@ -63,6 +63,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
         /// agy's recent conversations for a folder, newest first.
         package var listSessions: (_ directory: String) -> [NexusAgentSessionSummary]
+        /// Reads past conversation turns, if present.
+        package var readTranscript: (_ id: String) -> [NexusAgentChatMessage]?
 
         package init(defaults: UserDefaults,
                      home: String,
@@ -83,7 +85,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                      launchAgent: @escaping (String, [String], String, [String: String],
                                              @escaping @MainActor @Sendable (Data) -> Void,
                                              @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent,
-                     listSessions: @escaping (String) -> [NexusAgentSessionSummary] = { _ in [] }) {
+                     listSessions: @escaping (String) -> [NexusAgentSessionSummary] = { _ in [] },
+                     readTranscript: @escaping (String) -> [NexusAgentChatMessage]? = { _ in nil }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -101,6 +104,7 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
             self.openFile = openFile
             self.launchAgent = launchAgent
             self.listSessions = listSessions
+            self.readTranscript = readTranscript
         }
 
         package static var live: Environment {
@@ -122,7 +126,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                 schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } },
                 openFile: { NSWorkspace.shared.open(URL(fileURLWithPath: $0)) },
                 launchAgent: NexusAgentService.launchAgentProcess,
-                listSessions: { NexusAgentService.readSessions(home: home, directory: $0) })
+                listSessions: { NexusAgentService.readSessions(home: home, directory: $0) },
+                readTranscript: { NexusAgentService.readTranscript(home: home, conversationID: $0) })
         }
     }
 
@@ -657,5 +662,46 @@ extension NexusAgentService {
         guard process.terminationStatus == 0 else { return [] }
         let filterDirectory = (directory.isEmpty || directory == home) ? "" : directory
         return NexusAgentSessionSummary.parse(data, directory: filterDirectory)
+    }
+
+    /// Reads conversation transcript from ~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl
+    package nonisolated static func readTranscript(home: String, conversationID: String) -> [NexusAgentChatMessage]? {
+        let transcriptPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+        guard FileManager.default.fileExists(atPath: transcriptPath),
+              let content = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else {
+            return nil
+        }
+        return parseTranscript(content)
+    }
+
+    package nonisolated static func parseTranscript(_ content: String) -> [NexusAgentChatMessage]? {
+        var messages: [NexusAgentChatMessage] = []
+        for line in content.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = json["type"] as? String else { continue }
+            if type == "USER_INPUT", let rawContent = json["content"] as? String {
+                let cleaned = extractUserPrompt(rawContent)
+                if !cleaned.isEmpty {
+                    messages.append(NexusAgentChatMessage(role: .user, text: cleaned))
+                }
+            } else if type == "PLANNER_RESPONSE", let text = json["content"] as? String {
+                let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmedText.isEmpty {
+                    messages.append(NexusAgentChatMessage(role: .agent, text: trimmedText))
+                }
+            }
+        }
+        return messages.isEmpty ? nil : messages
+    }
+
+    package nonisolated static func extractUserPrompt(_ raw: String) -> String {
+        if let start = raw.range(of: "<USER_REQUEST>"),
+           let end = raw.range(of: "</USER_REQUEST>", range: start.upperBound..<raw.endIndex) {
+            return String(raw[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

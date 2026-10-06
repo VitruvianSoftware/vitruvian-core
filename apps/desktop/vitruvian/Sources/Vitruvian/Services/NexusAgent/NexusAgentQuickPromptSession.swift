@@ -47,10 +47,13 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     @Published package var draft = ""
     /// Bumped when the prompt is shown, so the view puts the caret back.
     @Published package var focusSerial = 0
-    /// Pill, drawer or chat; the service sizes the panel to match.
     @Published package private(set) var mode: NexusAgentQuickPromptMode = .compact
     @Published package private(set) var sessions: [NexusAgentSessionSummary] = []
     @Published package var sessionFilter = ""
+    /// The active session's title when resumed from the drawer.
+    @Published package private(set) var sessionTitle: String?
+    /// True while viewing or continuing a resumed conversation.
+    @Published package private(set) var isResumed = false
     /// Turns run with `--mode plan` (read-only) while on. Remembered.
     @Published package var planMode: Bool {
         didSet { environment.defaults[Preferences.nexusAgentPlanMode] = planMode }
@@ -94,8 +97,34 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Continues a past conversation: the next turn passes its id to agy.
     package func resume(_ summary: NexusAgentSessionSummary) {
-        newChat()
+        stop()
+        turn += 1
+        running = nil
+        isRunning = false
+        activity = nil
+        replyID = nil
         conversationID = summary.id
+        let effectiveTitle = summary.title.isEmpty
+            ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
+            : summary.title
+        sessionTitle = effectiveTitle.isEmpty ? nil : effectiveTitle
+        isResumed = true
+
+        if let loaded = environment.readTranscript(summary.id), !loaded.isEmpty {
+            messages = loaded
+        } else {
+            var restored: [NexusAgentChatMessage] = []
+            if !summary.preview.isEmpty {
+                restored.append(NexusAgentChatMessage(role: .user, text: summary.preview))
+            }
+            let title = sessionTitle ?? strings.untitledSession
+            let steps = summary.steps > 0 ? " (\(summary.steps) steps)" : ""
+            restored.append(NexusAgentChatMessage(
+                role: .agent,
+                text: "Resumed “\(title)”\(steps). agy remembers earlier turns — send a message to continue."
+            ))
+            messages = restored
+        }
         mode = .chat
     }
 
@@ -162,6 +191,8 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         activity = nil
         replyID = nil
         conversationID = nil
+        sessionTitle = nil
+        isResumed = false
         messages = []
         mode = .compact
     }

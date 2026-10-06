@@ -24,6 +24,7 @@ enum NexusAgentTests {
         quickPromptLayout(suite)
         quickPromptModes(suite)
         sessionIndex(suite)
+        transcriptParsing(suite)
         replyBlocks(suite)
     }
 
@@ -585,8 +586,8 @@ enum NexusAgentTests {
 
         rig.files[rig.home + "/work"] = ""
         rig.sessionList = [
-            NexusAgentSessionSummary(id: "a", title: "Fix the build", steps: 4, modified: nil),
-            NexusAgentSessionSummary(id: "b", title: "Write release notes", steps: 2, modified: nil),
+            NexusAgentSessionSummary(id: "a", title: "Fix the build", preview: "Please fix the build", steps: 4, modified: nil),
+            NexusAgentSessionSummary(id: "b", title: "Write release notes", preview: "Write notes for v1.0", steps: 2, modified: nil),
         ]
         session.toggleSessions(configuration: NexusAgentConfiguration(workingDirectory: "~/work"))
         suite.expect(session.mode == .sessions && session.sessions.count == 2
@@ -622,11 +623,18 @@ enum NexusAgentTests {
         rig.agentExit?(0)
 
         session.newChat()
-        suite.expect(session.mode == .compact && session.conversationID == nil, "new chat goes back to the pill")
+        suite.expect(session.mode == .compact && session.conversationID == nil
+                     && session.sessionTitle == nil && !session.isResumed,
+                     "new chat goes back to the pill and resets session title")
         session.toggleSessions(configuration: NexusAgentConfiguration())
         session.resume(rig.sessionList[1])
-        suite.expect(session.mode == .chat && session.conversationID == "b" && session.messages.isEmpty,
-                     "picking a session opens the chat on that conversation")
+        suite.expect(session.mode == .chat && session.conversationID == "b"
+                     && session.sessionTitle == "Write release notes"
+                     && session.isResumed
+                     && session.messages.count == 2
+                     && session.messages.first?.text == "Write notes for v1.0"
+                     && (session.messages.last?.text.contains("Resumed") ?? false),
+                     "picking a session restores the conversation preview and title")
         session.send("more", configuration: NexusAgentConfiguration(), agentPath: agy)
         suite.expect(rig.agentRuns.last?.arguments.suffix(2) == ["--conversation", "b"],
                      "the next turn continues the picked session")
@@ -640,15 +648,16 @@ enum NexusAgentTests {
         let rows = """
         [{"conversation_id":"c1","title":"","preview":"Deploy the site\\nmore","step_count":7,
           "last_modified_time":"2026-10-01T09:30:00.250Z","workspace_uris":"[\\"file:///Users/me/work\\"]"},
-         {"conversation_id":"c2","title":"Elsewhere","step_count":1,"workspace_uris":"[\\"file:///tmp/other\\"]"},
-         {"conversation_id":"c3","title":"Anywhere","step_count":2,"last_modified_time":"2026-10-01T09:30:00Z"},
-         {"conversation_id":"","title":"broken"}]
+          {"conversation_id":"c2","title":"Elsewhere","step_count":1,"workspace_uris":"[\\"file:///tmp/other\\"]"},
+          {"conversation_id":"c3","title":"Anywhere","step_count":2,"last_modified_time":"2026-10-01T09:30:00Z"},
+          {"conversation_id":"","title":"broken"}]
         """
         let sessions = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "/Users/me/work/")
         suite.expect(sessions.map(\.id) == ["c1", "c3"], "the drawer keeps this folder's and folderless sessions: \(sessions.map(\.id))")
         suite.expect(sessions.first?.title == "Deploy the site" && sessions.first?.steps == 7
+                     && sessions.first?.preview == "Deploy the site\nmore"
                      && sessions.first?.modified != nil && sessions.last?.modified != nil,
-                     "an untitled session shows its first prompt line, and both date forms parse")
+                     "an untitled session shows its first prompt line, preview, and both date forms parse")
         suite.expect(NexusAgentSessionSummary.parse(Data("not json".utf8), directory: "/").isEmpty,
                      "an unreadable index lists nothing")
         suite.expect(NexusAgentSessionSummary.filter(sessions, by: "  ").count == 2
@@ -657,6 +666,18 @@ enum NexusAgentTests {
         let allSessions = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "")
         suite.expect(allSessions.map(\.id) == ["c1", "c2", "c3"],
                      "an empty directory keeps all sessions across workspaces: \(allSessions.map(\.id))")
+    }
+
+    private static func transcriptParsing(_ suite: TestSuite) {
+        let sample = """
+        {"step_index":0,"type":"USER_INPUT","content":"<USER_REQUEST>\\nHello agent\\n</USER_REQUEST>"}
+        {"step_index":1,"type":"PLANNER_RESPONSE","content":"Hello! How can I help?"}
+        """
+        let messages = NexusAgentService.parseTranscript(sample)
+        suite.expect(messages?.count == 2
+                     && messages?.first?.role == .user && messages?.first?.text == "Hello agent"
+                     && messages?.last?.role == .agent && messages?.last?.text == "Hello! How can I help?",
+                     "transcript parses user request and agent response")
     }
 
     private static func replyBlocks(_ suite: TestSuite) {
