@@ -169,15 +169,25 @@ enum BrightnessRig {
         var islandShowsBrightness = false
         var overlays: [String] = []
 
+        /// The names the main thread reads from the screens.
+        var screenNames: [CGDirectDisplayID: String] = [:]
+        /// How many times the display list or a display's description was
+        /// asked for: each one is a question for the display server.
+        private(set) var displayQueries = 0
+        /// What the service's main-thread check answers.
+        var onMainThread = true
+
         let screens = NotificationCenter()
         let workspace = NotificationCenter()
         /// Delayed main-thread work, run with `runDelayed()`.
         var delayed: [DispatchWorkItem] = []
 
-        init() {
+        /// `custom` stands in for the rig's own scratch suite; its owner
+        /// clears it.
+        init(defaults custom: UserDefaults? = nil) {
             let suiteName = "vitru.tests.brightness-rig-\(UUID().uuidString)"
             self.suiteName = suiteName
-            defaults = UserDefaults(suiteName: suiteName)!
+            defaults = custom ?? UserDefaults(suiteName: suiteName)!
         }
 
         func tearDown() {
@@ -233,7 +243,8 @@ enum BrightnessRig {
                     self.overlays.append("\(id):\(String(format: "%.3f", level))")
                 },
                 tearDownOverlay: {},
-                followsKeys: false)
+                followsKeys: false,
+                isMainThread: { [unowned self] in self.onMainThread })
         }
 
         private var hardware: BrightnessService.Hardware {
@@ -252,9 +263,16 @@ enum BrightnessRig {
                 }
             }
             return BrightnessService.Hardware(
-                onlineDisplays: { [unowned self] in self.displays.filter(\.online).map(\.id) },
-                activeDisplays: { [unowned self] in Set(self.displays.filter { $0.online && $0.active }.map(\.id)) },
+                onlineDisplays: { [unowned self] in
+                    self.displayQueries += 1
+                    return self.displays.filter(\.online).map(\.id)
+                },
+                activeDisplays: { [unowned self] in
+                    self.displayQueries += 1
+                    return Set(self.displays.filter { $0.online && $0.active }.map(\.id))
+                },
                 info: { [unowned self] id in
+                    self.displayQueries += 1
                     guard let display = self.displays.first(where: { $0.id == id }) else { return nil }
                     // The IOKit key that names a display's registry location.
                     return ["IODisplayLocation": display.location,
@@ -264,7 +282,7 @@ enum BrightnessRig {
                 isBuiltIn: { [unowned self] id in self.displays.first { $0.id == id }?.builtIn ?? false },
                 isAsleep: { [unowned self] id in self.displays.first { $0.id == id }?.asleep ?? false },
                 fingerprint: { [unowned self] id in self.displays.first { $0.id == id }?.fingerprint ?? "" },
-                screenNames: { [:] },
+                screenNames: { [unowned self] in self.screenNames },
                 getBrightness: { [unowned self] id, level in
                     guard let reported = self.displays.first(where: { $0.id == id })?.systemLevel else { return 1 }
                     level.pointee = reported

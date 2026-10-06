@@ -2210,9 +2210,12 @@ enum FeatureCatalogTests {
 
         // Every section of the service below its "Rebuild (work queue)" MARK
         // runs on the private work queue, so a display's user-facing name is
-        // read from NSScreen on the main thread and handed to the rebuild.
-        // AppKit reached from below the line would be a main thread violation
-        // on every hotplug, wake and panel open.
+        // read from NSScreen on the main thread and handed to the rebuild
+        // (the rig scenarios below check the names arrive that way). AppKit
+        // reached from below the line would be a main thread violation on
+        // every hotplug, wake and panel open; that the half never names
+        // NSScreen at all is an absence with no behaviour to run, so it is
+        // read here until the source lints take it.
         let brightnessSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
             encoding: .utf8)) ?? ""
@@ -2466,36 +2469,79 @@ enum FeatureCatalogTests {
         suite.expect(BrightnessSupport.headlessRecoveryCandidates(
             drawableDisplayIDs: [], managedDisabledIDs: [], builtInDisabledIDs: [1]).isEmpty,
                "a display disabled elsewhere is never changed during headless recovery")
-        // CoreGraphics runs a reconfiguration's callbacks inline on the driving
-        // thread, and in this process those callbacks are AppKit's, so the
-        // transaction belongs to the main thread. Getting it wrong hangs the
-        // app rather than returning a wrong answer, and no pure helper can
-        // carry that, so it is pinned against the CoreGraphics symbols.
-        suite.expect(brightnessSource.components(separatedBy: "CGBeginDisplayConfiguration(").count == 2
-               && brightnessSource.components(separatedBy: "CGCompleteDisplayConfiguration(").count == 2,
-               "every display power change goes through the one reconfiguration transaction")
-        // The transaction itself is the live environment's `Power.configure`;
-        // the one way into it is `configureDisplay`, which guards it.
-        let configurationEntry = ((brightnessSource
-            .components(separatedBy: "private func configureDisplay(").dropFirst().first ?? "")
-            .components(separatedBy: "\n    }\n").first ?? "")
-            .replacingOccurrences(of: #"(?s)/\*.*?\*/|//[^\n]*"#, with: "",
-                                  options: .regularExpression)
-        let transactionStart = configurationEntry.range(of: "configure(id, enabled)")?.lowerBound
-        func guards(_ pattern: String) -> Bool {
-            guard let start = transactionStart,
-                  let found = configurationEntry.range(of: pattern, options: .regularExpression) else { return false }
-            return found.lowerBound < start
+        // Display power on a started service over the scripted desk in
+        // `BrightnessRig`: the reconfiguration call, the lid, the main-thread
+        // check and the display server's answers are the rig's. Every way a
+        // display is switched (a tap, the start-up and termination restores,
+        // the lid) reaches that one reconfiguration call, which
+        // `DisplayRestorationTests` follows path by path.
+        func powerDesk(defaults: UserDefaults? = nil) -> (BrightnessRig.Desk, BrightnessService) {
+            let desk = BrightnessRig.Desk(defaults: defaults)
+            let panel = BrightnessRig.Display(id: 1, systemLevel: 0.5)
+            panel.builtIn = true
+            desk.displays = [panel, BrightnessRig.Display(id: 2), BrightnessRig.Display(id: 3)]
+            desk.screenNames = [2: "Studio Display"]
+            let service = BrightnessService(environment: desk.environment)
+            service.start()
+            desk.drain()
+            return (desk, service)
         }
-        suite.expect(brightnessSource.components(separatedBy: "configure(id, enabled)").count == 2
-                && guards(#"\bThread\.isMainThread\b"#),
-               "the display reconfiguration transaction refuses to start off the main thread")
-        suite.expect(guards(#"\bBrightnessSupport\s*\.\s*canConfigureDisplay\s*\("#)
-                && guards(#"\benvironment\.hardware\.isBuiltIn\(id\)"#)
-                && guards(#"\benvironment\.power\.lidClosed\(\)"#)
-                && brightnessSource.range(of: #"isBuiltIn:\s*\{\s*CGDisplayIsBuiltin\(\$0\)"#,
-                                          options: .regularExpression) != nil,
-               "the shared transaction checks the live built-in and lid state before beginning")
+        func tapDisplay(_ id: CGDirectDisplayID, _ desk: BrightnessRig.Desk, _ service: BrightnessService) {
+            guard let row = service.displays.first(where: { $0.id == id }) else { return }
+            service.toggleDisplay(row)
+            desk.drain()
+        }
+        do {
+            let (desk, service) = powerDesk()
+            defer { desk.tearDown() }
+            suite.expect(service.displays.first { $0.id == 2 }?.name == "Studio Display",
+                   "a display is named from the screen names read on the main thread before the rebuild")
+
+            // CoreGraphics runs a reconfiguration's callbacks inline on the
+            // driving thread, and in this process those callbacks are
+            // AppKit's, so the transaction belongs to the main thread.
+            // Getting it wrong hangs the app rather than returning a wrong
+            // answer, so a caller anywhere else is refused before it begins.
+            desk.onMainThread = false
+            tapDisplay(2, desk, service)
+            suite.expect(desk.configurations.isEmpty && service.displayControlFailure == .failed
+                    && service.displays.first { $0.id == 2 }?.isActive == true,
+                   "the display reconfiguration transaction refuses to start off the main thread")
+            desk.onMainThread = true
+
+            // Whether the display is the built-in panel is read when the
+            // transaction is about to begin, not taken from the row: here the
+            // display read as external when its row was built.
+            tapDisplay(2, desk, service)
+            desk.display(2).builtIn = true
+            desk.lidClosed = true
+            tapDisplay(2, desk, service)
+            suite.expect(desk.configurations == ["off:2"] && service.displayControlFailure == .closedLid,
+                   "the shared transaction checks the live built-in and lid state before beginning")
+        }
+
+        // Switching off the display the panel is on makes AppKit lay that
+        // panel out again inside the reconfiguration this app drives, so
+        // anything the power button's body asks the display server is a
+        // question the same thread is still answering, and the app freezes
+        // with nothing left that can end it (issue #969). The body decides
+        // from the snapshot the last rebuild published instead.
+        do {
+            let (desk, service) = powerDesk()
+            defer { desk.tearDown() }
+            func canSwitchOff(_ id: CGDirectDisplayID) -> Bool {
+                service.displays.first { $0.id == id }.map { service.canToggleDisplay($0) } == true
+            }
+            let queries = desk.displayQueries
+            let answered = canSwitchOff(2)
+            desk.display(1).active = false
+            desk.display(3).active = false
+            suite.expect(answered && canSwitchOff(2) && desk.displayQueries == queries,
+                   "the panel reads whether a display can be switched off without asking the display server")
+            desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            desk.runDelayed()
+            suite.expect(!canSwitchOff(2), "the snapshot the panel reads follows the displays after a rebuild")
+        }
 
         // A `UserDefaults` write posts `didChangeNotification`, and the
         // observers registered with `queue: .main` make that post wait for the
@@ -2503,34 +2549,37 @@ enum FeatureCatalogTests {
         // can itself be waiting for the same lock inside `canToggleDisplay`,
         // called from a SwiftUI body, and the app hangs with nothing left that
         // can end it (issue #647). Which thread the write happens to run on
-        // does not change that, so it is the locked region that is pinned.
-        let lockedRegions = brightnessSource.components(separatedBy: "stateLock.lock()")
-            .dropFirst()
-            .map { $0.components(separatedBy: "stateLock.unlock()").first ?? $0 }
-        suite.expect(!lockedRegions.isEmpty
-               && lockedRegions.allSatisfy { !$0.contains("SwitchedOff(") },
-               "the list of displays switched off is never written while stateLock is held")
-
-        // The same transaction relays its screen change to AppKit inline, and
-        // switching off the display the panel is on makes AppKit lay that panel
-        // out again right there: the power button's body is evaluated while
-        // this app holds the display server busy, so anything it asks the
-        // display server is a question the same thread is still answering, and
-        // the app freezes with nothing left that can end it (issue #969). The
-        // body decides from the published snapshot instead, and the live
-        // reading stays where it guards the switch itself. Comments are
-        // stripped first: a note naming what it bans is not a call.
-        let canToggleCode = ((brightnessSource
-            .components(separatedBy: "func canToggleDisplay(").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!canToggleCode.isEmpty
-               && canToggleCode.contains("drawableDisplays")
-               && !canToggleCode.contains("Self.drawableDisplayIDs(")
-               && !canToggleCode.contains("stateLock"),
-               "the panel reads whether a display can be switched off without asking the display server")
+        // does not change that, so every write of the list is checked for the
+        // lock: switching off and on, restoring at termination and at
+        // start-up, and the lid opening on a deferred restore.
+        do {
+            let lockSuite = "vitru.tests.brightness-lock"
+            let watched = LockWatchingDefaults(suiteName: lockSuite)!
+            watched.removePersistentDomain(forName: lockSuite)
+            defer { watched.removePersistentDomain(forName: lockSuite) }
+            let (desk, service) = powerDesk(defaults: watched)
+            defer { desk.tearDown() }
+            watched.lockIsFree = { service.stateLockIsFree }
+            tapDisplay(2, desk, service)
+            tapDisplay(2, desk, service)
+            tapDisplay(3, desk, service)
+            service.restoreDisplaysBeforeTermination()
+            desk.drain()
+            desk.display(2).online = false
+            desk.display(2).active = false
+            watched.set([2], forKey: DefaultsKey.displaysSwitchedOff)
+            service.restoreDisplaysLeftOff()
+            desk.drain()
+            tapDisplay(1, desk, service)
+            desk.lidClosed = true
+            tapDisplay(1, desk, service)
+            desk.lidMoved(closed: false)
+            desk.drain()
+            // Each switch writes the list, so a quiet run would prove nothing.
+            suite.expect(service.stateLockIsFree && watched.switchedOffWrites >= 6
+                    && watched.writesUnderLock == 0,
+                   "the list of displays switched off is never written while stateLock is held")
+        }
 
         suite.expect(BrightnessSupport.ddcCommandDelay(nowMicroseconds: 1_000_000,
                                                  lastCommandEndMicroseconds: nil) == 0,
@@ -2862,9 +2911,51 @@ enum FeatureCatalogTests {
         suite.expect(!BrightnessSupport.overlayReplacesNative(overlayEnabled: false, islandRoutes: false,
                                                               islandShowsNotices: true),
                "an island without brightness leaves the key to the system")
-        suite.expect(!brightnessWorkQueueCode.contains("NotchSupport.routes(.brightness)"),
-               "the app's overlay appears only with its own option, never in place of an island that shows nothing")
+        // The written level calls the app's overlay up by its own option
+        // alone: an island that routes brightness but shows nothing leaves
+        // the overlay away rather than standing it in.
+        do {
+            let desk = BrightnessRig.Desk()
+            defer { desk.tearDown() }
+            desk.displays = [BrightnessRig.Display(id: 2, monitor: BrightnessRig.Monitor(current: 50))]
+            let service = BrightnessService(environment: desk.environment)
+            service.start()
+            desk.drain()
+            desk.islandShowsBrightness = false
+            service.setBrightness(0.8, for: 2, showOSD: true)
+            desk.drain()
+            let withoutOption = desk.overlays
+            desk.defaults.set(true, forKey: DefaultsKey.brightnessOSDEnabled)
+            service.setBrightness(0.6, for: 2, showOSD: true)
+            desk.drain()
+            suite.expect(withoutOption.isEmpty && desk.overlays == ["2:0.600"],
+                   "the app's overlay appears only with its own option, never in place of an island that shows nothing")
+        }
+    }
+}
 
+/// Writes of the list of displays switched off, and whether
+/// `BrightnessService`'s state lock was free during each: the probe is set
+/// once the service exists. Only the test's own thread writes here.
+nonisolated final class LockWatchingDefaults: UserDefaults, @unchecked Sendable {
+    var lockIsFree: (() -> Bool)?
+    private(set) var switchedOffWrites = 0
+    private(set) var writesUnderLock = 0
+
+    private func watch(_ key: String) {
+        guard key == DefaultsKey.displaysSwitchedOff else { return }
+        switchedOffWrites += 1
+        if lockIsFree?() == false { writesUnderLock += 1 }
+    }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        watch(defaultName)
+        super.set(value, forKey: defaultName)
+    }
+
+    override func removeObject(forKey defaultName: String) {
+        watch(defaultName)
+        super.removeObject(forKey: defaultName)
     }
 }
 
