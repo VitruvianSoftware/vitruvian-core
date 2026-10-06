@@ -94,11 +94,17 @@ package final class ShelfTooltipPopover {
         panel.orderFront(nil)
     }
 
+    /// The tooltip's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel() -> NSPanel {
+        OverlayPanel(contentRect: .zero,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered, defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered, defer: false)
+        let panel = Self.makePanel()
         panel.level = .popUpMenu
         panel.isOpaque = false
         panel.backgroundColor = .clear

@@ -270,32 +270,46 @@ enum NotchWatchTests {
                      "Watch reads the area, and notifies where the island cannot show itself")
     }
 
-    /// The service is not part of this test binary, so the reading loop's
-    /// load-bearing lines are pinned at their source.
+    /// The reading loop's bookkeeping and its Screen Recording gate, as the
+    /// service runs them on each read.
     private static func readingLoopContracts(_ suite: TestSuite) {
-        let source = (try? String(contentsOfFile: "Sources/Vitruvian/Services/Notch/NotchWatchService.swift",
-                                  encoding: .utf8)) ?? ""
-        func line(_ fragment: String) -> Int? {
-            source.components(separatedBy: "\n").enumerated().first { _, line in
-                let code = line.trimmingCharacters(in: .whitespaces)
-                return !code.hasPrefix("//") && code.contains(fragment)
-            }.map { $0.offset + 1 }
-        }
-        suite.expect(line("tracker.observe(signature: signature, reading: text, at: Date())") != nil
-                        && line("tracker.observe(signature: nil") == nil,
+        let still = [UInt8](repeating: 4, count: 256)
+        let moved = [UInt8](repeating: 9, count: 256)
+        let readAt = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        var last = NotchWatchLastReading()
+        suite.expect(last.stillSignature(of: still, at: readAt) == nil,
+                     "an area is marked as read only once its reading is kept")
+        let kept = last.keep("Build 41", of: still, at: readAt)
+        suite.expect(kept != nil && kept == NotchWatchSupport.signature(text: "Build 41", fingerprint: still)
+                        && last.stillSignature(of: still, at: readAt.addingTimeInterval(1)) == kept,
                      "a still area comes back with its last signature, so a change that holds is confirmed")
-        if let recognized = line("fallbackLanguages: languages"), let kept = line("fingerprint = picture") {
-            suite.expect(kept > recognized, "an area is marked as read only once its reading is kept")
-        } else {
-            suite.expect(false, "the reading loop still reads text and keeps the area's picture")
-        }
-        if let permission = line("guard CGPreflightScreenCaptureAccess() else"),
-           let capture = line("await WindowPreviewProvider.captureViaWindowServer(windowID)"),
-           let region = line("await regionCapture?.image()") {
-            suite.expect(permission < capture && permission < region,
+        suite.expect(last.stillSignature(of: moved, at: readAt.addingTimeInterval(1)) == nil
+                        && last.stillSignature(of: still, at: readAt.addingTimeInterval(NotchWatchSupport.rereadInterval))
+                            == nil,
+                     "a picture that moved, or one last read too long ago, is read again")
+
+        var completed = false
+        Task { @MainActor in
+            var steps: [String] = []
+            let denied = await NotchWatchService.areaPicture(allowed: { steps.append("allowed"); return false },
+                                                             capture: { steps.append("capture"); return nil })
+            var capturedWithoutPermission = true
+            if case .notAllowed = denied { capturedWithoutPermission = false }
+            suite.expect(!capturedWithoutPermission && steps == ["allowed"],
                          "without Screen Recording nothing is captured, so the system is not asked again")
-        } else {
-            suite.expect(false, "the reading loop still checks Screen Recording before capturing")
+            steps = []
+            let granted = await NotchWatchService.areaPicture(allowed: { steps.append("allowed"); return true },
+                                                              capture: { steps.append("capture"); return nil })
+            var capturedWithPermission = false
+            if case .taken = granted { capturedWithPermission = true }
+            suite.expect(capturedWithPermission && steps == ["allowed", "capture"],
+                         "with Screen Recording the area is captured once it is allowed")
+            completed = true
         }
+        let deadline = Date().addingTimeInterval(5)
+        while !completed && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+        suite.expect(completed, "the Screen Recording gate answers without a capture")
     }
 }

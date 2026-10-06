@@ -604,10 +604,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             }
             return true
         }
-        let panel = OverlayPanel(contentRect: anchorRect,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = AppKitMenuPanel.makePositioningPanel(at: anchorRect)
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
         panel.backgroundColor = .clear

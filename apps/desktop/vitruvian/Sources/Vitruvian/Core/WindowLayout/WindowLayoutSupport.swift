@@ -357,8 +357,8 @@ package enum WindowLayoutGaps {
 /// and one third of the same display instead of
 /// pushing it onto the display beside it.
 package enum WindowLayoutSideRepeat {
-    package static var cyclesThirds: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
+    package static func cyclesThirds(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
     }
 }
 
@@ -1135,4 +1135,92 @@ package struct WindowLayoutHistory {
 
     // Spelled out because a default initializer never leaves its module.
     package init() {}
+}
+
+/// Where each window's last placement left it, as requested and as read back,
+/// minimum sizes included: the side size cycle only advances from there. Only
+/// a left or right half pressed while the cycle is on is read back and kept,
+/// so any other placement, or one the window refused, leaves nothing to cycle
+/// from and the next side press starts again at the half.
+package struct WindowLayoutSettledFrames {
+    private var framesByWindow: [WindowLayoutWindowKey: WindowLayoutSettledFrame] = [:]
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    package subscript(window: WindowLayoutWindowKey) -> WindowLayoutSettledFrame? {
+        framesByWindow[window]
+    }
+
+    /// Whether pressing `action` advances the size cycle of `window`, now at
+    /// `current`. Only when the previous placement came from the same side key
+    /// and the window still sits where that step left it: another shortcut,
+    /// or a window dragged or resized by hand in between, starts over at the
+    /// half.
+    package func cycles(pressing action: WindowLayoutAction,
+                        cyclePress: WindowLayoutAction?,
+                        previousAction: WindowLayoutAction?,
+                        window: WindowLayoutWindowKey,
+                        current: WindowLayoutFrame,
+                        tolerance: CGFloat) -> Bool {
+        cyclePress != nil
+            && previousAction != nil
+            && WindowLayoutGeometry.sideCycleResumes(pressing: action, settled: framesByWindow[window])
+            && WindowLayoutGeometry.sideCycleContinues(current: current,
+                                                       settled: framesByWindow[window],
+                                                       tolerance: tolerance)
+    }
+
+    /// Keeps where a placement that took left `window`, for a press that may
+    /// cycle: the frame `readBack` finds, or the requested one when it finds
+    /// none. Any other press reads nothing back and keeps nothing. Answers
+    /// whether the window was read back away from the request: the lenient
+    /// acceptance may have read a frame the app has not committed yet (issue
+    /// #334), so it is worth another look once it has (`refresh`).
+    @discardableResult
+    package mutating func placed(_ window: WindowLayoutWindowKey,
+                                 at requested: WindowLayoutFrame,
+                                 cyclePress: WindowLayoutAction?,
+                                 tolerance: CGFloat,
+                                 readBack: () -> WindowLayoutFrame?) -> Bool {
+        guard let cyclePress else { return false }
+        let actual = readBack() ?? requested
+        framesByWindow[window] = WindowLayoutSettledFrame(requested: requested,
+                                                          actual: actual,
+                                                          pressedAction: cyclePress)
+        return !actual.isClose(to: requested, tolerance: tolerance)
+    }
+
+    /// Takes the frame `readBack` finds, once the app has had time to commit
+    /// a late resize, as where the placement kept for `window` settled. The
+    /// person may have resized or dragged the window by hand in the meantime,
+    /// and the lenient acceptance alone would take that as settled and let
+    /// the next side action cycle from it. Only a frame that moved toward the
+    /// request and reached it, or that the placement `accepts`, counts as the
+    /// late commit.
+    package mutating func refresh(_ window: WindowLayoutWindowKey,
+                                  tolerance: CGFloat,
+                                  readBack: () -> WindowLayoutFrame?,
+                                  accepts: (WindowLayoutFrame) -> Bool) {
+        guard let settled = framesByWindow[window],
+              let actual = readBack(),
+              WindowLayoutGeometry.settledFrameRefreshAccepts(actual: actual,
+                                                              settled: settled,
+                                                              tolerance: tolerance),
+              actual.isClose(to: settled.requested, tolerance: tolerance) || accepts(actual)
+        else { return }
+        framesByWindow[window] = WindowLayoutSettledFrame(requested: settled.requested,
+                                                          actual: actual,
+                                                          pressedAction: settled.pressedAction)
+    }
+
+    /// Drops what was kept for `window`: a new placement is under way, or the
+    /// window refused the last one.
+    package mutating func forget(_ window: WindowLayoutWindowKey) {
+        framesByWindow.removeValue(forKey: window)
+    }
+
+    package mutating func removeStaleWindows(keeping activeWindows: Set<WindowLayoutWindowKey>) {
+        framesByWindow = framesByWindow.filter { activeWindows.contains($0.key) }
+    }
 }

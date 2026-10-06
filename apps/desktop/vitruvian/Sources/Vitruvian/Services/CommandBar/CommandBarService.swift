@@ -2751,12 +2751,18 @@ package final class CommandBarService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
+    /// The bar's panel, before its content: a floating overlay, which window
+    /// managers do not list.
+    package static func makePanel() -> NSPanel {
+        KeyableBarPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+                        styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered,
+                        defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyableBarPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
-                                    styleMask: [.borderless, .nonactivatingPanel],
-                                    backing: .buffered,
-                                    defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = false

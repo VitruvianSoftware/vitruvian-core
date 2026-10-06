@@ -94,12 +94,18 @@ package final class RadialNowPlayingService {
         installMonitors(for: panel)
     }
 
+    /// The now playing card's panel, before its content: a floating overlay,
+    /// which window managers do not list.
+    package static func makePanel() -> NSPanel {
+        OverlayPanel(contentRect: .zero,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makePanel()
         panel.title = "Now Playing"
         panel.level = .statusBar
         panel.isOpaque = false

@@ -65,13 +65,9 @@ package final class NotchMenuSpaceReader {
             let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-menu-space", qos: .utility)
             return Environment(
                 menuBarOwner: {
-                    // The displayed menus belong to the menu bar's owner, which is not the
-                    // frontmost application while an accessory app such as a launcher has
-                    // focus; that app's own menu geometry was never laid out. When our own
-                    // Settings has focus, the menu owner can briefly be nil.
                     // The reader asks on the main thread, from its ticks and its answers.
-                    NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
-                        ?? (MainActor.assumeIsolated { NSApp.isActive } ? getpid() : nil)
+                    Environment.menusOnShow(in: NSWorkspace.shared,
+                                            appIsActive: MainActor.assumeIsolated { NSApp.isActive })
                 },
                 measure: { pid, subject in
                     NotchMenuBarSpace.measure(pid: pid, geometry: subject.geometry,
@@ -89,6 +85,17 @@ package final class NotchMenuSpaceReader {
                     RunLoop.main.add(timer, forMode: .common)
                     return { timer.invalidate() }
                 })
+        }
+
+        /// The process whose menus `workspace` has on show. The displayed menus
+        /// belong to the menu bar's owner, which is not the frontmost
+        /// application while an accessory app such as a launcher has focus;
+        /// that app's own menu geometry was never laid out. When our own
+        /// Settings has focus, the menu owner can briefly be nil, and the
+        /// menus are ours while the app is active.
+        nonisolated package static func menusOnShow(in workspace: NSWorkspace,
+                                                    appIsActive: @autoclosure () -> Bool) -> pid_t? {
+            workspace.menuBarOwningApplication?.processIdentifier ?? (appIsActive() ? getpid() : nil)
         }
     }
 

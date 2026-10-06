@@ -2021,6 +2021,27 @@ package final class AppVolumeMixer: ObservableObject {
 
 // MARK: - Tap engine
 
+/// Where the mixer's engines are torn down, away from the main thread.
+package enum MixerEngineTeardown {
+    /// How many teardowns may sit in the HAL at once. Operations past the
+    /// bound wait in the queue holding no thread, so however often a wedged
+    /// HAL parks a destroy, the shared pool loses at most this many workers
+    /// (issue #971).
+    package static let maximumConcurrent = 4
+    /// A broken HAL path can park inside teardown — `AudioHardwareDestroyProcessTap`
+    /// on a wedged tap is the one that does it. Serialized, that one call left
+    /// every later engine's aggregate and tap alive behind it, for as long as
+    /// the app ran. Overlapping them lets the rest through, under the bound
+    /// above so the parked ones cannot take the thread pool with them.
+    package static let queue: OperationQueue = {
+        let operations = OperationQueue()
+        operations.name = "com.vitruviansoftware.vitruvian.mixer.teardown"
+        operations.qualityOfService = .utility
+        operations.maxConcurrentOperationCount = maximumConcurrent
+        return operations
+    }()
+}
+
 /// Availability-erased face of the engine, so the mixer can store engines on
 /// any macOS while the implementation requires 14.4.
 private protocol GainEngine: AnyObject {
@@ -2148,24 +2169,15 @@ private final class TapGainEngine: GainEngine {
         guard AudioDeviceCreateIOProcIDWithBlock(&ioProc, aggregateID, nil, { _, input, _, output, _ in
             let inputBuffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
             let outputBuffers = UnsafeMutableAudioBufferListPointer(output)
-            guard let tapIndex = MixerRender.tapBufferIndex(in: inputBuffers,
-                                                            tapChannels: tapChannels) else {
-                // No samples to put in the buffer is not a reason to leave it:
-                // whatever the HAL left there plays otherwise (issue #326).
-                MixerRender.silence(outputBuffers)
-                return
-            }
-            let gain = box.value
-            // `render` silences whatever it does not fill, so every path from
-            // here on leaves the output written.
-            let frames = MixerRender.render(source: inputBuffers[tapIndex],
-                                            into: outputBuffers,
-                                            gain: gain)
+            let frames = MixerRender.renderCycle(input: inputBuffers,
+                                                 output: outputBuffers,
+                                                 tapChannels: tapChannels,
+                                                 gain: { box.value },
+                                                 countCycle: { cycles.increment() })
             // Keep the tiny delay filled for every live engine. Crossing from
             // attenuation into boost then changes level without inserting a
             // fresh block of silence into audio that is already playing.
             guard frames > 0 else { return }
-            cycles.increment()
             let releaseCoefficient = release.value
             if !limiterBox.lookahead.process(outputBuffers, frames: frames,
                                              release: releaseCoefficient) {
@@ -2212,24 +2224,6 @@ private final class TapGainEngine: GainEngine {
     /// arrived on. Serial, so two changes in a row cannot land out of order.
     fileprivate static let rateQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer.rate",
                                                  qos: .userInitiated)
-    /// How many teardowns may sit in the HAL at once. Operations past the
-    /// bound wait in the queue holding no thread, so however often a wedged
-    /// HAL parks a destroy, the shared pool loses at most this many workers
-    /// (issue #971).
-    private static let maximumConcurrentTeardowns = 4
-    /// A broken HAL path can park inside teardown — `AudioHardwareDestroyProcessTap`
-    /// on a wedged tap is the one that does it. Serialized, that one call left
-    /// every later engine's aggregate and tap alive behind it, for as long as
-    /// the app ran. Overlapping them lets the rest through, under the bound
-    /// above so the parked ones cannot take the thread pool with them.
-    fileprivate static let teardownQueue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.name = "com.vitruviansoftware.vitruvian.mixer.teardown"
-        queue.qualityOfService = .utility
-        queue.maxConcurrentOperationCount = maximumConcurrentTeardowns
-        return queue
-    }()
-
     /// The smallest possible answer, for the same reason as the mixer's own
     /// callback above: the system decides which thread this arrives on and it
     /// is not always the same one. Reading the audio system here would park
@@ -2313,7 +2307,7 @@ private final class TapGainEngine: GainEngine {
             AudioDeviceStop(aggregateID, ioProc)
         }
 
-        Self.teardownQueue.addOperation {
+        MixerEngineTeardown.queue.addOperation {
             if let listenerClient {
                 var mayReleaseListener = aggregateID == 0
                 if aggregateID != 0 {
@@ -2516,7 +2510,7 @@ private final class AirPlayGainEngine: GainEngine {
 
         // The same bounded queue as the device engines: a teardown parked in a
         // wedged HAL must not take the shared thread pool with it (issue #971).
-        TapGainEngine.teardownQueue.addOperation {
+        MixerEngineTeardown.queue.addOperation {
             if let listenerClient {
                 var mayRelease = aggregate == 0
                 if aggregate != 0 {

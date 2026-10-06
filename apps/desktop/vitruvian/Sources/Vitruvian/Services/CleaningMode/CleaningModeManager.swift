@@ -381,10 +381,16 @@ package final class CleaningModeManager: ObservableObject {
         reusable.forEach { $0.orderOut(nil) }
     }
 
+    /// One display's cover, before it is configured: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel(frame: NSRect) -> NSPanel {
+        OverlayPanel(contentRect: frame,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered, defer: false)
+    }
+
     private func makeOverlay(frame: NSRect) -> NSPanel {
-        let panel = OverlayPanel(contentRect: frame,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered, defer: false)
+        let panel = Self.makePanel(frame: frame)
         panel.isFloatingPanel = true
         // Above the menu bar and full-screen apps — the shielding level macOS uses
         // for its own lock-style windows.

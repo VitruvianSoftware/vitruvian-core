@@ -124,11 +124,17 @@ package enum BrightnessOSD {
         })
     }
 
+    /// The level indicator's panel, before it is configured: a floating
+    /// overlay, which window managers do not list.
+    package static func makePanel() -> NSPanel {
+        OverlayPanel(contentRect: .zero,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered, defer: false)
+    }
+
     private static func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered, defer: false)
+        let panel = makePanel()
         panel.level = .screenSaver
         panel.isOpaque = false
         panel.backgroundColor = .clear

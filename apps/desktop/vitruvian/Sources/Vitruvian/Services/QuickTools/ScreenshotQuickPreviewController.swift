@@ -70,7 +70,7 @@ package final class ScreenshotQuickPreviewController {
     /// What the preview shows: sharing, the shared link, and the buttons
     /// already done.
     package let model = ScreenshotQuickPreviewModel()
-    private var panel: ScreenshotQuickPreviewPanel?
+    private var panel: NSPanel?
     private var keyMonitor: Any?
     private var dismissWork: DispatchWorkItem?
     private let baseDismissDuration: TimeInterval?
@@ -164,11 +164,7 @@ package final class ScreenshotQuickPreviewController {
         }
         let host = NSHostingController(rootView: content)
         let size = Self.size(showingLink: model.sharedRecord != nil)
-        let panel = ScreenshotQuickPreviewPanel(
-            contentRect: CGRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false)
+        let panel = Self.makePanel(size: size)
         panel.contentViewController = host
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
@@ -193,6 +189,16 @@ package final class ScreenshotQuickPreviewController {
             panel.makeKey()
         }
         finishShowing()
+    }
+
+    /// The preview's panel, before its content: a floating overlay, which
+    /// window managers do not list, that a click makes key.
+    package static func makePanel(size: CGSize) -> NSPanel {
+        ScreenshotQuickPreviewPanel(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false)
     }
 
     private func finishShowing() {

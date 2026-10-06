@@ -279,7 +279,9 @@ package final class DiskImageInstallerService {
         progressPanel?.contentViewController = nil
     }
 
-    private static func makeProgressPanel() -> NSPanel {
+    /// The install progress's panel: a floating overlay, which window managers
+    /// do not list.
+    package static func makeProgressPanel() -> NSPanel {
         let panel = OverlayPanel(contentRect: .zero,
                                  styleMask: [.borderless, .nonactivatingPanel],
                                  backing: .buffered,

@@ -1023,25 +1023,13 @@ enum WindowLayoutFeatureTests {
                 && sideRepeatSettingsCode.contains("text.sideRepeatCycle")
                 && sideRepeatSettingsCode.contains("text.sideRepeatCycleCaption"),
                "window layout settings expose the side repeat cycle toggle with its caption")
-        let sideRepeatServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
-            encoding: .utf8)) ?? ""
-        let sideRepeatPlacement = sideRepeatServiceSource.components(separatedBy: "private func applyPlacement")
-            .dropFirst().first?.components(separatedBy: "WindowLayoutGeometry.effectiveAction").first ?? ""
-        suite.expect(sideRepeatServiceSource.contains("WindowLayoutSideRepeat.cyclesThirds")
-                && sideRepeatPlacement.contains("WindowLayoutGeometry.sideCycleContinues(")
-                && sideRepeatPlacement.contains("settledFrames[target.key]")
-                && !sideRepeatPlacement.contains("accepted(actual: target.frame"),
-               "window layout service advances the side cycle only from the frame the previous step actually settled at")
-        suite.expect(sideRepeatServiceSource.contains("settledFrames[windowKey] = ")
-                && sideRepeatServiceSource.contains("settledFrames[context.windowKey] = ")
-                && sideRepeatServiceSource.contains("settledFrames.removeValue(forKey: context.windowKey)"),
-               "window layout service records the settled frame after immediate and delayed placements and drops it on a refusal")
-        let sideRepeatImmediate = sideRepeatServiceSource.components(separatedBy: "settledFrames[windowKey] = ")
-            .dropFirst().first?.components(separatedBy: "return true").first ?? ""
-        suite.expect(sideRepeatImmediate.contains("scheduleSettledFrameRefresh(")
-                && sideRepeatServiceSource.contains("private func scheduleSettledFrameRefresh("),
-               "window layout service re-reads a leniently accepted frame later so a late, clamped resize still counts as settled")
+        let cycleDefaults = UserDefaults(suiteName: "vitru.tests.window-layout-side-repeat")!
+        cycleDefaults.set(true, forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
+        let cyclesWhenOn = WindowLayoutSideRepeat.cyclesThirds(in: cycleDefaults)
+        cycleDefaults.set(false, forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
+        suite.expect(cyclesWhenOn && !WindowLayoutSideRepeat.cyclesThirds(in: cycleDefaults),
+               "window layout service reads the side repeat cycle from its setting")
+        cycleDefaults.removePersistentDomain(forName: "vitru.tests.window-layout-side-repeat")
         let settledHalf = WindowLayoutFrame(origin: CGPoint(x: 0, y: 40), size: CGSize(width: 720, height: 860))
         let widenedHalf = WindowLayoutFrame(origin: settledHalf.origin, size: CGSize(width: 1080, height: 860))
         let nudgedHalf = WindowLayoutFrame(origin: CGPoint(x: 2, y: 41), size: CGSize(width: 719, height: 858))
@@ -1069,11 +1057,58 @@ enum WindowLayoutFeatureTests {
         let clampedByApp = WindowLayoutSettledFrame(requested: settledHalf, actual: clampedHalf)
         let movedClampedHalf = WindowLayoutFrame(origin: CGPoint(x: 20, y: 40), size: CGSize(width: 900, height: 860))
         let driftedClampedHalf = WindowLayoutFrame(origin: settledHalf.origin, size: CGSize(width: 904, height: 862))
-        let refreshSource = sideRepeatServiceSource.components(separatedBy: "private func scheduleSettledFrameRefresh(")
-            .dropFirst().first?.components(separatedBy: "private func scheduleSettle(").first ?? ""
-        suite.expect(refreshSource.contains("WindowLayoutGeometry.settledFrameRefreshAccepts(")
-                && refreshSource.contains("self.accepted(actual: actual"),
+        // What the service keeps for the side cycle, placement by placement:
+        // `placed` after an immediate or a settled placement, `forget` on a
+        // new placement or a refusal, `refresh` once a late commit had time.
+        let cycleWindow = WindowLayoutWindowKey(processID: 51, processLaunchTime: 100, windowID: 334)
+        var keptReads = 0
+        var keptFrames = WindowLayoutSettledFrames()
+        let unreadNeedsLook = keptFrames.placed(cycleWindow, at: settledHalf, cyclePress: nil, tolerance: 4,
+                                                readBack: { keptReads += 1; return clampedHalf })
+        suite.expect(!unreadNeedsLook && keptReads == 0 && keptFrames[cycleWindow] == nil,
+               "window layout service reads back the settled frame and schedules its refresh only while the cycle is on")
+        let clampedNeedsLook = keptFrames.placed(cycleWindow, at: settledHalf, cyclePress: .leftHalf, tolerance: 4,
+                                                 readBack: { keptReads += 1; return clampedHalf })
+        let keptClamped = keptFrames[cycleWindow]
+        keptFrames.forget(cycleWindow)
+        suite.expect(keptReads == 1 && clampedNeedsLook
+                && keptClamped == WindowLayoutSettledFrame(requested: settledHalf, actual: clampedHalf,
+                                                           pressedAction: .leftHalf)
+                && keptFrames[cycleWindow] == nil,
+               "window layout service records the settled frame after immediate and delayed placements and drops it on a refusal")
+        let exactNeedsLook = keptFrames.placed(cycleWindow, at: settledHalf, cyclePress: .leftHalf, tolerance: 4,
+                                               readBack: { nudgedHalf })
+        let unreadableNeedsLook = keptFrames.placed(cycleWindow, at: settledTwoThirds, cyclePress: .rightHalf,
+                                                    tolerance: 4, readBack: { nil })
+        suite.expect(!exactNeedsLook && !unreadableNeedsLook
+                && keptFrames[cycleWindow] == WindowLayoutSettledFrame(requested: settledTwoThirds,
+                                                                       actual: settledTwoThirds,
+                                                                       pressedAction: .rightHalf),
+               "a window read back at its request, or not read at all, settles at the request with nothing to look at again")
+        var lateKept = WindowLayoutSettledFrames()
+        let lateNeedsLook = lateKept.placed(cycleWindow, at: settledHalf, cyclePress: .leftHalf, tolerance: 4,
+                                            readBack: { lateReadAtOldFrame.actual })
+        lateKept.refresh(cycleWindow, tolerance: 4, readBack: { clampedHalf }, accepts: { _ in true })
+        suite.expect(lateNeedsLook && lateKept[cycleWindow]?.actual == clampedHalf
+                && lateKept.cycles(pressing: .leftHalf, cyclePress: .leftHalf, previousAction: .leftHalf,
+                                   window: cycleWindow, current: clampedHalf, tolerance: 4),
+               "window layout service re-reads a leniently accepted frame later so a late, clamped resize still counts as settled")
+        let betweenHalf = WindowLayoutFrame(origin: settledHalf.origin, size: CGSize(width: 800, height: 860))
+        var handKept = WindowLayoutSettledFrames()
+        handKept.placed(cycleWindow, at: settledHalf, cyclePress: .leftHalf, tolerance: 4, readBack: { clampedHalf })
+        handKept.refresh(cycleWindow, tolerance: 4, readBack: { widenedHalf }, accepts: { _ in true })
+        handKept.refresh(cycleWindow, tolerance: 4, readBack: { betweenHalf }, accepts: { _ in false })
+        suite.expect(handKept[cycleWindow]?.actual == clampedHalf,
                "window layout settled frame refresh keeps a change by hand from becoming the settled frame")
+        handKept.refresh(cycleWindow, tolerance: 4, readBack: { betweenHalf }, accepts: { _ in true })
+        suite.expect(handKept[cycleWindow] == WindowLayoutSettledFrame(requested: settledHalf, actual: betweenHalf,
+                                                                       pressedAction: .leftHalf),
+               "window layout settled frame refresh takes a frame the placement accepts on its way to the request")
+        var nothingKept = WindowLayoutSettledFrames()
+        nothingKept.refresh(cycleWindow, tolerance: 4, readBack: { keptReads += 1; return settledHalf },
+                            accepts: { _ in true })
+        suite.expect(nothingKept[cycleWindow] == nil && keptReads == 1,
+               "window layout settled frame refresh has nothing to look at once the placement was dropped")
         suite.expect(WindowLayoutGeometry.settledFrameRefreshAccepts(actual: clampedHalf, settled: lateReadAtOldFrame, tolerance: 4)
                 && WindowLayoutGeometry.settledFrameRefreshAccepts(actual: settledHalf, settled: lateReadAtOldFrame, tolerance: 4),
                "window layout settled frame refresh records a late commit, clamped by the app or landed exactly")
@@ -1114,17 +1149,33 @@ enum WindowLayoutFeatureTests {
                                                             sideRepeatCyclesThirds: resumes) == side,
                    "window layout \(side.rawValue) after the two thirds shortcut places the half with the cycle on")
         }
-        let sideRepeatSetFrame = sideRepeatServiceSource.components(separatedBy: "cyclePress: WindowLayoutAction? = nil) -> Bool {")
-            .dropFirst().first?.components(separatedBy: "scheduleSettle(SettleContext(").first ?? ""
-        let sideRepeatConclude = sideRepeatServiceSource.components(separatedBy: "private func concludeSettle(")
-            .dropFirst().first?.components(separatedBy: "return\n").first ?? ""
-        suite.expect(sideRepeatPlacement.contains("WindowLayoutGeometry.sideCycleResumes(")
-                && sideRepeatPlacement.contains("WindowLayoutGeometry.sideCyclePress("),
+        var sideKept = WindowLayoutSettledFrames()
+        sideKept.placed(cycleWindow, at: settledHalf, cyclePress: .leftHalf, tolerance: 4, readBack: { clampedHalf })
+        func sideCycles(_ action: WindowLayoutAction, at current: WindowLayoutFrame,
+                        after previousAction: WindowLayoutAction? = .leftHalf,
+                        in window: WindowLayoutWindowKey? = nil) -> Bool {
+            sideKept.cycles(pressing: action,
+                            cyclePress: WindowLayoutGeometry.sideCyclePress(for: action, cyclesThirds: true),
+                            previousAction: previousAction,
+                            window: window ?? cycleWindow,
+                            current: current,
+                            tolerance: 4)
+        }
+        suite.expect(sideCycles(.leftHalf, at: clampedHalf) && sideCycles(.leftHalf, at: settledHalf)
+                && !sideCycles(.leftHalf, at: widenedHalf) && !sideCycles(.leftHalf, at: clampedHalf, after: nil)
+                && !sideCycles(.leftHalf, at: clampedHalf,
+                               in: WindowLayoutWindowKey(processID: 52, processLaunchTime: 100, windowID: 334))
+                && !sideKept.cycles(pressing: .leftHalf, cyclePress: nil, previousAction: .leftHalf,
+                                    window: cycleWindow, current: clampedHalf, tolerance: 4),
+               "window layout service advances the side cycle only from the frame the previous step actually settled at")
+        let rightAfterLeft = sideCycles(.rightHalf, at: clampedHalf)
+        sideKept.forget(cycleWindow)
+        sideKept.placed(cycleWindow, at: settledTwoThirds, cyclePress: nil, tolerance: 4, readBack: { settledTwoThirds })
+        suite.expect(!rightAfterLeft && !sideCycles(.leftHalf, at: settledTwoThirds, after: .leftTwoThirds),
                "window layout service continues the side cycle only after the same side key")
-        suite.expect(sideRepeatSetFrame.components(separatedBy: "if let cyclePress").count == 2
-                && sideRepeatSetFrame.components(separatedBy: "if let cyclePress")[0].contains("self.frame(of: window) ?? frame") == false
-                && sideRepeatConclude.contains("if let cyclePress = context.cyclePress"),
-               "window layout service reads back the settled frame and schedules its refresh only while the cycle is on")
+        sideKept.placed(cycleWindow, at: settledHalf, cyclePress: .leftHalf, tolerance: 4, readBack: { settledHalf })
+        sideKept.removeStaleWindows(keeping: [WindowLayoutWindowKey(processID: 52, processLaunchTime: 100, windowID: 334)])
+        suite.expect(sideKept[cycleWindow] == nil, "window layout forgets the settled frame of a window that is gone")
         let leftHalfRect = WindowLayoutGeometry.rect(for: .leftHalf, current: currentWindow, visibleFrame: visibleFrame)
         suite.expect(WindowLayoutGeometry.accepts(actualRect: leftHalfRect.offsetBy(dx: 200, dy: 0),
                                             targetRect: leftHalfRect,

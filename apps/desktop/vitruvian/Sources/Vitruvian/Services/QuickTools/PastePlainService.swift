@@ -52,11 +52,21 @@ package final class PastePlainService: ObservableObject {
             }
             return
         }
-        // Promised content renders when read, so a busy source app would hold
-        // the main thread here; the lane answers back on main when it can.
-        GeneralPasteboardAccess.shared.async({ Self.plainText(from: .general) }) { [weak self] plain in
-            guard let self, let plain, !plain.isEmpty else { return }
-            self.pastePlain(plain)
+        Self.readPlainText(on: .shared, from: { .general }) { [weak self] plain in
+            self?.pastePlain(plain)
+        }
+    }
+
+    /// Reads the text of `pasteboard` without formatting on `lane`, off the
+    /// main thread, and hands any text to `paste` on main. Promised content
+    /// renders when read, so a busy source app would hold the main thread
+    /// here; the lane answers back on main when it can.
+    package static func readPlainText(on lane: GeneralPasteboardAccess,
+                                      from pasteboard: @escaping @Sendable () -> NSPasteboard,
+                                      then paste: @escaping @MainActor (String) -> Void) {
+        lane.async({ PastePlainService.plainText(from: pasteboard()) }) { plain in
+            guard let plain, !plain.isEmpty else { return }
+            paste(plain)
         }
     }
 

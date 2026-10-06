@@ -363,12 +363,18 @@ package final class CameraPreviewService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
+    /// The preview's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel() -> NSPanel {
+        KeyablePreviewPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+                            styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered,
+                            defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyablePreviewPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-                                        styleMask: [.borderless, .nonactivatingPanel],
-                                        backing: .buffered,
-                                        defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         // A mirror is something the user drags next to the meeting window.

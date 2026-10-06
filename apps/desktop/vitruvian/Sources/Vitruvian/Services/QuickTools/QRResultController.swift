@@ -15,7 +15,7 @@ import VitruvianDesign
 package final class QRResultController {
     package static let shared = QRResultController()
 
-    private var panel: QRResultPanel?
+    private var panel: NSPanel?
     private var keyMonitor: Any?
     private var localMonitor: Any?
     private var globalMonitor: Any?
@@ -40,11 +40,7 @@ package final class QRResultController {
         host.view.layoutSubtreeIfNeeded()
         let size = host.view.fittingSize
 
-        let panel = QRResultPanel(
-            contentRect: CGRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false)
+        let panel = Self.makePanel(size: size)
         panel.contentViewController = host
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
@@ -72,6 +68,16 @@ package final class QRResultController {
             context.duration = 0.12
             panel.animator().alphaValue = 1
         }
+    }
+
+    /// The result's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel(size: CGSize) -> NSPanel {
+        QRResultPanel(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false)
     }
 
     package func close() {

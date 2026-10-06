@@ -25,15 +25,21 @@ package final class QuitProtectionHUD {
                height: minimumSize.height + (content.showsProgress ? 8 : 0))
     }
 
+    /// The confirmation's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel(size: CGSize) -> NSPanel {
+        OverlayPanel(contentRect: CGRect(origin: .zero, size: size),
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
     /// `screen` is for callers that already place a panel of their own, so the
     /// confirmation cannot land on a different display than what it confirms.
     package func show(title: String, detail: String, on screen: NSScreen? = nil,
               holdDeadline: Date? = nil) {
         if panel == nil {
-            let panel = OverlayPanel(contentRect: CGRect(origin: .zero, size: size),
-                                     styleMask: [.borderless, .nonactivatingPanel],
-                                     backing: .buffered,
-                                     defer: false)
+            let panel = Self.makePanel(size: size)
             panel.contentView = ContentView(frame: CGRect(origin: .zero, size: size))
             panel.isOpaque = false
             panel.backgroundColor = .clear

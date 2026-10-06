@@ -100,13 +100,19 @@ package final class RecentCaptureService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
-    private func ensurePanel() -> NSPanel {
-        if let panel { return panel }
-        let panel = KeyableHistoryPanel(
+    /// The history's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel() -> NSPanel {
+        KeyableHistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 468, height: 360),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
+    }
+
+    private func ensurePanel() -> NSPanel {
+        if let panel { return panel }
+        let panel = Self.makePanel()
         panel.title = FeatureStrings.recentCaptures(L10n.shared.language).title
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true

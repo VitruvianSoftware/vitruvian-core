@@ -78,7 +78,15 @@ package enum SettingsBackup {
     /// defaults), writes the file's values and relaunches.
     @MainActor package static func applyAndRelaunch(settings: [String: Any]) {
         ScratchpadService.shared.prepareForSettingsRestore()
-        let defaults = UserDefaults.standard
+        restore(settings, into: .standard)
+        FeatureRuntime.shared.relaunchApp()
+    }
+
+    /// Clears the exportable keys of `defaults` and writes the file's values,
+    /// keeping what a backup never carries: this Mac's recorder preset images,
+    /// watermark and exception list paths are read before the clear and put
+    /// back after the file's values.
+    @MainActor package static func restore(_ settings: [String: Any], into defaults: UserDefaults) {
         let localRecorderPresets = defaults.data(forKey: DefaultsKey.recorderEditorPresets)
         let localWatermark = defaults.string(forKey: DefaultsKey.screenshotWatermarkStyle)
         let localWatermarkPresets = defaults.string(forKey: DefaultsKey.screenshotWatermarkPresets)
@@ -120,6 +128,5 @@ package enum SettingsBackup {
                 restored: defaults.stringArray(forKey: DefaultsKey.windowLayoutIgnoredApps) ?? [],
                 carried: windowLayoutPaths), forKey: DefaultsKey.windowLayoutIgnoredApps)
         }
-        FeatureRuntime.shared.relaunchApp()
     }
 }

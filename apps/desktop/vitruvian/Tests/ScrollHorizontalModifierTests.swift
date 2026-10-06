@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import CoreGraphics
 import Foundation
 import VitruvianCore
@@ -39,16 +40,50 @@ enum ScrollHorizontalModifierTests {
         let diagonal = wheel(flags: [])
         diagonal.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: 1)
         suite.expect(!ScrollWheelSupport.isVerticalOnly(diagonal), "a wheel with its own sideways axis is left alone")
-        let source = (try? String(contentsOfFile: "Sources/Vitruvian/Services/HorizontalWheelScrolling.swift",
-                                  encoding: .utf8)) ?? ""
-        suite.expect(source.contains("ScrollWheelSupport.isMouseWheel(")
-            && source.contains(".intersection([.command, .option, .control, .shift]).isEmpty"),
-            "trackpads and modifier combinations keep their own sideways meaning")
-        let panelSource = (try? String(contentsOfFile: "Sources/Vitruvian/Services/Notch/NotchWindowHost.swift",
-                                       encoding: .utf8)) ?? ""
-        suite.expect(source.contains("guard !(event.window is NotchPanel)")
-            && panelSource.contains("handleScroll?(event) == true || HorizontalWheelScrolling.handle(event)"),
-            "the island offers the wheel to its own gestures before moving a strip")
+        let mouseWheel = ScrollWheelEventTraits(isContinuous: false, momentumPhase: 0, scrollPhase: 0, scrollCount: 0)
+        suite.expect(HorizontalWheelScrolling.movesStrip(mouseWheel, secondsSinceLastGesturePhase: nil,
+                                                         modifierFlags: [])
+            && HorizontalWheelScrolling.movesStrip(mouseWheel, secondsSinceLastGesturePhase: nil,
+                                                   modifierFlags: [.capsLock]),
+            "a plain mouse wheel moves a strip sideways, Caps Lock or not")
+        for swipe in [ScrollWheelEventTraits(isContinuous: true, momentumPhase: 0, scrollPhase: 1, scrollCount: 0),
+                      ScrollWheelEventTraits(isContinuous: true, momentumPhase: 1, scrollPhase: 0, scrollCount: 0)] {
+            suite.expect(!HorizontalWheelScrolling.movesStrip(swipe, secondsSinceLastGesturePhase: nil,
+                                                              modifierFlags: []),
+                "trackpads keep their own sideways meaning")
+        }
+        for modifier: NSEvent.ModifierFlags in [.command, .option, .control, .shift] {
+            suite.expect(!HorizontalWheelScrolling.movesStrip(mouseWheel, secondsSinceLastGesturePhase: nil,
+                                                              modifierFlags: modifier),
+                "modifier combinations keep their own sideways meaning")
+        }
+
+        // The island's panel takes its wheel events past the app-wide monitor,
+        // and offers them to its own gestures before a strip may move.
+        let island = NotchPanel(contentRect: CGRect(x: 0, y: 0, width: 200, height: 40),
+                                styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        let overlay = OverlayPanel(contentRect: CGRect(x: 0, y: 0, width: 200, height: 40),
+                                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        suite.expect(HorizontalWheelScrolling.leavesWheel(to: island)
+            && !HorizontalWheelScrolling.leavesWheel(to: overlay)
+            && !HorizontalWheelScrolling.leavesWheel(to: nil),
+            "the app-wide wheel monitor leaves the island's wheel to the island")
+        if let scroll = NSEvent(cgEvent: wheel(flags: [])) {
+            var stripOffers = 0
+            suite.expect(NotchPanel.takesScroll(scroll, island: { _ in true },
+                                                strip: { _ in stripOffers += 1; return true })
+                && stripOffers == 0,
+                "the island offers the wheel to its own gestures before moving a strip")
+            suite.expect(NotchPanel.takesScroll(scroll, island: { _ in false },
+                                                strip: { _ in stripOffers += 1; return true })
+                && stripOffers == 1
+                && !NotchPanel.takesScroll(scroll, island: nil,
+                                           strip: { _ in stripOffers += 1; return false })
+                && stripOffers == 2,
+                "a wheel the island's gestures leave can still move a strip")
+        } else {
+            suite.expect(false, "a scroll wheel event converts for the island's routing")
+        }
     }
 
     static func run(_ suite: TestSuite) {

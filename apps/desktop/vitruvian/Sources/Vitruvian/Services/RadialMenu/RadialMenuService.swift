@@ -913,13 +913,19 @@ package final class RadialMenuService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
+    /// The wheel's panel, before its content: a floating overlay, which window
+    /// managers do not list.
+    package static func makePanel() -> NSPanel {
+        let size = RadialMenuLayout.panelSize
+        return KeyableWheelPanel(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
+                                 styleMask: [.borderless, .nonactivatingPanel],
+                                 backing: .buffered,
+                                 defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let size = RadialMenuLayout.panelSize
-        let panel = KeyableWheelPanel(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
-                                      styleMask: [.borderless, .nonactivatingPanel],
-                                      backing: .buffered,
-                                      defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = false

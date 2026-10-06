@@ -15,7 +15,7 @@ package struct ShelfView: View {
     /// collapses to its pill instead of vanishing.
     package var dismissSystemImage: String = "xmark"
     package var dismissHelp: String? = nil
-    package var onDismiss: (() -> Void)? = nil
+    package var dismissal: ShelfDismissal = .close
     /// The docked shelf shows the brand mark as a quiet watermark, so it reads
     /// as the app's own tray rather than a plain floating card.
     package var brandWatermark: Bool = false
@@ -33,6 +33,22 @@ package struct ShelfView: View {
 
     private static let panelWidth: CGFloat = 304
     private static let tileAreaHeight: CGFloat = 188
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(dismissSystemImage: String = "xmark", dismissHelp: String? = nil,
+                 dismissal: ShelfDismissal = .close, brandWatermark: Bool = false) {
+        self.dismissSystemImage = dismissSystemImage
+        self.dismissHelp = dismissHelp
+        self.dismissal = dismissal
+        self.brandWatermark = brandWatermark
+    }
+
+    /// The card the docked shelf opens to: its chevron folds it back to the
+    /// pill, which keeps the items, and the brand mark sits behind its tiles.
+    package static func docked(collapseHelp: String) -> ShelfView {
+        ShelfView(dismissSystemImage: "chevron.up", dismissHelp: collapseHelp,
+                  dismissal: .collapseDocked, brandWatermark: true)
+    }
 
     package var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -141,7 +157,7 @@ package struct ShelfView: View {
     }
 
     private var closeButton: some View {
-        Button { (onDismiss ?? { shelf.close() })() } label: {
+        Button { shelf.dismiss(dismissal) } label: {
             Image(systemName: dismissSystemImage)
                 .font(.system(size: 13, weight: .semibold))
                 .frame(width: 30, height: 30)

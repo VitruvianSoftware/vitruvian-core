@@ -47,17 +47,10 @@ package struct KeepAwakeAutomationEditor: View {
             // One condition cannot be combined with anything, so the mode
             // would be a control with no effect (issue #1587).
             if selectedConditionCount > 1 {
-                Picker(selection: $requireAll) {
-                    Text(strings.matchAny).tag(false)
-                    Text(strings.matchAll).tag(true)
-                } label: { EmptyView() }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(compact ? .small : .regular)
-                .font(.system(size: compact ? 10 : 12, weight: .medium))
-                .onChange(of: requireAll) { _, _ in
-                    awake.automationPreferencesDidChange()
-                }
+                KeepAwakeMatchModePicker(requireAll: $requireAll, strings: strings, compact: compact)
+                    .onChange(of: requireAll) { _, _ in
+                        awake.automationPreferencesDidChange()
+                    }
             }
             if runningApps {
                 AppBundleList(title: strings.runningAppsListTitle,
@@ -123,4 +116,30 @@ package struct KeepAwakeAutomationEditor: View {
         .buttonStyle(.plain)
     }
 
+}
+
+/// Whether any or all of the chosen conditions hold the Mac awake: a segmented
+/// control that follows the compact layout of the menu panel's card.
+package struct KeepAwakeMatchModePicker: View {
+    @Binding package var requireAll: Bool
+    package let strings: KeepAwakeAutomationStrings
+    package let compact: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(requireAll: Binding<Bool>, strings: KeepAwakeAutomationStrings, compact: Bool) {
+        self._requireAll = requireAll
+        self.strings = strings
+        self.compact = compact
+    }
+
+    package var body: some View {
+        Picker(selection: $requireAll) {
+            Text(strings.matchAny).tag(false)
+            Text(strings.matchAll).tag(true)
+        } label: { EmptyView() }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(compact ? .small : .regular)
+        .font(.system(size: compact ? 10 : 12, weight: .medium))
+    }
 }

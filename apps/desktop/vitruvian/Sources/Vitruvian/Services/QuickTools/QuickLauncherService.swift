@@ -371,12 +371,18 @@ package final class QuickLauncherService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
+    /// The launcher's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel() -> NSPanel {
+        KeyableLauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 380),
+                             styleMask: [.borderless, .nonactivatingPanel],
+                             backing: .buffered,
+                             defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyableLauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 380),
-                                         styleMask: [.borderless, .nonactivatingPanel],
-                                         backing: .buffered,
-                                         defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         // Item drag-to-reorder needs the mouse drag for itself; a background-

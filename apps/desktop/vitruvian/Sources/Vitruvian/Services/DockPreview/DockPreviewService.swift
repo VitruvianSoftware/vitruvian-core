@@ -1135,13 +1135,19 @@ package final class DockPreviewService: ObservableObject {
                       height: frame.height)
     }
 
+    /// A preview's panel, the hover one or a pinned one, before its content:
+    /// a floating overlay, which window managers do not list.
+    package static func makePanel() -> NSPanel {
+        OverlayPanel(contentRect: .zero,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
 
-        let panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makePanel()
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -1182,10 +1188,7 @@ package final class DockPreviewService: ObservableObject {
     }
 
     private func makePinnedPanel(for pinned: DockPreviewPinnedPanel) -> NSPanel {
-        let panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makePanel()
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear

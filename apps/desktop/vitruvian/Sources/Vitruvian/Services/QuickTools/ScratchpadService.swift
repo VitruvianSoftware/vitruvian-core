@@ -511,12 +511,18 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         override var canBecomeKey: Bool { true }
     }
 
+    /// The pad's panel, before its content: a floating overlay, which window
+    /// managers do not list.
+    package static func makePanel() -> NSPanel {
+        KeyableScratchpadPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
+                               styleMask: [.borderless, .nonactivatingPanel, .resizable],
+                               backing: .buffered,
+                               defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyableScratchpadPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
-                                           styleMask: [.borderless, .nonactivatingPanel, .resizable],
-                                           backing: .buffered,
-                                           defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         // Dragging inside the pad must select text, never move the window;

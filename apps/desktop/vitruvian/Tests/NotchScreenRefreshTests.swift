@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import CoreGraphics
 import Foundation
 import VitruvianCore
@@ -487,20 +488,16 @@ enum NotchScreenRefreshContract {
                "a display without a menu bar keeps the island at rest with nothing to measure or cover")
         pointerFollowContracts(suite)
 
-        let source = (try? String(contentsOfFile: "Sources/Vitruvian/Services/Notch/NotchMenuSpaceReader.swift",
-                                  encoding: .utf8)) ?? ""
-        let code = source.components(separatedBy: "\n")
-            .map { line in line.range(of: "//").map { String(line[..<$0.lowerBound]) } ?? line }
-            .joined(separator: "\n")
-        guard let start = code.range(of: "menuBarOwner: {"),
-              let end = code.range(of: "measure: {", range: start.upperBound..<code.endIndex) else {
-            suite.expect(false, "the menu reader and the method that applies its result are still found")
-            return
-        }
-        let reader = code[start.lowerBound..<end.lowerBound]
-        suite.expect(reader.contains("menuBarOwningApplication") && !reader.contains("frontmostApplication"),
+        let ownApp = NSRunningApplication.current
+        let behindLauncher = MenuBarOwnerWorkspace(menuBarOwner: ownApp, frontmost: nil)
+        let launcherInFront = MenuBarOwnerWorkspace(menuBarOwner: nil, frontmost: ownApp)
+        suite.expect(NotchMenuSpaceReader.Environment.menusOnShow(in: behindLauncher, appIsActive: false)
+                        == ownApp.processIdentifier
+                     && NotchMenuSpaceReader.Environment.menusOnShow(in: launcherInFront, appIsActive: false) == nil,
                "the menu read measures the application whose menus are on the bar: an accessory app with focus "
                + "leaves the previous app's menus displayed, and its own menu geometry is never laid out")
+        suite.expect(NotchMenuSpaceReader.Environment.menusOnShow(in: launcherInFront, appIsActive: true) == getpid(),
+               "while our own Settings has focus and the bar has no owner yet, the menus read are ours")
     }
 
     /// The pointer, the displays and the clock behind `NotchPointerFollower`.
@@ -632,4 +629,20 @@ enum NotchScreenRefreshContract {
                      && !stopping.pointerFollower.hasPendingMove && stopping.displayID == 1,
                      "suspending the island removes its pointer monitors and drops a pending move")
     }
+}
+
+/// A workspace whose menu bar and frontmost application are set apart, as
+/// while an accessory app such as a launcher has focus.
+private nonisolated final class MenuBarOwnerWorkspace: NSWorkspace, @unchecked Sendable {
+    private let owner: NSRunningApplication?
+    private let front: NSRunningApplication?
+
+    init(menuBarOwner: NSRunningApplication?, frontmost: NSRunningApplication?) {
+        owner = menuBarOwner
+        front = frontmost
+        super.init()
+    }
+
+    override var menuBarOwningApplication: NSRunningApplication? { owner }
+    override var frontmostApplication: NSRunningApplication? { front }
 }
