@@ -32,6 +32,7 @@ them is a decision) are reported for a person to finish.
 
 import argparse
 import collections
+import difflib
 import os
 import re
 import subprocess
@@ -621,34 +622,40 @@ def _in_protocol(lines, i):
 
 
 def restore_package(merged, ours):
-    """Put back `package` on the lines, and declarations, that had it in ours,
-    and give a new declaration `package` where this fork's declarations of that
-    kind at that depth are `package` (what other modules use must be)."""
-    exact = {}
+    """Put this fork's `package` modifiers back after a merge that ignored them.
+
+    A line the merge kept from this fork's copy gets back exactly what it had,
+    matched by position, so a name declared in two types is not confused. A
+    line the merge changed or added gets `package` when the same declaration
+    had it in this fork's copy, or, if new, when this fork's declarations of
+    that kind at that depth are mostly `package` (what other modules use must
+    be). Protocol requirements, private declarations and locals are left alone.
+    """
+    ours_lines = ours.decode("utf-8", "surrogateescape").splitlines(keepends=True)
+    ours_bare = [PACKAGE_RE.sub(r"\1", raw) for raw in ours_lines]
     by_decl = collections.defaultdict(set)
     by_level = collections.defaultdict(collections.Counter)
-    ours_bare = set()
-    for raw in ours.decode("utf-8", "surrogateescape").splitlines(keepends=True):
-        bare = PACKAGE_RE.sub(r"\1", raw)
-        ours_bare.add(bare)
-        if bare != raw:
-            exact.setdefault(bare, raw)
+    for raw, bare in zip(ours_lines, ours_bare):
         key = _decl_key(bare)
         if key:
             by_decl[key].add(bare != raw)
             by_level[(key[0], key[1])][bare != raw] += 1
     lines = merged.decode("utf-8", "surrogateescape").splitlines(keepends=True)
+    kept = {}
+    matcher = difflib.SequenceMatcher(None, ours_bare, lines, autojunk=False)
+    for a, b, size in matcher.get_matching_blocks():
+        for k in range(size):
+            kept[b + k] = ours_lines[a + k]
     result = []
     for i, line in enumerate(lines):
         key = _decl_key(line)
-        if line in exact:
-            line = exact[line]
+        if i in kept:
+            line = kept[i]
         elif key and not PACKAGE_RE.match(line):
             known = by_decl.get(key)
             level = by_level.get((key[0], key[1]), collections.Counter())
-            new_here = line not in ours_bare and known is None
             if known == {True} or (
-                new_here
+                known is None
                 and key[1] != "extension"
                 and not ACCESS_RE.search(line[: line.find(key[1])])
                 and level[True] > level[False]

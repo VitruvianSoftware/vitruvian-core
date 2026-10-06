@@ -334,6 +334,18 @@ class PackageTest(unittest.TestCase):
             self.restore(merged, ours),
         )
 
+    def test_unchanged_lines_keep_exactly_what_they_had(self):
+        ours = (
+            "package struct A: View {\n    package let text: String\n"
+            "    package var body: some View { x }\n}\n"
+            "private struct B: View {\n    let text: String\n    var body: some View { y }\n}\n"
+        )
+        merged = (
+            "struct A: View {\n    let text: String\n    var body: some View { x }\n}\n"
+            "private struct B: View {\n    let text: String\n    var body: some View { y }\n}\n"
+        )
+        self.assertEqual(self.restore(merged, ours), ours)
+
     def test_a_file_without_package_gets_none(self):
         ours = "final class A {\n    func a() {}\n}\n"
         merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"
