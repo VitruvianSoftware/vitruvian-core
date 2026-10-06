@@ -5257,7 +5257,68 @@ storage, utilities, update, screenshot and switcher suites. 35 remain.
   `MixerRender.renderCycle` and bounded `MixerEngineTeardown` queue, and
   `KeepAwakeMatchModePicker`, rendered in a hosting view.
 
-What step 7 leaves: 35 reads of source files as text after 7h, counted in
+Landed (7i, source pins turned behavioral, second part): 20 more reads go,
+leaving 15. Two kinds of check come out of them.
+
+- **Views, by value and by type.** What a view decides moves into a value it
+  reads, and the test checks the value. Where the property is the view's
+  shape, the test reads the view's compiled `Body` type, or renders it.
+  - Settings rows: `CommandBarSettingsActions` (two text-only buttons, by
+    body type), `CommandBarSettings.shortcutToggleTitle`, and a shared
+    `PreferenceSwitchRow` for the ASCII layout and side-repeat switches,
+    checked for the key it writes, in every language.
+  - Onboarding: `OnboardingOtherPermissionsList`, rendered with two rows of
+    different widths that report one leading edge.
+  - Features hub: `FeatureRuntime.Environment` takes the hardware reading,
+    and both pickers ask `FeatureRuntime.installBlockedReason(_:)`. A
+    fanless test runtime refuses exactly fan control, and install-all
+    finishes. `FeatureHubTally` feeds the summary card, and
+    `FeatureHubScrollPage`'s body type holds the lazy stack directly in the
+    scroll view (#2270).
+  - Display rows: `EnergyDisplayRow` and `BrightnessPanelDisplayRow`, whose
+    body types carry `SoftwareDimmingButton`.
+  - Switcher and Dock previews: `DockPreviewSupport.cardTitleBand` and
+    `pinMenuTitle`, `SwitcherItem.statusBadges`, `WindowNamePlacement`
+    (rendered at each placement), `SwitcherWindowlessDivider`.
+  - Panel surfaces: `PanelSurfaceFit` and `MenuPanelView.Mode`, which apply
+    the glass once, from one value.
+  - Screenshot and scratchpad: `sliderColumnLabel(width:)`, rendered with
+    `ImageRenderer` to show a long label shrinks inside its column, and
+    `ScratchpadIconTarget`, measured at its full hit size.
+- **Lints, as lints.** Rules over how all of the code is written are not
+  unit tests: they say nothing a piece of code does. They used to read the
+  whole Swift corpus, `build.sh` and `Tools/uninstall.sh` inside
+  `RepositoryFeatureTests`. They now run as `bazel/source_lints.py`, the
+  `source_lints_test` target, on any platform, with each rule's message
+  kept. 26 rules, among them:
+  - Keychain is never touched;
+  - activation is only yielded through `ActivationHandoff`;
+  - every event-tap owner follows the session and invalidates its port;
+  - the pointer taps run off the main thread;
+  - the path identity rule is spelled once;
+  - `build.sh` sweeps its temp folders and signs with a stable identity;
+  - the menu panel names every switch it draws.
+
+  Each rule was shown to fail on a mutated copy of the tree. Three of them
+  need a Mac to finish: that each SF Symbol drawn exists, that each system
+  tool is where it is expected, and that every language fills a format the
+  same way. They are split: the lint keeps the lists in
+  `Tests/SourceNames.swift` equal to what the sources spell, and the unit
+  tests check each listed name.
+- **Single-file rules from that suite, behavioral:**
+  - `URLCleanerField`, drawn in a grouped form (`SettingsLayoutTests`);
+  - `HomebrewOperationEnd`, run with a stand-in `brew`;
+  - Theme's borders taking `increasedContrast:`;
+  - `SelfUninstall.Steps.wired(to:)` with recorded `SystemCalls` and the
+    `InputInterceptor` list;
+  - the query habits through a `CommandBarRunRecorder` on test defaults;
+  - `SelfUninstall.commandLineSleepReport`;
+  - `BrightnessService`'s input taps suspended on a `BrightnessRig`.
+- **Left:** 15 reads, of service wiring in the switcher, the Dock preview,
+  the screenshot route, the command bar, Cleaning Mode, brightness, click
+  debounce, smooth scrolling and the recorder session.
+
+What step 7 leaves: 15 reads of source files as text after 7i, counted in
 `Tests/source_pins.txt` (7e). They pin code that has not moved: SwiftUI view
 structure, live wiring to the system, and resources and build files. Each
 converts when its code moves behind a seam, and the ledger only lets the
