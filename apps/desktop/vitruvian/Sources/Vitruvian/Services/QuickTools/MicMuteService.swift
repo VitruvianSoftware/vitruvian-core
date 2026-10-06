@@ -260,7 +260,7 @@ package final class MicMuteService: ObservableObject {
             // Missing means never tracked; an empty list means tracked and
             // owning nothing, and the sweep must keep those two apart.
             mutedDevices: defaults.stringArray(forKey: DefaultsKey.micMuteMutedDevices),
-            legacyVolume: defaults.double(forKey: DefaultsKey.micMuteSavedVolume))
+            legacyVolume: defaults[Preferences.micMuteSavedVolume])
         // A sweep that reached nothing leaves the record alone: it is what a
         // later unmute needs to put every level back.
         if outcome.applied {

@@ -214,7 +214,7 @@ package enum MouseButtonShortcutSupport {
         MouseSpacesGestureSupport.boundButton(
             isAvailable: defaults.bool(forKey: AppFeature.mouseButtonShortcuts.availabilityKey),
             isEnabled: defaults[Preferences.mouseSpacesGestureEnabled],
-            button: Int64(defaults.integer(forKey: DefaultsKey.mouseSpacesGestureButton)),
+            button: Int64(defaults[Preferences.mouseSpacesGestureButton]),
             hasShortcut: { hasActiveShortcut($0, defaults) },
             claimedByWheel: RadialMenuSupport.claimsMouseButton)
     }

@@ -1022,7 +1022,7 @@ package final class ClipboardHistoryService: ObservableObject {
 
     package func trimToLimit() {
         let limit = Defaults.sanitizedClipboardHistoryLimit(
-            environment.defaults.integer(forKey: DefaultsKey.clipboardHistoryLimit)
+            environment.defaults[Preferences.clipboardHistoryLimit]
         )
         let trimmed = ClipboardHistoryEditing.retainedEntries(entries, recentLimit: limit)
         if trimmed != entries {
@@ -1449,8 +1449,8 @@ package final class ClipboardHistoryService: ObservableObject {
         let defaults = environment.defaults
         return ClipboardHistoryWindowSizing.contentSize(
             preview: quickPreviewPresented,
-            savedWidth: defaults.double(forKey: DefaultsKey.clipboardHistoryWindowWidth),
-            savedHeight: defaults.double(forKey: DefaultsKey.clipboardHistoryWindowHeight),
+            savedWidth: defaults[Preferences.clipboardHistoryWindowWidth],
+            savedHeight: defaults[Preferences.clipboardHistoryWindowHeight],
             visibleFrame: visibleFrame)
     }
 
@@ -1459,8 +1459,8 @@ package final class ClipboardHistoryService: ObservableObject {
             from: panel.contentRect(forFrameRect: panel.frame).size,
             preview: quickPreviewPresented
         ) else { return }
-        environment.defaults.set(Double(size.width), forKey: DefaultsKey.clipboardHistoryWindowWidth)
-        environment.defaults.set(Double(size.height), forKey: DefaultsKey.clipboardHistoryWindowHeight)
+        environment.defaults[Preferences.clipboardHistoryWindowWidth] = Double(size.width)
+        environment.defaults[Preferences.clipboardHistoryWindowHeight] = Double(size.height)
     }
 
     private func position(_ panel: NSPanel) {

@@ -79,9 +79,9 @@ package final class CleanerScheduler: ObservableObject {
         let defaults = UserDefaults.standard
         return (CleanerSchedule.Frequency.sanitized(
                     defaults.string(forKey: DefaultsKey.cleanerScheduleFrequency) ?? "off"),
-                defaults.integer(forKey: DefaultsKey.cleanerScheduleHour),
-                defaults.integer(forKey: DefaultsKey.cleanerScheduleMinute),
-                defaults.integer(forKey: DefaultsKey.cleanerScheduleWeekday))
+                defaults[Preferences.cleanerScheduleHour],
+                defaults[Preferences.cleanerScheduleMinute],
+                defaults[Preferences.cleanerScheduleWeekday])
     }
 
     private func scheduleNext() {
@@ -89,7 +89,7 @@ package final class CleanerScheduler: ObservableObject {
         guard current.frequency != .off else { return }
 
         let defaults = UserDefaults.standard
-        let lastRunStamp = defaults.double(forKey: DefaultsKey.cleanerLastAutoRun)
+        let lastRunStamp = defaults[Preferences.cleanerLastAutoRun]
         let lastRun = lastRunStamp > 0 ? Date(timeIntervalSince1970: lastRunStamp) : nil
 
         let fireDate: Date
@@ -208,9 +208,9 @@ package final class CleanerScheduler: ObservableObject {
     /// Saves a finished automatic pass where the Cleaner card reads it.
     package static func recordRun(freed: Int64, failed: Int, at date: Date = Date(),
                                   in defaults: UserDefaults = .standard) {
-        defaults.set(date.timeIntervalSince1970, forKey: DefaultsKey.cleanerLastAutoRun)
-        defaults.set(freed, forKey: DefaultsKey.cleanerLastAutoFreed)
-        defaults.set(failed, forKey: DefaultsKey.cleanerLastAutoFailed)
+        defaults[Preferences.cleanerLastAutoRun] = date.timeIntervalSince1970
+        defaults[Preferences.cleanerLastAutoFreed] = Int(freed)
+        defaults[Preferences.cleanerLastAutoFailed] = failed
     }
 
     /// Reports the outcome when the user asked to be told, through the

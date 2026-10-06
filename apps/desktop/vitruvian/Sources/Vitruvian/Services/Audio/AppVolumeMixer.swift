@@ -1006,7 +1006,7 @@ package final class AppVolumeMixer: ObservableObject {
             lowerOnHeadphonesDisconnect: AppFeature.mixer.isAvailable
                 && UserDefaults.standard[Preferences.mixerLowerVolumeOnHeadphonesDisconnect],
             lowerToPercent: Defaults.sanitizedMixerHeadphonesDisconnectVolumePercent(
-                UserDefaults.standard.integer(forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)),
+                UserDefaults.standard[Preferences.mixerHeadphonesDisconnectVolumePercent]),
             savedVolumes: savedVolumes(),
             savedOutputs: savedOutputDeviceUIDs(),
             sessionVolumes: sessionVolumes,

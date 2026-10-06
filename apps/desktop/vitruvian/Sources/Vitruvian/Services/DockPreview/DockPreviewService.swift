@@ -871,7 +871,7 @@ package final class DockPreviewService: ObservableObject {
 
     private var openDelay: TimeInterval {
         DockPreviewSupport.openDelay(
-            milliseconds: UserDefaults.standard.integer(forKey: DefaultsKey.dockPreviewOpenDelay))
+            milliseconds: UserDefaults.standard[Preferences.dockPreviewOpenDelay])
     }
 
     private func scheduleHover(_ hit: DockHit, delay: TimeInterval? = nil) {

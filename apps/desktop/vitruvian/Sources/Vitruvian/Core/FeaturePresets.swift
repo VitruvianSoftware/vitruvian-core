@@ -18,7 +18,7 @@ package enum FeaturePreset: String, CaseIterable, Identifiable {
     /// step.
     package static func prepareFirstRunAvailability(in defaults: UserDefaults = .standard) {
         guard !defaults.bool(forKey: DefaultsKey.hasOnboarded),
-              defaults.integer(forKey: DefaultsKey.onboardingStep) == 0
+              defaults[Preferences.onboardingStep] == 0
         else { return }
         let selected = FeaturePreset.essential.features
         for feature in AppFeature.allCases {

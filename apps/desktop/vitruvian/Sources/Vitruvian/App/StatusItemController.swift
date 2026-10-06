@@ -274,7 +274,7 @@ final class StatusItemController {
     /// continuously only while at least one metric is pinned to the menu bar.
     private func syncMonitorMode() {
         let defaults = UserDefaults.standard
-        let interval = Defaults.sanitizedMonitorInterval(defaults.integer(forKey: DefaultsKey.monitorInterval))
+        let interval = Defaults.sanitizedMonitorInterval(defaults[Preferences.monitorInterval])
         SystemMonitor.shared.setInterval(seconds: interval)
         SystemMonitor.shared.setMenuBarActive(MenuBarMetric.anyEnabled(in: defaults))
     }
@@ -721,7 +721,7 @@ final class StatusItemController {
         // history.
         let entry = history.latestPasteboardEntry
         let maxCharacters = Defaults.sanitizedClipboardMenuBarPreviewLength(
-            defaults.integer(forKey: DefaultsKey.clipboardHistoryMenuBarPreviewLength))
+            defaults[Preferences.clipboardHistoryMenuBarPreviewLength])
         let text = entry?.menuBarText(maxCharacters: maxCharacters) ?? ""
 
         let item = clipboardPreviewStatusItem ?? installClipboardPreviewStatusItem()

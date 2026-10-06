@@ -1607,7 +1607,7 @@ package final class NotchService: ObservableObject {
                 }
             }
             hoverWork = work
-            let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
+            let delay = NotchSupport.sanitizedHoverDelay(defaults[Preferences.notchHoverDelay])
             schedule(delay, work)
         } else if holdsNotification
                     || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
@@ -1679,7 +1679,7 @@ package final class NotchService: ObservableObject {
             self.provideHapticFeedback()
         }
         hoverWork = work
-        let delay = NotchSupport.sanitizedHoverDelay(defaults.double(forKey: DefaultsKey.notchHoverDelay))
+        let delay = NotchSupport.sanitizedHoverDelay(defaults[Preferences.notchHoverDelay])
         schedule(delay, work)
     }
 
@@ -2819,8 +2819,8 @@ package final class NotchService: ObservableObject {
                          displayID: screen.id, frame: screen.frame,
                          visibleTop: screen.visibleFrame.maxY, scale: screen.backingScale,
                          statusBarThickness: statusBarThickness()),
-                      customWidth: defaults.double(forKey: DefaultsKey.notchCustomWidth),
-                      customHeight: defaults.double(forKey: DefaultsKey.notchCustomHeight),
+                      customWidth: defaults[Preferences.notchCustomWidth],
+                      customHeight: defaults[Preferences.notchCustomHeight],
                       cameraFit: NotchCameraFit.current(in: defaults), silhouette: NotchSilhouette.current(in: defaults),
                       capsuleFit: NotchCapsuleFit.current(in: defaults),
                       outline: defaults[Preferences.notchOutlineEnabled])

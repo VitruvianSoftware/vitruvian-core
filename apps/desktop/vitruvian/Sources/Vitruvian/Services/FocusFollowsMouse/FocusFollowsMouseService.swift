@@ -246,7 +246,7 @@ package final class FocusFollowsMouseService {
 
     private static func savedDelay() -> Int {
         FocusFollowsMouseSupport.sanitizedDelay(
-            UserDefaults.standard.integer(forKey: DefaultsKey.focusFollowsMouseDelay))
+            UserDefaults.standard[Preferences.focusFollowsMouseDelay])
     }
 
     private struct Target {

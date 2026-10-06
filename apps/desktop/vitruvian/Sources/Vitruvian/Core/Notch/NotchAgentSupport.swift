@@ -178,7 +178,7 @@ package enum NotchAgentSupport {
     }
 
     package static func dailyBudget(in defaults: UserDefaults = .standard) -> Double? {
-        let value = defaults.double(forKey: DefaultsKey.notchAgentsDailyBudget)
+        let value = defaults[Preferences.notchAgentsDailyBudget]
         return value.isFinite && value > 0 ? value : nil
     }
 

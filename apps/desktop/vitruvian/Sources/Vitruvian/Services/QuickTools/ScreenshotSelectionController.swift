@@ -250,8 +250,7 @@ package final class ScreenshotSelectionController {
     }
     fileprivate var loupeZoom: CGFloat {
         didSet {
-            environment.defaults.set(Double(loupeZoom),
-                                     forKey: DefaultsKey.screenshotLoupeLastZoom)
+            environment.defaults[Preferences.screenshotLoupeLastZoom] = Double(loupeZoom)
             panels.forEach { $0.overlayView.needsDisplay = true }
         }
     }
@@ -314,8 +313,8 @@ package final class ScreenshotSelectionController {
         let defaults = environment.defaults
         self.loupeZoom = ScreenshotSupport.captureLoupeInitialZoom(
             rememberLast: defaults[Preferences.screenshotLoupeRememberZoom],
-            defaultZoom: CGFloat(defaults.double(forKey: DefaultsKey.screenshotLoupeDefaultZoom)),
-            lastZoom: CGFloat(defaults.double(forKey: DefaultsKey.screenshotLoupeLastZoom)))
+            defaultZoom: CGFloat(defaults[Preferences.screenshotLoupeDefaultZoom]),
+            lastZoom: CGFloat(defaults[Preferences.screenshotLoupeLastZoom]))
         self.capturePolicy = ScreenshotSupport.UnifiedCapturePolicy(
             freeze: freeze,
             includePointer: includePointer,
@@ -323,7 +322,7 @@ package final class ScreenshotSelectionController {
             keepsContentWindowsOut: hideVitruvianWindows
                 || screenCaptureOptions?.selectedTool == .recording,
             usesGeometry: mode == .geometry)
-        defaults.set(Double(loupeZoom), forKey: DefaultsKey.screenshotLoupeLastZoom)
+        defaults[Preferences.screenshotLoupeLastZoom] = Double(loupeZoom)
     }
 
     private var activeTool: ScreenCaptureTool? { screenCaptureOptions?.selectedTool }

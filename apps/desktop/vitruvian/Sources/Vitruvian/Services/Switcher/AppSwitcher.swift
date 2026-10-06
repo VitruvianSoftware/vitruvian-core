@@ -1720,7 +1720,7 @@ package final class AppSwitcher: ObservableObject {
         }
         pendingShow = work
         let appearanceDelay = SwitcherSupport.appearanceDelay(
-            milliseconds: UserDefaults.standard.integer(forKey: DefaultsKey.switcherAppearanceDelay))
+            milliseconds: UserDefaults.standard[Preferences.switcherAppearanceDelay])
         DispatchQueue.main.asyncAfter(deadline: .now() + appearanceDelay, execute: work)
     }
 

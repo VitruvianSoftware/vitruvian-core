@@ -260,10 +260,10 @@ package final class WhatsAppDownloadManager: ObservableObject {
 
     private func recordCleanup(moved: Int, bytes: Int64, failed: Int, automatic: Bool) {
         let defaults = UserDefaults.standard
-        defaults.set(Date().timeIntervalSince1970, forKey: DefaultsKey.whatsAppDownloadsLastCleanup)
-        defaults.set(moved, forKey: DefaultsKey.whatsAppDownloadsLastCleanupCount)
-        defaults.set(bytes, forKey: DefaultsKey.whatsAppDownloadsLastCleanupBytes)
-        defaults.set(failed, forKey: DefaultsKey.whatsAppDownloadsLastCleanupFailed)
+        defaults[Preferences.whatsAppDownloadsLastCleanup] = Date().timeIntervalSince1970
+        defaults[Preferences.whatsAppDownloadsLastCleanupCount] = moved
+        defaults[Preferences.whatsAppDownloadsLastCleanupBytes] = Int(bytes)
+        defaults[Preferences.whatsAppDownloadsLastCleanupFailed] = failed
         defaults[Preferences.whatsAppDownloadsLastCleanupAutomatic] = automatic
     }
 
@@ -276,10 +276,10 @@ package final class WhatsAppDownloadManager: ObservableObject {
 
     private static func settingsSnapshot() -> SettingsSnapshot {
         let defaults = UserDefaults.standard
-        let start = defaults.double(forKey: DefaultsKey.whatsAppDownloadsAutomaticStartDate)
+        let start = defaults[Preferences.whatsAppDownloadsAutomaticStartDate]
         return SettingsSnapshot(
             retentionDays: WhatsAppDownloadSupport.sanitizedRetentionDays(
-                defaults.integer(forKey: DefaultsKey.whatsAppDownloadsRetentionDays)),
+                defaults[Preferences.whatsAppDownloadsRetentionDays]),
             categories: WhatsAppDownloadSupport.decodedCategories(
                 defaults.string(forKey: DefaultsKey.whatsAppDownloadsCategories)),
             includeExisting: defaults[Preferences.whatsAppDownloadsIncludeExisting],

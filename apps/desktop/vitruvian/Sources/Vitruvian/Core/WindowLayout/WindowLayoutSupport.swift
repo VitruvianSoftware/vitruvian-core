@@ -345,11 +345,11 @@ package enum WindowLayoutGaps {
     package static let presets: [Int] = [0, 8, 16, 32, 64, 128]
 
     package static var windowGap: CGFloat {
-        CGFloat(UserDefaults.standard.integer(forKey: DefaultsKey.windowLayoutWindowGap))
+        CGFloat(UserDefaults.standard[Preferences.windowLayoutWindowGap])
     }
 
     package static var screenGap: CGFloat {
-        CGFloat(UserDefaults.standard.integer(forKey: DefaultsKey.windowLayoutScreenGap))
+        CGFloat(UserDefaults.standard[Preferences.windowLayoutScreenGap])
     }
 }
 

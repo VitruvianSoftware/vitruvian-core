@@ -54,13 +54,13 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
     @Published package var textSize: Int {
         didSet {
-            UserDefaults.standard.set(textSize, forKey: DefaultsKey.screenshotLastTextSize)
+            UserDefaults.standard[Preferences.screenshotLastTextSize] = textSize
             applyStyleToSelection()
         }
     }
     @Published package var blurLevel: Int {
         didSet {
-            UserDefaults.standard.set(blurLevel, forKey: DefaultsKey.screenshotLastBlurLevel)
+            UserDefaults.standard[Preferences.screenshotLastBlurLevel] = blurLevel
             applyBlurLevelToSelection()
         }
     }
@@ -189,9 +189,9 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         stroke = ScreenshotSupport.StrokeID.sanitized(
             defaults.string(forKey: DefaultsKey.screenshotLastStroke))
         textSize = ScreenshotSupport.sanitizedTextSize(
-            defaults.integer(forKey: DefaultsKey.screenshotLastTextSize))
+            defaults[Preferences.screenshotLastTextSize])
         blurLevel = ScreenshotSupport.BlurStrength.startingLevel(
-            remembered: defaults.integer(forKey: DefaultsKey.screenshotLastBlurLevel))
+            remembered: defaults[Preferences.screenshotLastBlurLevel])
         arrowStyle = ScreenshotSupport.ArrowStyleID.sanitized(
             defaults.string(forKey: DefaultsKey.screenshotLastArrowStyle))
         sticker = ScreenshotSupport.StickerID.sanitized(

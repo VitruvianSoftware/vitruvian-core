@@ -199,7 +199,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
                 gifSize: RecorderSupport.sanitizedGIFSize(
                     defaults.string(forKey: DefaultsKey.recorderGIFSize)).rawValue,
                 gifFrameRate: RecorderSupport.sanitizedGIFFrameRate(
-                    defaults.integer(forKey: DefaultsKey.recorderGIFFrameRate)),
+                    defaults[Preferences.recorderGIFFrameRate]),
                 zoomEnabled: defaults[Preferences.recorderAutomaticZoom])
         }
         player.isMuted = false

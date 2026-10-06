@@ -37,7 +37,7 @@ package struct OnboardingView: View {
         self.onFinish = onFinish
         let defaults = UserDefaults.standard
         let selectionWasApplied = defaults.bool(forKey: DefaultsKey.hasOnboarded)
-            || defaults.integer(forKey: DefaultsKey.onboardingStep) >= 2
+            || defaults[Preferences.onboardingStep] >= 2
         let features = selectionWasApplied
             ? Set(AppFeature.allCases.filter(\.isAvailable))
             : FeaturePreset.essential.features

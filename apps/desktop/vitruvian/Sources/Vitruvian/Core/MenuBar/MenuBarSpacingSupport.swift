@@ -93,8 +93,8 @@ package enum MenuBarUsageBarSupport {
     package static func currentLevel(for fraction: Double,
                              defaults: UserDefaults = .standard) -> Level {
         level(for: fraction,
-              mediumPercent: defaults.integer(forKey: DefaultsKey.menuBarUsageBarMediumThreshold),
-              highPercent: defaults.integer(forKey: DefaultsKey.menuBarUsageBarHighThreshold))
+              mediumPercent: defaults[Preferences.menuBarUsageBarMediumThreshold],
+              highPercent: defaults[Preferences.menuBarUsageBarHighThreshold])
     }
 
     package static func currentColorHex(for level: Level,

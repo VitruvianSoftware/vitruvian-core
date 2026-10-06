@@ -239,7 +239,7 @@ package final class ScreenshotService: ObservableObject {
             return
         }
         let delay = ScreenshotSupport.sanitizedDelay(
-            UserDefaults.standard.integer(forKey: DefaultsKey.screenshotDelay))
+            UserDefaults.standard[Preferences.screenshotDelay])
         if delay > 0 {
             countdownMode = mode
             countdownRemaining = delay
@@ -1039,9 +1039,9 @@ package final class ScreenshotService: ObservableObject {
         }
 
         if ScreenshotSupport.fileNamePatternUsesNumber(pattern) {
-            let number = defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext)
+            let number = defaults[Preferences.screenshotFileNumberNext]
             let expanded = ScreenshotSupport.expandFileNamePattern(pattern, date: Date(), number: number)
-            defaults.set(number + 1, forKey: DefaultsKey.screenshotFileNumberNext)
+            defaults[Preferences.screenshotFileNumberNext] = number + 1
             return (expanded + ".png", number)
         } else {
             let expanded = ScreenshotSupport.expandFileNamePattern(pattern, date: Date(), number: 0)
@@ -1054,10 +1054,10 @@ package final class ScreenshotService: ObservableObject {
     /// so a rewind can never undo another capture's number.
     nonisolated package static func rewindNumberSequence(toReuse consumed: Int) {
         let defaults = UserDefaults.standard
-        guard defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext) == consumed + 1 else {
+        guard defaults[Preferences.screenshotFileNumberNext] == consumed + 1 else {
             return
         }
-        defaults.set(consumed, forKey: DefaultsKey.screenshotFileNumberNext)
+        defaults[Preferences.screenshotFileNumberNext] = consumed
     }
 }
 

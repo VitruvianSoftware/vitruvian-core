@@ -181,8 +181,8 @@ package struct NotchCameraFit: Equatable {
     }
 
     package static func current(in defaults: UserDefaults = .standard) -> NotchCameraFit {
-        NotchCameraFit(width: defaults.double(forKey: DefaultsKey.notchCameraFitWidth),
-                       height: defaults.double(forKey: DefaultsKey.notchCameraFitHeight))
+        NotchCameraFit(width: defaults[Preferences.notchCameraFitWidth],
+                       height: defaults[Preferences.notchCameraFitHeight])
     }
 }
 
@@ -208,9 +208,9 @@ package struct NotchCapsuleFit: Equatable {
     }
 
     package static func current(in defaults: UserDefaults = .standard) -> NotchCapsuleFit {
-        NotchCapsuleFit(width: defaults.double(forKey: DefaultsKey.notchCapsuleFitWidth),
-                        height: defaults.double(forKey: DefaultsKey.notchCapsuleFitHeight),
-                        drop: defaults.double(forKey: DefaultsKey.notchCapsuleFitDrop))
+        NotchCapsuleFit(width: defaults[Preferences.notchCapsuleFitWidth],
+                        height: defaults[Preferences.notchCapsuleFitHeight],
+                        drop: defaults[Preferences.notchCapsuleFitDrop])
     }
 }
 

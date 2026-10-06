@@ -297,12 +297,10 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
                     Self.saveUndoTransactions(Array(transactions.suffix(20)))
                 }
                 let defaults = UserDefaults.standard
-                defaults.set(Date().timeIntervalSince1970,
-                             forKey: DefaultsKey.whatsAppOrganizerLastRun)
-                defaults.set(result.moved, forKey: DefaultsKey.whatsAppOrganizerLastMoved)
-                defaults.set(result.duplicates,
-                             forKey: DefaultsKey.whatsAppOrganizerLastDuplicates)
-                defaults.set(result.failed, forKey: DefaultsKey.whatsAppOrganizerLastFailed)
+                defaults[Preferences.whatsAppOrganizerLastRun] = Date().timeIntervalSince1970
+                defaults[Preferences.whatsAppOrganizerLastMoved] = result.moved
+                defaults[Preferences.whatsAppOrganizerLastDuplicates] = result.duplicates
+                defaults[Preferences.whatsAppOrganizerLastFailed] = result.failed
                 self.phase = .done(moved: result.moved,
                                    duplicates: result.duplicates,
                                    failed: result.failed)
@@ -331,7 +329,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         return Settings(
             destination: destination,
             delayMinutes: WhatsAppDownloadSupport.sanitizedOrganizerDelayMinutes(
-                defaults.integer(forKey: DefaultsKey.whatsAppOrganizerDelayMinutes)),
+                defaults[Preferences.whatsAppOrganizerDelayMinutes]),
             categories: WhatsAppDownloadSupport.decodedCategories(
                 defaults.string(forKey: DefaultsKey.whatsAppOrganizerCategories)),
             layout: WhatsAppOrganizerLayout(
