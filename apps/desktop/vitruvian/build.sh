@@ -628,6 +628,19 @@ if [[ -n "$ADAPTIVE_SKIP" ]]; then
     cp "$ICON_TMP/actool.log" build/actool-failure.log 2>/dev/null || true
     echo "  adaptive icon skipped: $ADAPTIVE_SKIP (Dock falls back to AppIcon.icns)"
 fi
+# The fan helper's launchd plist ships with the release identifier as its
+# label, its program and its Mach service. A Developer build renames every one,
+# so the two apps can run side by side: a mention left behind would have it ask
+# launchd for a service registered under the other name. The tests run this on
+# a copy of the shipped plist.
+rename_fan_helper() {
+    local plist="$1" helper_id="$2"
+    /usr/libexec/PlistBuddy -c "Set :Label $helper_id" "$plist"
+    /usr/libexec/PlistBuddy -c "Set :BundleProgram Contents/Library/LaunchServices/$helper_id" "$plist"
+    /usr/libexec/PlistBuddy -c "Delete :MachServices:com.vitruviansoftware.vitruvian.fan-control" "$plist"
+    /usr/libexec/PlistBuddy -c "Add :MachServices:$helper_id bool true" "$plist"
+}
+
 echo "▸ Assembling and signing bundle…"
 STAGE_TMP="$(mktemp -d)"
 STAGE="$STAGE_TMP/$APP_NAME.app"
@@ -654,10 +667,7 @@ if (( DEV )); then
     /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$STAGE/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE" "$STAGE/Contents/Info.plist"
     FAN_PLIST="$STAGE/Contents/Library/LaunchDaemons/$FAN_HELPER_ID.plist"
-    /usr/libexec/PlistBuddy -c "Set :Label $FAN_HELPER_ID" "$FAN_PLIST"
-    /usr/libexec/PlistBuddy -c "Set :BundleProgram Contents/Library/LaunchServices/$FAN_HELPER_ID" "$FAN_PLIST"
-    /usr/libexec/PlistBuddy -c "Delete :MachServices:com.vitruviansoftware.vitruvian.fan-control" "$FAN_PLIST"
-    /usr/libexec/PlistBuddy -c "Add :MachServices:$FAN_HELPER_ID bool true" "$FAN_PLIST"
+    rename_fan_helper "$FAN_PLIST" "$FAN_HELPER_ID"
     # Stamp the source commit + build time so the running dev app shows (in About)
     # exactly which code it was compiled from. Lets you verify it matches HEAD before
     # testing, instead of unknowingly running a stale build. Dev-only; never shipped.

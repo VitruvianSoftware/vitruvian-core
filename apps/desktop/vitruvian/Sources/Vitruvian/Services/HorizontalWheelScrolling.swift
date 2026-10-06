@@ -18,10 +18,26 @@ package enum HorizontalWheelScrolling {
     package static func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            // The island first offers the wheel to its own gestures.
-            guard !(event.window is NotchPanel) else { return event }
+            guard !leavesWheel(to: event.window) else { return event }
             return handle(event) ? nil : event
         }
+    }
+
+    /// Whether the app-wide monitor leaves a window's wheel events alone. The
+    /// island first offers the wheel to its own gestures, and its panel moves
+    /// a strip itself with what they leave (`NotchPanel.takesScroll`).
+    package static func leavesWheel(to window: NSWindow?) -> Bool {
+        window is NotchPanel
+    }
+
+    /// Whether a wheel event is one to move a strip sideways. Trackpads swipe
+    /// sideways on their own; modifier combinations keep their meaning, Shift
+    /// already turning the wheel sideways.
+    package static func movesStrip(_ traits: ScrollWheelEventTraits,
+                                   secondsSinceLastGesturePhase: TimeInterval?,
+                                   modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        ScrollWheelSupport.isMouseWheel(traits, secondsSinceLastGesturePhase: secondsSinceLastGesturePhase)
+            && modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
     }
 
     /// Scrolls the strip under the pointer sideways and reports whether the
@@ -35,10 +51,8 @@ package enum HorizontalWheelScrolling {
             scrollCount: cgEvent.getIntegerValueField(.scrollWheelEventScrollCount))
         let secondsSinceGesturePhase = lastGesturePhaseTimestamp.map { event.timestamp - $0 }
         if traits.momentumPhase != 0 || traits.scrollPhase != 0 { lastGesturePhaseTimestamp = event.timestamp }
-        // Trackpads swipe sideways on their own; modifier combinations keep
-        // their meaning, Shift already turning the wheel sideways.
-        guard ScrollWheelSupport.isMouseWheel(traits, secondsSinceLastGesturePhase: secondsSinceGesturePhase),
-              event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+        guard movesStrip(traits, secondsSinceLastGesturePhase: secondsSinceGesturePhase,
+                         modifierFlags: event.modifierFlags),
               ScrollWheelSupport.isVerticalOnly(cgEvent),
               let contentView = event.window?.contentView,
               let hit = contentView.hitTest(

@@ -352,7 +352,7 @@ package enum SpaceWindowBridge {
         case right
 
         /// System symbolic hotkey ids for "Move left/right a space".
-        fileprivate var hotKeyID: Int32 { self == .left ? 79 : 81 }
+        package var hotKeyID: Int32 { self == .left ? 79 : 81 }
     }
 
     /// The two Mission Control overviews, by their system symbolic hotkey ids
@@ -363,7 +363,7 @@ package enum SpaceWindowBridge {
         case missionControl
         case appExpose
 
-        fileprivate var hotKeyID: Int32 { self == .missionControl ? 32 : 33 }
+        package var hotKeyID: Int32 { self == .missionControl ? 32 : 33 }
     }
 
     package struct SpaceShortcut {
@@ -392,16 +392,32 @@ package enum SpaceWindowBridge {
     }
 
     private static func registeredShortcut(_ hotKeyID: Int32) -> SpaceShortcut? {
-        guard let symbolicHotKeyValue, let symbolicHotKeyEnabled,
-              symbolicHotKeyEnabled(hotKeyID) else { return nil }
-        var options: UInt32 = 0
-        var keyCode: UInt32 = 0
-        var modifiers: UInt32 = 0
-        guard symbolicHotKeyValue(hotKeyID, &options, &keyCode, &modifiers) == .success,
-              keyCode != 0
+        guard let symbolicHotKeyValue, let symbolicHotKeyEnabled else { return nil }
+        return registeredShortcut(
+            hotKeyID,
+            isEnabled: { symbolicHotKeyEnabled($0) },
+            value: { id in
+                var options: UInt32 = 0
+                var keyCode: UInt32 = 0
+                var modifiers: UInt32 = 0
+                guard symbolicHotKeyValue(id, &options, &keyCode, &modifiers) == .success else { return nil }
+                return (keyCode: keyCode, modifiers: modifiers)
+            })
+    }
+
+    /// The combination registered for `hotKeyID`, from the window server's two
+    /// answers about it. A shortcut the user switched off in System Settings
+    /// reads as nil even though its old keys are still stored, and is never
+    /// asked for them; so does one with no key at all.
+    package static func registeredShortcut(
+        _ hotKeyID: Int32,
+        isEnabled: (Int32) -> Bool,
+        value: (Int32) -> (keyCode: UInt32, modifiers: UInt32)?
+    ) -> SpaceShortcut? {
+        guard isEnabled(hotKeyID), let registered = value(hotKeyID), registered.keyCode != 0
         else { return nil }
-        return SpaceShortcut(keyCode: CGKeyCode(keyCode),
-                             flags: SpaceHopSupport.eventFlags(fromCarbonModifiers: modifiers))
+        return SpaceShortcut(keyCode: CGKeyCode(registered.keyCode),
+                             flags: SpaceHopSupport.eventFlags(fromCarbonModifiers: registered.modifiers))
     }
 
     /// Replays one press of a Spaces shortcut. The modifiers must match the

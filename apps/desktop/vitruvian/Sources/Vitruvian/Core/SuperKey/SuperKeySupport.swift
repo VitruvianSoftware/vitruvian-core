@@ -92,6 +92,34 @@ package enum SuperKeyMappingFailure: Equatable, CaseIterable {
     case keyboardTapRefused
 }
 
+/// How many times in a row the super key's mouse tap was asked for and
+/// refused. A refusal is otherwise indistinguishable from never having asked,
+/// and the keyboard half would keep working with drag chords quietly broken.
+/// Only the first refusal in a row is worth a rebuild: the cure takes the
+/// healthy keyboard tap down with it, and a system that refuses once refuses
+/// the retry too. So the count outlives the teardown its own value asks for:
+/// nothing but a created tap puts it back to zero, and there is no reset.
+package struct SuperKeyMouseTapRefusals: Equatable {
+    package private(set) var count = 0
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+
+    /// One more request for the mouse tap, answered with a tap or refused.
+    package mutating func requested(created: Bool) {
+        count = created ? 0 : count + 1
+    }
+
+    /// Whether the running taps have to be rebuilt: one the system switched
+    /// off never revives on its own, and a mouse tap refused for the first
+    /// time in a row is rebuilt once. `nil` is a tap that is not there.
+    package func tapsNeedRebuild(keyboardTapEnabled: Bool?, mouseTapEnabled: Bool?) -> Bool {
+        let keyboardDead = keyboardTapEnabled.map { !$0 } ?? false
+        let mouseDead = mouseTapEnabled.map { !$0 } ?? (count == 1)
+        return keyboardDead || mouseDead
+    }
+}
+
 /// The pure half of the super key: which keys are involved, how the mapping
 /// table is read and written, and the small state machine that decides what to
 /// do with each key event while the key is held.

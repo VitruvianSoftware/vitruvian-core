@@ -650,6 +650,45 @@ package enum ShelfDockPlacement: String {
     }
 }
 
+/// What one tick of the drag watchdog does. The physical button is the one
+/// truth that survives a drag whose mouse-up never reaches the global monitor
+/// (the drag machinery consumed it, the drop landed on one of our own
+/// windows, or the drag was cancelled). While it is held, the tick completes
+/// a dock or edge dwell after the pointer comes to rest, since no further
+/// drag event will.
+package enum ShelfDragWatchdog: Equatable {
+    /// Nothing left to watch: the watchdog stops.
+    case stop
+    /// The button is up: the drag ended unseen.
+    case endDrag
+    /// The drag goes on: advance the edge dwell, and the dock's when `dock`.
+    case advance(dock: Bool)
+
+    package static func step(dockedDragActive: Bool, sawGestureStart: Bool,
+                             buttonDown: @autoclosure () -> Bool) -> ShelfDragWatchdog {
+        guard dockedDragActive || sawGestureStart else { return .stop }
+        guard buttonDown() else { return .endDrag }
+        return .advance(dock: dockedDragActive)
+    }
+}
+
+/// How a shelf surface goes away, and whether its items go with it.
+package enum ShelfDismissal: Equatable {
+    /// The floating shelf's close button.
+    case close
+    /// The docked card's chevron, folding it back to its pill.
+    case collapseDocked
+    /// Automatic hiding and the shortcut's toggle.
+    case hide
+
+    /// Only an explicit close of the floating shelf consults the optional
+    /// clearing preference; hiding it and collapsing the docked shelf keep
+    /// the items.
+    package func clearsItems(clearOnClose: Bool) -> Bool {
+        self == .close && clearOnClose
+    }
+}
+
 package enum ShelfDockDragSupport {
     /// How long the pointer has to stay within the collapsed pill trigger
     /// area before expanding into the full shelf card, so a fast pass
@@ -809,6 +848,15 @@ package enum ShelfStoreLoad: Equatable {
     /// A blob that is not a shelf list at all. Leave it, and the payload
     /// files it still references, alone until the next launch.
     case unreadable
+
+    /// Whether the store was read whole, the one case a restore may save the
+    /// shelf back over and sweep the payload files nothing holds any more. A
+    /// store read in part is not the shelf: the entries it dropped still own
+    /// files that the blob it kept still points at.
+    package var isWhole: Bool {
+        if case .items = self { return true }
+        return false
+    }
 }
 
 package enum ShelfPersistenceSupport {

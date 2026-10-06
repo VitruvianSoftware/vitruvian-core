@@ -65,7 +65,14 @@ package final class RecorderTypingSampler: @unchecked Sendable {
 
     private func record(_ event: NSEvent) {
         guard !event.isARepeat else { return }
-        let now = CACurrentMediaTime()
+        record(at: CACurrentMediaTime())
+    }
+
+    /// One keystroke at `now` on the host clock, kept on the recording's own
+    /// clock: nothing before it begins or while it is paused. The monitors
+    /// call this while `stop()` may be reading, so the append is under the
+    /// lock, the way the pointer sampler guards its buffer.
+    package func record(at now: CFTimeInterval) {
         lock.withLock {
             guard let time = pauseClock.eventTime(now) else { return }
             times.append(time)

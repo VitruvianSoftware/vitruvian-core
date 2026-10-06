@@ -828,11 +828,35 @@ enum ClipboardFeatureTests {
         }
         suite.expect(laneAnswer == 887, "the queued work runs once the lane comes free")
         suite.expect(laneAnsweredOnMain, "the pasteboard lane answers on the main queue")
-        let pastePlainSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/PastePlainService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(pastePlainSource.contains("GeneralPasteboardAccess.shared.async"),
+        // Paste as plain text reads the clipboard on that lane too: wedged, it
+        // holds the read, and the text arrives on main once the lane is free.
+        let plainPasteboard = NSPasteboard(name: NSPasteboard.Name("vitru.tests.paste-plain"))
+        plainPasteboard.clearContents()
+        plainPasteboard.setString("Plain words", forType: .string)
+        let plainWedge = DispatchSemaphore(value: 0)
+        pasteboardAccess.async { plainWedge.wait() }
+        var pastedPlain: String?
+        var pastedPlainOnMain = false
+        PastePlainService.readPlainText(on: pasteboardAccess,
+                                        from: { NSPasteboard(name: NSPasteboard.Name("vitru.tests.paste-plain")) },
+                                        then: { text in
+                                            pastedPlain = text
+                                            pastedPlainOnMain = Thread.isMainThread
+                                        })
+        let plainHeldUntil = Date().addingTimeInterval(0.1)
+        while Date() < plainHeldUntil {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        suite.expect(pastedPlain == nil,
                "paste as plain text reads the clipboard on the lane, not on the main thread")
+        plainWedge.signal()
+        let plainDeadline = Date().addingTimeInterval(5)
+        while pastedPlain == nil, Date() < plainDeadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        suite.expect(pastedPlain == "Plain words" && pastedPlainOnMain,
+               "the plain text read on the lane is pasted on main once the lane is free")
+        plainPasteboard.releaseGlobally()
         for (terminated, trusted, expected) in [
             (true, true, ["beep"]),
             (false, false, ["activate", "prompt", "activate", "beep"]),

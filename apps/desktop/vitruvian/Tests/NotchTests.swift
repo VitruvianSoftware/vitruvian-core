@@ -2264,15 +2264,15 @@ enum NotchTests {
                "invalid internal positions cannot be serialized into adapter input")
     }
     private static func calendarContracts(_ suite: TestSuite) {
-        let entitlements = NSDictionary(contentsOfFile: "Resources/Vitruvian.entitlements") as? [String: Any]
-        let info = NSDictionary(contentsOfFile: "Resources/Info.plist") as? [String: Any]
+        let entitlements = ShippedResource.dictionary("Resources/Vitruvian.entitlements")
+        let info = ShippedResource.dictionary("Resources/Info.plist")
         suite.expect(entitlements?["com.apple.security.personal-information.calendars"] as? Bool == true
                && !(info?["NSCalendarsFullAccessUsageDescription"] as? String ?? "").isEmpty,
                "the signed hardened app declares both the calendar capability and its permission explanation")
         let languages = info?["CFBundleLocalizations"] as? [String] ?? []
         suite.expect(languages.count == AppLanguage.allCases.count, "calendar prompts cover every supported app language")
         for language in languages where language != "en" {
-            let localized = NSDictionary(contentsOfFile: "Resources/\(language).lproj/InfoPlist.strings")
+            let localized = ShippedResource.dictionary("Resources/\(language).lproj/InfoPlist.strings")
             let prompt = localized?["NSCalendarsFullAccessUsageDescription"] as? String ?? ""
             suite.expect(!prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                    && prompt != info?["NSCalendarsFullAccessUsageDescription"] as? String,

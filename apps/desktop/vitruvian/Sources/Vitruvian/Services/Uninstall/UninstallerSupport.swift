@@ -193,10 +193,12 @@ package enum UninstallerSupport {
                          identity: selectedIdentity, infoIdentity: selectedInfoIdentity)
     }
 
-    /// What the pickers list. An app that selection(for:) would refuse is
-    /// left out rather than offered and then silently turned down.
-    package static func offeredApplications() -> [InstalledApps.InstalledApp] {
-        InstalledApps.installedApplications().filter { selection(for: $0.url) != nil }
+    /// What the pickers list of the `installed` apps. An app that
+    /// selection(for:) would refuse is left out rather than offered and then
+    /// silently turned down.
+    package static func offeredApplications(from installed: [InstalledApps.InstalledApp])
+        -> [InstalledApps.InstalledApp] {
+        installed.filter { selection(for: $0.url) != nil }
     }
 
     /// The listed apps the same check accepts, for a list built on the main
@@ -220,6 +222,25 @@ package enum UninstallerSupport {
         var info = stat()
         guard lstat(url.path, &info) != 0 else { return false }
         return errno == ENOENT
+    }
+
+    /// What a removal row the Trash move did not take counts as.
+    package enum UnmovedRow: Equatable {
+        /// Gone: the package manager or another pass took it.
+        case freed
+        /// Still there, but not this process's to move: Finder may move it.
+        case stubborn
+        /// Kept, or no longer readable.
+        case failed
+    }
+
+    /// Only a confirmed absence counts as freed: a bare `fileExists` miss is
+    /// also what a path the removal can no longer read answers. A path still
+    /// there goes to Finder when `mayEscalate`, and fails otherwise.
+    package static func unmovedRow(at url: URL, mayEscalate: Bool) -> UnmovedRow {
+        if isConfirmedAbsent(at: url) { return .freed }
+        if mayEscalate, FileManager.default.fileExists(atPath: url.path) { return .stubborn }
+        return .failed
     }
 
     /// A removal path must still exist below the root that produced it and no

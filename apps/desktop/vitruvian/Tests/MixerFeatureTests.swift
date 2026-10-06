@@ -487,59 +487,59 @@ enum MixerFeatureTests {
         // `AudioHardwareDestroyProcessTap` parks inside the HAL. Serialized,
         // that one parked call held every later engine's aggregate and tap
         // alive behind it; unbounded, each one strands a worker of the shared
-        // pool, which is issue #971's exhaustion. Read as source text because
-        // the engine lives in a file the test target does not compile.
-        let mixerCode = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Audio/AppVolumeMixer.swift",
-            encoding: .utf8)) ?? ""
-        let teardownQueueSetup = mixerCode.range(of: "let teardownQueue").flatMap { start in
-            mixerCode.range(of: "}()", range: start.upperBound..<mixerCode.endIndex)
-                .map { String(mixerCode[start.upperBound..<$0.lowerBound]) }
-        } ?? ""
-        suite.expect(teardownQueueSetup.contains("maxConcurrentOperationCount"),
+        // pool, which is issue #971's exhaustion.
+        let teardownBound = MixerEngineTeardown.queue.maxConcurrentOperationCount
+        suite.expect(teardownBound == MixerEngineTeardown.maximumConcurrent
+                && teardownBound > 1
+                && teardownBound != OperationQueue.defaultMaxConcurrentOperationCount,
                "engine teardown runs on a queue with a concurrency bound, not one thread and not one per engine")
 
-        // The IO callback's two exits, read the same way: a cycle that never
-        // found its tap must hand the device silence rather than what the HAL
-        // left in the buffer (issue #326), and must leave without counting
-        // itself alive — a callback that resolved no tap has done nothing for
-        // the app that a callback which never ran would not have done, and
-        // `tapChannels` is read once when the engine is built, so input that
-        // never carried that shape never will. Ordering alone would not say
-        // that: a count inside the missed-tap branch also reads as "after the
-        // lookup". The branch is cut out by brace matching and the two halves
-        // are checked apart.
-        let mixerBody = mixerCode
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let missedTapBrace = mixerBody
-            .range(of: "MixerRender.tapBufferIndex(in: inputBuffers")
-            .flatMap { mixerBody.range(of: "else {", range: $0.upperBound..<mixerBody.endIndex) }
-        var missedTapBranch = ""
-        var afterMissedTap = ""
-        if let missedTapBrace {
-            var depth = 1
-            var index = missedTapBrace.upperBound
-            while index < mixerBody.endIndex, depth > 0 {
-                if mixerBody[index] == "{" { depth += 1 }
-                if mixerBody[index] == "}" { depth -= 1 }
-                index = mixerBody.index(after: index)
-            }
-            if depth == 0 {
-                missedTapBranch = String(mixerBody[missedTapBrace.upperBound..<mixerBody.index(before: index)])
-                afterMissedTap = String(mixerBody[index...])
-            }
+        // The IO callback's two exits: a cycle that never found its tap must
+        // hand the device silence rather than what the HAL left in the buffer
+        // (issue #326), and must leave without counting itself alive — a
+        // callback that resolved no tap has done nothing for the app that a
+        // callback which never ran would not have done, and `tapChannels` is
+        // read once when the engine is built, so input that never carried
+        // that shape never will.
+        let cycleTap = UnsafeMutablePointer<Float>.allocate(capacity: 4)
+        cycleTap.update(repeating: 0.5, count: 4)
+        let cycleOutput = UnsafeMutablePointer<Float>.allocate(capacity: 4)
+        let cycleInputList = AudioBufferList.allocate(maximumBuffers: 1)
+        let cycleOutputList = AudioBufferList.allocate(maximumBuffers: 1)
+        cycleOutputList[0] = AudioBuffer(mNumberChannels: 2,
+                                         mDataByteSize: 4 * UInt32(MemoryLayout<Float>.size),
+                                         mData: UnsafeMutableRawPointer(cycleOutput))
+        var countedCycles = 0
+        var gainReads = 0
+        func cycle(tap: AudioBuffer) -> Int {
+            cycleOutput.update(repeating: -99, count: 4)
+            cycleInputList[0] = tap
+            return MixerRender.renderCycle(input: cycleInputList, output: cycleOutputList, tapChannels: 2,
+                                           gain: { gainReads += 1; return 1 },
+                                           countCycle: { countedCycles += 1 })
         }
-        suite.expect(missedTapBranch.contains("MixerRender.silence(outputBuffers)")
-               && missedTapBranch.contains("return"),
+        let missedTapFrames = cycle(tap: AudioBuffer(mNumberChannels: 2,
+                                                     mDataByteSize: 4 * UInt32(MemoryLayout<Float>.size),
+                                                     mData: nil))
+        suite.expect(missedTapFrames == 0
+                && Array(UnsafeBufferPointer(start: cycleOutput, count: 4)) == [0, 0, 0, 0],
                "a callback that finds no tap silences the output before it leaves")
-        suite.expect(!missedTapBranch.isEmpty && !missedTapBranch.contains("cycles.increment()"),
+        suite.expect(countedCycles == 0 && gainReads == 0,
                "a callback that finds no tap leaves without counting a cycle")
-        let framesGuard = afterMissedTap.range(of: "guard frames > 0 else")?.upperBound
-        let cycleCount = afterMissedTap.range(of: "cycles.increment()")?.lowerBound
-        suite.expect(framesGuard != nil && cycleCount != nil && framesGuard! < cycleCount!,
+        let emptyTapFrames = cycle(tap: AudioBuffer(mNumberChannels: 2, mDataByteSize: 0,
+                                                    mData: UnsafeMutableRawPointer(cycleTap)))
+        let emptyTapCounted = countedCycles
+        let playedFrames = cycle(tap: AudioBuffer(mNumberChannels: 2,
+                                                  mDataByteSize: 4 * UInt32(MemoryLayout<Float>.size),
+                                                  mData: UnsafeMutableRawPointer(cycleTap)))
+        suite.expect(emptyTapFrames == 0 && emptyTapCounted == 0
+                && playedFrames == 2 && countedCycles == 1
+                && Array(UnsafeBufferPointer(start: cycleOutput, count: 4)) == [0.5, 0.5, 0.5, 0.5],
                "a cycle is counted only once the engine has handed the device audio")
+        cycleTap.deallocate()
+        cycleOutput.deallocate()
+        free(cycleInputList.unsafeMutablePointer)
+        free(cycleOutputList.unsafeMutablePointer)
 
         let identifiedRow = MixerRoutingSupport.rowIdentity(bundleIdentifier: "com.example.Player",
                                                            ownerPid: 501,

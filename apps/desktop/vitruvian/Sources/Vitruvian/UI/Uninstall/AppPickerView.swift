@@ -150,6 +150,22 @@ package struct AppPickerView: View {
     }
 }
 
+extension AppPickerView {
+    /// The picker both uninstaller surfaces open. It lists only the apps the
+    /// uninstaller accepts (`UninstallerSupport.offeredApplications`), so
+    /// nothing it offers is then silently turned down. `installed` is what it
+    /// filters: the apps installed on this Mac.
+    package static func uninstaller(compact: Bool = false,
+                                    onCancel: @escaping () -> Void,
+                                    onSelect: @escaping (URL) -> Void,
+                                    installed: @escaping @Sendable () -> [InstalledApps.InstalledApp] = {
+                                        InstalledApps.installedApplications()
+                                    }) -> AppPickerView {
+        AppPickerView(compact: compact, onCancel: onCancel, onSelect: onSelect,
+                      loadApps: { UninstallerSupport.offeredApplications(from: installed()) })
+    }
+}
+
 private struct AppPickerRow: View {
     let app: InstalledApps.InstalledApp
     var compact: Bool
@@ -160,15 +176,15 @@ private struct AppPickerRow: View {
                 .resizable()
                 .frame(width: compact ? 20 : 28, height: compact ? 20 : 28)
             VStack(alignment: .leading, spacing: 1) {
-                let location = app.identity.flatMap(InstalledApps.location(for:))
+                let caption = InstalledApps.pickerCaption(for: app)
                 Text(app.name)
                     .font(.system(size: compact ? 11 : 13, weight: .medium))
                     .lineLimit(1)
-                Text(location ?? app.bundleID ?? app.url.path)
+                Text(caption.text)
                     .font(.system(size: compact ? 9 : 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(location == nil ? .middle : .head)
+                    .truncationMode(caption.cut.truncationMode)
             }
             Spacer(minLength: 0)
         }

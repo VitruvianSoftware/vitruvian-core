@@ -10,7 +10,9 @@ adapter), and `Tests/generate_sources.py` decides which files it extracts for
 the tests. Bazel needs all four as static lists. This script derives them and
 either rewrites `bazel/sources.bzl` (default) or, with `--check`, fails when the
 committed file has drifted, so an upstream change that adds a test source cannot
-silently drop it from the Bazel build.
+silently drop it from the Bazel build. `--check` also fails when build.sh stops
+compiling the Now Playing adapter's entry point or stops staging the adapter and
+its perl loader in the bundle, which the Bazel bundle carries too.
 
     bazel run //apps/desktop/vitruvian:sync_sources           # rewrite
     bazel test //apps/desktop/vitruvian:sources_in_sync_test  # check
@@ -70,6 +72,41 @@ def now_playing_sources(build_sh):
         '-o "build/$NOW_PLAYING_ADAPTER"',
     )
     return _swift_paths(block)
+
+
+# The Now Playing reader is /usr/bin/perl running Resources/now-playing.pl,
+# which loads the adapter dylib from Contents/Frameworks: an app missing either
+# one reads nothing. BUILD stages the same two (`additional_contents` and
+# `resources` of :Vitruvian).
+NOW_PLAYING_ENTRY = "Sources/NowPlayingAdapter/NowPlayingAdapter.swift"
+NOW_PLAYING_STAGING = {
+    "Contents/Frameworks/$NOW_PLAYING_ADAPTER": "build/$NOW_PLAYING_ADAPTER",
+    "Contents/Resources/now-playing.pl": "Resources/now-playing.pl",
+}
+
+
+def staged_files(build_sh):
+    """What build.sh copies into the bundle, as {path in the bundle: source}."""
+    return {
+        dest: source
+        for source, dest in re.findall(
+            r'^cp "?([^"\s]+)"? "\$STAGE/(Contents/[^"]+)"$', build_sh, re.M
+        )
+    }
+
+
+def now_playing_problems(build_sh):
+    """Why the app build.sh assembles could not read Now Playing."""
+    problems = []
+    if NOW_PLAYING_ENTRY not in now_playing_sources(build_sh):
+        problems.append(
+            f"build.sh no longer compiles {NOW_PLAYING_ENTRY} into the adapter"
+        )
+    staged = staged_files(build_sh)
+    for dest, source in NOW_PLAYING_STAGING.items():
+        if staged.get(dest) != source:
+            problems.append(f"build.sh no longer stages {source} as {dest}")
+    return problems
 
 
 CORE_IMPORT = "import VitruvianCore\nimport VitruvianDesign\nimport VitruvianServices\nimport VitruvianUI\n"
@@ -164,6 +201,11 @@ def main():
     expected = render(app_dir)
     target = app_dir / "bazel" / "sources.bzl"
     if args.check:
+        problems = now_playing_problems((app_dir / "build.sh").read_text())
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        if problems:
+            return 1
         current = target.read_text() if target.exists() else ""
         if current != expected:
             print(

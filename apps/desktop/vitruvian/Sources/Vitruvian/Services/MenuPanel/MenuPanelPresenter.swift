@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// A display as the menu panel sees it. `NSScreen` is one.
 @MainActor
@@ -70,6 +71,19 @@ package enum AppKitMenuPanel: MenuPanelPlatform {
     package typealias Window = NSWindow
     package typealias Button = NSStatusBarButton
     package typealias Popover = NSPopover
+}
+
+extension AppKitMenuPanel {
+    /// The invisible point a metric popover hangs from while it moves between
+    /// status items, before it is configured: a floating overlay, which window
+    /// managers do not list.
+    @MainActor
+    package static func makePositioningPanel(at anchor: CGRect) -> NSPanel {
+        OverlayPanel(contentRect: anchor,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
 }
 
 extension NSScreen: MenuPanelScreen {}

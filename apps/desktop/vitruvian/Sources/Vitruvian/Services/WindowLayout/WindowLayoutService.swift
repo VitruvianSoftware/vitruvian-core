@@ -42,7 +42,7 @@ package final class WindowLayoutService: ObservableObject {
     private var lastActions: [WindowLayoutWindowKey: WindowLayoutAction] = [:]
     // Where each window's last placement left it, as requested and as read
     // back, minimum sizes included: the side size cycle only advances from there.
-    private var settledFrames: [WindowLayoutWindowKey: WindowLayoutSettledFrame] = [:]
+    private var settledFrames = WindowLayoutSettledFrames()
     private var hotKeyRefs: [WindowLayoutAction: EventHotKeyRef] = [:]
     private var eventHandler: EventHandlerRef?
     private var registeredShortcuts: [WindowLayoutAction: GlobalShortcut] = [:]
@@ -286,7 +286,7 @@ package final class WindowLayoutService: ObservableObject {
             frameHistory.discardLatest(for: target.key)
             return finish(.failure(.failed))
         }
-        let sideRepeatCyclesThirds = WindowLayoutSideRepeat.cyclesThirds
+        let sideRepeatCyclesThirds = WindowLayoutSideRepeat.cyclesThirds()
         if let crossing = WindowLayoutGeometry.displayCrossing(for: action,
                                                                previousAction: lastActions[target.key],
                                                                sideRepeatCyclesThirds: sideRepeatCyclesThirds),
@@ -333,17 +333,12 @@ package final class WindowLayoutService: ObservableObject {
         let previousAction = cyclesRepeatedAction ? lastActions[target.key] : nil
         let cyclePress = WindowLayoutGeometry.sideCyclePress(for: action,
                                                              cyclesThirds: sideRepeatCyclesThirds)
-        // The size cycle only advances when the previous placement came from
-        // the same side key and the window still sits where that step left
-        // it: another shortcut, or a window dragged or resized by hand in
-        // between, starts over at the half.
-        let cyclesSides = cyclePress != nil
-            && previousAction != nil
-            && WindowLayoutGeometry.sideCycleResumes(pressing: action,
-                                                     settled: settledFrames[target.key])
-            && WindowLayoutGeometry.sideCycleContinues(current: target.frame,
-                                                       settled: settledFrames[target.key],
-                                                       tolerance: frameTolerance)
+        let cyclesSides = settledFrames.cycles(pressing: action,
+                                               cyclePress: cyclePress,
+                                               previousAction: previousAction,
+                                               window: target.key,
+                                               current: target.frame,
+                                               tolerance: frameTolerance)
         let effectiveAction = WindowLayoutGeometry.effectiveAction(for: action,
                                                                    current: currentRect,
                                                                    visibleFrame: visibleFrame,
@@ -354,13 +349,9 @@ package final class WindowLayoutService: ObservableObject {
                                   visibleFrame: visibleFrame)
         if placement.frame == target.frame {
             lastActions[target.key] = effectiveAction
-            if let cyclePress {
-                settledFrames[target.key] = WindowLayoutSettledFrame(requested: target.frame,
-                                                                     actual: target.frame,
-                                                                     pressedAction: cyclePress)
-            } else {
-                settledFrames.removeValue(forKey: target.key)
-            }
+            settledFrames.forget(target.key)
+            settledFrames.placed(target.key, at: target.frame, cyclePress: cyclePress,
+                                 tolerance: frameTolerance, readBack: { target.frame })
             return finish(.success(restored: false))
         }
         frameHistory.record(historyFrame ?? target.frame, for: target.key)
@@ -480,7 +471,7 @@ package final class WindowLayoutService: ObservableObject {
         activeWindows.insert(current)
         frameHistory.removeStaleWindows(keeping: activeWindows)
         lastActions = lastActions.filter { activeWindows.contains($0.key) }
-        settledFrames = settledFrames.filter { activeWindows.contains($0.key) }
+        settledFrames.removeStaleWindows(keeping: activeWindows)
     }
 
     private func activeWindowKeys() -> Set<WindowLayoutWindowKey>? {
@@ -543,25 +534,19 @@ package final class WindowLayoutService: ObservableObject {
         assistiveModeSuspensions[windowID] = EnhancedUserInterfaceSuspension.suspend(forAppOf: window)
 
         let original = self.frame(of: window)
-        settledFrames.removeValue(forKey: windowKey)
+        settledFrames.forget(windowKey)
         if attempt(frame, targetRect: targetRect, action: action, on: window) {
             assistiveModeSuspensions.removeValue(forKey: windowID)?.resume()
             // Only the side size cycle uses the settled frame, so the read-back
             // and its later refresh run only for a press that may cycle.
-            if let cyclePress {
-                let actual = self.frame(of: window) ?? frame
-                settledFrames[windowKey] = WindowLayoutSettledFrame(requested: frame,
-                                                                    actual: actual,
-                                                                    pressedAction: cyclePress)
-                if !actual.isClose(to: frame, tolerance: frameTolerance) {
-                    // The lenient acceptance may have read a frame the app has
-                    // not committed yet (issue #334); look again once it has,
-                    // so a late, clamped resize still counts as the settled frame.
-                    scheduleSettledFrameRefresh(for: window,
-                                                windowKey: windowKey,
-                                                targetRect: targetRect,
-                                                action: action)
-                }
+            if settledFrames.placed(windowKey, at: frame, cyclePress: cyclePress,
+                                    tolerance: frameTolerance, readBack: { self.frame(of: window) }) {
+                // Look again once the app has committed the placement, so a
+                // late, clamped resize still counts as the settled frame.
+                scheduleSettledFrameRefresh(for: window,
+                                            windowKey: windowKey,
+                                            targetRect: targetRect,
+                                            action: action)
             }
             return true
         }
@@ -599,21 +584,12 @@ package final class WindowLayoutService: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.settleTimers[windowID] = nil
-                // The user may have resized or dragged the window by hand in
-                // the meantime; the lenient acceptance alone would record that
-                // as settled and let the next side action cycle from it. Only a
-                // frame that moved toward the request counts as the late commit.
-                guard let settled = self.settledFrames[windowKey],
-                      let actual = self.frame(of: window),
-                      WindowLayoutGeometry.settledFrameRefreshAccepts(actual: actual,
-                                                                      settled: settled,
-                                                                      tolerance: self.frameTolerance),
-                      actual.isClose(to: settled.requested, tolerance: self.frameTolerance)
-                        || self.accepted(actual: actual, targetRect: targetRect, action: action)
-                else { return }
-                self.settledFrames[windowKey] = WindowLayoutSettledFrame(requested: settled.requested,
-                                                                         actual: actual,
-                                                                         pressedAction: settled.pressedAction)
+                // Only a frame that moved toward the request counts as the
+                // late commit, never a change by hand in the meantime.
+                self.settledFrames.refresh(windowKey,
+                                           tolerance: self.frameTolerance,
+                                           readBack: { self.frame(of: window) },
+                                           accepts: { self.accepted(actual: $0, targetRect: targetRect, action: action) })
             }
         }
         settleTimers[windowID] = timer
@@ -680,14 +656,11 @@ package final class WindowLayoutService: ObservableObject {
     private func concludeSettle(_ context: SettleContext, success: Bool) {
         assistiveModeSuspensions.removeValue(forKey: context.windowID)?.resume()
         if success {
-            if let cyclePress = context.cyclePress {
-                settledFrames[context.windowKey] = WindowLayoutSettledFrame(requested: context.frame,
-                                                                            actual: frame(of: context.window) ?? context.frame,
-                                                                            pressedAction: cyclePress)
-            }
+            settledFrames.placed(context.windowKey, at: context.frame, cyclePress: context.cyclePress,
+                                 tolerance: frameTolerance, readBack: { self.frame(of: context.window) })
             return
         }
-        settledFrames.removeValue(forKey: context.windowKey)
+        settledFrames.forget(context.windowKey)
         if let original = context.original {
             applyFrame(original, on: context.window)
         }
@@ -1123,10 +1096,7 @@ package final class WindowLayoutService: ObservableObject {
         if let directionalIndicatorPanel {
             panel = directionalIndicatorPanel
         } else {
-            panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+            panel = Self.makeOverlayPanel()
             panel.backgroundColor = .clear
             panel.isOpaque = false
             panel.hasShadow = true
@@ -1568,11 +1538,18 @@ package final class WindowLayoutService: ObservableObject {
         }
     }
 
+    /// The directional indicator's and the edge snap preview's panel, before
+    /// either is configured: a floating overlay, which window managers do not
+    /// list.
+    package static func makeOverlayPanel() -> NSPanel {
+        OverlayPanel(contentRect: .zero,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
     private func makeEdgeSnapPreviewPanel() -> NSPanel {
-        let panel = OverlayPanel(contentRect: .zero,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makeOverlayPanel()
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false

@@ -19,6 +19,11 @@ package struct CleaningUnlockCounter {
     package private(set) var progress = 0
     private var lastKeyTime: TimeInterval = -.greatestFiniteMagnitude
 
+    /// The window Cleaning Mode ships with. At 2s, someone pressing Escape
+    /// slower than once per two seconds could never unlock (#697); see
+    /// `CleaningModeManager` for what the window still guards against.
+    package static let shippedPressWindow: TimeInterval = 6.0
+
     package init(requiredKeyCode: Int64, threshold: Int, pressWindow: TimeInterval) {
         self.requiredKeyCode = requiredKeyCode
         self.threshold = threshold

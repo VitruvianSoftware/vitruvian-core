@@ -283,6 +283,13 @@ package final class FeatureRuntime: ObservableObject {
         }
     }
 
+    /// A grant changed while the app runs, say Accessibility granted during
+    /// onboarding: every installed feature that declares it is synced again,
+    /// so it comes up, or goes down, without a relaunch.
+    package func permissionDidChange(_ permission: AppPermission) {
+        sync(AppFeature.dependents(on: permission))
+    }
+
     /// One bump for Settings, then the environment's own follow-up.
     private func finishAvailabilityChange() {
         revision += 1
@@ -499,6 +506,41 @@ package enum FeatureBindingAction: Hashable, CaseIterable {
     case scratchpad, commandBar
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
     case appUpdates, monitorPlan, monitorAlerts, fanControl
+}
+
+/// The pointer and keyboard features a normal quit takes down at once, in
+/// this order. Each one is forced off on the spot, whatever its preference
+/// says: switching a feature off may wait for the Up of a button still held,
+/// and a quitting process has no future Up to wait for. Named so a test can
+/// read the list without bringing any service to life.
+package enum QuitInputRelease: CaseIterable {
+    case focusFollowsMouse, windowMaximizer, windowLayout, keyboardDebounce, mouseClickDebounce
+    case textSnippets, superKey, appSwitcher, mouseButtonShortcuts, middleClick, scrollInverter, smoothScroll
+
+    /// Takes every one down, in order. Each touches its `.shared` whether or
+    /// not the service ran this session.
+    @MainActor package static func releaseAll() {
+        for feature in allCases { feature.release() }
+    }
+
+    @MainActor private func release() {
+        switch self {
+        case .focusFollowsMouse: FocusFollowsMouseService.shared.stop()
+        case .windowMaximizer: WindowMaximizer.shared.stop()
+        case .windowLayout: WindowLayoutService.shared.suspend()
+        case .keyboardDebounce: KeyboardDebounceService.shared.suspend()
+        case .mouseClickDebounce: MouseClickDebounceService.shared.suspend()
+        case .textSnippets: TextSnippetService.shared.suspend()
+        // Takes the Super key mapping back out before the process goes away.
+        case .superKey: SuperKeyService.shared.suspend()
+        // Dock's app and window switcher hotkeys persist after quit.
+        case .appSwitcher: AppSwitcher.shared.suspend()
+        case .mouseButtonShortcuts: MouseButtonShortcutService.shared.suspend()
+        case .middleClick: MiddleClickService.shared.suspend()
+        case .scrollInverter: ScrollInverter.shared.suspend()
+        case .smoothScroll: SmoothScrollService.shared.suspend()
+        }
+    }
 }
 
 /// Hardware a feature needs and this Mac may not have. One switch answers

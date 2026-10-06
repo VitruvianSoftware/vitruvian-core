@@ -771,22 +771,24 @@ package final class ShelfService: ObservableObject {
             // Scheduled from here, on the main run loop.
             MainActor.assumeIsolated {
                 guard let self else { return }
-                guard self.dockedDragActive || self.sawGestureStart else {
+                switch ShelfDragWatchdog.step(
+                    dockedDragActive: self.dockedDragActive,
+                    sawGestureStart: self.sawGestureStart,
+                    buttonDown: CGEventSource.buttonState(.combinedSessionState, button: .left)) {
+                case .stop:
                     self.dockedWatchdog?.invalidate()
                     self.dockedWatchdog = nil
-                    return
-                }
-                guard CGEventSource.buttonState(.combinedSessionState, button: .left) else {
+                case .endDrag:
                     self.closeDragGesture()
                     self.endDockedDrag()
                     self.endEdgePeekDrag()
-                    return
+                case .advance(let dock):
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if dock, self.updateDockedProximity(at: now) {
+                        self.scheduleDockedSync()
+                    }
+                    self.handleDragForEdge(at: now)
                 }
-                let now = ProcessInfo.processInfo.systemUptime
-                if self.dockedDragActive, self.updateDockedProximity(at: now) {
-                    self.scheduleDockedSync()
-                }
-                self.handleDragForEdge(at: now)
             }
         }
         dockedWatchdog?.tolerance = 0.05
@@ -1082,11 +1084,18 @@ package final class ShelfService: ObservableObject {
         }
     }
 
+    /// A Shelf panel, the floating card (and its edge peek) or the docked pill
+    /// and card, before it is configured: a floating overlay, which window
+    /// managers do not list, that takes drops and key status.
+    package static func makePanel() -> NSPanel {
+        KeyableShelfPanel(contentRect: .zero,
+                          styleMask: [.borderless, .nonactivatingPanel],
+                          backing: .buffered, defer: false)
+    }
+
     private func ensureDockedPanel() -> NSPanel {
         if let dockedPanel { return dockedPanel }
-        let panel = KeyableShelfPanel(contentRect: .zero,
-                                      styleMask: [.borderless, .nonactivatingPanel],
-                                      backing: .buffered, defer: false)
+        let panel = Self.makePanel()
         panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -2262,7 +2271,7 @@ package final class ShelfService: ObservableObject {
                 // dropped entry's file is still there and still referenced,
                 // unlike a `sanitized` drop, whose file is gone by definition.
                 // Both wait for a launch that can read the store again.
-                guard case .items = store else { return }
+                guard store.isWhole else { return }
                 if ShelfPersistenceSupport.needsPersistAfterRestore(
                     restoredIsEmpty: restored.isEmpty,
                     liveItemCount: liveItemCount) {
@@ -2453,10 +2462,20 @@ package final class ShelfService: ObservableObject {
     /// Handles the floating panel's explicit close button. Automatic hiding,
     /// shortcut toggling and collapsing the docked shelf keep their contents.
     package func close() {
-        if UserDefaults.standard.bool(forKey: DefaultsKey.shelfClearOnClose) {
+        if ShelfDismissal.close.clearsItems(
+            clearOnClose: UserDefaults.standard.bool(forKey: DefaultsKey.shelfClearOnClose)) {
             clear()
         }
         hide()
+    }
+
+    /// Takes a shelf surface away the way its button asks.
+    package func dismiss(_ dismissal: ShelfDismissal) {
+        switch dismissal {
+        case .close: close()
+        case .collapseDocked: collapseDocked()
+        case .hide: hide()
+        }
     }
 
     package func noteInteraction() {
@@ -2659,9 +2678,7 @@ package final class ShelfService: ObservableObject {
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyableShelfPanel(contentRect: .zero,
-                                      styleMask: [.borderless, .nonactivatingPanel],
-                                      backing: .buffered, defer: false)
+        let panel = Self.makePanel()
         panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear

@@ -94,7 +94,7 @@ package enum WindowActivator {
         // Only paths that schedule a focus pass need a snapshot. Include all
         // of the owner's windows, even minimized, off-Space and auxiliary ones.
         let knownWindowIDs = retry || sourceWasFullscreen || item.isFullscreen
-            ? windowIDs(ownerPID: windowOwnerPID, options: .optionAll)
+            ? windowIDs(ownerPID: windowOwnerPID)
             : []
         watchTargetMinimizeIfNeeded(windowID: windowID,
                                     targetPID: item.pid,
@@ -286,18 +286,52 @@ package enum WindowActivator {
     /// ends at the drop point rather than flying to the window's old place.
     @discardableResult
     package static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint) -> Bool {
-        guard Permissions.accessibilityGranted,
-              let windowID = item.windowID,
+        guard Permissions.accessibilityGranted else { return false }
+        return place(item, origin: origin, pointer: pointer, calls: livePlacement)
+    }
+
+    /// What placing a dropped window asks of the system. `live` moves real
+    /// windows; tests pass doubles that record the steps instead.
+    package struct PlacementCalls {
+        package var unhideApp: (_ pid: pid_t) -> Void
+        package var setOrigin: (_ origin: CGPoint, _ windowID: CGWindowID, _ pid: pid_t) -> Bool
+        package var moveToVisibleSpace: (_ windowID: CGWindowID, _ pointer: CGPoint) -> Void
+        package var restore: (_ windowID: CGWindowID, _ pid: pid_t) -> Void
+
+        package init(unhideApp: @escaping (_ pid: pid_t) -> Void,
+                     setOrigin: @escaping (_ origin: CGPoint, _ windowID: CGWindowID, _ pid: pid_t) -> Bool,
+                     moveToVisibleSpace: @escaping (_ windowID: CGWindowID, _ pointer: CGPoint) -> Void,
+                     restore: @escaping (_ windowID: CGWindowID, _ pid: pid_t) -> Void) {
+            self.unhideApp = unhideApp
+            self.setOrigin = setOrigin
+            self.moveToVisibleSpace = moveToVisibleSpace
+            self.restore = restore
+        }
+    }
+
+    private static var livePlacement: PlacementCalls {
+        PlacementCalls(unhideApp: { _ = NSRunningApplication(processIdentifier: $0)?.unhide() },
+                       setOrigin: { setWindowOrigin($0, windowID: $1, pid: $2) },
+                       moveToVisibleSpace: { _ = SpaceWindowBridge.moveToVisibleSpace($0, near: $1) },
+                       restore: { _ = setWindowMinimized(false, windowID: $0, pid: $1) })
+    }
+
+    /// The drop's steps with the system calls passed in. Whether the window is
+    /// minimized is not asked: restoring one that is already out is a no-op.
+    @discardableResult
+    package static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint,
+                              calls: PlacementCalls) -> Bool {
+        guard let windowID = item.windowID,
               item.windowOwnerPID != ProcessInfo.processInfo.processIdentifier
         else { return false }
         let pid = item.windowOwnerPID
 
         if item.isAppHidden {
-            NSRunningApplication(processIdentifier: item.pid)?.unhide()
+            calls.unhideApp(item.pid)
         }
-        let placed = setWindowOrigin(origin, windowID: windowID, pid: pid)
-        SpaceWindowBridge.moveToVisibleSpace(windowID, near: pointer)
-        setWindowMinimized(false, windowID: windowID, pid: pid)
+        let placed = calls.setOrigin(origin, windowID, pid)
+        calls.moveToVisibleSpace(windowID, pointer)
+        calls.restore(windowID, pid)
         return placed
     }
 
@@ -601,8 +635,18 @@ package enum WindowActivator {
         }
     }
 
-    private static func windowIDs(ownerPID: pid_t, options: CGWindowListOption) -> Set<CGWindowID> {
-        let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+    /// The one scope every focus-retry window list is taken in: the snapshot
+    /// an activation or a hop takes and the live list each retry compares it
+    /// against. All of the owner's windows, minimized, off-Space and
+    /// auxiliary ones included. The on-screen list lags: a window the app has
+    /// just opened is focused, and answered as focused by Accessibility,
+    /// before the window server composites it, so an on-screen list compared
+    /// against an all-windows snapshot reported nothing new in exactly the
+    /// race the guard exists for.
+    package static var focusWindowListScope: CGWindowListOption { .optionAll }
+
+    private static func windowIDs(ownerPID: pid_t) -> Set<CGWindowID> {
+        let raw = CGWindowListCopyWindowInfo(focusWindowListScope, kCGNullWindowID) as? [[String: Any]] ?? []
         return SwitcherSupport.focusRetryWindowIDs(in: raw, ownerPID: ownerPID)
     }
 
@@ -633,13 +677,8 @@ package enum WindowActivator {
             sourcePID: sourcePID,
             frontmostPID: currentFrontmostPID(),
             targetMinimizedState: minimizedState,
-            // The same scope the snapshot used. The on-screen list lags: a
-            // window the app has just opened is focused, and answered as
-            // focused by Accessibility, before the window server composites
-            // it — so comparing on-screen windows against an all-windows
-            // snapshot reported nothing new in exactly the race this guard
-            // exists for, and the focus reading below was never taken.
-            targetAppWindowIDs: windowIDs(ownerPID: targetWindowOwnerPID, options: .optionAll),
+            // The same scope the snapshot used; see focusWindowListScope.
+            targetAppWindowIDs: windowIDs(ownerPID: targetWindowOwnerPID),
             targetAppFocusedWindowID: currentFocusedWindowID(),
             targetWindowIsFocused: currentFocusedWindowID() == windowID,
             stopsWhenTargetFocused: stopsWhenTargetFocused,
@@ -847,7 +886,7 @@ package enum WindowActivator {
     /// Every window the owner has right now, in the scope the retry guard
     /// compares against. Taken by a hop at the moment it begins.
     package static func focusSnapshot(ownerPID: pid_t) -> Set<CGWindowID> {
-        windowIDs(ownerPID: ownerPID, options: .optionAll)
+        windowIDs(ownerPID: ownerPID)
     }
 
     /// Focus pass run by SpaceHop once the target window's Space became
@@ -863,20 +902,38 @@ package enum WindowActivator {
                                    windowOwnerPID: pid_t,
                                    sourcePID: pid_t?,
                                    state: SwitcherWindowFocusRetryState) {
-        guard let app = NSRunningApplication(processIdentifier: appPID), !app.isTerminated else { return }
-        // Travelling fronts whatever tops each desktop on the way, so this
-        // pass judges the app's own focus rather than who is in front.
-        guard shouldContinueFocusRetry(windowID: windowID,
-                                       targetPID: appPID,
-                                       targetWindowOwnerPID: windowOwnerPID,
-                                       sourcePID: sourcePID,
-                                       state: state,
-                                       ignoresForeground: true) else { return }
-        prepareWindowForActivation(windowID: windowID, pid: windowOwnerPID)
+        focusAfterSpaceHop(windowID: windowID,
+                           appPID: appPID,
+                           windowOwnerPID: windowOwnerPID,
+                           // Travelling fronts whatever tops each desktop on the
+                           // way, so this pass judges the app's own focus rather
+                           // than who is in front.
+                           shouldContinue: {
+                               shouldContinueFocusRetry(windowID: windowID,
+                                                        targetPID: appPID,
+                                                        targetWindowOwnerPID: windowOwnerPID,
+                                                        sourcePID: sourcePID,
+                                                        state: state,
+                                                        ignoresForeground: true)
+                           },
+                           calls: liveActivation)
+    }
+
+    /// The same pass with its guard and its system calls passed in. The guard
+    /// is asked before anything is brought forward.
+    package static func focusAfterSpaceHop<App: SwitcherActivatableApp>(windowID: CGWindowID,
+                                                                        appPID: pid_t,
+                                                                        windowOwnerPID: pid_t,
+                                                                        shouldContinue: () -> Bool,
+                                                                        calls: ActivationCalls<App>) {
+        guard let app = calls.running(appPID), !app.isTerminated else { return }
+        guard shouldContinue() else { return }
+        _ = calls.prepareWindow(windowID, windowOwnerPID)
         activateApp(app,
                     plan: SwitcherSupport.activationPlan(targetsSpecificWindow: true),
                     windowID: windowID,
-                    windowOwnerPID: windowOwnerPID)
+                    windowOwnerPID: windowOwnerPID,
+                    calls: calls)
     }
 
     private static func axElement(windowID: CGWindowID, in axApp: AXUIElement) -> AXUIElement? {

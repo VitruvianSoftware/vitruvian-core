@@ -191,7 +191,7 @@ package final class WindowUseTracker: @unchecked Sendable {
         // self-activating on the way out; ranking it would put Vitruvian ahead
         // of the app the user left. Every other activation of Vitruvian, the
         // Dock icon and its own windows included, is a real use and is kept.
-        let own = pid == ProcessInfo.processInfo.processIdentifier && ActivationHandoff.isHandingOff
+        let own = ActivationHandoff.isHandoffActivation(of: pid)
         // The application half is exact and free, so it lands right away; the
         // window half needs Accessibility and happens on the watcher thread.
         let request = stateLock.withLock { () -> WindowFocusHistory.Request? in

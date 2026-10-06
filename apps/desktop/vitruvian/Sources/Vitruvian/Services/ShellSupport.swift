@@ -135,6 +135,9 @@ package enum Sudoers {
         "/etc/sudoers.d/vitruvian-utils-clamshell",
         "/etc/sudoers.d/vitru-clamshell",
     ]
+    /// Every rule file the app looks for and removes, under the current name
+    /// and each earlier one. `Tools/uninstall.sh` looks for the same files.
+    package static let ruleFiles = [rulePath] + legacyRulePaths
 
     /// Proves the passwordless path by running it; see `SleepOverride`, which
     /// owns the writes and the probes.
@@ -146,7 +149,7 @@ package enum Sudoers {
     /// Uninstall offers the removal prompt from this instead of `isConfigured`,
     /// so a rule that stopped working still gets cleaned up.
     package static var ruleFilesPresent: Bool {
-        ([rulePath] + legacyRulePaths).contains { FileManager.default.fileExists(atPath: $0) }
+        ruleFiles.contains { FileManager.default.fileExists(atPath: $0) }
     }
 
     /// What installing the rule runs as administrator. `SleepOverride.install`
@@ -164,7 +167,7 @@ package enum Sudoers {
 
     package static func remove(completion: @escaping (Bool) -> Void) {
         // Also removes the rules left behind by earlier app names.
-        let all = ([rulePath] + legacyRulePaths).joined(separator: " ")
+        let all = ruleFiles.joined(separator: " ")
         AdminShell.run("rm -f \(all)",
                        prompt: L10n.shared.s.adminPromptSudoersRemove) { ok in
             completion(ok)

@@ -88,9 +88,20 @@ package final class RadialMenuService: ObservableObject {
         // held summoner released, so a wheel still up when the tap is handed
         // back would come back stuck in hold phase with no release coming.
         SessionActivity.shared.onChange { [weak self] active in
-            if !active { self?.endSession() }
-            self?.syncMouseTap()
+            RadialMenuService.sessionChanged(active: active,
+                                             endSession: { self?.endSession() },
+                                             syncTap: { self?.syncMouseTap() })
         }
+    }
+
+    /// What a change of login session does to the wheel: `syncTap` hands the
+    /// button tap back on resign and builds it again from the preferences on
+    /// the way in. On resign the open wheel ends first, because the tap is the
+    /// only thing that sees a held summoner released: a wheel still up when
+    /// the tap goes would come back stuck in hold phase with no release coming.
+    package static func sessionChanged(active: Bool, endSession: () -> Void, syncTap: () -> Void) {
+        if !active { endSession() }
+        syncTap()
     }
 
     package var sessionActive: Bool { !stack.isEmpty && !dismissal.isActive }
@@ -270,12 +281,22 @@ package final class RadialMenuService: ObservableObject {
         // Every press and release of every extra button lands here, so the
         // cheap question comes first: the wheels themselves are decoded only
         // once a press turns out to be a summoner, and only to open one.
-        guard RadialMenuSupport.claimedMouseButtons(
-            defaults.data(forKey: DefaultsKey.radialMenuProfiles),
-            defaults: defaults
-        ).contains(button) else {
-            return Unmanaged.passUnretained(event)
-        }
+        let action = RadialMenuSupport.mouseTapAction(
+            isPress: type == .otherMouseDown,
+            button: button,
+            claimed: RadialMenuSupport.claimedMouseButtons(
+                defaults.data(forKey: DefaultsKey.radialMenuProfiles),
+                defaults: defaults
+            ),
+            sessionActive: sessionActive,
+            holdPhase: holdPhase,
+            holdButton: holdButton,
+            profiles: {
+                RadialMenuSupport.decodeProfiles(
+                    defaults.data(forKey: DefaultsKey.radialMenuProfiles),
+                    defaults: defaults
+                )
+            })
 
         // The source lives on the main run loop, so this already runs on
         // main; acting synchronously keeps a quick click ordered (the down
@@ -283,29 +304,17 @@ package final class RadialMenuService: ObservableObject {
         // the wheel's alone: both halves of every click are consumed, so the
         // app under the pointer never sees half a gesture (the Settings
         // caption promises exactly that).
-        if type == .otherMouseDown {
-            if !sessionActive {
-                let profiles = RadialMenuSupport.decodeProfiles(
-                    defaults.data(forKey: DefaultsKey.radialMenuProfiles),
-                    defaults: defaults
-                )
-                // The guard above already claimed the click, and the release
-                // will be swallowed to match it. A profile the full decode
-                // drops but the cheap read keeps (a corrupt blob) therefore
-                // opens no wheel and still costs the app under the pointer
-                // nothing: never one half of a click.
-                if let matchingProfile = profiles.first(where: {
-                    RadialMenuMouseTrigger.sanitized($0.mouseButton).buttonNumber == button
-                }) {
-                    beginSession(for: matchingProfile, hold: false, heldButton: button)
-                }
-            } else if !holdPhase {
-                endSession()
-            }
-            // A press during a held chord session means nothing and is
-            // swallowed with the rest.
-        } else if holdPhase, holdButton == button {
+        switch action {
+        case .passOn:
+            return Unmanaged.passUnretained(event)
+        case let .open(profile):
+            beginSession(for: profile, hold: false, heldButton: button)
+        case .close:
+            endSession()
+        case .endHold:
             endHoldPhase()
+        case .consume:
+            break
         }
         return nil
     }
@@ -913,13 +922,19 @@ package final class RadialMenuService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
+    /// The wheel's panel, before its content: a floating overlay, which window
+    /// managers do not list.
+    package static func makePanel() -> NSPanel {
+        let size = RadialMenuLayout.panelSize
+        return KeyableWheelPanel(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
+                                 styleMask: [.borderless, .nonactivatingPanel],
+                                 backing: .buffered,
+                                 defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let size = RadialMenuLayout.panelSize
-        let panel = KeyableWheelPanel(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
-                                      styleMask: [.borderless, .nonactivatingPanel],
-                                      backing: .buffered,
-                                      defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = false

@@ -26,8 +26,20 @@ package final class ScreenshotShareService: ObservableObject {
     private let decoder = JSONDecoder()
     private var expiryRefresh: DispatchWorkItem?
     private var removedRecordIDs = Set<String>()
+    private let storage: () -> URL?
 
-    private init() {
+    private convenience init() {
+        self.init(storage: {
+            PrivateFileStore.containerURL?
+                .appendingPathComponent("TemporaryScreenshotLinks", isDirectory: true)
+        }, wakeNotifications: NSWorkspace.shared.notificationCenter)
+    }
+
+    /// `storage` is the folder the screenshot links are kept in, and
+    /// `wakeNotifications` where the Mac announces it woke up. `shared` passes
+    /// this user's private store and the workspace's center.
+    package init(storage: @escaping () -> URL?, wakeNotifications: NotificationCenter) {
+        self.storage = storage
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -41,7 +53,7 @@ package final class ScreenshotShareService: ObservableObject {
         // deadline below is armed on a clock that stops with the Mac, so a link
         // that ran out overnight stays listed as live for as long as the Mac
         // slept. Waking up recomputes and catches the miss.
-        NSWorkspace.shared.notificationCenter.addObserver(
+        wakeNotifications.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
@@ -188,8 +200,7 @@ package final class ScreenshotShareService: ObservableObject {
     }
 
     private var storageDirectory: URL? {
-        PrivateFileStore.containerURL?
-            .appendingPathComponent("TemporaryScreenshotLinks", isDirectory: true)
+        storage()
     }
 
     private func loadRecords() throws -> [ScreenshotShareRecord] {

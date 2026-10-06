@@ -622,6 +622,13 @@ package struct ScreenshotEditorView: View {
         .shadow(color: .black.opacity(0.18), radius: 16, y: 5)
     }
 
+    /// A tool's shortcut badge on the rail: brighter on the hovered or
+    /// active tool, and still legible on an idle one, so the keys can be
+    /// learned without hovering each button.
+    package static func railShortcutLabelOpacity(isHovered: Bool, isActive: Bool) -> Double {
+        isHovered || isActive ? 0.9 : 0.55
+    }
+
     private func railButton(_ tool: ScreenshotSupport.Tool) -> some View {
         let isActive = model.tool == tool
         let isHovered = hoveredTool == tool
@@ -643,7 +650,7 @@ package struct ScreenshotEditorView: View {
                         .fixedSize()
                         .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
                         .padding(2)
-                        .opacity(isHovered || isActive ? 0.9 : 0.55)
+                        .opacity(Self.railShortcutLabelOpacity(isHovered: isHovered, isActive: isActive))
                 }
             }
             .background(

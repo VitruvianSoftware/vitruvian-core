@@ -17,9 +17,6 @@ import VitruvianUI
 
 enum SettingsFeatureTests {
     static func run(_ suite: TestSuite) {
-        let isCodeLine: (String) -> Bool = {
-            !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
-        }
         let profileOptions = MediaImageOptions(
             quality: 0.8,
             maxDimension: 1400,
@@ -459,40 +456,22 @@ enum SettingsFeatureTests {
                     restored: ["com.apple.Safari", localJavaPath], carried: [localJavaPath])
                     == ["com.apple.Safari", localJavaPath],
                "applying the same backup twice does not double a carried path")
-        // SettingsBackup.swift is not in the test binary, and the fix is an
-        // ORDER: capture before the clear, put back after the write. Either
-        // one moved leaves the code present and the entries still deleted.
-        // Strip comments before asserting: "X appears before Y" would otherwise
-        // be satisfied by a doc comment mentioning either.
-        let backupServiceLines = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/SettingsBackup.swift",
-            encoding: .utf8)) ?? "").components(separatedBy: "\n")
-        let captureAt = backupServiceLines.firstIndex {
-            isCodeLine($0) && $0.contains("SettingsBackupSupport.pathIdentities(")
-        }
-        let clearAt = backupServiceLines.firstIndex {
-            isCodeLine($0) && $0.contains("defaults.removeObject(forKey: key)")
-        }
-        let windowLayoutCaptureAt = backupServiceLines.firstIndex {
-            isCodeLine($0) && $0.contains("let windowLayoutPaths = SettingsBackupSupport.pathIdentities(")
-        }
-        let windowLayoutPutBackAt = backupServiceLines.firstIndex {
-            isCodeLine($0) && $0.contains("carried: windowLayoutPaths), forKey: DefaultsKey.windowLayoutIgnoredApps)")
-        }
-        let putBackAt = backupServiceLines.firstIndex {
-            isCodeLine($0) && $0.contains("SettingsBackupSupport.restoredExceptionList(")
-        }
-        let writeAt = backupServiceLines.firstIndex {
-            isCodeLine($0) && $0.contains("defaults.set(value, forKey: key)")
-        }
-        suite.expect(windowLayoutCaptureAt != nil && windowLayoutPutBackAt != nil
-                && clearAt != nil && writeAt != nil
-                && windowLayoutCaptureAt! < clearAt! && writeAt! < windowLayoutPutBackAt!,
+        // The fix is an ORDER: capture before the clear, put back after the
+        // write. Either one moved leaves the restored lists without their paths.
+        let restoreDefaults = UserDefaults(suiteName: "vitru.tests.settings-restore")!
+        let restoredExceptionKey = MouseExceptionScope.smoothScroll.defaultsKey
+        restoreDefaults.set(["com.apple.Terminal", localJavaPath], forKey: restoredExceptionKey)
+        restoreDefaults.set(["com.apple.Terminal", localJavaPath], forKey: DefaultsKey.windowLayoutIgnoredApps)
+        SettingsBackup.restore([restoredExceptionKey: ["com.apple.Safari"],
+                                DefaultsKey.windowLayoutIgnoredApps: ["com.apple.Safari"]],
+                               into: restoreDefaults)
+        suite.expect(restoreDefaults.stringArray(forKey: DefaultsKey.windowLayoutIgnoredApps)
+                    == ["com.apple.Safari", localJavaPath],
                "window layout paths are captured before clearing and restored after backup values")
-        suite.expect([captureAt, clearAt, putBackAt, writeAt].allSatisfy { $0 != nil }
-                && captureAt! < clearAt! && writeAt! < putBackAt!,
+        suite.expect(restoreDefaults.stringArray(forKey: restoredExceptionKey) == ["com.apple.Safari", localJavaPath],
                "a settings restore reads the machine-local entries before clearing "
                    + "and writes them back after the file's values")
+        restoreDefaults.removePersistentDomain(forName: "vitru.tests.settings-restore")
         suite.expect(SettingsBackupSupport.sanitizedSettings(from: [SettingsBackupSupport.settingsKey: [String: Any]()]) == nil,
                "a file without the version envelope is rejected")
         let tampered: [String: Any] = [

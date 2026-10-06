@@ -25,22 +25,51 @@ package struct ScreenCaptureSettings: View {
     }
 
     private var currentTool: ScreenCaptureTool {
+        Self.shownTool(availableTools: availableTools, selectedTool: selectedTool)
+    }
+
+    /// The tool the page shows: the selected one while it is installed, else
+    /// the first that is.
+    package static func shownTool(availableTools: [ScreenCaptureTool],
+                                  selectedTool: ScreenCaptureTool) -> ScreenCaptureTool {
         availableTools.contains(selectedTool) ? selectedTool : availableTools.first ?? .screenshot
+    }
+
+    /// What the page's top section holds, whichever tool is selected: the
+    /// tool picker when there is more than one tool, the shown tool's own
+    /// shortcut, and the shortcut of the capture history that screenshots
+    /// and recordings share, while either is installed.
+    package struct TopSection: Equatable {
+        package let showsToolPicker: Bool
+        package let shortcutTool: ScreenCaptureTool
+        package let showsRecentCapturesShortcut: Bool
+    }
+
+    package static func topSection(availableTools: [ScreenCaptureTool],
+                                   selectedTool: ScreenCaptureTool,
+                                   historyAvailable: Bool) -> TopSection {
+        TopSection(showsToolPicker: availableTools.count > 1,
+                   shortcutTool: shownTool(availableTools: availableTools, selectedTool: selectedTool),
+                   showsRecentCapturesShortcut: historyAvailable)
     }
 
     package var body: some View {
         Form {
             if !availableTools.isEmpty {
+                let top = Self.topSection(
+                    availableTools: availableTools,
+                    selectedTool: selectedTool,
+                    historyAvailable: AppFeature.screenshot.isAvailable || AppFeature.screenRecorder.isAvailable)
                 Section {
-                    if availableTools.count > 1 {
+                    if top.showsToolPicker {
                         ScreenCaptureToolPicker(tools: availableTools,
                                                 strings: l10n.s,
                                                 language: l10n.language,
                                                 selection: toolSelection)
                     }
-                    ToolShortcutRows(tool: currentTool, keys: currentTool.dedicatedShortcut)
-                        .id(currentTool)
-                    if AppFeature.screenshot.isAvailable || AppFeature.screenRecorder.isAvailable {
+                    ToolShortcutRows(tool: top.shortcutTool, keys: top.shortcutTool.dedicatedShortcut)
+                        .id(top.shortcutTool)
+                    if top.showsRecentCapturesShortcut {
                         RecentCapturesShortcutRows()
                     }
                 } header: {

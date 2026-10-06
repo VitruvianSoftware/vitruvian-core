@@ -816,8 +816,16 @@ package final class NotchPanel: NSPanel {
 
     package override func sendEvent(_ event: NSEvent) {
         if event.type == .scrollWheel,
-           handleScroll?(event) == true || HorizontalWheelScrolling.handle(event) { return }
+           Self.takesScroll(event, island: handleScroll, strip: { HorizontalWheelScrolling.handle($0) }) { return }
         super.sendEvent(event)
+    }
+
+    /// The island offers a wheel event to its own gestures first; only one
+    /// they leave may move a sideways strip under the pointer. Reports whether
+    /// either used it, which keeps it from the views underneath.
+    package static func takesScroll(_ event: NSEvent, island: ((NSEvent) -> Bool)?,
+                                    strip: (NSEvent) -> Bool) -> Bool {
+        island?(event) == true || strip(event)
     }
 }
 

@@ -49,6 +49,9 @@ package final class RecorderExporter: Sendable {
     /// Flipped from the main thread and read from the writer queues, so a
     /// cancel lands within a frame instead of at the end of the file.
     private let cancelled = Cancellation()
+    /// Builds the composition an edit is drawn with. When it cannot be built
+    /// the export stops, rather than saving the recording without the edit.
+    private let filtered: RecorderComposer.FilteredComposition
 
     package func cancel() {
         cancelled.cancel()
@@ -260,7 +263,8 @@ package final class RecorderExporter: Sendable {
             composer: composer,
             sourceSize: sourceSize,
             outputSize: outputSize,
-            playbackSpeed: document.exportTiming.speed)
+            playbackSpeed: document.exportTiming.speed,
+            filtered: filtered)
         else { return .readFailed }
 
         guard let reader = try? AVAssetReader(asset: timeline),
@@ -616,7 +620,8 @@ package final class RecorderExporter: Sendable {
                 composer: composer,
                 sourceSize: sourceSize,
                 outputSize: canvas,
-                playbackSpeed: document.exportTiming.speed)
+                playbackSpeed: document.exportTiming.speed,
+                filtered: filtered)
             else { return .readFailed }
             generator.videoComposition = composition
         }
@@ -669,8 +674,11 @@ package final class RecorderExporter: Sendable {
         return nil
     }
 
-    // Spelled out because a default initializer never leaves its module.
-    package init() {}
+    /// AVFoundation builds the composition; a test passes one that fails.
+    package init(filtered: @escaping RecorderComposer.FilteredComposition
+                    = RecorderComposer.filteredComposition) {
+        self.filtered = filtered
+    }
 }
 
 /// Small thread-safe helpers the export queues share.

@@ -224,12 +224,18 @@ package final class SnippetLibraryService: ObservableObject {
         override var canBecomeKey: Bool { true }
     }
 
+    /// The library's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel() -> NSPanel {
+        KeyableLibraryPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+                            styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered,
+                            defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = KeyableLibraryPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
-                                        styleMask: [.borderless, .nonactivatingPanel],
-                                        backing: .buffered,
-                                        defer: false)
+        let panel = Self.makePanel()
         panel.title = "Vitruvian"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true

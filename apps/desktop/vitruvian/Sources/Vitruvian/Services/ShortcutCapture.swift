@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
@@ -44,5 +45,55 @@ package enum ShortcutCapture {
         isCapturing = false
         AppSwitcher.shared.setCapturingShortcut(false)
         FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
+    }
+}
+
+/// What a listening shortcut field holds: the app's own global keys stepped
+/// aside, and the recording tap ahead of the app's menu, without which Command
+/// Q never reaches the field and quits Vitruvian instead (issue #1193).
+/// Settings' shortcut fields and the Command Bar's capture card both listen
+/// through this one pair, and leaving gives every key back.
+@MainActor
+package struct ShortcutListening {
+    package typealias KeyHandler = (Int64, GlobalShortcutModifiers, CGEventFlags) -> Void
+
+    private let suspendKeys: () -> Void
+    private let startTap: (@escaping KeyHandler) -> Bool
+    private let stopTap: () -> Void
+    private let restoreKeys: () -> Void
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(suspendKeys: @escaping () -> Void,
+                 startTap: @escaping (@escaping KeyHandler) -> Bool,
+                 stopTap: @escaping () -> Void,
+                 restoreKeys: @escaping () -> Void) {
+        self.suspendKeys = suspendKeys
+        self.startTap = startTap
+        self.stopTap = stopTap
+        self.restoreKeys = restoreKeys
+    }
+
+    /// `ShortcutCapture` and `ShortcutRecordingTap`.
+    package static var live: ShortcutListening {
+        ShortcutListening(suspendKeys: { ShortcutCapture.begin() },
+                          startTap: { ShortcutRecordingTap.begin($0) },
+                          stopTap: { ShortcutRecordingTap.end() },
+                          restoreKeys: { ShortcutCapture.end() })
+    }
+
+    /// Takes every key, then starts the tap. Answers whether the tap could
+    /// start; without Accessibility it cannot, and the field's own events
+    /// still record as before.
+    @discardableResult
+    package func begin(_ handler: @escaping KeyHandler) -> Bool {
+        suspendKeys()
+        return startTap(handler)
+    }
+
+    /// Stops the tap, then gives every key back. Safe to call twice, and when
+    /// the tap never started.
+    package func end() {
+        stopTap()
+        restoreKeys()
     }
 }

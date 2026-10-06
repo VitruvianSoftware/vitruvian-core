@@ -2155,6 +2155,136 @@ is that notice. Add an entry for every change to upstream files.
     called.
   - `build.sh --test` still names `Tests/*.swift`. It has not built since
     the tests import the app's modules, and is unchanged.
+- **2026-10-06**: Refactor step 7h (`REFACTOR.md`): source pins turned
+  behavioral, first part. Each change puts a rule a test read as text
+  behind a seam the code calls, with no change in behavior.
+  - `build.sh`: the Developer build's fan helper rename is the function
+    `rename_fan_helper`. `Tools/uninstall.sh`: its removal, rule search and
+    sleep read are the functions `remove_user_state`,
+    `find_closed_lid_rules` and `read_sleep_disabled`.
+  - `Services/SelfUninstall.swift` (`ownedPaths`, `restoreSleep`),
+    `Services/ShellSupport.swift` (`Sudoers.ruleFiles`),
+    `Services/Metrics/DiskSampler.swift` (`volumeKeys`, `importantFree`
+    made `package`), `Services/Homebrew/HomebrewManager.swift`
+    (`awaitExit`).
+  - Recorder: `Services/Recorder/RecorderComposer.swift` and
+    `RecorderExporter.swift` take the filtering composition as a
+    `FilteredComposition`; `RecorderTypingTrack.swift` adds `record(at:)`.
+  - Command bar and keyboard: `Services/CommandBar/CommandBarService.swift`
+    (`CommandBarKeys`), `CommandBarCatalog.swift` (`storeBootVolumeSpace`,
+    `storeSystemAnswers`), `Services/ShortcutCapture.swift`
+    (`ShortcutListening`, also used by `UI/ShortcutRecorderButton.swift`),
+    `UI/CommandBar/CommandBarView.swift` (`examples(_:hasBattery:)`),
+    `Core/GlobalShortcut.swift` (`KeycapLayoutSource`),
+    `Core/InputSourceSelection.swift` (`selectNextSource`, used by
+    `Services/SuperKey/SuperKeyService.swift`).
+  - `App/AppDelegate.swift`: Settings' Command Tab presence goes through
+    `WindowActivationClaim` (`Services/QuickTools/WindowActivationPolicy.swift`),
+    the permission sinks through `FeatureRuntime.permissionDidChange(_:)`,
+    and the quit's input releases through `QuitInputRelease`
+    (`Services/FeatureRuntime.swift`).
+  - `UI/Onboarding/OnboardingView.swift` (`OnboardingFeatureNames`),
+    `Services/CleaningMode/CleaningUnlockCounter.swift`
+    (`shippedPressWindow`) and `CleaningModeManager.swift`, whose session
+    and disabled-tap decisions move to the new
+    `CleaningSessionSupport.swift`.
+  - Pointer input: `Core/MouseButtons/MouseButtonShortcutSupport.swift` and
+    `MouseSpacesGestureSupport.swift`,
+    `Services/MouseButtons/MouseButtonShortcutService.swift`,
+    `Services/Switcher/SpaceWindowBridge.swift`,
+    `Core/SuperKey/SuperKeySupport.swift` (`SuperKeyMouseTapRefusals`),
+    `Services/SuperKey/SuperKeyService.swift`,
+    `UI/Settings/SuperKeySettings.swift` (`SuperKeyStatusLine`),
+    `Core/FocusFollowsMouse/FocusFollowsMouseSupport.swift`,
+    `Services/FocusFollowsMouse/FocusFollowsMouseService.swift`,
+    `Core/MouseExceptions/MouseAppExceptionSupport.swift`,
+    `Services/MouseExceptions/MouseAppExceptions.swift`,
+    `Services/InstalledApps.swift`, `UI/Settings/AppBundleList.swift`,
+    `UI/Uninstall/AppPickerView.swift`,
+    `Services/SessionActivitySupport.swift` (`TapCreationRetry`, used by
+    `Services/ScrollInverter.swift` and `SmoothScrollService.swift`),
+    `Services/MouseAcceleration/MouseAccelerationService.swift`.
+  - Floating panels: each surface builds its panel through a `package`
+    factory that the tests build: `App/AppDelegate.swift` (through
+    `AppKitMenuPanel.makePositioningPanel`), `UI/PermissionGuideOverlay.swift`,
+    `Services/CleaningMode/CleaningModeManager.swift`,
+    `Services/Recorder/RecorderIndicator.swift`,
+    `Services/QuitProtection/QuitProtectionHUD.swift`,
+    `Services/Clipboard/ClipboardHistoryService.swift`,
+    `Services/CommandBar/CommandBarService.swift`,
+    `Services/RadialMenu/RadialMenuService.swift` and
+    `RadialNowPlayingService.swift`, `Services/Switcher/AppSwitcher.swift`,
+    `Services/DockPreview/DockPreviewService.swift`,
+    `Services/Finder/FinderCutPaste.swift`,
+    `Services/Display/BrightnessOSD.swift`,
+    `Services/Snippets/SnippetLibraryService.swift`,
+    `Services/WindowLayout/WindowLayoutService.swift`,
+    `Services/DiskImageInstaller/DiskImageInstallerService.swift`, and in
+    `Services/QuickTools/`: `QuickToolHUD`, `QuickLauncherService`,
+    `CameraPreviewService`, `RecentCaptureService`, `ScratchpadService`,
+    `QRResultController`, `ScreenshotQuickPreviewController`;
+    `ScreenshotPinController.swift`'s window is `package`.
+  - Shelf: `Core/Shelf/ShelfSupport.swift` (`ShelfDragWatchdog`,
+    `ShelfDismissal`, `ShelfStoreLoad.isWhole`),
+    `Services/Shelf/ShelfService.swift` (`dismiss(_:)`, `makePanel()`),
+    `ShelfTooltipPopover.swift`, `UI/Shelf/ShelfView.swift` (a `dismissal`
+    instead of an `onDismiss` closure) and `ShelfDropZoneView.swift`.
+  - Elsewhere: `Services/HorizontalWheelScrolling.swift`,
+    `Services/Notch/NotchWindowHost.swift` (`NotchPanel.takesScroll`),
+    `Core/Notch/NotchWatchSupport.swift` and
+    `Services/Notch/NotchWatchService.swift` (`NotchWatchLastReading`,
+    `areaPicture`), `Services/QuickTools/PastePlainService.swift`,
+    `Services/SettingsBackup.swift` (`restore(_:into:)`),
+    `Core/WindowLayout/WindowLayoutSupport.swift` and
+    `Services/WindowLayout/WindowLayoutService.swift`
+    (`WindowLayoutSettledFrames`), `Services/Audio/MixerRender.swift` and
+    `AppVolumeMixer.swift` (`renderCycle`, `MixerEngineTeardown`),
+    `UI/KeepAwakeAutomationView.swift` (`KeepAwakeMatchModePicker`).
+  - App management and utilities: `Services/Uninstall/AppUninstaller.swift`
+    and `UninstallerSupport.swift`, `UI/Uninstall/AppPickerView.swift` and
+    `UninstallerView.swift`, `UI/MenuPanel/PanelUninstallerView.swift`,
+    `UI/SharedUI.swift`, `Services/Cleaner/JunkCleaner.swift` and
+    `CleanerScheduler.swift`, `UI/Cleaner/CleanerView.swift`,
+    `Services/AutoQuit/AutoQuitService.swift` and `AutoQuitSupport.swift`,
+    `UI/Settings/AutoQuitSettings.swift`,
+    `Services/DiskImageInstaller/DiskImageInstallerService.swift`,
+    `Services/QuitProtection/QuitProtectionHUD.swift`,
+    `Core/RadialMenu/RadialMenuSupport.swift` and
+    `Services/RadialMenu/RadialMenuService.swift`,
+    `UI/Settings/ShortcutsSettings.swift` and `DiskExclusionsList.swift`,
+    `Services/QuickTools/QuickTogglesSupport.swift` and
+    `ScreenshotShareService.swift`, `Services/Recorder/RecordingShareService.swift`,
+    `Services/Update/UpdateShowcaseMedia.swift`, `Services/LaunchAtLogin.swift`.
+    `UninstallerSupport.offeredApplications()` without arguments and
+    `PanelUninstallerView.selectFirstApp`, now unused, are removed.
+  - Screenshots: `Services/QuickTools/QuickToolHotkey.swift`,
+    `RecentCaptureService.swift`, `ScreenshotCaptureEngine.swift`,
+    `ScreenshotCapturePolicy.swift`, `ScreenshotQuickPreviewController.swift`,
+    `ScreenshotSelectionController.swift`, `ScreenshotService.swift`,
+    `UI/Recorder/RecorderEditorView.swift` and `RecorderInspector.swift`,
+    `UI/Screenshot/ScreenshotEditorView.swift`,
+    `UI/Settings/ScreenCaptureSettings.swift`.
+  - Switcher: `Core/Switcher/SwitcherSupport.swift`,
+    `Services/ActivationHandoff.swift`, `Services/DockClick/DockClickService.swift`,
+    `Services/DockPreview/DockPreviewService.swift`, and in
+    `Services/Switcher/`: `AppSwitcher.swift`, `WindowActivator.swift`,
+    `WindowEnumerator.swift`, `WindowPreviewProvider.swift`,
+    `WindowUseTracker.swift`; `UI/MenuPanel/MenuPanelView.swift`,
+    `UI/Switcher/ScrollingTitle.swift`, `UI/Theme.swift`. The status item's
+    recovery in `App/AppDelegate.swift` and `App/StatusItemController.swift`
+    moves into the new `Services/MenuBar/StatusItemRecovery.swift`.
+  - The suites that read those files as text check the code instead:
+    `ScreenshotFeatureTests`, `SwitcherModelFeatureTests`,
+    `AppManagementFeatureTests`, `StorageFeatureTests`,
+    `UtilitiesFeatureTests`, `UpdateFeatureTests`, `ShelfFeatureTests`, `OverlayPanelTests`, `ScrollHorizontalModifierTests`,
+    `NotchScreenRefreshTests`, `NotchWatchTests`, `ClipboardFeatureTests`,
+    `SettingsFeatureTests`, `WindowLayoutFeatureTests`,
+    `PreferencesFeatureTests`, `MixerFeatureTests`,
+    `LocalizationFeatureContractTests`, `NotchTests`,
+    `PreferenceNamespaceTests`, `RepositoryFeatureTests`,
+    `RecorderFeatureTests`, `RecorderExportRenderingTests`,
+    `CommandBarFeatureTests`, `KeyboardFeatureTests`,
+    `FeatureCatalogTests` and `PointerInputFeatureTests`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

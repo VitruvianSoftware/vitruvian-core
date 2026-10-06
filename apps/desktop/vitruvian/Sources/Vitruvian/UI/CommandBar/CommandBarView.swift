@@ -21,9 +21,10 @@ package struct CommandBarView: View {
     /// everywhere: the maths is language-free, the conversion parser already
     /// takes each language's own word for "to", and the emoji names come from
     /// Unicode, which spells them in English on purpose.
-    package static func examples(_ text: CommandBarFeatureStrings) -> [String] {
+    package static func examples(_ text: CommandBarFeatureStrings,
+                                 hasBattery: Bool = PowerSampler.hasInternalBattery) -> [String] {
         var examples = ["100 km to mi", "2+2*3"]
-        if PowerSampler.hasInternalBattery {
+        if hasBattery {
             examples.append(text.answerBatteryLabel.lowercased())
         }
         examples.append("fire")

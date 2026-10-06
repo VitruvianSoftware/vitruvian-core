@@ -16,6 +16,34 @@ import VitruvianServices
 import VitruvianUI
 
 enum SwitcherModelFeatureTests {
+    /// A running app that logs the activation requests made of it.
+    nonisolated final class RestoredApp: SwitcherActivatableApp {
+        let processIdentifier: pid_t = 20
+        let isTerminated = false
+        let acceptsCooperativeRequest: Bool
+        var log: [String] = []
+
+        init(acceptsCooperativeRequest: Bool) {
+            self.acceptsCooperativeRequest = acceptsCooperativeRequest
+        }
+
+        func unhide() -> Bool { true }
+
+        func activateFromCurrent(options: NSApplication.ActivationOptions) -> Bool {
+            log.append("cooperative \(options.rawValue)")
+            return acceptsCooperativeRequest
+        }
+
+        func activate(options: NSApplication.ActivationOptions) -> Bool {
+            log.append("plain \(options.rawValue)")
+            return true
+        }
+    }
+
+    // Written on the warm-listing queue, read after its listing is signalled.
+    nonisolated(unsafe) private static var warmListingQueueLabel = ""
+    nonisolated(unsafe) private static var warmListingReturned = false
+
     private static func scrollNavigationChecks(_ suite: TestSuite) {
         func event(_ vertical: Int32, horizontal: Int32 = 0, continuous: Bool = false,
                    phase: CGScrollPhase? = nil, momentum: Int64 = 0, scrollCount: Int64 = 0,
@@ -478,24 +506,29 @@ enum SwitcherModelFeatureTests {
         suite.expect(scopeAssign != nil && startLayout != nil
                && scopeAssign!.lowerBound < startLayout!.lowerBound,
                "the App Switcher session scope is assigned before the session-start layout pass")
-        // Trimming the list to one display (issue #1391) can drop the window
-        // that was in front, and then index 0 is no longer where the session
-        // started. The initial selection has to follow what the list holds.
-        suite.expect(!switcherCode.contains("hasForegroundItem: source != nil")
-               && switcherCode.contains("hasForegroundItem: listedSource != nil"),
-               "the App Switcher initial selection follows the window the trimmed list still holds")
         suite.expect(!SwitcherSupport.usesAppGroupsForMainShortcut(iconRowLayout: true,
                                                               windowRow: true)
                && SwitcherSupport.usesAppGroupsForMainShortcut(iconRowLayout: true,
                                                                 windowRow: false),
                "App Switcher main shortcut steps through simple window rows without app grouping")
-        let previewProviderCode = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/WindowPreviewProvider.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(previewProviderCode.contains("Self.warmEnumerationQueue.async {")
-               && previewProviderCode.contains("continuation.resume(returning: WindowEnumerator.listWindows(for: pid, snapshot: snapshot))")
-               && !previewProviderCode.contains("Task.detached"),
-               "preview warming enumerates windows on a queue of its own, never on a shared task thread")
+        // Warming lists an app's windows while a slow app may hold that
+        // Accessibility walk for seconds, so the walk runs on a queue of its
+        // own and the task only waits for its answer.
+        do {
+            let warmListed = DispatchSemaphore(value: 0)
+            Task.detached {
+                let listed = await WindowPreviewProvider.listOnWarmQueue {
+                    SwitcherModelFeatureTests.warmListingQueueLabel = String(cString: __dispatch_queue_get_label(nil))
+                    return [SwitcherItem.appOnly(appName: "Warm", pid: 1)]
+                }
+                SwitcherModelFeatureTests.warmListingReturned = listed.map { $0.appName } == ["Warm"]
+                warmListed.signal()
+            }
+            suite.expect(warmListed.wait(timeout: .now() + 3) == .success
+                   && warmListingReturned
+                   && warmListingQueueLabel == WindowPreviewProvider.warmEnumerationQueue.label,
+                   "preview warming enumerates windows on a queue of its own, never on a shared task thread")
+        }
         suite.expect(SwitcherSupport.preservesGroupedWindowsDuringEnumeration(allApps: true,
                                                                         mergeWindowsByApp: true,
                                                                         simpleMode: true)
@@ -719,12 +752,31 @@ enum SwitcherModelFeatureTests {
                && embeddedWindow.withMinimized(true).isMinimizedForPlacement(treatHiddenAppsLikeMinimized: false)
                && !embeddedWindow.isMinimizedForPlacement(treatHiddenAppsLikeMinimized: true),
                "hidden apps follow minimized-window placement only when selected, while actual minimized windows always follow it")
-        let placementCode = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/WindowEnumerator.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(placementCode.contains("forKey: DefaultsKey.switcherTreatHiddenAppsLikeMinimized")
-               && placementCode.contains("item.isMinimizedForPlacement(treatHiddenAppsLikeMinimized: treatHiddenAppsLikeMinimized)"),
-               "window enumeration applies the saved hidden-app choice through the placement predicate")
+        // The saved choice reaches the list through that predicate: with
+        // minimized windows left out, a hidden app's window goes with them
+        // only when the choice says so.
+        let hiddenPlacementSuite = "vitru.tests.switcher.hidden-app-placement"
+        if let hiddenPlacementDefaults = UserDefaults(suiteName: hiddenPlacementSuite) {
+            hiddenPlacementDefaults.removePersistentDomain(forName: hiddenPlacementSuite)
+            hiddenPlacementDefaults.set(WindowSwitchMinimizedPlacement.hidden.rawValue,
+                                        forKey: DefaultsKey.switcherMinimizedPlacement)
+            func listedIDs(treatingHiddenAppsLikeMinimized choice: Bool) -> [String] {
+                hiddenPlacementDefaults.set(choice, forKey: DefaultsKey.switcherTreatHiddenAppsLikeMinimized)
+                let preferences = WindowEnumerator.SwitcherPreferences(defaults: hiddenPlacementDefaults)
+                let shaping = WindowEnumerator.Shaping(
+                    minimizedPlacement: preferences.minimizedPlacement,
+                    treatHiddenAppsLikeMinimized: preferences.treatHiddenAppsLikeMinimized,
+                    maximumCount: 48)
+                return WindowEnumerator.shaped([hiddenAppWindow, embeddedWindow], by: shaping,
+                                               orderByUse: { $0 }).items.map { $0.id }
+            }
+            suite.expect(listedIDs(treatingHiddenAppsLikeMinimized: true) == [embeddedWindow.id]
+                   && listedIDs(treatingHiddenAppsLikeMinimized: false) == [hiddenAppWindow.id, embeddedWindow.id],
+                   "window enumeration applies the saved hidden-app choice through the placement predicate")
+            hiddenPlacementDefaults.removePersistentDomain(forName: hiddenPlacementSuite)
+        } else {
+            suite.expect(false, "the hidden-app placement check opens its defaults suite")
+        }
 
         // Real parked windows remain ordered in; a dismissed surface can
         // retain the same desktop assignment but is explicitly ordered out.
@@ -1054,9 +1106,30 @@ enum SwitcherModelFeatureTests {
             acceptsUndescribedSubroles: false,
             canMinimize: true),
                "a minimize button vouches only for a dialog, not for a floating panel")
-        suite.expect(placementCode.contains("let canMinimize = subrole == \"AXDialog\" && hasNormalWindowLevel")
-               && placementCode.contains("canMinimize: canMinimize"),
-               "window enumeration reads the minimize button only for a normal-level dialog and passes it on")
+        do {
+            var minimizeButtonReads = 0
+            func switchable(subrole: String, normalLevel: Bool, buttonWorks: Bool = true) -> Bool {
+                SwitcherSupport.isSwitchableNonstandardWindow(role: "AXWindow",
+                                                              subrole: subrole,
+                                                              fillsScreen: false,
+                                                              hasNormalWindowLevel: normalLevel,
+                                                              acceptsUndescribedSubroles: false,
+                                                              minimizeButtonWorks: {
+                                                                  minimizeButtonReads += 1
+                                                                  return buttonWorks
+                                                              })
+            }
+            let minimizableDialog = switchable(subrole: "AXDialog", normalLevel: true)
+            let readsForDialog = minimizeButtonReads
+            let dialogWithDeadButton = switchable(subrole: "AXDialog", normalLevel: true, buttonWorks: false)
+            minimizeButtonReads = 0
+            let floatingDialog = switchable(subrole: "AXDialog", normalLevel: false)
+            let undescribedWindow = switchable(subrole: "AXUnknown", normalLevel: true)
+            let floatingPanel = switchable(subrole: "AXFloatingWindow", normalLevel: true)
+            suite.expect(minimizableDialog && readsForDialog == 1 && !dialogWithDeadButton
+                   && !floatingDialog && undescribedWindow && !floatingPanel && minimizeButtonReads == 0,
+                   "window enumeration reads the minimize button only for a normal-level dialog and passes it on")
+        }
         suite.expect(SwitcherSupport.sessionSourceItem(frontmostPID: nil,
                                                  focusedWindowID: nil,
                                                  items: [embeddedWindow]) == nil,
@@ -1177,13 +1250,42 @@ enum SwitcherModelFeatureTests {
                                               displayBounds: bothDisplays,
                                               targetIndex: 1).isEmpty,
                "an empty monitor has no switch targets, including windowless apps")
-        let displayFilterBody = (switcherSource.components(separatedBy: "private var currentDisplayScope")
-            .last ?? "").components(separatedBy: "private var placementVisibleFrame").first ?? ""
-        suite.expect(displayFilterBody.contains("NSScreen.withMouse?.displayID")
-               && displayFilterBody.contains("?? -1"),
+        // The pointer's display is the target. One that is gone is no target
+        // at all, which the filter above turns into an empty list.
+        let pointerScope = WindowEnumerator.DisplayScope(bounds: bothDisplays, displayIDs: [11, 12],
+                                                         pointerDisplayID: 12)
+        let unpluggedScope = WindowEnumerator.DisplayScope(bounds: bothDisplays, displayIDs: [11, 12],
+                                                           pointerDisplayID: 13)
+        let pointerlessScope = WindowEnumerator.DisplayScope(bounds: bothDisplays, displayIDs: [11, 12],
+                                                             pointerDisplayID: nil)
+        suite.expect(pointerScope.targetIndex == 1
+               && unpluggedScope.targetIndex == -1
+               && pointerlessScope.targetIndex == -1
+               && SwitcherSupport.itemsOnDisplay([onLeftDisplay, onRightDisplay],
+                                                 displayBounds: bothDisplays,
+                                                 targetIndex: unpluggedScope.targetIndex).isEmpty,
                "display filtering follows the cursor and leaves no target when the display disappears")
-        suite.expect(switcherCode.contains("guard !windows.isEmpty else {\n            discardPendingSessionStart(generation: generation)"),
+        suite.expect(SwitcherSupport.sessionOpening(windows: [],
+                                                    sourceItems: [onLeftDisplay, onRightDisplay],
+                                                    frontmostPID: 1,
+                                                    focusedWindowID: 1) == nil,
                "an empty display discards the pending session before opening a panel or committing a window")
+        // Trimming the list to one display (issue #1391) can drop the window
+        // that was in front, and then index 0 is no longer where the session
+        // started. The initial selection has to follow what the list holds.
+        let trimmedOpening = SwitcherSupport.sessionOpening(windows: [onRightDisplay],
+                                                            sourceItems: [onLeftDisplay, onRightDisplay],
+                                                            frontmostPID: 1,
+                                                            focusedWindowID: 1)
+        let untrimmedOpening = SwitcherSupport.sessionOpening(windows: [onRightDisplay, onLeftDisplay],
+                                                              sourceItems: [onLeftDisplay, onRightDisplay],
+                                                              frontmostPID: 1,
+                                                              focusedWindowID: 1)
+        suite.expect(trimmedOpening?.listsSource == false
+               && trimmedOpening?.list.map(\.id) == ["right"]
+               && untrimmedOpening?.listsSource == true
+               && untrimmedOpening?.list.map(\.id) == ["left", "right"],
+               "the App Switcher initial selection follows the window the trimmed list still holds")
         let otherScreenRepresentative = SwitcherSupport.groupWindowsByApp([onLeftDisplay, onRightDisplay])
         suite.expect(SwitcherSupport.itemsOnDisplay(otherScreenRepresentative,
                                                displayBounds: bothDisplays, targetIndex: 1).isEmpty,
@@ -1197,21 +1299,30 @@ enum SwitcherModelFeatureTests {
                                                     displayBounds: bothDisplays, targetIndex: 1)
             .prefix(24)).map(\.id) == ["right"],
                "windows on other monitors cannot exhaust the local display's entry limit")
-        let enumeratorCode = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/WindowEnumerator.swift",
-            encoding: .utf8)) ?? ""
-        let displayFilter = enumeratorCode.range(of: "SwitcherSupport.itemsOnDisplay(filtered,")
-        let grouping = enumeratorCode.range(of: "SwitcherSupport.groupWindowsByApp(orderedPrimary)")
-        let entryCap = enumeratorCode.range(of: "limit: maximumCount")
-        suite.expect(displayFilter != nil && grouping != nil && entryCap != nil
-               && displayFilter!.lowerBound < grouping!.lowerBound
-               && displayFilter!.lowerBound < entryCap!.lowerBound,
-               "enumeration applies the display scope before grouping and capping the list")
-        suite.expect(SwitcherSupport.sessionSourceItem(frontmostPID: 1, focusedWindowID: 1,
-                                                 items: [onLeftDisplay, onRightDisplay])?.id == "left"
-               && !localWindows.contains(where: { $0.id == "left" })
-               && switcherCode.contains("items: sourceItems)")
-               && enumeratorCode.contains("sourceItems: sourceCandidates"),
+        // The production list does the same: grouping first would keep the
+        // other monitor's window as the app's entry and then drop it, and
+        // capping first would let that monitor's windows use up the places.
+        for placement in [WindowSwitchMinimizedPlacement.normal, .end] {
+            let grouped = WindowEnumerator.shaped([onLeftDisplay, onRightDisplay],
+                                                  by: .init(minimizedPlacement: placement,
+                                                            groupByApp: true,
+                                                            maximumCount: 48,
+                                                            displayScope: pointerScope),
+                                                  orderByUse: { $0 })
+            let capped = WindowEnumerator.shaped(crowdedOtherDisplay,
+                                                 by: .init(minimizedPlacement: placement,
+                                                           maximumCount: 24,
+                                                           displayScope: pointerScope),
+                                                 orderByUse: { $0 })
+            suite.expect(grouped.items.map(\.id) == ["right"] && capped.items.map(\.id) == ["right"],
+                   "enumeration applies the display scope before grouping and capping the list (\(placement.rawValue))")
+        }
+        let displayScopedList = WindowEnumerator.shaped([onLeftDisplay, onRightDisplay],
+                                                        by: .init(maximumCount: 48, displayScope: pointerScope),
+                                                        orderByUse: { $0 })
+        suite.expect(trimmedOpening?.source?.id == "left"
+               && displayScopedList.items.map(\.id) == ["right"]
+               && displayScopedList.sourceItems.map(\.id) == ["left", "right"],
                "activation retains the foreground window even when the displayed list excludes its monitor")
         let displaySnapshot = switcherSource.range(of: "let displayScope = currentDisplayScope")
         let enumerationDispatch = switcherSource.range(of: "enumerationQueue.async")
@@ -1460,11 +1571,20 @@ enum SwitcherModelFeatureTests {
                && SwitcherSupport.sessionSourceItem(frontmostPID: 1, focusedWindowID: currentFocusID,
                                                      items: groupedFocusItems)?.windowID == currentFocusID,
                "the grouped simple row keeps its backing windows available for actual focus resolution")
-        let sourceResolution = enumeratorCode.range(of: "resolveSource?(sourceCandidates)")
-        let sourcePromotion = enumeratorCode.range(of: "SwitcherSupport.orderedForSession(ordered, currentID: source?.id)")
-        suite.expect(sourceResolution != nil && sourcePromotion != nil && entryCap != nil
-               && sourceResolution!.lowerBound < sourcePromotion!.lowerBound
-               && sourcePromotion!.lowerBound < entryCap!.lowerBound,
+        // The production list resolves the window in front from every
+        // candidate and promotes it before the cap, so a crowded list cannot
+        // cut it: here it is the last of 50 entries from 27 apps, 24 places.
+        var resolvedCandidateCount = 0
+        let sourceFirstList = WindowEnumerator.shaped(windowScopeItems,
+                                                      by: .init(maximumCount: 24),
+                                                      orderByUse: { $0 },
+                                                      resolveSource: { candidates in
+                                                          resolvedCandidateCount = candidates.count
+                                                          return candidates.last
+                                                      })
+        suite.expect(resolvedCandidateCount == windowScopeItems.count
+               && sourceFirstList.items.count == 24
+               && sourceFirstList.items.first?.id == windowScopeItems.last?.id,
                "the production enumeration resolves and promotes the current source before limiting entries")
 
         suite.expect(WindowUseOrder.promoting(target: 7, previous: 3, in: [3, 5, 7]) == [7, 3, 5],
@@ -1651,17 +1771,28 @@ enum SwitcherModelFeatureTests {
         // in. A branch on `isMinimized` made that drop feel like a different
         // gesture from an ordinary one -- which is the thing being fixed, so a
         // branch is what this guards against.
-        let placeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/WindowActivator.swift",
-            encoding: .utf8)) ?? ""
-        let placeBody = (placeSource.components(separatedBy: "static func place(_ item: SwitcherItem")
-            .last ?? "").components(separatedBy: "\n    @discardableResult").first ?? ""
-        let placeCode = placeBody
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!placeCode.isEmpty && !placeCode.contains("isMinimized"),
-               "a drop takes the same steps for a minimized window as for any other")
+        do {
+            func dropSteps(_ item: SwitcherItem) -> [String] {
+                var steps: [String] = []
+                let calls = WindowActivator.PlacementCalls(
+                    unhideApp: { steps.append("unhide \($0)") },
+                    setOrigin: { origin, windowID, pid in
+                        steps.append("origin \(Int(origin.x)),\(Int(origin.y)) \(windowID) \(pid)")
+                        return true
+                    },
+                    moveToVisibleSpace: { windowID, _ in steps.append("space \(windowID)") },
+                    restore: { windowID, pid in steps.append("restore \(windowID) \(pid)") })
+                let placed = WindowActivator.place(item, origin: CGPoint(x: 40, y: 60),
+                                                   pointer: CGPoint(x: 50, y: 70), calls: calls)
+                return placed ? steps : []
+            }
+            let droppedWindow = SwitcherItem.window(id: 91, title: "Notes", appName: "Notes", pid: 4242,
+                                                    isOnScreen: true, frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+            let restingSteps = dropSteps(droppedWindow)
+            suite.expect(restingSteps == ["origin 40,60 91 4242", "space 91", "restore 91 4242"]
+                   && dropSteps(droppedWindow.withMinimized(true)) == restingSteps,
+                   "a drop takes the same steps for a minimized window as for any other")
+        }
         // The thumbnail is derived from the card, so a constant changed on its
         // own must not silently eat into it or leave the card short.
         suite.expectClose(Double(DockPreviewSupport.cardThumbnailHeight
@@ -1818,11 +1949,12 @@ enum SwitcherModelFeatureTests {
                          && !url.absoluteString.lowercased().contains("vorssaint"),
                    "every outbound app link points at Vitruvian's own repository, never upstream's channels")
         }
-        // AppInfo.version falls back to "dev" in this bare harness, so read
+        // AppInfo.version falls back to "dev" in this bare harness, so parse
         // the plist the shipped app will actually carry. In Vitruvian, releases
         // are automated via release-please, which updates CFBundleShortVersionString.
         // Verify that the shipped Info.plist carries a valid non-empty release version.
-        let releasePlist = NSDictionary(contentsOfFile: "Resources/Info.plist")
+        let releasePlist = (try? Data(contentsOf: URL(fileURLWithPath: "Resources/Info.plist")))
+            .flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
         let plistVersion = (releasePlist?["CFBundleShortVersionString"] as? String) ?? ""
         suite.expect(!plistVersion.isEmpty && plistVersion != "dev",
                "the shipped app plist must carry a valid non-empty CFBundleShortVersionString")
@@ -2202,60 +2334,77 @@ enum SwitcherModelFeatureTests {
                                                                 screenFrames: [fullscreenScreen]),
                "a status item revealed over a fullscreen window is a trustworthy anchor")
 
-        // These AppKit owners are not part of the pure-helper test binary, so
-        // pin that neither caller can consume a parked status-item frame.
-        let statusAnchorAppDelegateSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/App/AppDelegate.swift",
-            encoding: .utf8)) ?? ""
+        // Neither the Shelf's anchor nor status-item hit testing may consume a
+        // parked status-item frame.
+        let bandItem = CGRect(x: 1135, y: 919, width: 38, height: 37)
+        let parkedItem = CGRect(x: 1135, y: 950, width: 38, height: 37)
+        suite.expect(StatusItemRecovery.anchorFrame(isVisible: true, windowFrame: bandItem,
+                                                    screenFrames: attachedScreens) == bandItem
+               && StatusItemRecovery.anchorFrame(isVisible: true, windowFrame: parkedItem,
+                                                 screenFrames: attachedScreens) == nil
+               && StatusItemRecovery.anchorFrame(isVisible: false, windowFrame: bandItem,
+                                                 screenFrames: attachedScreens) == nil
+               && StatusItemRecovery.anchorFrame(isVisible: true, windowFrame: nil,
+                                                 screenFrames: attachedScreens) == nil,
+               "the Shelf provider rejects an untrustworthy status-item frame")
+        do {
+            typealias StatusItemStandIn = (visible: Bool, frame: CGRect?)
+            func hits(_ point: CGPoint, main: StatusItemStandIn?,
+                      clipboardPreview: StatusItemStandIn? = nil) -> Bool {
+                StatusItemRecovery.containsItem(at: point,
+                                                main: main,
+                                                clipboardPreview: clipboardPreview,
+                                                metrics: [],
+                                                isVisible: { $0.visible },
+                                                windowFrame: { $0.frame },
+                                                screenFrames: attachedScreens)
+            }
+            let clipboardItem = CGRect(x: 1080, y: 919, width: 38, height: 37)
+            let onBandItem = CGPoint(x: bandItem.midX, y: bandItem.midY)
+            let onParkedItem = CGPoint(x: parkedItem.midX, y: parkedItem.midY)
+            let onClipboardItem = CGPoint(x: clipboardItem.midX, y: clipboardItem.midY)
+            suite.expect(hits(onBandItem, main: (visible: true, frame: bandItem))
+                   && !hits(onParkedItem, main: (visible: true, frame: parkedItem))
+                   && !hits(onBandItem, main: (visible: false, frame: bandItem)),
+                   "status-item hit testing rejects an untrustworthy frame")
+            suite.expect(hits(onClipboardItem, main: (visible: true, frame: bandItem),
+                              clipboardPreview: (visible: true, frame: clipboardItem))
+                   && !hits(onClipboardItem, main: (visible: true, frame: bandItem)),
+                   "status-item hit testing also covers the clipboard preview item")
+        }
         let stripCommentLines: (String) -> String = {
             $0.split(separator: "\n", omittingEmptySubsequences: false)
                 .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
                 .joined(separator: "\n")
         }
-        // Sliced at the closing brace of the closure/function itself, so the
-        // slice can never run past it into an unrelated body that happens to
-        // carry the same words.
-        let shelfProviderCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "ShelfService.shared.statusItemFrameProvider =").last ?? "")
-            .components(separatedBy: "\n        }").first ?? "")
-        let statusControllerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/App/StatusItemController.swift",
-            encoding: .utf8)) ?? ""
-        let statusHitTestCode = stripCommentLines((statusControllerSource
-            .components(separatedBy: "func containsStatusItem(at screenPoint: NSPoint) -> Bool {").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        let statusFrameCall = "StatusItemAnchorSupport.isTrustworthyStatusFrame("
-        suite.expect(shelfProviderCode.contains("guard \(statusFrameCall)") && shelfProviderCode.contains("return nil"),
-               "the Shelf provider rejects an untrustworthy status-item frame")
-        suite.expect(statusHitTestCode.contains(statusFrameCall) && statusHitTestCode.contains("return false"),
-               "status-item hit testing rejects an untrustworthy frame")
-        suite.expect(statusHitTestCode.contains("clipboardPreviewStatusItem"),
-               "status-item hit testing also covers the clipboard preview item")
 
         // MARK: The panel surface reaches the popover arrow (issue #1030)
 
         // AppKit hands the hosted panel a safe area for the popover's border and
         // draws the arrow on the frame itself, so a surface that stopped at the
-        // panel would leave the tip in the plain system material. None of these
-        // owners compiles into this binary, so pin the three pieces that together
-        // carry the panel's own surface out to the tip.
-        let popoverSetUpCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "private func setUpPopover() {").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        suite.expect(popoverSetUpCode.contains("popover.hasFullSizeContent = PanelSurface.popoverHostsFullSizeContent"),
-               "the panel is hosted across the whole popover, arrow band included, where AppKit supports it")
-        let panelThemeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Theme.swift",
-            encoding: .utf8)) ?? ""
+        // panel would leave the tip in the plain system material. Three pieces
+        // together carry the panel's own surface out to the tip: the popover
+        // hosts it full size, the panel wears the surface, and the surface
+        // paints past the safe area.
+        do {
+            let menuPopover = NSPopover()
+            menuPopover.hasFullSizeContent = !PanelSurface.popoverHostsFullSizeContent
+            PanelSurface.hostFullSizeContent(in: menuPopover)
+            suite.expect(menuPopover.hasFullSizeContent == PanelSurface.popoverHostsFullSizeContent,
+                   "the panel is hosted across the whole popover, arrow band included, where AppKit supports it")
+        }
         // macOS 15 publishes the full-size safe area but leaves the view at its
         // content size in the frame's corner, so the popover grows and shows a
         // band of system material along its top and right edges.
-        let fullSizeGateCode = stripCommentLines((panelThemeSource
-            .components(separatedBy: "static var popoverHostsFullSizeContent: Bool {").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        suite.expect(fullSizeGateCode.contains("if #available(macOS 26.0, *) { return true }")
-                   && fullSizeGateCode.contains("return false"),
+        suite.expect(PanelSurface.popoverHostsFullSizeContent
+                     == ProcessInfo.processInfo.isOperatingSystemAtLeast(
+                         OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)),
                "full-size popover content is limited to macOS 26, where AppKit fills the balloon with it")
+        // The surface itself is SwiftUI view structure, which only rendering
+        // could check, so its shape stays pinned as text.
+        let panelThemeSource = (try? String(
+            contentsOfFile: "Sources/Vitruvian/UI/Theme.swift",
+            encoding: .utf8)) ?? ""
         let panelGlassCode = stripCommentLines((panelThemeSource
             .components(separatedBy: "private struct PanelGlassSurface: View {").last ?? "")
             .components(separatedBy: "\n}").first ?? "")
@@ -2289,11 +2438,10 @@ enum SwitcherModelFeatureTests {
         // The popover window is the panel plus 13 pt for the arrow and 13 pt
         // below it. A window taller than the usable height opens beside the
         // icon (issue #2225), so the height cap has to leave at least 26 pt.
-        let panelCapMargin = panelBodyCode("private var maxHeight: CGFloat {")
-            .components(separatedBy: "?? 760) - ").dropFirst().first
-            .flatMap { Int($0.prefix(while: \.isNumber)) } ?? 0
-        suite.expect(panelCapMargin >= 26,
-               "a panel at its height cap still fits under its icon, arrow and bottom margin included")
+        for usableHeight: CGFloat in [500, 875, 1415] {
+            suite.expect(usableHeight - MenuPanelView.heightCap(visibleHeight: usableHeight) >= 26,
+                   "a panel at its height cap still fits under its icon, arrow and bottom margin included (\(Int(usableHeight)) pt)")
+        }
 
         // The panel keeps its top edge and its center while its content resizes.
         let panelArea = CGRect(x: 0, y: 0, width: 1470, height: 932)
@@ -2569,28 +2717,48 @@ enum SwitcherModelFeatureTests {
         suite.expect(!StatusItemPlacementSupport.isPlacedStatusFrame(CGRect(x: 1792, y: 1269, width: 0, height: 0),
                                                                      screenFrames: tahoeScreens),
                "a sizeless frame is not a placement")
-        let iconIsOnScreenCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "private func iconIsOnScreen() -> Bool {").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        suite.expect(iconIsOnScreenCode.contains("StatusItemPlacementSupport.isPlacedStatusFrame("),
+        let placedTahoeFrame = CGRect(x: 1792, y: 1269, width: 38, height: 24)
+        suite.expect(!StatusItemRecovery.iconIsOnScreen(isVisible: true, windowFrame: unplacedFrame,
+                                                        screenFrames: tahoeScreens)
+               && StatusItemRecovery.iconIsOnScreen(isVisible: true, windowFrame: placedTahoeFrame,
+                                                    screenFrames: tahoeScreens),
                "the recovery judges placement by the menu bar band, not by screen intersection")
-        suite.expect(iconIsOnScreenCode.contains("statusItem.isVisible == true"),
+        suite.expect(!StatusItemRecovery.iconIsOnScreen(isVisible: false, windowFrame: placedTahoeFrame,
+                                                        screenFrames: tahoeScreens)
+               && !StatusItemRecovery.iconIsOnScreen(isVisible: true, windowFrame: nil,
+                                                     screenFrames: tahoeScreens),
                "a hidden item never counts as on screen, whatever frame its window kept")
-        // An item the app keeps out of the bar for Dynamic Island is not
-        // missing, and a rebuild on reopen could strand the panel's anchor.
-        let reopenCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "func applicationShouldHandleReopen(").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        suite.expect(reopenCode.contains("mainItemHiddenByChoice != true, !iconIsOnScreen()"),
-               "reopening the app leaves an item hidden by choice alone and opens Settings")
-        // macOS 27's Siri app reopens running apps on almost every interaction;
-        // only a reopen the person asked for may rebuild the icon or open anything.
-        let reopenJudged = reopenCode.range(of: "guard ReopenRequestSupport.isPersonOpeningApp(")
-        let reopenRebuild = reopenCode.range(of: "recreateStatusItem()")
-        suite.expect(reopenJudged != nil && reopenRebuild != nil
-                     && reopenJudged!.lowerBound < reopenRebuild!.lowerBound
-                     && reopenCode.contains("ReopenRequestSupport.currentSender()"),
-               "reopening judges who asked before it touches the icon, the panel or Settings")
+        do {
+            let finderReopen = ReopenRequestSupport.Sender(bundleIdentifier: "com.apple.finder",
+                                                           executablePath: nil, isApplication: true)
+            let siriReopen = ReopenRequestSupport.Sender(bundleIdentifier: "com.apple.Siri",
+                                                         executablePath: nil, isApplication: true)
+            var iconLooks = 0
+            func reopening(_ sender: ReopenRequestSupport.Sender?, windowsShowing: Bool = false,
+                           hiddenByChoice: Bool = false, iconOnScreen: Bool = false) -> StatusItemRecovery.Reopen {
+                StatusItemRecovery.reopen(sender: sender,
+                                          hasVisibleWindows: windowsShowing,
+                                          hiddenByChoice: hiddenByChoice,
+                                          iconIsOnScreen: {
+                                              iconLooks += 1
+                                              return iconOnScreen
+                                          })
+            }
+            // An item the app keeps out of the bar for Dynamic Island is not
+            // missing, and a rebuild on reopen could strand the panel's anchor.
+            suite.expect(reopening(finderReopen, hiddenByChoice: true) == .recover(rebuildIcon: false)
+                   && reopening(finderReopen) == .recover(rebuildIcon: true)
+                   && reopening(finderReopen, iconOnScreen: true) == .recover(rebuildIcon: false),
+                   "reopening the app leaves an item hidden by choice alone and opens Settings")
+            // macOS 27's Siri app reopens running apps on almost every interaction;
+            // only a reopen the person asked for may rebuild the icon or open anything.
+            iconLooks = 0
+            suite.expect(reopening(siriReopen) == .ignore
+                   && reopening(siriReopen, windowsShowing: true) == .ignore
+                   && iconLooks == 0
+                   && reopening(finderReopen, windowsShowing: true) == .handled,
+                   "reopening judges who asked before it touches the icon, the panel or Settings")
+        }
         typealias ReopenSender = ReopenRequestSupport.Sender
         let personReopens: [(ReopenSender?, String)] = [
             (ReopenSender(bundleIdentifier: "com.apple.finder",
@@ -2656,12 +2824,19 @@ enum SwitcherModelFeatureTests {
                                                                   executablePath: "/System/Library/CoreServices/Finder.app",
                                                                   isApplication: true)) == "com.apple.finder",
                "the log names the sender by bundle identifier, or by executable without its path")
-        let reshowCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "func reshowStatusItem() {").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        suite.expect(reshowCode.contains("DefaultsKey.menuBarHideIconWithMetrics")
-                     && reshowCode.contains("DefaultsKey.notchHidesMenuBarIcon"),
-               "Show menu bar icon turns off both ways of hiding it")
+        let reshowSuite = "vitru.tests.switcher.reshow-icon"
+        if let reshowDefaults = UserDefaults(suiteName: reshowSuite) {
+            reshowDefaults.removePersistentDomain(forName: reshowSuite)
+            reshowDefaults.set(true, forKey: DefaultsKey.menuBarHideIconWithMetrics)
+            reshowDefaults.set(true, forKey: DefaultsKey.notchHidesMenuBarIcon)
+            StatusItemRecovery.clearIconHiding(in: reshowDefaults)
+            suite.expect(reshowDefaults.object(forKey: DefaultsKey.menuBarHideIconWithMetrics) as? Bool == false
+                         && reshowDefaults.object(forKey: DefaultsKey.notchHidesMenuBarIcon) as? Bool == false,
+                   "Show menu bar icon turns off both ways of hiding it")
+            reshowDefaults.removePersistentDomain(forName: reshowSuite)
+        } else {
+            suite.expect(false, "the menu bar icon check opens its defaults suite")
+        }
 
         // macOS 26 lets the person switch an app's menu bar items off per app,
         // and remembers the choice in Control Center's group container. The
@@ -2708,17 +2883,36 @@ enum SwitcherModelFeatureTests {
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
                                                        groupContainerPlist: Data([0x00, 0x01])) == .unknown,
                "an unreadable store is unknown")
-        let verifyIconCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "private func verifyIconReappeared(").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-        suite.expect(verifyIconCode.contains("MenuBarAllowanceSupport.currentAllowance(")
-                    && verifyIconCode.contains("menuBarIconDisallowedBody"),
-               "recovery names the Allow in the Menu Bar setting instead of blaming a full bar")
-        let allowanceCheck = verifyIconCode.range(of: "MenuBarAllowanceSupport.currentAllowance(")
-        let identityReset = verifyIconCode.range(of: "resetStatusItemPlacementIdentity()")
-        suite.expect(allowanceCheck != nil && identityReset != nil
-                    && allowanceCheck!.lowerBound < identityReset!.lowerBound,
-               "the setting is checked before the identity reset burns the arranged spot")
+        do {
+            var allowanceReads = 0
+            func reshowStep(attemptsLeft: Int = 1, placementWasReset: Bool = false,
+                            allowance: MenuBarAllowanceSupport.Allowance) -> StatusItemRecovery.ReshowStep {
+                StatusItemRecovery.reshowStep(hidingChosen: false,
+                                              isOnScreen: false,
+                                              isSettling: false,
+                                              settlingGraceLeft: 0,
+                                              attemptsLeft: attemptsLeft,
+                                              placementWasReset: placementWasReset,
+                                              allowance: {
+                                                  allowanceReads += 1
+                                                  return allowance
+                                              })
+            }
+            let disallowedStep = reshowStep(allowance: .disallowed)
+            suite.expect(disallowedStep == .reportDisallowed
+                        && StatusItemRecovery.alertBody(for: disallowedStep, strings: Strings.enUS,
+                                                        menuBarManager: "Ice")
+                            == Strings.enUS.menuBarIconDisallowedBody,
+                   "recovery names the Allow in the Menu Bar setting instead of blaming a full bar")
+            allowanceReads = 0
+            suite.expect(reshowStep(attemptsLeft: 3, allowance: .disallowed) == .lookAgain
+                        && allowanceReads == 0
+                        && reshowStep(allowance: .allowed) == .resetPlacement
+                        && reshowStep(allowance: .unknown) == .resetPlacement
+                        && reshowStep(placementWasReset: true, allowance: .disallowed) == .reportDisallowed
+                        && reshowStep(placementWasReset: true, allowance: .allowed) == .reportStillHidden,
+                   "the setting is checked before the identity reset burns the arranged spot")
+        }
         suite.expect(!Strings.enUS.menuBarIconDisallowedBody.isEmpty
                     && !Strings.ptBR.menuBarIconDisallowedBody.isEmpty
                     && Strings.enUS.menuBarIconDisallowedBody.contains("Allow in the Menu Bar"),
@@ -3149,12 +3343,8 @@ enum SwitcherModelFeatureTests {
                > SwitcherSupport.titleWidth("Preferences", weight: .regular),
                "the selected card's heavier name is measured as the heavier name")
         // Both panels show windows of the same kind, so a name too long for its
-        // room behaves the same in each. One view, two callers, two widths.
-        let scrollingTitleSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Switcher/ScrollingTitle.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(scrollingTitleSource.contains("struct ScrollingTitle: View"),
-               "the scrolling name is one view, not a copy in each panel")
+        // room behaves the same in each. One view, two callers, two widths:
+        // ScrollingTitleMotionTests renders it, and these pin the two callers.
         let switcherCardSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/UI/Switcher/SwitcherView.swift",
             encoding: .utf8)) ?? ""
@@ -3164,8 +3354,6 @@ enum SwitcherModelFeatureTests {
         // One view, hung differently by each panel. Pinning it to the leading
         // edge in both left a grid card's name and the app name under it on two
         // different axes, which reads as a broken card rather than a choice.
-        suite.expect(scrollingTitleSource.contains(".frame(width: width, alignment: alignment)"),
-               "the shared name view is told where to sit instead of always taking the leading edge")
         suite.expect(sourceBody(of: switcherCardSource, from: "ScrollingTitle(", to: "scrolls:")
                 .contains("alignment: .center"),
                "a grid card centres the window's name over the app name under it")
@@ -3645,40 +3833,43 @@ enum SwitcherModelFeatureTests {
                "dock click lets the Dock activate apps that are not frontmost")
         // The tap swallows a restoring click so the Dock will not open a new
         // window, which leaves raising the app to this service. Since macOS 14
-        // that only lands if the request is cooperative, so pin the sequence
-        // rather than the bare call it replaced. Asserted positively: the call
-        // it must not use is named in the doc comment right above it.
-        let dockClickSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/DockClick/DockClickService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(dockClickSource.contains("ActivationHandoff.yield(to: app)"),
-               "a Dock click restore yields this app's activation first")
-        suite.expect(dockClickSource.contains("app.activate(from: NSRunningApplication.current, options: [])"),
-               "a Dock click restore asks cooperatively before falling back")
+        // that only lands if the request is cooperative: this app's activation
+        // is handed over first, then the app is asked, and only a refusal
+        // falls back to the plain request.
+        for accepts in [true, false] {
+            let restored = RestoredApp(acceptsCooperativeRequest: accepts)
+            DockClickService.activateCooperatively(restored, handOff: { $0.log.append("hand off") })
+            suite.expect(restored.log.first == "hand off",
+                   "a Dock click restore yields this app's activation first")
+            suite.expect(restored.log == (accepts ? ["hand off", "cooperative 0"]
+                                                  : ["hand off", "cooperative 0", "plain 0"]),
+                   "a Dock click restore asks cooperatively before falling back")
+        }
         // A yield only hands over activation this app holds, and it usually
-        // holds none when a switch commits, so the helper self-activates first
-        // and every yield goes through it. A bare yield added on a new path
-        // would bring the refused-handoff bug back on that path alone.
-        let activationHandoffSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/ActivationHandoff.swift",
-            encoding: .utf8)) ?? ""
-        let selfActivation = activationHandoffSource.range(of: "NSApp.activate(ignoringOtherApps: true)")
-        let yieldOnward = activationHandoffSource.range(of: "NSApp.yieldActivation(to: app)")
-        suite.expect(selfActivation != nil && yieldOnward != nil
-                && selfActivation!.lowerBound < yieldOnward!.lowerBound,
-               "the activation handoff self-activates before it yields onward")
-        let handoffStamp = activationHandoffSource.range(of: "lastSelfActivation = CFAbsoluteTimeGetCurrent()")
-        suite.expect(handoffStamp != nil && selfActivation != nil
-                && handoffStamp!.lowerBound < selfActivation!.lowerBound,
-               "the activation handoff stamps the self-activation before asking for it")
-        // Only the activation the handoff caused stays out of the history; the
-        // Dock icon, Settings and Vitruvian's own windows are real uses.
-        let useTrackerSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Switcher/WindowUseTracker.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(useTrackerSource.contains(
-                   "pid == ProcessInfo.processInfo.processIdentifier && ActivationHandoff.isHandingOff"),
-               "only an activation the handoff caused is left out of the use history")
+        // holds none when a switch commits, so the hand-off self-activates
+        // first. The self-activation is stamped before it is asked for, so the
+        // notification it sends is already known as this app's own.
+        do {
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            let handingOffBefore = ActivationHandoff.isHandoffActivation(of: ownPID)
+            var handOffSteps: [String] = []
+            ActivationHandoff.handOff(to: NSRunningApplication.current,
+                                      activateSelf: {
+                                          handOffSteps.append(ActivationHandoff.isHandoffActivation(of: ownPID)
+                                                              ? "self-activate as own" : "self-activate")
+                                      },
+                                      yieldTo: { handOffSteps.append("yield to \($0.processIdentifier)") })
+            suite.expect(handOffSteps.count == 2 && handOffSteps.last == "yield to \(ownPID)",
+                   "the activation handoff self-activates before it yields onward")
+            suite.expect(!handingOffBefore && handOffSteps.first == "self-activate as own",
+                   "the activation handoff stamps the self-activation before asking for it")
+            // Only the activation the handoff caused stays out of the history;
+            // the Dock icon, Settings and Vitruvian's own windows are real uses.
+            suite.expect(!handingOffBefore
+                   && ActivationHandoff.isHandoffActivation(of: ownPID)
+                   && !ActivationHandoff.isHandoffActivation(of: ownPID + 1),
+                   "only an activation the handoff caused is left out of the use history")
+        }
         suite.expect(DockClickSupport.action(appIsFrontmost: true,
                                        hasUnminimizedWindows: false,
                                        hasMinimizedWindows: true,
@@ -4028,11 +4219,31 @@ enum SwitcherModelFeatureTests {
                && DockPreviewSupport.mouseMoveSampleInterval <= 1.0 / 60
                && DockPreviewSupport.mouseMoveSampleInterval < DockPreviewSupport.switchDelay,
                "Dock Preview samples high-rate mouse movement faster than hover intent")
-        let dockPreviewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(dockPreviewSource.contains("DockClickSupport.dockOwnsPoint("),
-               "Dock Preview does not open through fullscreen content covering the Dock")
+        // Dock Preview's hit test asks the same ownership question before it
+        // looks up the icon under the pointer.
+        do {
+            var dockElementLookups = 0
+            func previewElement(_ windows: [MouseAppExceptionSupport.Window], hitProcess: pid_t) -> String? {
+                DockPreviewService.dockElement(at: dockPoint,
+                                               windows: windows,
+                                               dockProcessID: 1267,
+                                               dockLayer: 20,
+                                               ownProcessID: 501,
+                                               hitElement: { () -> String? in
+                                                   dockElementLookups += 1
+                                                   return "element of \(hitProcess)"
+                                               },
+                                               processID: { _ in hitProcess })
+            }
+            suite.expect(previewElement([coveringWindow, dockStripWindow], hitProcess: 4242) == nil
+                   && previewElement([coveringWindow], hitProcess: 1267) == nil,
+                   "Dock Preview does not open through fullscreen content covering the Dock")
+            dockElementLookups = 0
+            suite.expect(previewElement([dockStripWindow], hitProcess: 1267) == "element of 1267"
+                   && dockElementLookups == 1
+                   && previewElement([coveringWindow, dockStripWindow], hitProcess: 1267) == "element of 1267",
+                   "Dock Preview opens over a visible Dock, and through an overlay that passes the pointer to it")
+        }
 
         // Both window server scans read the same list and must keep
         // disagreeing where they disagree today. A point exactly on a
@@ -5336,33 +5547,32 @@ enum SwitcherModelFeatureTests {
                && commitSessionCode.contains("sourcePID: source?.pid,")
                && commitSessionCode.contains("handoffSourcePID: handoffSourcePID,"),
                "App Switcher sessions without a source item keep the app in front as the handoff source")
-        let windowScopes = activatorCode
-            .components(separatedBy: "windowIDs(ownerPID:")
-            .dropFirst()
-            .compactMap { $0.components(separatedBy: ")").first }
-            .filter { $0.contains("options: .") }
-        suite.expect(windowScopes.count >= 2 && windowScopes.allSatisfy { $0.contains(".optionAll") },
+        // The snapshot and the live list the retry compares it against are
+        // taken in one scope, every window of the owner: the on-screen list
+        // lags a window the app has just opened, so comparing it against an
+        // all-windows snapshot reported nothing new in exactly that race.
+        suite.expect(WindowActivator.focusWindowListScope == .optionAll,
                "the retry's live window list is gathered in the same scope as the snapshot it is compared against")
         // A switch away from a fullscreen app reaches its target through a hop,
         // whose arrival pulses raise it for up to a second. They must ask the
         // same guard before raising, or Command-N in the app just reached is
-        // covered by the target on the next pulse. Comments are stripped, so a
-        // doc comment naming the guard cannot stand in for the call.
-        let hopFocusBody: String = {
-            guard let start = activatorCode.range(of: "static func focusAfterSpaceHop(") else { return "" }
-            let rest = activatorCode[start.upperBound...]
-            let end = rest.range(of: "static func ")?.lowerBound ?? rest.endIndex
-            return String(rest[..<end])
-        }()
-        let hopGuard = hopFocusBody.range(of: "shouldContinueFocusRetry(")
-        // Whatever the pass uses to bring the window forward, the guard comes
-        // first. Naming one of those calls would pin today's spelling and go
-        // red on a refactor that broke nothing.
-        let hopRaise = ["prepareWindowForActivation(", "activateApp(", "focusWindow("]
-            .compactMap { hopFocusBody.range(of: $0)?.lowerBound }
-            .min()
-        suite.expect(hopGuard != nil && hopRaise != nil && hopGuard!.lowerBound < hopRaise!,
-               "the hop's arrival pass consults the retry guard before it raises the target")
+        // covered by the target on the next pulse.
+        do {
+            func hopArrivalPass(guardAllows: Bool) -> [String] {
+                SwitcherActivationTests.reset()
+                WindowActivator.focusAfterSpaceHop(windowID: 77, appPID: 20, windowOwnerPID: 20,
+                                                   shouldContinue: {
+                                                       SwitcherActivationTests.events.append("guard")
+                                                       return guardAllows
+                                                   },
+                                                   calls: SwitcherActivationTests.calls)
+                return SwitcherActivationTests.events
+            }
+            let allowedPass = hopArrivalPass(guardAllows: true)
+            suite.expect(allowedPass.first == "guard" && allowedPass.contains("raise:77:20:false")
+                   && hopArrivalPass(guardAllows: false) == ["guard"],
+                   "the hop's arrival pass consults the retry guard before it raises the target")
+        }
         let spaceHopCode = ((try? String(
             contentsOfFile: "Sources/Vitruvian/Services/Switcher/SpaceHop.swift",
             encoding: .utf8)) ?? "")

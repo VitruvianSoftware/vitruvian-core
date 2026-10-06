@@ -12,7 +12,7 @@ import VitruvianDesign
 @MainActor
 package enum QuickToolHUD {
     private static var panel: NSPanel?
-    private static var scrollingPanel: ScrollingCapturePanel?
+    private static var scrollingPanel: NSPanel?
     private static var scrollingModel: ScrollingCaptureHUDModel?
     private static var dismissWork: DispatchWorkItem?
     /// How wide a message is allowed to get, on either of this file's two
@@ -231,19 +231,28 @@ package enum QuickToolHUD {
         return panel
     }
 
-    private static func ensureScrollingPanel() -> ScrollingCapturePanel {
+    private static func ensureScrollingPanel() -> NSPanel {
         if let scrollingPanel { return scrollingPanel }
+        let panel = makeScrollingPanel()
+        scrollingPanel = panel
+        return panel
+    }
+
+    /// The scrolling capture's panel, which owns Return and Escape: a floating
+    /// overlay, which window managers do not list.
+    package static func makeScrollingPanel() -> NSPanel {
         let panel = ScrollingCapturePanel(contentRect: .zero,
                                           styleMask: [.borderless, .nonactivatingPanel],
                                           backing: .buffered,
                                           defer: false)
         configure(panel)
         panel.ignoresMouseEvents = false
-        scrollingPanel = panel
         return panel
     }
 
-    private static func makePanel() -> NSPanel {
+    /// The confirmation's panel: a floating overlay, which window managers do
+    /// not list.
+    package static func makePanel() -> NSPanel {
         let panel = OverlayPanel(contentRect: .zero,
                                  styleMask: [.borderless, .nonactivatingPanel],
                                  backing: .buffered,

@@ -29,6 +29,13 @@ package enum WindowEnumerator {
             self.bounds = bounds
             self.targetIndex = targetIndex
         }
+
+        /// The display under the pointer. One that is not among the screens
+        /// any more is no target (-1) rather than another monitor's windows.
+        package init(bounds: [CGRect], displayIDs: [CGDirectDisplayID], pointerDisplayID: CGDirectDisplayID?) {
+            self.init(bounds: bounds,
+                      targetIndex: pointerDisplayID.flatMap { displayIDs.firstIndex(of: $0) } ?? -1)
+        }
     }
 
     package struct WindowList {
@@ -41,6 +48,67 @@ package enum WindowEnumerator {
         package init(items: [SwitcherItem], sourceItems: [SwitcherItem]) {
             self.items = items
             self.sourceItems = sourceItems
+        }
+    }
+
+    /// What turns collected windows into a caller's list; see `shaped`.
+    package struct Shaping {
+        package var minimizedPlacement: WindowSwitchMinimizedPlacement
+        /// Whether a hidden app's windows follow the minimized-window placement.
+        package var treatHiddenAppsLikeMinimized: Bool
+        package var showFullscreenWindows: Bool
+        package var groupByApp: Bool
+        /// Keeps a grouped app's other windows behind its entry.
+        package var preservingGroupedWindows: Bool
+        package var windowlessApps: SwitcherWindowlessApps
+        package var maximumCount: Int
+        /// Set for a session that shows only the front app's windows; the cap
+        /// then spends its places on that app alone.
+        package var scopedToFrontmostPID: pid_t?
+        package var displayScope: DisplayScope?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(minimizedPlacement: WindowSwitchMinimizedPlacement = .normal,
+                     treatHiddenAppsLikeMinimized: Bool = false,
+                     showFullscreenWindows: Bool = true,
+                     groupByApp: Bool = false,
+                     preservingGroupedWindows: Bool = false,
+                     windowlessApps: SwitcherWindowlessApps = .off,
+                     maximumCount: Int,
+                     scopedToFrontmostPID: pid_t? = nil,
+                     displayScope: DisplayScope? = nil) {
+            self.minimizedPlacement = minimizedPlacement
+            self.treatHiddenAppsLikeMinimized = treatHiddenAppsLikeMinimized
+            self.showFullscreenWindows = showFullscreenWindows
+            self.groupByApp = groupByApp
+            self.preservingGroupedWindows = preservingGroupedWindows
+            self.windowlessApps = windowlessApps
+            self.maximumCount = maximumCount
+            self.scopedToFrontmostPID = scopedToFrontmostPID
+            self.displayScope = displayScope
+        }
+    }
+
+    /// The App Switcher's list preferences, read in one place. The Dock
+    /// preview and the Command Bar keep fixed choices instead.
+    package struct SwitcherPreferences {
+        package let windowlessApps: SwitcherWindowlessApps
+        package let currentSpaceOnly: Bool
+        package let minimizedPlacement: WindowSwitchMinimizedPlacement
+        /// The saved choice to place a hidden app's windows like minimized ones.
+        package let treatHiddenAppsLikeMinimized: Bool
+        package let showFullscreenWindows: Bool
+
+        package init(defaults: UserDefaults) {
+            windowlessApps = SwitcherWindowlessApps.mode(
+                storedValue: defaults.string(forKey: DefaultsKey.switcherWindowlessApps),
+                takeOverSystemShortcuts: defaults.bool(forKey: DefaultsKey.switcherTakeOverSystemShortcuts))
+            currentSpaceOnly = defaults.bool(forKey: DefaultsKey.switcherCurrentSpaceOnly)
+            minimizedPlacement = WindowSwitchMinimizedPlacement(
+                rawValue: defaults.string(forKey: DefaultsKey.switcherMinimizedPlacement) ?? ""
+            ) ?? .normal
+            treatHiddenAppsLikeMinimized = defaults.bool(forKey: DefaultsKey.switcherTreatHiddenAppsLikeMinimized)
+            showFullscreenWindows = defaults.object(forKey: DefaultsKey.switcherShowFullscreenWindows) as? Bool ?? true
         }
     }
 
@@ -181,28 +249,18 @@ package enum WindowEnumerator {
                                     scopedToFrontmostPID: pid_t? = nil,
                                     resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
                                     isCancelled: @escaping @Sendable () -> Bool = { false }) -> WindowList {
-        let windowlessApps = SwitcherWindowlessApps.mode(
-            storedValue: UserDefaults.standard.string(forKey: DefaultsKey.switcherWindowlessApps),
-            takeOverSystemShortcuts: UserDefaults.standard.bool(
-                forKey: DefaultsKey.switcherTakeOverSystemShortcuts))
-        let currentSpaceOnly = UserDefaults.standard.bool(forKey: DefaultsKey.switcherCurrentSpaceOnly)
-        let minimizedPlacement = WindowSwitchMinimizedPlacement(
-            rawValue: UserDefaults.standard.string(forKey: DefaultsKey.switcherMinimizedPlacement) ?? ""
-        ) ?? .normal
-        let treatHiddenAppsLikeMinimized = UserDefaults.standard.bool(
-            forKey: DefaultsKey.switcherTreatHiddenAppsLikeMinimized)
-        let showFullscreenWindows = UserDefaults.standard.object(forKey: DefaultsKey.switcherShowFullscreenWindows) as? Bool ?? true
+        let preferences = SwitcherPreferences(defaults: .standard)
         return listWindows(filterPID: nil,
                            maximumCount: maximumCount,
-                           windowlessApps: windowlessApps,
+                           windowlessApps: preferences.windowlessApps,
                            appRules: appRules,
                            groupByApp: groupByApp,
-                           minimizedPlacement: minimizedPlacement,
-                           treatHiddenAppsLikeMinimized: treatHiddenAppsLikeMinimized,
-                           showFullscreenWindows: showFullscreenWindows,
+                           minimizedPlacement: preferences.minimizedPlacement,
+                           treatHiddenAppsLikeMinimized: preferences.treatHiddenAppsLikeMinimized,
+                           showFullscreenWindows: preferences.showFullscreenWindows,
                            preservingGroupedWindows: preservingGroupedWindows,
-                           currentSpaceOnly: currentSpaceOnly,
-                           marksHiddenSpaces: marksHiddenSpaces && !currentSpaceOnly,
+                           currentSpaceOnly: preferences.currentSpaceOnly,
+                           marksHiddenSpaces: marksHiddenSpaces && !preferences.currentSpaceOnly,
                            snapshot: snapshot,
                            scopedToFrontmostPID: scopedToFrontmostPID,
                            displayScope: displayScope,
@@ -561,6 +619,47 @@ package enum WindowEnumerator {
                              ownPID: pid_t(ownPid),
                              withheldPIDs: withheldPIDs,
                              appRules: appRules)
+        return shaped(windows,
+                      by: Shaping(minimizedPlacement: minimizedPlacement,
+                                  treatHiddenAppsLikeMinimized: treatHiddenAppsLikeMinimized,
+                                  showFullscreenWindows: showFullscreenWindows,
+                                  groupByApp: groupByApp,
+                                  preservingGroupedWindows: preservingGroupedWindows,
+                                  windowlessApps: windowlessApps,
+                                  maximumCount: maximumCount,
+                                  scopedToFrontmostPID: scopedToFrontmostPID,
+                                  displayScope: displayScope),
+                      orderByUse: { orderByUse($0, frontToBack: frontToBack) },
+                      resolveSource: resolveSource,
+                      isCancelled: isCancelled,
+                      marksHiddenSpaces: marksHiddenSpaces,
+                      isOnHiddenSpace: { isOnHiddenSpace($0) })
+    }
+
+    /// Turns the collected windows into the list a caller shows: filtered,
+    /// held to a display, ordered by use, grouped, then capped. The display
+    /// scope comes before grouping and the cap, so another monitor's window can
+    /// neither stand in for an app shown here nor use up this list's places.
+    /// The window in front is resolved and promoted before the cap, so the cap
+    /// never cuts it. `sourceItems` keeps the list before the display scope,
+    /// so activation still knows that window when its monitor is not the one
+    /// shown.
+    package static func shaped(_ windows: [SwitcherItem],
+                               by shaping: Shaping,
+                               orderByUse byUse: ([SwitcherItem]) -> [SwitcherItem],
+                               resolveSource: (([SwitcherItem]) -> SwitcherItem?)? = nil,
+                               isCancelled: () -> Bool = { false },
+                               marksHiddenSpaces: Bool = false,
+                               isOnHiddenSpace: (CGWindowID) -> Bool = { _ in false }) -> WindowList {
+        let minimizedPlacement = shaping.minimizedPlacement
+        let treatHiddenAppsLikeMinimized = shaping.treatHiddenAppsLikeMinimized
+        let showFullscreenWindows = shaping.showFullscreenWindows
+        let groupByApp = shaping.groupByApp
+        let preservingGroupedWindows = shaping.preservingGroupedWindows
+        let windowlessApps = shaping.windowlessApps
+        let maximumCount = shaping.maximumCount
+        let scopedToFrontmostPID = shaping.scopedToFrontmostPID
+        let displayScope = shaping.displayScope
         let affectedByMinimizedPlacement = { (item: SwitcherItem) in
             item.isMinimizedForPlacement(treatHiddenAppsLikeMinimized: treatHiddenAppsLikeMinimized)
         }
@@ -569,7 +668,7 @@ package enum WindowEnumerator {
             if minimizedPlacement == .hidden, affectedByMinimizedPlacement(item) { return false }
             return true
         }
-        let sourceItems = displayScope.map { _ in orderByUse(filtered, frontToBack: frontToBack) }
+        let sourceItems = displayScope.map { _ in byUse(filtered) }
         let scoped = displayScope.map {
             SwitcherSupport.itemsOnDisplay(filtered, displayBounds: $0.bounds, targetIndex: $0.targetIndex)
         } ?? filtered
@@ -578,13 +677,13 @@ package enum WindowEnumerator {
         if minimizedPlacement == .end {
             let primary = scoped.filter { !affectedByMinimizedPlacement($0) }
             let deferred = scoped.filter { affectedByMinimizedPlacement($0) }
-            let orderedPrimary = orderByUse(primary, frontToBack: frontToBack)
-            let orderedDeferred = orderByUse(deferred, frontToBack: frontToBack)
+            let orderedPrimary = byUse(primary)
+            let orderedDeferred = byUse(deferred)
             let groupedPrimary = groupByApp ? SwitcherSupport.groupWindowsByApp(orderedPrimary) : orderedPrimary
             let groupedDeferred = groupByApp ? SwitcherSupport.groupWindowsByApp(orderedDeferred) : orderedDeferred
             ordered = groupedPrimary + groupedDeferred
         } else {
-            let orderedRaw = orderByUse(scoped, frontToBack: frontToBack)
+            let orderedRaw = byUse(scoped)
             ordered = groupByApp ? SwitcherSupport.groupWindowsByApp(orderedRaw) : orderedRaw
         }
         let backingOrdered: [SwitcherItem]
@@ -592,9 +691,9 @@ package enum WindowEnumerator {
             if minimizedPlacement == .end {
                 let primary = groupedBackingWindows.filter { !affectedByMinimizedPlacement($0) }
                 let deferred = groupedBackingWindows.filter { affectedByMinimizedPlacement($0) }
-                backingOrdered = orderByUse(primary, frontToBack: frontToBack) + orderByUse(deferred, frontToBack: frontToBack)
+                backingOrdered = byUse(primary) + byUse(deferred)
             } else {
-                backingOrdered = orderByUse(groupedBackingWindows, frontToBack: frontToBack)
+                backingOrdered = byUse(groupedBackingWindows)
             }
         } else {
             backingOrdered = []
@@ -973,20 +1072,17 @@ package enum WindowEnumerator {
                 && (windowID.map(normalLevelWindowIDs.contains) ?? false)
             // A hidden app's ordinary windows read as dialogs too (issue
             // #2279). Only a normal-level dialog pays for the button read.
-            let canMinimize = subrole == "AXDialog" && hasNormalWindowLevel
-                && !isCancelled()
-                && hasWorkingMinimizeButton(window)
             return SwitcherSupport.isSwitchableNonstandardWindow(
                 role: role,
                 subrole: subrole,
                 fillsScreen: fillsScreen,
                 hasNormalWindowLevel: hasNormalWindowLevel,
                 acceptsUndescribedSubroles: acceptsUndescribedSubroles,
-                canMinimize: canMinimize,
                 // A borderless helper stays in the app's window list even when
                 // the app asks the window server to keep it out of cycling.
                 isExcludedFromWindowCycle: windowID
-                    .map(SpaceWindowBridge.isExcludedFromWindowCycle) ?? false)
+                    .map(SpaceWindowBridge.isExcludedFromWindowCycle) ?? false,
+                minimizeButtonWorks: { !isCancelled() && hasWorkingMinimizeButton(window) })
         }
         guard !isCancelled() else { return false }
         return stringAttribute(window, kAXRoleAttribute as String) == "AXWindow"

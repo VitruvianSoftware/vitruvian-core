@@ -63,7 +63,7 @@ package final class SmoothScrollService: ObservableObject {
     /// Timestamp (ns, event clock) of the last event carrying a gesture phase —
     /// only touch devices emit those. Read/written solely on the tap callback.
     private var lastGesturePhaseTimestamp: UInt64?
-    private var tapCreationRetryUsed = false
+    private var tapCreationRetry = TapCreationRetry()
     private var tapCreationRetryWork: DispatchWorkItem?
 
     private init() {
@@ -120,8 +120,7 @@ package final class SmoothScrollService: ObservableObject {
             MouseAppExceptions.shared.setSourceTracking(false, for: .smoothScroll)
             isRunning = false
             // A create that fails during the session handoff gets one more look once the switch settles.
-            guard !tapCreationRetryUsed else { return }
-            tapCreationRetryUsed = true
+            guard tapCreationRetry.refused() else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.tapCreationRetryWork = nil
@@ -132,7 +131,7 @@ package final class SmoothScrollService: ObservableObject {
             return
         }
 
-        tapCreationRetryUsed = false
+        tapCreationRetry.reset()
         tapCreationRetryWork?.cancel()
         tapCreationRetryWork = nil
         self.tap = tap
@@ -150,7 +149,7 @@ package final class SmoothScrollService: ObservableObject {
     private func stop() {
         tapCreationRetryWork?.cancel()
         tapCreationRetryWork = nil
-        tapCreationRetryUsed = false
+        tapCreationRetry.reset()
         MouseAppExceptions.shared.setSourceTracking(false, for: .smoothScroll)
         removeScreenObserver()
         removeSleepObserver()

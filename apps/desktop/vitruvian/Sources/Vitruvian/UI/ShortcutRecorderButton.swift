@@ -118,13 +118,11 @@ package final class RecorderButton: NSButton {
         // this fixes, so give both back even from here.
         if Thread.isMainThread {
             MainActor.assumeIsolated {
-                ShortcutRecordingTap.end()
-                ShortcutCapture.end()
+                ShortcutListening.live.end()
             }
         } else {
             DispatchQueue.main.async {
-                ShortcutRecordingTap.end()
-                ShortcutCapture.end()
+                ShortcutListening.live.end()
             }
         }
     }
@@ -139,12 +137,11 @@ package final class RecorderButton: NSButton {
         }
         isRecording = true
         awaitingKeyForHeldModifiers = false
-        ShortcutCapture.begin()
         // The tap keeps the typed combination to the field: without it, a
         // combination the system or another app answers to performs that
         // action while being recorded. When the tap cannot exist (no
         // Accessibility), the view events below still record as before.
-        ShortcutRecordingTap.begin { [weak self] keyCode, modifiers, flags in
+        ShortcutListening.live.begin { [weak self] keyCode, modifiers, flags in
             guard let self, self.isRecording else { return }
             self.handleRecordingKey(keyCode: keyCode, modifiers: modifiers, flags: flags)
         }
@@ -161,8 +158,7 @@ package final class RecorderButton: NSButton {
         awaitingKeyForHeldModifiers = false
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
-        ShortcutRecordingTap.end()
-        ShortcutCapture.end()
+        ShortcutListening.live.end()
         refreshTitle()
         recordingChanged?(false)
     }

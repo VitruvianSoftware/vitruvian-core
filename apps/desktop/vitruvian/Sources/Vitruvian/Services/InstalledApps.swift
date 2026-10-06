@@ -67,6 +67,41 @@ package enum InstalledApps {
             .abbreviatingWithTildeInPath
     }
 
+    /// The second line an app picker shows under a row's name, and the end
+    /// of it that gives way when it does not fit.
+    package struct RowCaption: Equatable {
+        package enum Cut: Equatable {
+            case head
+            case middle
+        }
+
+        package let text: String
+        package let cut: Cut
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(text: String, cut: Cut) {
+            self.text = text
+            self.cut = cut
+        }
+    }
+
+    /// The caption under a listed identity: where a path identity's file
+    /// sits, cut from the head. Sibling runtimes share a long directory prefix
+    /// and differ in the middle or the tail, so cutting there would hide the
+    /// one component that tells the rows apart. Nil for a bundle identifier,
+    /// whose name says it all.
+    package static func listCaption(for identity: String) -> RowCaption? {
+        location(for: identity).map { RowCaption(text: $0, cut: .head) }
+    }
+
+    /// The caption under a picker row: a path identity's location, cut from
+    /// the head as in the lists, and otherwise the bundle identifier or the
+    /// file, cut in the middle.
+    package static func pickerCaption(for app: InstalledApp) -> RowCaption {
+        if let caption = app.identity.flatMap(listCaption(for:)) { return caption }
+        return RowCaption(text: app.bundleID ?? app.url.path, cut: .middle)
+    }
+
     package static func name(for bundleID: String) -> String {
         guard let url = fileURL(forIdentity: bundleID) else { return bundleID }
         return FileManager.default.displayName(atPath: url.path)

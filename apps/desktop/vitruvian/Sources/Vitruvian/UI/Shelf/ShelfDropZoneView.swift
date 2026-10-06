@@ -20,10 +20,7 @@ package struct DockedShelfView: View {
         // content swap cannot be kept in step, and half-synced frames lag.
         Group {
             if shelf.dockedExpanded {
-                ShelfView(dismissSystemImage: "chevron.up",
-                          dismissHelp: l10n.s.shelfCollapse,
-                          onDismiss: { shelf.collapseDocked() },
-                          brandWatermark: true)
+                ShelfView.docked(collapseHelp: l10n.s.shelfCollapse)
             } else if shelf.dockedPlacement == .topCenter {
                 ShelfTopCenterBadge()
             } else {

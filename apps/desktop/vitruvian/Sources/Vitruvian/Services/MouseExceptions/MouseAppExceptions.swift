@@ -63,11 +63,16 @@ package final class MouseAppExceptions: ObservableObject {
     nonisolated private static let ownProcessID = Int32(getpid())
     // Set once, in init; the pointer thread reads the clock, so it is `@Sendable`.
     nonisolated private let uptime: @Sendable () -> TimeInterval
+    /// Where the lists are kept: the app's preferences, or a test's own suite.
+    /// Set once, in init; UserDefaults is safe to use from any thread.
+    nonisolated(unsafe) private let defaults: UserDefaults
 
     /// Built on whichever thread first asks for `shared`. The lookups the taps
     /// read are ready before this returns; the published lists follow on the
     /// main thread.
-    nonisolated package init(uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    nonisolated package init(defaults: UserDefaults = .standard,
+                             uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.defaults = defaults
         self.uptime = uptime
         let lists = loadLookups()
         let publish: @Sendable () -> Void = { [weak self] in
@@ -85,7 +90,6 @@ package final class MouseAppExceptions: ObservableObject {
 
     /// Reads and sanitizes the stored lists and hands the taps their sets.
     nonisolated private func loadLookups() -> [MouseExceptionScope: [String]] {
-        let defaults = UserDefaults.standard
         var lists: [MouseExceptionScope: [String]] = [:]
         for scope in MouseExceptionScope.allCases {
             let raw = defaults.stringArray(forKey: scope.defaultsKey) ?? []
@@ -126,13 +130,13 @@ package final class MouseAppExceptions: ObservableObject {
     package func add(_ identity: String, to scope: MouseExceptionScope) {
         let updated = Defaults.sanitizedBundleIdentifierList(list(scope) + [identity])
         guard updated != list(scope) else { return }
-        UserDefaults.standard.set(updated, forKey: scope.defaultsKey)
+        defaults.set(updated, forKey: scope.defaultsKey)
         reload()
     }
 
     package func remove(_ bundleID: String, from scope: MouseExceptionScope) {
         guard list(scope).contains(bundleID) else { return }
-        UserDefaults.standard.set(list(scope).filter { $0 != bundleID }, forKey: scope.defaultsKey)
+        defaults.set(list(scope).filter { $0 != bundleID }, forKey: scope.defaultsKey)
         reload()
     }
 
@@ -326,8 +330,16 @@ package final class MouseAppExceptions: ObservableObject {
     /// (issue #1009).
     nonisolated private static func identity(for app: NSRunningApplication?) -> String? {
         guard let app else { return nil }
-        return MouseAppExceptionSupport.identity(bundleID: app.bundleIdentifier,
-                                                 executablePath: app.executableURL?.path)
+        return identity(bundleID: app.bundleIdentifier, executableURL: app.executableURL)
+    }
+
+    /// What a running app answers to at the taps' end of a list: the one rule
+    /// the picker stores by, so a program reached through a link meets the
+    /// entry stored for its file. The file is not even looked at for an app
+    /// with a bundle identifier: this runs under the event taps.
+    nonisolated package static func identity(bundleID: String?,
+                                             executableURL: @autoclosure () -> URL?) -> String? {
+        MouseAppExceptionSupport.identity(bundleID: bundleID, executablePath: executableURL()?.path)
     }
 
     nonisolated private func invalidateCache() {

@@ -141,6 +141,55 @@ package enum MouseButtonShortcutSupport {
         return mappings[button]
     }
 
+    /// What the shortcut tap does with an extra button's press.
+    package enum PressRoute: Equatable {
+        /// The press goes on to the app untouched.
+        case pass
+        /// The Settings capture row takes the press it asked for.
+        case capture
+        /// Held back while it may still become the Spaces and Mission Control
+        /// drag, and given back to the app if it never does.
+        case holdForSpaces
+        /// Taken, with this shortcut typed in its place.
+        case fire(GlobalShortcut)
+    }
+
+    /// Decides a press in the order the tap must ask. A tap draining an
+    /// earlier press claims nothing new. The capture row takes every button
+    /// it can map. An app on the exception list keeps its buttons. The drag's
+    /// button is held back by this tap, which already receives its drags. Only
+    /// then may a mapping fire, and only while the shortcut switch is on: the
+    /// drag alone keeps the tap up with that switch off, and a mapping left
+    /// behind is inert, its button the app's. `isExcepted` is asked only when
+    /// the answer matters, as it may have to ask the window server.
+    package static func route(press button: Int64,
+                              isDraining: Bool,
+                              isCapturing: Bool,
+                              isExcepted: () -> Bool,
+                              spacesButton: Int64?,
+                              isAvailable: Bool,
+                              isEnabled: Bool,
+                              mappings: [Int64: GlobalShortcut],
+                              claimedByWheel: (Int64) -> Bool) -> PressRoute {
+        if isDraining { return .pass }
+        if isCapturing { return canMap(button) ? .capture : .pass }
+        if isExcepted() { return .pass }
+        if button == spacesButton { return .holdForSpaces }
+        guard let shortcut = firesShortcut(for: button, isAvailable: isAvailable, isEnabled: isEnabled,
+                                           mappings: mappings, claimedByWheel: claimedByWheel)
+        else { return .pass }
+        return .fire(shortcut)
+    }
+
+    /// Whether the shortcut tap has to be up. A capture holds it up by itself:
+    /// the press being asked for may be the drag's, and the drag's switch is
+    /// not the shortcut switch. A bound drag holds it up with the shortcut
+    /// switch off for the same reason.
+    package static func tapWanted(shortcutsEnabled: Bool, hasMappings: Bool,
+                                  isCapturing: Bool, spacesButton: Int64?) -> Bool {
+        (shortcutsEnabled && hasMappings) || isCapturing || spacesButton != nil
+    }
+
     /// Whether this feature currently owns the button, for either of the two
     /// jobs it can give one: pressing a shortcut, or driving the Spaces and
     /// Mission Control drag. Mouse navigation asks this from its own tap and

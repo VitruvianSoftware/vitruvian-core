@@ -133,6 +133,37 @@ package struct NotchWatchTracker {
     }
 }
 
+/// What a watch keeps of the area's last reading: its picture's fingerprint,
+/// the signature read off it and when. Only a reading kept whole marks the
+/// area as read: one dropped halfway must not, or a still area would never
+/// be read again.
+package struct NotchWatchLastReading {
+    package private(set) var fingerprint: [UInt8]?
+    package private(set) var signature: String?
+    package private(set) var readAt: Date?
+
+    package init() {}
+
+    /// The last signature, when `picture` is the one last read and that
+    /// reading is recent enough not to read the area again. A still area
+    /// comes back with it, so a change that holds is confirmed and time can
+    /// settle it. Nil when the area must be read.
+    package func stillSignature(of picture: [UInt8]?, at date: Date) -> String? {
+        guard let signature, NotchWatchSupport.sameFingerprint(picture, fingerprint),
+              let readAt, date.timeIntervalSince(readAt) < NotchWatchSupport.rereadInterval else { return nil }
+        return signature
+    }
+
+    /// Keeps what was read off `picture` at `date`, marking the area as read,
+    /// and returns the reading's signature.
+    package mutating func keep(_ text: String, of picture: [UInt8]?, at date: Date) -> String? {
+        fingerprint = picture
+        readAt = date
+        signature = NotchWatchSupport.signature(text: text, fingerprint: picture)
+        return signature
+    }
+}
+
 package enum NotchWatchSupport {
     /// How often the area is read: often while its page is open, so the
     /// preview feels live, and less while it only feeds the closed island.

@@ -631,31 +631,11 @@ package struct GlobalShortcut: Equatable, Hashable {
                                      capsLockOn: capsLockOn)
     }
 
-    /// The layout the keycaps are read from. An input method answers the
-    /// current-layout call with the companion layout it types through, and
-    /// Pinyin's turns ; , . [ ] \ ` into ；，。【】、· — what the method produces,
-    /// not what the keyboard says, and it moves with the method rather than
-    /// with the hardware. The ASCII capable layout under a method is the
-    /// physical keyboard, so the caps stay put. A plain layout is still asked
-    /// directly, which keeps AZERTY, QWERTZ and the non-Latin layouts showing
-    /// their own keys (issue #1047).
+    /// Text Input Sources answers only on the main thread; anywhere else the
+    /// caps fall back to the ANSI table.
     private static func currentLayoutData() -> Data? {
         guard Thread.isMainThread else { return nil }
-        let source = inputMethodIsActive
-            ? TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue()
-            : TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue()
-        guard let source,
-              let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
-        else { return nil }
-        return Unmanaged<CFData>.fromOpaque(layoutData).takeUnretainedValue() as Data
-    }
-
-    private static var inputMethodIsActive: Bool {
-        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
-              let type = TISGetInputSourceProperty(source, kTISPropertyInputSourceType)
-        else { return false }
-        let value = Unmanaged<CFString>.fromOpaque(type).takeUnretainedValue() as String
-        return value != (kTISTypeKeyboardLayout as String)
+        return KeycapLayoutSource.live.layoutData()
     }
 
     private static func derivedLayoutKeyLabel(for code: UInt16,
@@ -685,6 +665,64 @@ package struct GlobalShortcut: Equatable, Hashable {
               !CharacterSet.controlCharacters.contains(scalar)
         else { return nil }
         return label.uppercased()
+    }
+}
+
+/// The Text Input Sources reads the keycaps come from, as plain values so the
+/// choice between the two layouts is a decision of its own.
+package struct KeycapLayoutSource: Sendable {
+    /// The type of the current keyboard input source, nil when unreadable.
+    package var currentSourceType: @Sendable () -> String?
+    /// The key layout of the current ASCII capable keyboard layout.
+    package var asciiCapableLayoutData: @Sendable () -> Data?
+    /// The key layout of the current keyboard layout.
+    package var currentLayoutData: @Sendable () -> Data?
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(currentSourceType: @escaping @Sendable () -> String?,
+                 asciiCapableLayoutData: @escaping @Sendable () -> Data?,
+                 currentLayoutData: @escaping @Sendable () -> Data?) {
+        self.currentSourceType = currentSourceType
+        self.asciiCapableLayoutData = asciiCapableLayoutData
+        self.currentLayoutData = currentLayoutData
+    }
+
+    /// The layout the keycaps are read from. An input method answers the
+    /// current-layout call with the companion layout it types through, and
+    /// Pinyin's turns ; , . [ ] \ ` into ；，。【】、· — what the method produces,
+    /// not what the keyboard says, and it moves with the method rather than
+    /// with the hardware. The ASCII capable layout under a method is the
+    /// physical keyboard, so the caps stay put. A plain layout is still asked
+    /// directly, which keeps AZERTY, QWERTZ and the non-Latin layouts showing
+    /// their own keys (issue #1047).
+    package func layoutData() -> Data? {
+        let inputMethodIsActive = currentSourceType().map { $0 != (kTISTypeKeyboardLayout as String) }
+            ?? false
+        return inputMethodIsActive ? asciiCapableLayoutData() : currentLayoutData()
+    }
+
+    /// The Mac's own sources. Text Input Sources is asked from the main thread.
+    package static let live = KeycapLayoutSource(
+        currentSourceType: {
+            guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+                  let type = TISGetInputSourceProperty(source, kTISPropertyInputSourceType)
+            else { return nil }
+            return Unmanaged<CFString>.fromOpaque(type).takeUnretainedValue() as String
+        },
+        asciiCapableLayoutData: {
+            KeycapLayoutSource.unicodeKeyLayout(
+                of: TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue())
+        },
+        currentLayoutData: {
+            KeycapLayoutSource.unicodeKeyLayout(
+                of: TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue())
+        })
+
+    private static func unicodeKeyLayout(of source: TISInputSource?) -> Data? {
+        guard let source,
+              let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return nil }
+        return Unmanaged<CFData>.fromOpaque(layoutData).takeUnretainedValue() as Data
     }
 }
 

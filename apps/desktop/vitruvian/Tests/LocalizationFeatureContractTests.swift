@@ -359,11 +359,14 @@ enum LocalizationFeatureContractTests {
                 suite.expect(!value.isEmpty && !value.contains("%"), "\(prefix) renders format strings")
             }
         }
-        let infoPlist = NSDictionary(contentsOfFile: "Resources/Info.plist") as? [String: Any]
-        let bundleLocalizations = infoPlist?["CFBundleLocalizations"] as? [String] ?? []
+        // macOS reads the permission prompts from Info.plist and, in each
+        // language, from that language's InfoPlist.strings, both as tables of
+        // keys and values. They are read here the same way.
+        let infoPlist = ShippedResource.dictionary("Resources/Info.plist") ?? [:]
+        let bundleLocalizations = infoPlist["CFBundleLocalizations"] as? [String] ?? []
         suite.expect(bundleLocalizations.contains("tr"), "Info.plist declares Turkish as a bundle localization")
         suite.expect(bundleLocalizations.contains("ko"), "Info.plist declares Korean as a bundle localization")
-        let baseAudioPrompt = infoPlist?["NSAudioCaptureUsageDescription"] as? String ?? ""
+        let baseAudioPrompt = infoPlist["NSAudioCaptureUsageDescription"] as? String ?? ""
         suite.expect(baseAudioPrompt.contains("Vitruvian uses each app's audio"),
                "base audio permission prompt is an English fallback")
         let organizerFolderPromptKeys = [
@@ -371,16 +374,25 @@ enum LocalizationFeatureContractTests {
             "NSNetworkVolumesUsageDescription", "NSRemovableVolumesUsageDescription",
         ]
         suite.expect(organizerFolderPromptKeys.allSatisfy {
-                   !(infoPlist?[$0] as? String ?? "").isEmpty
+                   !(infoPlist[$0] as? String ?? "").isEmpty
                },
                "the organizer declares every supported custom destination permission")
         let localizedInfoPlists = (try? FileManager.default.contentsOfDirectory(
             atPath: "Resources"))?.filter { $0.hasSuffix(".lproj") } ?? []
-        suite.expect(localizedInfoPlists.allSatisfy { folder in
-            let value = (try? String(contentsOfFile: "Resources/\(folder)/InfoPlist.strings",
-                                     encoding: .utf8)) ?? ""
-            return organizerFolderPromptKeys.allSatisfy(value.contains)
-        }, "every localization explains custom organizer folder access")
+        // A prompt that a language leaves out, or leaves in English, reaches
+        // someone who chose that language in English.
+        for folder in localizedInfoPlists.sorted() {
+            let table = ShippedResource.dictionary("Resources/\(folder)/InfoPlist.strings") ?? [:]
+            func translates(_ key: String) -> Bool {
+                let value = table[key] as? String ?? ""
+                return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && value != infoPlist[key] as? String
+            }
+            suite.expect(organizerFolderPromptKeys.allSatisfy(translates),
+                   "every localization explains custom organizer folder access (\(folder))")
+            suite.expect(translates("NSAudioCaptureUsageDescription"),
+                   "\(folder) InfoPlist.strings localizes the audio permission prompt")
+        }
         // What the bundle says it speaks and what it ships have to be the same
         // list: a language declared without its folder makes the system offer
         // the app in it and then show every permission prompt in English.
@@ -394,27 +406,51 @@ enum LocalizationFeatureContractTests {
                + "shipped only: \(shippedFolders.subtracting(declared).sorted()))")
         suite.expect(bundleLocalizations.count == AppLanguage.allCases.count,
                "the bundle speaks exactly the languages the app does")
-        // The fan helper's launchd plist ships with the release identifier in
-        // three places, and the Developer build rewrites each one so the two
-        // apps can run side by side. A fourth mention added without a matching
-        // rewrite would leave the Developer build asking launchd for a service
-        // that is registered under the other name, and fan control would just
-        // never answer.
-        let helperTemplate = (try? String(
-            contentsOfFile: "Resources/com.vitruviansoftware.vitruvian.fan-control.plist",
-            encoding: .utf8)) ?? ""
-        suite.expect(!helperTemplate.isEmpty, "the helper template reads back")
-        let releaseHelperID = "com.vitruviansoftware.vitruvian.fan-control"
-        let mentions = helperTemplate.components(separatedBy: releaseHelperID).count - 1
-        suite.expect(mentions == 3,
-               "the helper template names the release service exactly where the build rewrites it (\(mentions))")
-        let buildText = (try? String(contentsOfFile: "build.sh", encoding: .utf8)) ?? ""
-        for key in ["Set :Label $FAN_HELPER_ID",
-                    "Set :BundleProgram Contents/Library/LaunchServices/$FAN_HELPER_ID",
-                    "Delete :MachServices:" + releaseHelperID,
-                    "Add :MachServices:$FAN_HELPER_ID"] {
-            suite.expect(buildText.contains(key), "the Developer build rewrites \(key)")
-        }
+        // The fan helper's launchd plist names the service the app connects
+        // to and the helper listens on (FanControlIdentifiers), as its label,
+        // its program and its Mach service.
+        let releaseHelperID = FanControlIdentifiers.helperID
+        let helperTemplatePath = "Resources/com.vitruviansoftware.vitruvian.fan-control.plist"
+        let helperTemplate = ShippedResource.dictionary(helperTemplatePath) ?? [:]
+        let templateLabel = helperTemplate["Label"] as? String
+        let templateProgram = helperTemplate["BundleProgram"] as? String
+        let templateServices = helperTemplate["MachServices"] as? [String: Bool]
+        suite.expect(templateLabel == releaseHelperID
+                     && templateProgram == "Contents/Library/LaunchServices/\(releaseHelperID)"
+                     && templateServices == [releaseHelperID: true],
+               "the helper template names the release service the app connects to")
+        // The Developer build renames each of them so the two apps can run
+        // side by side. A mention it missed would leave the Developer build
+        // asking launchd for a service registered under the other name, and
+        // fan control would just never answer. Its rename (build.sh) runs here
+        // on a copy of the shipped plist, written out rather than copied: in
+        // the test's runfiles the shipped file is a link into the checkout.
+        let developerHelperID = "com.vitruviansoftware.vitruvian.dev.fan-control"
+        let renameFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitru-helper-rename-\(UUID().uuidString)")
+        let renamedPlist = renameFolder.appendingPathComponent("helper.plist")
+        try? FileManager.default.createDirectory(at: renameFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: renameFolder) }
+        let staged = (try? Data(contentsOf: URL(fileURLWithPath: helperTemplatePath)).write(to: renamedPlist)) != nil
+        let rename = BoundedProcessRunner.run(
+            "/bin/zsh",
+            ["-c", #"source <(sed -n '/^rename_fan_helper() {$/,/^}$/p' build.sh) && rename_fan_helper "$1" "$2""#,
+             "zsh", renamedPlist.path, developerHelperID],
+            timeout: 10, maxOutputBytes: 4_096)
+        let renamed = ShippedResource.dictionary(renamedPlist.path) ?? [:]
+        suite.expect(staged && rename.status == 0,
+               "the Developer build's rename runs on the shipped helper plist: "
+               + String(decoding: rename.output, as: UTF8.self))
+        let renamedLabel = renamed["Label"] as? String
+        let renamedProgram = renamed["BundleProgram"] as? String
+        let renamedServices = renamed["MachServices"] as? [String: Bool]
+        suite.expect(renamedLabel == developerHelperID
+                     && renamedProgram == "Contents/Library/LaunchServices/\(developerHelperID)"
+                     && renamedServices == [developerHelperID: true],
+               "the Developer build renames the helper's label, program and Mach service")
+        let missedMentions = ShippedResource.strings(in: renamed).filter { $0.contains(releaseHelperID) }
+        suite.expect(!renamed.isEmpty && missedMentions.isEmpty,
+               "the Developer build leaves no mention of the release service in the helper plist (\(missedMentions))")
         // Every shortcut the app ships with is written to disk as a string and
         // read back on the next launch. One that does not survive the trip
         // would leave that feature with no shortcut at all, on a fresh install,
@@ -487,16 +523,29 @@ enum LocalizationFeatureContractTests {
         }
         suite.expect(rejectedByOwnFilter.isEmpty,
                "a restored backup keeps every setting the app itself ships (\(rejectedByOwnFilter.prefix(6).joined(separator: ", ")))")
-        let turkishInfoPlistStrings = (try? String(contentsOfFile: "Resources/tr.lproj/InfoPlist.strings",
-                                                   encoding: .utf8)) ?? ""
-        suite.expect(turkishInfoPlistStrings.contains("NSAudioCaptureUsageDescription")
-               && turkishInfoPlistStrings.contains("Hiçbir şey kaydedilmez"),
-               "Turkish InfoPlist.strings localizes the audio permission prompt")
-        let koreanInfoPlistStrings = (try? String(contentsOfFile: "Resources/ko.lproj/InfoPlist.strings",
-                                                  encoding: .utf8)) ?? ""
-        suite.expect(koreanInfoPlistStrings.contains("NSAudioCaptureUsageDescription")
-               && koreanInfoPlistStrings.contains("Mac 밖으로 나가지"),
-               "Korean InfoPlist.strings localizes the audio permission prompt")
+    }
+}
 
+/// The app's resource files as macOS reads them: property lists (Info.plist,
+/// the entitlements, the fan helper's launchd plist) and `.strings` tables,
+/// parsed into keys and values, so that a check is never on their text.
+enum ShippedResource {
+    static func dictionary(_ path: String) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+        return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
+    }
+
+    /// Every key and string value in a parsed property list, at any depth.
+    static func strings(in value: Any) -> [String] {
+        switch value {
+        case let table as [String: Any]:
+            return table.flatMap { [$0.key] + strings(in: $0.value) }
+        case let list as [Any]:
+            return list.flatMap { strings(in: $0) }
+        case let text as String:
+            return [text]
+        default:
+            return []
+        }
     }
 }

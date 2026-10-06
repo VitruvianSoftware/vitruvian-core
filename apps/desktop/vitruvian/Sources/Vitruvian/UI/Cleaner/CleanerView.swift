@@ -261,7 +261,7 @@ package struct CleanerView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 380)
-            Button(l10n.s.cleanerScan) { cleaner.scan(attended: true) }
+            Button(l10n.s.cleanerScan) { cleaner.scan(for: .manual) }
                 .controlSize(.large)
                 .buttonStyle(.borderedProminent)
             scheduleCard
@@ -899,7 +899,7 @@ package struct CleanerView: View {
             Button(l10n.s.uninstallerCancel) { cleaner.reset() }
             Button(String(format: l10n.s.cleanerCleanSizeFormat,
                           Self.byteString(cleaner.selectedSize))) {
-                cleaner.cleanSelected(escalate: true)
+                cleaner.cleanSelected(for: .manual)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)

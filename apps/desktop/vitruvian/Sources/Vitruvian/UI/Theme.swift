@@ -61,6 +61,14 @@ package enum PanelSurface {
         return false
     }
 
+    /// Hosts the panel across the popover's whole balloon, arrow band
+    /// included, where AppKit lays full-size content out; see
+    /// `popoverHostsFullSizeContent`.
+    @MainActor
+    package static func hostFullSizeContent(in popover: NSPopover) {
+        popover.hasFullSizeContent = popoverHostsFullSizeContent
+    }
+
     package static func baseFill(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color.white.opacity(0.68) : Color.black.opacity(0.42)
     }

@@ -149,19 +149,20 @@ enum KeyboardFeatureTests {
         // so on a Latin-layout Mac they all pass whichever source the keycaps
         // are read from, and the one thing that made them wrong is invisible:
         // an input method answers the current-layout call with the layout it
-        // types through, not the one printed on the keys. Pinned on the public
-        // symbols rather than on the private member holding them, so renaming
-        // it stays green and dropping the ASCII-capable lookup goes red.
-        let shortcutSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Core/GlobalShortcut.swift",
-            encoding: .utf8)) ?? ""
-        let shortcutCode = shortcutSource.split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(shortcutCode.contains("TISCopyCurrentASCIICapableKeyboardLayoutInputSource")
-                && shortcutCode.contains("TISCopyCurrentKeyboardInputSource")
-                && shortcutCode.contains("kTISPropertyInputSourceType"),
+        // types through, not the one printed on the keys. So the choice is run
+        // here with each kind of source the system reports.
+        func keycapLayout(sourceType: String?) -> Data? {
+            KeycapLayoutSource(currentSourceType: { sourceType },
+                               asciiCapableLayoutData: { Data("ascii".utf8) },
+                               currentLayoutData: { Data("current".utf8) }).layoutData()
+        }
+        suite.expect(keycapLayout(sourceType: kTISTypeKeyboardInputMode as String) == Data("ascii".utf8)
+                && keycapLayout(sourceType: kTISTypeKeyboardInputMethodWithoutModes as String)
+                    == Data("ascii".utf8),
                "keycaps come from the ASCII-capable layout while an input method is active")
+        suite.expect(keycapLayout(sourceType: kTISTypeKeyboardLayout as String) == Data("current".utf8)
+                && keycapLayout(sourceType: nil) == Data("current".utf8),
+               "a plain layout, or a source that cannot be read, shows its own keycaps")
 
         // MARK: Editing, navigation and upper function keys as shortcuts (#308)
 

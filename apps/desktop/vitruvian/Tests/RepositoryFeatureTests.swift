@@ -123,6 +123,60 @@ enum RepositoryFeatureTests {
         }
     }
 
+    /// What a Homebrew wait asked its stand-ins, from the worker thread it
+    /// runs on. Only that thread writes it, and the test reads it once the
+    /// wait has ended.
+    private nonisolated final class BrewWaitLog: @unchecked Sendable {
+        var silences: [TimeInterval]
+        var questions = 0
+        var stops = 0
+
+        init(silences: [TimeInterval]) {
+            self.silences = silences
+        }
+
+        /// The next silence, then a whole second once the list runs out.
+        func silence() -> TimeInterval {
+            questions += 1
+            return silences.isEmpty ? 1 : silences.removeFirst()
+        }
+    }
+
+    /// Runs `HomebrewManager.awaitExit` with a 10 ms limit on a worker thread,
+    /// and says how often it asked for the silence and stopped the command,
+    /// or that it was still waiting after five seconds.
+    private static func brewWait(_ finished: DispatchSemaphore, silences: [TimeInterval]) -> String {
+        let waitLog = BrewWaitLog(silences: silences)
+        let ended = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            HomebrewManager.awaitExit(finished, silenceLimit: 0.01,
+                                      silence: { waitLog.silence() }, stop: { waitLog.stops += 1 })
+            ended.signal()
+        }
+        guard ended.wait(timeout: .now() + 5) == .success else { return "still waiting" }
+        return "asked \(waitLog.questions), stopped \(waitLog.stops)"
+    }
+
+    /// A scratch folder for one script run; nothing is in it yet.
+    private static func scratchFolder(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("vitru-\(name)-\(UUID().uuidString)")
+    }
+
+    /// Writes an executable stand-in for a command that a script runs.
+    private static func writeStub(_ name: String, in folder: URL, _ body: String) -> Bool {
+        let stub = folder.appendingPathComponent(name)
+        return (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil
+            && (try? ("#!/bin/sh\n" + body + "\n").write(to: stub, atomically: true, encoding: .utf8)) != nil
+            && (try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)) != nil
+    }
+
+    /// Puts a small file at `path`, with the folders above it.
+    private static func stageScratchFile(_ path: String) -> Bool {
+        (try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                  withIntermediateDirectories: true)) != nil
+            && FileManager.default.createFile(atPath: path, contents: Data("scratch".utf8))
+    }
+
     static func run(_ suite: TestSuite) {
         func expectEqual(_ actual: String, _ expected: String, _ label: String,
                          file: StaticString = #filePath, line: UInt = #line) {
@@ -143,7 +197,6 @@ enum RepositoryFeatureTests {
         let requiredSourcePaths = [
             "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift",
             "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift",
-            "Sources/Vitruvian/Services/Metrics/DiskSampler.swift",
             "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
             "Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift",
             "Sources/Vitruvian/Services/SelfUninstall.swift",
@@ -343,13 +396,21 @@ enum RepositoryFeatureTests {
 
         // MARK: Homebrew command building and parsing
 
-        let homebrewManagerSource = repository.source(
-            at: "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift")
-        let homebrewRunStreaming = homebrewManagerSource.components(separatedBy: "func runStreaming(")
-            .dropFirst().first?.components(separatedBy: "private func appendLog").first ?? ""
-        suite.expect(homebrewRunStreaming.contains("brewSilenceTimeout")
-                && !homebrewRunStreaming.contains("waitUntilExit"),
-               "Homebrew operations wait on a bounded semaphore, not waitUntilExit")
+        // An operation waits for brew on a semaphore bounded by silence, never
+        // on waitUntilExit: a command that has said nothing for the limit is
+        // stopped and the wait ends, one that keeps talking is waited for, and
+        // one that has exited is not stopped at all.
+        let brewNeverExits = DispatchSemaphore(value: 0)
+        // Signalled after it is made, so it ends back at its starting value.
+        let brewExited = DispatchSemaphore(value: 0)
+        brewExited.signal()
+        let brewWaits = [
+            brewWait(brewNeverExits, silences: []),
+            brewWait(brewNeverExits, silences: [0, 0]),
+            brewWait(brewExited, silences: []),
+        ]
+        suite.expect(brewWaits == ["asked 1, stopped 1", "asked 3, stopped 1", "asked 0, stopped 0"],
+               "Homebrew operations wait on a bounded semaphore, not waitUntilExit: \(brewWaits)")
 
         suite.expect(HomebrewPackageKind.allCases == [.cask, .formula],
                "Homebrew package kinds keep casks before formulae")
@@ -410,7 +471,8 @@ enum RepositoryFeatureTests {
         // did none of it, so the installed and outdated lists have to be re-read
         // after a failed operation too. Read from the source: the refresh happens
         // inside a completion closure that no unit test can drive.
-        let managerSource = homebrewManagerSource
+        let managerSource = repository.source(
+            at: "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift")
         suite.expect(!managerSource.isEmpty, "HomebrewManager source is readable for the refresh checks")
         let managerCode = managerSource
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -1167,18 +1229,17 @@ enum RepositoryFeatureTests {
         suite.expect(regionlessDecimals.isEmpty,
                "a decimal on screen names its region (\(regionlessDecimals.joined(separator: ", ")))")
 
-        // Purgeable space is queried only for writable volumes.
-        let samplerCode = repository.lines(
-            at: "Sources/Vitruvian/Services/Metrics/DiskSampler.swift")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!samplerCode.isEmpty, "the disk sampler reads back for its shape check")
-        let bulkKeys = samplerCode.components(separatedBy: "let keys: Set<URLResourceKey>")
-            .dropFirst().first?.components(separatedBy: "]").first ?? ""
-        suite.expect(!bulkKeys.contains("volumeAvailableCapacityForImportantUsageKey")
-                && bulkKeys.contains("volumeIsReadOnlyKey"),
+        // Purgeable space is queried only for writable volumes: the bulk fetch
+        // asks nothing that only a writable volume can answer, and a volume
+        // that says it is read-only is not asked. The scratch folder's volume
+        // answers when it is not called read-only, so the refusal is the
+        // sampler's own.
+        suite.expect(!DiskSampler.volumeKeys.contains(.volumeAvailableCapacityForImportantUsageKey)
+                && DiskSampler.volumeKeys.contains(.volumeIsReadOnlyKey),
                "the bulk volume fetch asks nothing that only a writable volume can answer")
-        suite.expect(samplerCode.contains("guard !isReadOnly,"),
+        let writableFolder = FileManager.default.temporaryDirectory
+        suite.expect(DiskSampler.importantFree(for: writableFolder, isReadOnly: false) != nil
+                && DiskSampler.importantFree(for: writableFolder, isReadOnly: true) == nil,
                "purgeable space is read only where there is something to purge")
 
         // Only localized fields that reach String(format:) need matching
@@ -1399,31 +1460,67 @@ enum RepositoryFeatureTests {
         suite.expect(buildScriptCode.contains { $0.contains("(( DEV || INSTALL ))")
                                             && $0.contains("developer_id_identity") },
                "the signing setup guard covers every install, not only the Developer variant")
-        // The setup script must run against the stock /usr/bin/openssl, which
-        // is LibreSSL: it rejects OpenSSL 3's -legacy flag outright, and the
-        // script once died on exactly that with its stderr discarded. The
-        // portable spelling names the PBE algorithms instead of the flag.
-        let signingSetup = (try? String(contentsOfFile: "Tools/setup-signing.sh",
-                                         encoding: .utf8)) ?? ""
-        suite.expect(!signingSetup.isEmpty, "the signing setup script reads back for its shape check")
-        let signingSetupCode = signingSetup.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
-            .joined(separator: "\n")
-        suite.expect(!signingSetupCode.contains("-legacy"),
-               "setup-signing.sh avoids the -legacy flag the stock LibreSSL openssl rejects")
-
         // MARK: The stable identity is judged by whether codesign can sign with it
         // A find-identity listing names certificates codesign then rejects, and
         // -v excludes every self-signed one, so neither spelling may decide.
-        for (script, code, identity) in [("build.sh", buildScriptCode, "$LEGACY_IDENTITY"),
-                                         ("Tools/setup-signing.sh", signingSetupCode.components(separatedBy: "\n"),
-                                          "$IDENTITY")] {
-            suite.expect(!code.contains { $0.contains("find-identity") && $0.contains(identity) },
-                   "\(script) never decides the stable identity by a find-identity listing")
-            suite.expect(code.contains { $0.contains("cp /bin/echo") }
-                    && code.contains { $0.contains("--sign \"\(identity)\" \"$probe\"") },
-                   "\(script) asks codesign to sign a throwaway copy of /bin/echo with the stable identity")
-        }
+        suite.expect(!buildScriptCode.contains { $0.contains("find-identity") && $0.contains("$LEGACY_IDENTITY") },
+               "build.sh never decides the stable identity by a find-identity listing")
+        suite.expect(buildScriptCode.contains { $0.contains("cp /bin/echo") }
+                && buildScriptCode.contains { $0.contains("--sign \"$LEGACY_IDENTITY\" \"$probe\"") },
+               "build.sh asks codesign to sign a throwaway copy of /bin/echo with the stable identity")
+
+        // MARK: Tools/setup-signing.sh runs end to end against the stock openssl
+        // The setup script must run against the stock /usr/bin/openssl, which
+        // is LibreSSL: it rejects OpenSSL 3's -legacy flag outright, and the
+        // script once died on exactly that with its stderr discarded. It runs
+        // here against that openssl, in a scratch home, with stand-ins for
+        // security(1) and codesign that log what they are asked and touch no
+        // keychain. The codesign stand-in refuses until the identity has been
+        // imported, as codesign does before the script has made one.
+        let signingScratch = scratchFolder("signing-setup")
+        defer { try? FileManager.default.removeItem(at: signingScratch) }
+        let signingStubs = signingScratch.appendingPathComponent("bin")
+        let signingHome = signingScratch.appendingPathComponent("home").path
+        let signingTemp = signingScratch.appendingPathComponent("tmp").path
+        let signingLog = signingScratch.appendingPathComponent("calls.log").path
+        let logCall = #"{ printf '%s' "${0##*/}"; printf '|%s' "$@"; printf '\n'; } >> "$STUB_LOG""#
+        let signingStaged = [
+            writeStub("security", in: signingStubs, logCall + "\n" + #"""
+                [ "$1" = import ] && : > "$STUB_STATE/imported"
+                [ "$1" = list-keychains ] && [ "$#" -eq 3 ] && echo '    "/stub/login.keychain-db"'
+                exit 0
+                """#),
+            writeStub("codesign", in: signingStubs, logCall + "\n" + #"""
+                for last; do :; done
+                cmp -s "$last" /bin/echo && echo "probe is a copy of /bin/echo" >> "$STUB_LOG"
+                [ -e "$STUB_STATE/imported" ]
+                """#),
+            writeStub("openssl", in: signingStubs, logCall + "\n" + #"exec /usr/bin/openssl "$@""#),
+            (try? FileManager.default.createDirectory(atPath: signingHome, withIntermediateDirectories: true)) != nil,
+            (try? FileManager.default.createDirectory(atPath: signingTemp, withIntermediateDirectories: true)) != nil,
+        ].allSatisfy { $0 }
+        let signingSetup = BoundedProcessRunner.run(
+            "/bin/zsh", ["Tools/setup-signing.sh"], timeout: 60, maxOutputBytes: 16_384,
+            environment: ["HOME": signingHome, "TMPDIR": signingTemp, "PATH": signingStubs.path + ":/usr/bin:/bin",
+                          "STUB_LOG": signingLog, "STUB_STATE": signingScratch.path])
+        let signingCalls = ((try? String(contentsOf: URL(fileURLWithPath: signingLog), encoding: .utf8)) ?? "")
+            .components(separatedBy: "\n")
+        suite.expect(signingStaged && signingSetup.status == 0
+                && signingCalls.contains { $0.hasPrefix("openssl|pkcs12|-export|") },
+               "setup-signing.sh makes its identity with the stock LibreSSL openssl: "
+               + String(decoding: signingSetup.output, as: UTF8.self))
+        suite.expect(signingCalls.contains { $0.hasPrefix("openssl|") }
+                && !signingCalls.contains { $0.hasPrefix("openssl|") && $0.contains("|-legacy") },
+               "setup-signing.sh avoids the -legacy flag the stock LibreSSL openssl rejects")
+        suite.expect(signingCalls.contains { $0.hasPrefix("security|import|") }
+                && !signingCalls.contains { $0.contains("find-identity") },
+               "Tools/setup-signing.sh never decides the stable identity by a find-identity listing")
+        suite.expect(signingCalls.contains { $0.hasPrefix("codesign|") && $0.contains("|--sign|Vitruvian Signing|") }
+                && signingCalls.contains("probe is a copy of /bin/echo"),
+               "Tools/setup-signing.sh asks codesign to sign a throwaway copy of /bin/echo with the stable identity")
+        let signingLeftovers = (try? FileManager.default.contentsOfDirectory(atPath: signingTemp)) ?? ["<unreadable>"]
+        suite.expect(signingLeftovers.isEmpty,
+               "setup-signing.sh removes its probe and its work folder: \(signingLeftovers)")
 
         // MARK: Uninstallation paths stay aligned across SelfUninstall and Tools/uninstall.sh
         let selfUninstallSource = repository.source(
@@ -1446,25 +1543,59 @@ enum RepositoryFeatureTests {
                 && !uninstallScriptSource.contains("delete-generic-password")
                 && !queryHabitServiceSource.contains("DefaultsKey.commandBarQueryHabits"),
                "query learning and uninstall never access Keychain or persist query habits")
+        // The script's own steps run here over scratch folders, against what
+        // the app removes and looks for. First the files: everything the
+        // in-app uninstall removes is staged in a scratch home, beside the
+        // Developer build's files and another app's, which must stay.
+        let uninstallScratch = scratchFolder("uninstall")
+        defer { try? FileManager.default.removeItem(at: uninstallScratch) }
+        let uninstallHome = uninstallScratch.appendingPathComponent("home").path
+        let releaseBundleID = "com.vitruviansoftware.vitruvian"
+        let appRemoves = SelfUninstall.ownedPaths(home: uninstallHome, bundleID: releaseBundleID)
+        let byHostPreferences = "\(uninstallHome)/Library/Preferences/ByHost/\(releaseBundleID).0123-ABCD.plist"
+        let notTheApp = [
+            "\(uninstallHome)/Library/Application Support/\(releaseBundleID).dev",
+            "\(uninstallHome)/Library/Preferences/\(releaseBundleID).dev.plist",
+            "\(uninstallHome)/Library/Caches/com.example.other",
+            "\(uninstallHome)/Library/Preferences/ByHost/com.example.other.0123-ABCD.plist",
+        ]
+        let uninstallStaged = (appRemoves + [byHostPreferences] + notTheApp).allSatisfy { path in
+            ["plist", "binarycookies"].contains((path as NSString).pathExtension)
+                ? stageScratchFile(path) : stageScratchFile(path + "/contents")
+        }
+        let userStateRemoval = BoundedProcessRunner.run(
+            "/bin/zsh",
+            ["-c", #"source <(sed -n '/^remove_user_state() {$/,/^}$/p' Tools/uninstall.sh) && remove_user_state "$1" "$2""#,
+             "zsh", uninstallHome, releaseBundleID],
+            timeout: 10, maxOutputBytes: 4_096)
+        let scriptKept = appRemoves.filter { FileManager.default.fileExists(atPath: $0) }
+        suite.expect(uninstallStaged && userStateRemoval.status == 0 && scriptKept.isEmpty,
+               "script uninstall removes everything the in-app uninstall removes, kept \(scriptKept)")
         let requiredSubpaths = ["Library/Application Support", "Library/Caches", "Library/HTTPStorages"]
         for subpath in requiredSubpaths {
-            suite.expect(selfUninstallSource.contains(subpath) && uninstallScriptSource.contains(subpath),
+            let underSubpath = appRemoves.filter { $0.hasPrefix("\(uninstallHome)/\(subpath)/") }
+            suite.expect(uninstallStaged && !underSubpath.isEmpty
+                    && !underSubpath.contains { FileManager.default.fileExists(atPath: $0) },
                    "both in-app and script uninstall sweep \(subpath)")
         }
-        suite.expect(uninstallScriptSource.contains("Library/Preferences/ByHost"),
+        suite.expect(uninstallStaged && !FileManager.default.fileExists(atPath: byHostPreferences),
                "script uninstall sweeps ByHost preferences")
+        suite.expect(notTheApp.allSatisfy { FileManager.default.fileExists(atPath: $0) },
+               "script uninstall leaves the Developer build's files and other apps' alone")
         // zsh passes a plain string to a command as one word, so the script
-        // keeps the closed-lid rule names in an array. They must be the files
-        // the app looks for, under the current name and every earlier one.
-        func sudoersRuleFiles(_ text: String) -> Set<String> {
-            Set(text.components(separatedBy: CharacterSet(charactersIn: " \n\t\"(),"))
-                .filter { $0.hasPrefix("/etc/sudoers.d/") })
-        }
-        let appRuleFiles = sudoersRuleFiles(
-            repository.source(at: "Sources/Vitruvian/Services/ShellSupport.swift"))
-        let scriptRuleFiles = sudoersRuleFiles(uninstallScriptSource.components(separatedBy: "\n")
-            .first { $0.hasPrefix("RULES=(") } ?? "")
-        suite.expect(!appRuleFiles.isEmpty && scriptRuleFiles == appRuleFiles,
+        // checks each closed-lid rule name on its own. With every file the app
+        // looks for in place under a scratch root, under the current name and
+        // every earlier one, the script has to find each of them.
+        let rulesRoot = uninstallScratch.appendingPathComponent("root").path
+        let rulesStaged = Sudoers.ruleFiles.allSatisfy { stageScratchFile(rulesRoot + $0) }
+        let rulesSearch = BoundedProcessRunner.run(
+            "/bin/zsh",
+            ["-c", #"source <(sed -n '/^find_closed_lid_rules() {$/,/^}$/p' Tools/uninstall.sh); find_closed_lid_rules "$1"; print -rl -- $found_rules"#,
+             "zsh", rulesRoot],
+            timeout: 10, maxOutputBytes: 4_096)
+        let scriptRuleFiles = Set(String(decoding: rulesSearch.output, as: UTF8.self)
+            .split(separator: "\n").map(String.init))
+        suite.expect(rulesStaged && !Sudoers.ruleFiles.isEmpty && scriptRuleFiles == Set(Sudoers.ruleFiles),
                "script uninstall looks for the same closed-lid rule files as the app: \(scriptRuleFiles.sorted())")
         // Restoring sleep used to be fired and forgotten at both exits. A
         // failure there leaves `pmset disablesleep 1` set system-wide, and
@@ -1478,20 +1609,82 @@ enum RepositoryFeatureTests {
         suite.expect(!selfUninstallSource.contains("_ = Sudoers.pmsetDisableSleep")
                 && !uninstallerSource.contains("_ = Sudoers.pmsetDisableSleep"),
                "neither uninstall path discards the result of restoring sleep")
-        // The flows run through injected steps; the system's steps are the
-        // real restores, and SelfUninstallTests checks the order they run in.
-        suite.expect(selfUninstallSource.contains("guard steps.restoreSleepBeforeRemoval() else")
-                && selfUninstallSource.contains("guard detachFromSystem(steps) else")
-                && selfUninstallSource.contains("restoreSleepBeforeRemoval() -> Bool")
-                && selfUninstallSource.contains("guard steps.detachFanControl() else")
-                && selfUninstallSource.contains("restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() }")
+        // The flows run through injected steps, and SelfUninstallTests checks
+        // that a failed sleep restore or fan detach stops them. The system's
+        // steps are the real restores.
+        suite.expect(selfUninstallSource.contains("restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval() }")
                 && selfUninstallSource.contains("detachFanControl: { SelfUninstall.detachFanControl() }")
                 && selfUninstallSource.contains("FanControlService.restoreAndUnregisterForRemoval()")
-                && selfUninstallSource.contains("adminPromptRecover")
-                && selfUninstallSource.contains("verification.status == 0"),
+                && selfUninstallSource.contains("adminPromptRecover"),
                "in-app uninstall aborts unless fans and normal sleep are restored before removal")
-        suite.expect(uninstallScriptSource.contains("SleepDisabled"),
-               "script uninstall reads the sleep setting back for itself")
+        // The real sleep restore reports success only when sleep was never the
+        // app's to restore, or is known to be back: a flag that outlived the
+        // setting asks for no password, a probe that did not answer says
+        // nothing, and after the password only a reading that sleep is on
+        // again counts.
+        typealias PmsetReading = (status: Int32, output: String)
+        let sleepOff: PmsetReading = (0, "System-wide power settings:\n SleepDisabled\t\t1\n")
+        let sleepOn: PmsetReading = (0, "System-wide power settings:\n SleepDisabled\t\t0\n")
+        let noAnswer: PmsetReading = (1, "")
+        func sleepRestore(flagged: Bool = true, readings: [PmsetReading],
+                          rule: Bool = false, password: Bool = false) -> String {
+            var pending = readings
+            var steps: [String] = []
+            let restored = SelfUninstall.restoreSleep(
+                flagged: flagged,
+                probe: {
+                    steps.append("probe")
+                    return pending.isEmpty ? noAnswer : pending.removeFirst()
+                },
+                restoreWithoutPassword: { steps.append("rule"); return rule },
+                restoreAsAdministrator: { steps.append("password"); return password })
+            return (restored ? "restored" : "kept") + ": " + steps.joined(separator: ", ")
+        }
+        let sleepRestores = [
+            sleepRestore(flagged: false, readings: [sleepOff]),
+            sleepRestore(readings: [sleepOn]),
+            sleepRestore(readings: [noAnswer], rule: true),
+            sleepRestore(readings: [sleepOff], rule: true),
+            sleepRestore(readings: [sleepOff]),
+            sleepRestore(readings: [sleepOff, sleepOn], password: true),
+            sleepRestore(readings: [sleepOff, sleepOff], password: true),
+            sleepRestore(readings: [noAnswer, noAnswer], password: true),
+        ]
+        suite.expect(sleepRestores == [
+            "restored: ",
+            "restored: probe",
+            "restored: probe, rule",
+            "restored: probe, rule",
+            "kept: probe, rule, password",
+            "restored: probe, rule, password, probe",
+            "kept: probe, rule, password, probe",
+            "kept: probe, rule, password, probe",
+        ], "in-app uninstall restores normal sleep before removal, or stops: \(sleepRestores)")
+        // The script reads the sleep setting back for itself, from what pmset
+        // reports, and reads it as the app does. A stand-in pmset gives the
+        // report; when it does not answer, the script reads nothing, which it
+        // must not take for sleep restored.
+        let pmsetStubs = uninstallScratch.appendingPathComponent("bin")
+        let pmsetReport = uninstallScratch.appendingPathComponent("pmset-report").path
+        let pmsetStubWritten = writeStub("pmset", in: pmsetStubs, #"cat "$PMSET_REPORT""#)
+        for setting in ["1", "0", nil] as [String?] {
+            let report = setting.map {
+                "System-wide power settings:\n SleepDisabled\t\t\($0)\nCurrently in use:\n standby              1\n"
+            }
+            try? FileManager.default.removeItem(atPath: pmsetReport)
+            let reported = report.map { (try? $0.write(toFile: pmsetReport, atomically: true, encoding: .utf8)) != nil } ?? true
+            let sleepRead = BoundedProcessRunner.run(
+                "/bin/zsh",
+                ["-c", #"source <(sed -n '/^read_sleep_disabled() {$/,/^}$/p' Tools/uninstall.sh) && read_sleep_disabled"#],
+                timeout: 10, maxOutputBytes: 1_024,
+                environment: ["PATH": pmsetStubs.path + ":/usr/bin:/bin", "PMSET_REPORT": pmsetReport])
+            let scriptReads = String(decoding: sleepRead.output, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let appAgrees = report.map { SudoersSupport.sleepDisabled(inPmsetOutput: $0) == (setting == "1") } ?? true
+            suite.expect(pmsetStubWritten && reported && scriptReads == (setting ?? "") && appAgrees,
+                   "script uninstall reads the sleep setting back for itself, as the app does "
+                   + "(reported \(setting ?? "nothing"), read \(scriptReads.isEmpty ? "nothing" : scriptReads))")
+        }
         let brightnessSource = repository.source(
             at: "Sources/Vitruvian/Services/Display/BrightnessService.swift")
         let brightnessTapMethod = brightnessSource
@@ -1510,10 +1703,6 @@ enum RepositoryFeatureTests {
                 && !brightnessTapCode.contains("restoreManagedDisplays")
                 && !brightnessTapCode.contains("restoreAllGamma"),
                "the permission teardown stops every persistent keyboard tap")
-        let quitProtectionSource = repository.source(
-            at: "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift")
-        suite.expect(quitProtectionSource.contains("func suspend()"),
-               "quit protection exposes the teardown the permission reset calls")
 
         // MARK: Secure input
 

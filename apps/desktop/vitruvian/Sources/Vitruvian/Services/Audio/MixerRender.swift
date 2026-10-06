@@ -79,6 +79,31 @@ package enum MixerRender {
         }
     }
 
+    /// One IO cycle of an engine up to its limiter: renders the tap onto the
+    /// output at the gain `gain` reads, and answers the frames written.
+    ///
+    /// A cycle that finds no tap silences the output before it leaves, since
+    /// whatever the HAL left there plays otherwise (issue #326), and leaves
+    /// without counting itself: a cycle that resolved no tap has done nothing
+    /// for the app that one which never ran would not have done. A cycle is
+    /// counted (`countCycle`) only once the engine has handed the device audio.
+    package static func renderCycle(input: UnsafeMutableAudioBufferListPointer,
+                                    output: UnsafeMutableAudioBufferListPointer,
+                                    tapChannels: Int,
+                                    gain: () -> Float,
+                                    countCycle: () -> Void) -> Int {
+        guard let tapIndex = tapBufferIndex(in: input, tapChannels: tapChannels) else {
+            silence(output)
+            return 0
+        }
+        // `render` silences whatever it does not fill, so every path from
+        // here on leaves the output written.
+        let frames = render(source: input[tapIndex], into: output, gain: gain())
+        guard frames > 0 else { return 0 }
+        countCycle()
+        return frames
+    }
+
     /// Renders one interleaved source buffer onto the output, scaled by
     /// `gain`, and answers how many frames it wrote. Whatever it does not
     /// write it silences, so the caller never has to think about the tail.

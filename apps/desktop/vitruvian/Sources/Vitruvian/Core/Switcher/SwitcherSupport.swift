@@ -537,6 +537,25 @@ package struct SwitcherShortcutHints: Equatable {
     }
 }
 
+/// What an App Switcher session opens with; see `SwitcherSupport.sessionOpening`.
+package struct SwitcherSessionOpening: Equatable {
+    /// The entries, with the window in front first when the list holds it.
+    package let list: [SwitcherItem]
+    /// The window in front when the session began. Activation returns to it
+    /// even when the list left it out.
+    package let source: SwitcherItem?
+    /// Whether the list holds that window; only then does the selection start
+    /// from it.
+    package let listsSource: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(list: [SwitcherItem], source: SwitcherItem?, listsSource: Bool) {
+        self.list = list
+        self.source = source
+        self.listsSource = listsSource
+    }
+}
+
 package enum SwitcherSupport {
     /// How long the shortcut must be held before the panel appears. A quick
     /// press can still switch directly without flashing the panel, while zero
@@ -679,6 +698,28 @@ package enum SwitcherSupport {
         return ordered
     }
 
+    /// What a session opens with once its windows are listed, or nil for an
+    /// empty list, which opens no panel and commits to nothing. The window in
+    /// front is looked for among `sourceItems`, the list before any display
+    /// scope, so activation keeps it when its monitor is not the one shown.
+    /// Trimming the list to one display can drop it, though, and then the
+    /// list starts from its first entry instead (issue #1391).
+    package static func sessionOpening(windows: [SwitcherItem],
+                                       sourceItems: [SwitcherItem],
+                                       frontmostPID: pid_t,
+                                       focusedWindowID: CGWindowID?) -> SwitcherSessionOpening? {
+        guard !windows.isEmpty else { return nil }
+        let source = sessionSourceItem(frontmostPID: frontmostPID,
+                                       focusedWindowID: focusedWindowID,
+                                       items: sourceItems)
+        let listedSource = source.flatMap { item in
+            windows.contains { $0.id == item.id } ? item : nil
+        }
+        return SwitcherSessionOpening(list: orderedForSession(windows, currentID: listedSource?.id),
+                                      source: source,
+                                      listsSource: listedSource != nil)
+    }
+
     /// A focused-window Accessibility query is useful unless exactly one
     /// visible window already identifies the session source. With no visible
     /// windows, AX can still identify a minimized source window.
@@ -798,6 +839,27 @@ package enum SwitcherSupport {
             return hasNormalWindowLevel && canMinimize
         }
         return fillsScreen && subrole == "AXFloatingWindow"
+    }
+
+    /// The same decision with the minimize button read on demand. A hidden
+    /// app's ordinary windows read as dialogs (issue #2279), so only a
+    /// normal-level dialog pays for that Accessibility read, and its answer is
+    /// what the decision weighs.
+    package static func isSwitchableNonstandardWindow(role: String?,
+                                                      subrole: String?,
+                                                      fillsScreen: Bool,
+                                                      hasNormalWindowLevel: Bool,
+                                                      acceptsUndescribedSubroles: Bool,
+                                                      isExcludedFromWindowCycle: Bool = false,
+                                                      minimizeButtonWorks: () -> Bool) -> Bool {
+        let canMinimize = subrole == "AXDialog" && hasNormalWindowLevel && minimizeButtonWorks()
+        return isSwitchableNonstandardWindow(role: role,
+                                             subrole: subrole,
+                                             fillsScreen: fillsScreen,
+                                             hasNormalWindowLevel: hasNormalWindowLevel,
+                                             acceptsUndescribedSubroles: acceptsUndescribedSubroles,
+                                             canMinimize: canMinimize,
+                                             isExcludedFromWindowCycle: isExcludedFromWindowCycle)
     }
 
     /// Picks the entries that survive the visible cap, by index into `appPIDs`

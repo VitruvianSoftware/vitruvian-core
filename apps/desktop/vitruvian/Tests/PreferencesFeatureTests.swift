@@ -9,6 +9,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
+import SwiftUI
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
@@ -264,11 +265,26 @@ enum PreferencesFeatureTests {
             sessionActive: true,
             automaticSessionActive: true
         ) == .none, "the same unplug leaves an Any session running, which is why All exists")
-        let automationEditor = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/KeepAwakeAutomationView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(automationEditor.contains(".pickerStyle(.segmented)")
-                && automationEditor.contains(".controlSize(compact ? .small : .regular)"),
+        func matchModeControl(compact: Bool) -> NSSegmentedControl? {
+            let host = NSHostingView(rootView: KeepAwakeMatchModePicker(
+                requireAll: .constant(false),
+                strings: FeatureStrings.keepAwakeAutomation(.enUS),
+                compact: compact))
+            host.frame = NSRect(x: 0, y: 0, width: 308, height: 40)
+            host.layoutSubtreeIfNeeded()
+            func segments(in view: NSView) -> NSSegmentedControl? {
+                if let control = view as? NSSegmentedControl { return control }
+                for subview in view.subviews {
+                    if let control = segments(in: subview) { return control }
+                }
+                return nil
+            }
+            return segments(in: host)
+        }
+        let compactMatchMode = matchModeControl(compact: true)
+        let regularMatchMode = matchModeControl(compact: false)
+        suite.expect(compactMatchMode?.segmentCount == 2 && compactMatchMode?.controlSize == .small
+                && regularMatchMode?.segmentCount == 2 && regularMatchMode?.controlSize == .regular,
                "the match mode picker follows the compact layout of the panel card")
         let matchModeWidth = 308.0 - 20 - 19 - 22
         for language in AppLanguage.allCases {

@@ -693,6 +693,21 @@ package final class HomebrewManager: ObservableObject {
     nonisolated private static let brewSilenceTimeout: TimeInterval = 15 * 60
     nonisolated private static let processTerminationGrace: TimeInterval = 2
 
+    /// Waits for a streaming command to exit, never with `waitUntilExit`: the
+    /// bound is on silence (see `brewSilenceTimeout`), so once `silence` has
+    /// reached `silenceLimit` the command is stopped and the wait ends.
+    nonisolated package static func awaitExit(_ finished: DispatchSemaphore,
+                                              silenceLimit: TimeInterval,
+                                              silence: () -> TimeInterval,
+                                              stop: () -> Void) {
+        while finished.wait(timeout: .now() + silenceLimit) == .timedOut {
+            if silence() >= silenceLimit {
+                stop()
+                break
+            }
+        }
+    }
+
     /// SIGTERM is cooperative. Escalate only when a command ignores it so a
     /// cancelled or timed-out operation cannot keep the serial queue forever.
     nonisolated private static func stop(_ process: Process, finished: DispatchSemaphore? = nil) {
@@ -796,12 +811,9 @@ package final class HomebrewManager: ObservableObject {
                 self.activeProcess = process
                 if self.cancelRequested { Self.stop(process) }
             }
-            while finished.wait(timeout: .now() + Self.brewSilenceTimeout) == .timedOut {
-                if output.silence >= Self.brewSilenceTimeout {
-                    Self.stop(process, finished: finished)
-                    break
-                }
-            }
+            Self.awaitExit(finished, silenceLimit: Self.brewSilenceTimeout,
+                           silence: { output.silence },
+                           stop: { Self.stop(process, finished: finished) })
             _ = drained.wait(timeout: .now() + 1)
             pipe.fileHandleForReading.readabilityHandler = nil
             try? pipe.fileHandleForReading.close()

@@ -846,6 +846,45 @@ package enum RadialMenuSupport {
         return legacy.buttonNumber.map { [$0] } ?? []
     }
 
+    /// What the button tap does with an extra mouse button's press or release.
+    package enum MouseTapAction: Equatable {
+        /// No wheel claims the button: the event goes on to the app.
+        case passOn
+        /// The press summons this wheel.
+        case open(RadialMenuProfile)
+        /// A press while a wheel is up closes it.
+        case close
+        /// The held summoner was let go.
+        case endHold
+        /// The click is the wheel's, and nothing else happens.
+        case consume
+    }
+
+    /// The claimed button is the wheel's alone: once `claimed` (the cheap
+    /// `claimedMouseButtons` answer) holds it, both halves of every click are
+    /// consumed, so the app under the pointer never sees half a gesture.
+    /// `profiles` is the full decode, asked only when a press opens a wheel. A
+    /// profile it drops but the cheap read keeps (a corrupt blob) opens no
+    /// wheel, and its click is still consumed whole.
+    package static func mouseTapAction(isPress: Bool, button: Int64, claimed: [Int64],
+                                       sessionActive: Bool, holdPhase: Bool, holdButton: Int64?,
+                                       profiles: () -> [RadialMenuProfile]) -> MouseTapAction {
+        guard claimed.contains(button) else { return .passOn }
+        if isPress {
+            if !sessionActive {
+                if let profile = profiles().first(where: {
+                    RadialMenuMouseTrigger.sanitized($0.mouseButton).buttonNumber == button
+                }) {
+                    return .open(profile)
+                }
+                return .consume
+            }
+            // A press during a held chord session means nothing.
+            return holdPhase ? .consume : .close
+        }
+        return holdPhase && holdButton == button ? .endHold : .consume
+    }
+
     /// Whether any wheel opens from a mouse button or the trackpad tap, the
     /// triggers that keep an input tap running while the menu is on. Read
     /// like `claimedMouseButtons`, from the stored triggers alone and with

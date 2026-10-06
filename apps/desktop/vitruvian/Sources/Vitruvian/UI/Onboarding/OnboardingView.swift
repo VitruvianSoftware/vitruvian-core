@@ -498,12 +498,21 @@ private struct SelectedPermissionsStep: View {
     }
 
     private func featureNames(for permission: AppPermission) -> String {
+        OnboardingFeatureNames.names(features, for: permission) { $0.hubTitle(l10n.s, hub: hub) }
+    }
+}
+
+/// The chosen features a permission row says it is for, as one line.
+package enum OnboardingFeatureNames {
+    /// The names of the features in `features` that need `permission`, each
+    /// named by `title`. Localized: a plain sort orders by Unicode scalar,
+    /// which throws every accented name past Z. On the first screen someone
+    /// sees, in a language with accents, that reads as a list in no order.
+    package static func names(_ features: Set<AppFeature>, for permission: AppPermission,
+                              title: (AppFeature) -> String) -> String {
         features
             .filter { $0.onboardingPermissions.contains(permission) }
-            .map { $0.hubTitle(l10n.s, hub: hub) }
-            // Localized: a plain sort orders by Unicode scalar, which throws
-            // every accented name past Z. On the first screen someone sees,
-            // in a language with accents, that reads as a list in no order.
+            .map(title)
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             .joined(separator: ", ")
     }

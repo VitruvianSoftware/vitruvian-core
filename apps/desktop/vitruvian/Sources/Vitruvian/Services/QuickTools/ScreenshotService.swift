@@ -448,18 +448,36 @@ package final class ScreenshotService: ObservableObject {
             return
         }
         let result = runDefaultAction(defaultAction, capture: capture)
+        Self.presentRoutedPreview(after: defaultAction,
+                                  saved: result.saved != nil,
+                                  performed: result.performed,
+                                  defaults: defaults) { dismissInterval in
+            presentPreview(capture,
+                           defaultAction: defaultAction,
+                           initialSaved: result.saved,
+                           completedActions: result.performed,
+                           dismissInterval: dismissInterval,
+                           latestCapture: latest.id)
+        }
+    }
+
+    /// The preview `route` shows once the default action ran: exactly the
+    /// one the shared decision asks for, given what the action did, presented
+    /// once with the decision's interval, or nothing when it is hidden.
+    package static func presentRoutedPreview(
+        after defaultAction: ScreenshotDefaultAction,
+        saved: Bool,
+        performed: Set<ScreenshotQuickPreviewController.Action>,
+        defaults: UserDefaults,
+        present: (_ dismissInterval: TimeInterval?) -> Void
+    ) {
         guard case .shown(let dismissInterval) = ScreenshotSupport.quickPreviewPresentation(
             defaultAction: defaultAction,
-            saved: result.saved != nil,
-            copied: result.performed.contains(.copy),
+            saved: saved,
+            copied: performed.contains(.copy),
             defaults: defaults)
         else { return }
-        presentPreview(capture,
-                       defaultAction: defaultAction,
-                       initialSaved: result.saved,
-                       completedActions: result.performed,
-                       dismissInterval: dismissInterval,
-                       latestCapture: latest.id)
+        present(dismissInterval)
     }
 
     /// A history item returns to the same floating preview without repeating

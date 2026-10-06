@@ -113,44 +113,12 @@ package struct DiskExclusionsList: View {
     }
 
     private var mountedCandidateDrives: [String] {
-        let keys: Set<URLResourceKey> = [
-            .volumeIsInternalKey, .volumeIsRemovableKey,
-            .volumeIsEjectableKey, .volumeIsLocalKey,
-            .volumeIsRootFileSystemKey,
-            .volumeNameKey,
-            .volumeLocalizedNameKey,
-            .volumeUUIDStringKey,
-        ]
         guard let urls = FileManager.default.mountedVolumeURLs(
-            includingResourceValuesForKeys: Array(keys),
+            includingResourceValuesForKeys: Array(QuickTogglesSupport.volumeKeys),
             options: [.skipHiddenVolumes]) else { return [] }
-        let currentExcluded = Set(protection.excludedVolumes.map { $0.lowercased() })
-        var results: [String] = []
-        for url in urls {
-            guard let values = try? url.resourceValues(forKeys: keys) else { continue }
-            let isOfferable = QuickTogglesSupport.shouldOfferEject(
-                isInternal: values.volumeIsInternal ?? false,
-                isRemovable: values.volumeIsRemovable ?? false,
-                isEjectable: values.volumeIsEjectable ?? false,
-                isLocal: values.volumeIsLocal ?? false,
-                isRootFileSystem: values.volumeIsRootFileSystem ?? (url.path == "/")
-            )
-            guard isOfferable else { continue }
-            let name = values.volumeLocalizedName ?? values.volumeName ?? url.lastPathComponent
-            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            // The same exclusion test the eject paths use: an entry the user
-            // typed as a volume UUID or a mount path excludes the drive just as
-            // much as its name, so the picker must not offer it again.
-            let alreadyExcluded = QuickTogglesSupport.isExcluded(
-                volumeName: trimmed,
-                volumeUUID: values.volumeUUIDString,
-                mountPath: url.path,
-                excludedVolumes: currentExcluded)
-            if !trimmed.isEmpty, !alreadyExcluded, !results.contains(trimmed) {
-                results.append(trimmed)
-            }
-        }
-        return results.sorted()
+        return QuickTogglesSupport.exclusionCandidates(
+            urls.compactMap(QuickTogglesSupport.Volume.init(mountedAt:)),
+            excluded: protection.excludedVolumes)
     }
 
     private func addCustom() {

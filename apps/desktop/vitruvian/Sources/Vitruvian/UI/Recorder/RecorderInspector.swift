@@ -90,12 +90,27 @@ package struct RecorderInspector: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle(strings.lookLabel)
             HStack(spacing: 7) {
-                lookCard(.raw, title: strings.lookRaw, icon: "rectangle")
-                lookCard(.clean, title: strings.lookClean,
-                         icon: "cursorarrow.motionlines")
-                lookCard(.studio, title: strings.lookStudio, icon: "sparkles")
+                ForEach(Self.lookCards(strings), id: \.look) { card in
+                    lookCard(card.look, title: card.title, icon: card.icon)
+                }
             }
         }
+    }
+
+    /// What one look card shows: its look's own name and a symbol, and
+    /// nothing else. A second line borrowed from another control's label
+    /// only said the card's name back.
+    package struct LookCard {
+        package let look: RecorderEditDocument.Look
+        package let title: String
+        package let icon: String
+    }
+
+    /// The three looks, in the order the cards stand.
+    package static func lookCards(_ strings: RecorderFeatureStrings) -> [LookCard] {
+        [LookCard(look: .raw, title: strings.lookRaw, icon: "rectangle"),
+         LookCard(look: .clean, title: strings.lookClean, icon: "cursorarrow.motionlines"),
+         LookCard(look: .studio, title: strings.lookStudio, icon: "sparkles")]
     }
 
     private func lookCard(_ look: RecorderEditDocument.Look,

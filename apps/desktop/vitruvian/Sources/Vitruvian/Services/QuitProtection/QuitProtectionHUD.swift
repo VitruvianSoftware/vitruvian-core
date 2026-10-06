@@ -25,15 +25,33 @@ package final class QuitProtectionHUD {
                height: minimumSize.height + (content.showsProgress ? 8 : 0))
     }
 
+    /// The confirmation's panel, before its content: a floating overlay, which
+    /// window managers do not list.
+    package static func makePanel(size: CGSize) -> NSPanel {
+        OverlayPanel(contentRect: CGRect(origin: .zero, size: size),
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
+    /// Fills the labels, then measures them, then hands the size to
+    /// `resize`: the width comes out of the labels that draw the text, not
+    /// out of a separate measurement of the same strings.
+    @discardableResult
+    package static func fit(_ content: ContentView, title: String, detail: String,
+                            showsProgress: Bool, resize: (CGSize) -> Void) -> CGSize {
+        content.update(title: title, detail: detail, showsProgress: showsProgress)
+        let size = fittingSize(content)
+        resize(size)
+        return size
+    }
+
     /// `screen` is for callers that already place a panel of their own, so the
     /// confirmation cannot land on a different display than what it confirms.
     package func show(title: String, detail: String, on screen: NSScreen? = nil,
               holdDeadline: Date? = nil) {
         if panel == nil {
-            let panel = OverlayPanel(contentRect: CGRect(origin: .zero, size: size),
-                                     styleMask: [.borderless, .nonactivatingPanel],
-                                     backing: .buffered,
-                                     defer: false)
+            let panel = Self.makePanel(size: size)
             panel.contentView = ContentView(frame: CGRect(origin: .zero, size: size))
             panel.isOpaque = false
             panel.backgroundColor = .clear
@@ -48,11 +66,9 @@ package final class QuitProtectionHUD {
         }
 
         guard let content = panel?.contentView as? ContentView else { return }
-        // Fill the labels first: the width comes out of them, not out of a
-        // separate measurement of the same strings.
-        content.update(title: title, detail: detail, showsProgress: holdDeadline != nil)
-        size = Self.fittingSize(content)
-        panel?.setContentSize(size)
+        size = Self.fit(content, title: title, detail: detail, showsProgress: holdDeadline != nil) { size in
+            panel?.setContentSize(size)
+        }
         positionPanel(on: screen)
         panel?.alphaValue = 1
         panel?.orderFrontRegardless()

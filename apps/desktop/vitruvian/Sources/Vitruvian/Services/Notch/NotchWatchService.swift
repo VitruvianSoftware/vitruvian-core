@@ -78,9 +78,7 @@ package final class NotchWatchService: ObservableObject {
     private var tracker = NotchWatchTracker(condition: .changes)
     private var loop: Task<Void, Never>?
     private var generation = UUID()
-    private var fingerprint: [UInt8]?
-    private var signature: String?
-    private var readAt: Date?
+    private var lastReading = NotchWatchLastReading()
     private var regionCapture: ScreenshotCaptureEngine.RegionCapture?
     private var selection: ScreenshotSelectionController?
     private lazy var tone = NSSound(contentsOfFile: "/System/Library/Sounds/Glass.aiff", byReference: false)
@@ -177,9 +175,7 @@ package final class NotchWatchService: ObservableObject {
         startedAt = nil
         headlineLine = nil
         regionCapture = nil
-        fingerprint = nil
-        signature = nil
-        readAt = nil
+        lastReading = NotchWatchLastReading()
         permissionMissing = false
     }
 
@@ -220,9 +216,7 @@ package final class NotchWatchService: ObservableObject {
         self.target = target
         state = .watching
         startedAt = Date()
-        fingerprint = nil
-        signature = nil
-        readAt = nil
+        lastReading = NotchWatchLastReading()
         permissionMissing = false
         text = ""
         headline = ""
@@ -236,8 +230,8 @@ package final class NotchWatchService: ObservableObject {
     /// A new rule starts from what the area shows now.
     private func resetTracker() {
         tracker = makeTracker()
-        guard isActive, state == .watching, signature != nil else { return }
-        if let outcome = tracker.observe(signature: signature, reading: text, at: Date()) { finish(outcome) }
+        guard isActive, state == .watching, lastReading.signature != nil else { return }
+        if let outcome = tracker.observe(signature: lastReading.signature, reading: text, at: Date()) { finish(outcome) }
     }
 
     private func makeTracker() -> NotchWatchTracker {
@@ -275,30 +269,27 @@ package final class NotchWatchService: ObservableObject {
             guard let info = Self.windowInfo(windowID) else { finish(.closed); return }
             window = info
         }
-        // Turned off in System Settings: nothing can be read, and asking the
-        // capture again would only raise the system's prompt.
-        guard CGPreflightScreenCaptureAccess() else {
-            if state != .hidden { state = .hidden }
-            if !permissionMissing { permissionMissing = true }
-            return
-        }
-        if permissionMissing { permissionMissing = false }
-        let image: CGImage?
-        if let windowID = target.windowID, let info = window {
+        let attempt = await Self.areaPicture(allowed: { CGPreflightScreenCaptureAccess() }) { () async -> CGImage? in
+            if permissionMissing { permissionMissing = false }
+            guard let windowID = target.windowID, let info = window else { return await regionCapture?.image() }
             var captured = await WindowPreviewProvider.captureViaWindowServer(windowID)
             if captured == nil, info.onScreen {
                 captured = await ScreenshotCaptureEngine.captureWindow(windowID, scale: 2)
             }
-            image = captured.flatMap { full in
+            return captured.flatMap { full in
                 NotchWatchSupport.pixelCrop(target.crop, windowSize: info.bounds.size,
                                             imageSize: CGSize(width: full.width, height: full.height))
                     .flatMap { full.cropping(to: $0) }
             }
-        } else {
-            image = await regionCapture?.image()
+        }
+        // Turned off in System Settings: nothing can be read.
+        guard case .taken(let taken) = attempt else {
+            if state != .hidden { state = .hidden }
+            if !permissionMissing { permissionMissing = true }
+            return
         }
         guard self.generation == generation, isActive else { return }
-        guard let image else {
+        guard let image = taken else {
             if state != .hidden { state = .hidden }
             return
         }
@@ -306,11 +297,10 @@ package final class NotchWatchService: ObservableObject {
         // A whole window can be large: its picture is summed up off the main thread.
         let picture = await Task.detached(priority: .utility) { NotchWatchSupport.fingerprint(image) }.value
         guard self.generation == generation, isActive else { return }
-        if signature != nil, NotchWatchSupport.sameFingerprint(picture, fingerprint),
-           let readAt, Date().timeIntervalSince(readAt) < NotchWatchSupport.rereadInterval {
+        if let still = lastReading.stillSignature(of: picture, at: Date()) {
             // The area looks as it did: no need to read it again, but it
             // confirms a change and lets time settle it.
-            if let outcome = tracker.observe(signature: signature, reading: text, at: Date()) { finish(outcome) }
+            if let outcome = tracker.observe(signature: still, reading: text, at: Date()) { finish(outcome) }
             return
         }
         let languages = MediaSupport.recognitionLanguages(for: L10n.shared.language.rawValue)
@@ -326,13 +316,11 @@ package final class NotchWatchService: ObservableObject {
         // Kept only once read: a reading dropped halfway must not leave the
         // area marked as read, or a still area would never be read again.
         guard self.generation == generation, isActive else { return }
-        fingerprint = picture
-        readAt = Date()
+        let signature = lastReading.keep(recognized, of: picture, at: Date())
         preview = area
         text = recognized
         let headline = NotchWatchSupport.headline(from: recognized, line: headlineLine)
         if headline != self.headline { self.headline = headline }
-        signature = NotchWatchSupport.signature(text: recognized, fingerprint: picture)
         if let outcome = tracker.observe(signature: signature, reading: recognized, at: Date()) { finish(outcome) }
     }
 
@@ -352,6 +340,22 @@ package final class NotchWatchService: ObservableObject {
         // Hidden in a full-screen app or while the Mac is locked, the island
         // cannot speak up, and the person is counting on hearing about it.
         if !shown { Notifier.post(title: title, body: target.windowTitle ?? target.appName) }
+    }
+
+    /// What a read took of its area.
+    package enum AreaPicture {
+        /// Screen Recording is off, so nothing was captured.
+        case notAllowed
+        /// The capture's picture, nil when the area cannot be read now.
+        case taken(CGImage?)
+    }
+
+    /// Takes the area's picture through `capture`, once `allowed` says Screen
+    /// Recording is on. Turned off in System Settings, nothing can be read,
+    /// and asking the capture again would only raise the system's prompt.
+    package static func areaPicture(allowed: () -> Bool, capture: () async -> CGImage?) async -> AreaPicture {
+        guard allowed() else { return .notAllowed }
+        return .taken(await capture())
     }
 
     // MARK: Helpers

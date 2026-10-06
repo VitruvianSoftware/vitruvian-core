@@ -35,6 +35,14 @@ package final class PermissionGuideOverlay {
 
     private init() {}
 
+    /// The card's panel, before its content: a floating overlay, which window
+    /// managers do not list.
+    package static func makePanel(frame: NSRect) -> NSPanel {
+        OverlayPanel(contentRect: frame,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered, defer: false)
+    }
+
     package func show(for kind: PermissionKind) {
         guard !Self.suppressed else { return }
         Permissions.shared.setActivePermissionSurface(pollingDemandID, visible: false)
@@ -72,9 +80,7 @@ package final class PermissionGuideOverlay {
 
         // Non-activating, so System Settings keeps focus while the card
         // floats above it; joins every Space so the trip back finds it.
-        let panel = OverlayPanel(contentRect: frame,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered, defer: false)
+        let panel = Self.makePanel(frame: frame)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true

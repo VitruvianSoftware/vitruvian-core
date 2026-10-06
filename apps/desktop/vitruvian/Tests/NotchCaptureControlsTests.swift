@@ -59,6 +59,47 @@ extension NotchPresentationRefreshContract {
                      "capture controls leave a timed preview owned by its existing dismissal timer")
         timed.island.endCaptureControls()
 
+        // The screenshot preview itself, presented into the island: whether it
+        // takes the keyboard and whether a collapse closes it come from its
+        // presentation policy, read from these settings.
+        let previewPixels = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+        let previewCases: [(interval: TimeInterval?, prefersFocus: Bool)] = [(3, true), (3, false), (nil, true)]
+        for (interval, prefersFocus) in previewCases {
+            defaults.set(prefersFocus, forKey: DefaultsKey.screenshotPreviewTakesFocus)
+            let fixture = island()
+            var previewCloseCount = 0
+            var presentation = ScreenshotQuickPreviewController.Presentation.live
+            presentation.defaults = defaults
+            presentation.island = { fixture.island }
+            // Never put on screen, should the island turn the preview away.
+            presentation.present = { _, _ in }
+            let preview = ScreenshotQuickPreviewController(
+                capture: .init(image: previewPixels, scale: 1, anchorRect: .zero),
+                strings: .enUS, defaultAction: .none, completedActions: [],
+                dismissInterval: interval,
+                action: { [$0] }, share: { _, _ in }, shareFile: { nil },
+                onClose: { previewCloseCount += 1 },
+                scheduler: .init(async: { _ in }, after: { _, _ in }),
+                presentation: presentation)
+            preview.show()
+            let policy = ScreenshotSupport.confirmationPreviewPresentationPolicy(dismissInterval: interval,
+                                                                                defaults: defaults)
+            suite.expect(fixture.island.captureContent != nil && fixture.host?.hasKeyboard == policy.takesFocus,
+                         "the island preview takes the keyboard exactly as the presentation policy says")
+            preview.hoverChanged(true)
+            preview.hoverChanged(false)
+            suite.expect(fixture.host?.hasKeyboard == policy.takesFocus,
+                         "hovering the island's preview never takes the keyboard")
+            fixture.island.presentCaptureControls(captureOptions(), cancel: {})
+            suite.expect((previewCloseCount == 1) == policy.closesOnCollapse,
+                         "the island preview closes on collapse exactly as the presentation policy says")
+            fixture.island.endCaptureControls()
+            preview.close()
+        }
+        defaults.removeObject(forKey: DefaultsKey.screenshotPreviewTakesFocus)
+
         let idle = begin()
         var surfaceUpdates: [(CGRect, CGFloat)] = []
         idle.island.captureControls?.onCaptureControlsSurfaceChange = { surfaceUpdates.append(($0, $1)) }

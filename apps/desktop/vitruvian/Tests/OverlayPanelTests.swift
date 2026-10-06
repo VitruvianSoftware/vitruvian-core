@@ -9,9 +9,8 @@ import VitruvianUI
 
 /// AppKit describes a non-activating panel as a system dialog, which tiling
 /// window managers track and list on whichever space is current. The shared
-/// panel class comes from `VitruvianDesign` and is created deferred, so no
-/// window is shown; each floating surface's own file is read for the class it
-/// builds.
+/// panel class comes from `VitruvianDesign`; each floating surface builds its
+/// panels through its own factory, which is asked for one here. None is shown.
 enum OverlayPanelTests {
     static func run(_ suite: TestSuite) {
         // The Clipboard History window keeps a title bar strip to drag it by.
@@ -27,40 +26,42 @@ enum OverlayPanelTests {
 
         // HUDs, previews, pickers and the menu's positioning helper: none is a
         // document window, and each floats over other apps' windows.
-        let surfaces = [
-            "Sources/Vitruvian/App/AppDelegate.swift",
-            "Sources/Vitruvian/UI/PermissionGuideOverlay.swift",
-            "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
-            "Sources/Vitruvian/Services/QuickTools/QuickToolHUD.swift",
-            "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
-            "Sources/Vitruvian/Services/QuickTools/CameraPreviewService.swift",
-            "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
-            "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
-            "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift",
-            "Sources/Vitruvian/Services/QuickTools/ScreenshotPinController.swift",
-            "Sources/Vitruvian/Services/QuickTools/QRResultController.swift",
-            "Sources/Vitruvian/Services/QuickTools/ScratchpadService.swift",
-            "Sources/Vitruvian/Services/Snippets/SnippetLibraryService.swift",
-            "Sources/Vitruvian/Services/Clipboard/ClipboardHistoryService.swift",
-            "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift",
-            "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift",
-            "Sources/Vitruvian/Services/RadialMenu/RadialMenuService.swift",
-            "Sources/Vitruvian/Services/RadialMenu/RadialNowPlayingService.swift",
-            "Sources/Vitruvian/Services/DockPreview/DockPreviewService.swift",
-            "Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
-            "Sources/Vitruvian/Services/DiskImageInstaller/DiskImageInstallerService.swift",
-            "Sources/Vitruvian/Services/Finder/FinderCutPaste.swift",
-            "Sources/Vitruvian/Services/Display/BrightnessOSD.swift",
-            "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift",
-            "Sources/Vitruvian/Services/Recorder/RecorderIndicator.swift",
+        let frame = CGRect(x: 0, y: 0, width: 200, height: 40)
+        let surfaces: [(String, NSPanel)] = [
+            ("the menu panel's popover anchor", AppKitMenuPanel.makePositioningPanel(at: frame)),
+            ("the permission guide", PermissionGuideOverlay.makePanel(frame: frame)),
+            ("the quit protection confirmation", QuitProtectionHUD.makePanel(size: frame.size)),
+            ("the quick tool confirmation", QuickToolHUD.makePanel()),
+            ("the scrolling capture controls", QuickToolHUD.makeScrollingPanel()),
+            ("the quick launcher", QuickLauncherService.makePanel()),
+            ("the camera preview", CameraPreviewService.makePanel()),
+            ("the recent captures", RecentCaptureService.makeHistoryPanel()),
+            ("the screenshot preview", ScreenshotQuickPreviewController.makePanel(size: frame.size)),
+            ("the QR result", QRResultController.makePanel(size: frame.size)),
+            ("the scratchpad", ScratchpadService.makePanel()),
+            ("the snippet library", SnippetLibraryService.makePanel()),
+            ("the clipboard history", ClipboardHistoryService.makePanel(size: frame.size)),
+            ("the command bar", CommandBarService.makePanel()),
+            ("the app switcher", AppSwitcher.makePanel()),
+            ("the radial menu", RadialMenuService.makePanel()),
+            ("the radial now playing card", RadialNowPlayingService.makePanel()),
+            ("the Dock preview, hovered or pinned", DockPreviewService.makePanel()),
+            ("the window layout indicator and edge snap preview", WindowLayoutService.makeOverlayPanel()),
+            ("the disk image install progress", DiskImageInstallerService.makeProgressPanel()),
+            ("the Finder cut feedback", FinderCutPaste.makePanel()),
+            ("the brightness level indicator", BrightnessOSD.makePanel()),
+            ("the cleaning mode cover", CleaningModeManager.makePanel(frame: frame)),
+            ("the recording pill and region guide", RecorderIndicator.makePanel(frame: frame)),
         ]
-        for path in surfaces {
-            let source = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            suite.expect(source.range(of: #"\bOverlayPanel\(contentRect|:\s*OverlayPanel\b"#,
-                                      options: .regularExpression) != nil
-                         && !source.contains("NSPanel(contentRect")
-                         && source.range(of: #"class \w+:\s*NSPanel\b"#, options: .regularExpression) == nil,
-                         "\(path) builds its floating panels as overlays, which window managers do not list")
+        for (surface, panel) in surfaces {
+            suite.expect(panel is OverlayPanel && panel.accessibilitySubrole() == .unknown,
+                         "\(surface) builds its floating panels as overlays, which window managers do not list")
         }
+        // Built with what they show, so their class is what is checked: the
+        // screenshot chooser's per-display panels and a pinned capture.
+        suite.expect(ScreenshotOverlayPanel.isSubclass(of: OverlayPanel.self),
+                     "the screenshot chooser builds its floating panels as overlays, which window managers do not list")
+        suite.expect(ScreenshotPinWindow.isSubclass(of: OverlayPanel.self),
+                     "a screenshot pin builds its floating panel as an overlay, which window managers do not list")
     }
 }

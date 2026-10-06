@@ -71,8 +71,8 @@ package final class ScreenshotPinController {
     }
 }
 
-/// One pinned capture.
-private final class ScreenshotPinWindow: OverlayPanel {
+/// One pinned capture: a floating overlay, which window managers do not list.
+package final class ScreenshotPinWindow: OverlayPanel {
     private let image: CGImage
     private let scale: CGFloat
     private unowned let controller: ScreenshotPinController
@@ -116,7 +116,7 @@ private final class ScreenshotPinWindow: OverlayPanel {
         contentView = view
     }
 
-    override var canBecomeKey: Bool { true }
+    package override var canBecomeKey: Bool { true }
 
     // MARK: Actions
 
@@ -164,7 +164,7 @@ private final class ScreenshotPinWindow: OverlayPanel {
 
     // MARK: Keyboard
 
-    override func keyDown(with event: NSEvent) {
+    package override func keyDown(with event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let step: CGFloat = flags.contains(.shift) ? 12 : 1
         switch Int(event.keyCode) {

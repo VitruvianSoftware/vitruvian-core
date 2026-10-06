@@ -329,6 +329,7 @@ enum ScreenshotSelectionRefreshContract {
             for (from, to) in [(ScreenCaptureTool.recording, other), (other, ScreenCaptureTool.recording)] {
                 guard let c = await started(from) else { return }
                 let request = desk.requests.count
+                let panelsBefore = c.panels.map { ObjectIdentifier($0) }
                 c.select(to)
                 expect(c.panels.allSatisfy { !$0.overlayView.showsFullScreenControl },
                        "changing capture tool hides the full-screen action until the refreshed source is ready")
@@ -358,6 +359,10 @@ enum ScreenshotSelectionRefreshContract {
                 }, "both displays use the selected tool visibility")
                 expect(c.panels.allSatisfy { $0.overlayView.windows.isEmpty == (to == .recording) },
                        "selectable windows follow the refreshed pixels")
+                // A new mode never takes the chooser down to put another up: the
+                // same session and its panels take the new pixels behind them.
+                expect(!c.controller.isOver && c.panels.map { ObjectIdentifier($0) } == panelsBefore,
+                       "changing modes keeps the selection controller and its panels on screen")
                 if to == .color {
                     c.controller.confirmColor(at: .zero, on: c.panels[0])
                 } else {
@@ -490,5 +495,49 @@ enum ScreenshotSelectionRefreshContract {
         await drain()
         expect(loupe.panels.allSatisfy { $0.overlayView.loupeImage === $0.frozenImage },
                "a previous tool's delayed live loupe cannot replace the current source")
+
+        // The surface itself, with the pointer on the first display.
+        desk.pointer = CGPoint(x: 50, y: 50)
+        guard let surfaceSession = await started(.screenshot) else { return }
+        expect(surfaceSession.panels.allSatisfy { $0.overlayView.acceptsFirstMouse(for: nil) },
+               "the capture surface claims the first click so a drag works while Dynamic Island holds key focus")
+        // System chrome, such as the Dock or the menu bar, can report the
+        // pointer leaving a surface it never left.
+        let first = surfaceSession.panels[0].overlayView
+        let second = surfaceSession.panels[1].overlayView
+        if let crossing = NSEvent.mouseEvent(with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: 0,
+                                             windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0,
+                                             pressure: 0) {
+            first.mouseExited(with: crossing)
+            expect(first.showsCaptureGuide,
+                   "system chrome cannot hide the capture chooser while the pointer remains on its display")
+            desk.pointer = CGPoint(x: 150, y: 50)
+            first.mouseExited(with: crossing)
+            second.mouseEntered(with: crossing)
+            expect(!first.showsCaptureGuide && second.showsCaptureGuide,
+                   "the chooser leaves a display the pointer really left and follows it to the next")
+            desk.pointer = CGPoint(x: 50, y: 50)
+        } else {
+            expect(false, "a pointer crossing can be made")
+        }
+
+        // Every mode lays the chooser out at one height, the recording
+        // controls held in place but hidden, so switching never moves it.
+        var guideFrameHeights: Set<CGFloat> = []
+        var guideContentHeights: Set<CGFloat> = []
+        for tool in ScreenCaptureTool.allCases {
+            guard let mode = await started(tool) else { return }
+            let view = mode.panels[0].overlayView
+            view.layoutSubtreeIfNeeded()
+            guideFrameHeights.insert(view.captureGuideFrame.height)
+            guideContentHeights.insert(view.captureGuideFittingSize.height)
+        }
+        expect(guideFrameHeights.count == 1 && guideContentHeights.count == 1
+                && (guideContentHeights.first ?? 0) > 0,
+               "capture modes reserve the recording controls' height so the chooser never jumps")
+
+        guard let picking = await started(.color) else { return }
+        expect(picking.panels[0].overlayView.showsLoupe && !picking.panels[1].overlayView.showsLoupe,
+               "the capture loupe draws on only the display that owns the current pointer")
     }
 }

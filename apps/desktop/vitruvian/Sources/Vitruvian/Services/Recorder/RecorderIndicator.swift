@@ -37,6 +37,15 @@ package final class RecorderIndicator {
         self.onStop = onStop
     }
 
+    /// The pill's and the region guide's panel, before its content: a floating
+    /// overlay, which window managers do not list.
+    package static func makePanel(frame: CGRect) -> NSPanel {
+        OverlayPanel(contentRect: frame,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
     /// Keeps the chosen area visible without trapping clicks. The panel is
     /// app-owned capture chrome, so the recorder leaves it out of the video.
     package func showRegionGuide(for region: RecorderSupport.Region) {
@@ -53,10 +62,7 @@ package final class RecorderIndicator {
 
         let guide = RegionGuideView(frame: CGRect(origin: .zero, size: screen.frame.size),
                                     selection: selection)
-        let panel = OverlayPanel(contentRect: screen.frame,
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makePanel(frame: screen.frame)
         panel.contentView = guide
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -90,10 +96,7 @@ package final class RecorderIndicator {
         pill.onPause = { [weak self] in self?.onPause() }
         pill.onStop = { [weak self] in self?.onStop() }
 
-        let panel = OverlayPanel(contentRect: CGRect(origin: .zero, size: PillView.size),
-                                 styleMask: [.borderless, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makePanel(frame: CGRect(origin: .zero, size: PillView.size))
         panel.contentView = pill
         panel.isOpaque = false
         panel.backgroundColor = .clear

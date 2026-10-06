@@ -84,6 +84,11 @@ package enum MouseSpacesGestureSupport {
         /// belongs to the gesture; a press that never fired is still a click.
         package private(set) var didFire = false
 
+        /// Whether the press has to go back to the app when it ends: one that
+        /// never fired was only a click, so a tap on the button keeps its
+        /// ordinary click, while one that fired keeps its release here.
+        package var givesPressBack: Bool { !didFire }
+
         private var lastPoint: CGPoint
         private var accumulatedX: CGFloat = 0
         private var accumulatedY: CGFloat = 0

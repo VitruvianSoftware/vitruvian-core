@@ -26,6 +26,10 @@ package final class QuickToolHotkey {
         hotKeyID = id
     }
 
+    /// The id the shared handler knows this hotkey by; each quick tool keeps
+    /// its own, so a press reaches only its owner.
+    package var id: UInt32 { hotKeyID }
+
     /// Applies the wanted state; returns false when macOS refused the
     /// registration (combination taken by another app).
     @discardableResult

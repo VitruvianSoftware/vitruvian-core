@@ -116,11 +116,35 @@ package struct UninstallFailureNote: View {
                     .font(compact ? .system(size: 9.5) : .caption2)
                     .foregroundStyle(.tertiary)
             }
-            if !permissions.fullDiskAccess,
-               UninstallerSupport.failureNeedsFullDiskAccess(paths: items.map(\.url.path)) {
-                FullDiskAccessNote(compact: compact, reason: l10n.s.uninstallerFailedNeedsFDA)
+            if let reason = Self.permissionReason(for: items, hasFullDiskAccess: permissions.fullDiskAccess,
+                                                  strings: l10n.s) {
+                FullDiskAccessNote(compact: compact, reason: reason)
             }
         }
+    }
+
+    /// The permission note's words when Full Disk Access is what the removal
+    /// needed and does not have; nil when it would not have helped.
+    package static func permissionReason(for items: [AppUninstaller.Leftover], hasFullDiskAccess: Bool,
+                                         strings: Strings) -> String? {
+        guard !hasFullDiskAccess,
+              UninstallerSupport.failureNeedsFullDiskAccess(paths: items.map(\.url.path)) else { return nil }
+        return strings.uninstallerFailedNeedsFDA
+    }
+}
+
+/// How a finished removal closes, on the Settings page and in the menu panel
+/// alike: its mark comes from `UninstallerSupport.doneSymbol`, never a tick of
+/// its own, and whatever the removal left behind is named by the failure note.
+@MainActor
+package struct UninstallDoneContent {
+    package let symbol: String
+    /// Names what the removal left behind; nil when it took everything.
+    package let failureNote: UninstallFailureNote?
+
+    package init(failed: [AppUninstaller.Leftover], compact: Bool) {
+        symbol = UninstallerSupport.doneSymbol(hasLeftovers: !failed.isEmpty)
+        failureNote = failed.isEmpty ? nil : UninstallFailureNote(items: failed, compact: compact)
     }
 }
 

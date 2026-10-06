@@ -296,21 +296,37 @@ package enum SelfUninstall {
     /// anything has, which is why it may ask for the password the launch-time
     /// recovery would have asked for.
     private static func restoreSleepBeforeRemoval() -> Bool {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag) else { return true }
+        restoreSleep(flagged: UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag),
+                     probe: { Shell.run("/usr/bin/pmset", ["-g"]) },
+                     restoreWithoutPassword: { Sudoers.pmsetDisableSleep(false) },
+                     restoreAsAdministrator: {
+                         AdminShell.runSync("pmset disablesleep 0", prompt: L10n.shared.s.adminPromptRecover)
+                     })
+    }
+
+    /// `restoreSleepBeforeRemoval` with the system passed in: `flagged` is the
+    /// closed-lid flag, `probe` reads `pmset -g`, and the two restores put
+    /// sleep back through the password-free rule and through the password
+    /// dialog. True only when sleep was never the app's to restore, or is
+    /// known to be back.
+    package static func restoreSleep(flagged: Bool,
+                                     probe: () -> (status: Int32, output: String),
+                                     restoreWithoutPassword: () -> Bool,
+                                     restoreAsAdministrator: () -> Bool) -> Bool {
+        guard flagged else { return true }
         // The flag can outlive the setting, so a stale one must not put a
         // password dialog in front of someone uninstalling. Only a reading that
         // answered, and answered "off", is allowed to skip the rest: a probe
         // that failed says nothing. Going on then costs a no-op call, and a
         // dialog only if that call fails too — the case where sleep really may
         // still be off with nothing else left to put it back.
-        let probe = Shell.run("/usr/bin/pmset", ["-g"])
-        if probe.status == 0, !SudoersSupport.sleepDisabled(inPmsetOutput: probe.output) {
+        let reading = probe()
+        if reading.status == 0, !SudoersSupport.sleepDisabled(inPmsetOutput: reading.output) {
             return true
         }
-        if Sudoers.pmsetDisableSleep(false) { return true }
-        guard AdminShell.runSync("pmset disablesleep 0",
-                                 prompt: L10n.shared.s.adminPromptRecover) else { return false }
-        let verification = Shell.run("/usr/bin/pmset", ["-g"])
+        if restoreWithoutPassword() { return true }
+        guard restoreAsAdministrator() else { return false }
+        let verification = probe()
         return verification.status == 0
             && !SudoersSupport.sleepDisabled(inPmsetOutput: verification.output)
     }
@@ -331,17 +347,26 @@ package enum SelfUninstall {
     private static func removePreferences() {
         let id = bundleID
         UserDefaults.standard.removePersistentDomain(forName: id)
-        let home = NSHomeDirectory()
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Preferences/\(id).plist")
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Saved Application State/\(id).savedState")
-        // Clipboard images and any other app-owned data live here.
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Application Support/\(id)")
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/Caches/\(id)")
-        // URLSession writes these on our behalf whenever the app talks to the
-        // network, so they exist without the app ever choosing the path.
-        try? FileManager.default.removeItem(atPath: "\(home)/Library/HTTPStorages/\(id)")
-        try? FileManager.default.removeItem(
-            atPath: "\(home)/Library/HTTPStorages/\(id).binarycookies")
+        for path in ownedPaths(home: NSHomeDirectory(), bundleID: id) {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    /// The files and folders of the app's own under a home folder, which a
+    /// full uninstall removes once its preferences domain is gone.
+    /// `Tools/uninstall.sh` removes the same ones.
+    package static func ownedPaths(home: String, bundleID id: String) -> [String] {
+        [
+            "\(home)/Library/Preferences/\(id).plist",
+            "\(home)/Library/Saved Application State/\(id).savedState",
+            // Clipboard images and any other app-owned data live here.
+            "\(home)/Library/Application Support/\(id)",
+            "\(home)/Library/Caches/\(id)",
+            // URLSession writes these on our behalf whenever the app talks to the
+            // network, so they exist without the app ever choosing the path.
+            "\(home)/Library/HTTPStorages/\(id)",
+            "\(home)/Library/HTTPStorages/\(id).binarycookies",
+        ]
     }
 
     /// Moves the app's own bundle to the Trash after it quits, then quits. The

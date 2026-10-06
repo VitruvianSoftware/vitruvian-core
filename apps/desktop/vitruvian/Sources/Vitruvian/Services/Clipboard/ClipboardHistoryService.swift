@@ -1394,14 +1394,20 @@ package final class ClipboardHistoryService: ObservableObject {
         keyUp.post(tap: .cghidEventTap)
     }
 
+    /// The history's panel, before its content: a floating overlay, which
+    /// window managers do not list, keeping a title bar strip to drag it by.
+    package static func makePanel(size: NSSize) -> NSPanel {
+        OverlayPanel(contentRect: NSRect(origin: .zero, size: size),
+                     styleMask: [.titled, .closable, .resizable,
+                                 .fullSizeContentView, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let initialSize = preferredPanelSize(visibleFrame: NSScreen.pointerVisibleFrame)
-        let panel = OverlayPanel(contentRect: NSRect(origin: .zero, size: initialSize),
-                                 styleMask: [.titled, .closable, .resizable,
-                                             .fullSizeContentView, .nonactivatingPanel],
-                                 backing: .buffered,
-                                 defer: false)
+        let panel = Self.makePanel(size: initialSize)
         panel.title = FeatureStrings.clipboard(L10n.shared.language).title
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden

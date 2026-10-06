@@ -516,34 +516,36 @@ enum ShelfFeatureTests {
                "short drag pass under 150ms does not count as dwelled")
         suite.expect(ShelfDockDragSupport.hasDwelled(since: 100.0, now: 100.16, required: 0.15),
                "sustained hover over 150ms counts as dwelled")
-        let shelfServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Shelf/ShelfService.swift",
-            encoding: .utf8)) ?? ""
-        let dockedWatchdog = shelfServiceSource
-            .components(separatedBy: "private func startDockedWatchdog()")
-            .dropFirst().first?.components(separatedBy: "\n    private func ").first ?? ""
-        suite.expect(dockedWatchdog.contains("updateDockedProximity(")
-                && dockedWatchdog.contains("handleDragForEdge(at:"),
+        // The watchdog's tick, which also runs once the pointer comes to rest
+        // and no drag event arrives any more.
+        var watchdogButtonReads = 0
+        func buttonHeld(_ held: Bool) -> Bool { watchdogButtonReads += 1; return held }
+        suite.expect(ShelfDragWatchdog.step(dockedDragActive: false, sawGestureStart: false,
+                                            buttonDown: buttonHeld(true)) == .stop
+                && watchdogButtonReads == 0,
+               "the drag watchdog stops once no drag is left to watch")
+        suite.expect(ShelfDragWatchdog.step(dockedDragActive: true, sawGestureStart: false,
+                                            buttonDown: buttonHeld(false)) == .endDrag
+                && ShelfDragWatchdog.step(dockedDragActive: false, sawGestureStart: true,
+                                          buttonDown: buttonHeld(false)) == .endDrag,
+               "the drag watchdog ends a drag whose button came up unseen")
+        suite.expect(ShelfDragWatchdog.step(dockedDragActive: true, sawGestureStart: false,
+                                            buttonDown: buttonHeld(true)) == .advance(dock: true)
+                && ShelfDragWatchdog.step(dockedDragActive: true, sawGestureStart: true,
+                                          buttonDown: buttonHeld(true)) == .advance(dock: true)
+                && ShelfDragWatchdog.step(dockedDragActive: false, sawGestureStart: true,
+                                          buttonDown: buttonHeld(true)) == .advance(dock: false),
                "the drag watchdog finishes dock and edge dwells after pointer movement stops")
-        let explicitShelfClose = shelfServiceSource
-            .components(separatedBy: "func close()")
-            .dropFirst().first?.components(separatedBy: "\n    package func noteInteraction").first ?? ""
-        let ordinaryShelfHide = shelfServiceSource
-            .components(separatedBy: "func hide()")
-            .dropFirst().first?.components(separatedBy: "\n    package func close").first ?? ""
-        let shelfViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Shelf/ShelfView.swift",
-            encoding: .utf8)) ?? ""
-        let dockedShelfViewSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Shelf/ShelfDropZoneView.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(explicitShelfClose.contains("DefaultsKey.shelfClearOnClose")
-                && explicitShelfClose.contains("clear()")
-                && explicitShelfClose.contains("hide()")
-                && !ordinaryShelfHide.contains("DefaultsKey.shelfClearOnClose"),
+        suite.expect(ShelfDismissal.close.clearsItems(clearOnClose: true)
+                && !ShelfDismissal.close.clearsItems(clearOnClose: false)
+                && !ShelfDismissal.hide.clearsItems(clearOnClose: true)
+                && !ShelfDismissal.collapseDocked.clearsItems(clearOnClose: true),
                "only an explicit shelf close consults the optional clearing preference")
-        suite.expect(shelfViewSource.contains("onDismiss ?? { shelf.close() }")
-                && dockedShelfViewSource.contains("onDismiss: { shelf.collapseDocked() }"),
+        let floatingShelf = ShelfView()
+        let dockedShelf = ShelfView.docked(collapseHelp: "Collapse")
+        suite.expect(floatingShelf.dismissal == .close && dockedShelf.dismissal == .collapseDocked
+                && floatingShelf.dismissal.clearsItems(clearOnClose: true)
+                && !dockedShelf.dismissal.clearsItems(clearOnClose: true),
                "the floating close clears when requested while docked collapse keeps items")
 
         let shelfFile = ShelfPersistedItem(id: UUID(), kind: .file, title: "notes.pdf",
@@ -886,22 +888,16 @@ enum ShelfFeatureTests {
                "a bad child drops itself, its batch survives and the store loads as "
                + "partial, found \(batchShelfChildTitles)")
 
-        // The sweep decision lives in ShelfService, which `--test` does not
-        // compile, so it is pinned by shape: restore may reach the payload
-        // sweep only past the guard that a store read whole has to pass. A
-        // `.partial` store's dropped entries still own files in that
-        // directory, and the blob it kept still points at them.
-        let restoreItemsBody = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Shelf/ShelfService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "private func restoreItems()")
-            .dropFirst().first?
-            .components(separatedBy: "\n    private func ").first ?? ""
-        let pastRestoreGuard = restoreItemsBody
-            .components(separatedBy: "guard case .items = store else { return }")
-        suite.expect(pastRestoreGuard.count == 2
-                && !pastRestoreGuard[0].contains("sweepOwnedFiles(")
-                && pastRestoreGuard[1].contains("sweepOwnedFiles("),
+        // Restore saves back and sweeps the payload files only past the guard
+        // a store read whole passes. A `.partial` store's dropped entries
+        // still own files in that directory, and the blob it kept still
+        // points at them.
+        suite.expect(ShelfStoreLoad.items([]).isWhole
+                && ShelfPersistenceSupport.load(nil).isWhole
+                && !ShelfPersistenceSupport.load(batchShelfBlob).isWhole
+                && !ShelfStoreLoad.partial([]).isWhole
+                && !ShelfStoreLoad.unreadable.isWhole
+                && !ShelfPersistenceSupport.load(Data("not a shelf".utf8)).isWhole,
                "restore sweeps the shelf's payload files only for a store it read whole")
 
         // Dragging selected text brings the Shelf's pill in. A window a tiling
@@ -912,11 +908,13 @@ enum ShelfFeatureTests {
                "a floating overlay describes itself as an undescribed window, so window managers skip it")
         suite.expect(overlay.accessibilityRole() == .window && overlay.isAccessibilityElement(),
                "a floating overlay stays an accessible window for assistive technology")
-        let tooltipSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Shelf/ShelfTooltipPopover.swift", encoding: .utf8)) ?? ""
-        suite.expect(shelfServiceSource.contains("class KeyableShelfPanel: OverlayPanel")
-                && !shelfServiceSource.contains("NSPanel(contentRect")
-                && tooltipSource.contains("OverlayPanel(contentRect") && !tooltipSource.contains("NSPanel(contentRect"),
+        // The pill, the card and the edge peek share one panel kind.
+        let shelfPanel = ShelfService.makePanel()
+        let tooltipPanel = ShelfTooltipPopover.makePanel()
+        suite.expect([shelfPanel, tooltipPanel].allSatisfy {
+                    $0 is OverlayPanel && $0.accessibilitySubrole() == .unknown
+                }
+                && shelfPanel.canBecomeKey,
                "every Shelf window, the pill, card, edge peek and item tooltip, is a floating overlay")
     }
 }

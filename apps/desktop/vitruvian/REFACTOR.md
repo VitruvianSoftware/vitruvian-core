@@ -5172,7 +5172,92 @@ runs under Swift Testing alone, and the binary's own runner is gone.
   It has not worked since the tests import the app's modules (step 3.2e),
   and it is left as upstream wrote it.
 
-What step 7 leaves: 133 reads of source files as text, counted in
+Landed (7h, source pins turned behavioral, first part): 98 reads of source
+files as text become checks that run the code, in the resource, recorder,
+command bar, pointer-input, shelf, overlay, window layout, app management,
+storage, utilities, update, screenshot and switcher suites. 35 remain.
+
+- **Resources as data:** `Info.plist`, the entitlements, the fan helper's
+  launchd plist and every `InfoPlist.strings` are parsed as property lists
+  (`ShippedResource` in `LocalizationFeatureContractTests`) and checked by
+  key. Every language now has to translate the audio and organizer prompts,
+  not only mention their keys.
+- **Scripts run instead of being read:**
+  - `build.sh`'s Developer rename of the fan helper is `rename_fan_helper`,
+    run on a copy of the shipped plist.
+  - The preference sweep runs over a scratch folder holding every suite the
+    tests open.
+  - `Tools/setup-signing.sh` runs end to end against the stock LibreSSL
+    `openssl`, with logging stand-ins for `security` and `codesign`.
+  - `Tools/uninstall.sh`'s removal, rule search and sleep read are
+    functions run over scratch folders, against `SelfUninstall.ownedPaths`
+    and `Sudoers.ruleFiles`.
+- **Seams:**
+  - recorder: `RecorderComposer.FilteredComposition`, which a test makes
+    fail to check that both exports stop; `RecorderTypingSampler.record(at:)`;
+  - command bar: `CommandBarKeys`, `ShortcutListening`, the catalog's
+    `storeBootVolumeSpace`/`storeSystemAnswers`, `CommandBarView.examples`;
+  - keyboard: `KeycapLayoutSource`, `InputSourceSelection.selectNextSource`;
+  - Settings' Command Tab presence: `WindowActivationClaim`;
+  - pointer input: `MouseButtonShortcutSupport.route(press:)` and
+    `tapWanted`, `SpaceWindowBridge.registeredShortcut`,
+    `SuperKeyMouseTapRefusals`, `SuperKeyStatusLine`, `TapCreationRetry`,
+    `CleaningSessionSupport`, `FocusFollowsMouseSupport.leavesAlone` and
+    `handsToActivator`, `MouseAppExceptions.identity`, the installed-app
+    captions;
+  - the app delegate: `FeatureRuntime.permissionDidChange(_:)` and
+    `QuitInputRelease`;
+  - elsewhere: `HomebrewManager.awaitExit`, `DiskSampler.volumeKeys`,
+    `SelfUninstall.restoreSleep`, `OnboardingFeatureNames`,
+    `CleaningUnlockCounter.shippedPressWindow`.
+- **Threads:** the typing sampler takes 16,000 keystrokes from eight
+  threads at once, and the pointer thread invalidates a port it is handed
+  back off the main thread, at user-interactive quality.
+- **App management, storage, utilities, updates:** the uninstaller's picker
+  and drop (`AppPickerView.uninstaller`, `AppUninstaller.selectDropped`),
+  `UninstallerSupport.unmovedRow`, `UninstallDoneContent`,
+  `UninstallFailureNote.permissionReason`, `JunkCleaner.installedOracle` and
+  `Pass`, `CleanerScheduler.automaticStep`, `AutoQuitDeferredWork` and
+  `AutoQuitSupport.appIsBusy`, the disk image installer's non-modal alerts,
+  `QuitProtectionHUD.fit`, `RadialMenuSupport.mouseTapAction`, the share
+  services' wake notifications, `QuickTogglesSupport.exclusionCandidates`,
+  `UpdateShowcaseMediaLoader.download(startingWith:)` and
+  `LaunchAtLogin.setEnabled(_:system:)`. `bazel/sync_sources.py --check`
+  now also fails when `build.sh` stops compiling or staging the Now Playing
+  adapter, instead of a test reading `build.sh`.
+- **Screenshots:** `ScreenshotCapturePolicy.attachedCapturePlan` and
+  `attachedCaptureDisplayIndex` for the window capture,
+  `ScreenshotService.presentRoutedPreview`, the capture settings'
+  `TopSection`, the history's shortcut, panel and activation observer, the
+  selection controller's guide and loupe read through its `Environment`,
+  the preview's `Presentation` environment and `shareLinkClick`, the
+  editor model driven through drags, taps and undo, the recorder's
+  `outputSizeText` and `lookCards`, and a `withScratch` helper that hands
+  scratch files back before the check that follows.
+- **Switcher:** `SwitcherSessionOpening`, `WindowEnumerator.DisplayScope`,
+  `SwitcherPreferences` and `shaped(_:by:)`, `WindowActivator.PlacementCalls`
+  and `focusAfterSpaceHop`, `WindowPreviewProvider.listOnWarmQueue`,
+  `ActivationHandoff.handOff` and `isHandoffActivation`,
+  `DockClickService.activateCooperatively`, `DockPreviewService.dockElement`,
+  `MenuPanelView.heightCap`, and the status item's recovery in the new
+  `StatusItemRecovery`, which the app delegate calls. `ScrollingTitle` is
+  rendered at each alignment.
+- **Floating panels:** every surface that used to be scanned for a plain
+  `NSPanel` builds its panel through a `package` factory, and
+  `OverlayPanelTests` builds each one and checks that it is an
+  `OverlayPanel` that window managers skip. The two panels that need a live
+  controller are checked as subclasses.
+- **Shelf, island and window layout:** `ShelfDragWatchdog`,
+  `ShelfDismissal` (`ShelfView` takes one instead of a closure),
+  `ShelfStoreLoad.isWhole`, `NotchPanel.takesScroll`, the wheel's
+  `movesStrip`/`leavesWheel`, `NotchWatchLastReading`,
+  `NotchMenuSpaceReader.Environment.menusOnShow`,
+  `WindowLayoutSettledFrames`, `SettingsBackup.restore(_:into:)`,
+  `PastePlainService.readPlainText(on:from:then:)`, the mixer's
+  `MixerRender.renderCycle` and bounded `MixerEngineTeardown` queue, and
+  `KeepAwakeMatchModePicker`, rendered in a hosting view.
+
+What step 7 leaves: 35 reads of source files as text after 7h, counted in
 `Tests/source_pins.txt` (7e). They pin code that has not moved: SwiftUI view
 structure, live wiring to the system, and resources and build files. Each
 converts when its code moves behind a seam, and the ledger only lets the

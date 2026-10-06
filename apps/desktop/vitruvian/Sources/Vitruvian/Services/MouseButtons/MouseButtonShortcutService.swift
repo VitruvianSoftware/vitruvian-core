@@ -131,7 +131,10 @@ package final class MouseButtonShortcutService: ObservableObject {
         // Capture holds the tap up by itself: the press being asked for may
         // be the drag's, and the drag's switch is not the shortcut switch.
         // Either capture row only exists while its own switch is on.
-        let wanted = (enabled && !mappings.isEmpty) || isCapturing || spacesButton != nil
+        let wanted = MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: enabled,
+                                                          hasMappings: !mappings.isEmpty,
+                                                          isCapturing: isCapturing,
+                                                          spacesButton: spacesButton)
         guard wanted else {
             stop()
             return
@@ -318,7 +321,10 @@ package final class MouseButtonShortcutService: ObservableObject {
 
             let enabled = AppFeature.mouseButtonShortcuts.isAvailable
                 && UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled)
-            let wanted = (enabled && !mappings.isEmpty) || isCapturing || spacesButton != nil
+            let wanted = MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: enabled,
+                                                              hasMappings: !mappings.isEmpty,
+                                                              isCapturing: isCapturing,
+                                                              spacesButton: spacesButton)
             let shouldRun = SessionActivitySupport.tapShouldRun(
                 featureWanted: wanted || !consumedButtons.isEmpty,
                 accessibilityGranted: AXIsProcessTrusted(),
@@ -352,10 +358,23 @@ package final class MouseButtonShortcutService: ObservableObject {
         let button = event.getIntegerValueField(.mouseEventButtonNumber)
 
         if type == .otherMouseDown {
-            if isDraining {
-                return Unmanaged.passUnretained(event)
-            }
-            if isCapturing {
+            // An app on the exception list keeps its buttons: the press goes
+            // through whole and no shortcut is sent (issue #358). Capture is
+            // asked first on purpose, so a button can still be added from
+            // Settings while such an app is in front.
+            let route = MouseButtonShortcutSupport.route(
+                press: button,
+                isDraining: isDraining,
+                isCapturing: isCapturing,
+                isExcepted: {
+                    MouseAppExceptions.shared.excludesActionTarget(.buttonShortcuts, at: event.location)
+                },
+                spacesButton: spacesButton,
+                isAvailable: AppFeature.mouseButtonShortcuts.isAvailable,
+                isEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled),
+                mappings: mappings,
+                claimedByWheel: RadialMenuSupport.claimsMouseButton)
+            if isCapturing, !isDraining {
                 // The capture row reports every extra button, even one it
                 // will refuse, so it can explain instead of leaving the user
                 // guessing. The press itself belongs to the capture: letting
@@ -364,32 +383,20 @@ package final class MouseButtonShortcutService: ObservableObject {
                 // rearranging buttons. Only the middle button, which cannot
                 // be captured, keeps working.
                 lastInputSeen = button
-                guard MouseButtonShortcutSupport.canMap(button) else {
-                    return Unmanaged.passUnretained(event)
-                }
+            }
+            switch route {
+            case .pass:
+                return Unmanaged.passUnretained(event)
+            case .capture:
                 consumedButtons.insert(button)
                 return nil
-            }
-            // An app on the exception list keeps its buttons: the press goes
-            // through whole and no shortcut is sent (issue #358). Capture is
-            // above on purpose, so a button can still be added from Settings
-            // while such an app is in front.
-            guard !MouseAppExceptions.shared.excludesActionTarget(.buttonShortcuts, at: event.location) else {
-                return Unmanaged.passUnretained(event)
-            }
-            if button == spacesButton {
+            case .holdForSpaces:
                 return armSpacesGesture(event, button: button)
+            case .fire(let shortcut):
+                consumedButtons.insert(button)
+                post(shortcut)
+                return nil
             }
-            guard let shortcut = MouseButtonShortcutSupport.firesShortcut(
-                for: button,
-                isAvailable: AppFeature.mouseButtonShortcuts.isAvailable,
-                isEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled),
-                mappings: mappings,
-                claimedByWheel: RadialMenuSupport.claimsMouseButton)
-            else { return Unmanaged.passUnretained(event) }
-            consumedButtons.insert(button)
-            post(shortcut)
-            return nil
         }
 
         if let gesture = spacesGesture, gesture.button == button {
@@ -399,7 +406,7 @@ package final class MouseButtonShortcutService: ObservableObject {
                 return nil
             case .otherMouseUp:
                 spacesGesture = nil
-                guard gesture.tracker.didFire else {
+                guard !gesture.tracker.givesPressBack else {
                     // The pointer never went far enough to mean anything, so
                     // the press was only a click: hand it back first and let
                     // this release close the pair. Below the thresholds this
@@ -473,15 +480,29 @@ package final class MouseButtonShortcutService: ObservableObject {
     /// off in System Settings reads as nil, and the gesture stays silent
     /// rather than pressing something else.
     private func perform(_ action: MouseSpacesGestureSupport.Action) {
-        let shortcut: SpaceWindowBridge.SpaceShortcut?
-        switch action {
-        case .spaceLeft: shortcut = SpaceWindowBridge.spaceShortcut(.left)
-        case .spaceRight: shortcut = SpaceWindowBridge.spaceShortcut(.right)
-        case .missionControl: shortcut = SpaceWindowBridge.overviewShortcut(.missionControl)
-        case .appExpose: shortcut = SpaceWindowBridge.overviewShortcut(.appExpose)
-        }
-        guard let shortcut else { return }
+        guard let shortcut = Self.registeredShortcut(
+            for: action,
+            space: { SpaceWindowBridge.spaceShortcut($0) },
+            overview: { SpaceWindowBridge.overviewShortcut($0) })
+        else { return }
         SpaceWindowBridge.pressSpaceShortcut(shortcut)
+    }
+
+    /// The combination the system registered for what `action` asks, read
+    /// through `space` and `overview` (the window server's own registry, live).
+    /// Nothing else is ever pressed for a drag: no simulated gesture, and no
+    /// combination of our own for a command the user switched off.
+    package static func registeredShortcut(
+        for action: MouseSpacesGestureSupport.Action,
+        space: (SpaceWindowBridge.SpaceDirection) -> SpaceWindowBridge.SpaceShortcut?,
+        overview: (SpaceWindowBridge.SpaceOverview) -> SpaceWindowBridge.SpaceShortcut?
+    ) -> SpaceWindowBridge.SpaceShortcut? {
+        switch action {
+        case .spaceLeft: return space(.left)
+        case .spaceRight: return space(.right)
+        case .missionControl: return overview(.missionControl)
+        case .appExpose: return overview(.appExpose)
+        }
     }
 
     /// Gives up a held press outside the release that would normally close it.
@@ -492,7 +513,7 @@ package final class MouseButtonShortcutService: ObservableObject {
         // release is still coming. With the button already up, that release
         // reached the app on its own, and the press would be left down with
         // nothing to lift it. A press that already fired owes nothing back.
-        guard !gesture.tracker.didFire,
+        guard gesture.tracker.givesPressBack,
               MouseButtonShortcutSupport.isPressed(
                   gesture.button, pressedButtons: NSEvent.pressedMouseButtons
               ) else { return }
