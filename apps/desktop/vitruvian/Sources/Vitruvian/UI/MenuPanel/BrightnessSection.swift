@@ -29,7 +29,7 @@ package struct BrightnessSection: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(service.displays) { display in
-                        row(display)
+                        BrightnessPanelDisplayRow(display: display)
                     }
                 }
                 if let failure = service.displayControlFailure {
@@ -117,39 +117,6 @@ package struct BrightnessSection: View {
         }
     }
 
-    private func row(_ display: BrightnessDisplay) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                Text(display.name)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                if display.isActive, display.method != nil {
-                    Text("\(Int((display.brightness * 100).rounded()))%")
-                        .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                } else if !display.isActive {
-                    Text(strings.displayOff)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                DisplayPowerButton(display: display, compact: true)
-            }
-            if display.isActive, display.method != nil {
-                Slider(value: brightnessBinding(display), in: 0...1)
-                    .controlSize(.small)
-                    .disabled(service.isDisplayPending(display.id))
-                    .accessibilityLabel(display.name)
-            }
-            SoftwareDimmingButton(display: display, compact: true)
-        }
-    }
-
     /// Sits with the display sliders because it is the same control. The
     /// Quick toggles switch stays the place to flip it off and back on, and
     /// the slider reaches 0, so the row carries no switch of its own.
@@ -179,8 +146,58 @@ package struct BrightnessSection: View {
         Binding(get: { Double(service.keyboardLightLevel ?? 0) },
                 set: { service.setKeyboardLightLevel(Float($0)) })
     }
+}
 
-    private func brightnessBinding(_ display: BrightnessDisplay) -> Binding<Double> {
+/// One display in the panel: its name and level, the slider, and the same
+/// dimming choice and power button the Energy page's rows carry. The slider
+/// is just as dead here as on the Energy page, so the way out has to be here
+/// too.
+package struct BrightnessPanelDisplayRow: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var service = BrightnessService.shared
+    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled: Bool
+    package let display: BrightnessDisplay
+
+    package init(display: BrightnessDisplay) {
+        self.display = display
+    }
+
+    private var strings: BrightnessFeatureStrings { FeatureStrings.brightness(l10n.language) }
+
+    package var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                Text(display.name)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                if display.isActive, display.method != nil {
+                    Text("\(Int((display.brightness * 100).rounded()))%")
+                        .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                } else if !display.isActive {
+                    Text(strings.displayOff)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                DisplayPowerButton(display: display, compact: true)
+            }
+            if display.isActive, display.method != nil {
+                Slider(value: brightnessBinding, in: 0...1)
+                    .controlSize(.small)
+                    .disabled(service.isDisplayPending(display.id))
+                    .accessibilityLabel(display.name)
+            }
+            SoftwareDimmingButton(display: display, compact: true)
+        }
+    }
+
+    private var brightnessBinding: Binding<Double> {
         Binding(get: { display.brightness },
                 set: { service.setBrightness($0, for: display.id,
                                              showOSD: brightnessOSDEnabled) })

@@ -26,15 +26,23 @@ package final class FeatureRuntime: ObservableObject {
         package var availabilityDidChange: @MainActor () -> Void
         /// The values saved in the app's own domain, as opposed to registered.
         package var savedPreferences: @MainActor () -> [String: Any]
+        /// Why this Mac cannot run a feature, or nil when it can. The app asks
+        /// the hardware (`AppFeature.hardwareUnsupportedReason`); a test names
+        /// a Mac without some of it.
+        package var hardwareUnsupportedReason: @MainActor (AppFeature) -> String?
 
         package init(defaults: UserDefaults,
                      perform: @escaping @MainActor (FeatureBindingAction) -> Void,
                      availabilityDidChange: @escaping @MainActor () -> Void,
-                     savedPreferences: @escaping @MainActor () -> [String: Any]) {
+                     savedPreferences: @escaping @MainActor () -> [String: Any],
+                     hardwareUnsupportedReason: @escaping @MainActor (AppFeature) -> String? = {
+                         $0.hardwareUnsupportedReason
+                     }) {
             self.defaults = defaults
             self.perform = perform
             self.availabilityDidChange = availabilityDidChange
             self.savedPreferences = savedPreferences
+            self.hardwareUnsupportedReason = hardwareUnsupportedReason
         }
 
         package static var live: Environment {
@@ -131,7 +139,20 @@ package final class FeatureRuntime: ObservableObject {
     /// An install that predates the check still counts, so the tally can
     /// never read more installed than installable.
     package var installableCount: Int {
-        AppFeature.allCases.filter { $0.isHardwareSupported || installed($0) }.count
+        AppFeature.allCases.filter { isHardwareSupported($0) || installed($0) }.count
+    }
+
+    /// Why a feature list must refuse to install `feature`, ready to show as
+    /// a tooltip. `nil` once it is installed: the check reads hardware and
+    /// can be wrong, so it is never allowed to strand an existing install
+    /// behind a greyed row. Both the hub and the first-run picker ask here,
+    /// beside the gate below, so neither list can drift from it.
+    package func installBlockedReason(_ feature: AppFeature) -> String? {
+        installed(feature) ? nil : environment.hardwareUnsupportedReason(feature)
+    }
+
+    private func isHardwareSupported(_ feature: AppFeature) -> Bool {
+        environment.hardwareUnsupportedReason(feature) == nil
     }
 
     /// The one gate every install passes, whichever surface asks: the hub
@@ -145,7 +166,7 @@ package final class FeatureRuntime: ObservableObject {
     /// feature reporting itself unsupported.
     private func mayFlip(_ feature: AppFeature, to available: Bool) -> Bool {
         guard installed(feature) != available else { return false }
-        return !available || feature.isHardwareSupported
+        return !available || isHardwareSupported(feature)
     }
 
     /// Flipping availability runs each feature's binding immediately, in the
@@ -562,13 +583,4 @@ extension AppFeature {
     }
 
     package var isHardwareSupported: Bool { hardwareUnsupportedReason == nil }
-
-    /// Why a feature list must refuse to install this feature, ready to show
-    /// as a tooltip. `nil` once it is installed: the check reads hardware and
-    /// can be wrong, so it is never allowed to strand an existing install
-    /// behind a greyed row. Both the hub and the first-run picker read this,
-    /// so neither can drift from the gate in `FeatureRuntime`.
-    package var installBlockedReason: String? {
-        isAvailable ? nil : hardwareUnsupportedReason
-    }
 }

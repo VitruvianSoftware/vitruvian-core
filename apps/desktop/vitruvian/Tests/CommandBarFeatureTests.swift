@@ -484,11 +484,15 @@ enum CommandBarFeatureTests {
         suite.expect(commandBarServiceSource.contains("UninstallerSupport.acceptedApplicationIDs(apps)")
                 && commandBarServiceSource.contains("uninstallable: uninstallableAppIDs"),
                "the uninstall browse lists only the apps the background scan saw the uninstaller accept")
-        let asciiSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/CommandBarSettings.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(asciiSettingsSource.contains("Preferences.commandBarASCIILayoutEnabled"),
-               "the ASCII layout switch has its own settings row")
+        for language in AppLanguage.allCases {
+            let text = FeatureStrings.commandBar(language)
+            let asciiRow = CommandBarSettings.asciiLayoutRow(text)
+            suite.expect(asciiRow.preference.key == DefaultsKey.commandBarASCIILayoutEnabled
+                    && asciiRow.title == text.asciiLayoutToggle && !asciiRow.title.isEmpty
+                    && asciiRow.caption == text.asciiLayoutCaption && !asciiRow.caption.isEmpty,
+                   "the ASCII layout switch has its own settings row, on the preference the bar reads, "
+                   + "in \(language.rawValue)")
+        }
         suite.expect(Defaults.registeredDefaults[DefaultsKey.commandBarASCIILayoutEnabled] as? Bool == false,
                "the ASCII layout switch ships off: the bar starts on whatever layout is already up")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarASCIILayoutEnabled),

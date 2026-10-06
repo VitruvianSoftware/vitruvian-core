@@ -9,6 +9,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
+import SwiftUI
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
@@ -1421,16 +1422,20 @@ enum RecorderFeatureTests {
                "a Mac without a battery is not offered the battery example")
 
         // A key glyph in front of a button label reads as that button's
-        // shortcut, so neither command bar action button carries one.
-        let commandBarSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Settings/CommandBarSettings.swift",
-            encoding: .utf8)) ?? ""
-        suite.expect(!commandBarSettingsSource.contains("Label(text.openButton, systemImage:")
-                && !commandBarSettingsSource.contains("Label(text.resetPositionButton, systemImage:"),
+        // shortcut, so neither command bar action button carries one. The
+        // row's view type is what it draws, read without drawing it: two
+        // buttons labelled with their text alone, and no image anywhere.
+        let commandBarActions = String(reflecting: CommandBarSettingsActions.Body.self)
+        let plainButton = String(reflecting: SwiftUI.Button<SwiftUI.Text>.self)
+        suite.expect(commandBarActions.components(separatedBy: plainButton).count == 3
+                && !commandBarActions.contains(String(reflecting: SwiftUI.Image.self)),
                "neither command bar action button wears an icon")
-        suite.expect(commandBarSettingsSource.contains("Toggle(text.shortcutToggle,")
-                && !commandBarSettingsSource.contains("l10n.s.quickToolShortcutToggle"),
-               "the command bar shortcut toggle says what the shortcut opens")
+        for language in AppLanguage.allCases {
+            let shortcutToggle = CommandBarSettings.shortcutToggleTitle(language)
+            suite.expect(shortcutToggle == FeatureStrings.commandBar(language).shortcutToggle
+                    && shortcutToggle != Strings.localized(language).quickToolShortcutToggle,
+                   "the command bar shortcut toggle says what the shortcut opens, in \(language.rawValue)")
+        }
         suite.expect(Set(GlobalShortcutRole.allCases.map(\.defaultShortcut)).count
                 == GlobalShortcutRole.allCases.count,
                "no two shortcut roles share a default combination")

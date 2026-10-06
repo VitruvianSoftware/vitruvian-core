@@ -26,7 +26,6 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow: Bool
     @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap: Int
     @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap: Int
-    @AppStorage(Preferences.windowLayoutSideRepeatCyclesThirds) private var sideRepeatCyclesThirds: Bool
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
     // Same preference the Switcher page exposes next to Dock Preview; it is
     // mirrored here because it is a window-juggling behavior people look for
@@ -315,10 +314,7 @@ package struct WindowLayoutSettings: View {
             ForEach(Self.halfActions) { action in
                 actionRow(action)
             }
-            Toggle(text.sideRepeatCycle, isOn: $sideRepeatCyclesThirds)
-            Text(text.sideRepeatCycleCaption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Self.sideRepeatRow(text)
         }
         actionSection(text.thirds, Self.thirdActions)
         actionSection(text.quarterRows, Self.quarterRowActions)
@@ -374,6 +370,18 @@ package struct WindowLayoutSettings: View {
         case .failure: return .orange
         case nil: return .secondary
         }
+    }
+}
+
+extension WindowLayoutSettings {
+    /// The Halves section's switch: a repeated Left or Right steps the window
+    /// through half, two thirds and one third of its display instead of
+    /// pushing it onto the next one. The layout service reads the preference
+    /// on every placement, so the switch needs no sync.
+    package static func sideRepeatRow(_ text: WindowLayoutFeatureStrings) -> PreferenceSwitchRow {
+        PreferenceSwitchRow(Preferences.windowLayoutSideRepeatCyclesThirds,
+                            title: text.sideRepeatCycle,
+                            caption: text.sideRepeatCycleCaption)
     }
 }
 

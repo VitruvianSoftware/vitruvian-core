@@ -340,7 +340,7 @@ private struct PurposeStep: View {
         // hub, so a feature this Mac cannot run would silently stay off after
         // being ticked here. It is shown and refused instead, exactly as the
         // hub row does it.
-        let blocked = feature.installBlockedReason
+        let blocked = FeatureRuntime.shared.installBlockedReason(feature)
         let card = Button {
             selectedPreset = nil
             if selected {
@@ -466,7 +466,7 @@ private struct SelectedPermissionsStep: View {
             .padding(.horizontal, 28)
 
             DisclosureGroup(isExpanded: $showingOtherPermissions) {
-                VStack(alignment: .leading, spacing: 14) {
+                OnboardingOtherPermissionsList {
                     PermissionsPortalSections(hub: hub,
                                               visiblePermissions: otherPermissions)
                 }
@@ -499,6 +499,23 @@ private struct SelectedPermissionsStep: View {
 
     private func featureNames(for permission: AppPermission) -> String {
         OnboardingFeatureNames.names(features, for: permission) { $0.hubTitle(l10n.s, hub: hub) }
+    }
+}
+
+/// The permissions the chosen features do not need, listed under the step's
+/// disclosure. Their rows differ in width, and they share one leading edge
+/// only inside a leading stack: without one, each row sat at its own indent.
+package struct OnboardingOtherPermissionsList<Rows: View>: View {
+    private let rows: Rows
+
+    package init(@ViewBuilder rows: () -> Rows) {
+        self.rows = rows()
+    }
+
+    package var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            rows
+        }
     }
 }
 

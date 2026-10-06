@@ -14,7 +14,6 @@ package struct CommandBarSettings: View {
     @AppStorage(Preferences.commandBarShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.commandBarCompactMode) private var compactMode: Bool
     @AppStorage(Preferences.commandBarEmojiSkinTone) private var emojiSkinTone: String
-    @AppStorage(Preferences.commandBarASCIILayoutEnabled) private var asciiLayoutEnabled: Bool
     @AppStorage(Preferences.commandBarDisabledSources) private var disabledSources: String
     @AppStorage(Preferences.commandBarAliases) private var aliasesRaw: String
     @AppStorage(Preferences.commandBarPins) private var pinsRaw: String
@@ -46,18 +45,10 @@ package struct CommandBarSettings: View {
     package var body: some View {
         Form {
             Section {
-                // One choice, open it or recenter it, so one row. Neither
-                // carries an icon: a ⌘ glyph in front of "Open the bar now"
-                // reads as the shortcut that opens it, which it is not.
-                HStack(spacing: 10) {
-                    Button(text.openButton) {
-                        CommandBarService.shared.show()
-                    }
-                    Button(text.resetPositionButton) {
-                        CommandBarService.shared.resetPanelPosition()
-                    }
-                    .disabled(!service.hasCustomPosition)
-                }
+                CommandBarSettingsActions(text: text,
+                                          canResetPosition: service.hasCustomPosition,
+                                          open: { CommandBarService.shared.show() },
+                                          resetPosition: { CommandBarService.shared.resetPanelPosition() })
                 // One row for the whole explanation. As separate rows the form
                 // drew a divider between every sentence, cutting one paragraph
                 // about one feature into four cards that looked like settings.
@@ -98,10 +89,7 @@ package struct CommandBarSettings: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                // Not the shared "Global shortcut" label the other feature
-                // pages use: this page already has an "open the bar" button at
-                // the top, so the toggle has to say which of the two it arms.
-                Toggle(text.shortcutToggle, isOn: $shortcutEnabled)
+                Toggle(Self.shortcutToggleTitle(l10n.language), isOn: $shortcutEnabled)
                     .onChange(of: shortcutEnabled) { _, _ in
                         CommandBarService.shared.syncWithPreferences()
                     }
@@ -121,13 +109,7 @@ package struct CommandBarSettings: View {
                     Spacer()
                 }
                 if showsLayoutOptions {
-                    // Like compact mode this needs no callback: the bar reads
-                    // the toggle on every open, so there is no live state to
-                    // sync.
-                    Toggle(text.asciiLayoutToggle, isOn: $asciiLayoutEnabled)
-                    Text(text.asciiLayoutCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Self.asciiLayoutRow(text)
                 }
             } header: {
                 Text(text.pageTitle)
@@ -548,6 +530,52 @@ package struct CommandBarSettings: View {
         keys.remove(key)
         hiddenRaw = CommandBarPreferences.encodeHidden(keys)
         CommandBarService.shared.syncWithPreferences()
+    }
+}
+
+extension CommandBarSettings {
+    /// What the shortcut switch says. Not the shared "Global shortcut" label
+    /// (`quickToolShortcutToggle`) the other feature pages use: this page
+    /// already has an "open the bar" button at the top, so the switch has to
+    /// say which of the two it arms.
+    package static func shortcutToggleTitle(_ language: AppLanguage) -> String {
+        FeatureStrings.commandBar(language).shortcutToggle
+    }
+
+    /// The ASCII layout switch, its own row under More options. Like compact
+    /// mode it needs no callback: the bar reads the preference on every open,
+    /// so there is no live state to sync.
+    package static func asciiLayoutRow(_ text: CommandBarFeatureStrings) -> PreferenceSwitchRow {
+        PreferenceSwitchRow(Preferences.commandBarASCIILayoutEnabled,
+                            title: text.asciiLayoutToggle,
+                            caption: text.asciiLayoutCaption)
+    }
+}
+
+/// The page's two actions, open the bar or recenter it: one choice, so one
+/// row. Neither button carries an icon: a ⌘ glyph in front of "Open the bar
+/// now" reads as the shortcut that opens it, which it is not.
+package struct CommandBarSettingsActions: View {
+    package let text: CommandBarFeatureStrings
+    package let canResetPosition: Bool
+    package let open: () -> Void
+    package let resetPosition: () -> Void
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(text: CommandBarFeatureStrings, canResetPosition: Bool,
+                 open: @escaping () -> Void, resetPosition: @escaping () -> Void) {
+        self.text = text
+        self.canResetPosition = canResetPosition
+        self.open = open
+        self.resetPosition = resetPosition
+    }
+
+    package var body: some View {
+        HStack(spacing: 10) {
+            Button(text.openButton, action: open)
+            Button(text.resetPositionButton, action: resetPosition)
+                .disabled(!canResetPosition)
+        }
     }
 }
 
