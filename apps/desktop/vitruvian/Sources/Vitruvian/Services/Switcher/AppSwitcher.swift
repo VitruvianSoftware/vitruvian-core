@@ -977,26 +977,22 @@ package final class AppSwitcher: ObservableObject {
                 pendingGeneration: routePendingSessionStart?.generation
             )
         }) else { return }
-        guard !windows.isEmpty else {
-            discardPendingSessionStart(generation: generation)
-            return
-        }
         // The foreground window is what a session is measured against, and it
         // does not always exist: an app left with no windows, or with all of
         // them minimized or on another Space, still owns the keyboard. The
         // switcher opens either way. Bailing out here handed ⌘Tab back to the
         // system, so the shortcut looked dead until it was pressed a second
-        // time (issue #324).
-        let source = SwitcherSupport.sessionSourceItem(frontmostPID: reportedFrontPID,
-                                                       focusedWindowID: focusedSourceWindowID,
-                                                       items: sourceItems)
-        // Keep the original source for activation, but start at the first
-        // entry if display filtering removes the foreground window.
-        let listedSource = source.flatMap { item in
-            windows.contains { $0.id == item.id } ? item : nil
+        // time (issue #324). An empty list, such as a display with nothing on
+        // it, opens nothing.
+        guard let opening = SwitcherSupport.sessionOpening(windows: windows,
+                                                           sourceItems: sourceItems,
+                                                           frontmostPID: reportedFrontPID,
+                                                           focusedWindowID: focusedSourceWindowID) else {
+            discardPendingSessionStart(generation: generation)
+            return
         }
-
-        let list = SwitcherSupport.orderedForSession(windows, currentID: listedSource?.id)
+        let source = opening.source
+        let list = opening.list
         guard let pending = routeLock.withLock({ () -> SwitcherPendingSessionStart? in
             guard SwitcherSupport.isCurrentSessionStart(
                 generation: generation,
@@ -1046,11 +1042,11 @@ package final class AppSwitcher: ObservableObject {
         // the session opens on the first entry from another app.
         selectedIndex = pending.scope == .frontmostApp
             ? SwitcherSupport.initialWindowScopedSelectionIndex(itemCount: list.count,
-                                                                hasForegroundItem: listedSource != nil,
+                                                                hasForegroundItem: opening.listsSource,
                                                                 reversed: pending.reversed)
             : initialSelectionIndex(in: list,
                                     reversed: pending.reversed,
-                                    hasForegroundItem: listedSource != nil,
+                                    hasForegroundItem: opening.listsSource,
                                     frontmostPID: SwitcherSupport.appPID(forFrontmost: reportedFrontPID,
                                                                          items: list))
         sessionShortcut = pending.shortcut
@@ -1794,10 +1790,10 @@ package final class AppSwitcher: ObservableObject {
             return nil
         }
         let screens = NSScreen.screens
-        let targetID = NSScreen.withMouse?.displayID
         return WindowEnumerator.DisplayScope(
             bounds: screens.map { CGDisplayBounds($0.displayID) },
-            targetIndex: screens.firstIndex { $0.displayID == targetID } ?? -1)
+            displayIDs: screens.map { $0.displayID },
+            pointerDisplayID: NSScreen.withMouse?.displayID)
     }
 
     private var placementVisibleFrame: CGRect {

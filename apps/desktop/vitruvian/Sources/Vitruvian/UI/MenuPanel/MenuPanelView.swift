@@ -48,7 +48,12 @@ package struct MenuPanelView: View {
     private var maxHeight: CGFloat {
         let anchored = PanelInteractionState.shared.anchorScreen
             .flatMap { anchor in anchor.isStillAttached ? anchor : nil }
-        return max(360, ((anchored ?? NSScreen.withMenuBar)?.visibleFrame.height ?? 760) - 28)
+        return Self.heightCap(visibleHeight: (anchored ?? NSScreen.withMenuBar)?.visibleFrame.height)
+    }
+
+    /// The cap for a usable height, or for a typical one when no screen is known.
+    package static func heightCap(visibleHeight: CGFloat?) -> CGFloat {
+        max(360, (visibleHeight ?? 760) - 28)
     }
 
     package var body: some View {

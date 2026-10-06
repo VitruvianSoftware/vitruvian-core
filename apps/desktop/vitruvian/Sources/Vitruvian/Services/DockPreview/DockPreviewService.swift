@@ -1241,14 +1241,15 @@ package final class DockPreviewService: ObservableObject {
             return rawElement
         }
 
-        guard DockClickSupport.dockOwnsPoint(
-            axPoint,
+        guard let element = Self.dockElement(
+            at: axPoint,
             windows: WindowServerSupport.onScreenWindows(),
             dockProcessID: dockPID,
             dockLayer: Int(CGWindowLevelForKey(.dockWindow)),
             ownProcessID: getpid(),
-            accessibilityHitProcessID: { hitElement().flatMap { self.pid(of: $0) } }
-        ), let element = hitElement() else { return nil }
+            hitElement: hitElement,
+            processID: { self.pid(of: $0) }
+        ) else { return nil }
 
         for candidate in elementAndParents(from: element) {
             guard pid(of: candidate) == dockPID,
@@ -1258,6 +1259,27 @@ package final class DockPreviewService: ObservableObject {
             return DockHit(app: app, iconFrame: frame, preferences: preferences)
         }
         return nil
+    }
+
+    /// The element under the pointer, but only where the Dock owns the point:
+    /// fullscreen content or any other window covering the Dock keeps a
+    /// preview from opening through it, as it keeps Dock clicks from acting.
+    /// `hitElement` is asked only once a visible Dock strip holds the point.
+    package static func dockElement<Element>(at axPoint: CGPoint,
+                                             windows: [MouseAppExceptionSupport.Window],
+                                             dockProcessID: pid_t,
+                                             dockLayer: Int,
+                                             ownProcessID: pid_t,
+                                             hitElement: () -> Element?,
+                                             processID: (Element) -> pid_t?) -> Element? {
+        guard DockClickSupport.dockOwnsPoint(axPoint,
+                                             windows: windows,
+                                             dockProcessID: dockProcessID,
+                                             dockLayer: dockLayer,
+                                             ownProcessID: ownProcessID,
+                                             accessibilityHitProcessID: { hitElement().flatMap(processID) })
+        else { return nil }
+        return hitElement()
     }
 
     private func runningApplication(forDockElement element: AXUIElement) -> NSRunningApplication? {

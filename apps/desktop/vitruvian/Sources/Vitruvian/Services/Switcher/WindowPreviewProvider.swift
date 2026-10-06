@@ -452,8 +452,18 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     /// The activated app's windows are listed here, off the main thread. A
     /// slow app can hold that Accessibility walk for seconds, which must not
     /// tie up a thread Swift's tasks share.
-    private static let warmEnumerationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.preview.warm-enumeration",
+    package static let warmEnumerationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.preview.warm-enumeration",
                                                             qos: .utility)
+
+    /// Runs a warming walk on `warmEnumerationQueue` and waits for its list
+    /// without holding a task thread meanwhile.
+    package static func listOnWarmQueue(_ list: @escaping @Sendable () -> [SwitcherItem]) async -> [SwitcherItem] {
+        await withCheckedContinuation { continuation in
+            Self.warmEnumerationQueue.async {
+                continuation.resume(returning: list())
+            }
+        }
+    }
 
     /// Waits for the stage/space transition to settle, then captures the
     /// activated app's windows. Never prunes: warming only adds fresh entries.
@@ -473,10 +483,8 @@ package final class WindowPreviewProvider: @unchecked Sendable {
             let snapshot = WindowEnumerator.snapshot()
             warmTask = Task(priority: .utility) { [weak self] in
                 guard let self else { return }
-                let items = await withCheckedContinuation { continuation in
-                    Self.warmEnumerationQueue.async {
-                        continuation.resume(returning: WindowEnumerator.listWindows(for: pid, snapshot: snapshot))
-                    }
+                let items = await Self.listOnWarmQueue {
+                    WindowEnumerator.listWindows(for: pid, snapshot: snapshot)
                 }
                 guard !items.isEmpty, !Task.isCancelled else { return }
                 for item in items {

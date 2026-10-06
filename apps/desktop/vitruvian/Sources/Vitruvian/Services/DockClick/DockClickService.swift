@@ -738,10 +738,19 @@ package final class DockClickService {
     private static func activate(pid: pid_t) {
         DispatchQueue.main.async {
             guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
-            ActivationHandoff.yield(to: app)
-            if !app.activate(from: NSRunningApplication.current, options: []) {
-                app.activate(options: [])
-            }
+            DockClickService.activateCooperatively(app, handOff: { ActivationHandoff.yield(to: $0) })
+        }
+    }
+
+    /// The request itself: this app's activation is handed over first, then
+    /// the app is asked cooperatively, and only a refusal falls back to the
+    /// plain request.
+    nonisolated
+    package static func activateCooperatively<App: SwitcherActivatableApp>(_ app: App,
+                                                                         handOff: (App) -> Void) {
+        handOff(app)
+        if !app.activateFromCurrent(options: []) {
+            app.activate(options: [])
         }
     }
 

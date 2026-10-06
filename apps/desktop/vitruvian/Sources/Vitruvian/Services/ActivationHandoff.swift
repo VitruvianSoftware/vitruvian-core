@@ -26,12 +26,32 @@ package enum ActivationHandoff {
         CFAbsoluteTimeGetCurrent() - lastSelfActivation < selfActivationWindow
     }
 
+    /// Whether an activation of `pid` reported now is this app's own
+    /// self-activation on its way out of a hand-off. Only that one is no use
+    /// of the app: the Dock icon, Settings and Vitruvian's own windows are.
+    package static func isHandoffActivation(of pid: pid_t) -> Bool {
+        pid == ProcessInfo.processInfo.processIdentifier && isHandingOff
+    }
+
     package static func yield(to app: NSRunningApplication) {
-        lastSelfActivation = CFAbsoluteTimeGetCurrent()
         // Every caller hands off from the main thread.
         MainActor.assumeIsolated {
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.yieldActivation(to: app)
+            handOff(to: app,
+                    activateSelf: { NSApp.activate(ignoringOtherApps: true) },
+                    yieldTo: { NSApp.yieldActivation(to: $0) })
         }
+    }
+
+    /// The hand-off with its two system calls passed in. The stamp comes
+    /// first, so the activation notification the self-activation sends is
+    /// already known as this app's own; then the self-activation, which gives
+    /// the yield after it something to hand over.
+    @MainActor
+    package static func handOff(to app: NSRunningApplication,
+                                activateSelf: () -> Void,
+                                yieldTo: (NSRunningApplication) -> Void) {
+        lastSelfActivation = CFAbsoluteTimeGetCurrent()
+        activateSelf()
+        yieldTo(app)
     }
 }

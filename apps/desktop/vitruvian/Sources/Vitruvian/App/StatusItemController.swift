@@ -81,19 +81,14 @@ final class StatusItemController {
     var button: NSStatusBarButton? { statusItem.button }
 
     func containsStatusItem(at screenPoint: NSPoint) -> Bool {
-        let items = [statusItem, clipboardPreviewStatusItem].compactMap { $0 } + Array(metricStatusItems.values)
-        // A hidden item keeps its last frame, which another app's item may
-        // occupy by now.
-        let buttons = items.filter(\.isVisible).compactMap(\.button)
-        // Bound once for the whole scan: a default argument is evaluated per
-        // call, so leaving it to the default would rebuild this per button.
-        let screenFrames = NSScreen.screens.map(\.frame)
-        return buttons.contains { button in
-            guard let frame = button.window?.frame,
-                  StatusItemAnchorSupport.isTrustworthyStatusFrame(frame, screenFrames: screenFrames)
-            else { return false }
-            return frame.insetBy(dx: -4, dy: -8).contains(screenPoint)
-        }
+        // The screens are listed once for the whole scan, not once per item.
+        StatusItemRecovery.containsItem(at: screenPoint,
+                                        main: statusItem,
+                                        clipboardPreview: clipboardPreviewStatusItem,
+                                        metrics: Array(metricStatusItems.values),
+                                        isVisible: { $0.isVisible },
+                                        windowFrame: { $0.button?.window?.frame },
+                                        screenFrames: NSScreen.screens.map(\.frame))
     }
 
     init() {

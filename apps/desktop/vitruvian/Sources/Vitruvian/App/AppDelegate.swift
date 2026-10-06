@@ -170,11 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         // The shelf drop zone chip anchors itself under the menu bar icon.
         ShelfService.shared.statusItemFrameProvider = { [weak self] in
-            guard let item = self?.statusController.statusItem, item.isVisible,
-                  let window = self?.statusController.button?.window else { return nil }
-            let frame = window.frame
-            guard StatusItemAnchorSupport.isTrustworthyStatusFrame(frame) else { return nil }
-            return frame
+            guard let item = self?.statusController.statusItem else { return nil }
+            return StatusItemRecovery.anchorFrame(isVisible: item.isVisible,
+                                                  windowFrame: self?.statusController.button?.window?.frame,
+                                                  screenFrames: NSScreen.screens.map(\.frame))
         }
 
         setUpPopover()
@@ -367,25 +366,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// Reopens that Siri and Shortcuts send on their own are ignored.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         let requester = ReopenRequestSupport.currentSender()
-        guard ReopenRequestSupport.isPersonOpeningApp(requester) else {
+        let reopen = StatusItemRecovery.reopen(sender: requester,
+                                               hasVisibleWindows: flag,
+                                               hiddenByChoice: statusController?.mainItemHiddenByChoice == true,
+                                               iconIsOnScreen: { iconIsOnScreen() })
+        switch reopen {
+        case .ignore:
             Self.menuBarLog.log("reopen ignored from \(ReopenRequestSupport.logName(requester), privacy: .public)")
             return false
-        }
-        guard !flag else { return true }
-        // A deliberate reopen with no windows showing is the user's recovery action.
-        // Rebuild the menu bar item only when it is actually missing: the
-        // pre-rebuild item has a settled frame, so iconIsOnScreen() is trustworthy
-        // here (the not-ready-frame caveat below only applies to a freshly created
-        // item), and a dropped icon reads off-screen/zero, so recovery still gets
-        // its rebuild with fresh placement. A healthy icon is left alone: on
-        // macOS 27 a rebuilt item's window can keep reporting the slot it was
-        // born in (the far right of the status area) while the icon draws at the
-        // user's arranged spot, and that mismatch strands the panel against the
-        // screen edge and survives relaunches. An item the app took out of the
-        // bar itself, for Dynamic Island or for metrics, is not missing either:
-        // a rebuild would only hide it again, and Settings opens below.
-        if statusController?.mainItemHiddenByChoice != true, !iconIsOnScreen() {
-            statusController?.recreateStatusItem()
+        case .handled:
+            return true
+        case .recover(let rebuildIcon):
+            // A deliberate reopen with no windows showing is the user's recovery action.
+            // Rebuild the menu bar item only when it is actually missing: the
+            // pre-rebuild item has a settled frame, so iconIsOnScreen() is trustworthy
+            // here (the not-ready-frame caveat below only applies to a freshly created
+            // item), and a dropped icon reads off-screen/zero, so recovery still gets
+            // its rebuild with fresh placement. A healthy icon is left alone: on
+            // macOS 27 a rebuilt item's window can keep reporting the slot it was
+            // born in (the far right of the status area) while the icon draws at the
+            // user's arranged spot, and that mismatch strands the panel against the
+            // screen edge and survives relaunches. An item the app took out of the
+            // bar itself, for Dynamic Island or for metrics, is not missing either:
+            // a rebuild would only hide it again, and Settings opens below.
+            if rebuildIcon {
+                statusController?.recreateStatusItem()
+            }
         }
         // Decide on the next run-loop turn: a freshly rebuilt status item has no
         // laid-out on-screen frame yet this turn, so iconIsOnScreen() would read a
@@ -412,13 +418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                                            category: "menubar")
 
     private func iconIsOnScreen() -> Bool {
-        // A hidden item is not on screen, whatever frame its window last had.
-        guard statusController?.statusItem.isVisible == true,
-              let frame = statusController?.statusItem.button?.window?.frame else { return false }
-        // The band test, not mere intersection: an item macOS never places
-        // keeps a full-size window at the main display's bottom-left origin,
-        // which intersects that screen and read as "appeared" (#1394).
-        return StatusItemPlacementSupport.isPlacedStatusFrame(frame, screenFrames: NSScreen.screens.map(\.frame))
+        StatusItemRecovery.iconIsOnScreen(isVisible: statusController?.statusItem.isVisible == true,
+                                          windowFrame: statusController?.statusItem.button?.window?.frame,
+                                          screenFrames: NSScreen.screens.map(\.frame))
     }
 
     private func iconIsSettling() -> Bool {
@@ -472,7 +474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // and now through the safe area the popover publishes, so only the surface
         // reaches the arrow. Before macOS 26 AppKit does not lay full-size content
         // out, so the panel keeps the inset content there.
-        popover.hasFullSizeContent = PanelSurface.popoverHostsFullSizeContent
+        PanelSurface.hostFullSizeContent(in: popover)
         popover.delegate = self
         let host = NSHostingController(rootView: MenuPanelView())
         host.sizingOptions = .preferredContentSize
@@ -1265,8 +1267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // The button is an explicit "I want the icon back": neither hiding
         // option may immediately re-hide what the user just asked to see
         // (and then trip the "still hidden" alert).
-        UserDefaults.standard.set(false, forKey: DefaultsKey.menuBarHideIconWithMetrics)
-        UserDefaults.standard.set(false, forKey: DefaultsKey.notchHidesMenuBarIcon)
+        StatusItemRecovery.clearIconHiding(in: .standard)
         guard !isReshowingStatusItem else { return }
         isReshowingStatusItem = true
         statusController?.recreateStatusItem()
@@ -1292,73 +1293,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                                       placementWasReset: Bool = false) {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.reshowVerifyInterval) { [weak self] in
             guard let self else { return }
-            // A later choice to hide the icon cancels the explicit recovery.
-            guard !UserDefaults.standard.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics),
-                  !MenuBarSpacingSupport.islandHidesStatusIcon(
-                    in: .standard, hiddenInFullscreen: self.statusController?.islandHiddenInFullscreen == true) else {
+            let step = StatusItemRecovery.reshowStep(
+                // A later choice to hide the icon cancels the explicit recovery.
+                hidingChosen: UserDefaults.standard.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics)
+                    || MenuBarSpacingSupport.islandHidesStatusIcon(
+                        in: .standard, hiddenInFullscreen: self.statusController?.islandHiddenInFullscreen == true),
+                isOnScreen: self.iconIsOnScreen(),
+                isSettling: self.iconIsSettling(),
+                settlingGraceLeft: settlingGraceLeft,
+                attemptsLeft: attemptsLeft,
+                placementWasReset: placementWasReset,
+                allowance: { MenuBarAllowanceSupport.currentAllowance() })
+            switch step {
+            case .stop:
                 self.isReshowingStatusItem = false
-                return
-            }
-            if self.iconIsOnScreen() {
+            case .appeared:
                 self.isReshowingStatusItem = false
                 self.logStatusItemPlacement("appeared")
-                return
-            }
-            if StatusItemPlacementSupport.shouldKeepWaitingForSettlement(
-                isOnScreen: false,
-                isSettling: self.iconIsSettling(),
-                settlingGraceLeft: settlingGraceLeft) {
+            case .waitForSettling:
                 self.logStatusItemPlacement("settling")
                 self.verifyIconReappeared(attemptsLeft: attemptsLeft,
                                           settlingGraceLeft: settlingGraceLeft - 1,
                                           placementWasReset: placementWasReset)
-                return
-            }
-            guard attemptsLeft <= 1 else {
+            case .lookAgain:
                 self.verifyIconReappeared(attemptsLeft: attemptsLeft - 1,
                                           settlingGraceLeft: settlingGraceLeft,
                                           placementWasReset: placementWasReset)
-                return
-            }
-            // With the app switched off under System Settings > Menu Bar >
-            // "Allow in the Menu Bar" (macOS 26), macOS never places the item
-            // whatever its identity, so a reset would only burn the arranged
-            // spot. Name the switch instead (#1394).
-            if MenuBarAllowanceSupport.currentAllowance() == .disallowed {
-                self.isReshowingStatusItem = false
-                self.logStatusItemPlacement("disallowed by system")
-                let s = L10n.shared.s
-                NSApp.activate(ignoringOtherApps: true)
-                let alert = NSAlert()
-                alert.messageText = s.menuBarIconStillHiddenTitle
-                alert.informativeText = s.menuBarIconDisallowedBody
-                alert.runModal()
-                return
-            }
-            // Keeping the arranged spot did not bring the icon back, so the
-            // saved position is itself part of what macOS will not show. Start
-            // the item over completely and look again before telling anyone
-            // there is nothing left to try.
-            guard placementWasReset else {
+            case .resetPlacement:
+                // Keeping the arranged spot did not bring the icon back, so the
+                // saved position is itself part of what macOS will not show. Start
+                // the item over completely and look again before telling anyone
+                // there is nothing left to try.
                 self.logStatusItemPlacement("resetting placement")
                 self.statusController?.resetStatusItemPlacementIdentity()
                 self.verifyIconReappeared(attemptsLeft: Self.reshowVerifyAttempts,
                                           settlingGraceLeft: Self.reshowSettlingGraceAttempts,
                                           placementWasReset: true)
-                return
+            case .reportDisallowed, .reportStillHidden:
+                // With the app switched off under System Settings > Menu Bar >
+                // "Allow in the Menu Bar" (macOS 26), macOS never places the item
+                // whatever its identity, so the alert names the switch (#1394).
+                self.isReshowingStatusItem = false
+                self.logStatusItemPlacement(step == .reportDisallowed ? "disallowed by system" : "still hidden")
+                let s = L10n.shared.s
+                let body = StatusItemRecovery.alertBody(
+                    for: step, strings: s,
+                    menuBarManager: step == .reportStillHidden ? Self.runningMenuBarManagerName() : nil) ?? ""
+                NSApp.activate(ignoringOtherApps: true)
+                let alert = NSAlert()
+                alert.messageText = s.menuBarIconStillHiddenTitle
+                alert.informativeText = body
+                alert.runModal()
             }
-            self.isReshowingStatusItem = false
-            self.logStatusItemPlacement("still hidden")
-            let s = L10n.shared.s
-            var body = s.menuBarIconStillHiddenBody
-            if let manager = Self.runningMenuBarManagerName() {
-                body += "\n\n" + String(format: s.menuBarIconManagerHintFormat, manager, manager)
-            }
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = s.menuBarIconStillHiddenTitle
-            alert.informativeText = body
-            alert.runModal()
         }
     }
 

@@ -26,6 +26,15 @@ package struct ScrollingTitle: View {
     @State private var began: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(text: String, weight: Font.Weight, width: CGFloat, alignment: Alignment, scrolls: Bool) {
+        self.text = text
+        self.weight = weight
+        self.width = width
+        self.alignment = alignment
+        self.scrolls = scrolls
+    }
+
     private var shouldScroll: Bool {
         Self.shouldScroll(scrolls: scrolls, reduceMotion: reduceMotion, overflows: overflows)
     }
