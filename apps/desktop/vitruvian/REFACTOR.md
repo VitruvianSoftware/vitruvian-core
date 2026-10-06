@@ -5441,6 +5441,30 @@ across 118 files, and 43 writes became `[Preferences.x] = value`.
   - tables (`dictionary`): 6;
   - lists read as `array`: 2.
 
+Landed (8b, whole numbers and fractions): every `integer(forKey:)` and
+`double(forKey:)` on a declared preference outside `Core/Defaults.swift` now
+reads `[Preferences.x]`. That is 72 reads, and 27 writes became
+`[Preferences.x] = value`, in 38 files.
+
+- **The same script, by type:** it rewrites a read only where the getter
+  returns the preference's type. A write is rewritten only where the
+  preference holds a whole number or a fraction. Each value was checked to
+  have exactly that type: a count, a time interval, a size converted with
+  `Double(_:)`, or a parameter declared `Int`.
+- **Two writes say their conversion:** the cleaner's freed bytes and
+  WhatsApp cleanup's moved bytes are `Int64`, and their preferences hold
+  `Int`. They now write `Int(freed)` and `Int(bytes)`. The stored number is
+  the same on a 64-bit Mac.
+- **Defaults that differ from zero:** where registration has not run, as
+  in a test over a fresh suite, these reads now give the declared default.
+  Most of them, such as the battery limit and the clipboard history limit,
+  already went through a sanitizer that maps an unset `0` to that same
+  default.
+- **Left by key:** three reads of state with no `Preference`: the status
+  item placement generation and the settings window's saved size.
+- **Ledger after 8b:** `integer` and `double` are at zero, and writes
+  (`set`) are down to 66.
+
 ## Not in scope
 
 Product decisions remain open:

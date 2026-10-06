@@ -2367,6 +2367,13 @@ is that notice. Add an entry for every change to upstream files.
     `Services/`, `UI/`, `App/` and `Support/`. Each is the same call on the
     same receiver.
   - Registration runs first, so the app reads the same values as before.
+- **2026-10-06**: Refactor step 8b (`REFACTOR.md`): whole numbers and
+  fractions read and written through their `Preference`, with no change in
+  behavior.
+  - 72 `integer`/`double(forKey:)` reads and 27 writes in 38 files across
+    `Core/`, `Services/`, `UI/` and `App/`.
+  - `CleanerScheduler.recordRun` and WhatsApp's cleanup record write their
+    `Int64` byte counts as `Int(_:)`, the type their preferences hold.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
