@@ -2,15 +2,35 @@
 
 |              |                                                                              |
 | ------------ | ---------------------------------------------------------------------------- |
-| **Status**   | ✅ Service restored (manually); ✅ **self-heal P0s (placement + storage) shipped + applied 2026-06-21** (#194/#196/#197 — see **Resolution** section below); 🔧 node auto-recovery (P0) still open |
+| **Status**   | ✅ Service restored (manually); ✅ **self-heal P0s (placement + storage) shipped + applied 2026-06-21** (#194/#196/#197); ✅ **Root cause resolved & BIOS upgraded 2026-10-06** (`intel_idle.max_cstate=1` + BIOS `0067` + out-of-band power cycle automation) |
 | **Severity** | SEV-1 — main `cnpg-cluster` Postgres DB fully down ~43 min + broad platform disruption (homelab, no external users) |
 | **Detected** | 2026-06-21 ~04:01 UTC (during the [Prometheus WAL incident](2026-06-13-prometheus-wal-corruption.md) work) |
 | **Restored** | 2026-06-21 ~05:00 UTC (manual force-deletes + physical power-cycle + iSCSI re-layer) |
 | **Components** | node `fedora`; `cnpg-cluster` (main DB), prometheus, alertmanager, longhorn-manager, argocd application-controller, tempo; Longhorn |
-| **Recurrence** | fedora freezes **every few days** (boots ended Jun 13 / 15 / 20) — this is a pattern, not a one-off |
+| **Recurrence** | fedora freezes **every few days** (boots ended Jun 13 / 15 / 20 / Oct 06) — resolved by capping package C-states at C1 |
 | **Related**  | [2026-06-13-prometheus-wal-corruption.md](2026-06-13-prometheus-wal-corruption.md) |
 
 > Living document. This incident is about **resilience**: fedora goes offline repeatedly, so the goal is making the platform **self-heal onto working nodes** instead of requiring manual surgery + a physical power-cycle.
+
+## Resolution / update — 2026-10-06 (Root Cause Fix & BIOS Update)
+
+The root cause of fedora's recurring silent freeze has been definitively diagnosed and eliminated:
+
+1. **NVIDIA Freeze Hypothesis Disproven**: Prior to the 2026-10-06 freeze (which occurred at 02:48:32 PDT during the idle night window), both `nouveau` and `nvidia` kernel drivers were blacklisted in `/proc/cmdline` and entirely unloaded. The silent freeze reproduced identically with no GPU driver loaded.
+2. **True Root Cause Identified**: 12th-Gen Intel Core i9-12900 (Alder Lake) package C-state sleep hang (`max_cstate=9` entering deep C8/C10 sleep states on idle) paired with initial launch BIOS `EDADL579.0052.2022.0425.2228` (April 2022). The CPU ring bus, PLL, and interrupt controller stalled during idle C-state transitions without throwing an MCE, NMI, or kernel panic. The software watchdog (`intel_oc_wdt`) was unable to reset the host because CPU interrupts were halted.
+3. **C-State Cap Applied**: Appended `intel_idle.max_cstate=1` permanently to `rpm-ostree kargs`. This restricts Alder Lake to C1 sleep states, preventing the ring-bus stall entirely while maintaining full clock turbo behavior. Active boot parameters in `/proc/cmdline` verified.
+4. **BIOS Upgraded Headlessly from 0052 to 0067**:
+   - Downloaded and verified official ASUS/Intel release `EDADL579.0067.zip` for NUC 12 Extreme (`NUC12EDBi9`).
+   - Staged the firmware payload in-band using `iFlashVLnx64` with Intel Bios Guard verification, triggering an automated headless reboot.
+   - Verified post-flash: BIOS updated to `EDADL579.0067.2025.0729.1321` (July 2025) and Embedded Controller (EC) firmware updated from `3.9` to `3.14`.
+5. **Out-of-Band Power-Cycle Automation Deployed**:
+   - Created standalone CLI tool `//tools/gitops:fedora-power-cycle` targeting the TP-Link Kasa HS300 Smart Power Strip at `192.168.86.48` (outlet 6 labeled `NUC12I9`).
+   - Enables headless remote power-cycling from any LAN node (e.g. `nuc9i5`) over port 9999 without requiring physical intervention.
+6. **Cluster Health & Validation**:
+   - Node `fedora` restored, labeled `node.ipv1337.dev/link=wired`, and uncordoned.
+   - All 54 ArgoCD applications are 100% `Synced` and `Healthy`.
+   - All 5 CloudNativePG clusters (`cnpg-cluster`, `backstage-db-cluster`, `buzz-db`, `grafana-db-cluster`, `zitadel-db-cluster`) verified `3/3 Ready` (`Cluster in healthy state`).
+   - Zero non-running pods across the entire cluster.
 
 ## Resolution / update — 2026-06-21
 
