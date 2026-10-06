@@ -257,7 +257,7 @@ package final class CommandBarService: ObservableObject {
     package func syncWithPreferences() {
         let available = AppFeature.commandBar.isAvailable
         let enabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.commandBarShortcutEnabled)
+            && UserDefaults.standard[Preferences.commandBarShortcutEnabled]
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.commandBarShortcut,
                                             fallback: .commandBarDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
@@ -871,7 +871,7 @@ package final class CommandBarService: ObservableObject {
         runs.usage = CommandBarUsage.decode(
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         shortcutCache = rowShortcuts
-        compactMode = UserDefaults.standard.bool(forKey: DefaultsKey.commandBarCompactMode)
+        compactMode = UserDefaults.standard[Preferences.commandBarCompactMode]
         hasCustomPosition = positionOffset != .zero
         reloadFileSearchCaches()
     }
@@ -2370,7 +2370,7 @@ package final class CommandBarService: ObservableObject {
         guard AppFeature.commandBar.isAvailable, !appsLoading else { return }
         appsLoading = true
         let listsUninstallable = AppFeature.uninstaller.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled)
+            && UserDefaults.standard[Preferences.uninstallerCommandBarEnabled]
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let apps = SpotlightNames.enriching(InstalledApps.installedApplications(
                 includeSystemApplications: true,
@@ -2552,7 +2552,7 @@ package final class CommandBarService: ObservableObject {
     /// `loadSelection(for:)`.
     private func loadKillProcessEntries(for id: UUID) {
         guard AppFeature.killProcess.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.killProcessCommandBarEnabled) else { return }
+              UserDefaults.standard[Preferences.killProcessCommandBarEnabled] else { return }
         guard !killProcessEntriesLoading else { return }
         killProcessEntriesLoading = true
         KillProcessService.shared.refresh { [weak self] in
@@ -2585,7 +2585,7 @@ package final class CommandBarService: ObservableObject {
 
     private func loadUninstallSelectionEntries(for id: UUID, requestID: UUID? = nil) {
         guard AppFeature.uninstaller.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled)
+              UserDefaults.standard[Preferences.uninstallerCommandBarEnabled]
         else { return }
         guard !uninstallSelectionLoading else { return }
         uninstallSelectionLoading = true

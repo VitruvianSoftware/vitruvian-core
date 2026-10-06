@@ -2358,6 +2358,15 @@ is that notice. Add an entry for every change to upstream files.
     into `bazel/source_lints.py`. `SourcePinLedgerTests` and
     `Tests/source_pins.txt` are deleted, and the lint keeps the unit tests
     from reading source text.
+- **2026-10-06**: Refactor step 8a (`REFACTOR.md`): switches read and
+  written through their `Preference`, with no change in behavior.
+  - Every `bool(forKey: DefaultsKey.x)` on a declared preference outside
+    `Core/Defaults.swift` reads `UserDefaults[Preferences.x]`. Every
+    `set(_:forKey:)` of a switch assigns through it.
+  - That is 402 reads and 43 writes in 118 files across `Core/`,
+    `Services/`, `UI/`, `App/` and `Support/`. Each is the same call on the
+    same receiver.
+  - Registration runs first, so the app reads the same values as before.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

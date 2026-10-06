@@ -705,7 +705,7 @@ package final class BrightnessService: ObservableObject {
 
     package func stepKeyboardLight(direction: Int) {
         guard AppFeature.brightness.isAvailable,
-              environment.defaults.bool(forKey: DefaultsKey.keyboardBrightnessShortcutsEnabled),
+              environment.defaults[Preferences.keyboardBrightnessShortcutsEnabled],
               direction != 0,
               let keyboardLightBridge,
               let current = keyboardLightLevel(using: keyboardLightBridge)
@@ -760,7 +760,7 @@ package final class BrightnessService: ObservableObject {
 
     package func syncWithPreferences() {
         let wanted = AppFeature.brightness.isAvailable
-            && environment.defaults.bool(forKey: DefaultsKey.brightnessControlEnabled)
+            && environment.defaults[Preferences.brightnessControlEnabled]
         if wanted { start() } else if running { stop() }
         syncKeyTap()
         syncKeyboardBrightnessHotkeys()
@@ -769,7 +769,7 @@ package final class BrightnessService: ObservableObject {
 
     private func syncDisplayBrightnessHotkeys() {
         let enabled = running && AppFeature.brightness.isAvailable
-            && environment.defaults.bool(forKey: DefaultsKey.displayBrightnessShortcutsEnabled)
+            && environment.defaults[Preferences.displayBrightnessShortcutsEnabled]
         let decrease = GlobalShortcutRole.displayBrightnessDecrease.savedShortcut
         let increase = GlobalShortcutRole.displayBrightnessIncrease.savedShortcut
         let decreaseConflicts = enabled && decrease.conflictsWithSystemShortcut
@@ -788,7 +788,7 @@ package final class BrightnessService: ObservableObject {
 
     private func stepDisplayBrightness(delta: Double) {
         guard running, AppFeature.brightness.isAvailable, SessionActivity.shared.isActive,
-              environment.defaults.bool(forKey: DefaultsKey.displayBrightnessShortcutsEnabled)
+              environment.defaults[Preferences.displayBrightnessShortcutsEnabled]
         else { return }
         let pointer = NSEvent.mouseLocation
         let pointerDisplay = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
@@ -796,11 +796,11 @@ package final class BrightnessService: ObservableObject {
         let eligible = Set(displays.filter { $0.isActive && $0.method != nil
             && !pendingDisplayIDs.contains($0.id) }.map(\.id))
         guard let id = BrightnessSupport.shortcutDisplay(
-            followsPointer: environment.defaults.bool(forKey: DefaultsKey.brightnessKeysEnabled),
+            followsPointer: environment.defaults[Preferences.brightnessKeysEnabled],
             pointerDisplay: pointerDisplay, primaryDisplay: CGMainDisplayID(), eligible: eligible),
               let method = displays.first(where: { $0.id == id })?.method else { return }
         step(id, method: method, delta: keyStep.limited(delta),
-             showOSD: environment.defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled))
+             showOSD: environment.defaults[Preferences.brightnessOSDEnabled])
     }
 
     /// Read at each press, like the other key options.
@@ -810,7 +810,7 @@ package final class BrightnessService: ObservableObject {
 
     private func syncKeyboardBrightnessHotkeys() {
         let enabled = AppFeature.brightness.isAvailable
-            && environment.defaults.bool(forKey: DefaultsKey.keyboardBrightnessShortcutsEnabled)
+            && environment.defaults[Preferences.keyboardBrightnessShortcutsEnabled]
             && keyboardLightBridge != nil
         let decreaseShortcut = GlobalShortcutRole.keyboardBrightnessDecrease.savedShortcut
         let increaseShortcut = GlobalShortcutRole.keyboardBrightnessIncrease.savedShortcut
@@ -1319,13 +1319,13 @@ package final class BrightnessService: ObservableObject {
     private func syncKeyTap() {
         guard !tapsAreSuspended() else { return }
         let defaults = environment.defaults
-        let wantsKeyRouting = defaults.bool(forKey: DefaultsKey.brightnessKeysEnabled)
+        let wantsKeyRouting = defaults[Preferences.brightnessKeysEnabled]
         // An island away in full screen, or set to stay hidden until hover,
         // shows no notices while closed, so its keys keep the system's own
         // feedback. The plain key tap runs on its own thread and keeps this
         // sample; the island asks for a new one when full screen hides it.
         let wantsBrightnessOSD = BrightnessSupport.overlayReplacesNative(
-            overlayEnabled: defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled),
+            overlayEnabled: defaults[Preferences.brightnessOSDEnabled],
             islandRoutes: NotchSupport.routes(.brightness),
             islandShowsNotices: MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }
                 && !NotchSupport.hidesUntilHover(in: defaults)) && brightnessOSDSupported
@@ -1628,7 +1628,7 @@ package final class BrightnessService: ObservableObject {
                               to displayID: CGDirectDisplayID,
                               method: BrightnessDisplay.Method) {
         // The island shows the step on its own; the overlay needs its option.
-        let showOSD = environment.defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled)
+        let showOSD = environment.defaults[Preferences.brightnessOSDEnabled]
         step(displayID, method: method, delta: keyStep.limited(press.delta), showOSD: showOSD)
     }
 
@@ -1800,8 +1800,8 @@ package final class BrightnessService: ObservableObject {
         else { return Unmanaged.passUnretained(event) }
 
         let defaults = environment.defaults
-        let followsPointer = defaults.bool(forKey: DefaultsKey.brightnessKeysEnabled)
-        let showsOverlay = defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled)
+        let followsPointer = defaults[Preferences.brightnessKeysEnabled]
+        let showsOverlay = defaults[Preferences.brightnessOSDEnabled]
         let keyStep = self.keyStep
         let delta = keyStep.limited(ownedDelta)
         // A press left to the system still takes a finer step, as the
@@ -2456,7 +2456,7 @@ package final class BrightnessService: ObservableObject {
             if writeSucceeded, let osdLevel {
                 environment.main { [weak self] in
                     guard let self, self.running,
-                          environment.defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled) else { return }
+                          environment.defaults[Preferences.brightnessOSDEnabled] else { return }
                     self.stateLock.lock()
                     let current = self.rebuildGeneration
                     let latestWrite = self.writeSequence

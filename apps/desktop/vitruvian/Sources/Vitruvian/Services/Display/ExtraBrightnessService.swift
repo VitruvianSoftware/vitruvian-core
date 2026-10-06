@@ -69,7 +69,7 @@ package final class ExtraBrightnessService: ObservableObject {
     package func syncWithPreferences() {
         refreshSupported()
         let enabled = AppFeature.extraBrightness.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.extraBrightnessEnabled)
+            && UserDefaults.standard[Preferences.extraBrightnessEnabled]
         if enabled, supported {
             start()
         } else if enabled {
@@ -246,7 +246,7 @@ package final class ExtraBrightnessService: ObservableObject {
     private func handleScreenChange() {
         refreshSupported()
         let enabled = AppFeature.extraBrightness.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.extraBrightnessEnabled)
+            && UserDefaults.standard[Preferences.extraBrightnessEnabled]
         guard enabled else {
             stop()
             return

@@ -124,7 +124,7 @@ package final class MouseButtonShortcutService: ObservableObject {
     package func syncWithPreferences() {
         let defaults = UserDefaults.standard
         let enabled = AppFeature.mouseButtonShortcuts.isAvailable
-            && defaults.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled)
+            && defaults[Preferences.mouseButtonShortcutsEnabled]
         mappings = MouseButtonShortcutSupport.decode(
             defaults.dictionary(forKey: DefaultsKey.mouseButtonShortcuts) as? [String: String])
         wantsSideWheelEvents = enabled && (isCapturing
@@ -340,7 +340,7 @@ package final class MouseButtonShortcutService: ObservableObject {
             }
 
             let enabled = AppFeature.mouseButtonShortcuts.isAvailable
-                && UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled)
+                && UserDefaults.standard[Preferences.mouseButtonShortcutsEnabled]
             let wanted = MouseButtonShortcutSupport.tapWanted(shortcutsEnabled: enabled,
                                                               hasMappings: !mappings.isEmpty,
                                                               isCapturing: isCapturing,
@@ -391,7 +391,7 @@ package final class MouseButtonShortcutService: ObservableObject {
                 },
                 spacesButton: spacesButton,
                 isAvailable: AppFeature.mouseButtonShortcuts.isAvailable,
-                isEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled),
+                isEnabled: UserDefaults.standard[Preferences.mouseButtonShortcutsEnabled],
                 mappings: mappings,
                 claimedByWheel: RadialMenuSupport.claimsMouseButton)
             if isCapturing, !isDraining {
@@ -476,7 +476,7 @@ package final class MouseButtonShortcutService: ObservableObject {
         spacesGesture = SpacesGesturePress(
             button: button,
             down: down,
-            followsDrag: UserDefaults.standard.bool(forKey: DefaultsKey.mouseSpacesGestureFollowsDrag),
+            followsDrag: UserDefaults.standard[Preferences.mouseSpacesGestureFollowsDrag],
             tracker: .init(origin: event.location))
         return nil
     }

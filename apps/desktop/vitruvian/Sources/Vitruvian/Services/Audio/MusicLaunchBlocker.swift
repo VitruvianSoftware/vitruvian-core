@@ -132,7 +132,7 @@ package final class MusicLaunchBlocker: ObservableObject {
 
     private var isEnabled: Bool {
         AppFeature.musicBlock.isAvailable(in: system.defaults)
-            && system.defaults.bool(forKey: DefaultsKey.musicBlockEnabled)
+            && system.defaults[Preferences.musicBlockEnabled]
     }
 
     private func start() {
@@ -197,7 +197,7 @@ package final class MusicLaunchBlocker: ObservableObject {
         ) else { return }
         guard app.forceTerminate() || app.terminate() else { return }
         system.openReplacement(lastMediaKeyCode == MusicLaunchSupport.playPauseKeyCode
-            && system.defaults.bool(forKey: DefaultsKey.musicBlockPlayReplacement))
+            && system.defaults[Preferences.musicBlockPlayReplacement])
     }
 
     /// Pointer buttons and ordinary keys can ask to open an app. Modifier
@@ -338,8 +338,8 @@ private final class MusicReplacementLauncher {
             DispatchQueue.main.async {
                 // Play/Pause asked for music, not just a window.
                 guard startingPlayback, AppFeature.musicBlock.isAvailable,
-                      UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockEnabled),
-                      UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement),
+                      UserDefaults.standard[Preferences.musicBlockEnabled],
+                      UserDefaults.standard[Preferences.musicBlockPlayReplacement],
                       let app else { return }
                 MusicReplacementPlayback.start(app)
             }

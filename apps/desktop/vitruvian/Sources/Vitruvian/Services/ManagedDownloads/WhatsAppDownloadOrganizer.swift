@@ -132,8 +132,8 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         stopMonitoring()
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
-              UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
-              UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed),
+              UserDefaults.standard[Preferences.whatsAppOrganizerEnabled],
+              UserDefaults.standard[Preferences.whatsAppDownloadsAccessConfirmed],
               let root = downloadsURL else {
             phase = .idle
             return
@@ -231,7 +231,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
 
     private func schedule(after delay: TimeInterval) {
         guard WhatsAppDownloadSupport.isEnabled,
-              UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled) else { return }
+              UserDefaults.standard[Preferences.whatsAppOrganizerEnabled] else { return }
         let date = Date().addingTimeInterval(max(1, delay))
         if let nextCheck, nextCheck <= date { return }
         timer?.invalidate()
@@ -270,7 +270,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         }
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
-              UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppOrganizerEnabled),
+              UserDefaults.standard[Preferences.whatsAppOrganizerEnabled],
               let root = downloadsURL,
               let settings = settings(root: root) else {
             phase = .idle
@@ -307,7 +307,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
                                    duplicates: result.duplicates,
                                    failed: result.failed)
                 if result.moved + result.duplicates > 0,
-                   defaults.bool(forKey: DefaultsKey.whatsAppDownloadsNotify) {
+                   defaults[Preferences.whatsAppDownloadsNotify] {
                     let strings = WhatsAppOrganizerStrings.localized(L10n.shared.language)
                     let body = String(format: strings.notificationFormat,
                                       result.moved, result.duplicates, result.failed)

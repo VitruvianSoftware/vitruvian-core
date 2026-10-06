@@ -279,8 +279,7 @@ package final class ScreenshotSelectionController {
         MainActor.assumeIsolated {
             guard let activeSession, activeSession.loupeEnabled else { return false }
             return ScreenshotSupport.captureLoupeUsesSteppedZoom(
-                steppedByDefault: activeSession.environment.defaults.bool(
-                    forKey: DefaultsKey.screenshotLoupeSteppedZoomByDefault),
+                steppedByDefault: activeSession.environment.defaults[Preferences.screenshotLoupeSteppedZoomByDefault],
                 optionPressed: optionPressed)
         }
     }
@@ -314,7 +313,7 @@ package final class ScreenshotSelectionController {
         self.screenCaptureOptions = screenCaptureOptions
         let defaults = environment.defaults
         self.loupeZoom = ScreenshotSupport.captureLoupeInitialZoom(
-            rememberLast: defaults.bool(forKey: DefaultsKey.screenshotLoupeRememberZoom),
+            rememberLast: defaults[Preferences.screenshotLoupeRememberZoom],
             defaultZoom: CGFloat(defaults.double(forKey: DefaultsKey.screenshotLoupeDefaultZoom)),
             lastZoom: CGFloat(defaults.double(forKey: DefaultsKey.screenshotLoupeLastZoom)))
         self.capturePolicy = ScreenshotSupport.UnifiedCapturePolicy(
@@ -406,7 +405,7 @@ package final class ScreenshotSelectionController {
         guard !finished else { return }
         environment.show(panels, screenCaptureOptions?.controlsInNotch != true ? keyPanelUnderMouse() : nil)
         if isPickingColor
-            || environment.defaults.bool(forKey: DefaultsKey.screenshotLoupeStartsOn) {
+            || environment.defaults[Preferences.screenshotLoupeStartsOn] {
             // Opt-in: the session opens with the magnifier already up,
             // instead of waiting for the Z toggle.
             toggleLoupe()
@@ -419,10 +418,9 @@ package final class ScreenshotSelectionController {
             let defaults = environment.defaults
             let nextPolicy = ScreenshotSupport.unifiedCapturePolicy(
                 for: activeTool,
-                screenshotFreeze: defaults.bool(forKey: DefaultsKey.screenshotFreeze),
-                screenshotIncludePointer: defaults.bool(forKey: DefaultsKey.screenshotIncludePointer),
-                screenshotHideVitruvianWindows: defaults.bool(
-                    forKey: DefaultsKey.screenshotHideVitruvianWindows))
+                screenshotFreeze: defaults[Preferences.screenshotFreeze],
+                screenshotIncludePointer: defaults[Preferences.screenshotIncludePointer],
+                screenshotHideVitruvianWindows: defaults[Preferences.screenshotHideVitruvianWindows])
             if !nextPolicy.sharesSource(with: capturePolicy) {
                 adoptCapturePolicy(nextPolicy)
             }
@@ -1200,8 +1198,7 @@ package final class ScreenshotOverlayView: NSView {
             super.scrollWheel(with: event)
             return
         }
-        let steppedByDefault = controller.environment.defaults.bool(
-            forKey: DefaultsKey.screenshotLoupeSteppedZoomByDefault)
+        let steppedByDefault = controller.environment.defaults[Preferences.screenshotLoupeSteppedZoomByDefault]
         let stepped = ScreenshotSupport.captureLoupeUsesSteppedZoom(
             steppedByDefault: steppedByDefault,
             optionPressed: event.modifierFlags.contains(.option))

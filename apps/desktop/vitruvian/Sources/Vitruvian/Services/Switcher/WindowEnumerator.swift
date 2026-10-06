@@ -102,12 +102,12 @@ package enum WindowEnumerator {
         package init(defaults: UserDefaults) {
             windowlessApps = SwitcherWindowlessApps.mode(
                 storedValue: defaults.string(forKey: DefaultsKey.switcherWindowlessApps),
-                takeOverSystemShortcuts: defaults.bool(forKey: DefaultsKey.switcherTakeOverSystemShortcuts))
-            currentSpaceOnly = defaults.bool(forKey: DefaultsKey.switcherCurrentSpaceOnly)
+                takeOverSystemShortcuts: defaults[Preferences.switcherTakeOverSystemShortcuts])
+            currentSpaceOnly = defaults[Preferences.switcherCurrentSpaceOnly]
             minimizedPlacement = WindowSwitchMinimizedPlacement(
                 rawValue: defaults.string(forKey: DefaultsKey.switcherMinimizedPlacement) ?? ""
             ) ?? .normal
-            treatHiddenAppsLikeMinimized = defaults.bool(forKey: DefaultsKey.switcherTreatHiddenAppsLikeMinimized)
+            treatHiddenAppsLikeMinimized = defaults[Preferences.switcherTreatHiddenAppsLikeMinimized]
             showFullscreenWindows = defaults.object(forKey: DefaultsKey.switcherShowFullscreenWindows) as? Bool ?? true
         }
     }
@@ -273,14 +273,14 @@ package enum WindowEnumerator {
     @MainActor
     package static func listWindowsForDockPreview(for pid: pid_t, maximumCount: Int = 12) -> [SwitcherItem] {
         listWindows(for: pid, maximumCount: maximumCount,
-                    currentSpaceOnly: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
+                    currentSpaceOnly: UserDefaults.standard[Preferences.dockPreviewCurrentSpaceOnly],
                     marksHiddenSpaces: true)
     }
 
     /// A desktop can change after enumeration, including between pinned refreshes.
     package static func dockPreviewMayActivate(_ item: SwitcherItem) -> Bool {
         dockPreviewMayActivate(windowID: item.windowID,
-                               currentSpaceOnly: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
+                               currentSpaceOnly: UserDefaults.standard[Preferences.dockPreviewCurrentSpaceOnly],
                                isParkedOnHiddenSpace: { SpaceWindowBridge.isParkedOnHiddenSpace($0) })
     }
 

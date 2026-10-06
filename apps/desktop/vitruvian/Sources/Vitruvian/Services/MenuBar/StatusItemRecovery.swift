@@ -77,8 +77,8 @@ package enum StatusItemRecovery {
     /// "Show menu bar icon" is an explicit request to see it, so neither way
     /// of hiding it may put it straight back.
     package static func clearIconHiding(in defaults: UserDefaults) {
-        defaults.set(false, forKey: DefaultsKey.menuBarHideIconWithMetrics)
-        defaults.set(false, forKey: DefaultsKey.notchHidesMenuBarIcon)
+        defaults[Preferences.menuBarHideIconWithMetrics] = false
+        defaults[Preferences.notchHidesMenuBarIcon] = false
     }
 
     /// The next step of checking that a rebuilt icon came back.

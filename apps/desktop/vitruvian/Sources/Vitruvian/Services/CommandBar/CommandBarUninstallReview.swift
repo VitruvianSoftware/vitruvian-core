@@ -66,7 +66,7 @@ package final class CommandBarUninstallReview {
     /// opens; a refusal says why instead of opening an empty checklist.
     package func begin(appURL url: URL, entryID: String) {
         guard host.isAvailable(),
-              host.defaults.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled),
+              host.defaults[Preferences.uninstallerCommandBarEnabled],
               uninstaller.select(appURL: url) else {
             host.setWarning(uninstaller.isRemoving
                 ? L10n.shared.s.uninstallerRemoving : L10n.shared.s.uninstallerSelectionUnavailable)

@@ -218,7 +218,7 @@ package final class CleanerScheduler: ObservableObject {
     /// notifications are not allowed). Even a run that found nothing posts,
     /// so a fresh schedule gives proof of life on its first pass.
     private func notifyIfWanted(freed: Int64, failed: Int) {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.cleanerScheduleNotify) else { return }
+        guard UserDefaults.standard[Preferences.cleanerScheduleNotify] else { return }
         let strings = L10n.shared.s
         Notifier.post(title: strings.cleanerScheduleTitle,
                       body: Self.notificationBody(freed: freed, failed: failed, strings: strings))

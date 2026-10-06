@@ -115,7 +115,7 @@ package final class RadialMenuService: ObservableObject {
         defer { MiddleClickService.shared.syncWithPreferences() }
         let defaults = UserDefaults.standard
         let enabled = AppFeature.radialMenu.isAvailable
-            && defaults.bool(forKey: DefaultsKey.radialMenuEnabled)
+            && defaults[Preferences.radialMenuEnabled]
         guard enabled else {
             suspend()
             registrationFailed = false
@@ -182,7 +182,7 @@ package final class RadialMenuService: ObservableObject {
             defaults: defaults
         ).isEmpty
         let enabled = AppFeature.radialMenu.isAvailable
-            && defaults.bool(forKey: DefaultsKey.radialMenuEnabled)
+            && defaults[Preferences.radialMenuEnabled]
         return (hasAnyButton && enabled) || isReportingMouseButtons
     }
 
@@ -340,7 +340,7 @@ package final class RadialMenuService: ObservableObject {
     package func toggleFromTrackpad() {
         let defaults = UserDefaults.standard
         guard AppFeature.radialMenu.isAvailable,
-              defaults.bool(forKey: DefaultsKey.radialMenuEnabled),
+              defaults[Preferences.radialMenuEnabled],
               let profile = RadialMenuSupport.decodeProfiles(
                   defaults.data(forKey: DefaultsKey.radialMenuProfiles), defaults: defaults
               ).first(where: \.trackpadTap) else { return }
@@ -430,7 +430,7 @@ package final class RadialMenuService: ObservableObject {
         pointerActivated = false
         openPointerLocation = NSEvent.mouseLocation
 
-        let atPointer = defaults.bool(forKey: DefaultsKey.radialMenuAtPointer)
+        let atPointer = defaults[Preferences.radialMenuAtPointer]
         let visibleFrame = NSScreen.pointerVisibleFrame
         let wanted = atPointer ? NSEvent.mouseLocation
                                : CGPoint(x: visibleFrame.midX, y: visibleFrame.midY)
@@ -482,7 +482,7 @@ package final class RadialMenuService: ObservableObject {
         // A try-it session can run with the feature off; nothing may stay
         // resident for it once the wheel closes.
         if !AppFeature.radialMenu.isAvailable
-            || !UserDefaults.standard.bool(forKey: DefaultsKey.radialMenuEnabled) {
+            || !UserDefaults.standard[Preferences.radialMenuEnabled] {
             panel = nil
         }
     }

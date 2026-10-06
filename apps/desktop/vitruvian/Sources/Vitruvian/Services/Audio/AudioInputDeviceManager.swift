@@ -116,7 +116,7 @@ package final class AudioInputDeviceManager: ObservableObject {
     /// follows the mixer's hub availability.
     package func syncWithPreferences() {
         inputPriorityIsActive = AppFeature.audioPriority.isAvailable(in: environment.defaults)
-            && environment.defaults.bool(forKey: DefaultsKey.audioPriorityInputEnabled)
+            && environment.defaults[Preferences.audioPriorityInputEnabled]
         if AppFeature.mixer.isAvailable(in: environment.defaults)
             || AppFeature.audioPriority.isAvailable(in: environment.defaults) {
             start()

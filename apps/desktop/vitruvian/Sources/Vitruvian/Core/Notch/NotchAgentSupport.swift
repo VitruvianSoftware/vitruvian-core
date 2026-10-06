@@ -73,7 +73,7 @@ package enum NotchAgentSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchAgents.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchAgentsEnabled)
+            && defaults[Preferences.notchAgentsEnabled]
             && NotchSupport.modules(in: defaults).contains(.agents)
     }
 

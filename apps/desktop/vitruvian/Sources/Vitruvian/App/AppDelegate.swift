@@ -150,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         statusController.onRightClick = { [weak self] button in
             if AppFeature.keepAwake.isAvailable
-                && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeRightClickToggle) {
+                && UserDefaults.standard[Preferences.keepAwakeRightClickToggle] {
                 KeepAwakeManager.shared.toggle()
             } else {
                 self?.showContextMenu(from: button)
@@ -1000,7 +1000,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             menu.addItem(uninstallItem)
         }
 
-        if AppFeature.shelf.isAvailable, UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) {
+        if AppFeature.shelf.isAvailable, UserDefaults.standard[Preferences.shelfEnabled] {
             let shelfItem = NSMenuItem(title: strings.shelfMenuItem,
                                        action: #selector(menuOpenShelf), keyEquivalent: "")
             shelfItem.target = self
@@ -1295,7 +1295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             guard let self else { return }
             let step = StatusItemRecovery.reshowStep(
                 // A later choice to hide the icon cancels the explicit recovery.
-                hidingChosen: UserDefaults.standard.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics)
+                hidingChosen: UserDefaults.standard[Preferences.menuBarHideIconWithMetrics]
                     || MenuBarSpacingSupport.islandHidesStatusIcon(
                         in: .standard, hiddenInFullscreen: self.statusController?.islandHiddenInFullscreen == true),
                 isOnScreen: self.iconIsOnScreen(),
@@ -1415,9 +1415,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         return BrightnessUpdatePromptInfo.needsSetup(
             notchAvailable: AppFeature.notch.isAvailable,
             brightnessAvailable: AppFeature.brightness.isAvailable,
-            notchEnabled: defaults.bool(forKey: DefaultsKey.notchEnabled),
-            notchBrightness: defaults.bool(forKey: DefaultsKey.notchBrightness),
-            brightnessEnabled: defaults.bool(forKey: DefaultsKey.brightnessControlEnabled))
+            notchEnabled: defaults[Preferences.notchEnabled],
+            notchBrightness: defaults[Preferences.notchBrightness],
+            brightnessEnabled: defaults[Preferences.brightnessControlEnabled])
     }
 
     private func queueBrightnessUpdatePromptIfNeeded(previousVersion: String?) {

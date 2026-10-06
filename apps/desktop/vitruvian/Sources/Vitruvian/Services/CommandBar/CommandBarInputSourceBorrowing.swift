@@ -36,7 +36,7 @@ package final class CommandBarInputSourceBorrowing {
         }
 
         package static var live: System {
-            System(isEnabled: { UserDefaults.standard.bool(forKey: DefaultsKey.commandBarASCIILayoutEnabled) },
+            System(isEnabled: { UserDefaults.standard[Preferences.commandBarASCIILayoutEnabled] },
                    currentSourceID: { InputSourceSelection.currentSourceID() },
                    snapshots: { InputSourceSelection.snapshots() },
                    select: { InputSourceSelection.select(sourceID: $0) },

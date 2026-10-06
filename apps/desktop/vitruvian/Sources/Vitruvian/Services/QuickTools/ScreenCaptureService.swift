@@ -207,14 +207,13 @@ package final class ScreenCaptureService: ObservableObject {
         let defaults = UserDefaults.standard
         let policy = ScreenshotSupport.unifiedCapturePolicy(
             for: options.selectedTool,
-            screenshotFreeze: defaults.bool(forKey: DefaultsKey.screenshotFreeze),
-            screenshotIncludePointer: defaults.bool(forKey: DefaultsKey.screenshotIncludePointer),
-            screenshotHideVitruvianWindows: defaults.bool(
-                forKey: DefaultsKey.screenshotHideVitruvianWindows))
+            screenshotFreeze: defaults[Preferences.screenshotFreeze],
+            screenshotIncludePointer: defaults[Preferences.screenshotIncludePointer],
+            screenshotHideVitruvianWindows: defaults[Preferences.screenshotHideVitruvianWindows])
         let controller = ScreenshotSelectionController(
             freeze: policy.freeze,
             includePointer: policy.includePointer,
-            showLastRegion: defaults.bool(forKey: DefaultsKey.screenshotShowLastRegion),
+            showLastRegion: defaults[Preferences.screenshotShowLastRegion],
             hideVitruvianWindows: policy.hideVitruvianWindows,
             protectedWindowIDs: { [weak options] in
                 var windows: Set<CGWindowID> = []

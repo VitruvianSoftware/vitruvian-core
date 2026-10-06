@@ -358,7 +358,7 @@ package enum WindowLayoutGaps {
 /// pushing it onto the display beside it.
 package enum WindowLayoutSideRepeat {
     package static func cyclesThirds(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
+        defaults[Preferences.windowLayoutSideRepeatCyclesThirds]
     }
 }
 

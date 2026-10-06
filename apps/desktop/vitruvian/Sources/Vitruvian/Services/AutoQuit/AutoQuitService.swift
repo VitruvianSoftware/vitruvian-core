@@ -80,7 +80,7 @@ package final class AutoQuitService: ObservableObject {
 
     package func syncWithPreferences() {
         let enabled = AppFeature.autoQuit.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.autoQuitEnabled)
+            && UserDefaults.standard[Preferences.autoQuitEnabled]
         if enabled, Permissions.shared.accessibility {
             start()
         } else {

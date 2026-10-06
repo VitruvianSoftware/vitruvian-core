@@ -80,8 +80,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
     @Published package var annotationShadowsEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(annotationShadowsEnabled,
-                                      forKey: DefaultsKey.screenshotAnnotationShadows)
+            UserDefaults.standard[Preferences.screenshotAnnotationShadows] = annotationShadowsEnabled
             refreshDirtyState()
         }
     }
@@ -197,8 +196,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
             defaults.string(forKey: DefaultsKey.screenshotLastArrowStyle))
         sticker = ScreenshotSupport.StickerID.sanitized(
             defaults.string(forKey: DefaultsKey.screenshotLastSticker))
-        annotationShadowsEnabled = defaults.bool(
-            forKey: DefaultsKey.screenshotAnnotationShadows)
+        annotationShadowsEnabled = defaults[Preferences.screenshotAnnotationShadows]
         let rawStyle = defaults.string(forKey: DefaultsKey.screenshotBackdropStyle) ?? ""
         backdropStyle = ScreenshotSupport.BackdropStyle.decoded(rawStyle)
         backdropPresets = ScreenshotSupport.decodedBackdropPresets(
@@ -1110,7 +1108,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     package func exportImage(withBackdrop: Bool = true) -> ScreenshotRenderer.Export? {
         ensurePixelatedForAnnotations()
-        let downscale = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotDownscale)
+        let downscale = UserDefaults.standard[Preferences.screenshotDownscale]
         return ScreenshotRenderer.renderExport(
             baseImage: baseImage,
             annotations: annotations,
@@ -1260,7 +1258,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
         let orderRaw = UserDefaults.standard.string(forKey: DefaultsKey.screenshotToolOrder)
         let bindingsRaw = UserDefaults.standard.string(forKey: DefaultsKey.screenshotToolShortcuts)
-        let enabled = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotToolShortcutsEnabled)
+        let enabled = UserDefaults.standard[Preferences.screenshotToolShortcutsEnabled]
         let number = event.characters?.first.flatMap { Int(String($0)) }
         if let tool = ScreenshotSupport.Tool.shortcutTool(
             keyCode: Int64(key), modifiers: GlobalShortcutModifiers(eventFlags: flags),

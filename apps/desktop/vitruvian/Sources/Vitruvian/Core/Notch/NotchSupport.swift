@@ -1584,11 +1584,11 @@ package enum NotchSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         AppFeature.notch.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchEnabled)
+            && defaults[Preferences.notchEnabled]
     }
 
     package static func usesHapticFeedback(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchHapticFeedback)
+        isEnabled(in: defaults) && defaults[Preferences.notchHapticFeedback]
     }
 
     package static func modules(in defaults: UserDefaults = .standard) -> [NotchModule] {
@@ -1599,12 +1599,12 @@ package enum NotchSupport {
         var seen = Set<NotchModule>()
         return (stored + NotchModule.allCases).filter {
             seen.insert($0).inserted && !hidden.contains($0.rawValue) && $0.isAvailable(in: defaults)
-                && ($0 != .timer || defaults.bool(forKey: DefaultsKey.notchTimerEnabled))
-                && ($0 != .camera || defaults.bool(forKey: DefaultsKey.notchCameraEnabled))
-                && ($0 != .calendar || defaults.bool(forKey: DefaultsKey.notchCalendarEnabled))
-                && ($0 != .notifications || defaults.bool(forKey: DefaultsKey.notchNotificationsEnabled))
-                && ($0 != .agents || defaults.bool(forKey: DefaultsKey.notchAgentsEnabled))
-                && ($0 != .watch || defaults.bool(forKey: DefaultsKey.notchWatchEnabled))
+                && ($0 != .timer || defaults[Preferences.notchTimerEnabled])
+                && ($0 != .camera || defaults[Preferences.notchCameraEnabled])
+                && ($0 != .calendar || defaults[Preferences.notchCalendarEnabled])
+                && ($0 != .notifications || defaults[Preferences.notchNotificationsEnabled])
+                && ($0 != .agents || defaults[Preferences.notchAgentsEnabled])
+                && ($0 != .watch || defaults[Preferences.notchWatchEnabled])
         }
     }
 
@@ -1630,7 +1630,7 @@ package enum NotchSupport {
     /// The closed island stays out of sight until the pointer reaches it, and
     /// shows no notices while it waits.
     package static func hidesUntilHover(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: DefaultsKey.notchHideUntilHover) && defaults.bool(forKey: DefaultsKey.notchOpenOnHover)
+        defaults[Preferences.notchHideUntilHover] && defaults[Preferences.notchOpenOnHover]
     }
 
     package static func idleContent(in defaults: UserDefaults = .standard) -> NotchIdleContent {
@@ -1699,11 +1699,11 @@ package enum NotchSupport {
         case .microphone: return AppFeature.micMute.isAvailable(in: defaults)
         case .brightness:
             return AppFeature.brightness.isAvailable(in: defaults)
-                && defaults.bool(forKey: DefaultsKey.brightnessControlEnabled)
+                && defaults[Preferences.brightnessControlEnabled]
         case .battery: return AppFeature.monitorPower.isAvailable(in: defaults)
         case .clipboard:
             return modules(in: defaults).contains(.clipboard)
-                && defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
+                && defaults[Preferences.clipboardHistoryEnabled]
         case .capture:
             return AppFeature.screenshot.isAvailable(in: defaults)
                 && modules(in: defaults).contains(.captures)
@@ -1712,7 +1712,7 @@ package enum NotchSupport {
     }
 
     package static func routesClipboardWindow(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchClipboardWindow)
+        isEnabled(in: defaults) && defaults[Preferences.notchClipboardWindow]
             && modules(in: defaults).contains(.clipboard)
     }
 
@@ -1723,26 +1723,26 @@ package enum NotchSupport {
     }
 
     package static func routesShelf(in defaults: UserDefaults = .standard) -> Bool {
-        showsFiles(in: defaults) && defaults.bool(forKey: DefaultsKey.notchShelf)
+        showsFiles(in: defaults) && defaults[Preferences.notchShelf]
     }
 
     package static func revealsShelfDrag(in defaults: UserDefaults = .standard) -> Bool {
-        routesShelf(in: defaults) && defaults.bool(forKey: DefaultsKey.notchDragReveal)
+        routesShelf(in: defaults) && defaults[Preferences.notchDragReveal]
     }
 
     package static func routesCaptureControls(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchCaptureControls)
+        isEnabled(in: defaults) && defaults[Preferences.notchCaptureControls]
             && modules(in: defaults).contains(.captures)
     }
 
     package static func routesQuickPanel(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchQuickPanel)
+        isEnabled(in: defaults) && defaults[Preferences.notchQuickPanel]
             && AppFeature.quickLauncher.isAvailable(in: defaults)
             && modules(in: defaults).contains(.tools)
     }
 
     package static func routesAppPanel(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchAppPanel)
+        isEnabled(in: defaults) && defaults[Preferences.notchAppPanel]
     }
 
     package static func routesScratchpad(in defaults: UserDefaults = .standard) -> Bool {

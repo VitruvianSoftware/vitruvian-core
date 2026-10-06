@@ -261,7 +261,7 @@ package enum MenuBarSpacingSupport {
     /// this behavior existed. Signals also bring it back, and text the main
     /// item carries (metrics, a countdown) keeps the item.
     package static func islandHidesStatusIcon(in defaults: UserDefaults, hiddenInFullscreen: Bool = false) -> Bool {
-        defaults.bool(forKey: DefaultsKey.notchHidesMenuBarIcon)
+        defaults[Preferences.notchHidesMenuBarIcon]
             && NotchSupport.isEnabled(in: defaults)
             && !hiddenInFullscreen
     }

@@ -51,7 +51,7 @@ package final class TextSnippetService: @unchecked Sendable {
 
     package func syncWithPreferences() {
         let enabled = AppFeature.textSnippets.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.textSnippetsEnabled)
+            && UserDefaults.standard[Preferences.textSnippetsEnabled]
         reloadSnippets()
         let hasWork = inputLock.withLock {
             !(immediateSnippets.isEmpty && delimiterSnippets.isEmpty)
@@ -104,9 +104,9 @@ package final class TextSnippetService: @unchecked Sendable {
     /// cannot answer that question differently.
     package func syncExpansionSound(featureEnabled: Bool? = nil) {
         let featureOn = featureEnabled ?? (AppFeature.textSnippets.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.textSnippetsEnabled))
+            && UserDefaults.standard[Preferences.textSnippetsEnabled])
         let soundEnabled = featureOn
-            && UserDefaults.standard.bool(forKey: DefaultsKey.snippetSoundEnabled)
+            && UserDefaults.standard[Preferences.snippetSoundEnabled]
         let sound = soundEnabled ? Self.preferredExpansionSound() : nil
         inputLock.withLock { expansionSound = sound }
     }

@@ -79,7 +79,7 @@ package enum NotchAudioLevelSupport {
     }
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: DefaultsKey.notchLiveEqualizer)
+        defaults[Preferences.notchLiveEqualizer]
     }
 
     /// The bins of a real spectrum with `size / 2` usable bins that belong to

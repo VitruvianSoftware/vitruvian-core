@@ -303,7 +303,7 @@ final class StatusItemController {
 
     private var currentMicBadgeActive: Bool {
         MicMuteService.shared.isMuted
-            && UserDefaults.standard.bool(forKey: DefaultsKey.micMuteMenuBarIndicator)
+            && UserDefaults.standard[Preferences.micMuteMenuBarIndicator]
     }
 
     private var renderedMicBadgeActive: Bool {
@@ -340,8 +340,8 @@ final class StatusItemController {
             updateAvailable = false
         }
         let micBadgeActive = renderedMicBadgeActive
-        let optionEnabled = defaults.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics)
-        let separateMetrics = defaults.bool(forKey: DefaultsKey.menuBarSeparateMetrics)
+        let optionEnabled = defaults[Preferences.menuBarHideIconWithMetrics]
+        let separateMetrics = defaults[Preferences.menuBarSeparateMetrics]
         let signal = updateAvailable || micBadgeActive
         let islandHides = MenuBarSpacingSupport.islandHidesStatusIcon(
             in: defaults, hiddenInFullscreen: islandHiddenInFullscreen) && !signal
@@ -437,10 +437,10 @@ final class StatusItemController {
         let defaults = UserDefaults.standard
         let snapshot = SystemMonitor.shared.snapshot
         let metrics = MenuBarMetric.enabled(in: defaults)
-        let separateMetrics = defaults.bool(forKey: DefaultsKey.menuBarSeparateMetrics)
+        let separateMetrics = defaults[Preferences.menuBarSeparateMetrics]
 
         syncTitleTimer(keepAwakeActive: manager.isActive,
-                       showsCountdown: defaults.bool(forKey: DefaultsKey.showCountdown),
+                       showsCountdown: defaults[Preferences.showCountdown],
                        endDate: manager.endDate)
 
         // Compose the title from the keep-awake countdown (when shown) followed by
@@ -448,7 +448,7 @@ final class StatusItemController {
         // carry its green/yellow/red color; all other runs stay adaptive.
         let title = NSMutableAttributedString()
         var includesCountdown = false
-        if manager.isActive, defaults.bool(forKey: DefaultsKey.showCountdown) {
+        if manager.isActive, defaults[Preferences.showCountdown] {
             let countdown: String
             if let end = manager.endDate {
                 let remaining = max(0, Int(end.timeIntervalSinceNow))
@@ -509,7 +509,7 @@ final class StatusItemController {
             let glyphHidden = (MenuBarSpacingSupport.islandHidesStatusIcon(
                 in: defaults, hiddenInFullscreen: islandHiddenInFullscreen) && !signal)
                 || MenuBarSpacingSupport.shouldHideStatusIcon(
-                    optionEnabled: defaults.bool(forKey: DefaultsKey.menuBarHideIconWithMetrics),
+                    optionEnabled: defaults[Preferences.menuBarHideIconWithMetrics],
                     separateMetrics: separateMetrics,
                     metricsEnabled: !metrics.isEmpty,
                     renderedTitleLength: 1,
@@ -691,8 +691,8 @@ final class StatusItemController {
         // file and image folder included — and this runs on every settings
         // change, not just clipboard ones.
         guard AppFeature.clipboardHistory.isAvailable,
-              defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled),
-              defaults.bool(forKey: DefaultsKey.clipboardHistoryMenuBarPreview)
+              defaults[Preferences.clipboardHistoryEnabled],
+              defaults[Preferences.clipboardHistoryMenuBarPreview]
         else {
             removeClipboardPreviewStatusItem()
             return

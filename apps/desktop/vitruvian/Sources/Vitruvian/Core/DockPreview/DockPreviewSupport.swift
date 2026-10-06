@@ -359,7 +359,7 @@ package enum DockPreviewSupport {
     package static var cardWidth: CGFloat { cardSize(scale: PreviewSizing.scale).width }
     package static var cardHeight: CGFloat {
         cardSize(scale: PreviewSizing.scale,
-                 minimal: UserDefaults.standard.bool(forKey: DefaultsKey.minimalWindowPreviews)).height
+                 minimal: UserDefaults.standard[Preferences.minimalWindowPreviews]).height
     }
     package static var cardFallbackIconSize: CGFloat { cardFallbackIconSize(scale: PreviewSizing.scale) }
 

@@ -151,7 +151,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     package func syncWithPreferences() {
         let available = AppFeature.scratchpad.isAvailable(in: environment.defaults)
         let enabled = available
-            && environment.defaults.bool(forKey: DefaultsKey.scratchpadShortcutEnabled)
+            && environment.defaults[Preferences.scratchpadShortcutEnabled]
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.scratchpadShortcut,
                                             fallback: .scratchpadDefault)
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
@@ -574,7 +574,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// apps. The choice is read at click time, so flipping it in Settings
     /// takes effect on an open pad.
     private var closesOnClickOutside: Bool {
-        environment.defaults.bool(forKey: DefaultsKey.scratchpadCloseOnClickOutside)
+        environment.defaults[Preferences.scratchpadCloseOnClickOutside]
     }
 
     /// The export dialog is a click outside the pad by geometry, so saving to

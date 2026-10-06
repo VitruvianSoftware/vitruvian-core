@@ -49,7 +49,7 @@ package enum NotchQueueSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchQueue.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchQueueEnabled)
+            && defaults[Preferences.notchQueueEnabled]
             && NotchSupport.modules(in: defaults).contains(.music)
     }
 

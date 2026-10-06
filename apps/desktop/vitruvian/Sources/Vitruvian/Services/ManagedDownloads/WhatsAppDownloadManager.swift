@@ -146,14 +146,12 @@ package final class WhatsAppDownloadManager: ObservableObject {
                 guard let self, self.operationToken == token else { return }
                 switch result {
                 case let .success(found):
-                    UserDefaults.standard.set(true,
-                                              forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
+                    UserDefaults.standard[Preferences.whatsAppDownloadsAccessConfirmed] = true
                     self.accessStatus = .available
                     self.candidates = found
                     self.phase = .results
                 case .failure:
-                    UserDefaults.standard.set(false,
-                                              forKey: DefaultsKey.whatsAppDownloadsAccessConfirmed)
+                    UserDefaults.standard[Preferences.whatsAppDownloadsAccessConfirmed] = false
                     self.accessStatus = .denied
                     self.candidates = []
                     self.phase = .failed
@@ -266,7 +264,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
         defaults.set(moved, forKey: DefaultsKey.whatsAppDownloadsLastCleanupCount)
         defaults.set(bytes, forKey: DefaultsKey.whatsAppDownloadsLastCleanupBytes)
         defaults.set(failed, forKey: DefaultsKey.whatsAppDownloadsLastCleanupFailed)
-        defaults.set(automatic, forKey: DefaultsKey.whatsAppDownloadsLastCleanupAutomatic)
+        defaults[Preferences.whatsAppDownloadsLastCleanupAutomatic] = automatic
     }
 
     private struct SettingsSnapshot {
@@ -284,7 +282,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
                 defaults.integer(forKey: DefaultsKey.whatsAppDownloadsRetentionDays)),
             categories: WhatsAppDownloadSupport.decodedCategories(
                 defaults.string(forKey: DefaultsKey.whatsAppDownloadsCategories)),
-            includeExisting: defaults.bool(forKey: DefaultsKey.whatsAppDownloadsIncludeExisting),
+            includeExisting: defaults[Preferences.whatsAppDownloadsIncludeExisting],
             automaticStartDate: start > 0 ? Date(timeIntervalSince1970: start) : nil)
     }
 

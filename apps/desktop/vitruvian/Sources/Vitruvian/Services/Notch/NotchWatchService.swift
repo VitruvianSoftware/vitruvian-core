@@ -330,7 +330,7 @@ package final class NotchWatchService: ObservableObject {
         state = .finished(outcome)
         let strings = FeatureStrings.notchWatch(L10n.shared.language)
         let title = strings.outcome(outcome)
-        if UserDefaults.standard.bool(forKey: DefaultsKey.notchWatchSound) {
+        if UserDefaults.standard[Preferences.notchWatchSound] {
             if let tone { tone.stop(); tone.play() } else { NSSound.beep() }
         }
         let notch = NotchService.shared

@@ -22,11 +22,11 @@ package enum NotchLockScreenSupport {
     package static let spaceLevel: Int32 = 400
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        NotchSupport.isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchLockScreen)
+        NotchSupport.isEnabled(in: defaults) && defaults[Preferences.notchLockScreen]
     }
 
     package static func playsSounds(in defaults: UserDefaults = .standard) -> Bool {
-        NotchSupport.isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchLockSounds)
+        NotchSupport.isEnabled(in: defaults) && defaults[Preferences.notchLockSounds]
     }
 
     /// Music follows the island's Music section, not its resting choice: an

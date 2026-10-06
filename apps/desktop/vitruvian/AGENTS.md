@@ -42,7 +42,10 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - A new preference goes in `Core/Preferences.swift` as a `Preference` with
   its default. `Defaults.registeredDefaults` registers it from there, views
   use `@AppStorage(Preferences.x) var x: Bool` (with the type written out),
-  and nothing else spells out the default.
+  and nothing else spells out the default. Code reads and writes it as
+  `defaults[Preferences.x]`, not by its `DefaultsKey`. `source_lints_test`
+  counts what still reaches a declared key by name, and only lets that
+  count fall.
 - `Tests/mutation_checks.py` plants real regressions and requires each to fail
   its test. It runs weekly in CI. Moving or rewording code that a mutation
   quotes breaks that run, so update the mutation in the same change.

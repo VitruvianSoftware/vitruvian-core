@@ -14,7 +14,7 @@ package enum NotchKeepAwakeSupport {
 
     package static func showsActivity(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.keepAwake.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchKeepAwakeActivity)
+            && defaults[Preferences.notchKeepAwakeActivity]
     }
 
     /// Whole minutes left, rounded up: a new half-hour session reads 30m, and

@@ -9,7 +9,7 @@ package enum NotchAccessorySupport {
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchAccessories.isAvailable(in: defaults)
             && AppFeature.monitorPower.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchAccessoriesEnabled)
+            && defaults[Preferences.notchAccessoriesEnabled]
     }
 
     package static func symbol(for kind: PeripheralBatteryKind, name: String) -> String {

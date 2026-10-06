@@ -95,10 +95,10 @@ package final class WallpaperService: ObservableObject {
             if UserDefaults.standard.object(forKey: DefaultsKey.wallpaperApplyAllDisplays) == nil {
                 return true
             }
-            return UserDefaults.standard.bool(forKey: DefaultsKey.wallpaperApplyAllDisplays)
+            return UserDefaults.standard[Preferences.wallpaperApplyAllDisplays]
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: DefaultsKey.wallpaperApplyAllDisplays)
+            UserDefaults.standard[Preferences.wallpaperApplyAllDisplays] = newValue
             objectWillChange.send()
         }
     }

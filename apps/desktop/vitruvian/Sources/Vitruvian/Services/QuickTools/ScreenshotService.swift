@@ -62,7 +62,7 @@ package final class ScreenshotService: ObservableObject {
     }
 
     private var hideVitruvianWindows: Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.screenshotHideVitruvianWindows)
+        UserDefaults.standard[Preferences.screenshotHideVitruvianWindows]
     }
 
     /// The surfaces that make up the act of capturing. The quick preview is
@@ -136,8 +136,7 @@ package final class ScreenshotService: ObservableObject {
             return
         }
         let defaults = UserDefaults.standard
-        let fullScreenEnabled = defaults.bool(
-            forKey: DefaultsKey.screenshotFullScreenShortcutEnabled)
+        let fullScreenEnabled = defaults[Preferences.screenshotFullScreenShortcutEnabled]
         let fullScreenShortcut = GlobalShortcut.saved(
             for: DefaultsKey.screenshotFullScreenShortcut,
             fallback: .screenshotFullScreenDefault)
@@ -145,8 +144,7 @@ package final class ScreenshotService: ObservableObject {
             enabled: fullScreenEnabled,
             shortcut: fullScreenShortcut,
             storageKey: DefaultsKey.screenshotFullScreenShortcut)
-        let lastCaptureEnabled = defaults.bool(
-            forKey: DefaultsKey.screenshotLastCaptureShortcutEnabled)
+        let lastCaptureEnabled = defaults[Preferences.screenshotLastCaptureShortcutEnabled]
         let lastCaptureShortcut = GlobalShortcut.saved(
             for: DefaultsKey.screenshotLastCaptureShortcut,
             fallback: .screenshotLastCaptureDefault)
@@ -154,8 +152,7 @@ package final class ScreenshotService: ObservableObject {
             enabled: lastCaptureEnabled,
             shortcut: lastCaptureShortcut,
             storageKey: DefaultsKey.screenshotLastCaptureShortcut)
-        let clipboardEnabled = defaults.bool(
-            forKey: DefaultsKey.screenshotClipboardShortcutEnabled)
+        let clipboardEnabled = defaults[Preferences.screenshotClipboardShortcutEnabled]
         let clipboardShortcut = GlobalShortcut.saved(
             for: DefaultsKey.screenshotClipboardShortcut,
             fallback: .screenshotClipboardDefault)
@@ -285,9 +282,9 @@ package final class ScreenshotService: ObservableObject {
         let controller = ScreenshotSelectionController(
             freeze: mode == .scrolling
                 ? false
-                : defaults.bool(forKey: DefaultsKey.screenshotFreeze),
-            includePointer: defaults.bool(forKey: DefaultsKey.screenshotIncludePointer),
-            showLastRegion: defaults.bool(forKey: DefaultsKey.screenshotShowLastRegion),
+                : defaults[Preferences.screenshotFreeze],
+            includePointer: defaults[Preferences.screenshotIncludePointer],
+            showLastRegion: defaults[Preferences.screenshotShowLastRegion],
             hideVitruvianWindows: hideVitruvianWindows,
             protectedWindowIDs: { [weak self] in self?.protectedWindowIDs ?? [] },
             purpose: mode == .scrolling ? strings.scrollingCaptureTitle : nil,
@@ -338,7 +335,7 @@ package final class ScreenshotService: ObservableObject {
         let displayID = screen.displayID
         let scale = screen.scale
         let frame = screen.frame
-        let includePointer = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotIncludePointer)
+        let includePointer = UserDefaults.standard[Preferences.screenshotIncludePointer]
         let hideWindows = hideVitruvianWindows
         let protectedIDs = protectedWindowIDs
         directCaptureTask = Task { @MainActor [weak self] in
@@ -512,7 +509,7 @@ package final class ScreenshotService: ObservableObject {
         steps.beginLatest(capture)
         steps.closePreview()
         steps.record(capture)
-        if defaults.bool(forKey: DefaultsKey.screenshotCopyToClipboard) {
+        if defaults[Preferences.screenshotCopyToClipboard] {
             steps.autoCopy(capture)
         }
         let defaultAction = steps.defaultAction()
@@ -794,7 +791,7 @@ package final class ScreenshotService: ObservableObject {
     /// would only repeat that. A failure still beeps, since nothing else
     /// would reveal an empty clipboard before the paste.
     private func autoCopy(_ capture: ScreenshotSelectionController.Capture) {
-        let downscale = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotDownscale)
+        let downscale = UserDefaults.standard[Preferences.screenshotDownscale]
         guard let folder = ScreenshotSupport.copiedFilesDirectory() else {
             NSSound.beep()
             return
@@ -841,7 +838,7 @@ package final class ScreenshotService: ObservableObject {
     private func shareDirect(_ capture: ScreenshotSelectionController.Capture,
                              duration: ScreenshotShareDuration,
                              completion: @escaping @MainActor (ScreenshotShareRecord?) -> Void) {
-        let downscale = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotDownscale)
+        let downscale = UserDefaults.standard[Preferences.screenshotDownscale]
         Task { @MainActor [weak self] in
             guard let self else {
                 completion(nil)
@@ -939,7 +936,7 @@ package final class ScreenshotService: ObservableObject {
         -> ScreenshotRenderer.Export? {
         Self.flatten(
             capture,
-            downscaleTo1x: UserDefaults.standard.bool(forKey: DefaultsKey.screenshotDownscale))
+            downscaleTo1x: UserDefaults.standard[Preferences.screenshotDownscale])
     }
 
     nonisolated private static func flatten(_ capture: ScreenshotSelectionController.Capture,

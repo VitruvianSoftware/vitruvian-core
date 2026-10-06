@@ -46,7 +46,7 @@ package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTra
                     NotchSupport.showsFiles()
                         && AppFeature.mediaTools.isAvailable && AppFeature.shelf.isAvailable
                 },
-                shelfEnabled: { UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) })
+                shelfEnabled: { UserDefaults.standard[Preferences.shelfEnabled] })
         }
     }
 

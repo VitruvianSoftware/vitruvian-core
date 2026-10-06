@@ -332,18 +332,18 @@ package final class DockPreviewService: ObservableObject {
     }
 
     package func syncWithPreferences() {
-        if !UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewKeepDockVisible),
+        if !UserDefaults.standard[Preferences.dockPreviewKeepDockVisible],
            dockAutohideHold.isHolding {
             endSession()
         }
-        let freshScope = UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly)
+        let freshScope = UserDefaults.standard[Preferences.dockPreviewCurrentSpaceOnly]
         if freshScope != currentSpaceOnly {
             currentSpaceOnly = freshScope
             endSession()
             // Pinned panels pick up the new scope on their existing refresh timer.
         }
         let enabled = AppFeature.dockPreview.isAvailable
-            && UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewEnabled)
+            && UserDefaults.standard[Preferences.dockPreviewEnabled]
         cachedPreferences = readDockPreferences()
         dockAutohide = cachedPreferences?.autohide ?? false
 
@@ -447,7 +447,7 @@ package final class DockPreviewService: ObservableObject {
     }
 
     package func close(_ item: SwitcherItem) {
-        close(item, quitAppOnClose: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewQuitAppOnClose))
+        close(item, quitAppOnClose: UserDefaults.standard[Preferences.dockPreviewQuitAppOnClose])
     }
 
     private func close(_ item: SwitcherItem, quitAppOnClose: Bool) {
@@ -920,7 +920,7 @@ package final class DockPreviewService: ObservableObject {
         let windows = WindowEnumerator.listWindowsForDockPreview(for: pid, maximumCount: 12)
             .filter { $0.windowID != nil }
         let order = DockPreviewWindowOrder.fromDefaults(
-            orderByCreation: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewOrderByCreation))
+            orderByCreation: UserDefaults.standard[Preferences.dockPreviewOrderByCreation])
         return DockPreviewSupport.orderedWindows(windows, order: order)
     }
 
@@ -980,7 +980,7 @@ package final class DockPreviewService: ObservableObject {
         }
 
         if hit.preferences.autohide,
-           UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewKeepDockVisible) {
+           UserDefaults.standard[Preferences.dockPreviewKeepDockVisible] {
             dockHold.begin()
         }
         showPanel(for: hit, itemCount: list.count)
@@ -1738,7 +1738,7 @@ package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     }
 
     package func close(_ item: SwitcherItem) {
-        close(item, quitAppOnClose: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewQuitAppOnClose))
+        close(item, quitAppOnClose: UserDefaults.standard[Preferences.dockPreviewQuitAppOnClose])
     }
 
     private func close(_ item: SwitcherItem, quitAppOnClose: Bool) {
@@ -1868,8 +1868,7 @@ package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
             WindowEnumerator.listWindowsForDockPreview(for: appPID, maximumCount: Self.maximumWindowCount)
                 .filter { $0.windowID != nil },
             order: DockPreviewWindowOrder.fromDefaults(
-                orderByCreation: UserDefaults.standard.bool(
-                    forKey: DefaultsKey.dockPreviewOrderByCreation)))
+                orderByCreation: UserDefaults.standard[Preferences.dockPreviewOrderByCreation]))
         guard !refreshed.isEmpty else {
             closePreviewPanel()
             return

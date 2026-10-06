@@ -170,14 +170,14 @@ package final class ClipboardHistoryService: ObservableObject {
 
     package init(environment: Environment) {
         self.environment = environment
-        quickPreviewPresented = environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryQuickPreview)
+        quickPreviewPresented = environment.defaults[Preferences.clipboardHistoryQuickPreview]
         load()
     }
 
     @MainActor
     package func syncWithPreferences() {
         if AppFeature.clipboardHistory.isAvailable,
-           environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled) {
+           environment.defaults[Preferences.clipboardHistoryEnabled] {
             start()
             syncHotkey()
         } else {
@@ -789,8 +789,7 @@ package final class ClipboardHistoryService: ObservableObject {
         // fresh baseline before capturing. Old completions cannot consume it.
         let baseline = captureState.needsBaseline
         let sinceChangeCount = lastChangeCount
-        let includeImagesFiles = environment.defaults.bool(
-            forKey: DefaultsKey.clipboardHistoryIncludeImagesFiles)
+        let includeImagesFiles = environment.defaults[Preferences.clipboardHistoryIncludeImagesFiles]
         GeneralPasteboardAccess.shared.async(timeout: Self.pasteboardTimeout, { isExpired
             -> (changeCount: Int, content: CapturedContent?)? in
             let changeCount = NSPasteboard.general.changeCount
@@ -1001,7 +1000,7 @@ package final class ClipboardHistoryService: ObservableObject {
     private func promote(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= ClipboardHistoryEditing.maxCharacters else { return }
-        if environment.defaults.bool(forKey: DefaultsKey.clipboardHistorySkipSensitive),
+        if environment.defaults[Preferences.clipboardHistorySkipSensitive],
            looksSensitive(text) {
             return
         }
@@ -1209,8 +1208,8 @@ package final class ClipboardHistoryService: ObservableObject {
     // MARK: - Shortcut
 
     package func syncHotkey() {
-        let wanted = environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
-            && environment.defaults.bool(forKey: DefaultsKey.clipboardHistoryShortcutEnabled)
+        let wanted = environment.defaults[Preferences.clipboardHistoryEnabled]
+            && environment.defaults[Preferences.clipboardHistoryShortcutEnabled]
         wanted ? registerHotkey() : unregisterHotkey()
     }
 
@@ -1278,7 +1277,7 @@ package final class ClipboardHistoryService: ObservableObject {
     package func setQuickPreviewPresented(_ presented: Bool) {
         guard presented != quickPreviewPresented else { return }
         quickPreviewPresented = presented
-        environment.defaults.set(presented, forKey: DefaultsKey.clipboardHistoryQuickPreview)
+        environment.defaults[Preferences.clipboardHistoryQuickPreview] = presented
         guard let panel, panel.isVisible else { return }
         let previousFrame = panel.frame
         resize(panel, to: preferredPanelSize(visibleFrame: panel.screen?.visibleFrame

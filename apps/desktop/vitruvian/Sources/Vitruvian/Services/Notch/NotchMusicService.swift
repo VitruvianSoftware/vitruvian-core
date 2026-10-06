@@ -224,7 +224,7 @@ package final class NotchMusicService: ObservableObject {
     }
 
     package func start() {
-        let includeOtherPlayers = environment.defaults.bool(forKey: DefaultsKey.notchIncludeOtherPlayers)
+        let includeOtherPlayers = environment.defaults[Preferences.notchIncludeOtherPlayers]
         if wantsPlayback {
             guard self.includeOtherPlayers != includeOtherPlayers else { return }
             stop()

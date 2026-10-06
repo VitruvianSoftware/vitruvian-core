@@ -325,7 +325,7 @@ package enum ScreenshotSupport {
     ) -> ConfirmationPreviewPresentationPolicy {
         confirmationPreviewPresentationPolicy(
             dismissInterval: dismissInterval,
-            prefersFocus: defaults.bool(forKey: DefaultsKey.screenshotPreviewTakesFocus))
+            prefersFocus: defaults[Preferences.screenshotPreviewTakesFocus])
     }
 
     package static func automaticActionSucceeded(_ action: ScreenshotDefaultAction,
@@ -369,7 +369,7 @@ package enum ScreenshotSupport {
                                          defaults: UserDefaults) -> QuickPreviewPresentation {
         guard shouldShowQuickPreview(
             defaultAction: defaultAction, saved: saved, copied: copied,
-            confirmationEnabled: defaults.bool(forKey: DefaultsKey.screenshotPreviewEnabled))
+            confirmationEnabled: defaults[Preferences.screenshotPreviewEnabled])
         else { return .hidden }
         guard automaticActionSucceeded(defaultAction, saved: saved, copied: copied) else {
             return .shown(dismissInterval: recoveryPreviewDismissInterval)

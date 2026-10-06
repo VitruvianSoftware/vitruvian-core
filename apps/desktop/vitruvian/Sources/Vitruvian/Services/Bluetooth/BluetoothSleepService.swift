@@ -43,7 +43,7 @@ package final class BluetoothSleepService {
         // nothing Vitruvian took away is ever kept.
         restoreIfOwed()
         if AppFeature.bluetoothSleep.isAvailable,
-           UserDefaults.standard.bool(forKey: DefaultsKey.bluetoothSleepEnabled) {
+           UserDefaults.standard[Preferences.bluetoothSleepEnabled] {
             start()
         } else {
             stop()
@@ -78,19 +78,19 @@ package final class BluetoothSleepService {
         let defaults = UserDefaults.standard
         let plan = BluetoothSleepSupport.sleepPlan(
             isPoweredOn: Self.isPoweredOn,
-            restoresOnWake: defaults.bool(forKey: DefaultsKey.bluetoothSleepRestoreOnWake))
-        defaults.set(plan.owesRestore, forKey: DefaultsKey.bluetoothSleepRestorePending)
+            restoresOnWake: defaults[Preferences.bluetoothSleepRestoreOnWake])
+        defaults[Preferences.bluetoothSleepRestorePending] = plan.owesRestore
         if plan.powersOff { Self.setPowered(false) }
     }
 
     private func restoreIfOwed() {
         let defaults = UserDefaults.standard
         let restores = BluetoothSleepSupport.restores(
-            owesRestore: defaults.bool(forKey: DefaultsKey.bluetoothSleepRestorePending),
+            owesRestore: defaults[Preferences.bluetoothSleepRestorePending],
             isPoweredOn: Self.isPoweredOn)
         // The debt is settled either way: Bluetooth the user switched on
         // themselves cancels it instead of waiting for the next sleep.
-        defaults.set(false, forKey: DefaultsKey.bluetoothSleepRestorePending)
+        defaults[Preferences.bluetoothSleepRestorePending] = false
         if restores { Self.setPowered(true) }
     }
 

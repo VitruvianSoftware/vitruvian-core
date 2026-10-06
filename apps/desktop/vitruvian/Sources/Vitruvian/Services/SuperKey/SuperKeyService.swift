@@ -196,7 +196,7 @@ package final class SuperKeyService: ObservableObject {
         self.modifiers = modifiers
         self.source = source
         let enabled = AppFeature.superKey.isAvailable
-            && defaults.bool(forKey: DefaultsKey.superKeyEnabled)
+            && defaults[Preferences.superKeyEnabled]
             && SessionActivity.shared.isActive
         syncExceptionMonitoring(enabled: enabled && system.isTrusted())
         guard enabled, !isPausedForApplication else {

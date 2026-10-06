@@ -84,7 +84,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
 
     package func syncWithPreferences() {
         let wanted = environment.mixerAvailable()
-            && (environment.defaults.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
+            && (environment.defaults[Preferences.preciseVolumeRollerEnabled]
                 || environment.islandTakesVolume())
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
                                                accessibilityGranted: environment.accessibilityGranted(),
@@ -167,7 +167,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         if routeNotchVolume(nsEvent, event: event) { return nil }
-        guard environment.defaults.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled),
+        guard environment.defaults[Preferences.preciseVolumeRollerEnabled],
               let volumePress = Self.volumePress(fromData1: nsEvent.data1) else {
             return Unmanaged.passUnretained(event)
         }
@@ -207,7 +207,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
             }
             return true
         }
-        let precise = environment.defaults.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
+        let precise = environment.defaults[Preferences.preciseVolumeRollerEnabled]
         if precise, let direction = key.rollerDirection,
            !gate.accepts(direction, at: ProcessInfo.processInfo.systemUptime) { return true }
         feedbackStep &+= 1

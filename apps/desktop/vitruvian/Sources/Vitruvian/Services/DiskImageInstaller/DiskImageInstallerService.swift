@@ -154,8 +154,7 @@ package final class DiskImageInstallerService {
             else { return false }
             return Self.validBundle(at: url)
         }
-        let useUserApplications = UserDefaults.standard.bool(
-            forKey: DefaultsKey.diskImageInstallerUseUserApplications)
+        let useUserApplications = UserDefaults.standard[Preferences.diskImageInstallerUseUserApplications]
         guard apps.count == 1, let appURL = apps.first,
               let collisionURLs = DiskImageInstallerSupport.collisionURLs(for: appURL,
                 useUserApplications: useUserApplications,
@@ -228,15 +227,15 @@ package final class DiskImageInstallerService {
         alert.addButton(withTitle: L10n.shared.s.uninstallerCancel)
 
         let trashDownload = NSButton(checkboxWithTitle: strings.trashDownloadOption, target: nil, action: nil)
-        trashDownload.state = defaults.bool(forKey: DefaultsKey.diskImageInstallerTrashesDownload) ? .on : .off
+        trashDownload.state = defaults[Preferences.diskImageInstallerTrashesDownload] ? .on : .off
         let revealApp = NSButton(checkboxWithTitle: strings.revealAppOption, target: nil, action: nil)
-        revealApp.state = defaults.bool(forKey: DefaultsKey.diskImageInstallerRevealsApp) ? .on : .off
+        revealApp.state = defaults[Preferences.diskImageInstallerRevealsApp] ? .on : .off
         let destinationPrompt = DiskImageInstallDestinationPrompt(alert: alert, strings: strings,
                                                                   displayName: displayName)
         let userApplications = NSButton(checkboxWithTitle: strings.useUserApplications,
                                         target: destinationPrompt,
                                         action: #selector(DiskImageInstallDestinationPrompt.updateDestination(_:)))
-        userApplications.state = defaults.bool(forKey: DefaultsKey.diskImageInstallerUseUserApplications) ? .on : .off
+        userApplications.state = defaults[Preferences.diskImageInstallerUseUserApplications] ? .on : .off
         destinationPrompt.updateDestination(userApplications)
         let options = NSStackView(views: [trashDownload, revealApp, userApplications])
         options.orientation = .vertical
@@ -253,9 +252,9 @@ package final class DiskImageInstallerService {
             let choice = InstallChoice(trashesDownload: trashDownload.state == .on,
                                        revealsApp: revealApp.state == .on,
                                        usesUserApplications: userApplications.state == .on)
-            defaults.set(choice.trashesDownload, forKey: DefaultsKey.diskImageInstallerTrashesDownload)
-            defaults.set(choice.revealsApp, forKey: DefaultsKey.diskImageInstallerRevealsApp)
-            defaults.set(choice.usesUserApplications, forKey: DefaultsKey.diskImageInstallerUseUserApplications)
+            defaults[Preferences.diskImageInstallerTrashesDownload] = choice.trashesDownload
+            defaults[Preferences.diskImageInstallerRevealsApp] = choice.revealsApp
+            defaults[Preferences.diskImageInstallerUseUserApplications] = choice.usesUserApplications
             answer(choice)
         }
         if let show {

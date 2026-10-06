@@ -63,7 +63,7 @@ package final class NotchDownloadService: ObservableObject {
 
     package func syncWithPreferences() {
         guard NotchSupport.isEnabled(), AppFeature.notchDownloads.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.notchDownloadsEnabled),
+              UserDefaults.standard[Preferences.notchDownloadsEnabled],
               NotchSupport.modules().contains(.downloads) else { stop(); return }
         guard folder == nil else { return }
         guard let bookmark = UserDefaults.standard.data(forKey: DefaultsKey.notchDownloadsFolderBookmark) else {
@@ -88,7 +88,7 @@ package final class NotchDownloadService: ObservableObject {
     private func adoptFolder(bookmark: Data) {
         stop()
         UserDefaults.standard.set(bookmark, forKey: DefaultsKey.notchDownloadsFolderBookmark)
-        UserDefaults.standard.set(true, forKey: DefaultsKey.notchDownloadsEnabled)
+        UserDefaults.standard[Preferences.notchDownloadsEnabled] = true
         syncWithPreferences()
         NotchService.shared.syncWithPreferences()
     }
@@ -96,7 +96,7 @@ package final class NotchDownloadService: ObservableObject {
     package func forgetFolder() {
         stop()
         UserDefaults.standard.removeObject(forKey: DefaultsKey.notchDownloadsFolderBookmark)
-        UserDefaults.standard.set(false, forKey: DefaultsKey.notchDownloadsEnabled)
+        UserDefaults.standard[Preferences.notchDownloadsEnabled] = false
         folderName = nil
         folderUnavailable = false
     }

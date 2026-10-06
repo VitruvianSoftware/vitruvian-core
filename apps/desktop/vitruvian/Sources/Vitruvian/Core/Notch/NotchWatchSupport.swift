@@ -181,7 +181,7 @@ package enum NotchWatchSupport {
 
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchWatch.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchWatchEnabled)
+            && defaults[Preferences.notchWatchEnabled]
             && NotchSupport.modules(in: defaults).contains(.watch)
     }
 

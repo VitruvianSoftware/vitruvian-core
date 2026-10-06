@@ -106,12 +106,12 @@ package final class MiddleClickService: ObservableObject {
     package func syncWithPreferences() {
         let defaults = UserDefaults.standard
         let enabled = AppFeature.middleClick.isAvailable
-            && defaults.bool(forKey: DefaultsKey.middleClickEnabled)
+            && defaults[Preferences.middleClickEnabled]
         let tap = enabled ? Defaults.sanitizedMiddleClickTapFingers(
             defaults.integer(forKey: DefaultsKey.middleClickTapFingers)) : 0
         let radialMenuTap = MiddleClickSupport.radialMenuTapFingers(
             radialMenuWantsTap: AppFeature.radialMenu.isAvailable
-                && defaults.bool(forKey: DefaultsKey.radialMenuEnabled)
+                && defaults[Preferences.radialMenuEnabled]
                 && RadialMenuSupport.decodeProfiles(defaults.data(forKey: DefaultsKey.radialMenuProfiles),
                                                     defaults: defaults).contains(where: \.trackpadTap),
             middleClickTapFingers: tap)
@@ -487,7 +487,7 @@ package final class MiddleClickService: ObservableObject {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             releaseHeldMiddleButton()
             let enabled = AppFeature.middleClick.isAvailable
-                && UserDefaults.standard.bool(forKey: DefaultsKey.middleClickEnabled)
+                && UserDefaults.standard[Preferences.middleClickEnabled]
                 || stateLock.withLock { radialMenuTapFingers > 0 }
             let shouldRearm = SessionActivitySupport.tapShouldRun(
                 featureWanted: enabled,

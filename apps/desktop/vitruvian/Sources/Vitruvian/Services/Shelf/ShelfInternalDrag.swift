@@ -124,13 +124,13 @@ package final class ShelfInternalDrag {
         if ShelfInteractionSupport.shouldRemoveAfterDrag(
             dropAccepted: dropAccepted,
             draggedItemCount: removableIDs.count,
-            removeAfterDrop: host.defaults.bool(forKey: DefaultsKey.shelfRemoveAfterDrop)) {
+            removeAfterDrop: host.defaults[Preferences.shelfRemoveAfterDrop]) {
             host.removeItems(removableIDs)
         }
         if ShelfInteractionSupport.shouldCloseAfterDrag(
             dropAccepted: dropAccepted,
             draggedItemCount: draggedIDs.count,
-            closeAfterDrop: host.defaults.bool(forKey: DefaultsKey.shelfCloseAfterDrop),
+            closeAfterDrop: host.defaults[Preferences.shelfCloseAfterDrop],
             pinned: fromIsland ? host.island().pinned : host.floatingIsPinned()) {
             if fromIsland {
                 let island = host.island()

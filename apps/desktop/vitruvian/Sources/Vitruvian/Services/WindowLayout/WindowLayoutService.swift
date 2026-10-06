@@ -99,22 +99,22 @@ package final class WindowLayoutService: ObservableObject {
             accessibilityGranted: AXIsProcessTrusted(),
             sessionIsActive: SessionActivity.shared.isActive)
         let shortcutsEnabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.windowLayoutShortcutsEnabled)
+            && UserDefaults.standard[Preferences.windowLayoutShortcutsEnabled]
             && trusted
         let directionalEnabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.windowDirectionalEnabled)
+            && UserDefaults.standard[Preferences.windowDirectionalEnabled]
             && trusted
         let gestureEnabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.windowGestureEnabled)
+            && UserDefaults.standard[Preferences.windowGestureEnabled]
             && trusted
         let edgeSnapEnabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.windowEdgeSnapEnabled)
+            && UserDefaults.standard[Preferences.windowEdgeSnapEnabled]
             && !enabledEdgeSnapZones.isEmpty
             && !WindowEdgeSnapSupport.isSystemTilingEnabled
             && trusted
         // The pointer shortcut needs no Accessibility, so it counts on its own.
         let pointerEnabled = available
-            && UserDefaults.standard.bool(forKey: DefaultsKey.pointerDisplayEnabled)
+            && UserDefaults.standard[Preferences.pointerDisplayEnabled]
         syncIgnoredAppsActivationObserver(inputsEnabled: shortcutsEnabled || directionalEnabled
                                           || gestureEnabled || edgeSnapEnabled || pointerEnabled)
         let frontmost = NSWorkspace.shared.frontmostApplication
@@ -184,9 +184,9 @@ package final class WindowLayoutService: ObservableObject {
     package func shortcutConflictTitle(_ shortcut: GlobalShortcut, excluding excluded: WindowLayoutAction?,
                                includingDirectional: Bool = true) -> String? {
         guard AppFeature.windowLayout.isAvailable else { return nil }
-        let actionsEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.windowLayoutShortcutsEnabled)
+        let actionsEnabled = UserDefaults.standard[Preferences.windowLayoutShortcutsEnabled]
         let directional = includingDirectional
-            && UserDefaults.standard.bool(forKey: DefaultsKey.windowDirectionalEnabled)
+            && UserDefaults.standard[Preferences.windowDirectionalEnabled]
             ? UserDefaults.standard.string(forKey: DefaultsKey.windowDirectionalShortcut)
                 .flatMap(GlobalShortcut.init(storageValue:)) : nil
         guard actionsEnabled || directional != nil else { return nil }
@@ -1235,7 +1235,7 @@ package final class WindowLayoutService: ObservableObject {
             cancelEdgeSnapTracking()
             edgeSnapSequenceSuppressed = false
             guard AppFeature.windowLayout.isAvailable,
-                  UserDefaults.standard.bool(forKey: DefaultsKey.windowEdgeSnapEnabled),
+                  UserDefaults.standard[Preferences.windowEdgeSnapEnabled],
                   !enabledEdgeSnapZones.isEmpty,
                   !WindowEdgeSnapSupport.isSystemTilingEnabled,
                   AXIsProcessTrusted(),
@@ -1344,7 +1344,7 @@ package final class WindowLayoutService: ObservableObject {
     }
 
     private func edgeSnapConflictsWithWindowGesture(flags: CGEventFlags) -> Bool {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.windowGestureEnabled) else { return false }
+        guard UserDefaults.standard[Preferences.windowGestureEnabled] else { return false }
         let move = WindowGestureSupport.modifiers(
             from: UserDefaults.standard.string(forKey: DefaultsKey.windowGestureModifiers)
         )
@@ -1453,7 +1453,7 @@ package final class WindowLayoutService: ObservableObject {
     private func applyEdgeSnap(_ drag: WindowEdgeSnapDrag,
                                target: WindowEdgeSnapTarget) {
         guard AppFeature.windowLayout.isAvailable,
-              UserDefaults.standard.bool(forKey: DefaultsKey.windowEdgeSnapEnabled),
+              UserDefaults.standard[Preferences.windowEdgeSnapEnabled],
               enabledEdgeSnapZones.contains(target.zone),
               !WindowEdgeSnapSupport.isSystemTilingEnabled,
               AXIsProcessTrusted(),
@@ -1840,7 +1840,7 @@ package final class WindowLayoutService: ObservableObject {
         // at pointer speed and the flag only needs to move twice.
         gestureAssistiveMode?.resume()
         gestureAssistiveMode = EnhancedUserInterfaceSuspension.suspend(forAppOf: pending.window)
-        if UserDefaults.standard.bool(forKey: DefaultsKey.windowGestureRaiseWindow) {
+        if UserDefaults.standard[Preferences.windowGestureRaiseWindow] {
             _ = pending.app.activate(options: [])
             AXUIElementPerformAction(pending.window, kAXRaiseAction as CFString)
         }

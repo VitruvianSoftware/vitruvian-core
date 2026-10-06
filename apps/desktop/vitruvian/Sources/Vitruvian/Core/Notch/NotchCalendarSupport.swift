@@ -145,7 +145,7 @@ package enum NotchCalendarSupport {
     package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults)
             && AppFeature.notchCalendar.isAvailable(in: defaults)
-            && defaults.bool(forKey: DefaultsKey.notchCalendarEnabled)
+            && defaults[Preferences.notchCalendarEnabled]
             && NotchSupport.modules(in: defaults).contains(.calendar)
     }
 
@@ -156,11 +156,11 @@ package enum NotchCalendarSupport {
     /// An event chosen from its menu counts down even while the countdown
     /// for every event is off.
     package static func showsCountdown(chosen: Bool, in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && (chosen || defaults.bool(forKey: DefaultsKey.notchCalendarCountdown))
+        isEnabled(in: defaults) && (chosen || defaults[Preferences.notchCalendarCountdown])
     }
 
     package static func showsTimeLeft(in defaults: UserDefaults = .standard) -> Bool {
-        isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchCalendarTimeLeft)
+        isEnabled(in: defaults) && defaults[Preferences.notchCalendarTimeLeft]
     }
 
     /// Names the event a countdown was chosen for across refreshes, edits and
