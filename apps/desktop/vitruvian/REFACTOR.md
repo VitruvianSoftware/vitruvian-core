@@ -5425,7 +5425,9 @@ across 118 files, and 43 writes became `[Preferences.x] = value`.
   - 14 in `Core/Defaults.swift`.
 - **Tests:** a test that drives a service over a fresh suite now sees a
   switch's declared default where it saw `false`. The notch tests already
-  copy the registered `notch` defaults into their suite.
+  copy the registered `notch` defaults into their suite. One test relied on
+  `false`: the disk image install prompt's, which now sets all three of its
+  options.
 - **Checks that quoted the old spelling:** the smooth-scroll rule in
   `bazel/source_lints.py` and one mutation in `Tests/mutation_checks.py`
   now name `Preferences.x`.
