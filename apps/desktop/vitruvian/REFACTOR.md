@@ -5172,10 +5172,10 @@ runs under Swift Testing alone, and the binary's own runner is gone.
   It has not worked since the tests import the app's modules (step 3.2e),
   and it is left as upstream wrote it.
 
-Landed (7h, source pins turned behavioral, first part): 69 reads of source
+Landed (7h, source pins turned behavioral, first part): 98 reads of source
 files as text become checks that run the code, in the resource, recorder,
 command bar, pointer-input, shelf, overlay, window layout, app management,
-storage, utilities and update suites. 64 remain.
+storage, utilities, update, screenshot and switcher suites. 35 remain.
 
 - **Resources as data:** `Info.plist`, the entitlements, the fan helper's
   launchd plist and every `InfoPlist.strings` are parsed as property lists
@@ -5225,6 +5225,23 @@ storage, utilities and update suites. 64 remain.
   `LaunchAtLogin.setEnabled(_:system:)`. `bazel/sync_sources.py --check`
   now also fails when `build.sh` stops compiling or staging the Now Playing
   adapter, instead of a test reading `build.sh`.
+- **Screenshots:** `ScreenshotCapturePolicy.attachedCapturePlan` and
+  `attachedCaptureDisplayIndex` for the window capture,
+  `ScreenshotService.presentRoutedPreview`, the capture settings'
+  `TopSection`, the history's shortcut, panel and activation observer, the
+  selection controller's guide and loupe read through its `Environment`,
+  the preview's `Presentation` environment and `shareLinkClick`, the
+  editor model driven through drags, taps and undo, the recorder's
+  `outputSizeText` and `lookCards`, and a `withScratch` helper that hands
+  scratch files back before the check that follows.
+- **Switcher:** `SwitcherSessionOpening`, `WindowEnumerator.DisplayScope`,
+  `SwitcherPreferences` and `shaped(_:by:)`, `WindowActivator.PlacementCalls`
+  and `focusAfterSpaceHop`, `WindowPreviewProvider.listOnWarmQueue`,
+  `ActivationHandoff.handOff` and `isHandoffActivation`,
+  `DockClickService.activateCooperatively`, `DockPreviewService.dockElement`,
+  `MenuPanelView.heightCap`, and the status item's recovery in the new
+  `StatusItemRecovery`, which the app delegate calls. `ScrollingTitle` is
+  rendered at each alignment.
 - **Floating panels:** every surface that used to be scanned for a plain
   `NSPanel` builds its panel through a `package` factory, and
   `OverlayPanelTests` builds each one and checks that it is an
@@ -5240,7 +5257,7 @@ storage, utilities and update suites. 64 remain.
   `MixerRender.renderCycle` and bounded `MixerEngineTeardown` queue, and
   `KeepAwakeMatchModePicker`, rendered in a hosting view.
 
-What step 7 leaves: 64 reads of source files as text after 7h, counted in
+What step 7 leaves: 35 reads of source files as text after 7h, counted in
 `Tests/source_pins.txt` (7e). They pin code that has not moved: SwiftUI view
 structure, live wiring to the system, and resources and build files. Each
 converts when its code moves behind a seam, and the ledger only lets the

@@ -2257,7 +2257,24 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Update/UpdateShowcaseMedia.swift`, `Services/LaunchAtLogin.swift`.
     `UninstallerSupport.offeredApplications()` without arguments and
     `PanelUninstallerView.selectFirstApp`, now unused, are removed.
+  - Screenshots: `Services/QuickTools/QuickToolHotkey.swift`,
+    `RecentCaptureService.swift`, `ScreenshotCaptureEngine.swift`,
+    `ScreenshotCapturePolicy.swift`, `ScreenshotQuickPreviewController.swift`,
+    `ScreenshotSelectionController.swift`, `ScreenshotService.swift`,
+    `UI/Recorder/RecorderEditorView.swift` and `RecorderInspector.swift`,
+    `UI/Screenshot/ScreenshotEditorView.swift`,
+    `UI/Settings/ScreenCaptureSettings.swift`.
+  - Switcher: `Core/Switcher/SwitcherSupport.swift`,
+    `Services/ActivationHandoff.swift`, `Services/DockClick/DockClickService.swift`,
+    `Services/DockPreview/DockPreviewService.swift`, and in
+    `Services/Switcher/`: `AppSwitcher.swift`, `WindowActivator.swift`,
+    `WindowEnumerator.swift`, `WindowPreviewProvider.swift`,
+    `WindowUseTracker.swift`; `UI/MenuPanel/MenuPanelView.swift`,
+    `UI/Switcher/ScrollingTitle.swift`, `UI/Theme.swift`. The status item's
+    recovery in `App/AppDelegate.swift` and `App/StatusItemController.swift`
+    moves into the new `Services/MenuBar/StatusItemRecovery.swift`.
   - The suites that read those files as text check the code instead:
+    `ScreenshotFeatureTests`, `SwitcherModelFeatureTests`,
     `AppManagementFeatureTests`, `StorageFeatureTests`,
     `UtilitiesFeatureTests`, `UpdateFeatureTests`, `ShelfFeatureTests`, `OverlayPanelTests`, `ScrollHorizontalModifierTests`,
     `NotchScreenRefreshTests`, `NotchWatchTests`, `ClipboardFeatureTests`,
