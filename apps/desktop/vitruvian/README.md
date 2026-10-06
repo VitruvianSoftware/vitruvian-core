@@ -61,8 +61,10 @@ checkout of the tag:
 GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian:publish
 ```
 
-Tags before `vitruvian-v3.6.0` predate `publish.sh` and cannot be published
-this way.
+Tags before `vitruvian-v3.7.0` cannot be published this way: earlier ones
+predate `publish.sh`, and `vitruvian-v3.6.0` still staged the app under
+`build/`, which is the package's `BUILD` file on macOS. The first release with
+a DMG is `vitruvian-v3.7.0`.
 
 ## Build and test
 
