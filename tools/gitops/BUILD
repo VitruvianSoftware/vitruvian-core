@@ -10,7 +10,10 @@ load("@aspect_rules_py//py:defs.bzl", "py_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-exports_files(["gitops-cmd.sh", "fedora_power_cycle.py"])
+exports_files([
+    "gitops-cmd.sh",
+    "fedora_power_cycle.py",
+])
 
 # Out-of-band power-cycle utility for host `fedora` via Kasa HS300 smart power strip.
 #   bazel run //tools/gitops:fedora-power-cycle -- --status

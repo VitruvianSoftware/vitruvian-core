@@ -93,7 +93,10 @@ def get_relay_state(ip: str, child_id: str) -> int:
     sysinfo = send_kasa_command(ip, {"system": {"get_sysinfo": {}}})
     children = sysinfo.get("system", {}).get("get_sysinfo", {}).get("children", [])
     for child in children:
-        if child.get("id") == child_id or OUTLET_ALIAS_MATCH.lower() in child.get("alias", "").lower():
+        if (
+            child.get("id") == child_id
+            or OUTLET_ALIAS_MATCH.lower() in child.get("alias", "").lower()
+        ):
             return child.get("state", 0)
     return 0
 
@@ -107,13 +110,26 @@ def set_relay_state(ip: str, child_id: str, state: int) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Power-cycle host fedora via Kasa HS300 power strip.")
-    parser.add_argument("--ip", default=HS300_DEFAULT_IP, help="IP of Kasa HS300 power strip")
-    parser.add_argument("--status", action="store_true", help="Print current outlet power state")
-    parser.add_argument("--cycle", action="store_true", help="Power-cycle outlet (OFF, wait, ON)")
+    parser = argparse.ArgumentParser(
+        description="Power-cycle host fedora via Kasa HS300 power strip."
+    )
+    parser.add_argument(
+        "--ip", default=HS300_DEFAULT_IP, help="IP of Kasa HS300 power strip"
+    )
+    parser.add_argument(
+        "--status", action="store_true", help="Print current outlet power state"
+    )
+    parser.add_argument(
+        "--cycle", action="store_true", help="Power-cycle outlet (OFF, wait, ON)"
+    )
     parser.add_argument("--off", action="store_true", help="Turn outlet OFF")
     parser.add_argument("--on", action="store_true", help="Turn outlet ON")
-    parser.add_argument("--wait", type=int, default=8, help="Seconds to wait between OFF and ON (default: 8)")
+    parser.add_argument(
+        "--wait",
+        type=int,
+        default=8,
+        help="Seconds to wait between OFF and ON (default: 8)",
+    )
     args = parser.parse_args()
 
     child_id = find_child_id(args.ip)
@@ -137,14 +153,18 @@ def main():
         sys.exit(0)
 
     # Default to power-cycle if --cycle or no explicit action was specified
-    print(f"Power-cycling host 'fedora' via outlet '{OUTLET_ALIAS_MATCH}' ({args.ip})...")
+    print(
+        f"Power-cycling host 'fedora' via outlet '{OUTLET_ALIAS_MATCH}' ({args.ip})..."
+    )
     print("Cutting power (relay state -> 0)...")
     set_relay_state(args.ip, child_id, 0)
     print(f"Waiting {args.wait} seconds...")
     time.sleep(args.wait)
     print("Restoring power (relay state -> 1)...")
     set_relay_state(args.ip, child_id, 1)
-    print("Power-cycle complete. Host 'fedora' will reboot and rejoin the cluster automatically.")
+    print(
+        "Power-cycle complete. Host 'fedora' will reboot and rejoin the cluster automatically."
+    )
 
 
 if __name__ == "__main__":
