@@ -894,7 +894,7 @@ def smooth_scroll_disabled_tap_rearms_only_when_wanted(repo):
         "tapDisabledByUserInput",
         "stopGlide()",
         "AppFeature.smoothScroll.isAvailable",
-        "DefaultsKey.smoothScrollEnabled",
+        "Preferences.smoothScrollEnabled",
         "AXIsProcessTrusted()",
         "SessionActivity.shared.isActive",
     ]
@@ -1239,6 +1239,123 @@ def unit_tests_read_no_source_text(repo):
     return problems
 
 
+# --- Preferences ----------------------------------------------------------------
+
+PREFERENCES_PATH = APP_PREFIX + "Core/Preferences.swift"
+# Registration, and the migrations that run before it: they read what is
+# stored, not what a preference falls back to, so they reach keys by name.
+KEYED_PREFERENCE_PATHS = {
+    APP_PREFIX + "Core/Defaults.swift",
+    APP_PREFIX + "Core/DefaultsKey.swift",
+    PREFERENCES_PATH,
+}
+
+# How many times the sources still reach a declared preference by its
+# `DefaultsKey`, by the `UserDefaults` call that does it (REFACTOR.md
+# step 8). A slice that moves some to `UserDefaults[Preferences.x]` lowers
+# its count here. The rule fails on one more, so no new access by key comes
+# in, and on one fewer, so each count stays exact.
+PREFERENCE_ACCESS_BY_KEY = {
+    "array": 2,
+    "bool": 0,
+    "data": 8,
+    "dictionary": 6,
+    "double": 21,
+    "integer": 51,
+    "object": 25,
+    "removeObject": 18,
+    "set": 93,
+    "string": 117,
+    "stringArray": 18,
+}
+
+
+def _call_name(text, at):
+    """The name of the call whose parentheses hold position `at`."""
+    depth = 0
+    for index in range(at - 1, -1, -1):
+        character = text[index]
+        if character == ")":
+            depth += 1
+        elif character == "(":
+            if depth == 0:
+                match = re.search(r"(\w+)\s*$", text[:index])
+                return match.group(1) if match else None
+            depth -= 1
+    return None
+
+
+def keyed_preference_access(text, declared):
+    """How many times `text` hands a key in `declared` to one of the
+    `UserDefaults` calls the ledger lists, by call name. Whole-line comments
+    do not count, nor a dictionary keyed by the name."""
+    code = code_without_comments(text.split("\n"))
+    counts = {}
+    for match in re.finditer(r"forKey:\s*DefaultsKey\.(\w+)", code):
+        if match.group(1) not in declared:
+            continue
+        name = _call_name(code, match.start())
+        if name in PREFERENCE_ACCESS_BY_KEY:
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def preferences_are_reached_through_their_type(repo):
+    """Code reads and writes a declared preference through its `Preference`,
+    `UserDefaults[Preferences.x]`, so the value has the preference's type and
+    falls back to its declared default. Only registration and the migrations
+    before it reach a declared key by name (REFACTOR.md step 8)."""
+    problems = []
+    sample = "\n".join(
+        [
+            "let a = defaults.bool(forKey: DefaultsKey.alpha)",
+            "defaults.set(min(1, 2), forKey: DefaultsKey.alpha)",
+            "let b = defaults.string(",
+            '    forKey: DefaultsKey.alpha) ?? ""',
+            "// defaults.bool(forKey: DefaultsKey.alpha) in prose",
+            "let c = defaults[Preferences.alpha]",
+            "let d = defaults.bool(forKey: DefaultsKey.undeclared)",
+            "values.removeValue(forKey: DefaultsKey.alpha)",
+        ]
+    )
+    if keyed_preference_access(sample, {"alpha"}) != {
+        "bool": 1,
+        "set": 1,
+        "string": 1,
+    }:
+        problems.append(
+            "the scan counts each UserDefaults call by name across lines, and "
+            "not prose, typed reads, undeclared keys or a dictionary"
+        )
+    declared = set(
+        re.findall(
+            r"=\s*Preference(?:<[^>]+>)?\(\s*DefaultsKey\.(\w+)",
+            repo.source(PREFERENCES_PATH),
+        )
+    )
+    if not declared:
+        problems.append("the preferences read back from Core/Preferences.swift")
+    counts = {}
+    for path in repo.app_sources():
+        if path in KEYED_PREFERENCE_PATHS:
+            continue
+        for name, count in keyed_preference_access(repo.source(path), declared).items():
+            counts[name] = counts.get(name, 0) + count
+    for name, allowed in sorted(PREFERENCE_ACCESS_BY_KEY.items()):
+        found = counts.get(name, 0)
+        if found > allowed:
+            problems.append(
+                f"{found} {name}(forKey: DefaultsKey.…) on declared preferences, "
+                f"{allowed} allowed: use UserDefaults[Preferences.x]"
+            )
+        elif found < allowed:
+            problems.append(
+                f"{found} {name}(forKey: DefaultsKey.…) on declared preferences: "
+                f"lower PREFERENCE_ACCESS_BY_KEY[{name!r}] from {allowed}"
+            )
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -1273,6 +1390,7 @@ RULES = [
     build_signs_with_a_stable_identity,
     test_types_do_not_shadow_real_ones,
     unit_tests_read_no_source_text,
+    preferences_are_reached_through_their_type,
 ]
 
 
