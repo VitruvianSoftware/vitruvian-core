@@ -2,14 +2,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Vorssaint
 
-# Packages the built app into a styled, distributable DMG
+# Packages a signed app into a styled, distributable DMG
 # (dist/Vitruvian-<version>.dmg): a window with the app icon, an arrow and
-# the Applications folder for drag-and-drop install. Run ./build.sh first.
+# the Applications folder for drag-and-drop install.
+#   Tools/make-dmg.sh <absolute path to the signed Vitruvian.app>
+# Tools/package-release.sh calls it. Nothing here writes into a "build"
+# directory: on macOS's case-insensitive filesystem that name is the package's
+# Bazel BUILD file, so the background renders into this script's own temp dir.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME="Vitruvian"
-APP="build/stage/$APP_NAME.app"
+APP="${1:-}"
+if [[ -z "$APP" ]]; then
+    echo "usage: make-dmg.sh <path to the signed $APP_NAME.app>" >&2
+    exit 1
+fi
 VOLUME="$APP_NAME"
 STAGING=""
 WORK=""
@@ -27,7 +35,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ ! -d "$APP" ]]; then
-    echo "✗ $APP not found — run ./build.sh first" >&2
+    echo "✗ $APP not found" >&2
     exit 1
 fi
 xattr -cr "$APP"
@@ -36,8 +44,11 @@ codesign --verify --deep --strict "$APP"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 OUT="dist/Vitruvian-$VERSION.dmg"
 
+WORK="$(mktemp -d)"
+BACKGROUND="$WORK/dmg-background.png"
+
 echo "▸ Rendering installer background…"
-swift Tools/MakeDMGBackground.swift build/dmg-background.png
+swift Tools/MakeDMGBackground.swift "$BACKGROUND"
 
 echo "▸ Staging DMG contents…"
 STAGING="$(mktemp -d)"
@@ -46,10 +57,9 @@ xattr -cr "$STAGING/$APP_NAME.app"
 codesign --verify --deep --strict "$STAGING/$APP_NAME.app"
 ln -s /Applications "$STAGING/Applications"
 mkdir "$STAGING/.background"
-cp build/dmg-background.png "$STAGING/.background/background.png"
+cp "$BACKGROUND" "$STAGING/.background/background.png"
 
 echo "▸ Creating writable image…"
-WORK="$(mktemp -d)"
 RW="$WORK/rw.dmg"
 # Clear any stale mount left by a previous attempt on the same runner.
 hdiutil detach "/Volumes/$VOLUME" -force 2>/dev/null || true

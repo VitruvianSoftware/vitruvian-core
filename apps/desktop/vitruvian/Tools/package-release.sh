@@ -6,12 +6,13 @@
 #   bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian
 #   apps/desktop/vitruvian/Tools/package-release.sh "$PWD/<path to Vitruvian.zip>"
 #
-# It unpacks the bundle and signs the fan helper, the Now Playing adapter and
-# the bundle the way build.sh does: with the Developer ID identity when one is
-# installed (Tools/ci-setup-signing.sh imports it on CI), ad-hoc otherwise. It
-# notarizes the app and the DMG when the notary credentials are set
-# (Tools/notarize.sh skips quietly when they are not), and packages the DMG with
-# Tools/make-dmg.sh.
+# It unpacks the bundle into a temp dir (never a "build" directory, which on
+# macOS's case-insensitive filesystem is the package's Bazel BUILD file) and
+# signs the fan helper, the Now Playing adapter and the bundle the way build.sh
+# does: with the Developer ID identity when one is installed
+# (Tools/ci-setup-signing.sh imports it on CI), ad-hoc otherwise. It notarizes
+# the app and the DMG when the notary credentials are set (Tools/notarize.sh
+# skips quietly when they are not), and packages the DMG with Tools/make-dmg.sh.
 set -euo pipefail
 
 ARCHIVE="${1:-}"
@@ -26,14 +27,18 @@ APP_BUNDLE_ID="com.vitruviansoftware.vitruvian"
 FAN_HELPER_ID="$APP_BUNDLE_ID.fan-control"
 NOW_PLAYING_ADAPTER_ID="$APP_BUNDLE_ID.now-playing"
 ENTITLEMENTS="Resources/Vitruvian.entitlements"
-APP="build/stage/Vitruvian.app"
+STAGE=""
+cleanup() {
+    [[ -n "$STAGE" ]] && rm -rf "$STAGE"
+}
+trap cleanup EXIT
+STAGE="$(mktemp -d)"
+APP="$STAGE/Vitruvian.app"
 HELPER="$APP/Contents/Library/LaunchServices/$FAN_HELPER_ID"
 ADAPTER="$APP/Contents/Frameworks/libVitruvianNowPlaying.dylib"
 
 echo "▸ Unpacking $ARCHIVE…"
-rm -rf build/stage
-mkdir -p build/stage
-ditto -x -k "$ARCHIVE" build/stage
+ditto -x -k "$ARCHIVE" "$STAGE"
 for part in "$APP" "$HELPER" "$ADAPTER"; do
     if [[ ! -e "$part" ]]; then
         echo "✗ $part is missing from the archive" >&2
@@ -67,7 +72,7 @@ codesign --verify --strict "$ADAPTER"
 codesign --verify --deep --strict "$APP"
 
 ./Tools/notarize.sh "$APP"
-./Tools/make-dmg.sh
+./Tools/make-dmg.sh "$APP"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 DMG="dist/Vitruvian-$VERSION.dmg"

@@ -2413,6 +2413,12 @@ is that notice. Add an entry for every change to upstream files.
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
   - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-06**: Release staging off `build/`:
+  - `Tools/make-dmg.sh` takes the signed app as its argument instead of reading
+    `build/stage/Vitruvian.app`, and renders the installer background into its
+    own temp dir instead of `build/`. On macOS's case-insensitive filesystem
+    `build` is this package's Bazel `BUILD` file, so the first beta publish
+    failed at `mkdir: build: Not a directory`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
