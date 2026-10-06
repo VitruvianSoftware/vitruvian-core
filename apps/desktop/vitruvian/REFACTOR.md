@@ -3,8 +3,8 @@
 
 # Vitruvian refactor plan
 
-Status: **done**: steps 1 to 7 have landed, and each says what it leaves on
-purpose. Each slice was a PR that built and tested green on the
+Status: steps 1 to 7 have landed, and each says what it leaves on purpose.
+Step 8, which finishes typed preferences, is in progress. Each slice was a PR that built and tested green on the
 `vitruvian-desktop-macos` unit before the next started. Steps are ordered so that
 each one makes the next safer: the compiler takes over checks that were done by
 hand, and only then does the code get moved around.
@@ -5371,6 +5371,75 @@ What step 7 leaves: no reads of source files as text in the unit tests.
 The rules about how the code is written (33 of them) run as
 `source_lints_test`, on any platform. Where a rule needs a Mac to finish,
 `Tests/SourceNames.swift` carries the names and the unit tests check them.
+
+## Step 8: preferences read through their type (in progress)
+
+Step 6 gave every registered preference a `Preference` with its default, and
+views took it. Services kept reading most of them by key: `bool`,
+`integer`, `string` and the rest `(forKey: DefaultsKey.x)`. Step 8 moves those
+reads and writes to `UserDefaults[Preferences.x]`.
+
+- **Why:**
+  - **Types:** a typed read has the preference's type, so the compiler
+    rejects reading a fraction as a whole number, or writing text to a
+    switch.
+  - **Defaults:** a typed read falls back to the declared default where
+    registration has not run, as views already do. A read by key falls back
+    to `false`, `0` or nothing there.
+  - In the app nothing changes: all 717 preferences are registered from
+    their declarations before any of this code runs, so both reads return
+    the same value.
+- **What stays by key:**
+  - `Core/Defaults.swift`: registration, and the migrations that run before
+    it, which read what is stored rather than what a preference falls back
+    to;
+  - keys with no `Preference`, which are state the app keeps rather than
+    settings (such as `hasOnboarded`, or the window size). The last slice
+    decides each one.
+- **The ledger:** `preferences_are_reached_through_their_type` in
+  `bazel/source_lints.py` counts each `UserDefaults` call that reaches a
+  declared preference by key, outside `Core/Defaults.swift`. A new access
+  by key fails it. So does moving one without lowering its count, so each
+  count stays exact. It checks its scanner on sample text first.
+- **Slices, by the type the call returns:** the switches (8a); then whole
+  numbers and fractions; then text, where each `?? fallback` and `if let`
+  is checked against the declared default; then lists, tables and data;
+  then presence checks (`object`), resets (`removeObject`), the last
+  `@AppStorage(DefaultsKey.x)` properties, and the keys that have no
+  `Preference`.
+
+Landed (8a, the switches): every `bool(forKey:)` on a declared preference
+outside `Core/Defaults.swift` now reads `[Preferences.x]`. That is 402 reads
+across 118 files, and 43 writes became `[Preferences.x] = value`.
+
+- **Mechanical, and checked by the compiler:**
+  - A script rewrote `.bool(forKey: DefaultsKey.x)` to `[Preferences.x]`
+    on the same receiver, for each key whose `Preference` holds a `Bool`.
+  - Each rewritten write was a whole statement whose value is a `Bool`: a
+    literal, a comparison, or a property or parameter declared `Bool`.
+  - Each receiver is a `UserDefaults`: `defaults`,
+    `UserDefaults.standard`, or an environment's `defaults`.
+- **Left by key:**
+  - 17 `bool(forKey:)` calls on nine keys with no `Preference`, such as
+    `hasOnboarded` and `sleepDisabledFlag`;
+  - 14 in `Core/Defaults.swift`.
+- **Tests:** a test that drives a service over a fresh suite now sees a
+  switch's declared default where it saw `false`. The notch tests already
+  copy the registered `notch` defaults into their suite.
+- **Checks that quoted the old spelling:** the smooth-scroll rule in
+  `bazel/source_lints.py` and one mutation in `Tests/mutation_checks.py`
+  now name `Preferences.x`.
+- **Ledger after 8a:**
+  - writes (`set`): 93;
+  - text (`string`): 117;
+  - whole numbers (`integer`): 51;
+  - fractions (`double`): 21;
+  - presence checks (`object`): 25;
+  - resets (`removeObject`): 18;
+  - lists (`stringArray`): 18;
+  - data (`data`): 8;
+  - tables (`dictionary`): 6;
+  - lists read as `array`: 2.
 
 ## Not in scope
 
