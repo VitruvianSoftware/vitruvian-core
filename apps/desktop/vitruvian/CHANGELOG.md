@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.5.1...vitruvian-v3.6.0) (2026-10-06)
+
+
+### Features
+
+* **vitruvian:** publish a DMG for every release and clear the first-release blockers ([#2762](https://github.com/VitruvianSoftware/vitruvian-core/issues/2762)) ([8d97912](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d979127fd280f59c49be71dc59eaf8f176406be))
+
 ## [3.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.5.0...vitruvian-v3.5.1) (2026-10-04)
 
 
