@@ -5575,6 +5575,15 @@ What step 8 leaves, on purpose:
 - **One `@AppStorage(DefaultsKey.x)` on a declared preference:** the beta
   channel switch in Settings, which starts from whether the build is a
   beta. Its declared default cannot say that.
+- **Values of another type read as the default.** The app writes each
+  preference with its type, so this only touches a value written by hand
+  (`defaults write` without `-int`, say) or left by an old build.
+  - `integer` and `double(forKey:)` parsed text, and `string(forKey:)`
+    turned numbers into text. A typed read gives the declared default
+    instead.
+  - A list or table with one element of another type now reads as empty,
+    where the audio priority lists and the switcher rules used to drop just
+    that element.
 
 ## Not in scope
 
