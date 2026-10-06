@@ -1,0 +1,95 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Vitruvian Upstream Watch
+
+# apps/desktop/vitruvian is a fork of vorssaint-utils, which ships fixes and
+# features daily. This lists the upstream commits the ledger
+# (apps/desktop/vitruvian/upstream/ledger.tsv) has not triaged yet, and the ones
+# triaged but not yet ported, in ONE tracking issue: created when there is work,
+# its body refreshed every run, a comment only when new upstream commits appear
+# (so watchers are told once, not daily), closed when nothing is left. See
+# UPSTREAM.md, "Tracking and porting upstream".
+#
+# Read-only on the repository: it changes no code and gates nothing.
+
+on:
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: vitruvian-upstream-watch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: List upstream commits to triage and port
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Upstream vorssaint-utils: commits to triage and port"
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number --jq '.[0].number // empty')"
+          previous="${RUNNER_TEMP}/previous.md"
+          : > "${previous}"
+          if [ -n "${existing}" ]; then
+            gh issue view "${existing}" --json body --jq .body > "${previous}"
+          fi
+          body="${RUNNER_TEMP}/body.md"
+          bazel run "${cache_flags[@]}" //apps/desktop/vitruvian:track_upstream -- \
+            --cache "${RUNNER_TEMP}/upstream-cache" status --markdown --previous-body "${previous}" > "${body}"
+
+          marker="$(head -n 1 "${body}")"
+          read -r untriaged pending new < <(sed -E 's/.*untriaged: ([0-9]+) pending: ([0-9]+) new: ([0-9]+).*/\1 \2 \3/' <<<"${marker}")
+          echo "untriaged=${untriaged} pending=${pending} new=${new}"
+
+          if [ "$((untriaged + pending))" -eq 0 ]; then
+            if [ -n "${existing}" ]; then
+              gh issue close "${existing}" --comment "Every upstream commit is triaged and ported or skipped."
+            fi
+          elif [ -z "${existing}" ]; then
+            gh issue create --title "${TITLE}" --body-file "${body}"
+          else
+            gh issue edit "${existing}" --body-file "${body}"
+            if [ "${new}" -gt 0 ]; then
+              gh issue comment "${existing}" --body "${new} new upstream commit(s) to triage. ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            fi
+          fi

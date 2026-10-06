@@ -539,6 +539,30 @@ py_test(
     main = "bazel/source_lints.py",
 )
 
+# --- Upstream tracking ---------------------------------------------------------
+# UPSTREAM.md, "Tracking and porting upstream":
+#   bazel run //apps/desktop/vitruvian:track_upstream -- status|triage|show|port
+# .github/workflows/vitruvian-upstream-watch.yaml runs `status` daily.
+
+py_binary(
+    name = "track_upstream",
+    srcs = ["upstream/upstream.py"],
+    main = "upstream/upstream.py",
+)
+
+# The tool against throwaway repositories, and the committed ledger's format.
+py_test(
+    name = "upstream_test",
+    size = "small",
+    srcs = [
+        "upstream/upstream.py",
+        "upstream/upstream_test.py",
+    ],
+    data = ["upstream/ledger.tsv"],
+    env = {"UPSTREAM_LEDGER": "$(rootpath upstream/ledger.tsv)"},
+    main = "upstream/upstream_test.py",
+)
+
 # --- Pipeline -----------------------------------------------------------------
 
 pipeline_unit(
