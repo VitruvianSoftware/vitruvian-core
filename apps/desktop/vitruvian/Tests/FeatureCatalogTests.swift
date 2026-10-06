@@ -218,20 +218,7 @@ enum FeatureCatalogTests {
                "the shipped unlock counter keeps the forgiving 6s press window")
         // Two absences have no behaviour to run: nothing in the manager posts
         // a mouse event, and nothing reads the global button state. They are
-        // read here until the source lints take them.
-        let cleaningSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift",
-            encoding: .utf8)) ?? ""
-        let cleaningCode = cleaningSource
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!cleaningCode.isEmpty, "the cleaning mode source reads back for its absence checks")
-        suite.expect(!cleaningCode.contains("CGEvent(mouseEventSource:"),
-               "Cleaning Mode never synthesizes a global mouse release")
-        suite.expect(!cleaningCode.contains("pressedMouseButtons")
-                && !cleaningCode.contains("CGEventSource.buttonState"),
-               "Cleaning Mode does not infer ownership from a global button-state snapshot")
+        // rules on its source, in bazel/source_lints.py.
 
         // What the tap's events are to the lock. The real HID gesture is not
         // reproducible headlessly, so the callback's reading of an event is a
@@ -2269,24 +2256,9 @@ enum FeatureCatalogTests {
         // Every section of the service below its "Rebuild (work queue)" MARK
         // runs on the private work queue, so a display's user-facing name is
         // read from NSScreen on the main thread and handed to the rebuild
-        // (the rig scenarios below check the names arrive that way). AppKit
-        // reached from below the line would be a main thread violation on
-        // every hotplug, wake and panel open; that the half never names
-        // NSScreen at all is an absence with no behaviour to run, so it is
-        // read here until the source lints take it.
-        let brightnessSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
-            encoding: .utf8)) ?? ""
-        let brightnessWorkQueueHalf = brightnessSource
-            .components(separatedBy: "// MARK: - Rebuild (work queue)").last ?? ""
-        // Comments are stripped first: a note naming the symbol it bans is not
-        // a call, and a check that cannot tell them apart goes red for prose.
-        let brightnessWorkQueueCode = brightnessWorkQueueHalf
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!brightnessWorkQueueHalf.isEmpty && !brightnessWorkQueueCode.contains("NSScreen"),
-               "the brightness work queue resolves display names without touching NSScreen")
+        // (the rig scenarios below check the names arrive that way). That the
+        // half never names NSScreen at all is a rule on its source, in
+        // bazel/source_lints.py.
 
         let ddcWrite = BrightnessSupport.writePacket(code: 0x10, value: 0x1234)
         let expectedDDCWrite: [UInt8] = [0x84, 0x03, 0x10, 0x12, 0x34, 0x8E]

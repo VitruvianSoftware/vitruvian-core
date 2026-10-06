@@ -811,6 +811,81 @@ def inverter_does_not_yield_to_the_switcher(repo):
     return []
 
 
+def cleaning_mode_never_synthesizes_mouse_events(repo):
+    """Cleaning Mode only watches mouse clicks pass: nothing in the manager
+    posts a mouse event, and nothing reads the global button state, which
+    cannot say which press the lock itself saw."""
+    code = code_without_comments(
+        repo.lines_at("Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift")
+    )
+    problems = []
+    if not code:
+        problems.append("the cleaning mode source reads back for its absence checks")
+    if "CGEvent(mouseEventSource:" in code:
+        problems.append("Cleaning Mode never synthesizes a global mouse release")
+    if "pressedMouseButtons" in code or "CGEventSource.buttonState" in code:
+        problems.append(
+            "Cleaning Mode does not infer ownership from a global button-state snapshot"
+        )
+    return problems
+
+
+def brightness_work_queue_never_touches_nsscreen(repo):
+    """Every section of BrightnessService below its "Rebuild (work queue)"
+    mark runs on the private work queue. A display's name is read from
+    NSScreen on the main thread and handed to the rebuild; AppKit reached
+    from below the line would be a main thread violation on every hotplug,
+    wake and panel open."""
+    source = repo.source("Sources/Vitruvian/Services/Display/BrightnessService.swift")
+    marker = "// MARK: - Rebuild (work queue)"
+    half = source.split(marker)[-1] if marker in source else ""
+    code = code_without_comments(half.split("\n"))
+    if not half or "NSScreen" in code:
+        return [
+            "the brightness work queue resolves display names without touching NSScreen"
+        ]
+    return []
+
+
+def click_debounce_schedules_nothing(repo):
+    """The click filter answers each click as it arrives: the service itself
+    schedules nothing, so a healthy click is never held back by a timer."""
+    code = code_without_comments(
+        repo.lines_at(
+            "Sources/Vitruvian/Services/MouseClickDebounce/MouseClickDebounceService.swift"
+        )
+    )
+    if not code or "Timer(" in code or "asyncAfter" in code:
+        return [
+            "legacy click filtering adds no timer or delayed release to healthy clicks"
+        ]
+    return []
+
+
+def smooth_scroll_disabled_tap_rearms_only_when_wanted(repo):
+    """A smooth-scroll tap the system switched off ends its glide, and is put
+    back only while the feature is installed and on, Accessibility is
+    granted and this session is the one on screen."""
+    code = code_without_comments(
+        repo.lines_at("Sources/Vitruvian/Services/SmoothScrollService.swift")
+    )
+    pieces = code.split("tapDisabledByTimeout")
+    branch = pieces[1].split("return")[0] if len(pieces) > 1 else ""
+    wanted = [
+        "tapDisabledByUserInput",
+        "stopGlide()",
+        "AppFeature.smoothScroll.isAvailable",
+        "DefaultsKey.smoothScrollEnabled",
+        "AXIsProcessTrusted()",
+        "SessionActivity.shared.isActive",
+    ]
+    if not all(piece in branch for piece in wanted):
+        return [
+            "a disabled smooth-scroll tap drops its tail and re-arms only while fully wanted"
+        ]
+    return []
+
+
 def menu_panel_switches_have_names(repo):
     """A switch with a hidden label still gives VoiceOver its title, so an
     empty one is read out as an unnamed switch. The menu panel names every
@@ -981,6 +1056,10 @@ RULES = [
     tap_owners_follow_the_session,
     pointer_taps_run_off_the_main_thread,
     inverter_does_not_yield_to_the_switcher,
+    cleaning_mode_never_synthesizes_mouse_events,
+    brightness_work_queue_never_touches_nsscreen,
+    click_debounce_schedules_nothing,
+    smooth_scroll_disabled_tap_rearms_only_when_wanted,
     menu_panel_switches_have_names,
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,

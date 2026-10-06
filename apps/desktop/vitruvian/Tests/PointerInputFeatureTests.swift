@@ -343,18 +343,8 @@ enum PointerInputFeatureTests {
         }
 
         // An absence with no behaviour to run: the service itself schedules
-        // nothing, so a healthy click is never held back by a timer. Read here
-        // until the source lints take it.
-        let clickDebounceServiceSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/MouseClickDebounce/MouseClickDebounceService.swift",
-            encoding: .utf8)) ?? ""
-        let clickDebounceServiceCode = clickDebounceServiceSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!clickDebounceServiceCode.isEmpty
-                && !clickDebounceServiceCode.contains("Timer(")
-                && !clickDebounceServiceCode.contains("asyncAfter"),
-               "legacy click filtering adds no timer or delayed release to healthy clicks")
+        // nothing, so a healthy click is never held back by a timer. That is a
+        // rule on its source, in bazel/source_lints.py.
 
         suite.expect(ScrollWheelSupport.isMouseWheel(
             ScrollWheelEventTraits(isContinuous: false, momentumPhase: 0, scrollPhase: 0, scrollCount: 0),
@@ -3306,24 +3296,8 @@ enum PointerInputFeatureTests {
         }
         // The disabled-tap branch decides with `SessionActivitySupport.tapShouldRun`
         // (checked above) and ends the glide with `SmoothScrollGlide.stop()`
-        // (checked here). That the branch does both is still read: the
-        // tap-owner session check reads the same branch for its own wiring,
-        // and it goes behind a seam together with that check.
-        let smoothScrollSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/SmoothScrollService.swift",
-            encoding: .utf8)) ?? ""
-        let smoothTapDisabled = smoothScrollSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-            .components(separatedBy: "tapDisabledByTimeout")
-            .dropFirst().first?.components(separatedBy: "return").first ?? ""
-        suite.expect(smoothTapDisabled.contains("tapDisabledByUserInput")
-                && smoothTapDisabled.contains("stopGlide()")
-                && smoothTapDisabled.contains("AppFeature.smoothScroll.isAvailable")
-                && smoothTapDisabled.contains("DefaultsKey.smoothScrollEnabled")
-                && smoothTapDisabled.contains("AXIsProcessTrusted()")
-                && smoothTapDisabled.contains("SessionActivity.shared.isActive"),
-               "a disabled smooth-scroll tap drops its tail and re-arms only while fully wanted")
+        // (checked here). That the branch does both is its wiring, which
+        // bazel/source_lints.py checks with the other tap owners' session rules.
         // Cleaning Mode leaves with the login session: a switched-away session
         // cannot keep a filter tap in the chain, so the lock ends at once, and
         // the features it suspended wait for the session to come back. A tap
