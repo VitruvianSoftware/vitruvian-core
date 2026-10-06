@@ -188,17 +188,8 @@ enum SwitcherModelFeatureTests {
                      "the side-wheel shortcuts yield scrolling to the open switcher")
         // The inverter is the one wheel tap that does not step aside: an open
         // switcher still moves the way the wheel is turned. Its tap is handed
-        // nothing that names the switcher, so there is no behavior to drive;
-        // this stays an absence check on its source.
-        let inverterCode = ((try? String(contentsOfFile: "Sources/Vitruvian/Services/ScrollInverter.swift",
-                                         encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        suite.expect(!inverterCode.isEmpty
-                     && !inverterCode.contains("scrollNavigationActive")
-                     && !inverterCode.contains("switcherNavigatesByWheel"),
-                     "scroll direction still transforms wheel events before they reach the open switcher")
+        // nothing that names the switcher, so that is a rule on its source,
+        // in bazel/source_lints.py.
     }
 
     static func run(_ suite: TestSuite) {

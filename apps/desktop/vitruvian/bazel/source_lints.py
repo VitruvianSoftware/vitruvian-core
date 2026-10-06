@@ -799,6 +799,18 @@ def pointer_taps_run_off_the_main_thread(repo):
     return problems
 
 
+def inverter_does_not_yield_to_the_switcher(repo):
+    """The scroll inverter is the one wheel tap that does not step aside for
+    the App Switcher: an open switcher still moves the way the wheel is
+    turned. The smooth scroller and the side-wheel shortcuts yield, through
+    the environment their tests drive; the inverter is handed nothing that
+    names the switcher, and never asks it."""
+    code = code_without_comments(repo.lines_at("Sources/Vitruvian/Services/ScrollInverter.swift"))
+    if not code or "scrollNavigationActive" in code or "switcherNavigatesByWheel" in code:
+        return ["scroll direction still transforms wheel events before they reach the open switcher"]
+    return []
+
+
 def menu_panel_switches_have_names(repo):
     """A switch with a hidden label still gives VoiceOver its title, so an
     empty one is read out as an unnamed switch. The menu panel names every
@@ -968,6 +980,7 @@ RULES = [
     stores_delete_only_what_they_own,
     tap_owners_follow_the_session,
     pointer_taps_run_off_the_main_thread,
+    inverter_does_not_yield_to_the_switcher,
     menu_panel_switches_have_names,
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
