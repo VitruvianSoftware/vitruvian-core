@@ -216,6 +216,9 @@ enum FeatureCatalogTests {
         }
         suite.expect(shippedUnlock(every: 5.5) && !shippedUnlock(every: 6.5),
                "the shipped unlock counter keeps the forgiving 6s press window")
+        // Two absences have no behaviour to run: nothing in the manager posts
+        // a mouse event, and nothing reads the global button state. They are
+        // read here until the source lints take them.
         let cleaningSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/CleaningMode/CleaningModeManager.swift",
             encoding: .utf8)) ?? ""
@@ -223,68 +226,123 @@ enum FeatureCatalogTests {
             .components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        suite.expect(!cleaningCode.isEmpty, "the cleaning mode source reads back for its shape checks")
-
+        suite.expect(!cleaningCode.isEmpty, "the cleaning mode source reads back for its absence checks")
         suite.expect(!cleaningCode.contains("CGEvent(mouseEventSource:"),
                "Cleaning Mode never synthesizes a global mouse release")
         suite.expect(!cleaningCode.contains("pressedMouseButtons")
                 && !cleaningCode.contains("CGEventSource.buttonState"),
                "Cleaning Mode does not infer ownership from a global button-state snapshot")
-        suite.expect(cleaningCode.contains("let shouldFinishUserDeactivation = mouseReleaseGate.deactivationPending")
-                && cleaningCode.contains("mouseReleaseGate.invalidateTrackedPresses()")
-                && cleaningCode.contains("if shouldFinishUserDeactivation {"),
-               "disabled-tap recovery invalidates stale mouse state and preserves a pending user unlock")
-        suite.expect(cleaningCode.contains("self.mouseReleaseGate.deactivationPending,")
-                && cleaningCode.contains("self.mouseReleaseGate.pressedButtons.isEmpty else { return }"),
-               "queued cleaning teardown rechecks the current press state")
-        suite.expect(cleaningCode.contains("armReleaseDeadline()\n        guard mouseReleaseGate.requestDeactivation()")
-                && cleaningCode.contains("releaseDeadline?.cancel()"),
-               "every user unlock arms the release deadline and teardown cancels it")
 
-        // The counter above cannot see how events reach it, and the real HID
-        // gesture is not reproducible headlessly. Pin the two properties of the
-        // tap's handler the counter depends on: modifiers reach it (they arrive
-        // as .flagsChanged, never as key-downs, and are the keys nearest
-        // Escape), and every ordinary event is still swallowed. The sole
-        // fail-open return belongs to a disabled tap in an inactive or
-        // untrusted session, where keeping input locked would strand the user.
-        let cleaningLines = cleaningSource.components(separatedBy: "\n")
-        let handlerStart = cleaningLines.firstIndex { $0.contains("private func handle(type:") }
-        let handlerEnd = handlerStart.flatMap { start in
-            cleaningLines[(start + 1)...].firstIndex { $0.hasPrefix("    private func ") }
-        } ?? cleaningLines.count
-        var modifiersReachCounter = false
-        var leakedEvents: [String] = []
-        var passThroughReturns = 0
-        for (index, line) in cleaningLines[(handlerStart ?? handlerEnd)..<handlerEnd].enumerated()
-        where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
-            let number = (handlerStart ?? 0) + index + 1
-            if line.contains("type == .flagsChanged") {
-                // Read to the end of that branch: the call has to be inside it.
-                var cursor = (handlerStart ?? 0) + index + 1
-                while cursor < handlerEnd, !cleaningLines[cursor].trimmingCharacters(in: .whitespaces).hasPrefix("}") {
-                    if cleaningLines[cursor].contains("registerUnlockKeyDown(") { modifiersReachCounter = true }
-                    cursor += 1
+        // What the tap's events are to the lock. The real HID gesture is not
+        // reproducible headlessly, so the callback's reading of an event is a
+        // pure function, run here on each kind the lock tells apart.
+        let systemDefined = CGEventType(rawValue: CleaningSystemKeyEvent.systemDefinedEventTypeRawValue)!
+        func cleaningEvent(_ type: CGEventType, systemKey: CleaningSystemKeyEvent? = nil) -> CleaningTapEvent {
+            CleaningTapSupport.classify(type: type, field: { field in
+                switch field {
+                case .keyboardEventKeycode: return 56
+                case .keyboardEventAutorepeat: return 1
+                case .mouseEventButtonNumber: return 4
+                default: return 0
                 }
-            }
-            if line.contains("return Unmanaged.passUnretained(event)") {
-                passThroughReturns += 1
-            } else if line.contains("return"), !line.contains("return nil") {
-                leakedEvents.append("CleaningModeManager.swift:\(number)")
-            }
+            }, systemKey: { systemKey })
         }
-        suite.expect(modifiersReachCounter,
-               "flags-changed events feed the unlock counter, so modifiers reset the Escape count")
-        suite.expect(handlerStart != nil
-               && leakedEvents.isEmpty
-               && passThroughReturns == 2
-               && cleaningCode.contains("if handleMouseButton(type: type, event: event)"),
-               "the cleaning tap swallows locked input while mouse events and disabled-session recovery pass through: \(leakedEvents)")
-        suite.expect(cleaningCode.contains("self.deactivate(restoreSuspendedFeatures: false)")
-                && cleaningCode.contains("shouldRestoreSuspendedFeaturesOnSessionReturn = true")
-                && cleaningCode.contains("self.resumeSuspendedFeatures()")
-                && cleaningCode.contains("guard restoreSuspendedFeatures else {"),
-               "Cleaning Mode restores suspended taps only after its login session returns")
+        let mediaKeyDown = CleaningSystemKeyEvent(code: 10_017, isKeyDown: true, isRepeat: false)
+        let mediaKeyUp = CleaningSystemKeyEvent(code: 10_017, isKeyDown: false, isRepeat: false)
+        suite.expect(cleaningEvent(.flagsChanged) == .unlockKey(code: 56, isRepeat: false),
+               "flags-changed events reach the unlock counter, and a modifier never counts as a repeat")
+        suite.expect(cleaningEvent(.tapDisabledByTimeout) == .tapDisabled
+                && cleaningEvent(.tapDisabledByUserInput) == .tapDisabled
+                && cleaningEvent(.leftMouseDown) == .mouseButton(0, isDown: true)
+                && cleaningEvent(.rightMouseUp) == .mouseButton(1, isDown: false)
+                && cleaningEvent(.otherMouseDown) == .mouseButton(4, isDown: true)
+                && cleaningEvent(.keyDown) == .unlockKey(code: 56, isRepeat: true)
+                && cleaningEvent(systemDefined, systemKey: mediaKeyDown) == .unlockKey(code: 10_017, isRepeat: false)
+                && cleaningEvent(systemDefined, systemKey: mediaKeyUp) == .other
+                && cleaningEvent(systemDefined) == .other
+                && cleaningEvent(.keyUp) == .other
+                && cleaningEvent(.scrollWheel) == .other,
+               "the cleaning tap tells disabled-tap notices, mouse buttons and unlock keys from what it only holds back")
+
+        // The manager over doubles: its tap, the features it suspends, the
+        // cover, the session and both queues are `CleaningRig`'s, and the
+        // tap's events are handed to `handle(_:)` as the callback hands them.
+        do {
+            let rig = CleaningRig()
+            let manager = CleaningModeManager(environment: rig.environment)
+            let escape: Int64 = 53
+            manager.activate()
+            suite.expect(manager.isActive && rig.log == ["install", "suspend", "show"],
+                   "Cleaning Mode installs its tap, suspends the taps that could run ahead of it and covers the screens")
+            let passed = [manager.handle(.mouseButton(0, isDown: true)), manager.handle(.mouseButton(0, isDown: false)),
+                          manager.handle(.unlockKey(code: 0, isRepeat: false)), manager.handle(.other),
+                          manager.handle(.tapDisabled)]
+            suite.expect(passed == [true, true, false, false, false] && manager.isActive
+                    && rig.log.last == "rearm",
+                   "the cleaning tap swallows locked input and re-arms when disabled, while mouse events pass through")
+            for _ in 0..<4 { _ = manager.handle(.unlockKey(code: escape, isRepeat: false)) }
+            let countedEscapes = manager.unlockProgress
+            _ = manager.handle(cleaningEvent(.flagsChanged))
+            suite.expect(countedEscapes == 4 && manager.unlockProgress == 0,
+                   "flags-changed events feed the unlock counter, so modifiers reset the Escape count")
+
+            // A user unlock waits for the release of a press it saw begin.
+            rig.log = []
+            _ = manager.handle(.mouseButton(1, isDown: true))
+            manager.deactivate()
+            let waited = manager.isActive && rig.mainQueue.isEmpty && rig.deadlines.count == 1
+            suite.expect(waited && !manager.handle(.tapDisabled) && rig.log == ["rearm"]
+                    && rig.mainQueue.count == 1,
+                   "disabled-tap recovery invalidates stale mouse state and preserves a pending user unlock")
+            rig.drainMain()
+            suite.expect(!manager.isActive && rig.log == ["rearm", "remove", "hide", "resume"]
+                    && rig.deadlines.first?.isCancelled == true,
+                   "every user unlock arms the release deadline and teardown cancels it")
+
+            rig.deadlines = []
+            manager.activate()
+            _ = manager.handle(.mouseButton(0, isDown: true))
+            manager.deactivate()
+            _ = manager.handle(.mouseButton(0, isDown: false))
+            _ = manager.handle(.mouseButton(2, isDown: true))
+            rig.drainMain()
+            let heldForNewPress = manager.isActive
+            _ = manager.handle(.mouseButton(2, isDown: false))
+            rig.drainMain()
+            suite.expect(heldForNewPress && !manager.isActive,
+                   "queued cleaning teardown rechecks the current press state")
+
+            rig.deadlines = []
+            manager.activate()
+            _ = manager.handle(.mouseButton(0, isDown: true))
+            manager.deactivate()
+            manager.deactivate()
+            let armedOnce = rig.deadlines.count == 1
+            rig.deadlines.first?.perform()
+            rig.drainMain()
+            suite.expect(armedOnce && !manager.isActive,
+                   "an unlock stops waiting for a release that never arrives once its deadline passes")
+
+            // The tap cannot hold the lock without the grant: its notice
+            // passes and the lock ends, the one fail-open answer.
+            rig.log = []
+            manager.activate()
+            rig.trusted = false
+            let noticePassed = manager.handle(.tapDisabled)
+            rig.drainMain()
+            rig.trusted = true
+            suite.expect(noticePassed && !manager.isActive
+                    && rig.log == ["install", "suspend", "show", "remove", "hide", "resume"],
+                   "a disabled tap without Accessibility passes its notice and ends the lock")
+
+            rig.log = []
+            manager.activate()
+            rig.sessionCenter.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+            let endedAway = !manager.isActive && rig.log == ["install", "suspend", "show", "remove", "hide"]
+            rig.sessionCenter.post(name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+            suite.expect(endedAway && rig.log.last == "resume",
+                   "Cleaning Mode restores suspended taps only after its login session returns")
+        }
 
         func systemKeyData(keyCode: Int, state: Int, repeatFlag: Bool = false) -> Int {
             Int((UInt32(keyCode) << 16) | (UInt32(state) << 8) | (repeatFlag ? 1 : 0))
@@ -3182,5 +3240,41 @@ enum MusicLaunchBlockerContract {
         launch(fallback)
         suite.expect(fallback.forceCalls == 1 && fallback.terminateCalls == 1 && session.replacementPlays.count == 1,
                      "a successful normal termination still opens the configured replacement once")
+    }
+}
+
+/// Cleaning Mode's outside world for one test: the grant, the tap, the
+/// features it suspends, the cover, the session and both queues are recorded
+/// here, so no keyboard is locked and no window opens.
+final class CleaningRig {
+    var log: [String] = []
+    var trusted = true
+    let sessionCenter = NotificationCenter()
+    lazy var session = SessionActivity(center: sessionCenter, initialIsActive: { true })
+    var mainQueue: [@MainActor @Sendable () -> Void] = []
+    var deadlines: [DispatchWorkItem] = []
+
+    var environment: CleaningModeManager.Environment {
+        CleaningModeManager.Environment(
+            hasAccessibility: { true },
+            promptForAccessibility: { [unowned self] in self.log.append("prompt") },
+            installTap: { [unowned self] _ in
+                self.log.append("install")
+                return CleaningModeManager.Tap(rearm: { [unowned self] in self.log.append("rearm") },
+                                               remove: { [unowned self] in self.log.append("remove") })
+            },
+            suspendFeatures: { [unowned self] in self.log.append("suspend") },
+            resumeFeatures: { [unowned self] in self.log.append("resume") },
+            showCover: { [unowned self] in self.log.append("show") },
+            hideCover: { [unowned self] in self.log.append("hide") },
+            session: session,
+            isProcessTrusted: { [unowned self] in self.trusted },
+            now: { 1_000 },
+            main: { [unowned self] work in self.mainQueue.append(work) },
+            schedule: { [unowned self] _, item in self.deadlines.append(item) })
+    }
+
+    func drainMain() {
+        while !mainQueue.isEmpty { mainQueue.removeFirst()() }
     }
 }
