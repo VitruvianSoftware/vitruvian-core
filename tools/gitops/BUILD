@@ -6,10 +6,24 @@ Generic passthroughs forward manifests via `-- -f <path>`:
 Per-component declared targets come from the gitops_manifest macro.
 """
 
+load("@aspect_rules_py//py:defs.bzl", "py_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-exports_files(["gitops-cmd.sh"])
+exports_files([
+    "gitops-cmd.sh",
+    "fedora_power_cycle.py",
+])
+
+# Out-of-band power-cycle utility for host `fedora` via Kasa HS300 smart power strip.
+#   bazel run //tools/gitops:fedora-power-cycle -- --status
+#   bazel run //tools/gitops:fedora-power-cycle -- --cycle
+py_binary(
+    name = "fedora-power-cycle",
+    srcs = ["fedora_power_cycle.py"],
+    main = "fedora_power_cycle.py",
+    visibility = ["//visibility:public"],
+)
 
 sh_binary(
     name = "apply",
