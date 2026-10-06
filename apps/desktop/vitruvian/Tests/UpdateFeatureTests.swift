@@ -268,20 +268,28 @@ enum UpdateFeatureTests {
         // that delegate's deinit is what deletes the scratch file, so the
         // release path has to invalidate the session too. This download is
         // never resumed: only cancelling it can end it.
+        // Each step runs in an autorelease pool of its own: Foundation can
+        // leave the delegate in the main thread's pool, which nothing drains
+        // while the suite runs, and that would outlive the release checked.
         weak var showcaseDelegate: BoundedUpdateDownloadDelegate?
         var showcaseTask: URLSessionDataTask?
-        var showcaseLoader: UpdateShowcaseMediaLoader? = UpdateShowcaseMediaLoader()
-        showcaseLoader?.download { delegate in
-            showcaseDelegate = delegate
-            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
-            showcaseTask = session.dataTask(with: URL(fileURLWithPath: "/dev/null"))
-            return session
+        var showcaseStarted = false
+        autoreleasepool {
+            var showcaseLoader: UpdateShowcaseMediaLoader? = UpdateShowcaseMediaLoader()
+            showcaseLoader?.download { delegate in
+                showcaseDelegate = delegate
+                let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+                showcaseTask = session.dataTask(with: URL(fileURLWithPath: "/dev/null"))
+                return session
+            }
+            showcaseStarted = showcaseLoader?.state == .loading && showcaseDelegate != nil
+            showcaseLoader = nil
         }
-        let showcaseStarted = showcaseLoader?.state == .loading && showcaseDelegate != nil
-        showcaseLoader = nil
         let showcaseDeadline = Date(timeIntervalSinceNow: 5)
         while showcaseDelegate != nil || showcaseTask?.state != .completed, Date() < showcaseDeadline {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+            autoreleasepool {
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+            }
         }
         suite.expect(showcaseStarted && showcaseDelegate == nil,
                "a released showcase loader invalidates its session, freeing the delegate and its scratch file")

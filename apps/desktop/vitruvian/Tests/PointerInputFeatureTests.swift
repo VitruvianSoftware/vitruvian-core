@@ -2292,18 +2292,18 @@ enum PointerInputFeatureTests {
             // A mouse event carries no keycode of its own: the field reads
             // back as whatever it holds, 0 (the keycode for A) as a rule. The
             // mouse types are answered before the keycode is read, so even a
-            // press whose field holds the trigger's code is just another key.
+            // press whose event holds the trigger's code is just another key.
+            // The event here is the trigger's own key press, passed as a mouse
+            // press: a classifier that read the keycode first would answer it
+            // as the trigger.
             func isTriggerDown(_ event: SuperKeySupport.Event) -> Bool {
                 guard case .triggerDown = event else { return false }
                 return true
             }
-            let disguisedPress = CGEvent(mouseEventSource: nil, mouseType: .otherMouseDown,
-                                         mouseCursorPosition: .zero, mouseButton: .center)
-            disguisedPress?.setIntegerValueField(.keyboardEventKeycode, value: SuperKeySupport.triggerKeyCode)
             let triggerPress = CGEvent(keyboardEventSource: nil,
                                        virtualKey: CGKeyCode(SuperKeySupport.triggerKeyCode), keyDown: true)
-            suite.expect(disguisedPress?.getIntegerValueField(.keyboardEventKeycode) == SuperKeySupport.triggerKeyCode
-                    && disguisedPress.map {
+            suite.expect(triggerPress?.getIntegerValueField(.keyboardEventKeycode) == SuperKeySupport.triggerKeyCode
+                    && triggerPress.map {
                         SuperKeyService.classify(type: .otherMouseDown, source: .capsLock, event: $0)
                     } == .otherKey
                     && triggerPress.map {
