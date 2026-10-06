@@ -2388,6 +2388,14 @@ is that notice. Add an entry for every change to upstream files.
     `UI/`.
   - Four `guard`/`if let data = …` reads became `isEmpty` checks on the
     typed value. `MouseButtonShortcutSupport` reads its table without `?`.
+- **2026-10-06**: Refactor step 8e (`REFACTOR.md`): presence checks and
+  resets through their `Preference`, with no change in behavior.
+  - `Core/Preference.swift` adds `UserDefaults.removeValue(for:)`.
+  - 21 `object(forKey:) as? T ?? fallback` reads, whose fallbacks equal the
+    declared defaults, and 18 `removeObject(forKey:)` resets in 13 files.
+    The command bar's aliases and row shortcuts write or remove their
+    encoded text. `WallpaperService.applyAllDisplays` reads its preference
+    directly.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

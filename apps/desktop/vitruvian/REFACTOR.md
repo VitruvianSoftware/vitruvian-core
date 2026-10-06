@@ -5521,6 +5521,34 @@ writes became `[Preferences.x] = value`, in 26 files.
   command bar aliases and row shortcuts, whose encoders return `String?`,
   and `nil` there removes the key.
 
+Landed (8e, presence checks and resets): 21 `object(forKey:) as? T ??
+fallback` reads, 18 `removeObject(forKey:)` resets and the last two writes
+reach their preference through its type, in 13 files.
+
+- **`object(forKey:) as? Bool ?? true`:** this is how code got the right
+  default where registration had not run, which a typed read now does on
+  its own. Every one of the 21 fallbacks equals its declared default: the
+  notch switches, the Pomodoro lengths, the agent alerts and thresholds,
+  automatic update checks, the switcher's full-screen windows and the
+  cut-and-paste HUD.
+- **Resets:** `UserDefaults.removeValue(for:)` (`Core/Preference.swift`)
+  forgets the stored value, so the preference reads its default again.
+  `PreferenceTests` checks that. The fan helper's version and recovery
+  flag, the resume configuration and the audio priority lists use it.
+- **The last two writes:** the command bar aliases and row shortcuts now
+  write the encoded text, or remove the value when the encoder returns
+  `nil`, as `set(nil, forKey:)` did.
+- **The wallpaper's all-displays switch:** its getter answered `true` when
+  nothing was stored, and its declared default is `true`. It is now the
+  typed read.
+- **Three reads stay by key, on purpose:**
+  - the update service asks twice whether a beta channel was ever chosen,
+    which only `object(forKey:) == nil` can say;
+  - the confirmation preview's duration reads any stored number, a fraction
+    included, which a typed whole-number read would treat as missing.
+- **Ledger after 8e:** `object` is at three, and every other call is at
+  zero.
+
 ## Not in scope
 
 Product decisions remain open:
