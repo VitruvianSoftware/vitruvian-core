@@ -151,4 +151,6 @@ jobs:
 
           pulumi stack select "$DEPLOY_ENV" --create
           pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
-          pulumi up --yes
+          # Waits out Pulumi Cloud's account-wide concurrent-update 409 (another
+          # app's apply holding the account); any other failure is immediate.
+          bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi up --yes

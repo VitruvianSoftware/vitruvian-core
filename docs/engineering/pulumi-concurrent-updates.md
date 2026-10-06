@@ -36,34 +36,80 @@ merely overlapped, which this backend does not allow.
 
 ## Why delivery makes this more likely, not less
 
-Each app's `delivery-<app>.yaml` serializes its **push** runs into one concurrency group, but
-by design it does *not* serialize:
+Each app delivers through its own generated workflow,
+`.github/workflows/delivery-<app>.yaml`, with its own queue. That keeps one
+app's approval wait from holding back another app, but it also means two apps'
+Pulumi applies can now run at the same time. Inside one app's workflow it was
+never prevented either: on 2026-10-06 one run of the old shared workflow lost
+`tabula-build-stack-shared` and `oauth-user-inspector-identity-development` to
+this 409, from parallel jobs in the same run.
+
+Each workflow also deliberately does *not* serialize:
 
 - **release runs**, which get one lane per tag (so two releases published in the
   same minute cannot evict each other), and
 - **`workflow_dispatch` runs**, which get one lane per unit+environment (so a
   break-glass deploy is never stuck behind the push lane).
 
-Both exemptions exist for good reasons, and both permit a release or dispatch
-run to overlap a push run. Any overlap where *both* sides touch Pulumi is a 409.
+Any overlap where *both* sides touch Pulumi is a 409. GitHub `concurrency:`
+groups cannot prevent it: the limit spans different stacks, and one repo-wide
+group would cancel pending runs instead of queueing them, silently dropping
+applies.
 
-This hazard predates the orchestrator — parallel foundation deploys hit it too.
-Phase 2 masked it by funnelling every run into one lane; Phase 3's per-tag
-release isolation re-exposed it.
+## What we do about it: wait and retry
 
-## The Resolution (Decoupled State Backends)
+Every path that runs a Pulumi update goes through
+[`tools/pulumi/retry-concurrent-update.sh`](../../tools/pulumi/retry-concurrent-update.sh):
 
-As part of the enterprise monorepo scalability overhaul (Milestone 1), state storage was decoupled from the shared individual Pulumi Cloud account:
+- the Bazel wrapper, `tools/pulumi/pulumi-cmd.sh` (and so
+  `//tools/deploy:cloud-run`, the Cloud Run blue-green rollout);
+- the `.github/actions/pulumi-run-captured` composite action (the identity
+  applies, tabula's build stack, the foundation workflows);
+- the inline `pulumi up` / `pulumi refresh` in the zitadel-apps workflows.
 
-- **Per-App / Per-Env GCS State Backends**: Stacks now resolve to self-managed Google Cloud Storage buckets (`gs://${GOOGLE_CLOUD_PROJECT}-pulumi-state` or explicit `PULUMI_BACKEND_URL`).
-- **Atomic Object Precondition Locking**: GCS uses native generation preconditions (`x-goog-if-generation-match`) per stack JSON file (`.pulumi/stacks/<stack>.json`), ensuring strict per-stack optimistic locking with zero cross-app or cross-environment lock contention.
-- **Fail-Fast Direct Execution**: All client-side 409 retry loops, `tee` output capturing hacks, and exponential backoff sleeps in `tools/pulumi/pulumi-cmd.sh` and CI workflows have been completely removed in favor of clean, direct, unbuffered process execution (`exec pulumi "$SUBCMD" "$@"`).
-- **Issue Status**: [#1843](https://github.com/VitruvianSoftware/vitruvian-core/issues/1843) is resolved.
+It retries **only** this error: a `[409]` that also says "concurrent update".
+The 409 is raised when the update is created, before any resource is touched,
+so a retry is safe. Waits start at 15 seconds, double, and are capped at 60
+seconds, for 8 attempts: about 6 minutes in all, enough for a few other applies
+to finish first. Any other failure exits at once with Pulumi's own exit code.
+`PULUMI_CONFLICT_MAX_ATTEMPTS`, `PULUMI_CONFLICT_RETRY_DELAY` and
+`PULUMI_CONFLICT_MAX_DELAY` override the budget. Tests:
+`//tools/pulumi:retry_concurrent_update_test` and
+`//tools/pulumi:pulumi_cmd_test`.
 
-## If you encounter a lock issue
+The retry turns most collisions into a delay. It does not remove the limit:
+Pulumi updates still run one at a time across the account, and an update that
+waits longer than the budget still fails.
 
-1. Check whether a lock is genuinely held on the state bucket:
-   `pulumi stack history --stack <stack>` — a still-running update has no `endTime`.
-2. If a run was cancelled mid-update and the state lock lease remains held:
+## Removing the limit (open: #1843)
+
+All stacks are still on Pulumi Cloud under `ipv1337`; no state has moved.
+[#1843](https://github.com/VitruvianSoftware/vitruvian-core/issues/1843) tracks
+the decision. The options:
+
+- **A Pulumi Cloud organization.** Allows concurrent updates and keeps the UI,
+  update history and PR integration. Costs a paid plan, and every
+  `ipv1337/<project>/<stack>` reference must be renamed to the organization.
+- **A self-managed GCS backend.** One lock per stack, so different stacks never
+  block each other, and no Pulumi Cloud dependency. It costs:
+  - Pulumi Cloud's UI, update history, audit log and `pulumi[bot]` PR comments;
+  - a secrets provider of our own (Cloud KMS) instead of Pulumi's managed
+    encryption;
+  - a migration of the whole stack graph: about 39 `StackReference`s point at
+    `ipv1337/foundation-*` stacks, and a reference cannot read across
+    backends, so the foundation stacks would have to move along with the apps.
+
+  `tools/pulumi/pulumi-cmd.sh` already derives `gs://<project>-pulumi-state`
+  when no `PULUMI_ACCESS_TOKEN` is set, but CI passes the token, so CI never
+  takes that path.
+- **Keep the retry** (today). Cheapest, and enough while collisions stay short.
+
+## If an update still fails with this 409
+
+1. Read the stack named in the error: that is the update holding the account,
+   not necessarily yours. `pulumi stack history --stack <stack>` shows it; a
+   still-running update has no end time.
+2. If a run was cancelled mid-update and left the stack marked as updating:
    `pulumi cancel -s <stack>`. Never cancel a legitimately running update.
-3. Re-run the failed job. Because deploys are digest-pinned and blue-green, re-running is safe and idempotent.
+3. Re-run the failed job. Deploys are digest-pinned and blue-green, so a
+   re-run is safe.

@@ -5,8 +5,10 @@
 # Unit tests for pulumi-cmd.sh: verifying clean fail-fast execution and backend resolution.
 set -uo pipefail
 
-WRAPPER="${1:?usage: pulumi_cmd_test.sh <path to pulumi-cmd.sh>}"
+WRAPPER="${1:?usage: pulumi_cmd_test.sh <path to pulumi-cmd.sh> <path to retry-concurrent-update.sh>}"
 WRAPPER="$(cd "$(dirname "$WRAPPER")" && pwd)/$(basename "$WRAPPER")"
+RETRY="${2:?usage: pulumi_cmd_test.sh <path to pulumi-cmd.sh> <path to retry-concurrent-update.sh>}"
+RETRY="$(cd "$(dirname "$RETRY")" && pwd)/$(basename "$RETRY")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -20,6 +22,9 @@ mkdir -p "$ws/tabula/infra/web" "$ws/tools/pulumi" "$ws/infrastructure"
 : >"$ws/infrastructure/gcp-identities.tsv"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$ws/tools/pulumi/resolve_identity.sh"
 chmod +x "$ws/tools/pulumi/resolve_identity.sh"
+# The REAL retry helper: the wrapper execs it from the workspace tree, and
+# tests 8-11 below exercise it end to end through the wrapper.
+cp "$RETRY" "$ws/tools/pulumi/retry-concurrent-update.sh"
 
 stubs="$work/stubs"
 mkdir -p "$stubs"

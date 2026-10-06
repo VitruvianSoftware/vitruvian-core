@@ -18,6 +18,8 @@ load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 
 exports_files([
     "pulumi-cmd.sh",
+    # Run by the pulumi-run-captured composite action and inline CI applies.
+    "retry-concurrent-update.sh",
     # Consumed by //tools/gcp-secrets, which pins GCP identity the same way.
     "resolve_identity.sh",
     "pulumi_setup.sh",
@@ -39,13 +41,29 @@ sh_test(
 )
 
 # Unit tests for the concurrent-update (409) retry. Same $(location) pattern as
-# above: the wrapper under test is passed as an arg, and a stub `pulumi` on PATH
-# makes the retry observable without touching a real backend.
+# above: the wrapper and the retry helper it execs are passed as args, and a
+# stub `pulumi` on PATH makes the retry observable without touching a real
+# backend.
 sh_test(
     name = "pulumi_cmd_test",
     srcs = ["pulumi_cmd_test.sh"],
-    args = ["$(location pulumi-cmd.sh)"],
-    data = ["pulumi-cmd.sh"],
+    args = [
+        "$(location pulumi-cmd.sh)",
+        "$(location retry-concurrent-update.sh)",
+    ],
+    data = [
+        "pulumi-cmd.sh",
+        "retry-concurrent-update.sh",
+    ],
+)
+
+# The helper on its own: delay cap, stderr pass-through and the exact match,
+# which the wrapper tests cannot observe (they run with a zero delay).
+sh_test(
+    name = "retry_concurrent_update_test",
+    srcs = ["retry_concurrent_update_test.sh"],
+    args = ["$(location retry-concurrent-update.sh)"],
+    data = ["retry-concurrent-update.sh"],
 )
 
 # Rotate the Pulumi Cloud token CI uses: mint, check it works, store it as
