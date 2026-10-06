@@ -61,8 +61,9 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
   its left edge, the only place upstream's planet mark showed (in the menu bar).
   `Resources/Gifs/commandBar.gif`, which showed the mark in the command bar and
   which nothing loads, is deleted.
-- **Release pipeline:** `vitruvian-release.yaml` builds, signs, packages and
-  attaches `Vitruvian-X.Y.Z.dmg` to each release.
+- **Release pipeline:** `vitruvian-release.yaml` cuts each release, and the
+  `vitruvian` delivery unit (`publish.sh`) builds, signs, packages and attaches
+  `Vitruvian-X.Y.Z.dmg` to it.
 - **Source:** every release is a tag of this public repository, so the source
   of each build is offered beside it, as the GPL requires.
 
@@ -2411,7 +2412,7 @@ is that notice. Add an entry for every change to upstream files.
   - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
-  - `Tools/package-release.sh` added (new, not upstream).
+  - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

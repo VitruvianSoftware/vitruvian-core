@@ -40,6 +40,8 @@ import (
 //	tabula-identity / oauth-…-identity  pulumi, reusable render, 3 chained push rungs
 //	tabula-build-stack             pulumi, transcribed, single rung, foundation env
 //	charts / tabula-dev-latest     publish, transcribed, single rung
+//	esp32-s3 / vitruvian           publish, transcribed, beta push rung + release rung
+//	                               (vitruvian on its own macOS runner)
 //
 // Frozen copies rather than a live read of bazel-bin so the golden cannot move
 // under the test when someone edits a real BUILD file.
@@ -53,6 +55,7 @@ var fixtureUnits = []string{
 	"testdata/units/tabula-dev-latest.delivery.json",
 	"testdata/units/tabula-identity.delivery.json",
 	"testdata/units/tabula-web.delivery.json",
+	"testdata/units/vitruvian.delivery.json",
 	"testdata/units/zitadel-apps.delivery.json",
 }
 

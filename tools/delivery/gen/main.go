@@ -166,6 +166,8 @@ const (
 	checkoutPin       = "actions/checkout@v7.0.1"
 	setupBazelAction  = "./.github/actions/setup-bazel"
 	uploadArtifactPin = "actions/upload-artifact@v7"
+	// selectXcodeAction pins the Xcode the macOS pipeline unit builds with.
+	selectXcodeAction = "./.github/actions/select-xcode"
 )
 
 // mitHeader is the licence block every file in this repo carries, in `#`
@@ -537,8 +539,16 @@ type transcribedSpec struct {
 	// `uses:` caller, a plain job MAY bind one.
 	environment []string
 	env         []string
+	// runsOn is the runner label, "" for the default ubuntu-26.04. A publish
+	// that needs a toolchain only one runner has (the macOS app needs Xcode)
+	// names that runner here, as its pipeline_unit does for presubmit.
+	runsOn      string
 	renderSteps func(b *strings.Builder, u unit, env string)
 }
+
+// defaultRunsOn is the runner every generated job uses unless its
+// transcribedSpec names another.
+const defaultRunsOn = "ubuntu-26.04"
 
 var transcribedJobs = map[string]transcribedSpec{
 	"tabula-dev-latest": {
@@ -559,6 +569,15 @@ var transcribedJobs = map[string]transcribedSpec{
 		// `gh release upload` + moving the rolling beta tag: contents: write.
 		permissions: []string{"contents: write"},
 		renderSteps: renderEsp32S3PublishSteps,
+	},
+	"vitruvian": {
+		timeoutMinutes: 60,
+		// `gh release upload` + moving the rolling beta tag: contents: write.
+		permissions: []string{"contents: write"},
+		// The app builds with Xcode, which only the macOS runner has; the
+		// vitruvian-desktop-macos pipeline_unit runs there for the same reason.
+		runsOn:      "xcode-27",
+		renderSteps: renderVitruvianPublishSteps,
 	},
 	"tabula-build-stack": {
 		timeoutMinutes: 60,
@@ -690,6 +709,51 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
 	b.WriteString("        run: bash apps/embedded/esp32-s3/publish.sh\n")
+}
+
+// renderVitruvianPublishSteps is vitruvian-release.yaml's `package` job (the
+// first revision of the PR that added it; see git history), with its
+// build/package/upload body extracted to apps/desktop/vitruvian/publish.sh so
+// the generated rung and the break-glass
+// `bazel run //apps/desktop/vitruvian:publish` execute one script.
+//
+// The rung name IS the grade: "beta" on the push rung (a rolling prerelease),
+// "production" on the release rung (the release-please release). The script
+// refuses a production publish whose tag does not match the version it
+// builds. Signing and notarization use the VITRUVIAN_* secrets when they are
+// set; without them the app is signed ad-hoc and the DMG is not notarized.
+func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
+	b.WriteString("    steps:\n")
+	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
+	b.WriteString("\n")
+	b.WriteString("      - name: Select the pinned Xcode\n")
+	fmt.Fprintf(b, "        uses: %s\n", selectXcodeAction)
+	b.WriteString("\n")
+	b.WriteString("      - name: Set up Bazel\n")
+	fmt.Fprintf(b, "        uses: %s\n", setupBazelAction)
+	b.WriteString("\n")
+	b.WriteString("      # Imports the Developer ID identity into a temporary keychain; a\n")
+	b.WriteString("      # no-op when the secrets are not set.\n")
+	b.WriteString("      - name: Import the signing identity\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}\n")
+	b.WriteString("          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}\n")
+	b.WriteString("        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh\n")
+	b.WriteString("\n")
+	b.WriteString("      - name: Build, package and publish the DMG\n")
+	b.WriteString("        env:\n")
+	fmt.Fprintf(b, "          GRADE: %s\n", env)
+	b.WriteString("          # Empty on a push; the script requires it for the production grade.\n")
+	b.WriteString("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n")
+	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
+	b.WriteString("          # Cache-only: reuse the build the macOS pipeline unit cached.\n")
+	b.WriteString("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
+	b.WriteString("          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}\n")
+	b.WriteString("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n")
+	b.WriteString("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n")
+	b.WriteString("        run: bash apps/desktop/vitruvian/publish.sh\n")
 }
 
 // renderTabulaBuildStackSteps is tabula-build-stack.yaml's `deploy` job,
@@ -2057,7 +2121,11 @@ func renderTranscribedRung(b *strings.Builder, u unit, rung int, env string, opt
 	fmt.Fprintf(b, "    concurrency:\n")
 	fmt.Fprintf(b, "      group: delivery-%s-%s\n", u.Name, env)
 	fmt.Fprintf(b, "      cancel-in-progress: false\n")
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	runsOn := spec.runsOn
+	if runsOn == "" {
+		runsOn = defaultRunsOn
+	}
+	fmt.Fprintf(b, "    runs-on: %s\n", runsOn)
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", spec.timeoutMinutes)
 	b.WriteString("    # Transcribed from the legacy job: job-level permissions REPLACE the\n")
 	b.WriteString("    # workflow-level block, which is narrower than this job needs.\n")

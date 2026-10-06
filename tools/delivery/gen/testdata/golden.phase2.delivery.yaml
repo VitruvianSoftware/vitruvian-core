@@ -89,6 +89,9 @@
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
+#   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
+#       paths:  apps/desktop/vitruvian/
+#       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -117,6 +120,7 @@ on:
           - tabula-dev-latest
           - tabula-identity
           - tabula-web
+          - vitruvian
       environment:
         description: Target environment (single-env break-glass redeploy)
         type: choice
@@ -230,6 +234,7 @@ jobs:
       affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
       affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
       affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
+      affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -1362,3 +1367,97 @@ jobs:
       smoke-url-path: "/"
       workload-migrated: false
     secrets: inherit
+
+  # ======== unit: vitruvian → beta → production ========
+  # Declared in apps/desktop/vitruvian/BUILD; break-glass target: //apps/desktop/vitruvian:publish
+  # Transcribed from .github/workflows/vitruvian-release.yaml job "package" (that job no longer exists; see git history).
+
+  # The push rung: delivers on an affected push. The later rungs are
+  # release-gated promotions and do not chain behind this one.
+  vitruvian-beta:
+    needs: [orchestrate]
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian' && inputs.environment == 'beta'))
+    concurrency:
+      group: delivery-vitruvian-beta
+      cancel-in-progress: false
+    runs-on: xcode-27
+    timeout-minutes: 60
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # Imports the Developer ID identity into a temporary keychain; a
+      # no-op when the secrets are not set.
+      - name: Import the signing identity
+        env:
+          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
+
+      - name: Build, package and publish the DMG
+        env:
+          GRADE: beta
+          # Empty on a push; the script requires it for the production grade.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Cache-only: reuse the build the macOS pipeline unit cached.
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: bash apps/desktop/vitruvian/publish.sh
+
+  # PROMOTION rung 1/1 — release-gated on a vitruvian-v* release, never reached by a push.
+  vitruvian-production:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-vitruvian-production
+      cancel-in-progress: false
+    runs-on: xcode-27
+    timeout-minutes: 60
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # Imports the Developer ID identity into a temporary keychain; a
+      # no-op when the secrets are not set.
+      - name: Import the signing identity
+        env:
+          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
+
+      - name: Build, package and publish the DMG
+        env:
+          GRADE: production
+          # Empty on a push; the script requires it for the production grade.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Cache-only: reuse the build the macOS pipeline unit cached.
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: bash apps/desktop/vitruvian/publish.sh

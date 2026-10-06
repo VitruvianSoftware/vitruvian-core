@@ -30,22 +30,39 @@ repository's `.xcode-version`.
 
 ## Releases
 
-`.github/workflows/vitruvian-release.yaml` runs release-please over conventional
-commits under `apps/desktop/vitruvian/`. A `feat` or `fix` commit opens a
-release PR that bumps `CHANGELOG.md`, `Resources/Info.plist` and
-`.release-please-manifest.json`. Merging that PR tags `vitruvian-vX.Y.Z` and
-creates the GitHub Release. The same workflow then builds the app from the tag
-on the `xcode-27` runner and runs `Tools/package-release.sh`, which:
+Two workflows share the work, the same split as the repository's other
+release-please components:
 
-- signs the app: with the `VITRUVIAN_SIGNING_CERT_P12` /
+- **`.github/workflows/vitruvian-release.yaml`** runs release-please over
+  conventional commits under `apps/desktop/vitruvian/`. A `feat` or `fix`
+  commit opens a release PR that bumps `CHANGELOG.md`, `Resources/Info.plist`
+  and `.release-please-manifest.json`. Merging that PR tags `vitruvian-vX.Y.Z`
+  and creates the GitHub Release.
+- **The `vitruvian` delivery unit** (declared in `BUILD`, rendered into the
+  generated `.github/workflows/delivery.yaml`) builds and publishes the DMG on
+  the `xcode-27` runner by running `publish.sh`:
+  - on every push to `main` that touches the app, `Vitruvian-beta.dmg` on the
+    rolling `vitruvian-beta-latest` prerelease;
+  - on each `vitruvian-v*` release, `Vitruvian-X.Y.Z.dmg` on that release.
+
+`publish.sh` builds the app and hands it to `Tools/package-release.sh`, which:
+
+- signs it: with the `VITRUVIAN_SIGNING_CERT_P12` /
   `VITRUVIAN_SIGNING_CERT_PASSWORD` Developer ID when those secrets exist,
   ad hoc otherwise;
 - notarizes it when the `VITRUVIAN_NOTARY_*` secrets exist;
-- packages `Vitruvian-X.Y.Z.dmg` and attaches it to the release.
+- packages the DMG with `Tools/make-dmg.sh`.
 
-To package an existing tag again, run the workflow by hand with that tag. Tags
-before `vitruvian-v3.6.0` predate `Tools/package-release.sh` and cannot be
-packaged.
+To publish a release's DMG again, run `delivery.yaml` by hand from the release
+tag with unit `vitruvian` and environment `production`, or on a Mac, from a
+checkout of the tag:
+
+```sh
+GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian:publish
+```
+
+Tags before `vitruvian-v3.6.0` predate `publish.sh` and cannot be published
+this way.
 
 ## Build and test
 
@@ -111,8 +128,9 @@ module, and the app is now split into modules (see below). Use Bazel.
 | `Sources/HIDEventSystem/`, `Sources/VMStatisticsCompat/` | C module maps for private or compat headers |
 | `Tests/` | Upstream's custom test runner, `generate_sources.py` extractor and fixtures |
 | `Resources/` | Info.plist, entitlements, launchd plist, localized InfoPlist strings, brand masters, GIFs and images |
-| `Tools/` | Icon generator (run by the build), upstream's signing, notarization and DMG scripts, and `package-release.sh`, which the release workflow runs |
+| `Tools/` | Icon generator (run by the build), upstream's signing, notarization and DMG scripts, and `package-release.sh`, which signs and packages a Bazel-built app |
 | `bazel/` | Build glue: generated source lists, genrule scripts and test wrappers |
+| `publish.sh` | Builds the DMG and attaches it to a GitHub Release (the `vitruvian` delivery unit and `bazel run :publish`) |
 
 Architecture review notes and the planned refactor are tracked in the PRs that
 follow the import.
