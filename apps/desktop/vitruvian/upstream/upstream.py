@@ -851,6 +851,32 @@ def preference_review(merged, ours, preferences):
     return found
 
 
+# What a test reads when it pins source text instead of behaviour: the file
+# itself, or a variable holding its text (`switcherSource`, `holdCode`).
+SOURCE_PIN_RE = re.compile(
+    r'contentsOfFile|"Sources/'
+    r"|\b(?!key)[a-z]\w*(?:Source|Code|Lines)\b\s*(?:\.\s*(?:contains|components|range|firstIndex|split)\b|\[)"
+)
+
+
+def pin_review(merged, ours):
+    """New lines of a test that read source text. This fork's tests check
+    behaviour, and `source_lints` refuses a test that reads a source file;
+    upstream's helpers that hold the text do not exist here, so a merged line
+    that uses one does not compile. Returns (line, text) pairs, line 1-based
+    in `merged`."""
+    before = set(ours.splitlines())
+    found, in_conflict = [], False
+    for n, line in enumerate(merged.splitlines(), 1):
+        if line.startswith("<<<<<<< "):
+            in_conflict = True
+        elif line.startswith(">>>>>>> "):
+            in_conflict = False
+        elif not in_conflict and line not in before and SOURCE_PIN_RE.search(line):
+            found.append((n, line.strip()))
+    return found
+
+
 def _merge_file(ours, base, theirs, labels):
     with tempfile.TemporaryDirectory() as tmp:
         paths = []
@@ -1035,6 +1061,13 @@ def port_commit(
                 f"  - preference review `{rel}:{n}`: use `@AppStorage(Preferences.{key})`, "
                 "which takes the declared default"
             )
+        if "/Tests/" in f"/{rel}":
+            for n, text in pin_review(result.decode("utf-8", "replace"), before_text):
+                clean = False
+                lines.append(
+                    f"  - pin review `{rel}:{n}`: `{text}` reads source text; "
+                    "test the behaviour instead, or leave the check out"
+                )
         if not dry_run:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(result)

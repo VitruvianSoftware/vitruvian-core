@@ -457,6 +457,19 @@ class PreferenceReviewTest(unittest.TestCase):
             upstream.preference_review(merged, ours, self.PREFERENCES), [(3, "beta")]
         )
 
+    def test_a_new_test_line_that_reads_source_text_is_flagged(self):
+        ours = "enum T {\n    static func run() {\n        let keyCode = 1\n    }\n}\n"
+        merged = (
+            "enum T {\n    static func run() {\n        let keyCode = 1\n"
+            '        expect(statusControllerSource.contains("refresh()"))\n'
+            '        expect(holdCode.components(separatedBy: "x").count == 2)\n'
+            "        expect([1].contains(keyCode))\n"
+            '        let text = try String(contentsOfFile: "Sources/A.swift")\n'
+            "        expect(keyCode.range == nil)\n"
+            "    }\n}\n"
+        )
+        self.assertEqual([n for n, _ in upstream.pin_review(merged, ours)], [4, 5, 7])
+
     def test_lines_inside_an_unresolved_conflict_are_left_to_the_porter(self):
         merged = (
             "struct V {\n<<<<<<< vitruvian\n    @AppStorage(Preferences.beta) private var b: String\n"
