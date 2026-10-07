@@ -2411,7 +2411,9 @@ is that notice. Add an entry for every change to upstream files.
     directly.
 - **2026-10-06**: First release:
   - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
-    drop upstream's mark;
+- **2026-10-07**: Claude Code session titles and scheduled task parity in Quick Prompt:
+  - `NexusAgentQuickPromptLayout`: updated `parseClaudeSessions` to check companion `custom-title.json` (`~/.claude/projects/<slug>/<sessionID>/custom-title.json`), parse in-stream `custom-title`, `agent-name`, and `ai-title` events, added `formatTaskName` and `extractScheduledTaskName` to extract and format task names from `<scheduled-task name="...">`, and enhanced `extractUserPrompt` to strip `<system-reminder>` and `<scheduled-task>` XML wrappers;
+  - `NexusAgentTests`: added `claudeSessionTitles` unit test suite verifying task name formatting, XML tag extraction, prompt sanitization, and companion file / in-stream title resolution.
 - **2026-10-07**: Session archiving parity across Antigravity and Claude Code in Quick Prompt:
   - `NexusAgentSessionSummary`: added `isArchived: Bool` property defaulting to `false`, updated Antigravity query to select `killed` status from `conversation_summaries` where `killed = 1` marks archived sessions, added `claudeHiddenSessionIds(home:)` querying `hiddenSessionIds` from VS Code's `state.vscdb` (`Anthropic.claude-code`) and `UserDefaults` (`vitruvian.claude.hiddenSessionIds`), and updated `parseClaudeSessions` to mark sessions in `hiddenIds` as `isArchived: true`;
   - `NexusAgentService`: added `archiveSession` and `unarchiveSession` updating `conversation_summaries SET killed = 1/0` in SQLite for Antigravity, and `UserDefaults` + `state.vscdb` for Claude Code;

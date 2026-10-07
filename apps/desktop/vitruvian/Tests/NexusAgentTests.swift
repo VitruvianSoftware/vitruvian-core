@@ -32,6 +32,7 @@ enum NexusAgentTests {
         pinningAndRetry(suite)
         liveTranscriptAndSubagents(suite)
         sessionArchiving(suite)
+        claudeSessionTitles(suite)
     }
 
     // MARK: - .env
@@ -1027,5 +1028,103 @@ enum NexusAgentTests {
         suite.expect(explicitArchived.isArchived, "explicitly archived summary has isArchived = true")
         suite.expect(!explicitActive.isArchived, "explicitly active summary has isArchived = false")
         suite.expect(!defaultActive.isArchived, "default summary has isArchived = false")
+    }
+
+    // MARK: - Claude Session Titles & Scheduled Task Parity
+
+    private static func claudeSessionTitles(_ suite: TestSuite) {
+        // 1. Task name formatting
+        suite.expect(NexusAgentSessionSummary.formatTaskName("track-zitadel-login-2fa-fix") == "Track zitadel login 2fa fix",
+                     "formatTaskName converts hyphens to spaces and capitalizes first word")
+        suite.expect(NexusAgentSessionSummary.formatTaskName("daily_ci_pipeline_hygiene") == "Daily ci pipeline hygiene",
+                     "formatTaskName converts underscores to spaces and capitalizes first word")
+
+        // 2. Extract scheduled task name from XML tags
+        let taskXMLDoubleQuote = "<scheduled-task name=\"track-zitadel-login-2fa-fix\" file=\"/path/to/task.md\">\nTask content\n</scheduled-task>"
+        suite.expect(NexusAgentSessionSummary.extractScheduledTaskName(taskXMLDoubleQuote) == "Track zitadel login 2fa fix",
+                     "extractScheduledTaskName extracts double-quoted task name")
+
+        let taskXMLSingleQuote = "<scheduled-task name='daily-ci-pipeline-hygiene'>\nCheck pipeline\n</scheduled-task>"
+        suite.expect(NexusAgentSessionSummary.extractScheduledTaskName(taskXMLSingleQuote) == "Daily ci pipeline hygiene",
+                     "extractScheduledTaskName extracts single-quoted task name")
+
+        suite.expect(NexusAgentSessionSummary.extractScheduledTaskName("No scheduled task here") == nil,
+                     "extractScheduledTaskName returns nil when no scheduled task tag is present")
+
+        // 3. User prompt sanitization (XML stripping)
+        let rawPromptWithTaskAndReminder = """
+        <system-reminder>
+        UserPromptSubmit hook success
+        </system-reminder>
+        <scheduled-task name="track-zitadel-login-2fa-fix" file="/some/path">
+        Please investigate the Zitadel 2FA issue.
+        </scheduled-task>
+        """
+        let cleanedPrompt = NexusAgentSessionSummary.extractUserPrompt(rawPromptWithTaskAndReminder)
+        suite.expect(cleanedPrompt == "Please investigate the Zitadel 2FA issue.",
+                     "extractUserPrompt strips both system-reminder and scheduled-task tags, preserving body text")
+
+        // 4. File-based Claude session title discovery
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("claude-titles-test-\(UUID().uuidString)")
+        let projectsDir = tmpDir.appendingPathComponent(".claude/projects/-test-project")
+        try? FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tmpDir)
+        }
+
+        // Case A: Custom title from companion custom-title.json
+        let sessionADir = projectsDir.appendingPathComponent("session-a")
+        try? FileManager.default.createDirectory(at: sessionADir, withIntermediateDirectories: true)
+        let customTitleJSON = "{\"customTitle\": \"Companion File Title\"}"
+        try? customTitleJSON.write(to: sessionADir.appendingPathComponent("custom-title.json"), atomically: true, encoding: .utf8)
+        let sessionAJSONL = "{\"type\":\"user\",\"content\":\"some user content\"}\n"
+        try? sessionAJSONL.write(to: projectsDir.appendingPathComponent("session-a.jsonl"), atomically: true, encoding: .utf8)
+
+        // Case B: In-stream custom-title event
+        let sessionBJSONL = """
+        {"type":"custom-title","customTitle":"Stream Custom Title"}
+        {"type":"user","content":"User prompt for stream test"}
+        """
+        try? sessionBJSONL.write(to: projectsDir.appendingPathComponent("session-b.jsonl"), atomically: true, encoding: .utf8)
+
+        // Case C: In-stream agent-name event
+        let sessionCJSONL = """
+        {"type":"agent-name","agentName":"Agent Name Title"}
+        {"type":"user","content":"User prompt for agent name"}
+        """
+        try? sessionCJSONL.write(to: projectsDir.appendingPathComponent("session-c.jsonl"), atomically: true, encoding: .utf8)
+
+        // Case D: Scheduled task fallback title and clean preview
+        let sessionDJSONL = """
+        {"type":"queue-operation","operation":"enqueue","content":"<scheduled-task name=\\"track-zitadel-login-2fa-fix\\">Check Zitadel 2FA issue</scheduled-task>"}
+        {"type":"user","message":{"role":"user","content":"<scheduled-task name=\\"track-zitadel-login-2fa-fix\\">Check Zitadel 2FA issue</scheduled-task>"}}
+        """
+        try? sessionDJSONL.write(to: projectsDir.appendingPathComponent("session-d.jsonl"), atomically: true, encoding: .utf8)
+
+        // Case E: Regular fallback prompt
+        let sessionEJSONL = """
+        {"type":"user","message":{"role":"user","content":"Regular user question without title"}}
+        """
+        try? sessionEJSONL.write(to: projectsDir.appendingPathComponent("session-e.jsonl"), atomically: true, encoding: .utf8)
+
+        let sessions = NexusAgentSessionSummary.parseClaudeSessions(home: tmpDir.path, directory: "/test/project")
+        let summaryA = sessions.first { $0.id == "session-a" }
+        let summaryB = sessions.first { $0.id == "session-b" }
+        let summaryC = sessions.first { $0.id == "session-c" }
+        let summaryD = sessions.first { $0.id == "session-d" }
+        let summaryE = sessions.first { $0.id == "session-e" }
+
+        suite.expect(summaryA?.title == "Companion File Title",
+                     "Session A resolves title from companion custom-title.json")
+        suite.expect(summaryB?.title == "Stream Custom Title",
+                     "Session B resolves title from in-stream custom-title event")
+        suite.expect(summaryC?.title == "Agent Name Title",
+                     "Session C resolves title from in-stream agent-name event")
+        suite.expect(summaryD?.title == "Track zitadel login 2fa fix",
+                     "Session D resolves title from scheduled-task name attribute")
+        suite.expect(summaryD?.preview == "Check Zitadel 2FA issue",
+                     "Session D preview is sanitized to exclude scheduled-task XML tags")
+        suite.expect(summaryE?.title == "Regular user question without title",
+                     "Session E falls back to first line of preview")
     }
 }

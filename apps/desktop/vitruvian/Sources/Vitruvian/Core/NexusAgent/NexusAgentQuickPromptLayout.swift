@@ -223,12 +223,25 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
             let fileURL = URL(fileURLWithPath: candidate.path)
             let sessionID = fileURL.deletingPathExtension().lastPathComponent
 
-            guard let content = try? String(contentsOfFile: candidate.path, encoding: .utf8) else { continue }
-            let lines = content.components(separatedBy: "\n").prefix(60)
-
             var title = ""
             var preview = ""
             var steps = 0
+            var scheduledTaskTitle: String?
+
+            // 1. Check companion custom-title.json: ~/.claude/projects/<slug>/<sessionID>/custom-title.json
+            let companionPath = (candidate.path as NSString).deletingPathExtension.appending("/custom-title.json")
+            if fileManager.fileExists(atPath: companionPath),
+               let data = try? Data(contentsOf: URL(fileURLWithPath: companionPath)),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let ct = (json["customTitle"] ?? json["title"]) as? String {
+                let trimmedCT = ct.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmedCT.isEmpty {
+                    title = trimmedCT
+                }
+            }
+
+            guard let content = try? String(contentsOfFile: candidate.path, encoding: .utf8) else { continue }
+            let lines = content.components(separatedBy: "\n").prefix(100)
 
             for line in lines {
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -237,24 +250,51 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let type = json["type"] as? String else { continue }
 
-                if type == "ai-title", let aiTitle = json["aiTitle"] as? String, !aiTitle.isEmpty {
-                    if title.isEmpty { title = aiTitle }
-                } else if type == "queue-operation", let op = json["operation"] as? String, op == "enqueue",
+                if type == "custom-title",
+                   let ct = (json["customTitle"] ?? json["title"]) as? String {
+                    let trimmedCT = ct.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedCT.isEmpty {
+                        title = trimmedCT
+                    }
+                } else if type == "agent-name",
+                          let agentName = (json["agentName"] ?? json["name"]) as? String {
+                    let trimmedName = agentName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if title.isEmpty && !trimmedName.isEmpty {
+                        title = trimmedName
+                    }
+                } else if type == "ai-title",
+                          let aiTitle = json["aiTitle"] as? String {
+                    let trimmedAI = aiTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if title.isEmpty && !trimmedAI.isEmpty {
+                        title = trimmedAI
+                    }
+                } else if type == "queue-operation",
+                          let op = json["operation"] as? String, op == "enqueue",
                           let opContent = json["content"] as? String, !opContent.isEmpty {
-                    if preview.isEmpty { preview = opContent }
+                    if scheduledTaskTitle == nil {
+                        scheduledTaskTitle = extractScheduledTaskName(opContent)
+                    }
+                    if preview.isEmpty {
+                        preview = extractUserPrompt(opContent)
+                    }
                 } else if type == "user" {
                     steps += 1
-                    if preview.isEmpty {
-                        if let msg = json["message"] as? [String: Any] {
-                            if let text = msg["content"] as? String, !text.isEmpty {
-                                preview = extractUserPrompt(text)
-                            } else if let blocks = msg["content"] as? [[String: Any]] {
-                                let texts = blocks.compactMap { $0["text"] as? String }
-                                if !texts.isEmpty { preview = extractUserPrompt(texts.joined(separator: "\n")) }
-                            }
-                        } else if let text = json["content"] as? String, !text.isEmpty {
-                            preview = extractUserPrompt(text)
+                    var userPromptText = ""
+                    if let msg = json["message"] as? [String: Any] {
+                        if let text = msg["content"] as? String, !text.isEmpty {
+                            userPromptText = text
+                        } else if let blocks = msg["content"] as? [[String: Any]] {
+                            let texts = blocks.compactMap { $0["text"] as? String }
+                            if !texts.isEmpty { userPromptText = texts.joined(separator: "\n") }
                         }
+                    } else if let text = json["content"] as? String, !text.isEmpty {
+                        userPromptText = text
+                    }
+                    if scheduledTaskTitle == nil && !userPromptText.isEmpty {
+                        scheduledTaskTitle = extractScheduledTaskName(userPromptText)
+                    }
+                    if preview.isEmpty && !userPromptText.isEmpty {
+                        preview = extractUserPrompt(userPromptText)
                     }
                 } else if type == "assistant" {
                     steps += 1
@@ -262,12 +302,16 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
             }
 
             if title.isEmpty {
-                let firstLine = preview.split(separator: "\n").first.map(String.init) ?? ""
-                let trimmedFirstLine = firstLine.trimmingCharacters(in: .whitespaces)
-                if !trimmedFirstLine.isEmpty {
-                    title = String(trimmedFirstLine.prefix(100))
+                if let taskTitle = scheduledTaskTitle, !taskTitle.isEmpty {
+                    title = String(taskTitle.prefix(100))
                 } else {
-                    title = "Untitled Claude Session"
+                    let firstLine = preview.split(separator: "\n").first.map(String.init) ?? ""
+                    let trimmedFirstLine = firstLine.trimmingCharacters(in: .whitespaces)
+                    if !trimmedFirstLine.isEmpty {
+                        title = String(trimmedFirstLine.prefix(100))
+                    } else {
+                        title = "Untitled Claude Session"
+                    }
                 }
             }
 
@@ -286,12 +330,58 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
         return summaries
     }
 
-    package static func extractUserPrompt(_ raw: String) -> String {
-        if let start = raw.range(of: "<USER_REQUEST>"),
-           let end = raw.range(of: "</USER_REQUEST>", range: start.upperBound..<raw.endIndex) {
-            return String(raw[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Formats a raw scheduled task name (e.g. `track-zitadel-login-2fa-fix`) into a human-readable title
+    /// (e.g. `Track zitadel login 2fa fix`).
+    package static func formatTaskName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let replaced = trimmed.replacingOccurrences(of: "-", with: " ")
+                              .replacingOccurrences(of: "_", with: " ")
+                              .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = replaced.first else { return trimmed }
+        return String(first).uppercased() + String(replaced.dropFirst())
+    }
+
+    /// Extracts a scheduled task name attribute from XML prompt strings.
+    package static func extractScheduledTaskName(_ raw: String) -> String? {
+        guard let taskRange = raw.range(of: "<scheduled-task") else { return nil }
+        guard let closeTag = raw.range(of: ">", range: taskRange.lowerBound..<raw.endIndex) else { return nil }
+        let tag = String(raw[taskRange.lowerBound..<closeTag.upperBound])
+        if let nameRange = tag.range(of: "name=\""),
+           let nameEnd = tag.range(of: "\"", range: nameRange.upperBound..<tag.endIndex) {
+            return formatTaskName(String(tag[nameRange.upperBound..<nameEnd.lowerBound]))
         }
-        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let singleNameRange = tag.range(of: "name='"),
+           let singleNameEnd = tag.range(of: "'", range: singleNameRange.upperBound..<tag.endIndex) {
+            return formatTaskName(String(tag[singleNameRange.upperBound..<singleNameEnd.lowerBound]))
+        }
+        return nil
+    }
+
+    /// Strips XML wrappers such as <USER_REQUEST>, <system-reminder>, and <scheduled-task> from user prompts.
+    package static func extractUserPrompt(_ raw: String) -> String {
+        var text = raw
+        if let start = text.range(of: "<USER_REQUEST>"),
+           let end = text.range(of: "</USER_REQUEST>", range: start.upperBound..<text.endIndex) {
+            text = String(text[start.upperBound..<end.lowerBound])
+        }
+
+        while let start = text.range(of: "<system-reminder"),
+              let end = text.range(of: "</system-reminder>", range: start.lowerBound..<text.endIndex) {
+            text.removeSubrange(start.lowerBound..<end.upperBound)
+        }
+
+        if let start = text.range(of: "<scheduled-task") {
+            if let closeTag = text.range(of: ">", range: start.lowerBound..<text.endIndex) {
+                let afterOpen = closeTag.upperBound
+                if let end = text.range(of: "</scheduled-task>", range: afterOpen..<text.endIndex) {
+                    text = String(text[afterOpen..<end.lowerBound])
+                } else {
+                    text = String(text[afterOpen...])
+                }
+            }
+        }
+
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func normalizePath(_ raw: String) -> String {
