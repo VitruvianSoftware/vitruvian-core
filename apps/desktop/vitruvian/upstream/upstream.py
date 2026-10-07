@@ -738,6 +738,70 @@ def _publish_used_types(lines, kept):
             lines[i] = line[:at] + "package " + line[at:]
 
 
+SPELLED_INIT_RE = re.compile(r"//\s*Spelled out because a memberwise initializer")
+STORED_RE = re.compile(
+    r"[ \t]*(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+    r"(?:(?:package|public|internal|private|fileprivate|private\(set\)|fileprivate\(set\)"
+    r"|nonisolated(?:\(unsafe\))?|lazy|weak|unowned)[ \t]+)*"
+    r"(?:var|let)[ \t]+([A-Za-z_]\w*)[^{=\n]*(=|\{|$)"
+)
+
+
+def _spelled_out_inits(lines):
+    """{type name: (stored property names, the init's signature)} for each
+    type whose memberwise initializer this fork wrote out by hand so another
+    module can call it."""
+    found = {}
+    for i, line in enumerate(lines):
+        if not SPELLED_INIT_RE.search(line):
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j].strip().startswith(("package init(", "public init(")):
+            j += 1
+        if j == len(lines):
+            continue
+        depth = _indent(lines[j])
+        owner = None
+        for k in range(j - 1, -1, -1):
+            if lines[k].strip() and _indent(lines[k]) < depth:
+                owner = k
+                break
+        key = _decl_key(lines[owner]) if owner is not None else None
+        if not key or key[1] not in ("struct", "class") or not key[2]:
+            continue
+        stored = {}
+        for k in range(owner + 1, len(lines)):
+            if lines[k].strip() and _indent(lines[k]) < depth:
+                break
+            m = STORED_RE.match(lines[k])
+            if (
+                m
+                and _indent(lines[k]) == depth
+                and not re.search(r"\bstatic\b", lines[k])
+                and m.group(2) != "{"
+            ):
+                stored[m.group(1)] = k + 1
+        found[key[2]] = (stored, _signature(lines, j))
+    return found
+
+
+def init_review(merged, ours):
+    """Stored properties a merge added to a type whose cross-module
+    initializer this fork spelled out, when that initializer does not take
+    them: other modules then cannot set them, or the module does not build.
+    Returns (line, type, property) triples, line 1-based in `merged`."""
+    before = _spelled_out_inits(ours.splitlines(keepends=True))
+    gaps = []
+    for name, (stored, signature) in _spelled_out_inits(
+        merged.splitlines(keepends=True)
+    ).items():
+        old = before.get(name, ({}, ""))[0]
+        for prop, line in stored.items():
+            if prop not in old and not re.search(rf"\b{re.escape(prop)}\s*:", signature):
+                gaps.append((line, name, prop))
+    return sorted(gaps)
+
+
 def _merge_file(ours, base, theirs, labels):
     with tempfile.TemporaryDirectory() as tmp:
         paths = []
@@ -888,6 +952,14 @@ def port_commit(
                 )
             else:
                 lines.append(f"- `{old}` -> `{rel}` ({how}): merged{note}")
+            for n, owner, prop in init_review(
+                result.decode("utf-8", "replace"), ours.decode("utf-8", "replace")
+            ):
+                clean = False
+                lines.append(
+                    f"  - init review `{rel}:{n}`: `{owner}` gained `{prop}`, "
+                    "which its spelled-out initializer does not take"
+                )
         if not dry_run:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(result)

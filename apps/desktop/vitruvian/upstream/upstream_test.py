@@ -407,6 +407,44 @@ class PackageTest(unittest.TestCase):
         self.assertEqual(self.restore(merged, ours), merged)
 
 
+class InitReviewTest(unittest.TestCase):
+    OURS = (
+        "package struct Bill: Equatable {\n"
+        "    package var tokens = 0\n"
+        "    package var fast = false\n"
+        "    package var total: Int { tokens }\n"
+        "    // Spelled out because a memberwise initializer never leaves its module.\n"
+        "    package init(tokens: Int = 0, fast: Bool = false) {\n"
+        "        self.tokens = tokens\n"
+        "        self.fast = fast\n"
+        "    }\n"
+        "}\n"
+    )
+
+    def test_a_stored_property_the_initializer_misses_is_flagged(self):
+        merged = self.OURS.replace(
+            "    package var fast = false\n",
+            "    package var aggregate = false\n    package var fast = false\n"
+            "    package var doubled: Int { tokens * 2 }\n",
+        )
+        self.assertEqual(
+            upstream.init_review(merged, self.OURS),
+            [(3, "Bill", "aggregate")],
+        )
+
+    def test_a_property_the_initializer_takes_is_not_flagged(self):
+        merged = self.OURS.replace(
+            "    package var fast = false\n",
+            "    package var aggregate = false\n    package var fast = false\n",
+        ).replace("fast: Bool = false)", "aggregate: Bool = false, fast: Bool = false)")
+        self.assertEqual(upstream.init_review(merged, self.OURS), [])
+
+    def test_types_without_a_spelled_out_initializer_are_not_reviewed(self):
+        ours = "struct Local {\n    var a = 0\n}\n"
+        merged = "struct Local {\n    var a = 0\n    var b = 0\n}\n"
+        self.assertEqual(upstream.init_review(merged, ours), [])
+
+
 class TriageTest(Base):
     def test_status_then_triage(self):
         fx = self.fx
