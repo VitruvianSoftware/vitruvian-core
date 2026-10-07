@@ -46,12 +46,16 @@ package struct GeneralSettings: View {
         SettingsCard {
             SettingsRow(symbol: "laptopcomputer", title: l10n.s.launchAtLogin,
                         caption: text.launchAtLoginCaption) {
-                Toggle(l10n.s.launchAtLogin, isOn: Binding(
-                    get: { login.isOn },
-                    set: { login.setEnabled($0) }
-                ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
+                HStack {
+                    if login.isPending { ProgressView().controlSize(.small) }
+                    Toggle(l10n.s.launchAtLogin, isOn: Binding(
+                        get: { login.isOn },
+                        set: { login.setEnabled($0) }
+                    ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .disabled(login.isPending)
+                }
             }
             if login.registration == .needsApproval {
                 Text(l10n.s.launchAtLoginNeedsApproval)

@@ -44,14 +44,26 @@ enum LaunchAtLoginSettingsTests {
     static func run(_ suite: TestSuite) {
         let system = System()
         let model = LaunchAtLoginSettingsModel(wanted: false, environment: system.environment)
-        func refresh(to registration: LaunchAtLoginSupport.Registration) {
-            system.registration = registration
-            model.refresh()
+        // Like the real service: one serial worker, answers published on main.
+        func settle() {
             system.drainWorker()
             system.drainMain()
         }
+        func refresh(to registration: LaunchAtLoginSupport.Registration) {
+            system.registration = registration
+            model.refresh()
+            settle()
+        }
+        func toggle(_ enabled: Bool) {
+            model.setEnabled(enabled)
+            settle()
+        }
 
-        refresh(to: .needsApproval)
+        system.registration = .needsApproval
+        model.refresh()
+        suite.expect(!model.isPending,
+                     "a status read keeps the switch usable, so opening the page does not flash a spinner")
+        settle()
         suite.expect(model.registration == .needsApproval,
                      "opening settings preserves pending approval instead of flattening it to off")
         refresh(to: .off)
@@ -61,7 +73,7 @@ enum LaunchAtLoginSettingsTests {
 
         system.result = .off
         system.failure = .unavailable
-        model.setEnabled(true)
+        toggle(true)
         suite.expect(model.registration == .off && model.errorText == Failure.unavailable.localizedDescription,
                      "an unrelated registration failure still has an actionable error")
         system.failure = nil
@@ -72,10 +84,15 @@ enum LaunchAtLoginSettingsTests {
         system.result = .needsApproval
         system.failure = .approval
         model.setEnabled(true)
-        suite.expect(model.registration == .needsApproval && model.errorText == nil,
+        suite.expect(model.isPending && model.errorText == nil && system.writes.count == 1,
+                     "the switch waits for the system to answer a change, without the last attempt's error")
+        suite.expect(model.registration == .enabled,
+                     "the switch stays where the user put it instead of springing back while it waits")
+        settle()
+        suite.expect(model.registration == .needsApproval && model.errorText == nil && !model.isPending,
                      "pending approval is shown from current status without a duplicate operation error")
         system.failure = nil
-        model.setEnabled(true)
+        toggle(true)
         suite.expect(model.registration == .needsApproval,
                      "a successful register call does not imply that macOS allowed the item")
 
@@ -83,9 +100,8 @@ enum LaunchAtLoginSettingsTests {
         model.refresh()
         system.drainWorker() // The old enabled snapshot is waiting for publication.
         system.result = .off
-        model.setEnabled(false)
-        system.drainMain()
-        suite.expect(model.registration == .off && model.errorText == nil,
+        toggle(false)
+        suite.expect(model.registration == .off && model.errorText == nil && !model.isPending,
                      "a stale refresh cannot undo a later user disable")
 
         system.registration = .needsApproval
@@ -99,13 +115,19 @@ enum LaunchAtLoginSettingsTests {
         system.drainMain()
         suite.expect(model.registration == .enabled,
                      "an older approval snapshot cannot overwrite a newer refresh")
-        suite.expect(system.writes == [true, true, true, false],
+        system.result = .enabled
+        model.setEnabled(true)
+        model.refresh() // An activation reads while the change is still queued.
+        settle()
+        suite.expect(model.registration == .enabled && !model.isPending,
+                     "a read that replaces a change's answer reports the change and frees the switch")
+        suite.expect(system.writes == [true, true, true, false, true],
                      "only explicit toggle actions write to the system service")
 
         refresh(to: .needsApproval)
         suite.expect(model.isOn, "an item awaiting approval is still registered, so its switch reads on")
         system.result = .off
-        model.setEnabled(false)
+        toggle(false)
         suite.expect(!model.isOn && model.registration == .off && model.errorText == nil && system.writes.last == false,
                      "switching off an item awaiting approval unregisters it and clears the note")
     }
