@@ -791,7 +791,11 @@ def tap_owners_follow_the_session(repo):
         code = code_without_comments(source.split("\n"))
         if "SessionActivity.shared.onChange" not in code:
             problems.append(f"{owner} rebuilds its tap when the session comes back")
-        rearm = first_block(code.split("tapDisabledByTimeout", 1)[1]) if "tapDisabledByTimeout" in code else ""
+        rearm = (
+            first_block(code.split("tapDisabledByTimeout", 1)[1])
+            if "tapDisabledByTimeout" in code
+            else ""
+        )
         if "SessionActivity.shared.isActive" not in rearm:
             problems.append(
                 f"{owner} does not re-arm a disabled tap into a switched-away session"
