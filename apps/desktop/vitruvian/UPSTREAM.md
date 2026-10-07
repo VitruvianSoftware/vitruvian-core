@@ -2412,7 +2412,9 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-06**: First release:
   - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
     drop upstream's mark;
-  - `Resources/Gifs/commandBar.gif` deleted;
+- **2026-10-07**: Claude Code Task and tool_use parsing in Quick Prompt:
+  - `NexusAgentService`: extended `parseClaudeTranscript` to extract collapsible tool execution steps (`Bash`, `Task`, `Read`, `Edit`, and generic tools) and `thinking` blocks from assistant turns, and updated `parseActiveSubagents(from:)` to detect spawned Claude subagents from `Task` tool calls and clear them on matching `tool_result` blocks;
+  - `NexusAgentTests`: added unit tests in `liveTranscriptAndSubagents` verifying Claude `tool_use` steps, `thinkingText`, and active `Task` subagent tracking and clearance.
 - **2026-10-07**: Live transcript following and active subagent status banner in Quick Prompt:
   - `NexusAgentSupport`: added `NexusAgentActiveSubagent` and `NexusAgentToolStep` data models;
   - `NexusAgentService`: added `transcriptPath(home:conversationID:provider:)` and `parseActiveSubagents(from:)` to track running vs completed subagents from JSONL logs, updated `parseTranscript` to extract tool execution steps and thinking content, and wired `showQuickPrompt`, `hideQuickPrompt`, and `modeObserver` to manage the transcript follower lifecycle;
