@@ -189,3 +189,12 @@ d2d95cd985bb8f45f8f286b421db94d3f590dd59	b4c4c0b907aa94c526beaa4d4e33680167b740f
 1e9caecb99c87f99a89a142ca24d015ebc4a8244	31f0f0baacd9e76fab6402b5feabefd482a421cd	2026-10-07	ported	#2840	feat(screenshot): blur, pixelate or erase a whole area or only its text (#2767)
 9d762890e7a92489ea602b1835ecd0221cbcaba5	a5a6dff69970086ca439b78f3e8a5579591836d3	2026-10-07	skipped	touches only upstream-only paths	Record and credit the October 7 batch in the changelog
 8c6dd0a70b28c0abfa3dc162713aff2ece55c773	d1c9154b49de0ebdef11fe54e5dbdf023e877235	2026-10-07	ported	#2847	fix(radial-menu): follow extra-button drag movement (#2531)
+3a15263a2ae894bc1395ef7b326f321c94d2e94b	406d8cd015aa607cf8957a815c7cf7af47eb182f	2026-10-07	pending	-	fix(notch): keep the player's size when lyrics or the queue open (#2771)
+043c30e033daff961feb3a94d98ecb4858646a04	33389b915ac556a2674d2986b21e4a22f2ca893f	2026-10-07	pending	-	feat(window-layout): snap on the edge two displays share, by pointer speed (#2746)
+820bce5268bac9b497abccd9070d21d6fcd3211c	e4d85cce605f51a2c8cc47aeb6fe2e6c0605a62d	2026-10-07	pending	-	fix(launch-at-login): keep startup and settings responsive (#2540)
+dd6e62a843508f5bfda3e72eff0a9e993f918577	ed2d232063e7c46beeaa0ab12f25b7e1123cf206	2026-10-07	pending	-	fix(uninstall): free an app's shortcut when the uninstaller removes it (#2776)
+5fd139e7ab894fd1278dc724845613221ae5e939	ac36692555bc7751f64beb185ee0a00f9662fd2d	2026-10-07	pending	-	feat(command-bar): hide an app already in front from its own shortcut (#2523)
+81b3022c15458c3c7d2fc4f260241077e1472c01	7057123a03bc19620b8150321f93e623a31e8c79	2026-10-07	pending	-	fix(monitor): expose connected devices from system pages (#2773)
+0b428c4d2aab60507e28c9967f76078ec5fa57be	7530b84f719b410357b3950a8543824e643a6015	2026-10-07	pending	-	feat(network): add a bits per second option for network speeds (#2748)
+0ee0099c49ca12cfd94bbe652116711058062cee	252ee72a426deb6e90d320e882e92935280f9128	2026-10-07	pending	-	fix(screenshot): keep the editor footer inside small windows (#2735)
+1d32501ef3248fb3bf807b685f84864a12ab5e56	1ff3217341bd491bda1590f90250e996e4cd0583	2026-10-07	skipped	touches only upstream-only paths	Record and credit the second October 7 batch in the changelog
