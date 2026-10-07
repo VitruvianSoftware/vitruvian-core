@@ -65,7 +65,7 @@ package enum SpacesOrderSupport {
     package enum DockState: String {
         case rearranging, fixed
 
-        init?(_ setting: SpacesRearrangeSetting) {
+        package init?(_ setting: SpacesRearrangeSetting) {
             switch setting {
             case .absent, .on: self = .rearranging
             case .off: self = .fixed
@@ -74,16 +74,56 @@ package enum SpacesOrderSupport {
         }
     }
 
+    /// A restart the Dock still owes: the Dock process that has not read the
+    /// preference since the feature wrote it, what that process runs, and every
+    /// value written to the preference while it ran. Saved before each write.
+    package struct RestartJournal: Equatable {
+        package var dockPID: pid_t
+        package var dockRuns: DockState
+        package var wrote: [SpacesRearrangeSetting]
+
+        /// Only what can still be checked counts: the same Dock process has to
+        /// be running and the preference has to read as one of these writes. A
+        /// Dock that restarted since has read the preference, and any other
+        /// value is a change made through the Dock's own call, which the Dock
+        /// applied itself, or a write that never landed.
+        package func holds(dockPID current: pid_t?, reads: SpacesRearrangeSetting) -> Bool {
+            dockPID > 0 && current == dockPID && wrote.contains(reads)
+        }
+
+        private static let tokens: [SpacesRearrangeSetting: String] = [.absent: "absent", .on: "on", .off: "off"]
+
+        /// `<pid> <fixed|rearranging> <absent|on|off>…`, also read by
+        /// Tools/uninstall.sh.
+        package var encoded: String {
+            ([String(dockPID), dockRuns.rawValue] + wrote.compactMap { Self.tokens[$0] }).joined(separator: " ")
+        }
+
+        package init(dockPID: pid_t, dockRuns: DockState, wrote: [SpacesRearrangeSetting]) {
+            self.dockPID = dockPID
+            self.dockRuns = dockRuns
+            self.wrote = wrote
+        }
+
+        package init?(encoded: String) {
+            let parts = encoded.split(separator: " ").map(String.init)
+            guard parts.count > 2, let pid = pid_t(parts[0]), let runs = DockState(rawValue: parts[1]) else { return nil }
+            let values = parts.dropFirst(2).map { token in Self.tokens.first { $0.value == token }?.key }
+            guard values.allSatisfy({ $0 != nil }) else { return nil }
+            self.init(dockPID: pid, dockRuns: runs, wrote: values.compactMap { $0 })
+        }
+    }
+
     /// One step toward the wanted state. A marker means the feature turned
     /// rearranging off, so finding it on again while the feature is on is the
     /// user taking back control in System Settings. The feature then lets go
     /// instead of turning it off over their choice.
     ///
-    /// `dockRuns` is set while a Dock restart is owed. The preference is then
-    /// the feature's own write, which the Dock never read, so it is never
-    /// taken for a change made in System Settings: the restart runs only when
-    /// the preference already says what is wanted, and otherwise the latest
-    /// toggle is applied over it.
+    /// `dockRuns` is set while a Dock restart is owed and its journal still
+    /// holds. The preference is then the feature's own write, which the Dock
+    /// never read, so it is never taken for a change made in System Settings:
+    /// the restart runs only when the preference already says what is wanted,
+    /// and otherwise the latest toggle is applied over it.
     package static func step(wanted: Bool, current: SpacesRearrangeSetting, marker: String?,
                              dockRuns: DockState? = nil) -> Step {
         if let dockRuns {
@@ -121,17 +161,21 @@ package struct SpacesOrderSystem: Sendable {
     package var write: @Sendable (Bool?) -> Bool
     /// Restarts the Dock so it reads a written preference.
     package var restartDock: @Sendable () -> Bool
+    /// The running Dock's process, nil when none runs. A restart replaces it.
+    package var dockPID: @Sendable () -> pid_t?
     package var pause: @Sendable () -> Void
 
     package init(read: @escaping @Sendable () -> SpacesRearrangeSetting,
                  setLive: @escaping @Sendable (Bool) -> Bool,
                  write: @escaping @Sendable (Bool?) -> Bool,
                  restartDock: @escaping @Sendable () -> Bool,
+                 dockPID: @escaping @Sendable () -> pid_t?,
                  pause: @escaping @Sendable () -> Void) {
         self.read = read
         self.setLive = setLive
         self.write = write
         self.restartDock = restartDock
+        self.dockPID = dockPID
         self.pause = pause
     }
 }
@@ -157,6 +201,11 @@ extension SpacesOrderSystem {
         // A terminated Dock counts as an unexpected exit, so the system
         // starts it again at once; a clean quit would leave it closed.
         restartDock: { Shell.run("/usr/bin/killall", ["Dock"]).status == 0 },
+        // The preference domain is the Dock's bundle identifier.
+        dockPID: {
+            NSRunningApplication.runningApplications(withBundleIdentifier: SpacesOrderSupport.dockDomain)
+                .first?.processIdentifier
+        },
         pause: { usleep(SpacesOrderSupport.confirmPauseMicroseconds) }
     )
 }
@@ -200,13 +249,19 @@ package final class SpacesOrderHold: @unchecked Sendable {
     package static var hasPendingRestore: Bool { isOwed(in: .standard) }
 
     private static func isOwed(in defaults: UserDefaults) -> Bool {
-        defaults.string(forKey: DefaultsKey.spacesOrderRestore) != nil || dockRuns(in: defaults) != nil
+        defaults.string(forKey: DefaultsKey.spacesOrderRestore) != nil
+            || defaults.string(forKey: DefaultsKey.spacesOrderRestartPending) != nil
     }
 
-    /// What the Dock still runs while it owes a restart; nil when it owes none.
-    private static func dockRuns(in defaults: UserDefaults) -> SpacesOrderSupport.DockState? {
+    private var journal: SpacesOrderSupport.RestartJournal? {
         defaults.string(forKey: DefaultsKey.spacesOrderRestartPending)
-            .flatMap(SpacesOrderSupport.DockState.init(rawValue:))
+            .flatMap(SpacesOrderSupport.RestartJournal.init(encoded:))
+    }
+
+    /// The saved journal, only while the Dock and the preference still bear
+    /// it out.
+    private func heldJournal(reads current: SpacesRearrangeSetting) -> SpacesOrderSupport.RestartJournal? {
+        journal.flatMap { $0.holds(dockPID: system.dockPID(), reads: current) ? $0 : nil }
     }
 
     private var isWanted: Bool {
@@ -235,9 +290,10 @@ package final class SpacesOrderHold: @unchecked Sendable {
     /// handed the let-go to the main thread.
     @discardableResult
     package func letGoIfRearrangingReturned() -> Bool {
-        guard isWanted, let marker = defaults.string(forKey: DefaultsKey.spacesOrderRestore),
-              SpacesOrderSupport.step(wanted: true, current: system.read(), marker: marker,
-                                      dockRuns: Self.dockRuns(in: defaults)) == .letGo
+        guard isWanted, let marker = defaults.string(forKey: DefaultsKey.spacesOrderRestore) else { return false }
+        let current = system.read()
+        guard SpacesOrderSupport.step(wanted: true, current: current, marker: marker,
+                                      dockRuns: heldJournal(reads: current)?.dockRuns) == .letGo
         else { return false }
         letGo()
         return true
@@ -298,45 +354,50 @@ package final class SpacesOrderHold: @unchecked Sendable {
     @discardableResult
     package func reconcile(wanted: Bool) -> Bool {
         let marker = defaults.string(forKey: DefaultsKey.spacesOrderRestore)
-        let dockRuns = Self.dockRuns(in: defaults)
-        switch SpacesOrderSupport.step(wanted: wanted, current: system.read(), marker: marker, dockRuns: dockRuns) {
+        let current = system.read()
+        let held = heldJournal(reads: current)
+        // A journal the Dock and the preference no longer bear out owes
+        // nothing: the Dock restarted and read the preference, or it applied a
+        // later change itself. That change is then read like any other.
+        if held == nil, defaults.object(forKey: DefaultsKey.spacesOrderRestartPending) != nil { saveJournal(nil) }
+        switch SpacesOrderSupport.step(wanted: wanted, current: current, marker: marker, dockRuns: held?.dockRuns) {
         case .restart:
             guard system.restartDock() else { return false }
-            setDockRuns(nil)
+            saveJournal(nil)
             // The Dock now runs what the preference says, so the usual step
-            // finishes the change: a restore forgets its marker.
+            // finishes the change.
             return reconcile(wanted: wanted)
         case .none:
-            // An owed restart is moot once the preference says what the Dock
-            // runs: its write never landed, or the latest toggle undid it.
-            if dockRuns != nil { setDockRuns(nil) }
+            // The preference already says what the Dock runs, so a restart is
+            // not owed either.
+            if held != nil { saveJournal(nil) }
             return true
         case .hold(let restore):
             // Saved before the system setting changes, so a crash in between
             // still knows what to put back.
             defaults.set(restore, forKey: DefaultsKey.spacesOrderRestore)
             defaults.synchronize()
-            let result = apply(rearranging: false, removeKey: false)
+            let result = apply(rearranging: false, removeKey: false, held: held)
             guard result.done else {
                 // A marker this hold created goes only if nothing changed or
                 // can still change: a live call the Dock accepted may land
                 // after its checks ran out, and a preference written without
                 // its restart still has to return.
-                if marker == nil, !result.liveAccepted, system.read() != .off {
-                    clearMarker()
-                    if dockRuns == nil { setDockRuns(nil) }
-                }
+                if marker == nil, !result.liveAccepted, !result.wrote { clearMarker() }
                 return false
             }
             return true
         case .release(let removeKey):
-            // The marker stays when this fails, so the next sync tries again.
-            guard apply(rearranging: true, removeKey: removeKey).done else { return false }
-            clearMarker()
-            return true
+            let result = apply(rearranging: true, removeKey: removeKey, held: held)
+            // Once the user's setting is back in the preference nothing more is
+            // owed to them, so a later change of theirs stands. A restart the
+            // Dock still owes is left to the journal. Without the write the
+            // marker stays, so the next sync tries again.
+            if result.wrote { clearMarker() }
+            return result.done
         case .forget:
             clearMarker()
-            if dockRuns != nil { setDockRuns(nil) }
+            if held != nil { saveJournal(nil) }
             return true
         case .letGo:
             letGo()
@@ -368,26 +429,39 @@ package final class SpacesOrderHold: @unchecked Sendable {
     /// The Dock's own call applies at once. Only when it is missing or does not
     /// take effect is the preference written directly, with one Dock restart
     /// to read it. Also reports whether the Dock accepted the live call, which
-    /// can still take effect after its checks ran out.
-    private func apply(rearranging: Bool, removeKey: Bool) -> (done: Bool, liveAccepted: Bool) {
+    /// can still take effect after its checks ran out, and whether the
+    /// preference now holds the change.
+    private func apply(rearranging: Bool, removeKey: Bool,
+                       held: SpacesOrderSupport.RestartJournal?) -> (done: Bool, liveAccepted: Bool, wrote: Bool) {
         let liveAccepted = system.setLive(rearranging)
         if liveAccepted, confirm(rearranging) {
             // A missing key and an explicit on behave the same; removing it
             // leaves the preference exactly as it was found.
             if removeKey { _ = system.write(nil) }
             // The Dock took the change itself, so it runs what the preference says.
-            if Self.dockRuns(in: defaults) != nil { setDockRuns(nil) }
-            return (true, true)
+            if held != nil { saveJournal(nil) }
+            return (true, true, true)
         }
+        let value: SpacesRearrangeSetting = removeKey ? .absent : (rearranging ? .on : .off)
         // Saved before the preference changes, so an interruption before the
-        // write or before the restart is still recovered by the next sync. The
-        // Dock runs what it ran until it restarts, so a restart already owed
-        // keeps what it saved.
-        if Self.dockRuns(in: defaults) == nil { setDockRuns(rearranging ? .fixed : .rearranging) }
-        guard system.write(removeKey ? nil : rearranging) else { return (false, liveAccepted) }
-        guard system.restartDock() else { return (false, liveAccepted) }
-        setDockRuns(nil)
-        return (true, liveAccepted)
+        // write or before the restart is still recovered by the next sync. A
+        // Dock that still owes a restart runs what it ran; any other runs what
+        // the preference says now, the opposite of this change.
+        let dockRuns = held?.dockRuns ?? (rearranging ? .fixed : .rearranging)
+        saveJournal(SpacesOrderSupport.RestartJournal(dockPID: held?.dockPID ?? system.dockPID() ?? 0,
+                                                      dockRuns: dockRuns, wrote: (held?.wrote ?? []) + [value]))
+        guard system.write(removeKey ? nil : rearranging) else {
+            saveJournal(held)
+            return (false, liveAccepted, false)
+        }
+        // A Dock that still runs this change needs no restart to read it.
+        guard SpacesOrderSupport.DockState(value) != dockRuns else {
+            saveJournal(nil)
+            return (true, liveAccepted, true)
+        }
+        guard system.restartDock() else { return (false, liveAccepted, true) }
+        saveJournal(nil)
+        return (true, liveAccepted, true)
     }
 
     private func confirm(_ rearranging: Bool) -> Bool {
@@ -404,9 +478,9 @@ package final class SpacesOrderHold: @unchecked Sendable {
         defaults.synchronize()
     }
 
-    private func setDockRuns(_ state: SpacesOrderSupport.DockState?) {
-        if let state {
-            defaults.set(state.rawValue, forKey: DefaultsKey.spacesOrderRestartPending)
+    private func saveJournal(_ journal: SpacesOrderSupport.RestartJournal?) {
+        if let journal {
+            defaults.set(journal.encoded, forKey: DefaultsKey.spacesOrderRestartPending)
         } else {
             defaults.removeObject(forKey: DefaultsKey.spacesOrderRestartPending)
         }

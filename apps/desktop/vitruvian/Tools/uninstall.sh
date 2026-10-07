@@ -51,16 +51,27 @@ read_sleep_disabled() {
 }
 
 # What fixed Space order leaves behind once the app is gone, from the restore
-# marker, what the Dock still runs while it owes a restart, and the Dock's
-# mru-spaces value: "stuck" while rearranging is still off, "unloaded" while it
-# is back on but the Dock keeps a fixed order until it restarts, and nothing
-# when settled. The owed restart counts on its own, because the marker can
-# already be gone while the Dock still waits for it.
+# marker, the journal of a restart the Dock still owes, the Dock's mru-spaces
+# value and the running Dock's process: "stuck" while rearranging is still off,
+# "unloaded" while it is back on but the Dock keeps a fixed order until it
+# restarts, and nothing when settled. The owed restart counts on its own,
+# because the marker is gone once the setting is back. The journal counts only
+# while the same Dock process runs and the preference still reads as written:
+# a Dock that restarted since has read it, and any other value is a later
+# change the Dock applied itself.
 spaces_leftover() {
-    local owed=$1 dock_runs=$2 preference=$3
+    local owed=$1 journal=$2 preference=$3 dock_pid=$4
+    local journal_pid journal_runs journal_wrote reads
+    read -r journal_pid journal_runs journal_wrote <<< "$journal"
+    case "$preference" in
+        0) reads=off ;;
+        1) reads=on ;;
+        "") reads=absent ;;
+    esac
     if [[ -n "$owed" && "$preference" == "0" ]]; then
         print stuck
-    elif [[ "$dock_runs" == fixed && "$preference" != "0" ]]; then
+    elif [[ "$journal_runs" == fixed && "$preference" != "0" && -n "$dock_pid" && "$journal_pid" == "$dock_pid"
+            && " $journal_wrote " == *" $reads "* ]]; then
         print unloaded
     fi
 }
@@ -108,9 +119,9 @@ sleep_was_ours=0
 # or never ran (an app trashed by hand). It is read here for the same reason
 # as the sleep flag above.
 spaces_owed="$(defaults read "$BUNDLE" spacesOrderRestore 2>/dev/null)"
-# What the Dock still runs while it owes the restart that reads a written
-# preference. Kept apart from the marker, which can already be gone.
-spaces_dock_runs="$(defaults read "$BUNDLE" spacesOrderRestartPending 2>/dev/null)"
+# The journal of a restart the Dock still owes. Kept apart from the marker,
+# which is gone once the setting is back.
+spaces_journal="$(defaults read "$BUNDLE" spacesOrderRestartPending 2>/dev/null)"
 
 echo "▸ Resetting permissions (Accessibility, Screen Recording)…"
 tccutil reset All "$BUNDLE" >/dev/null 2>&1 || true
@@ -152,8 +163,8 @@ fi
 # Dock's preference; changing it is left to the user.
 spaces_stuck=0
 spaces_unloaded=0
-case "$(spaces_leftover "$spaces_owed" "$spaces_dock_runs" \
-            "$(defaults read com.apple.dock mru-spaces 2>/dev/null)")" in
+case "$(spaces_leftover "$spaces_owed" "$spaces_journal" \
+            "$(defaults read com.apple.dock mru-spaces 2>/dev/null)" "$(pgrep -x -U "$UID" Dock | head -1)")" in
     stuck) spaces_stuck=1 ;;
     unloaded) spaces_unloaded=1 ;;
 esac
