@@ -58,7 +58,8 @@ read_sleep_disabled() {
 # because the marker is gone once the setting is back. The journal counts only
 # while the same Dock process runs and the preference still reads as written:
 # a Dock that restarted since has read it, and any other value is a later
-# change the Dock applied itself.
+# change the Dock applied itself. An "off" marker owes nothing: rearranging was
+# already off when the feature turned on, so it is the user's own.
 spaces_leftover() {
     local owed=$1 journal=$2 preference=$3 dock_pid=$4
     local journal_pid journal_runs journal_wrote reads
@@ -68,7 +69,7 @@ spaces_leftover() {
         1) reads=on ;;
         "") reads=absent ;;
     esac
-    if [[ -n "$owed" && "$preference" == "0" ]]; then
+    if [[ -n "$owed" && "$owed" != off && "$preference" == "0" ]]; then
         print stuck
     elif [[ "$journal_runs" == fixed && "$preference" != "0" && -n "$dock_pid" && "$journal_pid" == "$dock_pid"
             && " $journal_wrote " == *" $reads "* ]]; then

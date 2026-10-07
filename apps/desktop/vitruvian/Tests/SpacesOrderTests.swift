@@ -103,6 +103,7 @@ enum SpacesOrderTests {
         let restartPending = DefaultsKey.spacesOrderRestartPending
         let absent = SpacesOrderSupport.restoreAbsent
         let on = SpacesOrderSupport.restoreOn
+        let off = SpacesOrderSupport.restoreOff
 
         func setMarker(_ value: String?) {
             if let value {
@@ -151,9 +152,16 @@ enum SpacesOrderTests {
 
         let plan = SpacesOrderSupport.step
         let step: (Bool, SpacesRearrangeSetting, String?) -> SpacesOrderSupport.Step = { plan($0, $1, $2, nil) }
-        suite.expect(step(true, .off, nil) == .none && step(true, .off, absent) == .none
+        suite.expect(step(true, .off, absent) == .none && step(true, .off, off) == .none
                      && step(true, .unsupported, nil) == .none && step(true, .unsupported, on) == .none,
                      "a setting already off or managed is left alone, so launch never restarts the Dock")
+        suite.expect(step(true, .off, nil) == .remember,
+                     "rearranging found already off is remembered as held, with nothing to put back")
+        suite.expect(step(true, .on, off) == .letGo && step(true, .absent, off) == .letGo,
+                     "rearranging turned back on over a hold that found it off lets go like any other")
+        suite.expect(step(false, .off, off) == .forget && step(false, .on, off) == .forget
+                     && step(false, .absent, off) == .forget && step(false, .unsupported, off) == .forget,
+                     "a hold that found rearranging off never turns it on when it lets go")
         suite.expect(step(true, .absent, nil) == .hold(marker: absent)
                      && step(true, .on, nil) == .hold(marker: on),
                      "turning the feature on saves exactly the state it found")
@@ -210,8 +218,8 @@ enum SpacesOrderTests {
 
         (hold, dock) = make(.off)
         suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty
-                     && defaults.object(forKey: marker) == nil,
-                     "a user who already keeps a fixed order gets no marker and no Dock change")
+                     && defaults.string(forKey: marker) == off,
+                     "a user who already keeps a fixed order gets no Dock change, only a marker that the feature holds it")
         (hold, dock) = make(.off, marker: absent)
         suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty
                      && defaults.string(forKey: marker) == absent,
@@ -432,6 +440,19 @@ enum SpacesOrderTests {
         suite.expect(hold.restoreForRemoval() && dock.events.isEmpty && dock.reads == 0
                      && dock.value == .off && defaults.object(forKey: marker) == nil,
                      "removal with nothing owed succeeds without touching the Dock")
+        // A hold that found rearranging already off put nothing aside, so
+        // turning the feature off or removing the app leaves the user's own
+        // setting as it reads and reports nothing failed.
+        for start in [SpacesRearrangeSetting.off, .on, .absent] {
+            (hold, dock) = make(start, marker: off)
+            suite.expect(hold.reconcile(wanted: false) && dock.events.isEmpty && dock.value == start
+                         && defaults.object(forKey: marker) == nil,
+                         "turning off a hold that found rearranging off leaves the setting alone (reads: \(start))")
+            (hold, dock) = make(start, marker: off)
+            suite.expect(hold.restoreForRemoval() && dock.events.isEmpty && dock.value == start
+                         && defaults.object(forKey: marker) == nil,
+                         "removal over a hold that found rearranging off succeeds without touching the Dock (reads: \(start))")
+        }
         (hold, dock) = make(.off, marker: absent)
         suite.expect(hold.restoreForRemoval() && dock.events == ["live(true)", "write(nil)"]
                      && dock.value == .absent && defaults.object(forKey: marker) == nil,
@@ -514,6 +535,26 @@ enum SpacesOrderTests {
         suite.expect(!hold.letGoIfRearrangingReturned() && dock.events.isEmpty
                      && defaults.object(forKey: marker) == nil && defaults.bool(forKey: enabled),
                      "the check never turns rearranging off itself, so a hold is left to its own sync")
+        // Fixed order turned on while rearranging is already off, then
+        // rearranging turned back on in System Settings: the feature lets go
+        // like any other hold, and the next launch leaves that choice alone.
+        for check in ["watch", "sync"] {
+            defaults.set(true, forKey: enabled)
+            (hold, dock) = make(.off)
+            suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty
+                         && defaults.string(forKey: marker) == off && defaults.bool(forKey: enabled),
+                         "fixed order over rearranging already off holds it without changing the Dock (\(check))")
+            dock.value = .on
+            let letGo = check == "watch" ? hold.letGoIfRearrangingReturned() : hold.reconcile(wanted: true)
+            suite.expect(letGo && dock.events.isEmpty && dock.value == .on
+                         && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled),
+                         "rearranging turned back on over a hold that found it off lets go (\(check))")
+            let relaunched = SpacesOrderHold(defaults: defaults, system: dock.system)
+            suite.expect(relaunched.reconcile(wanted: defaults.bool(forKey: enabled)) && dock.events.isEmpty
+                         && dock.value == .on && defaults.object(forKey: marker) == nil,
+                         "the next launch never turns rearranging off over that choice (\(check))")
+        }
+        defaults.set(true, forKey: enabled)
         defaults.set(false, forKey: available)
         (hold, dock) = make(.on, marker: absent)
         suite.expect(!hold.letGoIfRearrangingReturned() && defaults.string(forKey: marker) == absent,

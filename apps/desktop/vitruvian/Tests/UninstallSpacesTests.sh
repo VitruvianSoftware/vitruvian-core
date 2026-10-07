@@ -26,6 +26,10 @@ expect "" "absent" "" "" 500
 expect "" "on" "" "1" 500
 # Rearranging the user turned off themselves is theirs, not a failed restore.
 expect "" "" "" "0" 500
+# Nor is rearranging that was already off when fixed order turned on.
+expect "" "off" "" "0" 500
+expect "" "off" "" "1" 500
+expect "" "off" "" "" 500
 # A restore that never happened.
 expect stuck "absent" "" "0" 500
 expect stuck "on" "500 rearranging off" "0" 500
