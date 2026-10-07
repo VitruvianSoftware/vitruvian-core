@@ -969,6 +969,10 @@ enum NexusAgentTests {
     // MARK: - Session Archiving Parity
 
     private static func sessionArchiving(_ suite: TestSuite) {
+        defer {
+            UserDefaults.standard.removeObject(forKey: "vitruvian.claude.hiddenSessionIds")
+        }
+
         // 1. Antigravity parse with killed flag
         let rows = """
         [
@@ -1014,8 +1018,7 @@ enum NexusAgentTests {
         suite.expect(!hiddenAfterUnarchive.contains(newSessionID), "unarchiveSession removes ID from UserDefaults hiddenSessionIds for claude")
 
         // Clean up test key
-        initialHidden.removeAll { $0 == testClaudeID }
-        UserDefaults.standard.set(initialHidden, forKey: "vitruvian.claude.hiddenSessionIds")
+        UserDefaults.standard.removeObject(forKey: "vitruvian.claude.hiddenSessionIds")
 
         // 5. Session summary struct init
         let explicitArchived = NexusAgentSessionSummary(id: "s-archived", title: "T", preview: "P", steps: 1, modified: nil, isArchived: true)
