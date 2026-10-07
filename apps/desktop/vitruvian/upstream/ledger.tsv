@@ -9,12 +9,12 @@
 # See UPSTREAM.md, "Tracking and porting upstream".
 # base	e80abdb1f3f79227de33d5cef05c053d98b28a77	tree	784e6f5a7a2139982822cef75a2bba02dd98057a
 # sha	patch_id	date	status	ref	subject
-a16c1bf929bb996c382962d7c4357531b429eb68	66da680f4e2efcdfca0b3b76b29704b021f206d1	2026-09-24	pending	-	feat(spaces): keep Spaces in a fixed order
-48b9eab0952de854e6075946a8ed13119e967b61	812b67dfb6addb8d97759e8ba43fb51e55288af5	2026-09-24	pending	-	fix(spaces): hand the toggle back on the main thread and test the uninstall restore
-9aec7d5327e73f5a1fedb8ef756affdca72a7af5	a7c7fb362de72feda834f8a9782f67ee61f04c32	2026-09-28	pending	-	fix(spaces): retry a failed Dock restart before trusting the written preference
-b80fc8dd8bf9b3be583927653ffd362550bc9710	130ab569005ac0c6fb21a2be1ea6d93cfe78ade0	2026-09-28	pending	-	fix(spaces): remember what the Dock still runs until its restart
-caaba0cfdc581563d4fca2cfc3346ad61aad924c	ef28bbbb851ba75bf09ec68670c65bf1b9e3b107	2026-09-28	pending	-	fix(spaces): tie an owed Dock restart to the Dock process that owes it
-b6be2800e6df437815d747707c3c896c4035ae3d	c2d4d9000318bff4c6cbe04c8dabfe0d7215ba08	2026-09-29	pending	-	fix(spaces): remember a hold that found rearranging already off
+a16c1bf929bb996c382962d7c4357531b429eb68	66da680f4e2efcdfca0b3b76b29704b021f206d1	2026-09-24	ported	#2829	feat(spaces): keep Spaces in a fixed order
+48b9eab0952de854e6075946a8ed13119e967b61	812b67dfb6addb8d97759e8ba43fb51e55288af5	2026-09-24	ported	#2829	fix(spaces): hand the toggle back on the main thread and test the uninstall restore
+9aec7d5327e73f5a1fedb8ef756affdca72a7af5	a7c7fb362de72feda834f8a9782f67ee61f04c32	2026-09-28	ported	#2829	fix(spaces): retry a failed Dock restart before trusting the written preference
+b80fc8dd8bf9b3be583927653ffd362550bc9710	130ab569005ac0c6fb21a2be1ea6d93cfe78ade0	2026-09-28	ported	#2829	fix(spaces): remember what the Dock still runs until its restart
+caaba0cfdc581563d4fca2cfc3346ad61aad924c	ef28bbbb851ba75bf09ec68670c65bf1b9e3b107	2026-09-28	ported	#2829	fix(spaces): tie an owed Dock restart to the Dock process that owes it
+b6be2800e6df437815d747707c3c896c4035ae3d	c2d4d9000318bff4c6cbe04c8dabfe0d7215ba08	2026-09-29	ported	#2829	fix(spaces): remember a hold that found rearranging already off
 a65e07ca0bf129d17e36e18981f26d789e0dd3b5	ed78b712fd1f32ef8603cf32b9311c27e46e1d9c	2026-09-26	pending	-	fix(window-layout): support modifier-only pointer triggers
 2d71ee0d96ddd78cc9c8f19e5f0570a2e947eca0	9e97948e3f490dcc50a636e75816c68e4adeacb8	2026-09-26	pending	-	fix(window-layout): preserve shared modifier shortcuts
 31b07abb746e5c3cfa4746ea6502f649a2defe70	4f23b4393842c3063f69790ba758f41d75673d43	2026-09-28	pending	-	fix(window-layout): keep modifier observation nonblocking
@@ -81,7 +81,7 @@ a52102f3f4c5ba303109717af3b94b66a1230b19	beae90f7d0ca5bd9bbe37738978981b19baa156
 3a5e107340ef2c2a270a5be7fb5581a43dab3f65	2655ff28b7e537abf9b0f72940a9e84d9c9f97b4	2026-10-04	ported	#2816	feat(color-picker): copy the selected color and close with enter (#2191)
 6d02e14437880a2fb3e33bfbef5fd293d28d4c39	d09e2762e7e8a7436aaee69c5acd56aa8a570909	2026-10-05	ported	#2816	fix(clipboard): cache folded search candidates across keystrokes (#1885) (#2156)
 5fb87aa29072f7daa63faf3007ce696b9d8317f2	3d4f38759f22e1fb1663997e4a702fd3db50c148	2026-10-04	pending	-	fix(window-layout): simplify the event mask for Swift 6.0
-db5d9caea24389bc603c917aa588fefc2e7225de	e3dba92f348e39f2e54fabca2f61d430e39bfe18	2026-10-04	pending	-	fix(spaces): honor reactivation after failed preference persistence
+db5d9caea24389bc603c917aa588fefc2e7225de	e3dba92f348e39f2e54fabca2f61d430e39bfe18	2026-10-04	ported	#2829	fix(spaces): honor reactivation after failed preference persistence
 a15a3af53ceba289a6d3b52801555e3d93e7a2a6	fcbd040e525b4b78b495381529aa0c33b0906868	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record clipboard and window improvements
 f66408ec7d022721d1420d098930b0d1156538b8	3f6ac5fec857cbb8d401754c1445bdc957e273ce	2026-10-05	ported	#2814	fix(notch): enlarge lyrics timing button click targets (#2574)
 f74e9c4628a71268edd948e784cd76909b250b89	c121598651cd06cd6dd982f834abc22936ea227e	2026-10-05	ported	#2814	fix(mixer): use the Dynamic Island speaker icon (#2533)
@@ -126,7 +126,7 @@ a4a01b8cf2ab7d6bc323a168863560e29d19e6ed	8fabd1b443edbcb68b549a54af5df6130159574
 fdbd69cd062054173bf4bae99624de79872bca59	dd2e79b64994d766aaa238007a266d83621fec90	2026-10-05	ported	#2824	fix(command-bar): index Settings titles without publishing app rows
 37fefdf0ddc41b0824e1df019315916839f98d28	2a46e24c671d85b9494872dafe905739af35c414	2026-10-05	pending	-	fix(notch): pause the companion's sleep animation while Settings is out of sight
 8d2fac16971116700f35ab4db245175322007d95	35ab57c02d66d0713f17debd2aa9da16c5852d76	2026-10-05	ported	#2824	fix(screenshot): keep a discarded or edited capture from the upload shortcut after a relaunch
-b2e9101211435e8f479b8059d08fa0e066f70987	540b20159a628f520693a708229ce76e305eb6f4	2026-10-05	pending	-	fix(uninstall): finish the script's removal when the app was trashed first
+b2e9101211435e8f479b8059d08fa0e066f70987	540b20159a628f520693a708229ce76e305eb6f4	2026-10-05	ported	#2829	fix(uninstall): finish the script's removal when the app was trashed first
 dad1a3af6b95fb3238c89f688b34428d2f5f28d1	f4c8b18788fabc5bdacadde10703113ff2304cb8	2026-10-05	ported	#2824	fix(settings): let a login item that awaits approval be switched off
 9352307b6c80b27e225d5762f1e16a94b814527a	f8741133a628463cc10d7498f71a0e38e686a2d8	2026-10-05	pending	-	fix(notch): install the beta companion only for island users
 945fd9c09cd2e90c495ec682f5676e1be0c4a8ef	f40808cccac408d2f08df5ca3708267c1ccaba9b	2026-10-05	ported	#2827	fix(watch): leave the island out of area readings and skip partial window captures
@@ -163,12 +163,12 @@ e6d443d2443a986abefa8a7652c627c4eccb2618	6d6979b597cf06c4b60759b73e7cfa1f279a746
 db5659db4f44a201ffa5feb88bc501203fe62cdb	6027d09b4705d9b5bcf03bca0a225f3954a43d95	2026-10-06	skipped	touches only upstream-only paths	docs(changelog): record the finished timer under a hidden countdown (#2766)
 992f2cb8efba784db776804eb12821f621e9ee7f	02d9fc4f5d1df1203f6593321e5015ecf452514e	2026-10-07	pending	-	feat(notch): add a keyboard light level to the island controls (#2702)
 8f386857734e0c702a7f39388625f60aeb080596	5a031a819ef1fdc2b5077cdaaae23fb7c71d7e4b	2026-10-06	skipped	touches only upstream-only paths	Credit #2702 in the changelog
-26fe9b6490b0b0bda462cc0960b6cd2d25ad9a1c	-	2026-09-24	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
-dd9d1160e8b6bbd3e41cef48a53968c4d089cd3a	-	2026-09-24	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
-8aea73b91315e0c7a75520dc7afc75f883394a91	-	2026-09-24	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
-64efd8ade33d95c5767c2c9d3764bccc24ab0d2f	-	2026-09-28	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
-9a0f8921fe982684a8772bf818375a3587b0eb7e	-	2026-09-28	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
-2c3b08d15628a5b054a4997f7e25c6efe89d146e	-	2026-09-29	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+26fe9b6490b0b0bda462cc0960b6cd2d25ad9a1c	-	2026-09-24	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+dd9d1160e8b6bbd3e41cef48a53968c4d089cd3a	-	2026-09-24	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+8aea73b91315e0c7a75520dc7afc75f883394a91	-	2026-09-24	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+64efd8ade33d95c5767c2c9d3764bccc24ab0d2f	-	2026-09-28	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+9a0f8921fe982684a8772bf818375a3587b0eb7e	-	2026-09-28	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+2c3b08d15628a5b054a4997f7e25c6efe89d146e	-	2026-09-29	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
 5db6be949fdb0873017544217da24e0a57eb874e	-	2026-09-27	skipped	merge that only resolves conflicts between two sides ported on their own	Merge vorssaint/main into claude/inspiring-curie-4p6k9g
 e3399a1657a35385b4c090466f0ab784227f7461	-	2026-10-04	pending	-	fix(window-layout): preserve deferred modifier gesture ownership
-848b6042a77cae4038b7038c2c8636d2cc033aef	-	2026-10-04	pending	-	fix(spaces): preserve restoration across failed and delayed work
+848b6042a77cae4038b7038c2c8636d2cc033aef	-	2026-10-04	ported	#2829	fix(spaces): preserve restoration across failed and delayed work
