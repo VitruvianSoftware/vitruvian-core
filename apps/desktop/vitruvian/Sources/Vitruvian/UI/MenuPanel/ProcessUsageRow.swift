@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
@@ -12,7 +13,55 @@ package struct ProcessUsageRow: View {
     package var iconSize: CGFloat = 15
     package var leadingPadding: CGFloat = 0
 
+    @Environment(\.notchPresentation) private var inNotch
+    @ObservedObject private var l10n = L10n.shared
+
     package var body: some View {
+        Group {
+            if AppFeature.killProcess.isAvailable {
+                activatableContent
+                    .contextMenu {
+                        Button(FeatureStrings.killProcess(l10n.language).forceKillButton,
+                               role: .destructive) {
+                            confirmForceQuit()
+                        }
+                        .disabled(!ProcessUsageService.shared.canForceQuit(row))
+                    }
+            } else {
+                activatableContent
+            }
+        }
+        .help(row.name)
+    }
+
+    /// Asks before force quitting, above the island when the row is in it.
+    /// The service checks the row's identity again once the answer is in.
+    private func confirmForceQuit() {
+        let service = ProcessUsageService.shared
+        guard service.canForceQuit(row), let startedAt = row.startedAt else { return }
+        let strings = FeatureStrings.killProcess(L10n.shared.language)
+        let title = String(format: strings.confirmForceKillFormat, row.name)
+        let cancel = L10n.shared.s.uninstallerCancel
+        let row = row
+        if inNotch {
+            DispatchQueue.main.async {
+                guard NSAlert.confirmAboveIsland(title, message: "", action: strings.forceKillButton,
+                                                 destructive: true, cancel: cancel) else { return }
+                service.forceQuit(row, startedAt: startedAt)
+            }
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = title
+        alert.addButton(withTitle: strings.forceKillButton)
+        alert.addButton(withTitle: cancel)
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        service.forceQuit(row, startedAt: startedAt)
+    }
+
+    private var activatableContent: some View {
         Group {
             if ProcessUsageService.shared.canActivate(row) {
                 Button {
@@ -25,7 +74,6 @@ package struct ProcessUsageRow: View {
                 content
             }
         }
-        .help(row.name)
     }
 
     private var content: some View {

@@ -214,6 +214,7 @@ enum TestGroups {
                 UninstallerFlowTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
+            ("force-quit", { ProcessForceQuitTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
             ("dock-autohide", {
                 DockAutohideHoldTests.run(suite)
