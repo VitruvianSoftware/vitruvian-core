@@ -21,7 +21,7 @@ package struct TrafficLightCandidate {
     }
 }
 
-package struct WindowServerWindowCandidate {
+package struct WindowServerWindowCandidate: Sendable {
     package let pid: pid_t
     package let windowID: CGWindowID
     package let frame: CGRect

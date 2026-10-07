@@ -370,7 +370,7 @@ package struct WindowEdgeSnapScreen: Equatable {
 
 /// The eight visible drop areas around the screen. Raw values are persisted,
 /// so they stay stable even if the visual arrangement changes later.
-package enum WindowEdgeSnapZone: String, CaseIterable {
+package enum WindowEdgeSnapZone: String, CaseIterable, Sendable {
     case topLeft, top, topRight
     case left, right
     case bottomLeft, bottom, bottomRight
@@ -757,7 +757,7 @@ package enum WindowDirectionalModifierTapSupport {
         }
     }()
 
-    package static func afterCallback(_ work: @escaping () -> Void) {
+    package static func afterCallback(_ work: @escaping @MainActor @Sendable () -> Void) {
         DispatchQueue.main.async { work() }
     }
 }
@@ -817,7 +817,7 @@ package struct WindowDirectionalModifierButtons {
 /// Event-source counters catch a quick click or scroll that completes while
 /// the main queue is still waiting to start the deferred gesture. Reading the
 /// counters also catches input that arrives during synchronous target lookup.
-package struct WindowDirectionalModifierPointerSnapshot: Equatable {
+package struct WindowDirectionalModifierPointerSnapshot: Equatable, Sendable {
     package let leftMouseDown: UInt32
     package let rightMouseDown: UInt32
     package let otherMouseDown: UInt32
@@ -881,13 +881,13 @@ package enum WindowDirectionalModifierStartupGuard {
 
 /// A modifier chord starts once, finishes on its first required-key release,
 /// and cannot restart until all its keys are up. Extra modifiers cancel it.
-package struct WindowDirectionalModifierOwnership: Equatable {
+package struct WindowDirectionalModifierOwnership: Equatable, Sendable {
     package let registrationID: UUID
     package let generation: UInt64
 }
 
 package struct WindowDirectionalModifierHold {
-    package enum Decision { case none, begin, finish, cancel }
+    package enum Decision: Sendable { case none, begin, finish, cancel }
     package let expected: GlobalShortcutModifiers
     private let registrationID = UUID()
     package var ownership: WindowDirectionalModifierOwnership {

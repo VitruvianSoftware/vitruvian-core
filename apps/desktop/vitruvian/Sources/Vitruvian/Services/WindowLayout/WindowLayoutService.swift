@@ -437,7 +437,7 @@ package final class WindowLayoutService: ObservableObject {
         return nil
     }
 
-    private func target(from window: AXUIElement,
+    nonisolated private func target(from window: AXUIElement,
                         app: NSRunningApplication,
                         onScreenWindowIDs: Set<CGWindowID>,
                         capability: WindowLayoutTargetCapability) -> WindowLayoutTarget? {
@@ -1007,7 +1007,8 @@ package final class WindowLayoutService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<WindowLayoutService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.observeDirectionalModifierEvent(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.observeDirectionalModifierEvent(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return false }
@@ -1669,9 +1670,12 @@ package final class WindowLayoutService: ObservableObject {
         let protectsTop = WindowEdgeSnapSupport.isSystemTopWindowOverviewDragEnabled
         let onScreen = onScreenWindowIDs()
         edgeSnapResolveQueue.async { [weak self] in
-            let resolved = self?.resolveEdgeSnapWindow(pressCandidate: pressCandidate,
-                                                       onScreenWindowIDs: onScreen)
-            DispatchQueue.main.async {
+            let found = self?.resolveEdgeSnapWindow(pressCandidate: pressCandidate,
+                                                    onScreenWindowIDs: onScreen)
+            // An immutable reference to another app's window; the AX calls
+            // that use it run on main from here.
+            nonisolated(unsafe) let resolved = found
+            DispatchQueue.main.async { [weak self] in
                 guard let self, self.edgeSnapSequenceGeneration == generation else { return }
                 self.edgeSnapResolving = false
                 guard let resolved, self.edgeSnapDrag == nil,
@@ -1698,7 +1702,7 @@ package final class WindowLayoutService: ObservableObject {
     }
 
     /// The Accessibility half, off the main thread. Touches no service state.
-    private func resolveEdgeSnapWindow(pressCandidate: WindowServerWindowCandidate,
+    nonisolated private func resolveEdgeSnapWindow(pressCandidate: WindowServerWindowCandidate,
                                        onScreenWindowIDs: Set<CGWindowID>?)
         -> (window: AXUIElement, key: WindowLayoutWindowKey)? {
         guard let app = NSRunningApplication(processIdentifier: pressCandidate.pid),
@@ -2272,8 +2276,9 @@ package final class WindowLayoutService: ObservableObject {
     private let gestureApplyQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.window-gesture-apply",
                                                   qos: .userInteractive)
     private let gestureApplyLock = NSLock()
-    private var pendingGestureApply: (gesture: WindowPointerGesture, pointer: CGPoint)?
-    private var gestureApplyDraining = false
+    // Guarded by gestureApplyLock, so the apply queue reads them off the main actor.
+    nonisolated(unsafe) private var pendingGestureApply: (gesture: WindowPointerGesture, pointer: CGPoint)?
+    nonisolated(unsafe) private var gestureApplyDraining = false
 
     private func enqueueGestureApply(_ gesture: WindowPointerGesture, pointer: CGPoint) {
         gestureApplyLock.lock()
@@ -2285,7 +2290,7 @@ package final class WindowLayoutService: ObservableObject {
         gestureApplyQueue.async { [weak self] in self?.drainGestureApplies() }
     }
 
-    private func drainGestureApplies() {
+    nonisolated private func drainGestureApplies() {
         while true {
             gestureApplyLock.lock()
             let next = pendingGestureApply
@@ -2297,7 +2302,7 @@ package final class WindowLayoutService: ObservableObject {
         }
     }
 
-    private func apply(_ gesture: WindowPointerGesture, pointer: CGPoint) {
+    nonisolated private func apply(_ gesture: WindowPointerGesture, pointer: CGPoint) {
         switch gesture.kind {
         case .move:
             let origin = WindowGestureSupport.movedOrigin(from: gesture.originalFrame.origin,
@@ -2374,11 +2379,11 @@ package final class WindowLayoutService: ObservableObject {
         return WindowGestureTarget(window: window, app: app, frame: frame)
     }
 
-    private func canSetFrame(on window: AXUIElement) -> Bool {
+    nonisolated private func canSetFrame(on window: AXUIElement) -> Bool {
         canSetPosition(on: window) && canSetSize(on: window)
     }
 
-    private func canSetPosition(on window: AXUIElement) -> Bool {
+    nonisolated private func canSetPosition(on window: AXUIElement) -> Bool {
         var positionSettable = DarwinBoolean(false)
         return AXUIElementIsAttributeSettable(window,
                                               kAXPositionAttribute as CFString,
@@ -2386,7 +2391,7 @@ package final class WindowLayoutService: ObservableObject {
             && positionSettable.boolValue
     }
 
-    private func canSetSize(on window: AXUIElement) -> Bool {
+    nonisolated private func canSetSize(on window: AXUIElement) -> Bool {
         var sizeSettable = DarwinBoolean(false)
         return AXUIElementIsAttributeSettable(window,
                                               kAXSizeAttribute as CFString,
@@ -2394,7 +2399,7 @@ package final class WindowLayoutService: ObservableObject {
             && sizeSettable.boolValue
     }
 
-    private func canSetFullScreen(on window: AXUIElement) -> Bool {
+    nonisolated private func canSetFullScreen(on window: AXUIElement) -> Bool {
         var fullScreenSettable = DarwinBoolean(false)
         return AXUIElementIsAttributeSettable(window,
                                               "AXFullScreen" as CFString,
@@ -2402,19 +2407,19 @@ package final class WindowLayoutService: ObservableObject {
             && fullScreenSettable.boolValue
     }
 
-    private func setPosition(_ point: CGPoint, on element: AXUIElement) -> Bool {
+    nonisolated private func setPosition(_ point: CGPoint, on element: AXUIElement) -> Bool {
         var point = point
         guard let value = AXValueCreate(.cgPoint, &point) else { return false }
         return AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value) == .success
     }
 
-    private func setSize(_ size: CGSize, on element: AXUIElement) -> Bool {
+    nonisolated private func setSize(_ size: CGSize, on element: AXUIElement) -> Bool {
         var size = size
         guard let value = AXValueCreate(.cgSize, &size) else { return false }
         return AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value) == .success
     }
 
-    private func frame(of element: AXUIElement) -> WindowLayoutFrame? {
+    nonisolated private func frame(of element: AXUIElement) -> WindowLayoutFrame? {
         guard let origin = pointAttribute(element, kAXPositionAttribute as String),
               let size = sizeAttribute(element, kAXSizeAttribute as String),
               size.width > 0,
@@ -2476,14 +2481,14 @@ package final class WindowLayoutService: ObservableObject {
         return (menuBarScreen ?? NSScreen.main ?? NSScreen.screens.first)?.frame.maxY ?? 0
     }
 
-    private func role(of element: AXUIElement) -> String? {
+    nonisolated private func role(of element: AXUIElement) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success
         else { return nil }
         return value as? String
     }
 
-    private func boolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool {
+    nonisolated private func boolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
               let value
@@ -2491,7 +2496,7 @@ package final class WindowLayoutService: ObservableObject {
         return (value as? Bool) ?? false
     }
 
-    private func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
+    nonisolated private func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
         else { return nil }
@@ -2507,7 +2512,7 @@ package final class WindowLayoutService: ObservableObject {
         return (value as! AXUIElement)
     }
 
-    private func windowsAttribute(_ element: AXUIElement) -> [AXUIElement]? {
+    nonisolated private func windowsAttribute(_ element: AXUIElement) -> [AXUIElement]? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &value) == .success,
               let values = value as? [AXUIElement]
@@ -2515,7 +2520,7 @@ package final class WindowLayoutService: ObservableObject {
         return values
     }
 
-    private func pointAttribute(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
+    nonisolated private func pointAttribute(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
               let value,
@@ -2528,7 +2533,7 @@ package final class WindowLayoutService: ObservableObject {
         return point
     }
 
-    private func sizeAttribute(_ element: AXUIElement, _ attribute: String) -> CGSize? {
+    nonisolated private func sizeAttribute(_ element: AXUIElement, _ attribute: String) -> CGSize? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
               let value,
