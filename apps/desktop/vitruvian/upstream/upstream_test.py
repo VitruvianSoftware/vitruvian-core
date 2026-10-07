@@ -364,6 +364,19 @@ class PackageTest(unittest.TestCase):
             self.restore(merged, ours),
         )
 
+    def test_local_functions_get_no_modifier(self):
+        # A nested type's members make `package` the norm at that depth too.
+        inner = "    package enum Inner {\n        package func x() {}\n        package func y() {}\n    }\n"
+        ours = "package enum E {\n    package static func a() {}\n" + inner + "}\n"
+        merged = (
+            "enum E {\n    static func a() {}\n"
+            + inner.replace("package ", "")
+            + "    static func c() {\n        func local() {}\n        local()\n    }\n}\n"
+        )
+        out = self.restore(merged, ours)
+        self.assertIn("    package static func c() {\n        func local() {}\n", out)
+        self.assertIn("        package func y() {}\n", out)
+
     def test_a_file_without_package_gets_none(self):
         ours = "final class A {\n    func a() {}\n}\n"
         merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"

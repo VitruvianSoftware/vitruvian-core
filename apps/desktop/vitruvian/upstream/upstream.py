@@ -620,13 +620,20 @@ def _indent(line):
     return len(line) - len(line.lstrip(" \t"))
 
 
-def _in_protocol(lines, i):
-    """Whether line i sits directly in a protocol body (no modifiers there)."""
+TYPE_KINDS = ("struct", "class", "enum", "extension", "actor")
+
+
+def _takes_modifiers(lines, i):
+    """Whether line i is a declaration that can carry an access modifier:
+    top level, or directly in a type's body. Not a protocol requirement, and
+    not a local declaration inside a function, closure or accessor."""
     depth = _indent(lines[i])
+    if depth == 0:
+        return True
     for j in range(i - 1, -1, -1):
         if lines[j].strip() and _indent(lines[j]) < depth:
             key = _decl_key(lines[j])
-            return bool(key) and key[1] == "protocol"
+            return bool(key) and key[1] in TYPE_KINDS
     return False
 
 
@@ -668,7 +675,7 @@ def restore_package(merged, ours):
                 and key[1] != "extension"
                 and not ACCESS_RE.search(line[: line.find(key[1])])
                 and level[True] > level[False]
-                and not _in_protocol(lines, i)
+                and _takes_modifiers(lines, i)
             ):
                 at = ATTRIBUTES_RE.match(line).end()
                 line = line[:at] + "package " + line[at:]
