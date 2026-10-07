@@ -1474,7 +1474,8 @@ package final class ShelfService: ObservableObject {
             return target.map { self.mergePasteboard(pasteboard, into: $0) } ?? self.accept(pasteboard: pasteboard)
         },
         dock: { [weak self] in self?.dockedPanel },
-        dockDidAccept: { [weak self] in self?.dockDidAccept() })
+        dockDidAccept: { [weak self] in self?.dockDidAccept() },
+        noteInteraction: { [weak self] in self?.noteInteraction() })
 
     private func filePromiseReceivers(from pasteboard: NSPasteboard) -> [NSFilePromiseReceiver] {
         pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil)

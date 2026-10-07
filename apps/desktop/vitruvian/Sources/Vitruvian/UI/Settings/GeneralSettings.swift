@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import ServiceManagement
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -11,9 +12,8 @@ package struct GeneralSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var appearance = AppAppearanceController.shared
     @ObservedObject private var hotkeys = HotkeyManager.shared
-    @State private var launchAtLogin = UserDefaults.standard[Preferences.launchAtLoginWanted]
-    @State private var loginError: String?
-    @State private var loginRefreshID = UUID()
+    @StateObject private var login = LaunchAtLoginSettingsModel(
+        wanted: UserDefaults.standard[Preferences.launchAtLoginWanted])
     @AppStorage(Preferences.hotkeyEnabled) private var hotkeyEnabled: Bool
 
     private var text: GeneralSettingsStrings { FeatureStrings.generalSettings(l10n.language) }
@@ -35,7 +35,11 @@ package struct GeneralSettings: View {
             .frame(maxWidth: .infinity)
             .padding(22)
         }
-        .onAppear { refreshLaunchAtLogin() }
+        .onAppear { login.refresh() }
+        .onReceive(NotificationCenter.default.publisher(
+            for: LaunchAtLoginSupport.settingsRefreshRequested)) { _ in
+            login.refresh()
+        }
     }
 
     private var basicsCard: some View {
@@ -43,13 +47,21 @@ package struct GeneralSettings: View {
             SettingsRow(symbol: "laptopcomputer", title: l10n.s.launchAtLogin,
                         caption: text.launchAtLoginCaption) {
                 Toggle(l10n.s.launchAtLogin, isOn: Binding(
-                    get: { launchAtLogin },
-                    set: { setLaunchAtLogin($0) }
+                    get: { login.registration == .enabled },
+                    set: { login.setEnabled($0) }
                 ))
                     .labelsHidden()
                     .toggleStyle(.switch)
             }
-            if let loginError {
+            if login.registration == .needsApproval {
+                Text(l10n.s.launchAtLoginNeedsApproval)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(l10n.s.permissionOpenSettings) {
+                    SMAppService.openSystemSettingsLoginItems()
+                }
+            } else if let loginError = login.errorText {
                 Text(loginError)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -133,30 +145,6 @@ package struct GeneralSettings: View {
                     appShell()?.openFeedbackWindow()
                 }
             }
-        }
-    }
-
-    private func refreshLaunchAtLogin() {
-        let requestID = UUID()
-        loginRefreshID = requestID
-        DispatchQueue.global(qos: .userInitiated).async {
-            let enabled = LaunchAtLogin.isEnabled
-            DispatchQueue.main.async {
-                guard loginRefreshID == requestID else { return }
-                launchAtLogin = enabled
-            }
-        }
-    }
-
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        loginRefreshID = UUID()
-        launchAtLogin = enabled
-        do {
-            try LaunchAtLogin.setEnabled(enabled)
-            loginError = nil
-        } catch {
-            loginError = error.localizedDescription
-            launchAtLogin = LaunchAtLogin.isEnabled
         }
     }
 

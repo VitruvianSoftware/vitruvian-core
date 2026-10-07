@@ -117,7 +117,7 @@ package struct NotchTimerSession: Equatable {
         switch mode {
         case .timer:
             phase = .timer
-            duration = Double(min(180, max(1, minutes))) * 60
+            duration = Double(NotchTimerSupport.timerMinutes(minutes)) * 60
             anchor = now + duration
         case .pomodoro:
             phase = .focus
@@ -183,6 +183,13 @@ package struct NotchTimerSession: Equatable {
 }
 
 package enum NotchTimerSupport {
+    /// Hiding the closed island's timer activity never disables the session or
+    /// its completion alerts. The expanded timer page remains available.
+    package static func showsActivity(hasSession: Bool, in defaults: UserDefaults = .standard) -> Bool {
+        hasSession && isEnabled(in: defaults)
+            && !defaults[Preferences.notchHideTimerCountdown]
+    }
+
     package static func isSoundEnabled(in defaults: UserDefaults = .standard) -> Bool {
         defaults[Preferences.notchTimerSoundEnabled]
     }
@@ -214,6 +221,8 @@ package enum NotchTimerSupport {
     /// A stopwatch keeps counting; its clock saturates at the widest reading
     /// the surface fits, two hour digits.
     package static let stopwatchLimit: TimeInterval = 100 * 3600 - 1
+
+    package static func timerMinutes(_ value: Int) -> Int { min(180, max(1, value)) }
 
     package static func savedMode(in defaults: UserDefaults = .standard) -> NotchTimerMode {
         NotchTimerMode(rawValue: defaults[Preferences.notchTimerMode]) ?? .timer

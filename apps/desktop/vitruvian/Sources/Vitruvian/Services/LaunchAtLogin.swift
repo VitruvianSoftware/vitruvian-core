@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import Combine
 import Foundation
 import ServiceManagement
 import VitruvianCore
@@ -30,9 +31,8 @@ package enum LaunchAtLogin {
         }
     }
 
-    /// Thrown when the item is registered but System Settings still has it
-    /// switched off. Only the user can approve it there, so the toggle would
-    /// otherwise flip straight back with nothing said (issue #260).
+    /// Registration can succeed while macOS still denies permission, including
+    /// when Allow in the Background is off. Only the user can approve it.
     package struct NeedsApprovalError: LocalizedError {
         package var errorDescription: String? { L10n.shared.s.launchAtLoginNeedsApproval }
 
@@ -145,5 +145,80 @@ extension LaunchAtLoginSupport.Registration {
         case .requiresApproval: self = .needsApproval
         default: self = .off
         }
+    }
+}
+
+
+/// What the General page shows for launch at login. The status is read off
+/// the main thread, so the page does not wait on the system; a toggle made
+/// since a read started wins over that read, and a newer read over an older
+/// one. Kept out of the view so a contract can drive it.
+@MainActor
+package final class LaunchAtLoginSettingsModel: ObservableObject {
+    /// The system the page reads and writes. `live` is this app's login item.
+    package struct Environment: Sendable {
+        package var registration: @Sendable () -> LaunchAtLoginSupport.Registration
+        package var setEnabled: @MainActor (Bool) throws -> Void
+        package var background: @Sendable (@escaping @Sendable () -> Void) -> Void
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(registration: @escaping @Sendable () -> LaunchAtLoginSupport.Registration,
+                     setEnabled: @escaping @MainActor (Bool) throws -> Void,
+                     background: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void) {
+            self.registration = registration
+            self.setEnabled = setEnabled
+            self.background = background
+            self.main = main
+        }
+
+        package static let live = Environment(
+            registration: { LaunchAtLogin.registration },
+            setEnabled: { try LaunchAtLogin.setEnabled($0) },
+            background: { DispatchQueue.global(qos: .userInitiated).async(execute: $0) },
+            main: { work in DispatchQueue.main.async { work() } })
+    }
+
+    @Published package private(set) var registration: LaunchAtLoginSupport.Registration
+    /// Why the last toggle did not take, when it says something the
+    /// approval guidance does not.
+    @Published package private(set) var errorText: String?
+    private var refreshID = UUID()
+    private let environment: Environment
+
+    /// Seeded from the stored choice so the switch does not flash off while
+    /// the status read is still on its way.
+    package init(wanted: Bool, environment: Environment = .live) {
+        registration = wanted ? .enabled : .off
+        self.environment = environment
+    }
+
+    package func refresh() {
+        let requestID = UUID()
+        refreshID = requestID
+        let read = environment.registration, main = environment.main
+        environment.background {
+            let registration = read()
+            main { [weak self] in
+                guard let self, self.refreshID == requestID else { return }
+                self.registration = registration
+                self.errorText = nil
+            }
+        }
+    }
+
+    package func setEnabled(_ enabled: Bool) {
+        refreshID = UUID()
+        do {
+            try environment.setEnabled(enabled)
+            errorText = nil
+        } catch {
+            errorText = error.localizedDescription
+        }
+        registration = environment.registration()
+        // Approval guidance follows current system status, including on a
+        // fresh page, instead of retaining an error from a previous attempt.
+        if registration == .needsApproval { errorText = nil }
     }
 }

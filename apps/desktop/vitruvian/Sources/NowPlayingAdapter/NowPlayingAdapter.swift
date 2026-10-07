@@ -32,9 +32,11 @@ private typealias IsPlayingFunction = @convention(c) (DispatchQueue, @escaping I
 let maximumArtworkBytes = 12 * 1_024 * 1_024
 // Only the watch process enables this cache, before its first read. Its reads
 // run serially, and each waits for its own callback, so `nonisolated(unsafe)`:
-// one read at a time touches these three.
+// one read at a time touches these four.
 nonisolated(unsafe) private var watching = false
 nonisolated(unsafe) private var previousArtwork: Data?
+/// Watch only: where the last reply put its recording, by the sample it read.
+nonisolated(unsafe) private var lastPosition: (revision: UUID, sample: Double, timestamp: Date?, elapsed: Double, rate: Double, at: Date)?
 /// Set by the watch process before its first read: schedules another read at
 /// a system uptime.
 nonisolated(unsafe) private var readAt: ((TimeInterval) -> Void)?
@@ -56,6 +58,38 @@ package func encodedReply(_ reply: [String: Any]) -> Data {
         return Data("{\"error\":\"json\"}".utf8)
     }
     return data
+}
+
+/// Where a song sampled `age` seconds ago is now, and the rate the island
+/// moves it at. A player can update its rate a step late or never, so its own
+/// playing state, when known, wins over a rate that contradicts it. The song
+/// then holds still at the sample, or at `continuing`, where the last reply
+/// had it while the player kept the same sample. A playing song without a
+/// rate may be buffering, so it moves only once the player reports one.
+package func playbackPosition(elapsed: Double, age: TimeInterval, rate: Double, isPlaying: Bool?,
+                              continuing: Double? = nil) -> (elapsed: Double, rate: Double) {
+    let rate = max(0, rate)
+    guard let isPlaying, isPlaying != (rate > 0) else { return (elapsed + age * rate, rate) }
+    return (continuing ?? elapsed, 0)
+}
+
+/// Writes where `sample` puts the song into the reply. Any player's change
+/// reads the followed one again, and a sample it has not replaced must not
+/// send its song back to where that sample was taken.
+package func settlePosition(_ reply: inout [String: Any], sample: (elapsed: Double, timestamp: Date?),
+                            revision: UUID?, now: Date = Date()) {
+    let isPlaying = reply["isPlaying"] as? Bool
+    let continuing = lastPosition.flatMap { last -> Double? in
+        guard last.revision == revision, last.sample == sample.elapsed, last.timestamp == sample.timestamp else { return nil }
+        return last.elapsed + max(0, now.timeIntervalSince(last.at)) * last.rate
+    }
+    let settled = playbackPosition(elapsed: sample.elapsed,
+                                   age: sample.timestamp.map { max(0, now.timeIntervalSince($0)) } ?? 0,
+                                   rate: reply["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 0,
+                                   isPlaying: isPlaying, continuing: continuing)
+    reply["kMRMediaRemoteNowPlayingInfoElapsedTime"] = settled.elapsed
+    if isPlaying != nil { reply["kMRMediaRemoteNowPlayingInfoPlaybackRate"] = settled.rate }
+    lastPosition = revision.map { ($0, sample.elapsed, sample.timestamp, settled.elapsed, settled.rate, now) }
 }
 
 func emit(_ reply: [String: Any]) {
@@ -89,6 +123,7 @@ public func vitruvianNowPlayingGet() {
     let group = DispatchGroup()
     let lock = NSLock()
     var reply: [String: Any] = [:]
+    var sample: (elapsed: Double, timestamp: Date?)?
     func set(_ key: String, _ value: Any?) {
         guard let value else { return }
         lock.lock()
@@ -108,10 +143,9 @@ public func vitruvianNowPlayingGet() {
         set("kMRMediaRemoteNowPlayingInfoDuration",
             (info["kMRMediaRemoteNowPlayingInfoDuration"] as? NSNumber)?.doubleValue)
         if let elapsed = (info["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? NSNumber)?.doubleValue {
-            let timestamp = info["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date
-            let rate = (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue ?? 0
-            let age = timestamp.map { max(0, Date().timeIntervalSince($0)) } ?? 0
-            set("kMRMediaRemoteNowPlayingInfoElapsedTime", elapsed + age * max(0, rate))
+            lock.lock()
+            sample = (elapsed, info["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date)
+            lock.unlock()
         }
         set("kMRMediaRemoteNowPlayingInfoPlaybackRate",
             (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue)
@@ -124,10 +158,20 @@ public func vitruvianNowPlayingGet() {
         if watching { previousArtwork = artwork }
         group.leave()
     }
+    // The followed player's own state, which the system's Now Playing shows.
+    // Some players update their rate a step late or never, so the rate alone
+    // can read a paused song as playing. A missing answer only falls back to
+    // the rate, so it gets its own short wait.
+    let state = DispatchGroup()
     if let selected {
         NotchNativePlayback.readInfo(selected, artwork: true, queue: queue, completion: receiveInfo)
         set("pid", selected.pid)
         set("displayID", selected.applicationBundleIdentifier ?? selected.bundleIdentifier)
+        state.enter()
+        NotchNativePlayback.readPlaybackState(selected, queue: queue) { isPlaying in
+            set("isPlaying", isPlaying)
+            state.leave()
+        }
     } else { getInfo(queue, receiveInfo) }
     if selected == nil, let getPID = function(handle, "MRMediaRemoteGetNowPlayingApplicationPID", as: PIDFunction.self) {
         group.enter()
@@ -197,15 +241,20 @@ public func vitruvianNowPlayingGet() {
         }
     } else { group.wait() }
     if watching { _ = capabilities.wait(timeout: .now() + 0.2) }
+    _ = state.wait(timeout: .now() + 0.2)
     lock.lock()
     var snapshot = reply
+    let position = sample
     lock.unlock()
+    var revision: UUID?
     if watching, let context = NotchNativePlayback.publish(selected, info: snapshot) {
+        revision = context.revision
         snapshot["playbackRevision"] = context.revision.uuidString
         snapshot["canSendCommandsDirectly"] = NotchNativePlayback.target.map {
             $0.allowsDirectCommands && ($0.itemIdentifier != nil || $0.requiresCurrentPlayer)
         } == true
     }
+    if let position { settlePosition(&snapshot, sample: position, revision: revision) } else { lastPosition = nil }
     // Cover a callback that completed after the snapshot copy but before publish.
     if watching, let selected {
         lock.lock()
@@ -245,7 +294,11 @@ public func vitruvianNowPlayingWatch() {
                  "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
                  "kMRMediaRemotePlayerNowPlayingInfoDidChangeNotification",
                  "kMRMediaRemoteNowPlayingPlayerStateDidChange",
-                 "kMRMediaRemoteNowPlayingApplicationClientStateDidChange"]
+                 "kMRMediaRemoteNowPlayingApplicationClientStateDidChange",
+                 // Play and pause of any player, not only the system's current one.
+                 "kMRMediaRemotePlayerIsPlayingDidChangeNotification"]
+        // Its name differs from the symbol's (a leading underscore on 27.2).
+        + [NotchNativePlayback.stringConstant("kMRMediaRemotePlayerPlaybackStateDidChangeNotification")].compactMap { $0 }
     @Sendable func refresh() {
         pending?.cancel()
         let work = DispatchWorkItem { vitruvianNowPlayingGet() }

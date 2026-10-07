@@ -22,19 +22,27 @@ package struct ShelfDropIntake {
     /// The docked shelf's window, if there is one.
     package var dock: () -> AnyObject?
     package var dockDidAccept: () -> Void
+    /// Marks the shelf as in use. A promised file reaches the shelf, and
+    /// with it the interaction, only once its asynchronous delivery
+    /// completes, which can be after the grace window in `endEdgePeekDrag`
+    /// has retracted an edge peek. Noting the drop clears the peek first, so
+    /// that retract does nothing.
+    package var noteInteraction: () -> Void
 
     package init(enabled: @escaping () -> Bool,
                  promises: @escaping (NSPasteboard) -> [NSFilePromiseReceiver],
                  receive: @escaping (_ receivers: [NSFilePromiseReceiver], _ pasteboard: NSPasteboard,
                                      _ target: UUID?) -> Bool,
                  add: @escaping (_ pasteboard: NSPasteboard, _ target: UUID?) -> Bool,
-                 dock: @escaping () -> AnyObject?, dockDidAccept: @escaping () -> Void) {
+                 dock: @escaping () -> AnyObject?, dockDidAccept: @escaping () -> Void,
+                 noteInteraction: @escaping () -> Void) {
         self.enabled = enabled
         self.promises = promises
         self.receive = receive
         self.add = add
         self.dock = dock
         self.dockDidAccept = dockDidAccept
+        self.noteInteraction = noteInteraction
     }
 
     /// Takes a drop onto the shelf, or into the item `target`.
@@ -45,10 +53,13 @@ package struct ShelfDropIntake {
     }
 
     /// Takes a drop that landed in `destination`, completing the dock when
-    /// that is the docked shelf.
+    /// that is the docked shelf, and noting the interaction at drop time.
     package func accept(_ pasteboard: NSPasteboard, into target: UUID? = nil, destination: AnyObject?) -> Bool {
         let accepted = accept(pasteboard, into: target)
-        if accepted, destination === dock() { dockDidAccept() }
+        if accepted {
+            if destination === dock() { dockDidAccept() }
+            noteInteraction()
+        }
         return accepted
     }
 }

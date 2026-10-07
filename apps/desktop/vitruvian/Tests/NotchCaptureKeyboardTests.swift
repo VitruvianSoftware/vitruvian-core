@@ -110,11 +110,11 @@ enum NotchCaptureKeyboardTests {
         func context(island: Bool = true, focused: Bool = false, sheet: Bool = false, text: Bool = false,
                      recording: Bool = false, spaceIsDown: Bool = false, dragging: Bool = false,
                      acceptsWindowClick: Bool = true, tools: [ScreenCaptureTool] = [],
-                     loupe: Bool = false) -> Chooser.Context {
+                     loupe: Bool = false, color: Bool = false) -> Chooser.Context {
             Chooser.Context(inOverlay: !island, inIsland: island, hasSheet: sheet, editingText: text,
                             recordingShortcut: recording, focusedControl: focused, spaceIsDown: spaceIsDown,
                             dragging: dragging, acceptsWindowClick: acceptsWindowClick, availableTools: tools,
-                            loupeAcceptsKeys: loupe)
+                            loupeAcceptsKeys: loupe, pickingColor: color)
         }
         func press(_ key: Int, up: Bool = false, _ flags: Flags = [], _ characters: String? = nil,
                    in context: Chooser.Context) -> Chooser.Command? {
@@ -135,6 +135,16 @@ enum NotchCaptureKeyboardTests {
                      "Return still captures the display when no control owns it")
         suite.expect(press(kVK_Return, in: context(acceptsWindowClick: false)) == .consume,
                      "Return is kept from the app even when no display can be taken")
+        for island in [true, false] {
+            for accepts in [true, false] {
+                let picking = context(island: island, acceptsWindowClick: accepts, color: true)
+                suite.expect(press(kVK_Return, in: picking) == .confirmColor
+                             && press(kVK_ANSI_KeypadEnter, in: picking) == .confirmColor,
+                             "Return and keypad Enter confirm the color instead of capturing the display")
+            }
+        }
+        suite.expect(press(kVK_Return, in: context(focused: true, color: true)) == nil,
+                     "Return still activates a focused island control while the color picker is up")
         for focused in [false, true] {
             suite.expect(press(kVK_Space, in: context(focused: focused, dragging: true)) == .startMovingSelection,
                          "Space still moves a selection even while a chooser control has focus")

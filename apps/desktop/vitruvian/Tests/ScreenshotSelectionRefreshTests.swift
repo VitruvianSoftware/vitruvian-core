@@ -560,6 +560,35 @@ enum ScreenshotSelectionRefreshContract {
                 && (guideContentHeights.first ?? 0) > 0,
                "capture modes reserve the recording controls' height so the chooser never jumps")
 
+        // Return in the color picker takes the pixel under the pointer, as a
+        // click there would, and ends the picker. It does nothing for the
+        // other tools, which keep their own Return, or while a refresh is due.
+        guard let keyed = await started(.color) else { return }
+        let keyedPanel = keyed.panels[0]
+        keyed.controller.currentPointerLocation = CGPoint(x: keyedPanel.screenFrame.minX + 23,
+                                                          y: keyedPanel.screenFrame.maxY - 39)
+        keyed.controller.confirmColorUnderPointer()
+        if case .color? = keyed.outcome {
+            expect(keyed.controller.isOver, "Return copies the color under the pointer and ends the picker")
+        } else {
+            expect(false, "Return copies the color under the pointer and ends the picker")
+        }
+        for tool in [ScreenCaptureTool.screenshot, .text, .recording] {
+            guard let other = await started(tool) else { return }
+            other.controller.confirmColorUnderPointer()
+            expect(other.outcome == nil, "the color picker's Return leaves the \(tool) chooser alone")
+        }
+        // Leaving recording changes which windows the pixels show, so the
+        // picker waits for a fresh source.
+        guard let refreshing = await started(.recording) else { return }
+        let due = desk.requests.count
+        refreshing.select(.color)
+        refreshing.controller.confirmColorUnderPointer()
+        expect(refreshing.outcome == nil, "Return picks no color from the pixels a refresh is replacing")
+        await drain()
+        desk.complete(due, displays: [1, 2])
+        await drain()
+
         guard let picking = await started(.color) else { return }
         expect(picking.panels[0].overlayView.showsLoupe && !picking.panels[1].overlayView.showsLoupe,
                "the capture loupe draws on only the display that owns the current pointer")

@@ -61,6 +61,8 @@ package enum ScreenshotChooserKeys {
         case consume
         case cancel
         case captureDisplay
+        /// Copies the color under the pointer and ends the picker.
+        case confirmColor
         case startMovingSelection
         case stopMovingSelection
         case repeatRegion
@@ -88,10 +90,12 @@ package enum ScreenshotChooserKeys {
         /// The tools a typed letter can switch to.
         package var availableTools: [ScreenCaptureTool]
         package var loupeAcceptsKeys: Bool
+        /// The color picker is the active tool.
+        package var pickingColor: Bool
 
         package init(inOverlay: Bool, inIsland: Bool, hasSheet: Bool, editingText: Bool, recordingShortcut: Bool,
                      focusedControl: Bool, spaceIsDown: Bool, dragging: Bool, acceptsWindowClick: Bool,
-                     availableTools: [ScreenCaptureTool], loupeAcceptsKeys: Bool) {
+                     availableTools: [ScreenCaptureTool], loupeAcceptsKeys: Bool, pickingColor: Bool = false) {
             self.inOverlay = inOverlay
             self.inIsland = inIsland
             self.hasSheet = hasSheet
@@ -103,6 +107,7 @@ package enum ScreenshotChooserKeys {
             self.acceptsWindowClick = acceptsWindowClick
             self.availableTools = availableTools
             self.loupeAcceptsKeys = loupeAcceptsKeys
+            self.pickingColor = pickingColor
         }
     }
 
@@ -129,6 +134,8 @@ package enum ScreenshotChooserKeys {
         case kVK_Escape:
             return .cancel
         case kVK_Return, kVK_ANSI_KeypadEnter:
+            // The color picker copies the pixel under the pointer and closes.
+            if context.pickingColor { return .confirmColor }
             return context.acceptsWindowClick ? .captureDisplay : .consume
         case kVK_Space:
             // Holding Space moves the in-progress selection.

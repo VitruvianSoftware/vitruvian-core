@@ -812,6 +812,8 @@ package enum DefaultsKey {
     package static let notchTimerEnabled = "notchTimerEnabled"
     package static let notchTimerMode = "notchTimerMode"
     package static let notchTimerSoundEnabled = "notchTimerSoundEnabled"
+    package static let notchHideTimerCountdown = "notchHideTimerCountdown"
+    package static let notchTimerMinutes = "notchTimerMinutes"
     package static let notchPomodoroFocusMinutes = "notchPomodoroFocusMinutes"
     package static let notchPomodoroShortBreakMinutes = "notchPomodoroShortBreakMinutes"
     package static let notchPomodoroLongBreakMinutes = "notchPomodoroLongBreakMinutes"
