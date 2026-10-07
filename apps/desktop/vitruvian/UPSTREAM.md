@@ -2412,6 +2412,13 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-06**: First release:
   - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
     drop upstream's mark;
+- **2026-10-07**: Session archiving parity across Antigravity and Claude Code in Quick Prompt:
+  - `NexusAgentSessionSummary`: added `isArchived: Bool` property defaulting to `false`, updated Antigravity query to select `killed` status from `conversation_summaries` where `killed = 1` marks archived sessions, added `claudeHiddenSessionIds(home:)` querying `hiddenSessionIds` from VS Code's `state.vscdb` (`Anthropic.claude-code`) and `UserDefaults` (`vitruvian.claude.hiddenSessionIds`), and updated `parseClaudeSessions` to mark sessions in `hiddenIds` as `isArchived: true`;
+  - `NexusAgentService`: added `archiveSession` and `unarchiveSession` updating `conversation_summaries SET killed = 1/0` in SQLite for Antigravity, and `UserDefaults` + `state.vscdb` for Claude Code;
+  - `NexusAgentQuickPromptSession`: linked `weak var service: NexusAgentService?`, added `archive` and `unarchive` methods triggering service updates and refreshing the session drawer;
+  - `NexusAgentQuickPromptView`: updated `sessionsList` to partition sessions into active and a collapsible "Archived (N)" section with spring animation, and added `NexusAgentSessionRow` with interactive hover states displaying `archivebox` and `arrow.uturn.backward.circle` actions;
+  - `SourceNames`: added `archivebox` and `arrow.uturn.backward.circle` SF symbols;
+  - `NexusAgentTests`: added `sessionArchiving` unit test suite covering Antigravity `killed` parsing, Claude hidden ID discovery, active/archived list partitioning, and service archive/unarchive operations.
 - **2026-10-07**: Claude Code Task and tool_use parsing in Quick Prompt:
   - `NexusAgentService`: extended `parseClaudeTranscript` to extract collapsible tool execution steps (`Bash`, `Task`, `Read`, `Edit`, and generic tools) and `thinking` blocks from assistant turns, and updated `parseActiveSubagents(from:)` to detect spawned Claude subagents from `Task` tool calls and clear them on matching `tool_result` blocks;
   - `NexusAgentTests`: added unit tests in `liveTranscriptAndSubagents` verifying Claude `tool_use` steps, `thinkingText`, and active `Task` subagent tracking and clearance.

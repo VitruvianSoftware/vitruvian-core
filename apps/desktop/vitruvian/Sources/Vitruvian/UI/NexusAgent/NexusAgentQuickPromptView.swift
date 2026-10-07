@@ -32,6 +32,7 @@ package struct NexusAgentQuickPromptView: View {
     @State private var hoveringInlineStop = false
     @State private var hoveringNewChat = false
     @State private var hoveringSessions = false
+    @State private var isArchivedExpanded = false
 
     package init() {}
 
@@ -372,44 +373,62 @@ package struct NexusAgentQuickPromptView: View {
                 planButton
             }
             ScrollView {
-                LazyVStack(spacing: 6) {
-                    if session.filteredSessions.isEmpty {
-                        Text(strings.noSessions)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 24)
-                    }
-                    ForEach(session.filteredSessions) { summary in
-                        sessionCard(summary)
-                    }
-                }
+                sessionsList
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
-    private func sessionCard(_ summary: NexusAgentSessionSummary) -> some View {
-        Button { session.resume(summary, configuration: service.configuration) } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left.and.text.bubble.right").foregroundStyle(.secondary)
-                Text(summary.title.isEmpty ? strings.untitledSession : summary.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                if let modified = summary.modified {
-                    Text(modified, format: .relative(presentation: .named))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    private var sessionsList: some View {
+        let activeSessions = session.filteredSessions.filter { !$0.isArchived }
+        let archivedSessions = session.filteredSessions.filter { $0.isArchived }
+
+        return LazyVStack(spacing: 6) {
+            if activeSessions.isEmpty && archivedSessions.isEmpty {
+                Text(strings.noSessions)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 24)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.05)))
-            .contentShape(Rectangle())
+
+            ForEach(activeSessions) { summary in
+                NexusAgentSessionRow(summary: summary, session: session, service: service, strings: strings)
+            }
+
+            if !archivedSessions.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            isArchivedExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: isArchivedExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text("Archived (\(archivedSessions.count))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if isArchivedExpanded {
+                        ForEach(archivedSessions) { summary in
+                            NexusAgentSessionRow(summary: summary, session: session, service: service, strings: strings)
+                                .opacity(0.85)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Chat
@@ -1843,4 +1862,80 @@ private struct ActiveSubagentBannerView: View {
         }
     }
 }
+
+private struct NexusAgentSessionRow: View {
+    let summary: NexusAgentSessionSummary
+    @ObservedObject var session: NexusAgentQuickPromptSession
+    @ObservedObject var service: NexusAgentService
+    let strings: NexusAgentFeatureStrings
+
+    @State private var isHovered = false
+    @State private var isActionHovered = false
+
+    var body: some View {
+        Button {
+            session.resume(summary, configuration: service.configuration)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: summary.isArchived ? "archivebox" : "bubble.left.and.text.bubble.right")
+                    .foregroundStyle(.secondary)
+                Text(summary.title.isEmpty ? strings.untitledSession : summary.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if isHovered {
+                    actionButton
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else if let modified = summary.modified {
+                    Text(modified, format: .relative(presentation: .named))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(isHovered ? 0.08 : 0.05)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+
+    @ViewBuilder
+    private var actionButton: some View {
+        if !summary.isArchived {
+            Button {
+                session.archive(summary, configuration: service.configuration)
+            } label: {
+                Image(systemName: "archivebox")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .scaleEffect(isActionHovered ? 1.15 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: isActionHovered)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.primary.opacity(isActionHovered ? 0.12 : 0.05)))
+            }
+            .buttonStyle(.plain)
+            .help("Archive session")
+            .onHover { isActionHovered = $0 }
+        } else {
+            Button {
+                session.unarchive(summary, configuration: service.configuration)
+            } label: {
+                Image(systemName: "arrow.uturn.backward.circle")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .scaleEffect(isActionHovered ? 1.15 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: isActionHovered)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.primary.opacity(isActionHovered ? 0.12 : 0.05)))
+            }
+            .buttonStyle(.plain)
+            .help("Unarchive session")
+            .onHover { isActionHovered = $0 }
+        }
+    }
+}
+
 

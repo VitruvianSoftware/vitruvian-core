@@ -77,19 +77,21 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     package let preview: String
     package let steps: Int
     package let modified: Date?
+    package let isArchived: Bool
 
-    package init(id: String, title: String, preview: String = "", steps: Int, modified: Date?) {
+    package init(id: String, title: String, preview: String = "", steps: Int, modified: Date?, isArchived: Bool = false) {
         self.id = id
         self.title = title
         self.preview = preview
         self.steps = steps
         self.modified = modified
+        self.isArchived = isArchived
     }
 
     /// The SQL the drawer runs against agy's `conversation_summaries.db`.
     package static let query = """
-    SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris \
-    FROM conversation_summaries WHERE nesting_depth = 0 AND killed = 0 \
+    SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, killed \
+    FROM conversation_summaries WHERE nesting_depth = 0 \
     ORDER BY last_modified_time DESC LIMIT 200;
     """
 
@@ -119,11 +121,50 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                 .compactMap { $0?.split(separator: "\n").first.map(String.init) }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
             let stamp = row["last_modified_time"] as? String ?? ""
+            let isArchived = (row["killed"] as? NSNumber)?.intValue == 1
             return NexusAgentSessionSummary(id: id, title: String(title.prefix(100)),
                                             preview: preview,
                                             steps: (row["step_count"] as? NSNumber)?.intValue ?? 0,
-                                            modified: dates.date(from: stamp) ?? plainDates.date(from: stamp))
+                                            modified: dates.date(from: stamp) ?? plainDates.date(from: stamp),
+                                            isArchived: isArchived)
         }
+    }
+
+    /// Discovers archived/hidden Claude session IDs across VS Code state and UserDefaults.
+    package static func claudeHiddenSessionIds(home: String) -> Set<String> {
+        var hiddenIds = Set<String>()
+        if let local = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") {
+            hiddenIds.formUnion(local)
+        }
+        let appSupport = (home as NSString).appendingPathComponent("Library/Application Support")
+        let dbPaths = [
+            (appSupport as NSString).appendingPathComponent("Code/User/globalStorage/state.vscdb"),
+            (appSupport as NSString).appendingPathComponent("Code - Insiders/User/globalStorage/state.vscdb"),
+        ]
+        for dbPath in dbPaths where FileManager.default.fileExists(atPath: dbPath) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+            process.arguments = [
+                "-json",
+                dbPath,
+                "SELECT value FROM ItemTable WHERE key = 'Anthropic.claude-code';"
+            ]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { continue }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let first = rows.first,
+                  let valueStr = first["value"] as? String,
+                  let valueData = valueStr.data(using: .utf8),
+                  let stateObj = try? JSONSerialization.jsonObject(with: valueData) as? [String: Any],
+                  let ids = stateObj["hiddenSessionIds"] as? [String] else { continue }
+            hiddenIds.formUnion(ids)
+        }
+        return hiddenIds
     }
 
     /// Converts a filesystem path to Claude Code's project directory slug by
@@ -146,6 +187,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
         let fileManager = FileManager.default
         let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
         guard fileManager.fileExists(atPath: claudeProjectsDir) else { return [] }
+        let hiddenIds = claudeHiddenSessionIds(home: home)
 
         var targetDirs: [String] = []
         let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -229,12 +271,14 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                 }
             }
 
+            let isArchived = hiddenIds.contains(sessionID)
             summaries.append(NexusAgentSessionSummary(
                 id: sessionID,
                 title: title,
                 preview: preview,
                 steps: steps,
-                modified: candidate.modDate == Date.distantPast ? nil : candidate.modDate
+                modified: candidate.modDate == Date.distantPast ? nil : candidate.modDate,
+                isArchived: isArchived
             ))
         }
 

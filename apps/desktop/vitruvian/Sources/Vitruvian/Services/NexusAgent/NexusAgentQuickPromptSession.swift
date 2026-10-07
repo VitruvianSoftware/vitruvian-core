@@ -108,6 +108,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
 
     @Published package private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
     @Published package var isFollowerActive: Bool = false
+    package weak var service: NexusAgentService?
     private var followerTimer: Timer?
     private var lastTranscriptModDate: Date?
     private var lastTranscriptSize: UInt64?
@@ -154,6 +155,26 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     /// Refreshes the session list using the active provider.
     package func refreshSessions(configuration: NexusAgentConfiguration) {
         sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider)
+    }
+
+    /// Archives a session and reloads the drawer list.
+    package func archive(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+        if let service {
+            service.archiveSession(summary, configuration: configuration)
+        } else {
+            NexusAgentService.shared.archiveSession(summary, configuration: configuration)
+        }
+        refreshSessions(configuration: configuration)
+    }
+
+    /// Unarchives a session and reloads the drawer list.
+    package func unarchive(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+        if let service {
+            service.unarchiveSession(summary, configuration: configuration)
+        } else {
+            NexusAgentService.shared.unarchiveSession(summary, configuration: configuration)
+        }
+        refreshSessions(configuration: configuration)
     }
 
     /// Starts watching the transcript file for live updates while in chat mode.

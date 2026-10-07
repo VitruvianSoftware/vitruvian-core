@@ -187,6 +187,7 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         self.environment = environment
         session = NexusAgentQuickPromptSession(environment: environment)
         super.init()
+        session.service = self
         session.onTurnFinished = { [weak self] reply, isError in
             guard let self, self.panel?.isVisible != true else { return }
             let name = self.configuration.activeProvider.name
@@ -1058,5 +1059,103 @@ extension NexusAgentService {
 
     package nonisolated static func extractUserPrompt(_ raw: String) -> String {
         NexusAgentSessionSummary.extractUserPrompt(raw)
+    }
+
+    // MARK: - Session Archiving
+
+    package func archiveSession(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+        Self.archiveSession(home: environment.home, id: summary.id, provider: configuration.activeProvider)
+    }
+
+    package func unarchiveSession(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+        Self.unarchiveSession(home: environment.home, id: summary.id, provider: configuration.activeProvider)
+    }
+
+    nonisolated package static func archiveSession(home: String, id: String, provider: NexusAgentCLIProvider) {
+        if provider.id == NexusAgentCLIProvider.antigravity.id {
+            let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
+            guard FileManager.default.fileExists(atPath: database) else { return }
+            let safeID = id.replacingOccurrences(of: "'", with: "''")
+            let sql = "UPDATE conversation_summaries SET killed = 1 WHERE conversation_id = '\(safeID)';"
+            runSqlite(database: database, sql: sql)
+        } else if provider.id == NexusAgentCLIProvider.claude.id {
+            var hidden = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
+            if !hidden.contains(id) {
+                hidden.append(id)
+                UserDefaults.standard.set(hidden, forKey: "vitruvian.claude.hiddenSessionIds")
+            }
+            updateClaudeVSCodeHiddenState(home: home, id: id, isArchived: true)
+        }
+    }
+
+    nonisolated package static func unarchiveSession(home: String, id: String, provider: NexusAgentCLIProvider) {
+        if provider.id == NexusAgentCLIProvider.antigravity.id {
+            let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
+            guard FileManager.default.fileExists(atPath: database) else { return }
+            let safeID = id.replacingOccurrences(of: "'", with: "''")
+            let sql = "UPDATE conversation_summaries SET killed = 0 WHERE conversation_id = '\(safeID)';"
+            runSqlite(database: database, sql: sql)
+        } else if provider.id == NexusAgentCLIProvider.claude.id {
+            var hidden = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
+            if hidden.contains(id) {
+                hidden.removeAll { $0 == id }
+                UserDefaults.standard.set(hidden, forKey: "vitruvian.claude.hiddenSessionIds")
+            }
+            updateClaudeVSCodeHiddenState(home: home, id: id, isArchived: false)
+        }
+    }
+
+    nonisolated private static func runSqlite(database: String, sql: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [database, sql]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+    }
+
+    nonisolated private static func updateClaudeVSCodeHiddenState(home: String, id: String, isArchived: Bool) {
+        let appSupport = (home as NSString).appendingPathComponent("Library/Application Support")
+        let dbPaths = [
+            (appSupport as NSString).appendingPathComponent("Code/User/globalStorage/state.vscdb"),
+            (appSupport as NSString).appendingPathComponent("Code - Insiders/User/globalStorage/state.vscdb"),
+        ]
+        for dbPath in dbPaths where FileManager.default.fileExists(atPath: dbPath) {
+            let queryProcess = Process()
+            queryProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+            queryProcess.arguments = [
+                "-json",
+                dbPath,
+                "SELECT value FROM ItemTable WHERE key = 'Anthropic.claude-code';"
+            ]
+            let pipe = Pipe()
+            queryProcess.standardOutput = pipe
+            queryProcess.standardError = FileHandle.nullDevice
+            guard (try? queryProcess.run()) != nil else { continue }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            queryProcess.waitUntilExit()
+            guard queryProcess.terminationStatus == 0,
+                  let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let first = rows.first,
+                  let valueStr = first["value"] as? String,
+                  let valueData = valueStr.data(using: .utf8),
+                  var stateObj = try? JSONSerialization.jsonObject(with: valueData) as? [String: Any] else { continue }
+
+            var hiddenList = stateObj["hiddenSessionIds"] as? [String] ?? []
+            if isArchived {
+                if !hiddenList.contains(id) { hiddenList.append(id) }
+            } else {
+                hiddenList.removeAll { $0 == id }
+            }
+            stateObj["hiddenSessionIds"] = hiddenList
+
+            guard let updatedData = try? JSONSerialization.data(withJSONObject: stateObj),
+                  let updatedStr = String(data: updatedData, encoding: .utf8) else { continue }
+
+            let safeValue = updatedStr.replacingOccurrences(of: "'", with: "''")
+            let updateSql = "UPDATE ItemTable SET value = '\(safeValue)' WHERE key = 'Anthropic.claude-code';"
+            runSqlite(database: dbPath, sql: updateSql)
+        }
     }
 }
