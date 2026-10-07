@@ -81,3 +81,12 @@ Upstream serves its `/api` routes from its Vite dev server (`server/` and
 and re-implements those routes. So a new or changed upstream route reaches
 production only once `server.mjs` has it. `sync` lists the server files upstream
 changed, so each sync can decide what production needs.
+
+Street Level's routes (`/api/mapillary/status` and `/api/mapillary/tiles`) are
+the exception: `server.mjs` handles the requests but runs upstream's own tile
+engine (`server/providers/mapillary/`), so upstream's fixes to it arrive with
+each sync. Its requests sit behind `server.mjs`'s rate limit rather than
+upstream's same-site gate, which refuses every request a proxy forwards. The
+Dockerfile copies the files that engine imports, and `:server_test` boots
+`server.mjs` from the image's layout, so a file an upstream change adds fails
+the test until the Dockerfile copies it too.

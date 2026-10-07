@@ -48,10 +48,12 @@ The copy is upstream's latest `main` plus only the changes
    - for upstream's server changes, decide what `server.mjs` needs (README.md,
      "The production server"). Porting a whole new feature's routes can be its
      own pull request; say so in the report rather than leave it unmentioned.
+     When `:server_test` fails because the image lacks a file the tile engine
+     now imports, add it to the Dockerfile's runtime-stage `COPY` lines.
 5. Before every push, run these and check each exit status. Piping one through
    `tail` hides a failure.
    - `bazel run //apps/web/gods-eye-view:track_upstream -- check`
-   - `bazel test //apps/web/gods-eye-view:unit_tests //apps/web/gods-eye-view:cesium_assets_test //apps/web/gods-eye-view:upstream_test`
+   - `bazel test //apps/web/gods-eye-view:unit_tests //apps/web/gods-eye-view:server_test //apps/web/gods-eye-view:cesium_assets_test //apps/web/gods-eye-view:upstream_test`
    - `bazel build //apps/web/gods-eye-view:build`
    - `bazel run //tools/license:check`
 6. Commit as `feat(gods-eye-view): sync upstream to <short sha>`, with the
