@@ -330,6 +330,11 @@ MUTATIONS = [
      "        headerCameraGap > 0 ? (contentWidth - headerCameraGap) / 2 : nil\n",
      "        headerCameraGap > 0 ? contentWidth / 2 : nil\n",
      "the header's halves leave exactly the camera between them, or one row spans the top"),
+    ("Codex conversation starts its plugins", "agents",
+     "Sources/Vitruvian/Services/AgentUsage/AgentCodexServer.swift",
+     "process.arguments = [\"-c\", \"features.plugins=false\", \"app-server\"]",
+     "process.arguments = [\"app-server\"]",
+     "a conversation starts Codex's server with its plugins off"),
 ]
 
 
