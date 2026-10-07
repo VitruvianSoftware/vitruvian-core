@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.12.1...vitruvian-v3.13.0) (2026-10-07)
+
+
+### Features
+
+* **desktop:** provider-aware session history and claude transcript restoration in quick prompt ([#2805](https://github.com/VitruvianSoftware/vitruvian-core/issues/2805)) ([9b826f5](https://github.com/VitruvianSoftware/vitruvian-core/commit/9b826f51ac7c7cd976e323f7f09d097a740539fd))
+
+
+### Bug Fixes
+
+* **vitruvian:** port upstream batch 2, nine more fixes from 4–5 October ([#2804](https://github.com/VitruvianSoftware/vitruvian-core/issues/2804)) ([5ff7613](https://github.com/VitruvianSoftware/vitruvian-core/commit/5ff7613255e0b0e0e6b78599847117444c193d29))
+
 ## [3.12.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.12.0...vitruvian-v3.12.1) (2026-10-07)
 
 
