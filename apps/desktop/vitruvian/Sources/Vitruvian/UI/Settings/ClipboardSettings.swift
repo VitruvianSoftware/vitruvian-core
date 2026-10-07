@@ -12,6 +12,7 @@ package struct ClipboardSettings: View {
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var pastePlain = PastePlainService.shared
     @ObservedObject private var permissions = Permissions.shared
+    @State private var clearingIDs: Set<UUID>?
     @AppStorage(Preferences.pastePlainEnabled) private var pastePlainEnabled: Bool
     @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var limit: Int
@@ -282,9 +283,10 @@ package struct ClipboardSettings: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button(text.clearRecent) {
-                        history.clearRecent()
+                        clearingIDs = Set(history.recentEntries.map(\.id))
                     }
                     .disabled(history.recentEntries.isEmpty)
+                    .modifier(ClipboardClearRecentConfirmation(entryIDs: $clearingIDs))
                 }
             }
     }

@@ -397,10 +397,12 @@ package enum CommandBarCatalog {
                 trouble: canUseHistory ? nil
                     : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
                 run: { _ in afterBeat(0.1) { ClipboardHistoryService.shared.showHistoryWindow() } }))
+            // Counted when the bar lists it: a copy made before confirming is kept.
             entries.append(clipboardClearEntry(
                 clipboard, subtitle: area(.clipboardHistory),
                 trouble: canUseHistory ? nil : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
-                clear: { ClipboardHistoryService.shared.clearRecent() }))
+                recentIDs: Set(ClipboardHistoryService.shared.recentEntries.map(\.id)),
+                clear: { ClipboardHistoryService.shared.clearRecent($0) }))
         }
         if AppFeature.textSnippets.isAvailable {
             entries.append(CommandBarEntry(
@@ -1176,8 +1178,8 @@ package enum CommandBarCatalog {
     /// The row that clears the clipboard history's unpinned items, once the
     /// person confirms.
     package static func clipboardClearEntry(_ clipboard: ClipboardFeatureStrings, subtitle: String,
-                                            trouble: CommandBarEntry.Trouble?,
-                                            clear: @escaping @MainActor () -> Void) -> CommandBarEntry {
+                                            trouble: CommandBarEntry.Trouble?, recentIDs: Set<UUID>,
+                                            clear: @escaping @MainActor (Set<UUID>) -> Void) -> CommandBarEntry {
         CommandBarEntry(
             id: "action.clipboardClearRecent",
             title: clipboard.clearRecent,
@@ -1189,8 +1191,8 @@ package enum CommandBarCatalog {
                        ClipboardFeatureStrings.enUS.clearRecentKeywords].joined(separator: " "),
             icon: .symbol("trash"),
             trouble: trouble,
-            confirmationPrompt: clipboard.clearRecent,
-            run: { _ in clear() })
+            confirmationPrompt: String(format: clipboard.clearRecentConfirmFormat, recentIDs.count),
+            run: { _ in clear(recentIDs) })
     }
 
     /// The row that relaunches Vitruvian, named for it in the person's language.

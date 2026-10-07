@@ -222,6 +222,7 @@ enum SourceNames {
         "cleanerScheduleRanFormat",
         "cleanerScreenshotsAfterFormat",
         "cleanerScreenshotsCaptionFormat",
+        "clearRecentConfirmFormat",
         "confirmForceKillFormat",
         "confirmKillAllFormat",
         "confirmKillFormat",
