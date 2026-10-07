@@ -47,6 +47,10 @@
 #   BASE_REF            github.base_ref (PR lane), e.g. "main"; OR
 #   BEFORE_REV          explicit before-revision (merge_group / push lanes).
 #   FORCED_PUSH         "true" on a forced push -> full sweep (push lane only).
+#   RDEPS_MAP           optional path to the dependency map for the diff base
+#                       (#2841); a missing file just means "no map".
+#   PLAN_BUDGET_SEC     optional; warn when a map-sourced plan takes longer
+#                       (default 120).
 #
 # Flow:
 #   1. Determine BEFORE_REV: the explicit one if provided (verified to resolve
@@ -198,17 +202,47 @@ if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.baze
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 
-# --- 3. Sub-second change detection plan via //tools/pipeline:plan -----------
-PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- --base="${BEFORE_REV}" --head=HEAD --format=json 2>/dev/null || true)"
+# --- 3. Change detection plan via //tools/pipeline:plan ----------------------
+# RDEPS_MAP (#2841) is the dependency map for the diff base, restored by the
+# workflow from the cache Presubmit's push lane writes (#2465). With it the
+# planner looks the affected tests up in milliseconds; without it (unset, file
+# missing, wrong commit, unknown package) the planner runs a live `bazel query`
+# over the whole repo, which takes minutes on a cold runner. The planner checks
+# the map against the diff base itself, so a wrong map is never used.
+RDEPS_MAP="${RDEPS_MAP:-}"
+PLAN_BUDGET_SEC="${PLAN_BUDGET_SEC:-120}"
+PLAN_ERR="$(mktemp)"
+PLAN_ARGS=(--base="${BEFORE_REV}" --head=HEAD --format=json)
+if [ -n "${RDEPS_MAP}" ]; then
+  PLAN_ARGS+=(--rdeps-map="${RDEPS_MAP}")
+fi
+plan_start="${SECONDS}"
+PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- "${PLAN_ARGS[@]}" 2>"${PLAN_ERR}" || true)"
+plan_secs=$((SECONDS - plan_start))
 
 if [ -z "${PLAN_OUTPUT}" ]; then
   # Fail-safe fallback to full sweep if plan binary could not execute
+  echo "affected-targets: planner produced no plan after ${plan_secs}s; last lines of its output:"
+  tail -n 30 "${PLAN_ERR}" || true
   run_full_sweep "change detection plan failed -- fail-closed fallback" degraded
 fi
 
 IS_DOCS_ONLY="$(echo "${PLAN_OUTPUT}" | jq -r '.is_docs_only // false' 2>/dev/null || echo "false")"
 IS_FULL_SWEEP="$(echo "${PLAN_OUTPUT}" | jq -r '.is_global_impact // false' 2>/dev/null || echo "true")"
+PLAN_SOURCE="$(echo "${PLAN_OUTPUT}" | jq -r '.plan_source // ""' 2>/dev/null || true)"
 TARGETS=($(echo "${PLAN_OUTPUT}" | jq -r '.targets[]?' 2>/dev/null || true))
+
+# Say where the answer came from and how long it took. A slow selection used to
+# be seven silent minutes in the log (#2841); now it is one line.
+echo "affected-targets: plan took ${plan_secs}s (source: ${PLAN_SOURCE:-none})"
+grep -E '(no dependency map for|dependency map not used)' "${PLAN_ERR}" || true
+echo "${PLAN_OUTPUT}" | jq -r '.plan_source_note // empty | "affected-targets: " + .' 2>/dev/null || true
+# Regression guard: with the map in hand the plan is a lookup, so a slow one
+# means something else regressed (the planner build, the Bazel startup). Warn
+# only -- a required check must never fail on timing alone.
+if [ "${PLAN_SOURCE}" = "rdeps-map" ] && [ "${plan_secs}" -gt "${PLAN_BUDGET_SEC}" ]; then
+  echo "::warning title=affected-selection-slow::affected-targets: the plan used the dependency map but still took ${plan_secs}s (budget ${PLAN_BUDGET_SEC}s)"
+fi
 
 if [ "${IS_DOCS_ONLY}" = "true" ]; then
   echo "::notice::affected-targets: all changed files are docs/gitops/markdown-only → nothing to build or test."
@@ -219,8 +253,40 @@ if [ "${IS_FULL_SWEEP}" = "true" ] || [ "${#TARGETS[@]}" -eq 0 ]; then
   run_full_sweep "full sweep required by change detection plan" expected
 fi
 
+# A map-sourced list describes the DIFF BASE, not this change, so inside the
+# changed packages it can be wrong in both directions: it misses a test this
+# change adds and still names one this change deletes or renames. (Outside the
+# changed packages it is exact -- adding or removing a test means editing its
+# package's BUILD file.) So for the changed packages, drop the map's labels and
+# ask Bazel for every test there at HEAD instead (`//pkg:all` with
+# --build_tests_only). That is the same set the live query returns: every
+# non-manual test in a changed package depends on that package.
+TEST_ARGS=()
+if [ "${PLAN_SOURCE}" = "rdeps-map" ]; then
+  PKGS=($(echo "${PLAN_OUTPUT}" | jq -r '.affected_packages[]?' 2>/dev/null || true))
+  if [ "${#PKGS[@]}" -eq 0 ]; then
+    run_full_sweep "dependency-map plan lists no changed packages" degraded
+  fi
+  PKG_LIST="$(printf '\n%s' "${PKGS[@]}")"$'\n'
+  KEPT=()
+  for t in "${TARGETS[@]}"; do
+    case "${PKG_LIST}" in
+      *$'\n'"${t%%:*}:all"$'\n'*) ;;
+      *) KEPT+=("${t}") ;;
+    esac
+  done
+  TARGETS=(${KEPT[@]+"${KEPT[@]}"} "${PKGS[@]}")
+  TEST_ARGS=(--build_tests_only)
+fi
+
 echo "affected-targets: executing ${#TARGETS[@]} affected test targets:"
 printf '  %s\n' "${TARGETS[@]}"
-bazel test "${REMOTE_ARGS[@]}" "${TARGETS[@]}"
-exit 0
-
+rc=0
+bazel test "${REMOTE_ARGS[@]}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} "${TARGETS[@]}" || rc=$?
+if [ "${rc}" -eq 4 ] && [ "${PLAN_SOURCE}" = "rdeps-map" ]; then
+  # Exit 4 = the build succeeded but no test matched: this change removed every
+  # test the map knew about. The live query would have returned an empty list,
+  # which full-sweeps (above); do the same.
+  run_full_sweep "no tests left in the changed packages" expected
+fi
+exit "${rc}"

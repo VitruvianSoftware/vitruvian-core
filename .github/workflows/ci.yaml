@@ -117,6 +117,37 @@ jobs:
           BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: bash tools/ci/relevant-paths.sh
 
+      # Dependency map for the diff base (#2841). Presubmit's push lane computes
+      # "which tests depend on each package" once per main commit and caches it
+      # (#2465); restoring it here turns the planner's whole-repo `bazel query`
+      # (6-11 min on this job) into a lookup. The key must be the SAME base the
+      # script diffs against, so the PR lane resolves the merge-base first. No
+      # map (cache miss, unresolvable base) is fine: the planner validates the
+      # map against the base and falls back to the live query.
+      - name: Resolve the diff base
+        id: base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) sha="$(git merge-base "origin/${BASE_REF}" HEAD 2>/dev/null || true)" ;;
+            merge_group)  sha="$MQ_BASE_SHA" ;;
+            push)         sha="$PUSH_BEFORE" ;;
+            *)            sha="" ;;
+          esac
+          echo "diff base: ${sha:-unresolved}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the dependency map for the diff base
+        if: steps.base.outputs.sha != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/pipeline-rdeps-map.json
+          key: pipeline-rdeps-map-v1-${{ steps.base.outputs.sha }}
+
       # --- ALL LANES: AFFECTED targets, fall back to //... on any doubt. ------
       # Every lane runs tools/ci/affected-targets.sh; only the diff BASE differs:
       #   pull_request  merge-base vs origin/${{ github.base_ref }}
@@ -143,6 +174,7 @@ jobs:
         if: github.event_name == 'pull_request' && steps.gate.outputs.relevant != 'false'
         env:
           BASE_REF: ${{ github.base_ref }}
+          RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
         run: bash tools/ci/affected-targets.sh
 
       # MERGE QUEUE (merge_group). base_sha is reachable because the checkout
@@ -151,6 +183,7 @@ jobs:
         if: github.event_name == 'merge_group'
         env:
           BEFORE_REV: ${{ github.event.merge_group.base_sha }}
+          RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
         run: bash tools/ci/affected-targets.sh
 
       # POSTSUBMIT (push to main). Verifies the landed commit; queue-merged
@@ -164,6 +197,7 @@ jobs:
         env:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
+          RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
         run: bash tools/ci/affected-targets.sh
 
   # macOS build, split so a premium macOS runner is claimed ONLY when a macOS-
