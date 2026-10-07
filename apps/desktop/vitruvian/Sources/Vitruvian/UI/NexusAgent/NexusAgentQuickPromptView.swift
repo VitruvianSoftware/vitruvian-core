@@ -74,6 +74,12 @@ package struct NexusAgentQuickPromptView: View {
                     worktreeSupported: service.configuration.activeProvider.id != NexusAgentCLIProvider.antigravity.id,
                     strings: strings
                 )
+                if !session.activeSubagents.isEmpty {
+                    ActiveSubagentBannerView(subagents: session.activeSubagents)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 followUpBar
             } else {
                 pill
@@ -751,6 +757,8 @@ private struct NexusAgentMessageBubble: View {
     @State private var copyBounce = false
     @State private var hovering = false
     @State private var showingStats = false
+    @State private var showingToolSteps = false
+    @State private var showingThinking = false
 
     private func copyContent() {
         NSPasteboard.general.clearContents()
@@ -818,6 +826,83 @@ private struct NexusAgentMessageBubble: View {
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+                if !isUser, let toolSteps = message.toolSteps, !toolSteps.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                showingToolSteps.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.green)
+                                Text(toolSteps.count == 1 ? (toolSteps.first?.title ?? "1 tool execution finished") : "\(toolSteps.count) tool executions finished")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: showingToolSteps ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.secondary.opacity(0.8))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.primary.opacity(0.05)))
+                        }
+                        .buttonStyle(.plain)
+
+                        if showingToolSteps {
+                            VStack(alignment: .leading, spacing: 3) {
+                                ForEach(toolSteps) { step in
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "terminal")
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(.secondary)
+                                        Text(step.title)
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.leading, 6)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+
+                if !isUser, let thinking = message.thinkingText, !thinking.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                showingThinking.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.purple)
+                                Text("Thinking process")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: showingThinking ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.secondary.opacity(0.8))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.purple.opacity(0.08)))
+                        }
+                        .buttonStyle(.plain)
+
+                        if showingThinking {
+                            Text(thinking)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .padding(8)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.03)))
+                        }
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(NexusAgentReplyBlock.parse(message.text).enumerated()), id: \.offset) { _, block in
                         switch block {
@@ -1665,6 +1750,97 @@ private struct ShimmerModifier: ViewModifier {
 private extension View {
     func shimmer() -> some View {
         modifier(ShimmerModifier())
+    }
+}
+
+/// Renders an active subagent status banner replicating the Antigravity UI.
+private struct ActiveSubagentBannerView: View {
+    let subagents: [NexusAgentActiveSubagent]
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(width: 14, height: 14)
+
+                    let count = subagents.count
+                    Text("\(count) subagent\(count == 1 ? "" : "s") running")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(subagents) { subagent in
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.55)
+                                .frame(width: 12, height: 12)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 6) {
+                                    Text(subagent.role)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.primary)
+
+                                    Text(subagent.typeName)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+
+                                    Spacer()
+
+                                    Text(subagent.model)
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.blue)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color.blue.opacity(0.12)))
+                                }
+
+                                if !subagent.prompt.isEmpty {
+                                    Text(subagent.prompt)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(0.04)))
+                    }
+                }
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.02)))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }
 

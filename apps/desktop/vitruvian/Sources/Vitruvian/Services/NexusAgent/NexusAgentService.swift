@@ -65,6 +65,10 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         package var listSessions: (_ directory: String, _ provider: NexusAgentCLIProvider) -> [NexusAgentSessionSummary]
         /// Reads past conversation turns, if present.
         package var readTranscript: (_ id: String, _ provider: NexusAgentCLIProvider) -> [NexusAgentChatMessage]?
+        /// Resolves the absolute path to a transcript file if it exists.
+        package var transcriptPath: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
+        /// Reads the full raw content of a transcript file.
+        package var readTranscriptRaw: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
 
         package init(defaults: UserDefaults,
                      home: String,
@@ -86,7 +90,9 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                                              @escaping @MainActor @Sendable (Data) -> Void,
                                              @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent,
                      listSessions: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentSessionSummary] = { _, _ in [] },
-                     readTranscript: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentChatMessage]? = { _, _ in nil }) {
+                     readTranscript: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentChatMessage]? = { _, _ in nil },
+                     transcriptPath: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
+                     readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -105,6 +111,8 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
             self.launchAgent = launchAgent
             self.listSessions = listSessions
             self.readTranscript = readTranscript
+            self.transcriptPath = transcriptPath
+            self.readTranscriptRaw = readTranscriptRaw
         }
 
         package static var live: Environment {
@@ -127,7 +135,12 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
                 openFile: { NSWorkspace.shared.open(URL(fileURLWithPath: $0)) },
                 launchAgent: NexusAgentService.launchAgentProcess,
                 listSessions: { NexusAgentService.readSessions(home: home, directory: $0, provider: $1) },
-                readTranscript: { NexusAgentService.readTranscript(home: home, conversationID: $0, provider: $1) })
+                readTranscript: { NexusAgentService.readTranscript(home: home, conversationID: $0, provider: $1) },
+                transcriptPath: { NexusAgentService.transcriptPath(home: home, conversationID: $0, provider: $1) },
+                readTranscriptRaw: { id, provider in
+                    guard let path = NexusAgentService.transcriptPath(home: home, conversationID: id, provider: provider) else { return nil }
+                    return try? String(contentsOfFile: path, encoding: .utf8)
+                })
         }
     }
 
@@ -439,9 +452,13 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         panel.orderFrontRegardless()
         panel.makeKey()
         session.focusSerial += 1
+        if session.conversationID != nil && session.mode == .chat {
+            session.startTranscriptFollower(provider: configuration.activeProvider)
+        }
     }
 
     package func hideQuickPrompt() {
+        session.stopTranscriptFollower()
         guard let panel else { return }
         removeMonitors()
         panel.orderOut(nil)
@@ -482,6 +499,11 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
             let screen = panel.screen?.visibleFrame ?? NSScreen.pointerVisibleFrame
             self.apply(mode, to: panel, frame: NexusAgentQuickPromptLayout.frame(
                 for: mode, from: panel.frame, screen: screen), animated: panel.isVisible)
+            if mode == .chat && self.session.conversationID != nil {
+                self.session.startTranscriptFollower(provider: self.configuration.activeProvider)
+            } else if mode != .chat {
+                self.session.stopTranscriptFollower()
+            }
         }
         return panel
     }
@@ -820,14 +842,119 @@ extension NexusAgentService {
                 if !cleaned.isEmpty {
                     messages.append(NexusAgentChatMessage(role: .user, text: cleaned))
                 }
-            } else if type == "PLANNER_RESPONSE", let text = json["content"] as? String {
-                let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmedText.isEmpty {
-                    messages.append(NexusAgentChatMessage(role: .agent, text: trimmedText))
+            } else if type == "PLANNER_RESPONSE" {
+                let text = (json["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let thinking = json["thinking"] as? String
+                var steps: [NexusAgentToolStep] = []
+                if let toolCalls = json["tool_calls"] as? [[String: Any]] {
+                    for call in toolCalls {
+                        if let name = call["name"] as? String {
+                            let summary = (call["args"] as? [String: Any])?["toolSummary"] as? String
+                            steps.append(NexusAgentToolStep(title: summary ?? name, detail: summary != nil ? name : nil, isFinished: true))
+                        }
+                    }
+                }
+                if !text.isEmpty || !steps.isEmpty || thinking != nil {
+                    messages.append(NexusAgentChatMessage(role: .agent, text: text, toolSteps: steps.isEmpty ? nil : steps, thinkingText: thinking))
                 }
             }
         }
         return messages.isEmpty ? nil : messages
+    }
+
+    package nonisolated static func transcriptPath(home: String, conversationID: String, provider: NexusAgentCLIProvider) -> String? {
+        let fileManager = FileManager.default
+        if provider.id == NexusAgentCLIProvider.claude.id {
+            let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
+            if let subdirs = try? fileManager.contentsOfDirectory(atPath: claudeProjectsDir) {
+                for subdir in subdirs {
+                    let candidatePath = (claudeProjectsDir as NSString).appendingPathComponent(subdir).appending("/\(conversationID).jsonl")
+                    if fileManager.fileExists(atPath: candidatePath) {
+                        return candidatePath
+                    }
+                }
+            }
+            let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+            if fileManager.fileExists(atPath: agyPath) {
+                return agyPath
+            }
+            return nil
+        }
+
+        let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+        if fileManager.fileExists(atPath: agyPath) {
+            return agyPath
+        }
+
+        let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
+        if let subdirs = try? fileManager.contentsOfDirectory(atPath: claudeProjectsDir) {
+            for subdir in subdirs {
+                let candidatePath = (claudeProjectsDir as NSString).appendingPathComponent(subdir).appending("/\(conversationID).jsonl")
+                if fileManager.fileExists(atPath: candidatePath) {
+                    return candidatePath
+                }
+            }
+        }
+        return nil
+    }
+
+    package nonisolated static func parseActiveSubagents(from transcriptContent: String) -> [NexusAgentActiveSubagent] {
+        var spawned: [NexusAgentActiveSubagent] = []
+        var completedSubagents: Set<String> = []
+
+        for line in transcriptContent.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            if let content = json["content"] as? String {
+                if content.contains("sender=") || content.contains("Message sent to") || content.contains("Completed At:") {
+                    for s in spawned {
+                        if content.contains("sender=\(s.typeName)") || content.contains("sender=\(s.id)") || (content.contains(s.role) && content.contains("Completed")) {
+                            completedSubagents.insert(s.id)
+                        }
+                    }
+                }
+            }
+            if let type = json["type"] as? String, type == "SYSTEM_MESSAGE" || type == "USER_INPUT" {
+                if let content = json["content"] as? String {
+                    for s in spawned {
+                        if content.contains("sender=\(s.typeName)") || content.contains("sender=\(s.id)") {
+                            completedSubagents.insert(s.id)
+                        }
+                    }
+                }
+            }
+
+            if let toolCalls = json["tool_calls"] as? [[String: Any]] {
+                for call in toolCalls {
+                    guard let name = call["name"] as? String, name == "invoke_subagent",
+                          let args = call["args"] as? [String: Any] else { continue }
+
+                    var subagentsRaw: [[String: Any]] = []
+                    if let rawArray = args["Subagents"] as? [[String: Any]] {
+                        subagentsRaw = rawArray
+                    } else if let rawString = args["Subagents"] as? String,
+                              let subData = rawString.data(using: .utf8),
+                              let decoded = try? JSONSerialization.jsonObject(with: subData) as? [[String: Any]] {
+                        subagentsRaw = decoded
+                    }
+
+                    for sub in subagentsRaw {
+                        let typeName = sub["TypeName"] as? String ?? "subagent"
+                        let role = sub["Role"] as? String ?? typeName
+                        let prompt = sub["Prompt"] as? String ?? ""
+                        let model = sub["Model"] as? String ?? "inherit"
+                        let id = "\(typeName)-\(role)-\(spawned.count)"
+                        let active = NexusAgentActiveSubagent(id: id, typeName: typeName, role: role, prompt: prompt, model: model, isRunning: true)
+                        spawned.append(active)
+                    }
+                }
+            }
+        }
+
+        return spawned.filter { !completedSubagents.contains($0.id) }
     }
 
     package nonisolated static func extractUserPrompt(_ raw: String) -> String {
