@@ -189,9 +189,11 @@ package struct NotchCameraFit: Equatable {
 /// A capsule sized and placed by hand. By itself it takes the height of the
 /// menu bar around it; a fit makes it wider or narrower at rest, taller or
 /// shorter from its top edge, and lowers it from the top of the display.
+/// Width and height reach as far each way, so an untouched slider rests in
+/// the middle, as the camera fit's do.
 package struct NotchCapsuleFit: Equatable {
-    package static let widthRange = -40.0...80.0
-    package static let heightRange = -4.0...12.0
+    package static let widthRange = -40.0...40.0
+    package static let heightRange = -4.0...4.0
     package static let dropRange = 0.0...20.0
     package static let zero = NotchCapsuleFit(width: 0, height: 0, drop: 0)
 
