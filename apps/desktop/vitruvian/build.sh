@@ -507,6 +507,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/KeepAwakeAutomationSupport.swift
         Sources/Vitruvian/Services/SudoersSupport.swift
         Sources/Vitruvian/Services/Metrics/BatteryTimeSupport.swift
+        Sources/Vitruvian/Services/Metrics/BatteryPowerSupport.swift
         Sources/Vitruvian/Services/BoundedProcessRunner.swift
         Sources/Vitruvian/Services/DetachedProcess.swift
         Sources/Vitruvian/Services/ShellSupport.swift

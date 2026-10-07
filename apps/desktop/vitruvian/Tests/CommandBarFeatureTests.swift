@@ -2065,7 +2065,7 @@ enum CommandBarFeatureTests {
         suite.expect(!spaceRowMoved && CommandBarCatalog.cachedBootVolumeSpace?.total == 200
                 && CommandBarCatalog.storeBootVolumeSpace((free: 20, total: 200)),
                "refreshStorageAnswer stores the whole sample before it decides whether the rows changed")
-        let sampledBattery = BatteryInfo(percent: 50, isCharging: false, isOnBattery: true)
+        let sampledBattery = BatteryInfo(percent: 50, isCharging: false, isOnBattery: true, isOnExternalPower: false)
         CommandBarCatalog.cachedBattery = sampledBattery
         CommandBarCatalog.cachedMemory = (used: 1, appUsed: 1, total: 4, compressed: 0, cached: 0, swapUsed: nil)
         let systemRowsMoved = CommandBarCatalog.storeSystemAnswers(
