@@ -28,6 +28,9 @@ enum ScreenshotSelectionRefreshContract {
         static let ownWindows: Set<CGWindowID> = [900_011, 900_012, 900_013]
 
         var requests: [Request] = []
+        /// The scale a window capture reports, like a composite recaptured
+        /// on a 2x display; `nil` echoes the scale asked for.
+        var windowCaptureScale: CGFloat?
         private var answered: Set<Int> = []
         var pointer = CGPoint(x: 50, y: 50)
         let defaults: UserDefaults
@@ -81,7 +84,9 @@ enum ScreenshotSelectionRefreshContract {
                         protectedWindowIDs: protected)
                         ? [(Self.window, CGRect(x: 0, y: 0, width: 200, height: 100))] : []
                 },
-                captureWindow: { [unowned self] _, _ in self.picture(excluding: []) },
+                captureWindow: { [unowned self] _, scale in
+                    (self.picture(excluding: []), self.windowCaptureScale ?? scale)
+                },
                 captureDisplay: { [unowned self] _, _, _, _ in self.picture(excluding: []) },
                 show: { _, _ in })
         }
@@ -394,6 +399,23 @@ enum ScreenshotSelectionRefreshContract {
                 expect(false, "failed selection cannot subsequently save a stale screenshot")
             }
         }
+
+        // A 1x panel whose window came back as a 2x composite records 2x, so
+        // the editor, pinned image and 1x export size it by its own pixels.
+        for reported: CGFloat? in [nil, 2] {
+            desk.windowCaptureScale = reported
+            guard let window = await started(.screenshot) else { return }
+            window.controller.confirmWindow(11, frame: CGRect(x: 0, y: 0, width: 50, height: 50),
+                                            on: window.panels[0])
+            await drain()
+            if case .captured(let capture)? = window.outcome {
+                expect(capture.scale == (reported ?? window.panels[0].pixelScale),
+                       "a window capture records the scale the engine captured it at")
+            } else {
+                expect(false, "a window capture records the scale the engine captured it at")
+            }
+        }
+        desk.windowCaptureScale = nil
 
         guard let rapid = await started(.recording) else { return }
         let r3 = desk.requests.count
