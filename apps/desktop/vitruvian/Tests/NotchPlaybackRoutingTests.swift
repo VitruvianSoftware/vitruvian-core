@@ -655,7 +655,10 @@ enum NotchPlaybackRoutingTests {
         Adapter.discovering = true
         Playback.includeOtherPlayers = true
         Adapter.available = true
-        Adapter.applications = [10, 20].map { Adapter.application($0, "test.player.\($0)") }
+        // A paused music app holds the island against another player that
+        // only seems to play, as upstream's fixture has it.
+        Adapter.applications = [Adapter.application(10, "test.player.10", music: true),
+                                Adapter.application(20, "test.player.20")]
         Adapter.registeredPIDs = [10, 20]
         Adapter.systemPID = 20
         Adapter.sourceMetadata = [

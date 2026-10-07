@@ -1451,11 +1451,12 @@ enum ClipboardPreviewContract {
 
         let deploy = service.filteredEntries(matching: "deploy").map(\.id)
         service.updateText(entries[1], to: "Sentinel copied later")
+        // Checked before the next search, which folds the new text again.
+        suite.expect(!service.searchCache.isCached(id: entries[1].id),
+                     "an edit drops the old text's fold before any search")
         suite.expect(deploy.contains(entries[1].id)
                      && service.filteredEntries(matching: "deploy").map(\.id) == deploy.filter { $0 != entries[1].id },
                      "a history change drops the last result for the same query")
-        suite.expect(!service.searchCache.isCached(id: entries[1].id),
-                     "an edit drops the old text's fold before any search")
         suite.expect(service.filteredEntries(matching: "sentinel").map(\.id) == [entries[1].id]
                      && service.searchCache.foldCount == entries.count + 1,
                      "a history change folds only the changed text")
