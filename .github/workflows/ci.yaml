@@ -729,13 +729,6 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
         run: bash tools/ci/relevant-paths.sh
 
-      - uses: ./.github/actions/setup-bazel
-      # Restore the extracted LLVM toolchain (#1039) and pair it with the
-      # tripwire below -- see the llvm-cache-restore composite for the
-      # rationale and how the toolchain folder is found (never pinned; #2456).
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
       - name: Detect Go changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -750,10 +743,35 @@ jobs:
               - 'MODULE.bazel'
               - '.bazelrc'
               - '.github/workflows/ci.yaml'
+      # ONE decision, made before any setup (#2841). Bazel and the 2.2 GiB LLVM
+      # toolchain used to be set up first and the change detection run after,
+      # so a change with no Go in it paid ~60s of setup and then skipped the
+      # test. Every step below is gated on this output -- the tripwire too,
+      # because it fails by design when the restore did not run.
+      - name: Decide whether to race-test
+        id: need
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEVANT: ${{ steps.gate.outputs.relevant }}
+          GO_CHANGED: ${{ steps.changes.outputs.go }}
+        run: |
+          run=false
+          if [ "$EVENT_NAME" = "push" ] && [ "$RELEVANT" != "false" ]; then run=true; fi
+          if [ "$GO_CHANGED" = "true" ]; then run=true; fi
+          echo "race-test: $run (event=$EVENT_NAME relevant=${RELEVANT:-unset} go=${GO_CHANGED:-unset})"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-bazel
+        if: steps.need.outputs.run == 'true'
+      # Restore the extracted LLVM toolchain (#1039) and pair it with the
+      # tripwire below -- see the llvm-cache-restore composite for the
+      # rationale and how the toolchain folder is found (never pinned; #2456).
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        if: steps.need.outputs.run == 'true'
+        uses: ./.github/actions/llvm-cache-restore
       - name: Race-test all Go targets
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          steps.changes.outputs.go == 'true'
+        if: steps.need.outputs.run == 'true'
         run: |
           set -euo pipefail
           # Only go_test targets: race instruments Go, and sweeping //... here
@@ -772,7 +790,7 @@ jobs:
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
       # (hardened per review on #1304 after a placement-bug incident).
       - name: LLVM cache tripwire
-        if: always()
+        if: always() && steps.need.outputs.run == 'true'
         uses: ./.github/actions/llvm-cache-tripwire
         with:
           restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}

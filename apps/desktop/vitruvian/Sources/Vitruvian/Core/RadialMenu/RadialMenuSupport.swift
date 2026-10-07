@@ -683,6 +683,13 @@ package enum RadialNowPlayingSupport {
 }
 
 package enum RadialMenuSupport {
+    /// Pointer events that can update a visible wheel's highlighted slice.
+    /// AppKit reports movement with a held extra mouse button as
+    /// `otherMouseDragged`, rather than as a plain mouse move.
+    package static let sessionMoveMask: NSEvent.EventTypeMask = [
+        .mouseMoved, .leftMouseDragged, .otherMouseDragged,
+    ]
+
     package static let maxItemsPerWheel = 12
     /// Root plus one submenu level. Deeper nesting turns the wheel into a maze.
     package static let maxDepth = 2

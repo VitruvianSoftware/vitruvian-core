@@ -360,6 +360,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         guard !text.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
+        pasteboard.declareVitruvianSource()
         pasteboard.setString(text, forType: .string)
     }
 

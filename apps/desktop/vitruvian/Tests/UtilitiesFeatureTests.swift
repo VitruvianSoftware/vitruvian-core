@@ -1125,6 +1125,10 @@ enum UtilitiesFeatureTests {
                 && radialTap(press: false, claimed: [sideButton], wheels: [sideWheel],
                              sessionActive: true, holdPhase: true, holdButton: sideButton) == .endHold,
                "a claimed side button opens its wheel, closes it, and ends a hold on release")
+        suite.expect(RadialMenuSupport.sessionMoveMask.contains(.mouseMoved)
+                && RadialMenuSupport.sessionMoveMask.contains(.leftMouseDragged)
+                && RadialMenuSupport.sessionMoveMask.contains(.otherMouseDragged),
+               "radial menu highlighting follows plain moves and held left or extra mouse buttons")
 
         // The tap is the only thing that ends a button-held wheel, so handing
         // it back on resign has to end the session too; a wheel left open

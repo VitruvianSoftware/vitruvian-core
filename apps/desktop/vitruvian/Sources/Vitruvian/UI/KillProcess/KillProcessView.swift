@@ -282,6 +282,7 @@ package struct KillProcessView: View {
 
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
+        NSPasteboard.general.declareVitruvianSource()
         NSPasteboard.general.setString(value, forType: .string)
     }
 

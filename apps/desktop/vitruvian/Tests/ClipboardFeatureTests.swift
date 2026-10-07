@@ -36,6 +36,125 @@ enum ClipboardFeatureTests {
 
     static func run(_ suite: TestSuite) {
         ClipboardPreviewContract.run(suite)
+        // The production source check, against the apps that came to the
+        // front since the last look.
+        var source = ClipboardSourceWindow(ownBundleID: "com.vitruviansoftware.vitruvian")
+        var skipped: Set<String> = []
+        var front: String?
+        func sourceCheck(declared: String? = nil, remote: Bool = false,
+                         panelIsKey: Bool = false, panelClosing: Bool = false)
+            -> (excluded: Bool, bundleID: String?, fromHistoryPanel: Bool) {
+            source.check(declared: declared, remote: remote, historyPanelIsKey: panelIsKey,
+                         historyPanelClosing: panelClosing, skipped: skipped, front: front)
+        }
+        source.candidates = ["com.apple.Safari"]
+        let single = sourceCheck()
+        suite.expect(single.bundleID == "com.apple.Safari" && !single.excluded,
+                     "a copy made while one app held the front records that app")
+        source.candidates = ["com.apple.Safari", "com.apple.Notes"]
+        suite.expect(sourceCheck().bundleID == nil,
+                     "a copy made while two apps took turns in front records no app rather than a guess")
+        front = "com.apple.Notes"
+        source.candidates = []
+        _ = sourceCheck()
+        suite.expect(sourceCheck().bundleID == "com.apple.Notes",
+                     "the next check starts from the app in front")
+        skipped = ["com.example.skipped"]
+        source.candidates = ["com.example.skipped"]
+        suite.expect(sourceCheck().excluded, "a copy from a skipped app is still left out")
+        source.candidates = ["com.example.front"]
+        let declaredSkipped = sourceCheck(declared: "com.example.skipped")
+        suite.expect(declaredSkipped.excluded,
+                     "a copy whose pasteboard names a skipped app is left out even when that app never held the front")
+        source.candidates = ["com.example.front"]
+        let declaredOther = sourceCheck(declared: "com.example.writer")
+        suite.expect(!declaredOther.excluded && declaredOther.bundleID == "com.example.writer",
+                     "a copy naming an app that is not skipped is still recorded under that app")
+        skipped = []
+        source.candidates = ["com.apple.Safari"]
+        suite.expect(sourceCheck(declared: "com.vitruviansoftware.vitruvian").bundleID == nil,
+                     "text Vitruvian copies itself, such as recognized text, is not credited to the app in front")
+        source.candidates = ["com.apple.Safari"]
+        suite.expect(sourceCheck(declared: "com.apple.Notes").bundleID == "com.apple.Notes",
+                     "an app that names itself on the pasteboard is believed over the app in front")
+        source.candidates = ["com.example.front"]
+        let emptyMark = sourceCheck(declared: "")
+        source.candidates = ["com.example.front"]
+        let blankMark = sourceCheck(declared: " \n")
+        source.candidates = ["com.example.front"]
+        let oversizedMark = sourceCheck(declared: String(repeating: "a", count: 256))
+        suite.expect(emptyMark.bundleID == "com.example.front" && blankMark.bundleID == "com.example.front"
+                     && oversizedMark.bundleID == "com.example.front",
+                     "an empty or oversized source mark names no app and leaves the guess to the app in front")
+        source.candidates = ["com.example.front"]
+        let remoteCopy = sourceCheck(remote: true)
+        source.candidates = ["com.example.front"]
+        let remoteNamed = sourceCheck(declared: "com.example.writer", remote: true)
+        suite.expect(remoteCopy.bundleID == nil && !remoteCopy.excluded && remoteNamed.bundleID == nil,
+                     "a copy that came from another device is recorded without naming an app on this Mac")
+        source.candidates = ["com.example.front"]
+        let panelCopy = sourceCheck(panelIsKey: true)
+        suite.expect(panelCopy.bundleID == nil && panelCopy.fromHistoryPanel && !panelCopy.excluded,
+                     "a copy made in the history's own panel is not credited to the app behind it")
+        source.candidates = ["com.example.front"]
+        let closingPanelCopy = sourceCheck(panelIsKey: true, panelClosing: true)
+        suite.expect(closingPanelCopy.bundleID == nil && closingPanelCopy.fromHistoryPanel,
+                     "a copy made in the panel just before it closed still counts as the panel's")
+        source.candidates = ["com.example.front"]
+        let afterClosing = sourceCheck()
+        suite.expect(afterClosing.bundleID == "com.example.front" && !afterClosing.fromHistoryPanel,
+                     "a copy made in the app behind right after the panel closed is credited to that app")
+        source.candidates = ["com.example.front"]
+        _ = sourceCheck(panelIsKey: true)
+        source.candidates = ["com.example.front"]
+        let missedClosing = sourceCheck()
+        suite.expect(missedClosing.bundleID == nil && missedClosing.fromHistoryPanel,
+                     "when the panel closed without its own check, the first check after still counts as the panel's")
+        source.candidates = ["com.example.front"]
+        let afterPanel = sourceCheck()
+        suite.expect(afterPanel.bundleID == "com.example.front" && !afterPanel.fromHistoryPanel,
+                     "once the panel is gone the app in front is credited again")
+        source.candidates = ["com.example.front"]
+        let namedInPanel = sourceCheck(declared: "com.example.writer", panelIsKey: true)
+        suite.expect(namedInPanel.bundleID == "com.example.writer" && !namedInPanel.fromHistoryPanel,
+                     "an app that names itself is believed even while the panel holds the keys")
+        // The link cleaner rewrites a copy in place; the app it named stays.
+        let cleanerBoard = NSPasteboard.withUniqueName()
+        func poll() -> URLCleanerService.PollResult? {
+            URLCleanerService.pollPasteboard(sinceChangeCount: -1, token: URLCleanerService.PollToken(),
+                                             pasteboard: cleanerBoard, rules: URLCleaning.Rules.none)
+        }
+        cleanerBoard.clearContents()
+        cleanerBoard.setString("com.example.reader", forType: .source)
+        cleanerBoard.setString("https://example.com/path?utm_source=news&id=42", forType: .string)
+        let signedRewrite = poll()
+        suite.expect(signedRewrite?.cleaned?.url == "https://example.com/path?id=42"
+                     && cleanerBoard.string(forType: .string) == "https://example.com/path?id=42"
+                     && cleanerBoard.string(forType: .source) == "com.example.reader",
+                     "the link cleaner's rewrite keeps the app the copy named as its source")
+        cleanerBoard.clearContents()
+        cleanerBoard.setString("https://example.com/path?utm_source=news&id=42", forType: .string)
+        let unsignedRewrite = poll()
+        suite.expect(unsignedRewrite?.cleaned != nil
+                     && cleanerBoard.string(forType: .string) == "https://example.com/path?id=42"
+                     && cleanerBoard.string(forType: .source) == nil,
+                     "a rewritten copy that named no app gains no mark, so the app that copied it is still credited")
+        cleanerBoard.clearContents()
+        cleanerBoard.setString("https://example.com/path?utm_source=news&id=42", forType: .string)
+        cleanerBoard.setData(Data(), forType: .remoteClipboard)
+        let remoteRewrite = poll()
+        suite.expect(remoteRewrite?.cleaned != nil
+                     && cleanerBoard.string(forType: .string) == "https://example.com/path?id=42"
+                     && cleanerBoard.types?.contains(.remoteClipboard) == true,
+                     "the link cleaner keeps a copy from another device marked as one")
+        // The rewrite writes one item, so a copy of several is left alone.
+        cleanerBoard.clearContents()
+        cleanerBoard.writeObjects(["https://example.com/a?utm_source=news" as NSString,
+                                   "https://example.com/b?utm_source=news" as NSString])
+        let severalItems = poll()
+        suite.expect(severalItems?.cleaned == nil && cleanerBoard.pasteboardItems?.count == 2,
+                     "the link cleaner leaves a copy of several items alone")
+        cleanerBoard.releaseGlobally()
         func expectEqual(_ actual: String, _ expected: String, _ label: String,
                          file: StaticString = #filePath, line: UInt = #line) {
             suite.expect(actual == expected, "\(label): got \(actual), expected \(expected)",
@@ -422,37 +541,6 @@ enum ClipboardFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryQuickPreview] as? Bool == false,
                "clipboard history quick preview is closed by default")
 
-        // MARK: Clipboard quick window sizing
-
-        let desktop = NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let compactSize = ClipboardHistoryWindowSizing.contentSize(
-            preview: false, savedWidth: 0, savedHeight: 0, visibleFrame: desktop)
-        let previewSize = ClipboardHistoryWindowSizing.contentSize(
-            preview: true, savedWidth: 0, savedHeight: 0, visibleFrame: desktop)
-        suite.expect(compactSize == NSSize(width: 560, height: 420)
-                && previewSize == NSSize(width: 840, height: 500),
-               "clipboard quick window retains its original compact and preview sizes by default")
-        suite.expect(ClipboardHistoryWindowSizing.minimumSize(preview: false)
-                == NSSize(width: 560, height: 300)
-                && ClipboardHistoryWindowSizing.minimumSize(preview: true)
-                    == NSSize(width: 840, height: 380),
-               "the narrowest clipboard window leaves room for batch actions in both layouts")
-        let taller = ClipboardHistoryWindowSizing.contentSize(
-            preview: true, savedWidth: 700, savedHeight: 640, visibleFrame: desktop)
-        suite.expect(taller == NSSize(width: 980, height: 720)
-                && ClipboardHistoryWindowSizing.savedCompactSize(from: taller, preview: true)
-                    == NSSize(width: 700, height: 640),
-               "a resized preview returns to the same chosen list size")
-        let shortScreen = NSRect(x: 0, y: 0, width: 1050, height: 700)
-        suite.expect(ClipboardHistoryWindowSizing.contentSize(
-            preview: true, savedWidth: 1000, savedHeight: 900, visibleFrame: shortScreen)
-                == NSSize(width: 1018, height: 668),
-               "a saved size is limited to the visible display")
-        suite.expect(ClipboardHistoryWindowSizing.contentSize(
-            preview: false, savedWidth: .infinity, savedHeight: -1, visibleFrame: desktop)
-                == compactSize,
-               "invalid saved dimensions fall back to the original size")
-
         // MARK: Clipboard menu bar preview
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryMenuBarPreview] as? Bool == false,
@@ -752,6 +840,15 @@ enum ClipboardFeatureTests {
         suite.expect(largeClipboardPreview.hasSuffix("…")
                 && largeClipboardPreview.count <= ClipboardHistoryEditing.previewCharacters + 1,
                "clipboard rows keep very large text previews bounded")
+        let snippet = ClipboardHistoryEntry(text: "func run() {\n\treturn\n}")
+        expectEqual(snippet.cardPreview, "func run() {\n return\n}",
+                    "a card keeps a snippet's line breaks and turns its tabs into spaces")
+        expectEqual(snippet.preview, "func run() {  return }",
+                    "the one-line preview other lists show still folds line breaks")
+        let largeCardPreview = ClipboardHistoryEntry(text: largeClipboardText).cardPreview
+        suite.expect(largeCardPreview.hasSuffix("…")
+                && largeCardPreview.count <= ClipboardHistoryEditing.previewCharacters + 1,
+               "a card keeps very large text previews bounded too")
         suite.expect(Defaults.allowedClipboardHistoryLimits == [20, 50, 100, 250, 500, 1_000, 10_000, 0],
                "clipboard history limits include 10k and unlimited options")
         suite.expect(Defaults.sanitizedClipboardHistoryLimit(10_000) == 10_000
@@ -826,19 +923,22 @@ enum ClipboardFeatureTests {
         [{"text":"hello","copiedAt":700000000}]
         """.utf8)
         if let legacy = try? JSONDecoder().decode([ClipboardHistoryEntry].self, from: legacyClipboardJSON) {
-            suite.expect(legacy.count == 1 && legacy[0].kind == .text && legacy[0].text == "hello",
-                   "clipboard histories saved before images and files decode as text")
+            suite.expect(legacy.count == 1 && legacy[0].kind == .text && legacy[0].text == "hello"
+                   && legacy[0].sourceBundleID == nil,
+                   "clipboard histories saved before images, files and source apps decode as text")
         } else {
             suite.expect(false, "clipboard legacy history decodes")
         }
         var editedTextEntry = ClipboardHistoryEntry(text: "before", pinnedAt: Date(timeIntervalSince1970: 42))
+        editedTextEntry.sourceBundleID = "com.apple.TextEdit"
         editedTextEntry.text = ClipboardHistoryEditing.storableText("after") ?? editedTextEntry.text
         if let encoded = try? JSONEncoder().encode([editedTextEntry]),
            let decoded = try? JSONDecoder().decode([ClipboardHistoryEntry].self, from: encoded) {
             suite.expect(decoded.first?.id == editedTextEntry.id
                    && decoded.first?.text == "after"
-                   && decoded.first?.pinnedAt == editedTextEntry.pinnedAt,
-                   "clipboard text edits persist without losing item identity or pinning")
+                   && decoded.first?.pinnedAt == editedTextEntry.pinnedAt
+                   && decoded.first?.sourceBundleID == "com.apple.TextEdit",
+                   "clipboard text edits persist without losing item identity, pinning or source app")
         } else {
             suite.expect(false, "clipboard text edit round-trips")
         }
@@ -1426,6 +1526,29 @@ enum ClipboardPreviewContract {
         suite.expect(clearing.service.entries.map(\.id) == [pinnedLater.id, copiedLater.id],
                      "clearing deletes only the unpinned items the confirmation counted")
         quickSelection(suite)
+        promotedSource(suite)
+    }
+
+    /// A copy taken out of the history's own panel is of an entry already
+    /// there, so it must not take away the app that entry shows.
+    private static func promotedSource(_ suite: TestSuite) {
+        var fromEditor = ClipboardHistoryEntry(text: "Copied in an editor")
+        fromEditor.sourceBundleID = "com.example.editor"
+        let other = ClipboardHistoryEntry(text: "Another copy")
+        let history = History([other, fromEditor])
+        let service = history.service
+        service.promote("Copied in an editor", source: nil, keepsSource: true)
+        suite.expect(service.entries.map(\.id) == [fromEditor.id, other.id]
+                     && service.entries.first?.sourceBundleID == "com.example.editor",
+                     "an entry copied again out of the history panel moves up and keeps the app it came from")
+        service.promote("Copied in an editor", source: "com.example.browser", keepsSource: false)
+        suite.expect(service.entries.first?.id == fromEditor.id
+                     && service.entries.first?.sourceBundleID == "com.example.browser",
+                     "an entry copied again in another app takes the app that copied it this time")
+        service.promote("Part of an entry", source: nil, keepsSource: true)
+        suite.expect(service.entries.first?.text == "Part of an entry"
+                     && service.entries.first?.sourceBundleID == nil,
+                     "new text copied out of the history panel names no app")
     }
 
     /// The window's highlight is what Return pastes, so it has to stay on the
