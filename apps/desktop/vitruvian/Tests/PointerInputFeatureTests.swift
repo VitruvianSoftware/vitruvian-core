@@ -1084,11 +1084,68 @@ enum PointerInputFeatureTests {
         dwellState.recordMovement(to: CGPoint(x: 50, y: 10), at: 20.3, windowID: 1)
         suite.expect(!dwellState.hasPendingEvaluation && dwellFocus.map(dwellState.isCurrent) == true,
                "without a raise, moving within a window neither asks again nor cancels the lookup")
+        if let dwellFocus { dwellState.finishEvaluation(dwellFocus, succeeded: true) }
+        dwellState.recordMovement(to: CGPoint(x: 60, y: 10), at: 20.35, windowID: 1)
+        suite.expect(!dwellState.hasPendingEvaluation
+                && dwellState.nextEvaluation(at: 20.38, delayMilliseconds: 250) == nil,
+               "a completed focus needs no further lookup while the pointer stays in its window")
         dwellState.recordMovement(to: CGPoint(x: 70, y: 10), at: 20.4, windowID: 2)
         suite.expect(dwellState.nextEvaluation(at: 20.6, delayMilliseconds: 250) == nil
                 && dwellState.nextEvaluation(at: 20.65, delayMilliseconds: 250)?.point
                     == CGPoint(x: 70, y: 10),
                "without a raise, entering another window restarts the delay")
+
+        var cancelledFocusState = FocusFollowsMouseState()
+        cancelledFocusState.recordMovement(to: CGPoint(x: 10, y: 10), at: 30, windowID: 1)
+        let cancelledFocus = cancelledFocusState.nextEvaluation(at: 30.3, delayMilliseconds: 250)
+        if let cancelledFocus { cancelledFocusState.finishEvaluation(cancelledFocus, succeeded: false) }
+        suite.expect(cancelledFocus != nil && !cancelledFocusState.hasPendingEvaluation
+                && cancelledFocusState.nextEvaluation(at: 31, delayMilliseconds: 250) == nil,
+               "a failed lookup or canceled handoff does not poll again without movement")
+        cancelledFocusState.recordMovement(to: CGPoint(x: 20, y: 10), at: 31, windowID: 1)
+        suite.expect(cancelledFocusState.hasPendingEvaluation
+                && cancelledFocusState.nextEvaluation(at: 31.1, delayMilliseconds: 250) == nil,
+               "movement in the same window rearms a canceled focus with a fresh delay")
+        let retriedFocus = cancelledFocusState.nextEvaluation(at: 31.3, delayMilliseconds: 250)
+        suite.expect(retriedFocus?.point == CGPoint(x: 20, y: 10)
+                && cancelledFocus.map(cancelledFocusState.isCurrent) == false
+                && retriedFocus.map(cancelledFocusState.isCurrent) == true,
+               "retrying a canceled focus uses the latest pointer and rejects the old attempt")
+
+        var movingFocusState = FocusFollowsMouseState()
+        movingFocusState.recordMovement(to: CGPoint(x: 10, y: 10), at: 40, windowID: 1)
+        let movingFocus = movingFocusState.nextEvaluation(at: 40.3, delayMilliseconds: 250)
+        movingFocusState.recordMovement(to: CGPoint(x: 20, y: 10), at: 40.4, windowID: 1)
+        movingFocusState.recordMovement(to: CGPoint(x: 30, y: 10), at: 40.5, windowID: 1)
+        suite.expect(movingFocusState.nextEvaluation(at: 40.6, delayMilliseconds: 250) == nil,
+               "movement during a focus lookup never launches another lookup alongside it")
+        if let movingFocus { movingFocusState.finishEvaluation(movingFocus, succeeded: false) }
+        suite.expect(movingFocusState.hasPendingEvaluation
+                && movingFocusState.nextEvaluation(at: 40.7, delayMilliseconds: 250) == nil,
+               "canceling a lookup preserves movement that arrived while it was running")
+        let movedRetry = movingFocusState.nextEvaluation(at: 40.8, delayMilliseconds: 250)
+        suite.expect(movedRetry?.point == CGPoint(x: 30, y: 10)
+                && movedRetry.map(movingFocusState.isCurrent) == true,
+               "movement during a canceled handoff retries with the latest position after its delay")
+        let retryInFlight = movingFocusState
+        if let movingFocus {
+            movingFocusState.finishEvaluation(movingFocus, succeeded: true)
+            movingFocusState.finishEvaluation(movingFocus, succeeded: false)
+        }
+        suite.expect(movingFocusState == retryInFlight,
+               "late completion from an older focus attempt cannot finish or cancel its replacement")
+
+        movingFocusState.recordMovement(to: CGPoint(x: 70, y: 10), at: 41, windowID: 2)
+        let nextWindowState = movingFocusState
+        if let movedRetry { movingFocusState.finishEvaluation(movedRetry, succeeded: false) }
+        suite.expect(movingFocusState == nextWindowState && movingFocusState.hasPendingEvaluation,
+               "canceling an old window lookup leaves the new window's delay intact")
+        let beforeStop = movingFocusState.nextEvaluation(at: 41.3, delayMilliseconds: 250)
+        movingFocusState.reset()
+        if let beforeStop { movingFocusState.finishEvaluation(beforeStop, succeeded: false) }
+        suite.expect(beforeStop != nil && movingFocusState.point == nil
+                && !movingFocusState.hasPendingEvaluation,
+               "a canceled handoff after stop or reset cannot rearm focus work")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.focusFollowsMouseEnabled] as? Bool == false
                 && Defaults.registeredDefaults[DefaultsKey.focusFollowsMouseDelay] as? Int
                     == FocusFollowsMouseSupport.defaultDelayMilliseconds,
@@ -1133,6 +1190,16 @@ enum PointerInputFeatureTests {
                                                               targetAppIsFrontmost: false,
                                                               isParkedOnHiddenSpace: { $0 == 5 }),
                "focus follows mouse never hands a window on a hidden Space to the activator, which would travel")
+        suite.expect(FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 5,
+                                                      targetAppIsFrontmost: true,
+                                                      isParkedOnHiddenSpace: { _ in true }) == .notNeeded
+                && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
+                                                    targetAppIsFrontmost: false,
+                                                    isParkedOnHiddenSpace: { $0 == 5 }) == .switchInFlight
+                && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
+                                                    targetAppIsFrontmost: false,
+                                                    isParkedOnHiddenSpace: { _ in false }) == .activate,
+               "a window already focused is done with, and one parked by a desktop switch in flight is tried again")
 
         // A wheel that reports continuously already measures in points, and
         // that field is the one to trust; the line field only fills in for a

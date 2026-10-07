@@ -108,7 +108,11 @@ package final class FocusFollowsMouseService {
             || UserDefaults.standard[Preferences.focusFollowsMouseWaitForStop]
         state.recordMovement(to: point, at: ProcessInfo.processInfo.systemUptime,
                              windowID: waitsForStop ? nil : Self.receivingWindow(at: point))
-        guard timer == nil, state.hasPendingEvaluation else { return }
+        startEvaluationTimerIfNeeded()
+    }
+
+    private func startEvaluationTimerIfNeeded() {
+        guard isRunning, timer == nil, state.hasPendingEvaluation else { return }
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             // Added to the main run loop below, so it fires on the main thread.
             MainActor.assumeIsolated { self?.evaluateIfSettled() }
@@ -116,6 +120,11 @@ package final class FocusFollowsMouseService {
         timer.tolerance = 0.01
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+    }
+
+    private func finishEvaluation(_ evaluation: FocusFollowsMouseEvaluation, succeeded: Bool) {
+        state.finishEvaluation(evaluation, succeeded: succeeded)
+        startEvaluationTimerIfNeeded()
     }
 
     private func resetMovement() {
@@ -152,12 +161,18 @@ package final class FocusFollowsMouseService {
               nothingIsHeldDown,
               let evaluation = state.nextEvaluation(
                   at: ProcessInfo.processInfo.systemUptime,
-                  delayMilliseconds: delayMilliseconds),
-              !FocusFollowsMouseSupport.leavesAlone(evaluation.point, excludes: {
-                  MouseAppExceptions.shared.excludesPointerTarget($0, at: $1)
-              }),
-              let pointerWindowID = Self.receivingWindow(at: evaluation.point)
+                  delayMilliseconds: delayMilliseconds)
         else { return }
+        if FocusFollowsMouseSupport.leavesAlone(evaluation.point, excludes: {
+            MouseAppExceptions.shared.excludesPointerTarget($0, at: $1)
+        }) {
+            finishEvaluation(evaluation, succeeded: true)
+            return
+        }
+        guard let pointerWindowID = Self.receivingWindow(at: evaluation.point) else {
+            finishEvaluation(evaluation, succeeded: false)
+            return
+        }
 
         // WindowServer cannot report ignoresMouseEvents. Read our windows on
         // main so full-screen brightness overlays do not block focus everywhere.
@@ -172,9 +187,12 @@ package final class FocusFollowsMouseService {
                 ownProcessID: ProcessInfo.processInfo.processIdentifier,
                 clickThroughWindowIDs: clickThroughWindowIDs
             ) { self.target(at: evaluation.point, processID: $0) }
-            guard let target else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                guard let target else {
+                    self.finishEvaluation(evaluation, succeeded: false)
+                    return
+                }
                 let targetAppIsFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
                     == target.processID
                 // Also checked by the focus hand-off, after its pause on the main queue.
@@ -186,25 +204,40 @@ package final class FocusFollowsMouseService {
                 }
                 guard isCurrent(),
                       let app = NSRunningApplication(processIdentifier: target.processID),
-                      app.activationPolicy == .regular, !app.isTerminated,
-                      FocusFollowsMouseSupport.handsToActivator(
-                          targetWindowID: target.windowID,
-                          focusedWindowID: target.focusedWindowID,
-                          targetAppIsFrontmost: targetAppIsFrontmost,
-                          isParkedOnHiddenSpace: { SpaceWindowBridge.isParkedOnHiddenSpace($0) })
-                else { return }
+                      app.activationPolicy == .regular, !app.isTerminated
+                else {
+                    self.finishEvaluation(evaluation, succeeded: false)
+                    return
+                }
+                switch FocusFollowsMouseSupport.handoff(
+                    targetWindowID: target.windowID,
+                    focusedWindowID: target.focusedWindowID,
+                    targetAppIsFrontmost: targetAppIsFrontmost,
+                    isParkedOnHiddenSpace: { SpaceWindowBridge.isParkedOnHiddenSpace($0) }) {
+                case .activate: break
+                case .notNeeded:
+                    self.finishEvaluation(evaluation, succeeded: true)
+                    return
+                case .switchInFlight:
+                    self.finishEvaluation(evaluation, succeeded: false)
+                    return
+                }
                 guard UserDefaults.standard[Preferences.focusFollowsMouseRaise] else {
                     let activation = WindowActivator.supersedePendingActivations(for: target.processID)
                     SpaceWindowBridge.focusWithoutRaise(
                         target.windowID, ownerPID: target.processID,
                         replacing: targetAppIsFrontmost ? target.focusedWindowID : nil,
-                        while: { isCurrent() && WindowActivator.isCurrentActivation(activation) })
+                        while: { isCurrent() && WindowActivator.isCurrentActivation(activation) },
+                        completion: { [weak self] succeeded in
+                            self?.finishEvaluation(evaluation, succeeded: succeeded)
+                        })
                     return
                 }
                 WindowActivator.activate(pid: target.processID,
                                          windowID: target.windowID,
                                          appName: app.localizedName ?? "",
                                          retry: false)
+                self.finishEvaluation(evaluation, succeeded: true)
             }
         }
     }

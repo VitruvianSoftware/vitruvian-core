@@ -340,27 +340,36 @@ package enum SpaceWindowBridge {
     /// without blocking the main thread. If the hover is no longer current
     /// when it ends, the old window gets its focus back only if it still
     /// verifiably holds it.
+    @MainActor
     package static func focusWithoutRaise(_ windowID: CGWindowID, ownerPID: pid_t,
                                           replacing focusedWindowID: CGWindowID?,
-                                          while isCurrent: @escaping @MainActor @Sendable () -> Bool) {
+                                          while isCurrent: @escaping @MainActor @Sendable () -> Bool,
+                                          completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard isCurrent() else {
+            completion(false)
+            return
+        }
         guard let focusedWindowID else {
-            frontWindow(windowID, ownerPID: ownerPID)
+            completion(frontWindow(windowID, ownerPID: ownerPID))
             return
         }
         postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: false)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
             // Scheduled on the main queue, where the hover state lives.
-            guard MainActor.assumeIsolated({ isCurrent() }) else {
-                if FocusFollowsMouseSupport.shouldRestoreFocus(
-                    to: focusedWindowID,
-                    reportedFocusedWindowID: WindowActivator.focusedWindowID(for: ownerPID),
-                    appIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == ownerPID) {
-                    postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: true)
+            MainActor.assumeIsolated {
+                guard isCurrent() else {
+                    if FocusFollowsMouseSupport.shouldRestoreFocus(
+                        to: focusedWindowID,
+                        reportedFocusedWindowID: WindowActivator.focusedWindowID(for: ownerPID),
+                        appIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == ownerPID) {
+                        postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: true)
+                    }
+                    completion(false)
+                    return
                 }
-                return
+                postFocusRecord(windowID, ownerPID: ownerPID, gained: true)
+                completion(frontWindow(windowID, ownerPID: ownerPID))
             }
-            postFocusRecord(windowID, ownerPID: ownerPID, gained: true)
-            frontWindow(windowID, ownerPID: ownerPID)
         }
     }
 

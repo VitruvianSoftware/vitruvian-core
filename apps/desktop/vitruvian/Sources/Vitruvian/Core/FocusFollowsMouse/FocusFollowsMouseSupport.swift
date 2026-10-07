@@ -59,20 +59,30 @@ package enum FocusFollowsMouseSupport {
         return focusedWindowID != targetWindowID
     }
 
-    /// Whether hover hands `target` to the activator at all. A window the
-    /// window server still parks on a hidden Space is a desktop switch in
-    /// flight, since the switch is reported only once its animation ends: the
-    /// activator would travel there and macOS replay the slide. Hover never
-    /// travels between desktops. `isParkedOnHiddenSpace` is asked last, as it
-    /// asks the window server.
+    /// What hover does with `target`. A window that needs no activation is
+    /// done with. A window the window server still parks on a hidden Space is
+    /// a desktop switch in flight, since the switch is reported only once its
+    /// animation ends: the activator would travel there and macOS replay the
+    /// slide, so hover never travels between desktops and tries again later.
+    /// `isParkedOnHiddenSpace` is asked last, as it asks the window server.
+    package static func handoff(targetWindowID: CGWindowID,
+                                focusedWindowID: CGWindowID?,
+                                targetAppIsFrontmost: Bool,
+                                isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> FocusFollowsMouseHandoff {
+        guard shouldActivate(targetWindowID: targetWindowID,
+                             focusedWindowID: focusedWindowID,
+                             targetAppIsFrontmost: targetAppIsFrontmost) else { return .notNeeded }
+        return isParkedOnHiddenSpace(targetWindowID) ? .switchInFlight : .activate
+    }
+
+    /// Whether hover hands `target` to the activator at all.
     package static func handsToActivator(targetWindowID: CGWindowID,
                                          focusedWindowID: CGWindowID?,
                                          targetAppIsFrontmost: Bool,
                                          isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> Bool {
-        shouldActivate(targetWindowID: targetWindowID,
-                       focusedWindowID: focusedWindowID,
-                       targetAppIsFrontmost: targetAppIsFrontmost)
-            && !isParkedOnHiddenSpace(targetWindowID)
+        handoff(targetWindowID: targetWindowID, focusedWindowID: focusedWindowID,
+                targetAppIsFrontmost: targetAppIsFrontmost,
+                isParkedOnHiddenSpace: isParkedOnHiddenSpace) == .activate
     }
 
     /// Whether hover leaves the app at `point` alone: it answers to its own
@@ -102,6 +112,13 @@ package enum FocusFollowsMouseSupport {
     }
 }
 
+/// What a hover does with the window under the pointer: hand it to the
+/// activator, leave it (it needs no activation), or try again once a desktop
+/// switch still in flight has landed.
+package enum FocusFollowsMouseHandoff: Equatable {
+    case activate, notNeeded, switchInFlight
+}
+
 package struct FocusFollowsMouseEvaluation: Equatable {
     package let point: CGPoint
     package let generation: UInt64
@@ -114,32 +131,47 @@ package struct FocusFollowsMouseEvaluation: Equatable {
 }
 
 package struct FocusFollowsMouseState: Equatable {
+    private enum EvaluationPhase: Equatable {
+        case pending, evaluating, completed, cancelled
+    }
+
     package private(set) var point: CGPoint?
     package private(set) var movedAt: TimeInterval = 0
     package private(set) var generation: UInt64 = 0
-    private var evaluatedGeneration: UInt64?
+    private var phase = EvaluationPhase.pending
     private var windowID: CGWindowID?
+    private var lastMovementAt: TimeInterval = 0
+    private var movedDuringEvaluation = false
 
     package var hasPendingEvaluation: Bool {
-        point != nil && evaluatedGeneration != generation
+        point != nil && phase == .pending
     }
 
     /// With a window ID, the delay counts time over that window, so moving
-    /// within it neither restarts the delay nor asks for another evaluation.
-    /// Without one, every movement restarts the delay.
+    /// within it keeps a pending lookup or a completed focus. A canceled
+    /// attempt can try again after movement. Without an ID, movement always
+    /// restarts the delay.
     package mutating func recordMovement(to point: CGPoint, at time: TimeInterval, windowID: CGWindowID? = nil) {
-        defer { self.point = point }
-        if let windowID, windowID == self.windowID, self.point != nil { return }
+        defer {
+            self.point = point
+            lastMovementAt = time
+        }
+        if let windowID, windowID == self.windowID, self.point != nil {
+            if phase == .evaluating { movedDuringEvaluation = true }
+            if phase != .cancelled { return }
+        }
         self.windowID = windowID
         movedAt = time
         generation &+= 1
-        evaluatedGeneration = nil
+        phase = .pending
+        movedDuringEvaluation = false
     }
 
     package mutating func reset() {
         point = nil
         generation &+= 1
-        evaluatedGeneration = nil
+        phase = .pending
+        movedDuringEvaluation = false
     }
 
     package mutating func nextEvaluation(at time: TimeInterval,
@@ -148,12 +180,26 @@ package struct FocusFollowsMouseState: Equatable {
               hasPendingEvaluation,
               time - movedAt >= Double(FocusFollowsMouseSupport.sanitizedDelay(delayMilliseconds)) / 1_000
         else { return nil }
-        evaluatedGeneration = generation
+        phase = .evaluating
+        movedDuringEvaluation = false
         return FocusFollowsMouseEvaluation(point: point, generation: generation)
     }
 
+    /// A failed lookup or canceled handoff consumes no successful focus. Wait
+    /// for movement, or preserve movement that arrived while the attempt ran.
+    package mutating func finishEvaluation(_ evaluation: FocusFollowsMouseEvaluation, succeeded: Bool) {
+        guard isCurrent(evaluation) else { return }
+        phase = succeeded ? .completed : .cancelled
+        if !succeeded, movedDuringEvaluation {
+            movedAt = lastMovementAt
+            generation &+= 1
+            phase = .pending
+        }
+        movedDuringEvaluation = false
+    }
+
     package func isCurrent(_ evaluation: FocusFollowsMouseEvaluation) -> Bool {
-        evaluation.generation == generation
+        evaluation.generation == generation && phase == .evaluating
     }
 
     // Spelled out because a default initializer never leaves its module.
