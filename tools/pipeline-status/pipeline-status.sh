@@ -99,6 +99,11 @@ main() {
     local pr="${target#\#}"
     sha=$(gh pr view "$pr" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)
     [ -n "$sha" ] || sha=$(gh pr view "$pr" --repo "$REPO" --json headRefOid -q '.headRefOid // empty' 2>/dev/null || true)
+    if [ -z "$sha" ]; then
+      # Fallback: check if the commit already landed on origin/main via squash title suffix "(#$pr)"
+      git fetch origin main -q 2>/dev/null || true
+      sha=$(git log -1 --grep "(#${pr})" --format='%H' origin/main 2>/dev/null || true)
+    fi
   elif [ "$target" = "HEAD" ]; then
     sha=$(git rev-parse HEAD 2>/dev/null || true)
   else

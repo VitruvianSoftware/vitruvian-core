@@ -110,7 +110,17 @@ fi
 read -r state squashed < <(gh pr view "${pr}" --repo "${REPO}" \
   --json state,mergeCommit -q '"\(.state) \(.mergeCommit.oid // "-")"' 2>/dev/null)
 
-[ -n "${state:-}" ] || die "gh could not read PR #${pr} in ${REPO}."
+if [ -z "${state:-}" ]; then
+  # Fallback: check if the commit already landed on BASE via squash title suffix "(#$pr)"
+  git fetch origin "${BASE#origin/}" -q 2>/dev/null || true
+  local_squashed="$(git log -1 --grep "(#${pr})" --format='%H' "${BASE}" 2>/dev/null || true)"
+  if [ -n "${local_squashed}" ]; then
+    ok "PR #${pr} is on ${BASE} as ${local_squashed:0:8} (squashed) [resolved via commit log]."
+    info "$(git log -1 --format='%s' "${local_squashed}")"
+    exit 0
+  fi
+  die "gh could not read PR #${pr} in ${REPO}."
+fi
 
 case "${state}" in
   MERGED) : ;;

@@ -131,11 +131,15 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
 1. **Open a PR.** When the work is done, push and open one (`gh pr create`) unless an open,
    related PR already covers it. Never merge locally. PR bodies are self-contained: what
    changed, why, how it was verified.
-2. **Drive the checks green.** Watch them and fix what goes red — including flaky or
-   non-required checks. Never present a PR as ready while any check is red.
-3. **Land it.** Once approved, merge and keep watching until it actually lands; the merge
-   queue can still reject on the rebased result.
-4. **Clean up & verify post-merge health.** After it lands, delete the branch/worktree and return to the latest `main`.
+2. **Drive the checks green & monitor landing autonomously.** Run `bazel run //tools/watch-pr -- <pr#>`
+   (or delegate to subagent `scout`). This hermetic tool monitors PR CI checks to completion,
+   extracts failure logs if a check goes red, tracks merge queue progression, confirms squash landing,
+   and verifies post-merge push workflows on `main` (`//tools/pipeline-status`) with a hard timeout
+   to prevent spinning or infinite loops.
+3. **Land it.** Once approved, enable auto-merge (`gh pr merge <pr#> --auto --squash`) and let
+   `watch-pr` monitor until it lands.
+4. **Clean up & verify post-merge health.** After `watch-pr` confirms the squash commit has landed
+   and the post-merge pipeline is green, delete the branch/worktree and return to the latest `main`.
    **Verify it landed first**, and note that `git merge-base --is-ancestor <branch-sha>
    origin/main` is always false here — `main` is squash-only, so your branch's SHAs are
    never ancestors of it. Check by PR number instead (`git log --grep "(#N)" origin/main`,

@@ -15,6 +15,7 @@ mindmap
       //:doctor
       //tools/worktree
       //tools/agent-app
+      //tools/watch-pr
       //tools/landed
       //tools/pipeline-status
       //:tidy
@@ -46,6 +47,7 @@ mindmap
 | `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/devx:doctor`, …) |
 | `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --list`, `-- --remove <branch>`. Branch work in the primary checkout is blocked — this is the sanctioned path |
 | `//tools/agent-app -- env <agent>` | Mints scoped GitHub App credentials (`GH_TOKEN`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`) for automated agents and bots (`atlas`, `quill`, etc.) |
+| `//tools/watch-pr -- <pr#\|branch\|sha>` | Autonomous PR watchdog: monitors CI checks, extracts failed logs, tracks merge queue, and verifies post-merge pipeline on `main` |
 | `//tools/landed -- <pr#\|branch\|sha>` | Resolves whether a PR or branch has landed on `origin/main` by inspecting the squashed commit (`main` is squash-only) |
 | `//tools/pipeline-status -- <pr#\|sha>` | Evaluates the health of post-merge push workflows on `main`, asserting that CI, delivery, and image builds completed green |
 | `//:tidy` | **The single hygiene entrypoint**: gazelle → python manifest → all formatters. Required check (`tidy-check`); run before every PR |
