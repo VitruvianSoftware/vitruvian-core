@@ -195,9 +195,11 @@ package final class MixerOutputControl {
             let value = min(1, max(0, volume))
             adjustment.volume = value
             self.volume = value
-            if value > 0, self.muted != nil {
-                adjustment.muted = false
-                self.muted = false
+            // Many outputs still play faintly at a scalar of zero; macOS mutes
+            // there, so do the same.
+            if self.muted != nil, muted == nil {
+                adjustment.muted = value == 0
+                self.muted = value == 0
             }
         }
         if let muted { adjustment.muted = muted; self.muted = muted }

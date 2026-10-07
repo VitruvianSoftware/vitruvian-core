@@ -708,6 +708,7 @@ package enum ClipboardHistoryPasteboardText {
     }
 
     private static func shouldPreferWebURL(_ webURL: String, over plain: String) -> Bool {
+        guard !plain.contains(where: \.isWhitespace) else { return false }
         if plain.hasPrefix("//") { return true }
         let stripped = stripWebScheme(webURL)
         return plain == stripped.withSlashes || plain == stripped.withoutSlashes
@@ -715,6 +716,11 @@ package enum ClipboardHistoryPasteboardText {
 
     private static func normalizedWebURL(_ raw: String?) -> String? {
         guard let text = trimmed(raw),
+              // A copy of several links keeps them apart with a line break, a
+              // spreadsheet cell tab, or a space before the next word, and
+              // `url` escapes all three the same way, taking the whole copy as
+              // one link; `trimmed` has already dropped the outer ones.
+              !text.contains(where: \.isWhitespace),
               let url = URL(string: text),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",

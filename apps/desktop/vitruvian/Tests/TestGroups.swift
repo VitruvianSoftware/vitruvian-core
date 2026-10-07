@@ -51,6 +51,7 @@ enum TestGroups {
         "localization",
         "cleaner",
         "uninstaller",
+        "force-quit",
         "launcher",
         "dock-autohide",
         "switcher",
@@ -214,6 +215,7 @@ enum TestGroups {
                 UninstallerFlowTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
+            ("force-quit", { ProcessForceQuitTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
             ("dock-autohide", {
                 DockAutohideHoldTests.run(suite)

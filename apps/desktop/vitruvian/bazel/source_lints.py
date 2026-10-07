@@ -1266,6 +1266,58 @@ def source_reads(path, text):
     return found
 
 
+def test_group_lists(text):
+    """The suite names `TestGroups.names` spells, and the names `all(_:)`
+    runs, each in order."""
+    spelled = re.search(r"static let names = \[(.*?)\]", text, re.S)
+    listed = re.findall(r'"([\w-]+)"', spelled.group(1)) if spelled else []
+    _, _, body = text.partition("static func all(")
+    run = re.findall(r'^\s*\("([\w-]+)",', body, re.M)
+    return listed, run
+
+
+def test_groups_list_what_they_run(repo):
+    """Swift Testing runs one case per name in `TestGroups.names`, and each
+    case finds its body by name in `TestGroups.all(_:)`. A suite added to one
+    list and not the other fails only in the Mac's harness check
+    (TestHarnessTests); this says so on any platform, before CI does."""
+    problems = []
+    sample = test_group_lists(
+        "\n".join(
+            [
+                "    nonisolated static let names = [",
+                '        "harness",',
+                '        "force-quit",',
+                "    ]",
+                "    static func all(_ suite: TestSuite) -> [(String, () -> Void)] {",
+                "        [",
+                '            ("harness", {',
+                '                Run.run(suite, "quoted")',
+                "            }),",
+                '            ("force-quit", { ForceQuit.run(suite) }),',
+                "        ]",
+                "    }",
+            ]
+        )
+    )
+    if sample != (["harness", "force-quit"], ["harness", "force-quit"]):
+        problems.append("the scan reads both lists, and no string inside a body")
+    listed, run = test_group_lists(repo.tests.get("Tests/TestGroups.swift", ""))
+    if not listed or listed != run:
+        missing = [name for name in run if name not in listed]
+        extra = [name for name in listed if name not in run]
+        apart = next(
+            (f"{a} named where {b} runs" for a, b in zip(listed, run) if a != b),
+            "",
+        )
+        problems.append(
+            "TestGroups.names lists the suites all(_:) runs, in the same order: "
+            f"{len(listed)} named, {len(run)} run, not named {missing}, "
+            f"not run {extra}; first apart: {apart or 'none'}"
+        )
+    return problems
+
+
 def unit_tests_read_no_source_text(repo):
     """The unit tests run the code; none reads a source file as text
     (REFACTOR.md step 7). How the code is written is checked here, by the
@@ -1619,6 +1671,7 @@ RULES = [
     build_signs_with_a_stable_identity,
     release_scripts_have_no_case_twins,
     test_types_do_not_shadow_real_ones,
+    test_groups_list_what_they_run,
     unit_tests_read_no_source_text,
     preferences_are_reached_through_their_type,
     package_signatures_name_no_internal_type,

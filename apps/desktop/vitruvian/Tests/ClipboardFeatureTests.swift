@@ -766,6 +766,57 @@ enum ClipboardFeatureTests {
                     "org.nspasteboard.ConcealedType",
                     "the secret mark keeps the exact name the apps that write it use")
 
+        // MARK: Separated link copies
+
+        // Issue #2411: links copied together arrive as one block, not one
+        // link — a line break from several selected tabs, a tab between the
+        // cells of a spreadsheet row — and reading that as a single URL
+        // merges and re-encodes it.
+        let multiLineLinks = "https://a.example/x?q=1\nhttps://b.example/y?q=2"
+        expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: nil,
+                                                                 plainText: multiLineLinks) ?? "",
+                    multiLineLinks,
+                    "clipboard history keeps a multi-line copy of tab links multi-line instead of collapsing it into one percent-encoded URL")
+        expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: nil,
+                                                                 plainText: "\nhttps://a.example/path\n") ?? "",
+                    "https://a.example/path",
+                    "clipboard history still trims a single URL wrapped in surrounding newlines")
+        // A spreadsheet row arrives tab-separated rather than one URL per
+        // line, and `url` escapes a tab the same way it escapes a break.
+        let tabSeparatedLinks = "https://a.example/x?q=1\thttps://b.example/y?q=2"
+        expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: nil,
+                                                                plainText: tabSeparatedLinks) ?? "",
+                    tabSeparatedLinks,
+                    "clipboard history keeps a tab-separated copy of links as copied instead of collapsing it into one percent-encoded URL")
+        expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: "https://a.example/x?q=1",
+                                                                plainText: multiLineLinks) ?? "",
+                    multiLineLinks,
+                    "clipboard history keeps every link in a multi-line copy when the first link also arrives as the web URL type instead of replacing the text with just that one link")
+        expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: nil,
+                                                                plainText: "  https://a.example/path  ") ?? "",
+                    "https://a.example/path",
+                    "clipboard history still accepts a single URL surrounded by blank spaces")
+
+        for copied in [
+            "//a.example/x\n//b.example/y",
+            "//a.example/x\r\n//b.example/y",
+            "//a.example/x\t//b.example/y",
+            "//a.example/x additional text",
+            "//a.example/x\u{00A0}//b.example/y",
+        ] {
+            expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: "https://a.example/x",
+                                                                    plainText: copied) ?? "",
+                        copied,
+                        "a structured URL cannot replace separated scheme-less text with only its first link")
+        }
+        for path in ["a%20b", "a%0Ab"] {
+            let url = "https://a.example/\(path)"
+            expectEqual(ClipboardHistoryPasteboardText.preferredText(webURLString: url,
+                                                                    plainText: "//a.example/\(path)") ?? "",
+                        url,
+                        "a single scheme-less URL with encoded whitespace still restores its scheme")
+        }
+
         ClipboardHistoryWriteTests.run(suite)
         ClipboardHistoryImageEditorTests.run(suite)
         ClipboardHistoryAccessTests.run(suite)

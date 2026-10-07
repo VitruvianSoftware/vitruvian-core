@@ -415,6 +415,77 @@ enum RepositoryFeatureTests {
                     "https://www.reddit.com/r/swift/comments/abc/?sort=new",
                     "URL cleaner strips Reddit's deep-link tracking in either spelling")
 
+        // MARK: URL cleaning is a pure deletion
+
+        // Cleaning a link is only allowed to take parameters out of it. The
+        // query is therefore filtered while it is still percent-encoded and
+        // the survivors are put back byte for byte. Decoding them and writing
+        // them back through `queryItems` re-encodes with a much wider allowed
+        // set, so the cleaner respells a value it was never asked to touch —
+        // and on a link with nothing to remove it respells the whole query
+        // and then reports a clean.
+        let wrappedLink = "https://example.com/?redirect=https%3A%2F%2Fexample.org%2F%3Futm_source%3Dkeepme%26z%3D9&gclid=1"
+        let wrappedClean = URLCleaning.clean(wrappedLink)
+        expectEqual(wrappedClean?.url ?? "",
+                    "https://example.com/?redirect=https%3A%2F%2Fexample.org%2F%3Futm_source%3Dkeepme%26z%3D9",
+                    "cleaning a wrapper link takes the tracker out and leaves the wrapped target encoded")
+        suite.expect(wrappedClean?.removed == ["gclid"],
+               "a wrapper link reports only the tracker it really removed")
+        // A link with nothing to remove must come back identical, or the
+        // clipboard poll replaces the user's copy with a different, wrong one
+        // and the UI calls it a clean.
+        let nothingToRemove = "https://example.com/url?q=https%3A%2F%2Fexample.com%2Fpage%3Fa%3D1%26utm_source%3Dnews&sa=U"
+        suite.expect(URLCleaning.clean(nothingToRemove)?.url == nothingToRemove
+               && URLCleaning.outcome(for: URLCleaning.clean(nothingToRemove), input: nothingToRemove) == .unchanged,
+               "a link with no tracked parameter is returned byte for byte and reads as unchanged")
+        for untouched in [
+            "https://example.com/",
+            "https://example.com/?",
+            "https://example.com/path?a=1&a=2",
+            "https://example.com/?q=a+b&r=%5B%5D&s=%20x",
+            "https://user:pw@example.com:8443/p?id=1",
+            "https://[::1]:8443/p?id=1",
+        ] {
+            suite.expect(URLCleaning.clean(untouched)?.url == untouched,
+                   "a link with no tracked parameter is never re-encoded, reordered or normalised: \(untouched)")
+        }
+        expectEqual(URLCleaning.clean("https://example.com/?flag&utm_medium&utm_source=news&id=1")?.url ?? "",
+                    "https://example.com/?flag&id=1",
+                    "a pair with no equals sign is judged by its whole text and a valueless tracker still goes")
+        expectEqual(URLCleaning.clean("https://example.com/?%75tm_source=news&id=1")?.url ?? "",
+                    "https://example.com/?id=1",
+                    "a tracker name spelled percent-encoded is decoded before it is matched")
+        suite.expect(URLCleaning.clean("https://example.com/?utm_source=a&fbclid=b&utm_source=c")?.removed
+                == ["utm_source", "fbclid"],
+               "a name repeated in one link is still reported once")
+
+        let unicodeURL = "https://éxample.com/cafe\u{0301}?x=%2f&q=é#re\u{0301}sume\u{0301}"
+        let unchangedUnicode = URLCleaning.clean(unicodeURL)
+        suite.expect(unchangedUnicode?.url.utf8.elementsEqual(unicodeURL.utf8) == true
+               && unchangedUnicode?.removed.isEmpty == true,
+               "a no-op preserves Unicode spelling and existing escapes byte for byte")
+        let preservedURLCases = [
+            ("https://example.com/p?x=%2f&q=é&utm_source=x", "https://example.com/p?x=%2f&q=é"),
+            ("https://éxample.com/cafe\u{0301}?x=%2f&utm_source=x#re\u{0301}sume\u{0301}",
+             "https://éxample.com/cafe\u{0301}?x=%2f#re\u{0301}sume\u{0301}"),
+            ("https://example.com/p?utm_source=x&\u{0301}id=1", "https://example.com/p?\u{0301}id=1"),
+            ("https://example.com/p?fbclid=\u{0301}x&id=1", "https://example.com/p?id=1"),
+            ("https://example.com/p?\u{0301}id=1&utm_source=x", "https://example.com/p?\u{0301}id=1"),
+            ("https://example.com/p?utm_source=x#\u{0301}keep?utm_medium=y", "https://example.com/p#\u{0301}keep?utm_medium=y"),
+            ("https://example.com/p?utm_source=x#", "https://example.com/p#"),
+            ("https://example.com/p?utm_source=x&", "https://example.com/p?"),
+            ("https://example.com/p?&utm_source=x&&id=%26%3D%3F%23", "https://example.com/p?&&id=%26%3D%3F%23"),
+            ("https://example.com/p#fragment?utm_source=x", "https://example.com/p#fragment?utm_source=x"),
+        ]
+        for (input, expected) in preservedURLCases {
+            suite.expect(URLCleaning.clean(input)?.url.utf8.elementsEqual(expected.utf8) == true,
+                   "cleaning preserves every surviving byte, including delimiters beside combining marks: \(input)")
+        }
+        for separator in ["\n", "\r\n", "\t", " ", "\u{00A0}"] {
+            suite.expect(URLCleaning.clean("https://a.example/x?utm_source=x\(separator)https://b.example/y") == nil,
+                   "automatic URL cleaning cannot discard a second link from a separated text copy")
+        }
+
         suite.expect(URLCleaning.canRewritePasteboard(types: [
             "public.utf8-plain-text", "public.url", "public.url-name",
             "NSStringPboardType", "NSURLPboardType",
@@ -952,9 +1023,9 @@ enum RepositoryFeatureTests {
         suite.expect(flatWithUpdate.rows.map(\.id) == withUpdate.map(\.id)
                      && flatWithUpdate.rows.first?.name == "shared-lib",
                      "Homebrew flat mode keeps update-first ordering and includes dependencies as top-level rows")
-        suite.expect(updateFolded.rows.map(\.name) == ["shared-lib", "cask-app", "app-a", "example/tap/app-b"]
+        suite.expect(updateFolded.rows.map(\.name) == ["app-a", "example/tap/app-b", "cask-app"]
                      && updateFolded.dependencies["formula:app-a"]?.map(\.name) == ["deep-lib", "shared-lib"],
-                     "Homebrew keeps a reached dependency with an update as its own first row and under its parent, found \(updateFolded.rows.map(\.name))")
+                     "Homebrew keeps a dependency with an update under its parents and moves those parents up, found \(updateFolded.rows.map(\.name))")
         let orphanUpdate = HomebrewPackageOrdering.updatesFirst(dependencyPackages.map { package in
             var package = package
             if package.name == "orphan-lib" {
@@ -964,8 +1035,9 @@ enum RepositoryFeatureTests {
             return package
         })
         let orphanUpdateFolded = HomebrewDependencyGraph.fold(orphanUpdate, installed: orphanUpdate)
-        suite.expect(orphanUpdateFolded.rows.first?.name == "orphan-lib" && orphanUpdateFolded.orphans.isEmpty,
-                     "Homebrew keeps an orphan with an update as the first row, found \(orphanUpdateFolded.rows.map(\.name))")
+        suite.expect(orphanUpdateFolded.orphans.map(\.name) == ["orphan-lib"]
+                     && !orphanUpdateFolded.rows.contains { $0.name == "orphan-lib" },
+                     "Homebrew keeps an orphan with an update in the unneeded group, found \(orphanUpdateFolded.rows.map(\.name))")
         let formulaOnly = dependencyPackages.filter { $0.kind == .formula }
         let flatFormulaOnly = HomebrewDependencyGraph.display(formulaOnly,
                                                               installed: dependencyPackages,
