@@ -33,6 +33,8 @@ on:
     paths:
       - "tools/ci/affected-targets.sh"
       - "tools/ci/affected-targets_test.sh"
+      - "tools/ci/rdeps-map-ref.sh"
+      - "tools/ci/rdeps-map-ref_test.sh"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
       - "tools/ci/td-lib.sh"
@@ -42,6 +44,8 @@ on:
     paths:
       - "tools/ci/affected-targets.sh"
       - "tools/ci/affected-targets_test.sh"
+      - "tools/ci/rdeps-map-ref.sh"
+      - "tools/ci/rdeps-map-ref_test.sh"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
       - "tools/ci/td-lib.sh"
@@ -65,3 +69,7 @@ jobs:
       # The test half of the same pair (#2841): how build-test picks its targets.
       - name: Run the affected-targets script tests
         run: bash tools/ci/affected-targets_test.sh
+
+      # Where the planner's dependency maps are kept (#2841).
+      - name: Run the rdeps-map-ref script tests
+        run: bash tools/ci/rdeps-map-ref_test.sh

@@ -63,6 +63,14 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Fetch the dependency map kept under a git ref
+        id: mapref
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/ci/rdeps-map-ref.sh fetch "$RUNNER_TEMP/pipeline-rdeps-map.json" "$BASE_SHA"
+
       - name: List recent ancestors of the diff base
         id: mapkeys
         env:
@@ -79,6 +87,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Restore the dependency map for the diff base
+        if: steps.mapref.outputs.commit == ''
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -1112,6 +1121,8 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    permissions:
+      contents: write
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -1135,6 +1146,14 @@ jobs:
         run: |
           GOWORK=off CGO_ENABLED=0 go build -o "$RUNNER_TEMP/pipeline-plan" ./tools/pipeline/plan
           "$RUNNER_TEMP/pipeline-plan" --emit-rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --repo-root="$PWD" --timeout-sec=2100
+
+      - name: Keep it under a git ref
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash tools/ci/rdeps-map-ref.sh save "$RUNNER_TEMP/pipeline-rdeps-map.json" "$GITHUB_SHA"
+          bash tools/ci/rdeps-map-ref.sh prune
 
       - name: Save it for PRs based on this commit
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6

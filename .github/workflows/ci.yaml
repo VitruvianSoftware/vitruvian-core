@@ -166,10 +166,23 @@ jobs:
             echo "FALLBACK_KEYS_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # First choice: the map kept under a git ref (tools/ci/rdeps-map-ref.sh).
+      # The Actions cache below evicts maps within the hour while the repo is
+      # over its 10 GiB budget (#2841); a ref is never evicted. The cache step
+      # stays as the fallback, so nothing is lost if the ref is not there.
+      - name: Fetch the dependency map kept under a git ref
+        id: mapref
+        if: steps.base.outputs.sha != ''
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/ci/rdeps-map-ref.sh fetch "$RUNNER_TEMP/pipeline-rdeps-map.json" "$BASE_SHA"
+
       # continue-on-error: the map is only ever a speed-up, so a cache problem
       # here must not fail a required check; the script copes with no map.
       - name: Restore the dependency map for the diff base
-        if: steps.base.outputs.sha != ''
+        if: steps.base.outputs.sha != '' && steps.mapref.outputs.commit == ''
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
