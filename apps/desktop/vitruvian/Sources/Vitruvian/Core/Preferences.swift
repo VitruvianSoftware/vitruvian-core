@@ -423,6 +423,7 @@ package enum Preferences {
     package static let whatsAppOrganizerLastMoved = Preference(DefaultsKey.whatsAppOrganizerLastMoved, default: 0)
     package static let whatsAppOrganizerLastDuplicates = Preference(DefaultsKey.whatsAppOrganizerLastDuplicates, default: 0)
     package static let whatsAppOrganizerLastFailed = Preference(DefaultsKey.whatsAppOrganizerLastFailed, default: 0)
+    package static let notchTimerMinutes = Preference(DefaultsKey.notchTimerMinutes, default: 15)
     package static let notchPomodoroFocusMinutes = Preference(DefaultsKey.notchPomodoroFocusMinutes, default: 25)
     package static let notchPomodoroShortBreakMinutes = Preference(DefaultsKey.notchPomodoroShortBreakMinutes, default: 5)
     package static let notchPomodoroLongBreakMinutes = Preference(DefaultsKey.notchPomodoroLongBreakMinutes, default: 15)

@@ -479,6 +479,7 @@ package enum Defaults {
         DefaultsKey.notchTimerMode: Preferences.notchTimerMode.defaultValue,
         DefaultsKey.notchTimerSoundEnabled: Preferences.notchTimerSoundEnabled.defaultValue,
         DefaultsKey.notchHideTimerCountdown: Preferences.notchHideTimerCountdown.defaultValue,
+        DefaultsKey.notchTimerMinutes: Preferences.notchTimerMinutes.defaultValue,
         DefaultsKey.notchPomodoroFocusMinutes: Preferences.notchPomodoroFocusMinutes.defaultValue,
         DefaultsKey.notchPomodoroShortBreakMinutes: Preferences.notchPomodoroShortBreakMinutes.defaultValue,
         DefaultsKey.notchPomodoroLongBreakMinutes: Preferences.notchPomodoroLongBreakMinutes.defaultValue,

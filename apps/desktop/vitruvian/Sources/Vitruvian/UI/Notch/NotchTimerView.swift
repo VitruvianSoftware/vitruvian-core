@@ -16,7 +16,7 @@ package struct NotchTimerView: View {
     @AppStorage(Preferences.notchPomodoroLongBreakMinutes) private var longBreakMinutes: Int
     @AppStorage(Preferences.notchPomodoroLongBreakInterval) private var longBreakInterval: Int
     @AppStorage(Preferences.notchPomodoroTotalSessions) private var totalSessions: Int
-    @State private var minutes = 15
+    @AppStorage(Preferences.notchTimerMinutes) private var savedMinutes: Int
     @Namespace private var modeSelection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var text: NotchActivityStrings { FeatureStrings.notchActivities(l10n.language) }
@@ -50,7 +50,7 @@ package struct NotchTimerView: View {
             HStack(spacing: 12) {
                 switch mode {
                 case .timer:
-                    NotchTimerRuler(minutes: $minutes, label: text.timer, locale: locale)
+                    NotchTimerRuler(minutes: timerMinutes, label: text.timer, locale: locale)
                         .frame(height: rulerHeight)
                 case .pomodoro:
                     NotchTimerRuler(minutes: binding(.focus), label: text.focus, locale: locale)
@@ -80,7 +80,7 @@ package struct NotchTimerView: View {
     }
 
     private var startButton: some View {
-        Button { service.start(mode: mode, minutes: minutes) } label: {
+        Button { service.start(mode: mode, minutes: timerMinutes.wrappedValue) } label: {
             Text(text.start)
                 .font(.system(size: NotchTimerSupport.StartButton.labelSize, weight: .semibold))
                 .lineLimit(1)
@@ -96,7 +96,7 @@ package struct NotchTimerView: View {
 
     private var setupClock: String {
         switch mode {
-        case .timer: return NotchTimerSupport.clockText(Double(minutes) * 60)
+        case .timer: return NotchTimerSupport.clockText(Double(timerMinutes.wrappedValue) * 60)
         case .pomodoro: return NotchTimerSupport.clockText(Double(binding(.focus).wrappedValue) * 60)
         case .stopwatch: return NotchTimerSupport.stopwatchText(0)
         }
@@ -244,6 +244,11 @@ package struct NotchTimerView: View {
         }
         .help(title)
         .accessibilityValue(display(option, current))
+    }
+
+    private var timerMinutes: Binding<Int> {
+        Binding(get: { NotchTimerSupport.timerMinutes(savedMinutes) },
+                set: { savedMinutes = NotchTimerSupport.timerMinutes($0) })
     }
 
     private func binding(_ option: NotchPomodoroOption) -> Binding<Int> {
