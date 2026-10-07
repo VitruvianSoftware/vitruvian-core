@@ -755,9 +755,15 @@ enum SpacesOrderTests {
 
         // A feature's keys survive its removal from the hub, so the toggle
         // alone must never keep rearranging off.
+        // A defaults write on the hold's queue returns only once every
+        // main-queue observer of all defaults changes has taken its notice,
+        // and earlier suites leave such observers behind. These waits run the
+        // main run loop, as `finishLetGo` does, instead of blocking it.
         func waitForMarker(_ expected: String?) -> Bool {
             let deadline = Date().addingTimeInterval(3)
-            while defaults.string(forKey: marker) != expected, Date() < deadline { usleep(10_000) }
+            while defaults.string(forKey: marker) != expected, Date() < deadline {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
             return defaults.string(forKey: marker) == expected
         }
         defaults.set(true, forKey: DefaultsKey.spacesOrderEnabled)
@@ -772,7 +778,16 @@ enum SpacesOrderTests {
                 + "available \(defaults.bool(forKey: available))"
         }
         func signalled(_ dock: FakeDock) -> Int {
-            (0..<2).filter { _ in dock.signals.wait(timeout: .now() + 3) == .success }.count
+            var count = 0
+            let deadline = Date().addingTimeInterval(3)
+            while count < 2, Date() < deadline {
+                if dock.signals.wait(timeout: .now()) == .success {
+                    count += 1
+                } else {
+                    RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+                }
+            }
+            return count
         }
         hold.syncWithPreferences()
         let installedSignals = signalled(dock)
