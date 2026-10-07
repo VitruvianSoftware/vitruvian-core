@@ -407,6 +407,27 @@ class PackageTest(unittest.TestCase):
         self.assertEqual(self.restore(merged, ours), merged)
 
 
+class PreferenceReviewTest(unittest.TestCase):
+    PREFERENCES = (
+        "package enum Preferences {\n"
+        "    package static let alpha = Preference(DefaultsKey.alpha, default: true)\n"
+        "    package static let beta = Preference<String>(DefaultsKey.beta, default: \"\")\n"
+        "}\n"
+    )
+
+    def test_a_new_keyed_storage_of_a_declared_preference_is_flagged(self):
+        ours = "struct V {\n    @AppStorage(DefaultsKey.alpha) private var a = true\n}\n"
+        merged = (
+            "struct V {\n    @AppStorage(DefaultsKey.alpha) private var a = true\n"
+            "    @AppStorage(DefaultsKey.beta) private var b = \"x\"\n"
+            "    @AppStorage(DefaultsKey.gamma) private var c = 1\n"
+            "    @AppStorage(Preferences.alpha) private var d: Bool\n}\n"
+        )
+        self.assertEqual(
+            upstream.preference_review(merged, ours, self.PREFERENCES), [(3, "beta")]
+        )
+
+
 class InitReviewTest(unittest.TestCase):
     OURS = (
         "package struct Bill: Equatable {\n"

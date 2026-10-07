@@ -802,6 +802,28 @@ def init_review(merged, ours):
     return sorted(gaps)
 
 
+PREFERENCES_PATH = APP_DIR + "/Sources/Vitruvian/Core/Preferences.swift"
+DECLARED_PREFERENCE_RE = re.compile(r"=\s*Preference(?:<[^>]+>)?\(\s*DefaultsKey\.(\w+)")
+KEYED_STORAGE_RE = re.compile(r"@AppStorage\(\s*DefaultsKey\.(\w+)\s*\)")
+
+
+def preference_review(merged, ours, preferences):
+    """New `@AppStorage(DefaultsKey.x)` lines whose key this fork declares in
+    Preferences.swift. This fork reads a declared preference through
+    `@AppStorage(Preferences.x)`, which takes the preference's own default;
+    upstream's spelling repeats a default that can drift from it. Returns
+    (line, key) pairs, line 1-based in `merged`."""
+    declared = set(DECLARED_PREFERENCE_RE.findall(preferences))
+    before = set(ours.splitlines())
+    return [
+        (n, m.group(1))
+        for n, line in enumerate(merged.splitlines(), 1)
+        if line not in before
+        for m in [KEYED_STORAGE_RE.search(line)]
+        if m and m.group(1) in declared
+    ]
+
+
 def _merge_file(ours, base, theirs, labels):
     with tempfile.TemporaryDirectory() as tmp:
         paths = []
@@ -933,12 +955,14 @@ def port_commit(
         theirs = to_fork_bytes(upstream.blob(sha, new))
         if status == "A" and not target.exists():
             result = theirs
+            before_text = ""
             before = set()
             lines.append(f"- `{new}` -> `{rel}` ({how}): added")
         else:
             base = to_fork_bytes(upstream.blob(parent, old) if parent else b"")
             ours = target.read_bytes() if target.exists() else b""
-            before = set(ours.decode("utf-8", "replace").splitlines())
+            before_text = ours.decode("utf-8", "replace")
+            before = set(before_text.splitlines())
             result, conflicts = merge3(ours, base, theirs, labels)
             note = (
                 f" (upstream renamed it to `{new}`; the rename is not applied)"
@@ -960,6 +984,17 @@ def port_commit(
                     f"  - init review `{rel}:{n}`: `{owner}` gained `{prop}`, "
                     "which its spelled-out initializer does not take"
                 )
+        preferences = root / PREFERENCES_PATH
+        for n, key in preference_review(
+            result.decode("utf-8", "replace"),
+            before_text,
+            preferences.read_text() if preferences.exists() else "",
+        ):
+            clean = False
+            lines.append(
+                f"  - preference review `{rel}:{n}`: use `@AppStorage(Preferences.{key})`, "
+                "which takes the declared default"
+            )
         if not dry_run:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(result)
