@@ -50,7 +50,8 @@
 #   RDEPS_MAP           optional path to the dependency map for the diff base
 #                       (#2841); a missing file just means "no map".
 #   MAP_MAX_BEHIND      optional; how many commits behind the diff base a
-#                       dependency map may be and still be used (default 20).
+#                       dependency map may be and still be used (default 9, the
+#                       most the workflow can offer: actions/cache caps keys at 10).
 #   PLAN_BIN            optional path to a prebuilt //tools/pipeline/plan
 #                       binary; used instead of `bazel run` when executable.
 #   PLAN_BUDGET_SEC     optional; warn when a map-sourced plan takes longer
@@ -236,7 +237,7 @@ PLAN_ERR="$(mktemp)"
 # If any fails, the base stays as it is and the planner, which checks the map
 # against the base itself, falls back to the live query exactly as before.
 PLAN_BASE="${BEFORE_REV}"
-MAP_MAX_BEHIND="${MAP_MAX_BEHIND:-20}"
+MAP_MAX_BEHIND="${MAP_MAX_BEHIND:-9}"
 if [ -n "${RDEPS_MAP}" ] && [ -f "${RDEPS_MAP}" ]; then
   map_commit="$(jq -r '.commit // ""' "${RDEPS_MAP}" 2>/dev/null || true)"
   base_sha="$(git rev-parse --verify --quiet "${BEFORE_REV}^{commit}" || true)"

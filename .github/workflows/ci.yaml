@@ -157,7 +157,8 @@ jobs:
           # whether an older map is safe to use and compares against its commit.
           keys=""
           if [ -n "$sha" ] && git rev-parse --verify --quiet "${sha}^{commit}" >/dev/null; then
-            keys="$(git rev-list --first-parent -n 21 "$sha" | tail -n +2 | sed 's/^/pipeline-rdeps-map-v1-/')"
+            # actions/cache allows 10 keys in all: the exact one plus 9 here.
+            keys="$(git rev-list --first-parent -n 10 "$sha" | tail -n +2 | sed 's/^/pipeline-rdeps-map-v1-/')"
           fi
           {
             echo "fallback_keys<<FALLBACK_KEYS_EOF"
@@ -165,8 +166,11 @@ jobs:
             echo "FALLBACK_KEYS_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # continue-on-error: the map is only ever a speed-up, so a cache problem
+      # here must not fail a required check; the script copes with no map.
       - name: Restore the dependency map for the diff base
         if: steps.base.outputs.sha != ''
+        continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/pipeline-rdeps-map.json
