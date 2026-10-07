@@ -129,8 +129,19 @@ jobs:
           # lockfile + package.json, so a source-only change now reuses it.
           # Scoped per image so the two builds cannot evict each other from the
           # shared 10GB GitHub Actions cache.
-          cache-from: type=gha,scope=backstage-image
-          cache-to: type=gha,mode=max,scope=backstage-image
+          # Layer cache (#2841). On main it lives in the registry, next to the
+          # image, as the `buildcache` tag -- NOT in the Actions cache, where
+          # these three image builds held about 2.2 GiB of the repo's shared
+          # 10 GiB budget and pushed it over the limit, evicting other jobs'
+          # entries. Pull requests still write their own cache to the Actions
+          # cache as before (it is scoped to the PR and pruned when it closes)
+          # and additionally read main's from the registry; the image packages
+          # are public, so that read needs no login.
+          # ignore-error: a failed cache upload must not fail the image build.
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE }}:buildcache
+            type=gha,scope=backstage-image
+          cache-to: ${{ github.event_name == 'pull_request' && 'type=gha,mode=max,scope=backstage-image' || format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true', env.IMAGE) }}
 
       # buildx cannot --load a multi-arch manifest, so export an amd64-only copy
       # the runner can actually execute. Every layer was just built by the step
@@ -143,7 +154,11 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: backstage:smoke
-          cache-from: type=gha,scope=backstage-image
+          # Same two sources as the build above, so this step reuses what it
+          # just built on either lane.
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE }}:buildcache
+            type=gha,scope=backstage-image
 
       # Boots the image and asserts every plugin initializes and readiness
       # serves 200. Unit tests cannot catch a plugin that fails to REGISTER --

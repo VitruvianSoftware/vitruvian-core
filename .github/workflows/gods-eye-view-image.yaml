@@ -97,5 +97,16 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
-          cache-from: type=gha,scope=gods-eye-view-image
-          cache-to: type=gha,mode=max,scope=gods-eye-view-image
+          # Layer cache (#2841). On main it lives in the registry, next to the
+          # image, as the `buildcache` tag -- NOT in the Actions cache, where
+          # these three image builds held about 2.2 GiB of the repo's shared
+          # 10 GiB budget and pushed it over the limit, evicting other jobs'
+          # entries. Pull requests still write their own cache to the Actions
+          # cache as before (it is scoped to the PR and pruned when it closes)
+          # and additionally read main's from the registry; the image packages
+          # are public, so that read needs no login.
+          # ignore-error: a failed cache upload must not fail the image build.
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE }}:buildcache
+            type=gha,scope=gods-eye-view-image
+          cache-to: ${{ github.event_name == 'pull_request' && 'type=gha,mode=max,scope=gods-eye-view-image' || format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true', env.IMAGE) }}
