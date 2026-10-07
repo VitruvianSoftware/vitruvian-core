@@ -248,6 +248,7 @@ enum SourceNames {
         "gifTooLongFormat",
         "grewBytesFormat",
         "homebrewConfirmUninstallBodyFormat",
+        "homebrewDependencyUpdatesFormat",
         "homebrewOperationElapsedFormat",
         "homebrewOperationFailedFormat",
         "homebrewPopularityFormat",
