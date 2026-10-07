@@ -21,6 +21,7 @@
 # gazelle:ignore
 
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//apps/web/gods-eye-view:vite/package_json.bzl", vite = "bin")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
@@ -95,6 +96,31 @@ doctor(
     ],
 )
 
+# --- Upstream tracking ---------------------------------------------------------
+# upstream/README.md: this copy is upstream bilawalsidhu/gods-eye-view at the
+# base in upstream/local-changes.tsv, plus the changes that file lists.
+#   bazel run //apps/web/gods-eye-view:track_upstream -- status|check|sync
+# .github/workflows/gods-eye-view-upstream-watch.yaml runs `status` daily.
+
+py_binary(
+    name = "track_upstream",
+    srcs = ["upstream/upstream.py"],
+    main = "upstream/upstream.py",
+)
+
+# The tool against throwaway repositories, and the committed list's format.
+py_test(
+    name = "upstream_test",
+    size = "small",
+    srcs = [
+        "upstream/upstream.py",
+        "upstream/upstream_test.py",
+    ],
+    data = ["upstream/local-changes.tsv"],
+    env = {"UPSTREAM_LOCAL_CHANGES": "$(rootpath upstream/local-changes.tsv)"},
+    main = "upstream/upstream_test.py",
+)
+
 pipeline_unit(
     name = "gods-eye-view",
     persona = "frontend",
@@ -102,6 +128,7 @@ pipeline_unit(
     test_targets = [
         ":unit_tests",
         ":cesium_assets_test",
+        ":upstream_test",
         ":build",
     ],
     tier = "L1",

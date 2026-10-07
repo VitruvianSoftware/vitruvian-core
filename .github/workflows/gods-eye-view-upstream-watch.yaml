@@ -1,0 +1,95 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: God's Eye View Upstream Watch
+
+# apps/web/gods-eye-view is a copy of bilawalsidhu/gods-eye-view at one upstream
+# commit (the base in apps/web/gods-eye-view/upstream/local-changes.tsv), plus the
+# local changes that file lists. This keeps ONE tracking issue: created when
+# upstream has moved past the base or the copy differs in a way the list does not
+# say, its body refreshed every run, a comment only when new upstream pull
+# requests land (so watchers are told once, not daily), closed when nothing is
+# left. See apps/web/gods-eye-view/upstream/README.md.
+#
+# Read-only on the repository: it changes no code and gates nothing.
+
+on:
+  schedule:
+    - cron: '47 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: gods-eye-view-upstream-watch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: List upstream changes to sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Upstream gods-eye-view: changes to sync"
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number --jq '.[0].number // empty')"
+          previous="${RUNNER_TEMP}/previous.md"
+          : > "${previous}"
+          if [ -n "${existing}" ]; then
+            gh issue view "${existing}" --json body --jq .body > "${previous}"
+          fi
+          body="${RUNNER_TEMP}/body.md"
+          bazel run "${cache_flags[@]}" //apps/web/gods-eye-view:track_upstream -- \
+            --cache "${RUNNER_TEMP}/upstream-cache" status --markdown --previous-body "${previous}" > "${body}"
+
+          marker="$(head -n 1 "${body}")"
+          read -r behind drift new < <(sed -E 's/.*behind: ([0-9]+) drift: ([0-9]+) new: ([0-9]+).*/\1 \2 \3/' <<<"${marker}")
+          echo "behind=${behind} drift=${drift} new=${new}"
+
+          if [ "$((behind + drift))" -eq 0 ]; then
+            if [ -n "${existing}" ]; then
+              gh issue close "${existing}" --comment "This copy matches upstream's latest, plus only the listed local changes."
+            fi
+          elif [ -z "${existing}" ]; then
+            gh issue create --title "${TITLE}" --body-file "${body}"
+          else
+            gh issue edit "${existing}" --body-file "${body}"
+            if [ "${new}" -gt 0 ]; then
+              gh issue comment "${existing}" --body "${new} new upstream pull request(s) or commit(s) to sync. ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            fi
+          fi
