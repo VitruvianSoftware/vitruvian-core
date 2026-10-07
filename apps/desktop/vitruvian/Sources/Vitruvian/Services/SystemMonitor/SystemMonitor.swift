@@ -573,6 +573,20 @@ package final class SystemMonitor: ObservableObject {
         var missedSamples: Int
     }
 
+    /// Whether connected devices are read. The island preview in Settings
+    /// shows the device card too; the panel's System card reads USB only for
+    /// its device row's count; the device list and the island's System page
+    /// read it whatever that row's toggle says. An uninstalled feature is
+    /// never read. `panelNeeds` is the panel's and the island's needs merged.
+    package static func readsConnectedDevices(fullMonitorVisible: Bool, panelNeeds: SystemMonitorPanelNeeds,
+                                              defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: AppFeature.connectedDevices.availabilityKey)
+            && (fullMonitorVisible
+                || (panelNeeds.system && defaults[Preferences.monitorSysConnectedDevices])
+                || panelNeeds.connectedDevices
+                || defaults[Preferences.menuBarConnectedDevices])
+    }
+
     private func currentPlan(defaults: UserDefaults) -> SamplingPlan {
         let menuPanelNeeds = self.menuPanelNeeds.merging(notchDetailNeeds)
         var plan = SamplingPlan()
@@ -625,8 +639,8 @@ package final class SystemMonitor: ObservableObject {
             plan.needFanSpeed = fullMonitorVisible || menuPanelNeeds.fanSpeed
                 || defaults[Preferences.menuBarFanSpeed]
         }
-        plan.needConnectedDevices = menuPanelNeeds.connectedDevices
-            || defaults[Preferences.menuBarConnectedDevices]
+        plan.needConnectedDevices = Self.readsConnectedDevices(
+            fullMonitorVisible: fullMonitorVisible, panelNeeds: menuPanelNeeds, defaults: defaults)
 
         // The hub gates whole metric families: an unavailable metric never
         // samples, no matter what is pinned, shown or alerting.

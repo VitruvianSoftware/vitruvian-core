@@ -14,6 +14,7 @@ package struct SystemSection: View {
     @ObservedObject private var monitor = SystemMonitor.shared
     @Environment(\.colorScheme) private var colorScheme
     package var collapsible = true
+    package let showConnectedDevices: () -> Void
     @State private var expanded: BreakdownKind?
     @State private var alertsExpanded = false
     @State private var breakdownRows: [ProcessUsage] = []
@@ -31,6 +32,7 @@ package struct SystemSection: View {
     @AppStorage(Preferences.monitorSysMemory) private var sysMemory: Bool
     @AppStorage(Preferences.monitorSysAlerts) private var sysAlerts: Bool
     @AppStorage(Preferences.monitorSysUptime) private var sysUptime: Bool
+    @AppStorage(Preferences.monitorSysConnectedDevices) private var sysConnectedDevices: Bool
     @AppStorage(DefaultsKey.panelSystemOrder) private var systemOrderRaw = ""
     @State private var draggingBlock: Block?
 
@@ -75,7 +77,7 @@ package struct SystemSection: View {
 
     /// Card subsections, in order, filtered by the per-item toggles (and whether a
     /// battery exists). Drives divider interleaving so only rendered blocks get one.
-    private enum Block: String, PanelOrderItem { case temps, usage, memory, alerts, uptime }
+    private enum Block: String, PanelOrderItem { case temps, usage, memory, alerts, uptime, connectedDevices }
 
     // Hub availability per metric family: an unavailable metric leaves the
     // card entirely, including the edit-mode hidden rows.
@@ -99,6 +101,7 @@ package struct SystemSection: View {
         switch block {
         case .temps, .usage: return cpuAvailable || gpuAvailable
         case .memory: return memoryAvailable
+        case .connectedDevices: return AppFeature.connectedDevices.isAvailable
         case .alerts, .uptime: return true
         }
     }
@@ -125,6 +128,7 @@ package struct SystemSection: View {
         case .memory: return sysMemory
         case .alerts: return sysAlerts
         case .uptime: return sysUptime
+        case .connectedDevices: return sysConnectedDevices
         }
     }
 
@@ -137,6 +141,7 @@ package struct SystemSection: View {
         sysMemory = true
         sysAlerts = true
         sysUptime = true
+        sysConnectedDevices = true
     }
 
     @ViewBuilder
@@ -147,6 +152,52 @@ package struct SystemSection: View {
         case .memory: memoryRows(editing: editing)
         case .alerts: alertRows(editing: editing)
         case .uptime: uptimeRow(editing: editing)
+        case .connectedDevices: connectedDevicesRow(editing: editing)
+        }
+    }
+
+    // MARK: Connected devices
+
+    /// Opens the device list. While editing it is only a row to reorder or
+    /// hide, like the usage rows, so a drag cannot open the detail.
+    @ViewBuilder
+    private func connectedDevicesRow(editing: Bool) -> some View {
+        let strings = FeatureStrings.connectedDevices(l10n.language)
+        if !sysConnectedDevices {
+            PanelHiddenItemRow(title: strings.title, systemImage: "cable.connector",
+                               isVisible: $sysConnectedDevices)
+        } else if editing {
+            connectedDevicesRowContent(title: strings.title, isInteractive: false) {
+                PanelInlineHideButton(isVisible: $sysConnectedDevices)
+            }
+        } else {
+            Button(action: showConnectedDevices) {
+                connectedDevicesRowContent(title: strings.title, isInteractive: true) {
+                    EmptyView()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(strings.title)
+            .accessibilityValue(strings.formattedCount(monitor.snapshot.connectedDevices.count))
+        }
+    }
+
+    private func connectedDevicesRowContent<Trailing: View>(title: String, isInteractive: Bool,
+                                                             @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 8) {
+            Label(title, systemImage: "cable.connector")
+                .font(.system(size: 11, weight: .medium))
+            Spacer(minLength: 0)
+            Text("\(monitor.snapshot.connectedDevices.count)")
+                .font(.system(size: 11, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .opacity(isInteractive ? 1 : 0.35)
+            trailing()
         }
     }
 

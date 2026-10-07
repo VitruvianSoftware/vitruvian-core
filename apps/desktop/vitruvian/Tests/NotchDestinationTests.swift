@@ -49,6 +49,7 @@ enum NotchDestinationContract {
         var needs = SystemMonitorPanelNeeds.none
         needs.disk = AppFeature.monitorDisk.isAvailable(in: defaults)
         needs.fanSpeed = AppFeature.fanControl.isAvailable(in: defaults)
+        needs.connectedDevices = AppFeature.connectedDevices.isAvailable(in: defaults)
         return needs
     }
 
@@ -105,6 +106,7 @@ enum NotchDestinationContract {
             (.cpu, .monitorCPU), (.gpu, .monitorGPU), (.memory, .monitorMemory),
             (.network, .monitorNetwork), (.disk, .monitorDisk),
             (.battery, .monitorPower), (.power, .monitorPower), (.fan, .fanControl),
+            (.connectedDevices, .connectedDevices),
         ]
         for (metric, feature) in families {
             let fixture = island()
@@ -121,6 +123,21 @@ enum NotchDestinationContract {
                    "a retained gallery argument cannot restore a metric removed from the hub")
             defaults.set(true, forKey: feature.availabilityKey)
         }
+        // The System page reads connected devices for its card while it shows
+        // them, and only while the feature is installed.
+        let devices = island()
+        devices.island.open(.system)
+        suite.expect(devices.services.monitorDetailNeeds.connectedDevices,
+               "the island's System page reads connected devices for its card")
+        devices.island.open(.system, sections: true)
+        suite.expect(!devices.services.monitorDetailNeeds.connectedDevices,
+               "the section gallery over the System page stops its device reads")
+        defaults.set(false, forKey: AppFeature.connectedDevices.availabilityKey)
+        devices.island.syncWithPreferences()
+        devices.island.open(.system)
+        suite.expect(!devices.services.monitorDetailNeeds.connectedDevices,
+               "an uninstalled connected devices feature is not read for the System page")
+        defaults.set(true, forKey: AppFeature.connectedDevices.availabilityKey)
         let fixture = island()
         let service = fixture.island
         service.open(.system, metric: .cpu)

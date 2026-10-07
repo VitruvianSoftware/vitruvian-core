@@ -26,6 +26,7 @@ package struct MonitorSettings: View {
     @AppStorage(Preferences.monitorMemoryMetric) private var memoryMetric: String
     @AppStorage(Preferences.monitorGraphScale) private var graphScale: Bool
     @AppStorage(Preferences.panelShowFanControl) private var showFanControl: Bool
+    @AppStorage(Preferences.networkSpeedUnit) private var networkSpeedUnit: NetworkSpeedUnit
 
     package var body: some View {
         ScrollView {
@@ -168,6 +169,18 @@ package struct MonitorSettings: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+            }
+            if AppFeature.monitorNetwork.isAvailable {
+                let title = FeatureStrings.monitorLayout(l10n.language).networkSpeedUnit
+                SettingsRow(symbol: "network", title: title) {
+                    Picker(title, selection: $networkSpeedUnit) {
+                        Text("MB/s").tag(NetworkSpeedUnit.bytes)
+                        Text("Mbps").tag(NetworkSpeedUnit.bits)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
             }
             if AppFeature.monitorMemory.isAvailable {
                 SettingsRow(symbol: "memorychip", title: l10n.s.monitorMemoryMetricLabel) {

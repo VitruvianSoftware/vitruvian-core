@@ -42,6 +42,7 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing: String
     @AppStorage(Preferences.menuBarHideIconWithMetrics) private var hideIconWithMetrics: Bool
     @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics: Bool
+    @AppStorage(Preferences.networkSpeedUnit) private var networkSpeedUnit: NetworkSpeedUnit
     @ObservedObject private var l10n = L10n.shared
 
     package var body: some View {
@@ -58,6 +59,7 @@ package struct MenuBarMetricsPreview: View {
         let _ = memoryStyle
         let _ = diskStyle
         let _ = temperatureUnit
+        let _ = networkSpeedUnit
         let _ = metricSpacing
         let metrics = activeMetrics
         let lines = separateMetrics ? [] : MenuBarRenderer.lines(for: monitor.snapshot, metrics: metrics)

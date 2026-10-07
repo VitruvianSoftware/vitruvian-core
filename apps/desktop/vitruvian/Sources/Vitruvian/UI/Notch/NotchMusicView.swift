@@ -42,12 +42,16 @@ package struct NotchMusicView: View {
 
     package var body: some View {
         let controlsRow = NotchLayout.musicControlsRow(hasControlsRow)
-        let extraHeight = openExtra == nil ? 0 : min(extrasHeight, max(0, size.height - controlsRow))
-        // The player yields to lyrics or the queue only where the island is
-        // too short to hold both.
-        let showsPlayer = openExtra == nil || size.height - controlsRow - extraHeight - NotchLayout.rowSpacing
-            >= NotchLayout.musicPlayerMinimumHeight
-        let playerHeight = max(0, size.height - controlsRow - (openExtra == nil ? 0 : extraHeight + NotchLayout.rowSpacing))
+        // A custom size can be too short to hold both, and the player yields
+        // there; elsewhere the island grows by the extra and the player keeps
+        // the height the island reserves for it at rest. That height comes
+        // from the geometry, not from this page, which is still the idle
+        // page when music starts with lyrics already chosen.
+        let geometry = NotchService.shared.geometry
+        let split = NotchLayout.musicSplit(
+            height: size.height, controlsRow: controlsRow, extras: extrasHeight, resting: geometry.musicPlayerHeight,
+            keepsPlayer: !preview && geometry.layout != .custom, extraOpen: openExtra != nil)
+        let extraHeight = split.extra, showsPlayer = split.showsPlayer, playerHeight = split.player
         VStack(spacing: NotchLayout.rowSpacing) {
             if showsPlayer {
                 if let playback = service.playback {
