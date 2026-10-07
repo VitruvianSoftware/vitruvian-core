@@ -130,11 +130,35 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("        with:\n")
 	b.WriteString("          go-version-file: go.mod\n")
 	b.WriteString("          cache: false\n\n")
+	// The map for a commit is saved 16-39 min after it lands, later than the
+	// next merge-queue entry needs it (#2841), so the exact key missed in 8 of
+	// 9 queue runs. Offer the base's recent ancestors as fallbacks, nearest
+	// first; the planner (--rdeps-map-max-behind) decides whether an older map
+	// is safe and plans against its commit. actions/cache allows 10 keys in
+	// all: the exact one plus 9 here.
+	b.WriteString("      - name: List recent ancestors of the diff base\n")
+	b.WriteString("        id: mapkeys\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          keys=\"\"\n")
+	b.WriteString("          if [ -n \"$BASE_SHA\" ] && git rev-parse --verify --quiet \"${BASE_SHA}^{commit}\" >/dev/null; then\n")
+	b.WriteString("            keys=\"$(git rev-list --first-parent -n 10 \"$BASE_SHA\" | tail -n +2 | sed 's/^/pipeline-rdeps-map-v1-/')\"\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          {\n")
+	b.WriteString("            echo \"fallback_keys<<FALLBACK_KEYS_EOF\"\n")
+	b.WriteString("            echo \"$keys\"\n")
+	b.WriteString("            echo \"FALLBACK_KEYS_EOF\"\n")
+	b.WriteString("          } >> \"$GITHUB_OUTPUT\"\n\n")
+	// continue-on-error: the map is only ever a speed-up, so a cache problem
+	// must not fail the plan; the planner copes with having no map.
 	b.WriteString("      - name: Restore the dependency map for the diff base\n")
+	b.WriteString("        continue-on-error: true\n")
 	b.WriteString("        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
 	b.WriteString("        with:\n")
 	b.WriteString("          path: ${{ runner.temp }}/pipeline-rdeps-map.json\n")
-	b.WriteString("          key: pipeline-rdeps-map-v1-${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n\n")
+	b.WriteString("          key: pipeline-rdeps-map-v1-${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
+	b.WriteString("          restore-keys: ${{ steps.mapkeys.outputs.fallback_keys }}\n\n")
 	b.WriteString("      - name: Work out which units this change affects\n")
 	b.WriteString("        id: plan\n")
 	// SHAs come from the event payload, so they go through env rather than
@@ -190,7 +214,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// a precise answer is cheaper than building all 20 units. A stopgap until
 	// PR plans stop running the query live.
 	b.WriteString("                     --base=\"$base\" --head=HEAD --event=\"$EVENT_NAME\" --timeout-sec=900 \\\n")
-	b.WriteString("                     --rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" \\\n")
+	b.WriteString("                     --rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --rdeps-map-max-behind=9 \\\n")
 	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/tmp/plan.err)\"\n")
 	b.WriteString("            rc=$?\n")
 	b.WriteString("            if [ \"$rc\" -ne 0 ]; then\n")
