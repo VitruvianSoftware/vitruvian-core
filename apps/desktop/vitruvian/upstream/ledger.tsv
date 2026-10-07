@@ -163,3 +163,12 @@ e6d443d2443a986abefa8a7652c627c4eccb2618	6d6979b597cf06c4b60759b73e7cfa1f279a746
 db5659db4f44a201ffa5feb88bc501203fe62cdb	6027d09b4705d9b5bcf03bca0a225f3954a43d95	2026-10-06	skipped	touches only upstream-only paths	docs(changelog): record the finished timer under a hidden countdown (#2766)
 992f2cb8efba784db776804eb12821f621e9ee7f	02d9fc4f5d1df1203f6593321e5015ecf452514e	2026-10-07	pending	-	feat(notch): add a keyboard light level to the island controls (#2702)
 8f386857734e0c702a7f39388625f60aeb080596	5a031a819ef1fdc2b5077cdaaae23fb7c71d7e4b	2026-10-06	skipped	touches only upstream-only paths	Credit #2702 in the changelog
+26fe9b6490b0b0bda462cc0960b6cd2d25ad9a1c	-	2026-09-24	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+dd9d1160e8b6bbd3e41cef48a53968c4d089cd3a	-	2026-09-24	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+8aea73b91315e0c7a75520dc7afc75f883394a91	-	2026-09-24	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+64efd8ade33d95c5767c2c9d3764bccc24ab0d2f	-	2026-09-28	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+9a0f8921fe982684a8772bf818375a3587b0eb7e	-	2026-09-28	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+2c3b08d15628a5b054a4997f7e25c6efe89d146e	-	2026-09-29	pending	-	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
+5db6be949fdb0873017544217da24e0a57eb874e	-	2026-09-27	skipped	merge that only resolves conflicts between two sides ported on their own	Merge vorssaint/main into claude/inspiring-curie-4p6k9g
+e3399a1657a35385b4c090466f0ab784227f7461	-	2026-10-04	pending	-	fix(window-layout): preserve deferred modifier gesture ownership
+848b6042a77cae4038b7038c2c8636d2cc033aef	-	2026-10-04	pending	-	fix(spaces): preserve restoration across failed and delayed work
