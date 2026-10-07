@@ -2409,8 +2409,13 @@ is that notice. Add an entry for every change to upstream files.
     The command bar's aliases and row shortcuts write or remove their
     encoded text. `WallpaperService.applyAllDisplays` reads its preference
     directly.
-- **2026-10-06**: First release:
-  - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
+- **2026-10-07**: MacBook Notch / Dynamic Island native integration for Nexus Agent:
+  - `NotchAgentSupport`: added `NotchAgentTab` enum (`.chat` vs `.telemetry`) to represent the active mode of the Notch AI Agents page;
+  - `NotchService`: added `@Published package var agentTab: NotchAgentTab = .chat`;
+  - `NotchAgentsView`: added top segmented picker allowing switching between interactive prompt / chat (`NexusAgentQuickPromptView`) and telemetry card grid;
+  - `NotchAgentStrip`: updated `NotchAgentRestingWing` to observe `NexusAgentService.shared.session`, rendering an animated breathing sparkles glyph on the leading wing and active tool execution or elapsed time badge on the trailing wing when an agent turn runs, with click-to-open interaction opening `.agents` in `.chat` mode;
+  - `NexusAgentQuickPromptSession`: added native `NotchNotice` slide-out alerts on agent turn completion and when pausing for tool approval;
+  - `NexusAgentTests`: added `notchIntegration` unit test suite covering `NotchAgentTab`, `NotchService.agentTab` mutations, and `NotchNotice` agent event creation.
 - **2026-10-07**: Token streaming, plan mode append, and approval cards for Nexus Agent:
   - `NexusAgentSupport`: added `claudePermissionMode` mapping to `NexusAgentApprovalMode` (`bypassPermissions`, `acceptEdits`, `plan`, `default`), added `NexusAgentApprovalRequest` data model, added `totalCostUSD: Double?` to `NexusAgentTurnMetrics`, updated agent arguments to use `--append-system-prompt` instead of `--system-prompt` to prevent clobbering Claude Code internal tools, added `--output-format stream-json --include-partial-messages --verbose` for live token streaming, and extended `NexusAgentStreamEvent` to emit `.approval` and parse cost and token usage from `result` events;
   - `NexusAgentQuickPromptSession`: added `approvalRequest` and `totalCostUSD` properties to `NexusAgentChatMessage`, handled `.approval` stream events, added `decideApproval(messageID:decision:)` state machine, and captured turn cost;

@@ -126,40 +126,63 @@ package struct NotchAgentReadoutTimeline<Content: View>: View {
 package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
+    @ObservedObject private var nexusSession = NexusAgentService.shared.session
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     package var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
+        TimelineView(.periodic(from: .now, by: nexusSession.isRunning ? 1 : 60)) { context in
             content(now: context.date)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            NotchService.shared.agentTab = .chat
+            NotchService.shared.select(.agents)
         }
     }
 
     @ViewBuilder private func content(now: Date) -> some View {
-        let snapshot = usage.snapshot
-        let limit = NotchAgentSupport.restingLimit(snapshot, focus: NotchAgentLimitFocus(rawValue: focus) ?? .mostUsed, now: now)
-        let used = display == NotchAgentLimitDisplay.used.rawValue
-        if let limit {
-            let tint = agentLimitTint(limit.provider, usedFraction: limit.window.usedFraction)
+        if nexusSession.isRunning {
             if leading {
-                NotchAgentRing(value: used ? limit.window.usedFraction : limit.window.remainingFraction,
-                               tint: tint, lineWidth: 2)
-                    .frame(width: 11, height: 11)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .scaleEffect(nexusSession.elapsedSeconds % 2 == 0 ? 1.15 : 0.85)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: nexusSession.elapsedSeconds)
             } else {
-                Text(AgentFormat.percent(used ? limit.window.usedFraction : limit.window.remainingFraction))
-                    .font(.system(size: 9, weight: .medium))
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
-        } else if let provider = AgentProvider.allCases.first(where: snapshot.seen.contains) {
-            if leading {
-                NotchAgentMark(provider: provider, size: 10)
-            } else {
-                Text(AgentFormat.cost(snapshot.usage(.today).total.cost))
-                    .font(.system(size: 9, weight: .medium))
-                    .monospacedDigit()
+                let badge = nexusSession.activity ?? "\(nexusSession.elapsedSeconds)s"
+                Text(badge)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+            }
+        } else {
+            let snapshot = usage.snapshot
+            let limit = NotchAgentSupport.restingLimit(snapshot, focus: NotchAgentLimitFocus(rawValue: focus) ?? .mostUsed, now: now)
+            let used = display == NotchAgentLimitDisplay.used.rawValue
+            if let limit {
+                let tint = agentLimitTint(limit.provider, usedFraction: limit.window.usedFraction)
+                if leading {
+                    NotchAgentRing(value: used ? limit.window.usedFraction : limit.window.remainingFraction,
+                                   tint: tint, lineWidth: 2)
+                        .frame(width: 11, height: 11)
+                } else {
+                    Text(AgentFormat.percent(used ? limit.window.usedFraction : limit.window.remainingFraction))
+                        .font(.system(size: 9, weight: .medium))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            } else if let provider = AgentProvider.allCases.first(where: snapshot.seen.contains) {
+                if leading {
+                    NotchAgentMark(provider: provider, size: 10)
+                } else {
+                    Text(AgentFormat.cost(snapshot.usage(.today).total.cost))
+                        .font(.system(size: 9, weight: .medium))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             }
         }
     }

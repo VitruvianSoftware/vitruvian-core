@@ -34,6 +34,7 @@ enum NexusAgentTests {
         sessionArchiving(suite)
         claudeSessionTitles(suite)
         claudeEnhancementsAndApprovals(suite)
+        notchIntegration(suite)
     }
 
     // MARK: - .env
@@ -1184,4 +1185,41 @@ enum NexusAgentTests {
         service.session.decideApproval(messageID: msg.id, decision: .sessionAllowed)
         suite.expect(service.session.messages.first?.approvalRequest?.status == .sessionAllowed, "decideApproval updates status to sessionAllowed")
     }
+
+    // MARK: - Notch Integration
+
+    private static func notchIntegration(_ suite: TestSuite) {
+        // 1. NotchAgentTab enum cases
+        suite.expect(NotchAgentTab.allCases == [.chat, .telemetry], "NotchAgentTab supports chat and telemetry")
+        suite.expect(NotchAgentTab.chat.id == "chat" && NotchAgentTab.telemetry.id == "telemetry", "NotchAgentTab ids match raw values")
+
+        // 2. NotchService agentTab default and mutations
+        let notchService = NotchService.shared
+        let originalTab = notchService.agentTab
+        defer { notchService.agentTab = originalTab }
+
+        notchService.agentTab = .telemetry
+        suite.expect(notchService.agentTab == .telemetry, "NotchService agentTab can be set to telemetry")
+        notchService.agentTab = .chat
+        suite.expect(notchService.agentTab == .chat, "NotchService agentTab can be set to chat")
+
+        // 3. NotchNotice creation for agent events
+        let notice = NotchNotice(
+            event: .agents,
+            title: "Agent — Done",
+            detail: "Task completed",
+            symbol: "sparkles"
+        )
+        suite.expect(notice.event == .agents, "NotchNotice event is .agents")
+        suite.expect(notice.title == "Agent — Done", "NotchNotice title is preserved")
+        suite.expect(notice.symbol == "sparkles", "NotchNotice symbol is preserved")
+
+        // 4. NexusAgentQuickPromptSession live activity & running state
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        suite.expect(!service.session.isRunning, "Session is initially not running")
+        suite.expect(service.session.activity == nil, "Initial activity is nil")
+    }
 }
+
