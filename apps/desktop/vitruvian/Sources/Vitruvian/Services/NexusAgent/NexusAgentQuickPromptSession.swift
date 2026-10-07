@@ -5,6 +5,7 @@
 // MIT, Copyright (c) 2026 VitruvianSoftware): the streaming chat of its
 // Quick Prompt window: the pill, the recent-sessions drawer and the chat.
 
+import AppKit
 import Foundation
 import VitruvianCore
 
@@ -16,12 +17,41 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
     package let role: Role
     package var text: String
     package var isError: Bool
+    package var durationMs: Int?
+    package var inputTokens: Int?
+    package var outputTokens: Int?
+    package var cachedTokens: Int?
+    package var numTurns: Int?
+    package var toolCalls: Int?
+    package var modelName: String?
+    package var stopReason: String?
 
-    package init(id: UUID = UUID(), role: Role, text: String, isError: Bool = false) {
+    package init(
+        id: UUID = UUID(),
+        role: Role,
+        text: String,
+        isError: Bool = false,
+        durationMs: Int? = nil,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cachedTokens: Int? = nil,
+        numTurns: Int? = nil,
+        toolCalls: Int? = nil,
+        modelName: String? = nil,
+        stopReason: String? = nil
+    ) {
         self.id = id
         self.role = role
         self.text = text
         self.isError = isError
+        self.durationMs = durationMs
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cachedTokens = cachedTokens
+        self.numTurns = numTurns
+        self.toolCalls = toolCalls
+        self.modelName = modelName
+        self.stopReason = stopReason
     }
 }
 
@@ -54,15 +84,28 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     @Published package private(set) var sessionTitle: String?
     /// True while viewing or continuing a resumed conversation.
     @Published package private(set) var isResumed = false
+    /// The last prompt that failed, allowing 1-click retry.
+    @Published package var lastFailedPrompt: String?
+    /// Elapsed seconds during current active generation.
+    @Published package private(set) var elapsedSeconds: Int = 0
+    /// History of sent prompts for Up/Down arrow navigation.
+    @Published package var promptHistory: [String] = []
+    @Published package var historyIndex: Int = -1
+    /// Callback when an agent turn completes (reply text, isError).
+    package var onTurnFinished: ((String, Bool) -> Void)?
     /// Turns run with `--mode plan` (read-only) while on. Remembered.
     @Published package var planMode: Bool {
         didSet { environment.defaults[Preferences.nexusAgentPlanMode] = planMode }
     }
+    /// Turns run with `-w` (isolated git worktree) while on.
+    @Published package var worktreeMode: Bool = false
 
     private let environment: NexusAgentService.Environment
     private var running: NexusAgentRunningAgent?
     private var buffer = NexusAgentLineBuffer()
     private var replyID: UUID?
+    private var currentToolCalls = 0
+    private var elapsedTimer: Timer?
     /// Callbacks from a turn that has since been stopped or replaced are dropped.
     private var turn = 0
     private var stoppedByUser = false
@@ -145,6 +188,9 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         draft = ""
         mode = .chat
         messages.append(NexusAgentChatMessage(role: .user, text: text))
+        if !promptHistory.contains(text) { promptHistory.append(text) }
+        historyIndex = -1
+        lastFailedPrompt = nil
         guard let agentPath else {
             messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
             return
@@ -155,13 +201,24 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         noise = []
         stoppedByUser = false
         reportedError = false
-        let reply = NexusAgentChatMessage(role: .agent, text: "")
+        currentToolCalls = 0
+        let model = configuration.model.trimmingCharacters(in: .whitespaces)
+        let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
         replyID = reply.id
         messages.append(reply)
         isRunning = true
         activity = nil
+        elapsedSeconds = 0
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.elapsedSeconds += 1
+            }
+        }
         let arguments = NexusAgentSupport.agentArguments(prompt: text, configuration: turnConfiguration(configuration),
-                                                         conversationID: conversationID)
+                                                         conversationID: conversationID,
+                                                         planMode: planMode,
+                                                         worktreeMode: worktreeMode)
         let childEnvironment = NexusAgentSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
         do {
@@ -171,6 +228,8 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
                                                   { [weak self] status in self?.agentDidExit(status, turn: current) })
         } catch {
             isRunning = false
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
             replace(reply: strings.agentFailed, isError: true)
             replyID = nil
         }
@@ -180,6 +239,8 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     package func stop() {
         guard isRunning else { return }
         stoppedByUser = true
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
         running?.terminate()
     }
 
@@ -193,6 +254,10 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         conversationID = nil
         sessionTitle = nil
         isResumed = false
+        lastFailedPrompt = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        elapsedSeconds = 0
         messages = []
         mode = .compact
     }
@@ -234,10 +299,25 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
             appendToReply(delta)
         case .tool(let name, let done):
             activity = done ? nil : name
-        case .finished(_, let response, let error, let id):
+            if done { currentToolCalls += 1 }
+            if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
+                messages[idx].toolCalls = currentToolCalls
+            }
+        case .finished(let status, let response, let error, let id, let metrics):
             activity = nil
             if let id { conversationID = id }
             if let response, currentReplyText.isEmpty { appendToReply(response) }
+            if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
+                if let metrics {
+                    messages[idx].durationMs = metrics.durationMs
+                    messages[idx].inputTokens = metrics.inputTokens
+                    messages[idx].outputTokens = metrics.outputTokens
+                    messages[idx].cachedTokens = metrics.cachedTokens
+                    messages[idx].numTurns = metrics.numTurns
+                }
+                messages[idx].toolCalls = currentToolCalls
+                messages[idx].stopReason = status
+            }
             if let error {
                 reportedError = true
                 messages.append(NexusAgentChatMessage(role: .agent, text: error, isError: true))
@@ -251,19 +331,34 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         running = nil
         isRunning = false
         activity = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        elapsedSeconds = 0
+        let completedReply = currentReplyText
+        let hadError = reportedError || (status != 0 && completedReply.isEmpty)
         if stoppedByUser {
             if currentReplyText.isEmpty { replace(reply: strings.replyStopped, isError: false) }
         } else if currentReplyText.isEmpty {
             if reportedError {
                 // agy said what went wrong in a bubble of its own.
                 removeReply()
+                lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
             } else if status != 0 {
                 let detail = ([strings.agentFailed] + noise).joined(separator: "\n")
                 replace(reply: detail, isError: true)
+                lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
             } else {
                 replace(reply: strings.emptyReply, isError: false)
+                NSSound(named: "Tink")?.play()
+            }
+        } else {
+            if status != 0 || reportedError {
+                lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
+            } else {
+                NSSound(named: "Tink")?.play()
             }
         }
+        onTurnFinished?(completedReply, hadError)
         replyID = nil
     }
 
