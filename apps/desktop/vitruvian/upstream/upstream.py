@@ -692,7 +692,10 @@ def restore_package(merged, ours):
                 shift_from = i + 1
                 balance = line.count("(") - line.count(")")
                 # Parameters aligned under the opening parenthesis move with it.
-                while balance > 0 and shift_from < len(lines):
+                # A list that starts on the next line hangs from the indent
+                # instead, which the modifier does not move.
+                hanging = line.rstrip().endswith("(")
+                while balance > 0 and not hanging and shift_from < len(lines):
                     nxt = lines[shift_from]
                     if _indent(nxt) <= _indent(line):
                         break

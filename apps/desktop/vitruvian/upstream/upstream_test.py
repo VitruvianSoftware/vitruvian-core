@@ -345,6 +345,18 @@ class PackageTest(unittest.TestCase):
             self.restore(merged, ours),
         )
 
+    def test_hanging_parameters_stay_where_they_are(self):
+        ours = "package enum E {\n    package static func a() {}\n}\n"
+        merged = (
+            "enum E {\n    static func a() {}\n"
+            "    static func b(\n        _ x: Int,\n        y: Int\n    ) -> Int {\n"
+            "        x + y\n    }\n}\n"
+        )
+        self.assertIn(
+            "    package static func b(\n        _ x: Int,\n        y: Int\n    ) -> Int {\n",
+            self.restore(merged, ours),
+        )
+
     def test_unchanged_lines_keep_exactly_what_they_had(self):
         ours = (
             "package struct A: View {\n    package let text: String\n"
