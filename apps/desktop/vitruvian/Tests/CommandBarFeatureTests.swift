@@ -1491,6 +1491,89 @@ enum CommandBarFeatureTests {
                "a bare letter is never taken from every app on the Mac")
         suite.expect(CommandBarRowShortcuts.decode(CommandBarRowShortcuts.encode(bound)) == bound,
                "the bindings survive a round trip through storage")
+        suite.expect(CommandBarRowShortcuts.hidesAppInFront(isFrontmost: true, isHidden: false,
+                                                            ownsFrontWindow: true),
+               "an app in front with its window in front hides on its own shortcut")
+        suite.expect(!CommandBarRowShortcuts.hidesAppInFront(isFrontmost: true, isHidden: false,
+                                                             ownsFrontWindow: false),
+               "an app in front without the front window comes forward instead of hiding")
+        suite.expect(!CommandBarRowShortcuts.hidesAppInFront(isFrontmost: false, isHidden: false,
+                                                             ownsFrontWindow: true),
+               "an app behind another one comes forward")
+        suite.expect(!CommandBarRowShortcuts.hidesAppInFront(isFrontmost: true, isHidden: true,
+                                                             ownsFrontWindow: true),
+               "a hidden app comes back")
+        var windowListRead = false
+        suite.expect(!CommandBarRowShortcuts.hidesAppInFront(isFrontmost: false, isHidden: false,
+                                                             ownsFrontWindow: {
+                                                                 windowListRead = true
+                                                                 return true
+                                                             }()) && !windowListRead,
+               "bringing an app forward never reads the window list")
+        // The window server lists windows front to back. The menu bar, the
+        // Dock and floating panels sit above every app's windows on higher
+        // layers, so only the first normal window says whose window is in
+        // front.
+        func listedWindow(pid: Int32, layer: Int, alpha: Double = 1) -> [String: Any] {
+            [kCGWindowLayer as String: NSNumber(value: layer),
+             kCGWindowAlpha as String: NSNumber(value: alpha),
+             kCGWindowOwnerPID as String: NSNumber(value: pid)]
+        }
+        let finderPID: Int32 = 1001
+        let menuBarAndDock = [listedWindow(pid: 90, layer: 25), listedWindow(pid: 91, layer: 20)]
+        suite.expect(WindowServerSupport.frontWindowOwner(
+                    in: menuBarAndDock + [listedWindow(pid: finderPID, layer: 0),
+                                          listedWindow(pid: 1002, layer: 0)]) == finderPID,
+               "the window in front is the first normal one, past the menu bar and the Dock")
+        let buriedOwner = WindowServerSupport.frontWindowOwner(
+            in: menuBarAndDock + [listedWindow(pid: 1002, layer: 0), listedWindow(pid: finderPID, layer: 0)])
+        suite.expect(buriedOwner == 1002
+                && !CommandBarRowShortcuts.hidesAppInFront(isFrontmost: true, isHidden: false,
+                                                            ownsFrontWindow: buriedOwner == finderPID),
+               "an app made active under another app's windows comes forward instead of hiding them")
+        suite.expect(WindowServerSupport.frontWindowOwner(in: menuBarAndDock) == nil,
+               "an app showing only the desktop owns no front window")
+        suite.expect(WindowServerSupport.frontWindowOwner(
+                    in: [listedWindow(pid: 1002, layer: 0, alpha: 0),
+                         listedWindow(pid: finderPID, layer: 0)]) == finderPID,
+               "a fully transparent window is in front of nothing")
+
+        // An app the uninstaller removed frees its keys for another app.
+        suite.expect(CommandBarRowShortcuts.keyFreed(
+                    byRemovingAppAt: "/Applications/Thunderbird.app", bundleID: "org.mozilla.thunderbird",
+                    remainingBundleIDs: ["com.apple.mail"]) == "app.bundle.org.mozilla.thunderbird",
+               "a removed app's shortcut is freed under the row the bar listed it as")
+        suite.expect(CommandBarRowShortcuts.keyFreed(
+                    byRemovingAppAt: "/Applications/Tool.app", bundleID: nil,
+                    remainingBundleIDs: []) == "app./Applications/Tool.app",
+               "an app with no bundle ID frees the row keyed by its path")
+        suite.expect(CommandBarRowShortcuts.keyFreed(
+                    byRemovingAppAt: "/Users/me/Applications/Thunderbird.app",
+                    bundleID: "org.mozilla.thunderbird",
+                    remainingBundleIDs: ["org.mozilla.thunderbird"]) == nil,
+               "another installed copy of the app keeps the shortcut")
+        suite.expect(CommandBarRowShortcuts.appKey(bundleID: "com.apple.mail", path: "/Applications/Mail.app")
+                == "app.bundle.com.apple.mail",
+               "an app with a bundle ID is listed by it, not by where it lives")
+        // The uninstaller frees the row under the key the catalog lists the
+        // app by. (The catalog leaves out an app that shares the running
+        // bundle's identifier, which under the test runner is nil, so the
+        // path-keyed rows are covered by keyFreed's own checks above.)
+        let listedApps = [
+            InstalledApps.InstalledApp(id: "/Applications/Thunderbird.app", name: "Thunderbird",
+                                       bundleID: "org.mozilla.thunderbird",
+                                       url: URL(fileURLWithPath: "/Applications/Thunderbird.app"), isSystem: false),
+            InstalledApps.InstalledApp(id: "/Users/me/Applications/Mail.app", name: "Mail",
+                                       bundleID: "com.apple.mail",
+                                       url: URL(fileURLWithPath: "/Users/me/Applications/Mail.app"), isSystem: false),
+        ]
+        let listedRows = CommandBarCatalog.appEntries(listedApps, runningBundleIDs: [], runningPaths: [],
+                                                      bar: FeatureStrings.commandBar(L10n.shared.language))
+        suite.expect(listedRows.map(\.stableKey) == listedApps.compactMap {
+                    CommandBarRowShortcuts.keyFreed(byRemovingAppAt: $0.id, bundleID: $0.bundleID,
+                                                    remainingBundleIDs: [])
+                },
+               "an app row is keyed by the same seam the uninstaller frees it under")
 
         // ⌃⌘D is Look Up (symbolic hotkey 70), which System Settings does not
         // list: an app row must offer to take it over, as a window layout row

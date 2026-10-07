@@ -172,6 +172,8 @@ package final class AppUninstaller: ObservableObject {
         package var quit: (_ bundle: URL) -> Void
         package var packages: any PackageManager
         package var notify: (_ icon: String, _ message: String) -> Void
+        /// Frees the Command Bar shortcut of an app the removal took away.
+        package var releaseShortcut: @MainActor (_ app: URL, _ bundleID: String?) -> Void
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(background: @escaping @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void,
@@ -180,7 +182,8 @@ package final class AppUninstaller: ObservableObject {
                      remove: @escaping @Sendable (Removal) -> (freed: Int64, failed: [Leftover]),
                      quit: @escaping (URL) -> Void,
                      packages: any PackageManager,
-                     notify: @escaping (String, String) -> Void) {
+                     notify: @escaping (String, String) -> Void,
+                     releaseShortcut: @escaping @MainActor (URL, String?) -> Void = { _, _ in }) {
             self.background = background
             self.main = main
             self.scan = scan
@@ -188,6 +191,7 @@ package final class AppUninstaller: ObservableObject {
             self.quit = quit
             self.packages = packages
             self.notify = notify
+            self.releaseShortcut = releaseShortcut
         }
 
         /// Main-actor: it hands over the shared package manager.
@@ -212,7 +216,8 @@ package final class AppUninstaller: ObservableObject {
                     }
                 },
                 packages: HomebrewManager.shared,
-                notify: { QuickToolHUD.show(icon: $0, message: $1) })
+                notify: { QuickToolHUD.show(icon: $0, message: $1) },
+                releaseShortcut: { AppUninstaller.releaseCommandBarShortcut(ofRemovedAppAt: $0, bundleID: $1) })
         }
     }
 
@@ -384,6 +389,7 @@ package final class AppUninstaller: ObservableObject {
                               infoIdentity: targetInfoIdentity,
                               alreadyFreed: homebrewRemovalSize,
                               packageRemovedApplication: homebrewRemovedApplication)
+        let targetURL = removal.targetURL, targetBundleID = target?.bundleID
         let remove = environment.remove, main = environment.main
         environment.background(0.3) { [weak self] in
             let (freed, failed) = remove(removal)
@@ -392,6 +398,7 @@ package final class AppUninstaller: ObservableObject {
                 guard let self, self.phase == .removing else { return }
                 self.items = []
                 self.phase = .done(freed: freed, failed: failed)
+                if let targetURL { self.environment.releaseShortcut(targetURL, targetBundleID) }
             }
         }
     }
@@ -592,6 +599,31 @@ package final class AppUninstaller: ObservableObject {
             removeSelected()
         } else {
             phase = .done(freed: homebrewRemovalSize, failed: [])
+            environment.releaseShortcut(targetURL, target?.bundleID)
+        }
+    }
+
+    /// A removed app's own Command Bar shortcut goes with it, so the keys can
+    /// be given to another app. Checked off the main thread, since finding
+    /// another copy the bar still lists reads every application folder and
+    /// asks Spotlight for the ones in the home folder.
+    static func releaseCommandBarShortcut(ofRemovedAppAt url: URL, bundleID: String?) {
+        // Almost no removed app has a shortcut, so a removal without one never
+        // pays for the search below.
+        let path = url.standardizedFileURL.path
+        guard AppFeature.commandBar.isAvailable,
+              CommandBarService.shared.rowShortcuts[
+                  CommandBarRowShortcuts.appKey(bundleID: bundleID, path: path)] != nil else { return }
+        DispatchQueue.global(qos: .utility).async {
+            guard UninstallerSupport.isConfirmedAbsent(at: url) else { return }
+            let remaining = Set(InstalledApps.installedApplications(
+                includeSystemApplications: true,
+                spotlightPaths: CommandBarService.spotlightApplicationPaths())
+                .compactMap(\.bundleID))
+            guard let key = CommandBarRowShortcuts.keyFreed(
+                byRemovingAppAt: path, bundleID: bundleID,
+                remainingBundleIDs: remaining) else { return }
+            DispatchQueue.main.async { CommandBarService.shared.forgetRowShortcut(forKey: key) }
         }
     }
 

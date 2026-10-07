@@ -646,6 +646,7 @@ package enum Defaults {
         // they don't want.
         DefaultsKey.monitorInterval: Preferences.monitorInterval.defaultValue,
         DefaultsKey.temperatureUnit: Preferences.temperatureUnit.defaultValue,
+        DefaultsKey.networkSpeedUnit: Preferences.networkSpeedUnit.defaultValue,
         DefaultsKey.menuBarCPUTemperature: Preferences.menuBarCPUTemperature.defaultValue,
         DefaultsKey.menuBarGPUTemperature: Preferences.menuBarGPUTemperature.defaultValue,
         DefaultsKey.menuBarBatteryTemperature: Preferences.menuBarBatteryTemperature.defaultValue,
@@ -708,6 +709,7 @@ package enum Defaults {
         DefaultsKey.monitorSysMemory: Preferences.monitorSysMemory.defaultValue,
         DefaultsKey.monitorSysAlerts: Preferences.monitorSysAlerts.defaultValue,
         DefaultsKey.monitorSysUptime: Preferences.monitorSysUptime.defaultValue,
+        DefaultsKey.monitorSysConnectedDevices: Preferences.monitorSysConnectedDevices.defaultValue,
         DefaultsKey.monitorNetSpeed: Preferences.monitorNetSpeed.defaultValue,
         DefaultsKey.monitorNetApps: Preferences.monitorNetApps.defaultValue,
         DefaultsKey.monitorNetTotals: Preferences.monitorNetTotals.defaultValue,
