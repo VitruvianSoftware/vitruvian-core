@@ -1703,6 +1703,136 @@ def package_views_publish_their_body(repo):
     return problems
 
 
+LAYER_ORDER = {"Core": 0, "Design": 1, "Services": 2, "UI": 3}
+STATIC_OWNER_RE = re.compile(
+    r"^([ \t]*)(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+    r"((?:(?:public|open|package|internal|private|fileprivate|final|indirect|nonisolated)[ \t]+)*)"
+    r"(struct|class|enum|actor|protocol|extension)[ \t]+([A-Za-z_][\w.]*)"
+)
+STATIC_MEMBER_RE = re.compile(
+    r"^([ \t]*)(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+    r"((?:(?:public|open|package|internal|private|fileprivate|final|nonisolated(?:\(unsafe\))?"
+    r"|override|mutating|lazy)[ \t]+)*)(?:static|class)[ \t]+"
+    r"((?:(?:public|open|package|internal|private|fileprivate|final|nonisolated(?:\(unsafe\))?)[ \t]+)*)"
+    r"(?:let|var|func)[ \t]+([A-Za-z_]\w*)"
+)
+STATIC_REFERENCE_RE = re.compile(r"(?<![\w.])([A-Z]\w*)\.([A-Za-z_]\w*)")
+_VISIBLE = {"public", "open", "package"}
+
+
+def _layer(path):
+    """0-3 for the four modules, 4 for the app around them, 5 for tests."""
+    if path.startswith("Tests/"):
+        return 5
+    rest = path[len(APP_PREFIX) :] if path.startswith(APP_PREFIX) else ""
+    return LAYER_ORDER.get(rest.split("/", 1)[0], 4)
+
+
+def internal_statics_reached_from_later_layers(lines_of, paths):
+    """(path, line, Owner.member) for each `Owner.member` that a later module,
+    the app or a test names, where every declaration of that static member or
+    nested type sits in an earlier module without `package`."""
+    declared = {}
+    for path in paths:
+        layer = _layer(path)
+        if layer > 3:
+            continue
+        owners = []
+        for line in lines_of(path):
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip(" \t"))
+            while owners and owners[-1][0] >= indent:
+                owners.pop()
+            owner = STATIC_OWNER_RE.match(line)
+            if owner:
+                name = owner.group(4)
+                if owner.group(3) != "extension":
+                    name = name.split(".")[-1]
+                    if owners:
+                        visible = bool(set(owner.group(2).split()) & _VISIBLE)
+                        declared.setdefault((owners[-1][1], name), []).append(
+                            (layer, visible)
+                        )
+                owners.append((indent, name))
+                continue
+            member = STATIC_MEMBER_RE.match(line)
+            if member and owners and owners[-1][0] == indent - 4:
+                words = set(member.group(2).split()) | set(member.group(3).split())
+                declared.setdefault((owners[-1][1], member.group(4)), []).append(
+                    (layer, bool(words & _VISIBLE))
+                )
+    found = []
+    for path in paths:
+        layer = _layer(path)
+        for number, line in enumerate(lines_of(path), 1):
+            code = re.sub(r'"(?:\\.|[^"\\])*"', '""', line.split("//", 1)[0])
+            for reference in STATIC_REFERENCE_RE.finditer(code):
+                where = declared.get((reference.group(1), reference.group(2)))
+                if not where or any(visible for _, visible in where):
+                    continue
+                if all(home < layer for home, _ in where):
+                    found.append(
+                        (path, number, f"{reference.group(1)}.{reference.group(2)}")
+                    )
+    return found
+
+
+def later_layers_reach_only_package_statics(repo):
+    """A static member or nested type that a later module, the app or a test
+    names is `package`. The compiler refuses an internal one ("is
+    inaccessible due to 'internal' protection level"), but only the macOS
+    build compiles, so this says it on Linux first. Upstream is one module,
+    so a port brings in statics written without a modifier."""
+    problems = []
+    sample = {
+        "Sources/Vitruvian/Services/A.swift": [
+            "package enum Support {",
+            '    static let notice = Notification.Name("x")',
+            "    package static let shared = 1",
+            "    static func local() {}",
+            "    enum Kind { case a }",
+            "}",
+        ],
+        "Sources/Vitruvian/UI/B.swift": [
+            "struct View {",
+            "    let a = Support.notice",
+            "    let b = Support.shared",
+            "    let c = Support.Kind.a",
+            '    let d = "Support.notice"',
+            "}",
+        ],
+        "Sources/Vitruvian/Services/C.swift": [
+            "func f() { Support.local() }",
+        ],
+    }
+    if internal_statics_reached_from_later_layers(sample.get, sorted(sample)) != [
+        ("Sources/Vitruvian/UI/B.swift", 2, "Support.notice"),
+        ("Sources/Vitruvian/UI/B.swift", 4, "Support.Kind"),
+    ]:
+        problems.append(
+            "the scan finds an internal static and nested type named from a "
+            "later module, and not package ones, strings or same-module uses"
+        )
+
+    def lines_of(path):
+        return (
+            repo.lines_at(path)
+            if path in repo.lines
+            else repo.tests.get(path, "").split("\n")
+        )
+
+    paths = repo.app_sources() + repo.test_paths
+    for path, number, name in internal_statics_reached_from_later_layers(
+        lines_of, paths
+    ):
+        problems.append(
+            f"{path}:{number}: {name} is not package, but this module cannot "
+            "see an internal member of an earlier one"
+        )
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -1742,6 +1872,7 @@ RULES = [
     preferences_are_reached_through_their_type,
     package_signatures_name_no_internal_type,
     package_views_publish_their_body,
+    later_layers_reach_only_package_statics,
 ]
 
 
