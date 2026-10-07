@@ -997,10 +997,14 @@ package final class CommandBarService: ObservableObject {
         objectWillChange.send()
     }
 
+    /// Settings reads titles through here while SwiftUI draws the page, and a
+    /// publish from inside a view update is undefined behavior. So this fills
+    /// the lookup maps without assigning `appEntries`. The rows the last scan
+    /// built already name the same apps, and the next opening rebuilds them.
     private func ensureCatalogIndexed() {
         if entriesByStableKey.isEmpty {
             rebuildCatalog()
-            rebuildRunningEntries()
+            rebuildRunningEntries(apps: false)
         }
     }
 
@@ -1159,16 +1163,18 @@ package final class CommandBarService: ObservableObject {
 
     /// The rows that depend on what is running right now. Cheap enough to
     /// redo on every open, which is the only way the live dot tells the truth.
-    private func rebuildRunningEntries(index: Bool = true) {
+    private func rebuildRunningEntries(index: Bool = true, apps: Bool = true) {
         let bar = FeatureStrings.commandBar(L10n.shared.language)
         let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
         quitEntries = CommandBarCatalog.quitEntries(running, bar: bar)
-        let bundleIDs = Set(running.compactMap(\.bundleIdentifier))
-        let paths = Set(running.compactMap { $0.bundleURL?.standardizedFileURL.path })
-        appEntries = CommandBarCatalog.appEntries(cachedApps,
-                                                  runningBundleIDs: bundleIDs,
-                                                  runningPaths: paths,
-                                                  bar: bar)
+        if apps {
+            let bundleIDs = Set(running.compactMap(\.bundleIdentifier))
+            let paths = Set(running.compactMap { $0.bundleURL?.standardizedFileURL.path })
+            appEntries = CommandBarCatalog.appEntries(cachedApps,
+                                                      runningBundleIDs: bundleIDs,
+                                                      runningPaths: paths,
+                                                      bar: bar)
+        }
         uninstallEntries = CommandBarCatalog.uninstallEntries(cachedApps,
                                                               uninstallable: uninstallableAppIDs,
                                                               bar: bar)
