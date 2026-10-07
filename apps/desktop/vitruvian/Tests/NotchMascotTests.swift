@@ -89,7 +89,7 @@ enum NotchMascotTests {
     }
 
     private static func preferenceContracts(_ suite: TestSuite) {
-        let domain = "com.vitruvian.tests.notch-mascot"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-mascot"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
