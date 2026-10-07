@@ -15,16 +15,16 @@ a16c1bf929bb996c382962d7c4357531b429eb68	66da680f4e2efcdfca0b3b76b29704b021f206d
 b80fc8dd8bf9b3be583927653ffd362550bc9710	130ab569005ac0c6fb21a2be1ea6d93cfe78ade0	2026-09-28	ported	#2829	fix(spaces): remember what the Dock still runs until its restart
 caaba0cfdc581563d4fca2cfc3346ad61aad924c	ef28bbbb851ba75bf09ec68670c65bf1b9e3b107	2026-09-28	ported	#2829	fix(spaces): tie an owed Dock restart to the Dock process that owes it
 b6be2800e6df437815d747707c3c896c4035ae3d	c2d4d9000318bff4c6cbe04c8dabfe0d7215ba08	2026-09-29	ported	#2829	fix(spaces): remember a hold that found rearranging already off
-a65e07ca0bf129d17e36e18981f26d789e0dd3b5	ed78b712fd1f32ef8603cf32b9311c27e46e1d9c	2026-09-26	pending	-	fix(window-layout): support modifier-only pointer triggers
-2d71ee0d96ddd78cc9c8f19e5f0570a2e947eca0	9e97948e3f490dcc50a636e75816c68e4adeacb8	2026-09-26	pending	-	fix(window-layout): preserve shared modifier shortcuts
-31b07abb746e5c3cfa4746ea6502f649a2defe70	4f23b4393842c3063f69790ba758f41d75673d43	2026-09-28	pending	-	fix(window-layout): keep modifier observation nonblocking
-96d1461ac18fb4380218a360c0aa987bf8806905	fe342777e68f3adf128b4a20fe3f61c179bd7b17	2026-09-29	pending	-	fix(window-layout): cancel pending modifier starts on keys
-65e3fa0d9a5b4fc57a2c8ec80a85d8f127e6d9d4	59e853242498bdda0c0a4c76d6415527d0f6b054	2026-09-29	pending	-	fix(window-layout): preserve rearm after key cancellation
-2df3fd26d38b96dd09ac121c52a8c7466aa89832	53cd7f5e87ab94986dd3f9248b83158b5308a5f0	2026-09-29	pending	-	test(window-layout): cover late modifier cleanup
-b2323fcb6be85a4e0ca96883736c9fb15d5e9f5c	dc2f72a8502601debf32853ac54cc1b0bdd67463	2026-09-29	pending	-	fix(window-layout): preserve native modifier interactions
-23c2a9e02668044162af12d95b3c38140d40ed60	16b51f62628555859864e9a4cc1a4a082506589f	2026-09-29	pending	-	test(window-layout): cover native modifier input
-fd7a433cefb9353eda7f07454a7616cc0d3df66b	c70c40f7cd51b05052afb8b3edaeb2ee2244b328	2026-09-29	pending	-	fix(window-layout): close deferred pointer race
-b2e6400cbf6adbddfa93eba2c33243604f36efbb	b98720c31023fab3b35deec7bd65fd5285cd370a	2026-09-29	pending	-	test(window-layout): exercise startup custody race
+a65e07ca0bf129d17e36e18981f26d789e0dd3b5	ed78b712fd1f32ef8603cf32b9311c27e46e1d9c	2026-09-26	ported	#2831	fix(window-layout): support modifier-only pointer triggers
+2d71ee0d96ddd78cc9c8f19e5f0570a2e947eca0	9e97948e3f490dcc50a636e75816c68e4adeacb8	2026-09-26	ported	#2831	fix(window-layout): preserve shared modifier shortcuts
+31b07abb746e5c3cfa4746ea6502f649a2defe70	4f23b4393842c3063f69790ba758f41d75673d43	2026-09-28	ported	#2831	fix(window-layout): keep modifier observation nonblocking
+96d1461ac18fb4380218a360c0aa987bf8806905	fe342777e68f3adf128b4a20fe3f61c179bd7b17	2026-09-29	ported	#2831	fix(window-layout): cancel pending modifier starts on keys
+65e3fa0d9a5b4fc57a2c8ec80a85d8f127e6d9d4	59e853242498bdda0c0a4c76d6415527d0f6b054	2026-09-29	ported	#2831	fix(window-layout): preserve rearm after key cancellation
+2df3fd26d38b96dd09ac121c52a8c7466aa89832	53cd7f5e87ab94986dd3f9248b83158b5308a5f0	2026-09-29	ported	#2831	test(window-layout): cover late modifier cleanup
+b2323fcb6be85a4e0ca96883736c9fb15d5e9f5c	dc2f72a8502601debf32853ac54cc1b0bdd67463	2026-09-29	ported	#2831	fix(window-layout): preserve native modifier interactions
+23c2a9e02668044162af12d95b3c38140d40ed60	16b51f62628555859864e9a4cc1a4a082506589f	2026-09-29	ported	#2831	test(window-layout): cover native modifier input
+fd7a433cefb9353eda7f07454a7616cc0d3df66b	c70c40f7cd51b05052afb8b3edaeb2ee2244b328	2026-09-29	ported	#2831	fix(window-layout): close deferred pointer race
+b2e6400cbf6adbddfa93eba2c33243604f36efbb	b98720c31023fab3b35deec7bd65fd5285cd370a	2026-09-29	ported	#2831	test(window-layout): exercise startup custody race
 4a8967e9990ecfdc298042f73d60f203e63c2964	0aa01628d924c5ca3c54e8aa44be4c7a2d02c18b	2026-10-04	pending	-	feat(notch): add a companion to the Dynamic Island and fit notices to their content (#2617)
 7e833bc2cf25be8d9b720759c063a7bc130d0d13	c7d2d44c258d3a300039c4e626e30f1bec1eda99	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): keep the upcoming release summary concise
 4c9d8b33522f0c17986ff255b8830d8aa3c73329	4a5174eea010e1fd2e6c6431b79a801183a3e0d2	2026-10-04	ported	#2801	fix(switcher): stop re-raising a window that a space hop already focused (#1883)
@@ -80,7 +80,7 @@ a52102f3f4c5ba303109717af3b94b66a1230b19	beae90f7d0ca5bd9bbe37738978981b19baa156
 1c9dfb3750f6980e589924cd7a26ac95808c7b4b	b3ec23a5f272da475655a463c8d1b4927e765335	2026-10-04	ported	#2814	feat(panel): force quit apps from the usage lists (#1889)
 3a5e107340ef2c2a270a5be7fb5581a43dab3f65	2655ff28b7e537abf9b0f72940a9e84d9c9f97b4	2026-10-04	ported	#2816	feat(color-picker): copy the selected color and close with enter (#2191)
 6d02e14437880a2fb3e33bfbef5fd293d28d4c39	d09e2762e7e8a7436aaee69c5acd56aa8a570909	2026-10-05	ported	#2816	fix(clipboard): cache folded search candidates across keystrokes (#1885) (#2156)
-5fb87aa29072f7daa63faf3007ce696b9d8317f2	3d4f38759f22e1fb1663997e4a702fd3db50c148	2026-10-04	pending	-	fix(window-layout): simplify the event mask for Swift 6.0
+5fb87aa29072f7daa63faf3007ce696b9d8317f2	3d4f38759f22e1fb1663997e4a702fd3db50c148	2026-10-04	ported	#2831	fix(window-layout): simplify the event mask for Swift 6.0
 db5d9caea24389bc603c917aa588fefc2e7225de	e3dba92f348e39f2e54fabca2f61d430e39bfe18	2026-10-04	ported	#2829	fix(spaces): honor reactivation after failed preference persistence
 a15a3af53ceba289a6d3b52801555e3d93e7a2a6	fcbd040e525b4b78b495381529aa0c33b0906868	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record clipboard and window improvements
 f66408ec7d022721d1420d098930b0d1156538b8	3f6ac5fec857cbb8d401754c1445bdc957e273ce	2026-10-05	ported	#2814	fix(notch): enlarge lyrics timing button click targets (#2574)
@@ -146,7 +146,7 @@ f1ed98781fa039b3bba47b25701bbbb77e142c68	f0c44a6c14b838fca524b7ac3b1932d8cbc08dd
 906646178553325e76107af78ff04bf352c10adf	e4a856f100c1b4b23bd231996ede1517894094f2	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the centred capsule and its fit sliders
 66f5f6362502a331f8c2c5be2881c69e2815b2a6	82e055954da19301800ac8c395380616cecf182c	2026-10-05	skipped	upstream's own version bump; this fork versions through release-please	Prepare 3.4.1-beta.2
 5eece7dcc09fe2521425c08aa8416999ee03c19e	e2b61afb85fb9f5210a3ecaaef1463624fe86852	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): tighten the 3.4.1-beta.2 notes
-0b7bad284385bafdcf3f0b79d9335a24b26d4253	f1e43a742aee2870c0c24e946aa6197be820eeb9	2026-10-05	pending	-	fix(window-layout): keep window snapping off the dragged app's main thread (#2697)
+0b7bad284385bafdcf3f0b79d9335a24b26d4253	f1e43a742aee2870c0c24e946aa6197be820eeb9	2026-10-05	ported	#2831	fix(window-layout): keep window snapping off the dragged app's main thread (#2697)
 adde26e1f03a8476ebf09da458d3b97c7665366d	bf0d1798077c1cbb64e8fe618700e168105ad4d4	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record smoother in-app drags with window snapping on
 2efe612c4d059d8fb52113d3dc610a3c2f873fee	14c526ba212068a057cff2a8b69a1e299e889103	2026-10-05	ported	#2824	test(mutation): follow the edited capture withhold into its new helper
 14e5ec75ea0728e32d428ba2ea5c763905037eca	6cf46f58b25f750a90f2bb51e616ab39cb75f17c	2026-10-05	skipped	touches only upstream-only paths	Release 3.4.1-beta.2
@@ -170,5 +170,5 @@ dd9d1160e8b6bbd3e41cef48a53968c4d089cd3a	-	2026-09-24	ported	#2829	Merge remote-
 9a0f8921fe982684a8772bf818375a3587b0eb7e	-	2026-09-28	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
 2c3b08d15628a5b054a4997f7e25c6efe89d146e	-	2026-09-29	ported	#2829	Merge remote-tracking branch 'origin/main' into feat/spaces-keep-order
 5db6be949fdb0873017544217da24e0a57eb874e	-	2026-09-27	skipped	merge that only resolves conflicts between two sides ported on their own	Merge vorssaint/main into claude/inspiring-curie-4p6k9g
-e3399a1657a35385b4c090466f0ab784227f7461	-	2026-10-04	pending	-	fix(window-layout): preserve deferred modifier gesture ownership
+e3399a1657a35385b4c090466f0ab784227f7461	-	2026-10-04	ported	#2831	fix(window-layout): preserve deferred modifier gesture ownership
 848b6042a77cae4038b7038c2c8636d2cc033aef	-	2026-10-04	ported	#2829	fix(spaces): preserve restoration across failed and delayed work
