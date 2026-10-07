@@ -153,10 +153,13 @@ enum AgentUsageReadTests {
 
         // The watcher callback and rescans both admit a path through
         // AgentLogRoot.accepts, and rescans find logs through discover.
-        let root = folder.appending(path: "session-state")
+        let state = folder.appending(path: "session-state")
+        try? FileManager.default.createDirectory(at: state.appending(path: "demo/workspace/nested"),
+                                                 withIntermediateDirectories: true)
+        // Listings report the real path, /private included, as file events do.
+        let root = AgentLogRoot.canonical(state)
         let session = root.appending(path: "demo")
         let workspace = session.appending(path: "workspace/nested")
-        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         let real = session.appending(path: "events.jsonl")
         let nested = workspace.appending(path: "events.jsonl")
         let arbitrary = session.appending(path: "data.jsonl")
