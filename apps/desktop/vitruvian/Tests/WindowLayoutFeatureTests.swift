@@ -49,11 +49,20 @@ enum WindowLayoutFeatureTests {
             suite.expect(trigger == .key(shortcut) && trigger?.storageValue == shortcut.storageValue,
                          "pointer layout keeps existing key-based shortcut storage")
         }
-        for value in ["modifiers:", "modifiers:shift", "modifiers:fn", "modifiers:control+",
+        for value in ["modifiers:", "modifiers:shift", "modifiers:control",
+                      "modifiers:shift+command", "modifiers:fn", "modifiers:control+",
                       "modifiers:control+unknown"] {
             suite.expect(WindowDirectionalTrigger(storageValue: value) == nil,
                          "invalid modifier trigger is rejected: \(value)")
         }
+        let shiftedOption: GlobalShortcutModifiers = [.shift, .option]
+        let controlCommand: GlobalShortcutModifiers = [.control, .command]
+        let shiftedOptionCommand: GlobalShortcutModifiers = [.shift, .option, .command]
+        suite.expect(!GlobalShortcutModifiers.command.isValidWindowDirectionalTrigger
+                && !shiftedOption.isValidWindowDirectionalTrigger
+                && controlCommand.isValidWindowDirectionalTrigger
+                && shiftedOptionCommand.isValidWindowDirectionalTrigger,
+            "modifier-only pointer layout requires two primary modifiers")
         suite.expect(GlobalShortcut(storageValue: "modifiers:control+command") == nil,
                      "ordinary global shortcuts do not accept modifier-only triggers")
         var interruptedRecording = ModifierShortcutRecording()
@@ -91,6 +100,13 @@ enum WindowLayoutFeatureTests {
             && extraModifierHold.update([]) == .none
             && extraModifierHold.update([.control, .command]) == .begin,
             "extra modifiers cancel pointer layout until the chord is released")
+        var releasedExtraHold = WindowDirectionalModifierHold(expected: [.control, .command])
+        suite.expect(releasedExtraHold.update([.control, .option]) == .cancel
+            && releasedExtraHold.update(.control) == .none
+            && releasedExtraHold.update([.control, .command]) == .none
+            && releasedExtraHold.update([]) == .none
+            && releasedExtraHold.update([.control, .command]) == .begin,
+            "releasing an extra modifier cannot turn the same physical hold into a trigger")
         var initiallyHeld = WindowDirectionalModifierHold(expected: [.control, .command],
                                                           initiallyHeld: [.control, .command])
         suite.expect(initiallyHeld.update([.control, .command]) == .none
@@ -115,6 +131,13 @@ enum WindowLayoutFeatureTests {
             && pendingShortcutHold.update(.command) == .none
             && pendingShortcutHold.update([]) == .none,
             "a normal shortcut invalidates a deferred modifier start before release can place a window")
+        var partialShortcutHold = WindowDirectionalModifierHold(expected: [.control, .command])
+        _ = partialShortcutHold.update(.control)
+        suite.expect(partialShortcutHold.cancelForKeyPress()
+            && partialShortcutHold.update([.control, .command]) == .none
+            && partialShortcutHold.update([]) == .none
+            && partialShortcutHold.update([.control, .command]) == .begin,
+            "a key press during a partial chord blocks activation until every modifier is released")
         pendingShortcutHold = WindowDirectionalModifierCancellation.preserveHold.applied(
             to: pendingShortcutHold)
         suite.expect(pendingShortcutHold.update([.control, .command]) == .begin,

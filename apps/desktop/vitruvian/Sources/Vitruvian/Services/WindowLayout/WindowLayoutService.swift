@@ -913,7 +913,13 @@ package final class WindowLayoutService: ObservableObject {
 
     private func beginDirectionalGesture() {
         guard directionalSession == nil, registeredDirectionalTrigger != nil,
-              !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted(),
+              !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted()
+        else { return }
+        if directionalModifierHold != nil, isAnyMouseButtonPressed() {
+            cancelDirectionalGesture()
+            return
+        }
+        guard
               let target = focusedTarget(for: .leftHalf),
               let screen = bestScreen(for: target.frame) else { return }
         guard startDirectionalTap() else {
@@ -1057,11 +1063,10 @@ package final class WindowLayoutService: ObservableObject {
 
     private func observeDirectionalEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            cancelDirectionalGesture()
-            if SessionActivity.shared.isActive, AXIsProcessTrusted(), !ShortcutCapture.isCapturing,
-               let directionalTap {
-                CGEvent.tapEnable(tap: directionalTap, enable: true)
-            } else {
+            let cancellation: WindowDirectionalModifierCancellation = directionalModifierHold == nil
+                ? .cancelHold : .preserveHold
+            cancelDirectionalGesture(modifierCancellation: cancellation)
+            if !SessionActivity.shared.isActive || !AXIsProcessTrusted() || ShortcutCapture.isCapturing {
                 unregisterDirectionalHotkey()
             }
             return Unmanaged.passUnretained(event)
@@ -1071,6 +1076,14 @@ package final class WindowLayoutService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         guard var session = directionalSession else { return Unmanaged.passUnretained(event) }
+
+        if directionalModifierHold != nil,
+           type == .scrollWheel || type == .leftMouseDown || type == .rightMouseDown {
+            // Modifier-only triggers prefix native modifier-click and scroll
+            // gestures. Let the input reach its app and abandon this layout.
+            cancelDirectionalGesture()
+            return Unmanaged.passUnretained(event)
+        }
 
         if type == .scrollWheel {
             let deltaY = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
@@ -1118,7 +1131,7 @@ package final class WindowLayoutService: ObservableObject {
             // those keys reach their app without placing a window on release.
             if directionalModifierHold != nil {
                 cancelDirectionalGesture()
-                return keyCode == 53 ? nil : Unmanaged.passUnretained(event)
+                return Unmanaged.passUnretained(event)
             }
             let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             let allowManual = WindowDirectionalGestureSupport.shouldApplyKeyboardManualOverride(
@@ -1148,6 +1161,13 @@ package final class WindowLayoutService: ObservableObject {
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    private func isAnyMouseButtonPressed() -> Bool {
+        (0..<32).contains { index in
+            guard let button = CGMouseButton(rawValue: UInt32(index)) else { return false }
+            return CGEventSource.buttonState(.combinedSessionState, button: button)
+        }
     }
 
     private func updateDirectionalGesture() {
