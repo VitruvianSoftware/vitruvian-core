@@ -6,7 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-/// Reads Claude Code and Codex usage from their local session logs, and
+/// Reads Claude Code, Codex and GitHub Copilot usage from local session logs, and
 /// OpenCode usage from its database, while the AI section is on, along with
 /// the plan limits the Claude app saves. The files are read where they are,
 /// incrementally, and nothing is copied or sent: only counters are kept, in
@@ -235,6 +235,7 @@ package final class AgentUsageService: ObservableObject {
             cursors.removeAll()
             // Prices first, so the first read is already priced.
             loadPrices()
+            // Keep the loading state until all initial history has been read.
             let horizon = Date().addingTimeInterval(-Self.horizon)
             let roots = AgentLogRoot.all(home: home).filter { providers.contains($0.provider) }
             let files = AgentLogReader.discover(roots, since: horizon)
@@ -396,13 +397,17 @@ package final class AgentUsageService: ObservableObject {
     }
 
     /// Applies what a log gained since the last read to `store`, line by
-    /// line, and reports the turns that ended. `lines` reads the log; the
-    /// closures it calls back into must be escaping to be handed to it.
+    /// line, and reports the turns that ended. `lines` reads the log, and
+    /// `history` a Copilot log's first read; the closures they call back into
+    /// must be escaping to be handed to them.
     nonisolated package static func read(_ path: String, provider: AgentProvider,
                                          cursors: inout [String: AgentLogCursor], store: AgentUsageStore,
                                          isCancelled: @escaping () -> Bool, report: @escaping (AgentUsageEvent) -> Void,
                                          lines: (AgentLogCursor, Date, () -> Bool, (Data) -> Void) -> Void
-                                             = AgentLogReader.readAppended) -> Bool {
+                                             = { AgentLogReader.readAppended($0, since: $1, shouldContinue: $2, line: $3) },
+                                         history: (AgentLogCursor, () -> Bool, (Data) -> Void) -> Void
+                                             = { AgentLogReader.readCopilotHistory($0, shouldContinue: $1, line: $2) })
+        -> Bool {
         guard !isCancelled() else { return false }
         guard FileManager.default.fileExists(atPath: path) else {
             cursors[path] = nil
@@ -412,7 +417,7 @@ package final class AgentUsageService: ObservableObject {
         cursors[path] = cursor
         var changed = false
         let now = Date()
-        lines(cursor, now.addingTimeInterval(-horizon), { !isCancelled() }) { line in
+        let consume: (Data) -> Void = { line in
             // Apply in log order while the chunk is alive instead of retaining
             // every parsed entry until a potentially multi-gigabyte file ends.
             let entries: [AgentLogEntry]
@@ -420,6 +425,7 @@ package final class AgentUsageService: ObservableObject {
             case .claude: entries = AgentLogParser.parseClaude(line, state: &cursor.state, now: now)
             case .codex: entries = AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
             case .opencode: entries = AgentLogParser.parseOpenCode(line, state: &cursor.state, now: now)
+            case .copilot: entries = AgentLogParser.parseCopilot(line, state: &cursor.state, now: now)
             }
             guard !entries.isEmpty else { return }
             changed = true
@@ -430,6 +436,11 @@ package final class AgentUsageService: ObservableObject {
             let finished = store.apply(entries, file: turnFile, provider: provider, tracksTurns: tracksTurns,
                                        parent: parent, modified: cursor.modified, now: now)
             finished.forEach(report)
+        }
+        if provider == .copilot && cursor.offset == 0 {
+            history(cursor, { !isCancelled() }, consume)
+        } else {
+            lines(cursor, now.addingTimeInterval(-horizon), { !isCancelled() }, consume)
         }
         return changed
     }
@@ -456,9 +467,7 @@ package final class AgentUsageService: ObservableObject {
         } else {
             for path in Set(paths) where AgentLogReader.isLog(path) {
                 let actualPath = path.hasSuffix("-wal") ? String(path.dropLast(4)) : path
-                guard let root = watchedRoots.first(where: { actualPath.hasPrefix($0.url.path + "/") }),
-                      root.provider != .opencode
-                        || actualPath == root.url.appending(path: AgentOpenCodeReader.database).path else { continue }
+                guard let root = watchedRoots.first(where: { $0.accepts(actualPath) }) else { continue }
                 if read(actualPath, provider: root.provider) { changed = true }
             }
         }

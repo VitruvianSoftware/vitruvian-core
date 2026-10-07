@@ -397,6 +397,8 @@ extension Strings {
         homebrewNoPackages: "Nenašli sa žiadne balíky",
         homebrewDependencies: "Závislosti",
         homebrewGroupDependencies: "Zoskupiť závislosti",
+        homebrewOrphans: "Už nepotrebné",
+        homebrewOrphansNote: "Nainštalované ako závislosti, ale žiadny nainštalovaný balík ich už nepotrebuje.",
         homebrewNoSelection: "Vyberte nainštalovaný balík alebo vyhľadajte nový.",
         homebrewDetailsTitle: "Detaily balíka",
         homebrewInstall: "Inštalovať",
@@ -795,7 +797,6 @@ extension Strings {
         monitorShowPeripheralBattery: "Batéria príslušenstva",
         peripheralBatteryNoDevices: "Nenašli sa žiadne zariadenia",
         monitorGraphsSection: "Grafy",
-        monitorGraphsCaption: "Vyberte, ktoré metriky majú zobrazovať graf v čase.",
 
         updateBannerTitle: "Dostupná aktualizácia",
         updateBannerAction: "Aktualizovať",

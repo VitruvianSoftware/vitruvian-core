@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
 
@@ -104,8 +105,13 @@ package struct PlainTextEditor: NSViewRepresentable {
         // synchronously, and makeNSView runs inside SwiftUI's update pass,
         // where writing state is undefined behavior.
         textView.delegate = context.coordinator
+        context.coordinator.installLineMoveMonitor(for: textView)
         onCreate?(textView)
         return scroll
+    }
+
+    package static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        coordinator.removeLineMoveMonitor()
     }
 
     package func updateNSView(_ nsView: NSScrollView, context: Context) {
@@ -137,10 +143,56 @@ package struct PlainTextEditor: NSViewRepresentable {
         private let text: Binding<String>
         private let selectedRange: Binding<Range<Int>?>?
         package var isApplyingExternalText = false
+        private weak var textView: NSTextView?
+        private var lineMoveMonitor: Any?
 
         package init(text: Binding<String>, selectedRange: Binding<Range<Int>?>?) {
             self.text = text
             self.selectedRange = selectedRange
+        }
+
+        /// Option-Up/Down moves the current line (or every line a selection
+        /// touches) past its neighbor, as in most code editors. AppKit has
+        /// no default key binding for it, so it is caught here rather than
+        /// through a selector NSTextView would otherwise never resolve.
+        package func installLineMoveMonitor(for textView: NSTextView) {
+            self.textView = textView
+            lineMoveMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, let textView = self.textView,
+                      event.window === textView.window,
+                      textView.window?.firstResponder === textView,
+                      !textView.hasMarkedText(),
+                      event.modifierFlags.intersection([.command, .option, .shift, .control]) == .option
+                else { return event }
+                let direction: PlainTextLineMover.Direction
+                switch Int(event.keyCode) {
+                case kVK_UpArrow: direction = .up
+                case kVK_DownArrow: direction = .down
+                default: return event
+                }
+                return self.moveLine(direction, in: textView) ? nil : event
+            }
+        }
+
+        package func removeLineMoveMonitor() {
+            if let lineMoveMonitor {
+                NSEvent.removeMonitor(lineMoveMonitor)
+                self.lineMoveMonitor = nil
+            }
+        }
+
+        private func moveLine(_ direction: PlainTextLineMover.Direction, in textView: NSTextView) -> Bool {
+            guard let result = PlainTextLineMover.moving(direction,
+                                                         in: textView.string,
+                                                         selection: textView.selectedRange())
+            else { return false }
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            guard textView.shouldChangeText(in: fullRange, replacementString: result.text) else { return false }
+            textView.textStorage?.replaceCharacters(in: fullRange, with: result.text)
+            textView.didChangeText()
+            textView.setSelectedRange(result.selection)
+            textView.scrollRangeToVisible(result.selection)
+            return true
         }
 
         package func textDidChange(_ notification: Notification) {

@@ -145,6 +145,7 @@ enum TestGroups {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)
                 NotchCapsuleTests.run(suite)
+                PlainTextLineMoverTests.run(suite)
                 NotchVolumeKeyTests.run(suite)
                 NotchSettingsTabRowTests.run(suite)
             }),
@@ -164,6 +165,7 @@ enum TestGroups {
                 SettingsFeatureTests.run(suite)
                 SettingsWindowTests.run { suite.expect($0, $1) }
                 NotchSettingsChoiceTests.run(suite)
+                MonitorTokenTests.run(suite)
             }),
             ("display-restoration", {
                 DisplayRestorationTests.run(suite)

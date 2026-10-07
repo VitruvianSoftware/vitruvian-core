@@ -833,11 +833,12 @@ package enum DefaultsKey {
     package static let notchCalendarExcluded = "notchCalendarExcluded" // [EKCalendar.calendarIdentifier] left out of the island
     // [countdown key: event end] chosen from an event's menu; unregistered, so it stays out of backups
     package static let notchCalendarChosenCountdowns = "notchCalendarChosenCountdowns"
-    // AI agents: what the island reads from Claude Code, Codex and OpenCode, and shows.
+    // AI agents: what the island reads from Claude Code, Codex, OpenCode and GitHub Copilot, and shows.
     package static let notchAgentsEnabled = "notchAgentsEnabled"
     package static let notchAgentsClaude = "notchAgentsClaude"
     package static let notchAgentsCodex = "notchAgentsCodex"
     package static let notchAgentsOpenCode = "notchAgentsOpenCode"
+    package static let notchAgentsCopilot = "notchAgentsCopilot"
     package static let notchAgentsCardOrder = "notchAgentsCardOrder"
     package static let notchAgentsHiddenCards = "notchAgentsHiddenCards"
     package static let notchAgentsPeriod = "notchAgentsPeriod"

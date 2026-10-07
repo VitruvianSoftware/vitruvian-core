@@ -397,6 +397,8 @@ extension Strings {
         homebrewNoPackages: "パッケージが見つかりません",
         homebrewDependencies: "依存関係",
         homebrewGroupDependencies: "依存関係をグループ化",
+        homebrewOrphans: "不要になったもの",
+        homebrewOrphansNote: "依存関係としてインストールされましたが、今はどのインストール済みパッケージも必要としていません。",
         homebrewNoSelection: "インストール済みパッケージを選択するか、新しいものを検索してください。",
         homebrewDetailsTitle: "パッケージ詳細",
         homebrewInstall: "インストール",
@@ -795,7 +797,6 @@ extension Strings {
         monitorShowPeripheralBattery: "周辺機器のバッテリー",
         peripheralBatteryNoDevices: "周辺機器が見つかりません",
         monitorGraphsSection: "グラフ",
-        monitorGraphsCaption: "経過に応じてグラフを表示する項目を選びます。",
 
         updateBannerTitle: "アップデートが利用できます",
         updateBannerAction: "アップデート",

@@ -398,6 +398,8 @@ extension Strings {
         homebrewNoPackages: "Пакеты не найдены",
         homebrewDependencies: "Зависимости",
         homebrewGroupDependencies: "Группировать зависимости",
+        homebrewOrphans: "Больше не нужны",
+        homebrewOrphansNote: "Установлены как зависимости, но ни одному установленному пакету они больше не нужны.",
         homebrewNoSelection: "Выберите установленный пакет или найдите новый.",
         homebrewDetailsTitle: "Детали пакета",
         homebrewInstall: "Установить",
@@ -796,7 +798,6 @@ extension Strings {
         monitorShowPeripheralBattery: "Батарея аксессуаров",
         peripheralBatteryNoDevices: "Устройства не найдены",
         monitorGraphsSection: "Графики",
-        monitorGraphsCaption: "Выберите, для каких метрик показывать график во времени.",
 
         updateBannerTitle: "Доступно обновление",
         updateBannerAction: "Обновить",

@@ -26,7 +26,7 @@ package struct AgentTotals: Equatable {
 
     package mutating func add(_ record: AgentUsageRecord) {
         tokens += record.tokens
-        requests += 1
+        requests += max(0, record.requests)
         savings += record.savings
         if let price = record.cost { cost += price } else { unpriced += 1 }
     }
@@ -428,7 +428,7 @@ package final class AgentUsageSummaryCache {
                                         reasoning: -previous.tokens.reasoning)
             delta.cost -= previous.cost ?? 0
             delta.savings -= previous.savings
-            delta.requests -= 1
+            delta.requests -= previous.requests
             delta.unpriced -= previous.cost == nil ? 1 : 0
         }
         history!.days[day].byProvider[record.provider, default: AgentTotals()] += delta

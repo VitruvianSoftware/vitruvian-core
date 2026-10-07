@@ -398,6 +398,8 @@ extension Strings {
         homebrewNoPackages: "找不到套件",
         homebrewDependencies: "依賴項目",
         homebrewGroupDependencies: "將依賴項目分組",
+        homebrewOrphans: "不再需要",
+        homebrewOrphansNote: "作為依賴項目安裝，但現時已安裝的套件都不需要它們。",
         homebrewNoSelection: "選取已安裝的套件，或搜尋新的套件。",
         homebrewDetailsTitle: "套件詳情",
         homebrewInstall: "安裝",
@@ -796,7 +798,6 @@ extension Strings {
         monitorShowPeripheralBattery: "外置電池",
         peripheralBatteryNoDevices: "無外置電池",
         monitorGraphsSection: "圖表",
-        monitorGraphsCaption: "選取哪些指標顯示隨時間變化的圖表。",
 
         updateBannerTitle: "有可用更新",
         updateBannerAction: "更新",

@@ -49,16 +49,16 @@ e8b0c267b13602dfc409b0057877ba8290ec4cb9	3a5d1a57f1a4c15a65875e2b30c995ddf8f0281
 e85985dc57be2a0d250711530b69260bee031372	c03fa5ba2931a6aba9dd66623f5c042382a2dd43	2026-10-04	ported	#2804	fix(middle-click): use four fingers while three-finger drag is enabled
 826a7fa39d1055bd3289795815b372c71674d6a2	490de0c2425db23005ed9a318a876029f4a16203	2026-10-05	ported	#2804	fix(switcher): preserve windows whose Accessibility reads time out
 88dee4c4fb541ff4fbfdf7931c2f4083b6b72baa	5055cd2d76277f28be28af4d37372e886fa77ab5	2026-10-05	skipped	touches only upstream-only paths	fix(issues): align feature areas with Settings groups
-4560456b7389d7ccb9d7b10a31c2988e45e911fc	5a6973e01630f718f81777096ab7e65049f61f53	2026-10-04	pending	-	feat(agents): track GitHub Copilot usage and resume its history
+4560456b7389d7ccb9d7b10a31c2988e45e911fc	5a6973e01630f718f81777096ab7e65049f61f53	2026-10-04	ported	#2808	feat(agents): track GitHub Copilot usage and resume its history
 7f5967f5bf59d9f318ee84d9d9ae9d8d6af903e0	d2da0dd7442d329807a83f82d14ee4b9c9e1f104	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record Copilot and input fixes with contributor credits
-746e7bcbb3992eced7b734421ab7fbabf4daed32	1fb15977def422da664832e73d0a8c579e431b13	2026-10-05	pending	-	fix(dock-preview): size cards in whole 16:10 steps (#2001)
-0035ceaf74bbc1637126bd4df7ad1d9b69fbb9b3	8d3c165979896fc4609b8b1668fc42823b8a03d9	2026-10-04	pending	-	fix(fan): keep helper logger in controller isolation domain (#2022)
-6c64f7026be6909f328525469a09b3a323aea052	7bc4a04026d411d7281e606f25d174301a544751	2026-10-04	pending	-	feat(clipboard): allow vim-like panel navigation (#2009)
-33e562eadb033d5ffc78ad8da8ed029115e10423	7332dc7bb98eb00fbf8d88caf4cec19a0c2dc1ac	2026-10-05	pending	-	feat(homebrew): list dependencies nothing needs any more on their own (#2011)
-a2c2c8152ca7b475506cb7163c449cc98b4c7323	9468856f4a2070c81d37e4a9dce89516c3bd4973	2026-10-04	pending	-	fix(cleaner): treat a capture renamed by addition as renamed (#2040)
-9a31cc9910dbed39ae9c732568f944df46189f61	5b59c88c4a286ea14219309bd65bf03b9bd41fe6	2026-10-04	pending	-	fix(shortcuts): offer to take over macOS keys for app shortcuts (#2058)
-3a06f67b25448fdc7d5a58225a212357147d51a3	df18419edc668c68be3db1ebc4e8776f65944a91	2026-10-04	pending	-	feat(scratchpad): move the current line with option-arrow (#2028)
-8c2d2b5a3ea8ec946d4500dd097e55d8b83065d2	ad8ceb6e3e25d555ad8c0cd1dbe54f918d6c84b5	2026-10-05	pending	-	feat(monitor): compact labels with per-item options in settings (#1988)
+746e7bcbb3992eced7b734421ab7fbabf4daed32	1fb15977def422da664832e73d0a8c579e431b13	2026-10-05	ported	#2808	fix(dock-preview): size cards in whole 16:10 steps (#2001)
+0035ceaf74bbc1637126bd4df7ad1d9b69fbb9b3	8d3c165979896fc4609b8b1668fc42823b8a03d9	2026-10-04	ported	#2808	fix(fan): keep helper logger in controller isolation domain (#2022)
+6c64f7026be6909f328525469a09b3a323aea052	7bc4a04026d411d7281e606f25d174301a544751	2026-10-04	ported	#2808	feat(clipboard): allow vim-like panel navigation (#2009)
+33e562eadb033d5ffc78ad8da8ed029115e10423	7332dc7bb98eb00fbf8d88caf4cec19a0c2dc1ac	2026-10-05	ported	#2808	feat(homebrew): list dependencies nothing needs any more on their own (#2011)
+a2c2c8152ca7b475506cb7163c449cc98b4c7323	9468856f4a2070c81d37e4a9dce89516c3bd4973	2026-10-04	ported	#2808	fix(cleaner): treat a capture renamed by addition as renamed (#2040)
+9a31cc9910dbed39ae9c732568f944df46189f61	5b59c88c4a286ea14219309bd65bf03b9bd41fe6	2026-10-04	ported	#2808	fix(shortcuts): offer to take over macOS keys for app shortcuts (#2058)
+3a06f67b25448fdc7d5a58225a212357147d51a3	df18419edc668c68be3db1ebc4e8776f65944a91	2026-10-04	ported	#2808	feat(scratchpad): move the current line with option-arrow (#2028)
+8c2d2b5a3ea8ec946d4500dd097e55d8b83065d2	ad8ceb6e3e25d555ad8c0cd1dbe54f918d6c84b5	2026-10-05	ported	#2808	feat(monitor): compact labels with per-item options in settings (#1988)
 9510327a2f0d948f3fa44a8458db68b4bc606f57	b2d3f3feccfd19e786b1321aaaeeed8389e35059	2026-09-25	pending	-	feat(focus): let hover focus a window without raising it
 0fb882bed1cf993844055d9943b7f5859f32cf90	8b834d9bb986856a6d530f1d3c23876fdcaab9ea	2026-09-25	pending	-	feat(focus): let focus without raise follow a moving pointer
 deede64a06940245435d48969362731249223100	d638adafff5c98c8f16f01ec973a6943b5512d72	2026-09-28	pending	-	fix(focus): revalidate the hover before finishing a focus handoff

@@ -2540,7 +2540,15 @@ Run `triage` and commit the ledger, then decide each pending commit:
      `package` modifiers the module split added, then puts them back where this
      fork had them;
    - gives a new declaration `package` when its neighbours of the same kind
-     have it, since what another module uses must be `package`;
+     have it, since what another module uses must be `package`, and gives a new
+     type `package` when a `package` declaration's signature names it;
+   - flags, for init review, a stored property the merge added to a type whose
+     cross-module initializer this fork wrote out ("Spelled out because a
+     memberwise initializer never leaves its module") when that initializer
+     does not take it;
+   - flags, for preference review, a new `@AppStorage(DefaultsKey.x)` whose
+     key this fork declares in `Preferences.swift`: here it is read through
+     `@AppStorage(Preferences.x)`, so its default cannot drift;
    - does not merge `Tests/generate_sources.py`, whose generated test copies
      this fork retired. It reports the change with the upstream patch, so that
      the test it feeds can be ported as a behavioural test.

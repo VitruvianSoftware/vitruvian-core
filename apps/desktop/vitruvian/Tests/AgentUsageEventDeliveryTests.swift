@@ -19,7 +19,7 @@ enum AgentUsageEventDeliveryTests {
         defaults.set(1.0, forKey: DefaultsKey.notchAgentsDailyBudget)
         var running = true
         var session = 1
-        var providers: [AgentProvider] = [.claude, .codex]
+        var providers: [AgentProvider] = [.claude, .codex, .copilot]
         func delivered(_ events: [AgentUsageEvent], queuedIn queued: Int = 1) -> [AgentUsageEvent] {
             events.filter {
                 AgentUsageService.delivers($0, queuedIn: queued, running: running, session: session,
@@ -47,7 +47,7 @@ enum AgentUsageEventDeliveryTests {
 
         providers = [.codex]
         suite.expect(delivered(Array(events[0...2])).isEmpty, "delivery still respects disabled providers")
-        providers = [.claude, .codex]
+        providers = [.claude, .codex, .copilot]
         defaults.set(30.0, forKey: DefaultsKey.notchAgentsFinishMinimum)
         defaults.set(false, forKey: DefaultsKey.notchAgentsLimitAlert)
         defaults.removeObject(forKey: DefaultsKey.notchAgentsDailyBudget)

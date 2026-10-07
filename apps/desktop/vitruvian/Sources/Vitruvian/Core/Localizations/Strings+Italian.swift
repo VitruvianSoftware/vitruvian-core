@@ -397,6 +397,8 @@ extension Strings {
         homebrewNoPackages: "Nessun pacchetto trovato",
         homebrewDependencies: "Dipendenze",
         homebrewGroupDependencies: "Raggruppa le dipendenze",
+        homebrewOrphans: "Non più necessari",
+        homebrewOrphansNote: "Installati come dipendenze, ma nessun pacchetto installato ne ha più bisogno.",
         homebrewNoSelection: "Seleziona un pacchetto installato o cercane uno nuovo.",
         homebrewDetailsTitle: "Dettagli pacchetto",
         homebrewInstall: "Installa",
@@ -795,7 +797,6 @@ extension Strings {
         monitorShowPeripheralBattery: "Batteria periferiche",
         peripheralBatteryNoDevices: "Nessuna periferica trovata",
         monitorGraphsSection: "Grafici",
-        monitorGraphsCaption: "Scegli quali metriche mostrano un grafico nel tempo.",
 
         updateBannerTitle: "Aggiornamento disponibile",
         updateBannerAction: "Aggiorna",

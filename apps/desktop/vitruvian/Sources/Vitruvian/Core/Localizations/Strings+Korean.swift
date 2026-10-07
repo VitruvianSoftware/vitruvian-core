@@ -398,6 +398,8 @@ extension Strings {
         homebrewNoPackages: "패키지를 찾을 수 없습니다",
         homebrewDependencies: "종속성",
         homebrewGroupDependencies: "종속성 그룹화",
+        homebrewOrphans: "더 이상 필요 없음",
+        homebrewOrphansNote: "종속성으로 설치되었지만 지금은 설치된 어떤 패키지도 필요로 하지 않습니다.",
         homebrewNoSelection: "설치한 패키지를 선택하거나 새 패키지를 검색하세요.",
         homebrewDetailsTitle: "패키지 세부 정보",
         homebrewInstall: "설치",
@@ -796,7 +798,6 @@ extension Strings {
         monitorShowPeripheralBattery: "주변 기기 배터리",
         peripheralBatteryNoDevices: "주변 기기를 찾을 수 없습니다",
         monitorGraphsSection: "그래프",
-        monitorGraphsCaption: "시간 흐름에 따라 그래프로 표시할 항목을 선택합니다.",
 
         updateBannerTitle: "업데이트를 사용할 수 있습니다",
         updateBannerAction: "업데이트",

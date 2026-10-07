@@ -397,6 +397,8 @@ extension Strings {
         homebrewNoPackages: "Paket bulunamadı",
         homebrewDependencies: "Bağımlılıklar",
         homebrewGroupDependencies: "Bağımlılıkları grupla",
+        homebrewOrphans: "Artık gerekmeyenler",
+        homebrewOrphansNote: "Bağımlılık olarak kuruldular, ancak artık kurulu hiçbir paket bunlara ihtiyaç duymuyor.",
         homebrewNoSelection: "Yüklü bir paket seç veya yenisini ara.",
         homebrewDetailsTitle: "Paket ayrıntıları",
         homebrewInstall: "Yükle",
@@ -795,7 +797,6 @@ extension Strings {
         monitorShowPeripheralBattery: "Çevre birimi pili",
         peripheralBatteryNoDevices: "Aygıt bulunamadı",
         monitorGraphsSection: "Grafikler",
-        monitorGraphsCaption: "Hangi metriklerin zaman içinde grafik göstereceğini seç.",
 
         updateBannerTitle: "Güncelleme var",
         updateBannerAction: "Güncelle",
