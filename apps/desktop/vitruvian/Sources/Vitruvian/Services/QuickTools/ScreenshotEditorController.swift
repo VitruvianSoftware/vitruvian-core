@@ -160,7 +160,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     private let eraseCache = ScreenshotRenderer.EraseCache()
 
     /// What blur areas paint from, shared by the canvas and the exporter.
-    var blurSources: ScreenshotRenderer.BlurSources {
+    package var blurSources: ScreenshotRenderer.BlurSources {
         ScreenshotRenderer.BlurSources(mosaics: pixelated,
                                        softBlurs: softBlurred,
                                        image: baseImage,
