@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.24.0...vitruvian-v3.25.0) (2026-10-07)
+
+
+### Features
+
+* **desktop:** token streaming, plan mode append, and approval cards for nexus agent ([#2857](https://github.com/VitruvianSoftware/vitruvian-core/issues/2857)) ([e0eac40](https://github.com/VitruvianSoftware/vitruvian-core/commit/e0eac40eb607581fb48d35df8785750a28f3df60))
+
 ## [3.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.23.1...vitruvian-v3.24.0) (2026-10-07)
 
 
