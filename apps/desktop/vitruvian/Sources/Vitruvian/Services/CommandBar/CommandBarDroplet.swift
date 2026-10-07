@@ -216,7 +216,13 @@ package final class CommandBarDroplet {
         bead.add(animation("position", motion.frames.map { NSValue(point: CGPoint(x: $0.bead.midX, y: $0.bead.midY)) }),
                  forKey: "dropPosition")
         bead.add(animation("cornerRadius", motion.frames.map { NSNumber(value: Double($0.radius)) }), forKey: "dropRadius")
-        mascot.root.add(animation("position", motion.frames.map { NSValue(point: $0.mascot) }), forKey: "dropPosition")
+        // The island and the bar centre the companion's figure, not its box,
+        // so each point the drop carries it to is the figure's own middle.
+        let shift = NotchMascotGeometry.figureOffset(mascot.look) * mascot.size
+        func figure(_ frame: CommandBarDropletFrame) -> CGPoint {
+            CGPoint(x: frame.mascot.x, y: frame.mascot.y - shift * frame.mascotScale)
+        }
+        mascot.root.add(animation("position", motion.frames.map { NSValue(point: figure($0)) }), forKey: "dropPosition")
         mascot.root.add(animation("transform", motion.frames.map {
             NSValue(caTransform3D: CATransform3DMakeScale($0.mascotScale, $0.mascotScale, 1))
         }), forKey: "dropScale")
@@ -225,7 +231,7 @@ package final class CommandBarDroplet {
         bead.bounds = CGRect(origin: .zero, size: last.bead.size)
         bead.position = CGPoint(x: last.bead.midX, y: last.bead.midY)
         bead.cornerRadius = last.radius
-        mascot.root.position = last.mascot
+        mascot.root.position = figure(last)
         mascot.root.transform = CATransform3DMakeScale(last.mascotScale, last.mascotScale, 1)
         CATransaction.commit()
     }
