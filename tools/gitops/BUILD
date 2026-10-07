@@ -114,6 +114,14 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# Generate + seal the Zitadel Login UI session-cookie signing secret. Re-running
+# rotates it and signs every user out of the Login UI -- see the script header.
+sh_binary(
+    name = "seal-zitadel-login-cookie-secret",
+    srcs = ["seal_zitadel_login_cookie_secret.sh"],
+    visibility = ["//visibility:public"],
+)
+
 # Back up / restore the sealed-secrets controller private keys to/from Bitwarden.
 # Unlock is automatic (prompts for the master password if locked); `bw login` once first.
 sh_binary(
