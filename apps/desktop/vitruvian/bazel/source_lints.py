@@ -1496,6 +1496,68 @@ _ACCESS_WORDS = {"public", "open", "package", "private", "fileprivate"}
 _NOT_TYPE_NAMES = {"func", "var", "let", "subscript", "init"}
 
 
+def missing_module_imports(sources):
+    """Each (file, module, names) where a file in one of the app's modules
+    names a package type only another module declares, without importing it.
+    `sources` maps a path under Sources/Vitruvian to its text."""
+    declared = collections.defaultdict(set)
+    for path, text in sources.items():
+        module = path.split("/")[0]
+        if module not in MODULE_DIRS:
+            continue
+        for line in text.split("\n"):
+            match = DECLARED_TYPE_RE.match(line)
+            if match and not match.group(1) and "package" in match.group(2).split():
+                declared[match.group(4)].add(module)
+    owner = {
+        name: next(iter(mods)) for name, mods in declared.items() if len(mods) == 1
+    }
+    found = []
+    for path, text in sorted(sources.items()):
+        module = path.split("/")[0]
+        if module not in MODULE_DIRS:
+            continue
+        imported = set(re.findall(r"^(?:@\w+[ \t]+)?import[ \t]+(\w+)", text, re.M))
+        code = "\n".join(
+            re.sub(r'"(?:\\.|[^"\\])*"', '""', line).split("//", 1)[0]
+            for line in text.split("\n")
+        )
+        missing = collections.defaultdict(set)
+        for name in set(re.findall(r"\b([A-Z]\w*)\b", code)):
+            other = owner.get(name)
+            if other and other != module and "Vitruvian" + other not in imported:
+                missing["Vitruvian" + other].add(name)
+        for target, names in sorted(missing.items()):
+            found.append((path, target, sorted(names)))
+    return found
+
+
+def modules_import_what_they_name(repo):
+    """A file in one of the app's modules imports every other module whose
+    package types it names. Only the macOS build reports a missing import,
+    and a new upstream file arrives importing nothing of this fork's."""
+    problems = []
+    sample = missing_module_imports(
+        {
+            "Core/Strings.swift": "package enum FeatureStrings {}\n",
+            "UI/Plain.swift": "import SwiftUI\nlet text = FeatureStrings.self\n",
+            "UI/Imported.swift": "import VitruvianCore\nlet text = FeatureStrings.self\n",
+            "UI/Quoted.swift": 'let text = "FeatureStrings" // FeatureStrings\n',
+        }
+    )
+    if sample != [("UI/Plain.swift", "VitruvianCore", ["FeatureStrings"])]:
+        problems.append(
+            "the scan finds a named type without its import, and nothing in strings or comments"
+        )
+    prefix = APP_PREFIX
+    sources = {path[len(prefix) :]: repo.source(path) for path in repo.app_sources()}
+    for path, target, names in missing_module_imports(sources):
+        problems.append(
+            f"{prefix}{path} names {', '.join(names)} without importing {target}"
+        )
+    return problems
+
+
 def _enclosing_is_type(lines, index):
     """Whether line `index` sits at the top level or directly in a type's
     body, where an access modifier means something."""
@@ -1871,6 +1933,7 @@ RULES = [
     unit_tests_read_no_source_text,
     preferences_are_reached_through_their_type,
     package_signatures_name_no_internal_type,
+    modules_import_what_they_name,
     package_views_publish_their_body,
     later_layers_reach_only_package_statics,
 ]

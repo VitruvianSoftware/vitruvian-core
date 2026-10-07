@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
+import VitruvianServices
 
 /// Asks before "Clear unpinned" deletes anything. The button stores the
 /// unpinned IDs it saw, and only those are deleted.

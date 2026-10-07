@@ -143,9 +143,10 @@ package struct NotchEmptyView<Actions: View>: View {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(symbol: String, message: String) {
+    package init(symbol: String, message: String, @ViewBuilder actions: @escaping () -> Actions) {
         self.symbol = symbol
         self.message = message
+        self.actions = actions
     }
 }
 
