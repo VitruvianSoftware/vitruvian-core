@@ -115,7 +115,7 @@ package enum Preferences {
     package static let snippetLibraryEnabled = Preference(DefaultsKey.snippetLibraryEnabled, default: false)
     package static let snippetSoundEnabled = Preference(DefaultsKey.snippetSoundEnabled, default: false)
     package static let notchShowPlayingMusic = Preference(DefaultsKey.notchShowPlayingMusic, default: true)
-    package static let notchIncludeOtherPlayers = Preference(DefaultsKey.notchIncludeOtherPlayers, default: false)
+    package static let notchIncludeOtherPlayers = Preference(DefaultsKey.notchIncludeOtherPlayers, default: true)
     package static let notchScratchpadControlHidden = Preference(DefaultsKey.notchScratchpadControlHidden, default: false)
     package static let notchKeyboardLightControlHidden = Preference(DefaultsKey.notchKeyboardLightControlHidden, default: false)
     package static let notchOutlineEnabled = Preference(DefaultsKey.notchOutlineEnabled, default: false)

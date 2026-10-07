@@ -1024,18 +1024,28 @@ enum PointerInputFeatureTests {
                    "focus follows mouse preserves a supported delay of \(delay) ms")
         }
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
-            targetWindowID: 42, focusedWindowID: nil, targetAppIsFrontmost: true),
+            targetWindowID: 42, focusedWindowID: nil, focusedWindowBlocksTarget: false,
+            targetAppIsFrontmost: true),
                "hover leaves the active app alone when its focused window cannot be read")
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
-            targetWindowID: 42, focusedWindowID: 42, targetAppIsFrontmost: true),
+            targetWindowID: 42, focusedWindowID: 42, focusedWindowBlocksTarget: false,
+            targetAppIsFrontmost: true),
                "hover does not reactivate the app's focused window")
         suite.expect(FocusFollowsMouseSupport.shouldActivate(
-            targetWindowID: 42, focusedWindowID: 43, targetAppIsFrontmost: true),
+            targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: false,
+            targetAppIsFrontmost: true),
                "hover can still switch to another window within the active app")
+        suite.expect(!FocusFollowsMouseSupport.shouldActivate(
+            targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: true,
+            targetAppIsFrontmost: true),
+               "hover leaves focus on a sheet or modal window that blocks the hovered window")
         for focusedWindowID: CGWindowID? in [nil, 42, 43] {
-            suite.expect(FocusFollowsMouseSupport.shouldActivate(
-                targetWindowID: 42, focusedWindowID: focusedWindowID, targetAppIsFrontmost: false),
-                   "hover can activate a background app regardless of its last focused window")
+            for focusedWindowBlocksTarget in [false, true] {
+                suite.expect(FocusFollowsMouseSupport.shouldActivate(
+                    targetWindowID: 42, focusedWindowID: focusedWindowID,
+                    focusedWindowBlocksTarget: focusedWindowBlocksTarget, targetAppIsFrontmost: false),
+                       "hover can activate a background app regardless of its last focused window")
+            }
         }
         suite.expect(FocusFollowsMouseSupport.shouldRestoreFocus(
             to: 42, reportedFocusedWindowID: 42, appIsFrontmost: true),
@@ -1197,19 +1207,24 @@ enum PointerInputFeatureTests {
                 && FocusFollowsMouseSupport.hitTestProcess(-1, ownProcessID: 7) == nil,
                "focus follows mouse cannot re-enter its own Accessibility tree through a global hit test")
         suite.expect(FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
+                                                               focusedWindowBlocksTarget: false,
                                                                targetAppIsFrontmost: false,
                                                                isParkedOnHiddenSpace: { _ in false })
                 && !FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
+                                                              focusedWindowBlocksTarget: false,
                                                               targetAppIsFrontmost: false,
                                                               isParkedOnHiddenSpace: { $0 == 5 }),
                "focus follows mouse never hands a window on a hidden Space to the activator, which would travel")
         suite.expect(FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 5,
+                                                      focusedWindowBlocksTarget: false,
                                                       targetAppIsFrontmost: true,
                                                       isParkedOnHiddenSpace: { _ in true }) == .notNeeded
                 && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
+                                                    focusedWindowBlocksTarget: false,
                                                     targetAppIsFrontmost: false,
                                                     isParkedOnHiddenSpace: { $0 == 5 }) == .switchInFlight
                 && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
+                                                    focusedWindowBlocksTarget: false,
                                                     targetAppIsFrontmost: false,
                                                     isParkedOnHiddenSpace: { _ in false }) == .activate,
                "a window already focused is done with, and one parked by a desktop switch in flight is tried again")

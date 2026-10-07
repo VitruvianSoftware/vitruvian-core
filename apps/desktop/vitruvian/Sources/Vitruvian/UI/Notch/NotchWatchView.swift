@@ -342,7 +342,7 @@ package struct NotchWatchThumbnail: View {
 
 /// The watching eye, breathing like a working agent's mark while the area
 /// is read, and still, crossed out, while its window is hidden. The motion
-/// runs in the compositor and stops whenever the island is not on screen.
+/// is stepped at a limited rate and stops whenever the island is not on screen.
 package struct NotchWatchEye: View {
     package let size: CGFloat
     package var hidden = false
