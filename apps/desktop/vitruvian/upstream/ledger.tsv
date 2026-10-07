@@ -59,13 +59,13 @@ a2c2c8152ca7b475506cb7163c449cc98b4c7323	9468856f4a2070c81d37e4a9dce89516c3bd497
 9a31cc9910dbed39ae9c732568f944df46189f61	5b59c88c4a286ea14219309bd65bf03b9bd41fe6	2026-10-04	ported	#2808	fix(shortcuts): offer to take over macOS keys for app shortcuts (#2058)
 3a06f67b25448fdc7d5a58225a212357147d51a3	df18419edc668c68be3db1ebc4e8776f65944a91	2026-10-04	ported	#2808	feat(scratchpad): move the current line with option-arrow (#2028)
 8c2d2b5a3ea8ec946d4500dd097e55d8b83065d2	ad8ceb6e3e25d555ad8c0cd1dbe54f918d6c84b5	2026-10-05	ported	#2808	feat(monitor): compact labels with per-item options in settings (#1988)
-9510327a2f0d948f3fa44a8458db68b4bc606f57	b2d3f3feccfd19e786b1321aaaeeed8389e35059	2026-09-25	pending	-	feat(focus): let hover focus a window without raising it
-0fb882bed1cf993844055d9943b7f5859f32cf90	8b834d9bb986856a6d530f1d3c23876fdcaab9ea	2026-09-25	pending	-	feat(focus): let focus without raise follow a moving pointer
-deede64a06940245435d48969362731249223100	d638adafff5c98c8f16f01ec973a6943b5512d72	2026-09-28	pending	-	fix(focus): revalidate the hover before finishing a focus handoff
-31068217c3b28755ed05776fc5020e2fe941b062	caeb9d5cde34c37ea1ca7c2a9087eb101d939bb0	2026-09-28	pending	-	fix(focus): hand focus back only while nothing else has taken it
-77ec0359ffd1382c10e6757cf6d44a29394e2c62	d0495a1a0555ead392a4e0f745363f176e91304f	2026-09-28	pending	-	fix(focus): restore a canceled handoff only on a confirmed focus read
-69ff10e8d1f6170f962ac57ee95b5ef136228239	f2ab4a8d81862e2c8b6a165177e6219248ee74ba	2026-09-29	pending	-	fix(focus): cancel pending activation passes before a hover handoff
-1251ac0383eb0c0316dae7c9a9837395550faa58	d63511d1ced41dca9975c51b63864be7389d8ff4	2026-10-04	pending	-	fix(focus): retry canceled hover attempts after movement
+9510327a2f0d948f3fa44a8458db68b4bc606f57	b2d3f3feccfd19e786b1321aaaeeed8389e35059	2026-09-25	ported	#2834	feat(focus): let hover focus a window without raising it
+0fb882bed1cf993844055d9943b7f5859f32cf90	8b834d9bb986856a6d530f1d3c23876fdcaab9ea	2026-09-25	ported	#2834	feat(focus): let focus without raise follow a moving pointer
+deede64a06940245435d48969362731249223100	d638adafff5c98c8f16f01ec973a6943b5512d72	2026-09-28	ported	#2834	fix(focus): revalidate the hover before finishing a focus handoff
+31068217c3b28755ed05776fc5020e2fe941b062	caeb9d5cde34c37ea1ca7c2a9087eb101d939bb0	2026-09-28	ported	#2834	fix(focus): hand focus back only while nothing else has taken it
+77ec0359ffd1382c10e6757cf6d44a29394e2c62	d0495a1a0555ead392a4e0f745363f176e91304f	2026-09-28	ported	#2834	fix(focus): restore a canceled handoff only on a confirmed focus read
+69ff10e8d1f6170f962ac57ee95b5ef136228239	f2ab4a8d81862e2c8b6a165177e6219248ee74ba	2026-09-29	ported	#2834	fix(focus): cancel pending activation passes before a hover handoff
+1251ac0383eb0c0316dae7c9a9837395550faa58	d63511d1ced41dca9975c51b63864be7389d8ff4	2026-10-04	ported	#2834	fix(focus): retry canceled hover attempts after movement
 be1ed4f6ac9379fe74bc28ece3ce1174dc3ff20f	9e60a16a4999b6813e397488593b7afdd50e79af	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record monitor and input improvements
 df3d4c36f7f2ca191afb0fd73b57c114e10d9ea4	74aacd178af652221502c86de6461e5b829a6c10	2026-10-04	ported	#2812	feat(clipboard): return the history window to the top when reopened (#2320)
 e3fc7350a12424cf3382ee7b9009652944ed4f7e	c06ddab775cb0287db3f387cb6b8ea0d3588190f	2026-09-28	ported	#2812	fix(keep-awake): allow helper apps as running-app triggers (#1468)
@@ -91,7 +91,7 @@ f574f7619baeedcfb9c36bf991a9c43d95ce3a98	aee13122e0ec4281a9ec563eb47edc3450bb168
 5d9ded8abb8794c48f994da7587978a3a31cf0d2	c34e727d652b90d63f365f07f57132e52cd9cdc7	2026-10-05	ported	#2816	feat(notch): add clear all to the island's notifications (#2361)
 39f981277c31a96486bab4d81d21810009c7798a	1a6deb7c5a258cecd2cb9bc86fc5f98cc658a0df	2026-10-04	ported	#2814	fix(audio): mute the output when volume keys reach zero (#2552)
 30a2b6e57d20f20d2039af6d40be30835ca6ca7c	8ffab1fe5c62c194445edcce30942f96ea3fc072	2026-10-05	ported	#2814	fix(app-updates): stop a case-folded version tie ranking above itself (#2562)
-029ea5fe9afd0c66b26d949339c6278d8bc0accc	29fe9e9561ed58e47cd68d1433a145f0db7ec806	2026-10-05	pending	-	feat(focus): allow hover delays up to three seconds (#2571)
+029ea5fe9afd0c66b26d949339c6278d8bc0accc	29fe9e9561ed58e47cd68d1433a145f0db7ec806	2026-10-05	ported	#2834	feat(focus): allow hover delays up to three seconds (#2571)
 28df7ee351ee8add30f0876fce7542119cbf91ac	0272f737b35d3ddc2c2a55dda103aae3f4e276b0	2026-10-05	ported	#2816	feat(notch): allow hiding the timer countdown (#2572)
 ea25aab1e846258e0f60c2aaae4bf7ad8fcd51a8	7ff081c0cff53d1fe2f74c6f9bb0b97c449f1d50	2026-10-04	ported	#2816	fix(shelf): keep an edge peek open when a promised file is dropped (#2573)
 4134172e198912ddec59b3aa9121a9f35423eef8	cc6b253857ffab57ce836195bf0af6739a6f76ad	2026-10-05	ported	#2814	fix(clipboard): keep a multi-line copy of links out of the single-URL path (#2434)
