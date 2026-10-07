@@ -132,6 +132,35 @@ case "$out" in *'title=affected-selection-slow'*) pass "over-budget map plan war
 run_case "$map_plan"
 case "$out" in *'affected-selection-slow'*) fail "warned within budget" ;; *) pass "within budget: no warning" ;; esac
 
+echo "map from an earlier commit (#2841)"
+# History on top of the two commits above:  x1 -> g (MODULE.bazel) -> x2 -> x3 (HEAD)
+mk() { mkdir -p "$repo/$(dirname "$1")"; echo "$2" > "$repo/$1"; git -C "$repo" add "$1"; git -C "$repo" commit -q -m "$1 $2"; git -C "$repo" rev-parse HEAD; }
+x1="$(mk libs/x/x.go 1)"
+g="$(mk MODULE.bazel 1)"
+x2="$(mk apps/a/a.go three)"
+mk apps/a/a.go four >/dev/null
+side="$(git -C "$repo" commit-tree -m side "$(git -C "$repo" rev-parse "$base^{tree}")")"
+map_for() { printf '{"schema":1,"commit":"%s"}' "$1" > "$work/map.json"; }
+planned_base() { grep -F 'run //tools/pipeline:plan' "$CALLS" | sed -n 's/.*--base=\([0-9a-f]*\).*/\1/p'; }
+
+map_for "$x2"; run_case "$map_plan" BEFORE_REV="$x2" RDEPS_MAP="$work/map.json"
+[ "$(planned_base)" = "$x2" ] && pass "map for the exact base: base unchanged" || fail "base $(planned_base), want $x2"
+map_for "$g"; run_case "$map_plan" BEFORE_REV="$x2" RDEPS_MAP="$work/map.json"
+{ [ "$(planned_base)" = "$g" ] && case "$out" in *'1 commit(s) back'*) true ;; *) false ;; esac; } \
+  && pass "map one commit back: planner compares against the map's commit, and says so" || fail "base $(planned_base), want $g: $out"
+map_for "$x1"; run_case "$map_plan" BEFORE_REV="$x2" RDEPS_MAP="$work/map.json"
+{ [ "$(planned_base)" = "$x2" ] && case "$out" in *'global-impact file changed since'*) true ;; *) false ;; esac; } \
+  && pass "global-impact change since the map: map not used" || fail "base $(planned_base), want $x2: $out"
+map_for "$g"; run_case "$map_plan" BEFORE_REV="$x2" RDEPS_MAP="$work/map.json" MAP_MAX_BEHIND=0
+{ [ "$(planned_base)" = "$x2" ] && case "$out" in *'commits behind'*) true ;; *) false ;; esac; } \
+  && pass "map further back than the limit: not used" || fail "base $(planned_base), want $x2: $out"
+map_for "$side"; run_case "$map_plan" BEFORE_REV="$x2" RDEPS_MAP="$work/map.json"
+{ [ "$(planned_base)" = "$x2" ] && case "$out" in *'not an ancestor'*) true ;; *) false ;; esac; } \
+  && pass "map from a commit that is not an ancestor: not used" || fail "base $(planned_base), want $x2: $out"
+printf 'not json' > "$work/map.json"; run_case "$map_plan" BEFORE_REV="$x2" RDEPS_MAP="$work/map.json"
+[ "$(planned_base)" = "$x2" ] && pass "unreadable map: base unchanged" || fail "base $(planned_base), want $x2"
+rm -f "$work/map.json"
+
 echo
 if [ "$fails" -gt 0 ]; then echo "$fails check(s) FAILED" >&2; exit 1; fi
 echo "all affected-targets checks passed"
