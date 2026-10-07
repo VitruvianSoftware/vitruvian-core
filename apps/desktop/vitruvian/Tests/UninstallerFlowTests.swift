@@ -90,6 +90,8 @@ enum UninstallerFlowTests {
     final class Record {
         var quits: [URL] = []
         var hud: [String] = []
+        /// Apps whose Command Bar shortcut a finished removal released.
+        var released: [String] = []
     }
 
     /// The bar's field and rows as the review moves them, with the field's
@@ -169,7 +171,8 @@ enum UninstallerFlowTests {
             remove: { disk.remove($0) },
             quit: { record.quits.append($0) },
             packages: brew,
-            notify: { _, message in record.hud.append(message) }))
+            notify: { _, message in record.hud.append(message) },
+            releaseShortcut: { app, bundleID in record.released.append("\(app.path) \(bundleID ?? "-")") }))
         let bar = Bar()
         let review = CommandBarUninstallReview(uninstaller: uninstaller, host: bar.host(defaults: defaults))
         bar.review = review
@@ -301,11 +304,14 @@ enum UninstallerFlowTests {
                          "other surfaces cannot reset an active plain removal")
             uninstaller.setInclude(false, for: originalItems[0].id)
             suite.expect(uninstaller.items == originalItems, "an active removal keeps its captured selection")
+            suite.expect(record.released.isEmpty, "an app's shortcut stays while its removal is still running")
             queue.drain()
             suite.expect(uninstaller.phase == .done(freed: Disk.appSize + Disk.supportSize, failed: [])
                          && disk.removals.last?.chosen == originalItems && disk.removals.last?.targetURL == a
                          && disk.removals.last?.packageRemovedApplication == false,
                          "a removal takes the rows it captured and reports what it freed")
+            suite.expect(record.released == ["\(a.path) org.vitruvian.fixture.First"],
+                         "a finished removal releases the removed app's Command Bar shortcut, once")
             uninstaller.reset()
             suite.expect(uninstaller.phase == .empty && uninstaller.target == nil,
                          "a finished operation can be dismissed normally")

@@ -1492,6 +1492,43 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarRowShortcuts.decode(CommandBarRowShortcuts.encode(bound)) == bound,
                "the bindings survive a round trip through storage")
 
+        // An app the uninstaller removed frees its keys for another app.
+        suite.expect(CommandBarRowShortcuts.keyFreed(
+                    byRemovingAppAt: "/Applications/Thunderbird.app", bundleID: "org.mozilla.thunderbird",
+                    remainingBundleIDs: ["com.apple.mail"]) == "app.bundle.org.mozilla.thunderbird",
+               "a removed app's shortcut is freed under the row the bar listed it as")
+        suite.expect(CommandBarRowShortcuts.keyFreed(
+                    byRemovingAppAt: "/Applications/Tool.app", bundleID: nil,
+                    remainingBundleIDs: []) == "app./Applications/Tool.app",
+               "an app with no bundle ID frees the row keyed by its path")
+        suite.expect(CommandBarRowShortcuts.keyFreed(
+                    byRemovingAppAt: "/Users/me/Applications/Thunderbird.app",
+                    bundleID: "org.mozilla.thunderbird",
+                    remainingBundleIDs: ["org.mozilla.thunderbird"]) == nil,
+               "another installed copy of the app keeps the shortcut")
+        suite.expect(CommandBarRowShortcuts.appKey(bundleID: "com.apple.mail", path: "/Applications/Mail.app")
+                == "app.bundle.com.apple.mail",
+               "an app with a bundle ID is listed by it, not by where it lives")
+        // The uninstaller frees the row under the key the catalog lists the
+        // app by. (The catalog leaves out an app that shares the running
+        // bundle's identifier, which under the test runner is nil, so the
+        // path-keyed rows are covered by keyFreed's own checks above.)
+        let listedApps = [
+            InstalledApps.InstalledApp(id: "/Applications/Thunderbird.app", name: "Thunderbird",
+                                       bundleID: "org.mozilla.thunderbird",
+                                       url: URL(fileURLWithPath: "/Applications/Thunderbird.app"), isSystem: false),
+            InstalledApps.InstalledApp(id: "/Users/me/Applications/Mail.app", name: "Mail",
+                                       bundleID: "com.apple.mail",
+                                       url: URL(fileURLWithPath: "/Users/me/Applications/Mail.app"), isSystem: false),
+        ]
+        let listedRows = CommandBarCatalog.appEntries(listedApps, runningBundleIDs: [], runningPaths: [],
+                                                      bar: FeatureStrings.commandBar(L10n.shared.language))
+        suite.expect(listedRows.map(\.stableKey) == listedApps.compactMap {
+                    CommandBarRowShortcuts.keyFreed(byRemovingAppAt: $0.id, bundleID: $0.bundleID,
+                                                    remainingBundleIDs: [])
+                },
+               "an app row is keyed by the same seam the uninstaller frees it under")
+
         // ⌃⌘D is Look Up (symbolic hotkey 70), which System Settings does not
         // list: an app row must offer to take it over, as a window layout row
         // does, instead of refusing it outright.
