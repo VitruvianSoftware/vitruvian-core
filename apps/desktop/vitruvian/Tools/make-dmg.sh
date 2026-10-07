@@ -135,8 +135,21 @@ elif (( STYLE_STATUS != 0 )); then
 fi
 
 sync
-hdiutil detach "$MOUNT" -quiet \
-    || hdiutil detach "$MOUNT" -force -quiet
+# Finder can keep the volume busy for a moment after its window closes, and a
+# busy volume refuses to detach, forced or not. Retry before forcing; no
+# -quiet, so a real failure says why in the build log.
+detached=0
+for attempt in 1 2 3 4; do
+    if hdiutil detach "$MOUNT"; then
+        detached=1
+        break
+    fi
+    echo "  hdiutil detach failed (attempt $attempt of 4), retrying…" >&2
+    sleep 2
+done
+if [[ $detached -ne 1 ]]; then
+    hdiutil detach "$MOUNT" -force
+fi
 MOUNT=""
 
 echo "▸ Compressing…"
