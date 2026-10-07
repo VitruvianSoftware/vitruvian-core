@@ -309,14 +309,14 @@ enum NotchMusicVisibilityTests {
                      && resting.island.surfaceSize == resting.island.compactActivityGeometry.compactActivitySize,
                      "an activity takes the island's room from the companion")
         resting.services.timerSession = NotchTimerSession()
-        let cramped = NotchIslandFixture(defaults: defaults)
-        cramped.displays = [display(physical: true)]
-        cramped.menusReadable = true
-        cramped.menuRoom = 20
-        cramped.start()
-        islands.append(cramped)
-        suite.expect(cramped.island.surfaceSize == cramped.island.geometry.restingSize(showsContent: false),
-                     "menus that leave no wings keep the companion out instead of under the camera")
+        resting.menuRoom = 20
+        resting.measureMenus()
+        let cramped = resting.island
+        suite.expect(cramped.geometry.restingWingWidth == 0
+                     && cramped.surfaceSize == cramped.geometry.restingSize(showsContent: false),
+                     "menus that leave no wings keep the companion out instead of under the camera "
+                     + "(side room \(String(describing: cramped.geometry.compactSideRoom)), "
+                     + "activity \(String(describing: cramped.compactActivity)), size \(cramped.surfaceSize))")
         defaults.removeValue(for: Preferences.notchMascotEnabled)
 
         // The Command Bar inside the island takes its own size and closes with it.

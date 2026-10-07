@@ -1058,6 +1058,9 @@ enum NotchHoverTests {
 
         // A new reading of the same level only fits its width; another notice
         // takes its place the usual way.
+        // Brightness notices show only while the app's brightness control is on.
+        Self.defaults.set(true, forKey: DefaultsKey.brightnessControlEnabled)
+        defer { Self.defaults.removeObject(forKey: DefaultsKey.brightnessControlEnabled) }
         let reading = island()
         leave(reading)
         let full = NotchNotice(event: .volume, title: "Volume", detail: "100%", symbol: "speaker.wave.3.fill", level: 1)
