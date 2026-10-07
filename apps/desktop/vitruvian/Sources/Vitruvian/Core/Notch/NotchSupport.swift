@@ -502,6 +502,15 @@ package enum NotchLayout {
         musicCardArtworkSide(height: height) + musicCardSpacing + musicCardTransportWidth + musicCardPadding * 2
     }
 
+    /// Level cards keep their title and device row only where every card in
+    /// the row has one and the titles fit: a card alone, or volume beside
+    /// brightness. The keyboard light has no device to choose, so beside it,
+    /// and three across, every card folds to its readout and they line up.
+    package static func levelCardsShowDetails(_ levels: [NotchControlItem], height: CGFloat) -> Bool {
+        guard height >= 88 else { return false }
+        return levels.count == 1 || (levels.count == 2 && !levels.contains(.keyboardLight))
+    }
+
     /// The home page: one row of cards (playback and levels) over a rail of
     /// shortcuts. A tight budget shortens the cards before it drops a row.
     package static func controls(hasCards: Bool, shortcutCount: Int, width: CGFloat, height: CGFloat) -> NotchControlsLayout {
@@ -1101,14 +1110,25 @@ package enum NotchControlSetupRequirement: Equatable {
 }
 
 package enum NotchControlItem: String, CaseIterable, Identifiable {
-    case volume, brightness, music, mixer, keepAwake, timer, calendar, microphone, screenshot, recording, speedTest, panel, commandBar, scratchpad
-    package static let defaultHidden = "microphone,screenshot,recording,speedTest,panel,commandBar,scratchpad"
+    case volume, brightness, keyboardLight, music, mixer, keepAwake, timer, calendar, microphone, screenshot, recording, speedTest, panel, commandBar, scratchpad
+    package static let defaultHidden = "keyboardLight,microphone,screenshot,recording,speedTest,panel,commandBar,scratchpad"
     package var id: String { rawValue }
+
+    /// A level draws as a slider in the card row; everything else is a tile.
+    package var isLevel: Bool { self == .volume || self == .brightness || self == .keyboardLight }
+
+    /// Whether this Mac has a keyboard light. Only the brightness service can
+    /// ask the hardware, so launch points this at it before anything reads
+    /// the controls. Without it, a level restored from a Mac that has one
+    /// would sit in the island as a dead card that Settings cannot hide.
+    /// Set once at launch, before any reader runs.
+    nonisolated(unsafe) package static var keyboardLightIsSupported: @Sendable () -> Bool = { true }
 
     package var symbol: String {
         switch self {
         case .volume: return "speaker.wave.2.fill"
         case .brightness: return "sun.max.fill"
+        case .keyboardLight: return "light.max"
         case .keepAwake: return "cup.and.saucer"
         case .microphone: return "mic.fill"
         case .screenshot: return "camera.viewfinder"
@@ -1128,7 +1148,7 @@ package enum NotchControlItem: String, CaseIterable, Identifiable {
     package var setupRequirement: NotchControlSetupRequirement {
         switch self {
         case .volume: return .feature(.mixer)
-        case .brightness: return .feature(.brightness)
+        case .brightness, .keyboardLight: return .feature(.brightness)
         case .keepAwake: return .feature(.keepAwake)
         case .microphone: return .feature(.micMute)
         case .screenshot: return .feature(.screenshot)
@@ -1149,6 +1169,7 @@ package enum NotchControlItem: String, CaseIterable, Identifiable {
         case .volume: return AppFeature.mixer.isAvailable(in: defaults)
         case .mixer: return AppFeature.mixer.isAvailable(in: defaults) && NotchSupport.modules(in: defaults).contains(.mixer)
         case .brightness: return AppFeature.brightness.isAvailable(in: defaults)
+        case .keyboardLight: return AppFeature.brightness.isAvailable(in: defaults) && Self.keyboardLightIsSupported()
         case .keepAwake: return AppFeature.keepAwake.isAvailable(in: defaults)
         case .microphone: return AppFeature.micMute.isAvailable(in: defaults)
         case .screenshot: return AppFeature.screenshot.isAvailable(in: defaults)
@@ -1173,9 +1194,9 @@ package struct NotchControlGroups: Equatable {
     package let shortcuts: [NotchControlItem]
 
     package init(_ items: [NotchControlItem]) {
-        levels = items.filter { $0 == .volume || $0 == .brightness }
+        levels = items.filter(\.isLevel)
         music = items.contains(.music)
-        shortcuts = items.filter { $0 != .volume && $0 != .brightness && $0 != .music }
+        shortcuts = items.filter { !$0.isLevel && $0 != .music }
     }
 
     /// Whether the page has its row of cards.
@@ -1214,7 +1235,7 @@ package enum NotchQuickAction: Hashable, Identifiable {
 
     package static var optionalActions: [Self] {
         [.explore, .settings, .pin] + NotchModule.allCases.map(Self.module)
-            + NotchControlItem.allCases.filter { $0 != .volume && $0 != .brightness }.map(Self.control)
+            + NotchControlItem.allCases.filter { !$0.isLevel }.map(Self.control)
     }
 
     package func isAvailable(in defaults: UserDefaults = .standard) -> Bool {

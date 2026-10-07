@@ -9,6 +9,9 @@ import VitruvianUI
 
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
+// The keyboard light is there or not for the life of the app.
+let keyboardLightIsSupported = BrightnessService.keyboardLightIsSupported
+NotchControlItem.keyboardLightIsSupported = { keyboardLightIsSupported }
 // Services show their SwiftUI content through this, so it is in place before
 // anything below can present. Top-level code runs on the main thread.
 MainActor.assumeIsolated { ServiceViews.install(UIServiceViewFactory()) }

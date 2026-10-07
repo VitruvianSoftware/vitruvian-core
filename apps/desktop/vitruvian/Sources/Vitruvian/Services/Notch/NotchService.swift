@@ -2109,7 +2109,7 @@ package final class NotchService: ObservableObject {
             case .calendar: select(.calendar)
             case .commandBar: perform { [services] in services.showCommandBar() }
             case .scratchpad: openScratchpad()
-            case .volume, .brightness: select(.controls)
+            case .volume, .brightness, .keyboardLight: select(.controls)
             }
         }
     }

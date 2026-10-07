@@ -456,6 +456,7 @@ package enum Defaults {
         DefaultsKey.notchIdleContent: Preferences.notchIdleContent.defaultValue,
         DefaultsKey.notchHiddenControls: Preferences.notchHiddenControls.defaultValue,
         DefaultsKey.notchScratchpadControlHidden: Preferences.notchScratchpadControlHidden.defaultValue,
+        DefaultsKey.notchKeyboardLightControlHidden: Preferences.notchKeyboardLightControlHidden.defaultValue,
         DefaultsKey.notchControlOrder: Preferences.notchControlOrder.defaultValue,
         DefaultsKey.notchSize: Preferences.notchSize.defaultValue,
         DefaultsKey.notchOutlineEnabled: Preferences.notchOutlineEnabled.defaultValue,
@@ -1023,6 +1024,7 @@ package enum Defaults {
         migrateSwitcherWindowlessFinder(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
+        hideKeyboardLightControlOnce(in: defaults)
     }
 
     /// Existing users keep the island's previous glass choice. The island
@@ -1052,6 +1054,7 @@ package enum Defaults {
             return
         }
         let automaticKeys: Set<String> = [DefaultsKey.notchScratchpadControlHidden,
+                                          DefaultsKey.notchKeyboardLightControlHidden,
                                           DefaultsKey.notchHidesMenuBarIcon]
         let wasConfigured = saved.keys.contains {
             $0.hasPrefix("notch") && !automaticKeys.contains($0)
@@ -1100,6 +1103,18 @@ package enum Defaults {
         var hidden = saved.split(separator: ",").map(String.init)
         guard !hidden.contains(NotchControlItem.scratchpad.rawValue) else { return }
         hidden.append(NotchControlItem.scratchpad.rawValue)
+        defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenControls)
+    }
+
+    /// The keyboard light level joined the hidden controls the same way, and
+    /// a list saved before it would otherwise grow a third slider on update.
+    package static func hideKeyboardLightControlOnce(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.notchKeyboardLightControlHidden) else { return }
+        defaults.set(true, forKey: DefaultsKey.notchKeyboardLightControlHidden)
+        guard let saved = defaults.string(forKey: DefaultsKey.notchHiddenControls) else { return }
+        var hidden = saved.split(separator: ",").map(String.init)
+        guard !hidden.contains(NotchControlItem.keyboardLight.rawValue) else { return }
+        hidden.append(NotchControlItem.keyboardLight.rawValue)
         defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenControls)
     }
 

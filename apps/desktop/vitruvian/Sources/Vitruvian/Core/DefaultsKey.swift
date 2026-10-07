@@ -797,6 +797,7 @@ package enum DefaultsKey {
     package static let notchHiddenControls = "notchHiddenControls"
     // Travels with the controls so old backups migrate and later choices survive.
     package static let notchScratchpadControlHidden = "notchScratchpadControlHidden"
+    package static let notchKeyboardLightControlHidden = "notchKeyboardLightControlHidden"
     package static let notchControlOrder = "notchControlOrder"
     package static let notchSize = "notchSize"
     package static let notchOutlineEnabled = "notchOutlineEnabled"

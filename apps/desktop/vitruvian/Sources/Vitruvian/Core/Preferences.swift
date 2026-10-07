@@ -117,6 +117,7 @@ package enum Preferences {
     package static let notchShowPlayingMusic = Preference(DefaultsKey.notchShowPlayingMusic, default: true)
     package static let notchIncludeOtherPlayers = Preference(DefaultsKey.notchIncludeOtherPlayers, default: false)
     package static let notchScratchpadControlHidden = Preference(DefaultsKey.notchScratchpadControlHidden, default: false)
+    package static let notchKeyboardLightControlHidden = Preference(DefaultsKey.notchKeyboardLightControlHidden, default: false)
     package static let notchOutlineEnabled = Preference(DefaultsKey.notchOutlineEnabled, default: false)
     package static let notchHapticFeedback = Preference(DefaultsKey.notchHapticFeedback, default: true)
     package static let notchTranslucentBackground = Preference(DefaultsKey.notchTranslucentBackground, default: false)
