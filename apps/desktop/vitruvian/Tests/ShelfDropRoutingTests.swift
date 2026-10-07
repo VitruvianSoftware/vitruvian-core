@@ -38,6 +38,7 @@ enum ShelfDropRoutingContract {
         static var shared = Shelf()
         let dockedPanel = NSObject()
         var dockCompletions = 0
+        var interactionNotes = 0
         /// How many files the pasteboard promises.
         var promises = 0
         var accepts = true
@@ -59,7 +60,8 @@ enum ShelfDropRoutingContract {
                 return self.accepts
             },
             dock: { [unowned self] in self.dockedPanel },
-            dockDidAccept: { [unowned self] in self.dockCompletions += 1 })
+            dockDidAccept: { [unowned self] in self.dockCompletions += 1 },
+            noteInteraction: { [unowned self] in self.interactionNotes += 1 })
 
         func acceptDrop(pasteboard: NSPasteboard) -> Bool { intake.accept(pasteboard) }
         func fileURLs(from pasteboard: NSPasteboard) -> [URL] { ShelfPasteboardSupport.fileURLs(from: pasteboard) }
@@ -183,6 +185,14 @@ enum ShelfDropRoutingTests {
                 suite.expect(shelf.intake.accept(board, destination: shelf.dockedPanel) == accepted
                        && shelf.dockCompletions == (accepted ? 1 : 0),
                        "the separate dock keeps its completion behavior through the shared receiver")
+
+                // A promised file is delivered asynchronously; noteInteraction()
+                // has to run at drop time or an edge peek can retract before it arrives.
+                let notesBefore = shelf.interactionNotes
+                suite.expect(shelf.intake.accept(board, destination: NSObject()) == accepted
+                       && shelf.interactionNotes == notesBefore + (accepted ? 1 : 0)
+                       && shelf.dockCompletions == (accepted ? 1 : 0),
+                       "an accepted panel drop notes interaction at drop time, before delivery")
             }
         }
         for revoked in 0..<5 {
