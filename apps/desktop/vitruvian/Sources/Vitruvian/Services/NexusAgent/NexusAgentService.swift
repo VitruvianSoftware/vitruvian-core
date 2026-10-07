@@ -140,6 +140,19 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
     @Published package private(set) var needsRestart = false
     @Published package private(set) var shortcutRegistrationFailed = false
     @Published package private(set) var agentPath: String?
+    @Published package var isPinned: Bool = false {
+        didSet {
+            if isPinned, let panel {
+                panel.level = .floating
+                panel.hidesOnDeactivate = false
+            }
+        }
+    }
+
+    package var activeProvider: NexusAgentCLIProvider {
+        get { configuration.activeProvider }
+        set { updateActiveProvider(newValue) }
+    }
 
     package let session: NexusAgentQuickPromptSession
     private let environment: Environment
@@ -161,6 +174,16 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         self.environment = environment
         session = NexusAgentQuickPromptSession(environment: environment)
         super.init()
+        session.onTurnFinished = { [weak self] reply, isError in
+            guard let self, self.panel?.isVisible != true else { return }
+            let name = self.configuration.activeProvider.name
+            if isError {
+                Notifier.post(title: "\(name) — Failed", body: String(reply.prefix(200)))
+            } else if !reply.isEmpty {
+                let firstLine = reply.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? reply
+                Notifier.post(title: "\(name) — Done", body: String(firstLine.prefix(200)))
+            }
+        }
         hotkey.onPress = { [weak self] in self?.toggleQuickPrompt() }
     }
 
@@ -226,7 +249,17 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
     /// Reads the bot's `.env` and finds the agent, for the page.
     package func load() {
         configuration = environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration()
-        agentPath = NexusAgentSupport.locateAgent(environment: environment.processEnvironment,
+        agentPath = NexusAgentSupport.locateAgent(named: configuration.activeProvider.executableName,
+                                                  environment: environment.processEnvironment,
+                                                  home: environment.home,
+                                                  isExecutable: environment.isExecutable)
+    }
+
+
+    package func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
+        configuration.activeProvider = provider
+        agentPath = NexusAgentSupport.locateAgent(named: provider.executableName,
+                                                  environment: environment.processEnvironment,
                                                   home: environment.home,
                                                   isExecutable: environment.isExecutable)
     }
@@ -494,6 +527,11 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
             guard let self, let panel, event.window === panel else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let isCmdW = flags == .command && event.charactersIgnoringModifiers == "w"
+            let isCmdN = flags == .command && event.charactersIgnoringModifiers == "n"
+            if isCmdN {
+                self.session.newChat()
+                return nil
+            }
             guard event.keyCode == UInt16(kVK_Escape) || isCmdW else { return event }
             // Mid-composition Esc belongs to the input method.
             if let editor = panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
@@ -503,11 +541,13 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         let mouseEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
             guard let self, let panel, panel.isVisible else { return event }
+            guard !self.isPinned else { return event }
             if event.window !== panel, !Self.mouseIsInside(panel) { self.hideQuickPrompt() }
             return event
         }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
             guard let self, let panel, panel.isVisible else { return }
+            guard !self.isPinned else { return }
             if event.windowNumber != panel.windowNumber, !Self.mouseIsInside(panel),
                // Keys on the Accessibility Keyboard are clicks outside the panel.
                !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation) {
@@ -644,6 +684,12 @@ extension NexusAgentService {
     /// Sends the draft as one Quick Prompt turn with the bot's settings.
     package func sendQuickPrompt() {
         session.send(session.draft, configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Retries the last failed prompt if any.
+    package func retryQuickPrompt() {
+        guard let prompt = session.lastFailedPrompt else { return }
+        session.send(prompt, configuration: configuration, agentPath: agentPath)
     }
 
     /// Reads agy's conversation index; empty when agy has none.

@@ -54,6 +54,47 @@ package enum NexusAgentEffort: String, CaseIterable, Identifiable {
     }
 }
 
+/// Represents a CLI backend that can handle prompts in Quick Prompt.
+package struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable {
+    package var id: UUID
+    package var name: String
+    package var commandTemplate: String
+    package var isBuiltIn: Bool
+
+    package init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool = true) {
+        self.id = id
+        self.name = name
+        self.commandTemplate = commandTemplate
+        self.isBuiltIn = isBuiltIn
+    }
+
+    package static let antigravity = NexusAgentCLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+        name: "Antigravity CLI",
+        commandTemplate: "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions"
+    )
+
+    package static let claude = NexusAgentCLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+        name: "Claude Code",
+        commandTemplate: "claude -p \"{prompt}\""
+    )
+
+    package static let ollama = NexusAgentCLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+        name: "Ollama (claude)",
+        commandTemplate: "ollama launch claude --model {model} -- -p \"{prompt}\""
+    )
+
+    package static let builtIns: [NexusAgentCLIProvider] = [.antigravity, .claude, .ollama]
+
+    package var executableName: String {
+        if id == Self.claude.id { return "claude" }
+        if id == Self.ollama.id { return "ollama" }
+        return "agy"
+    }
+}
+
 /// The part of the bot's `.env` the Settings page edits. Everything else in
 /// the file (the timeout, a custom provider, comments) is left as it was.
 package struct NexusAgentConfiguration: Equatable {
@@ -63,19 +104,22 @@ package struct NexusAgentConfiguration: Equatable {
     package var approvalMode: NexusAgentApprovalMode
     package var model: String
     package var effort: NexusAgentEffort
+    package var activeProvider: NexusAgentCLIProvider
 
     package init(botToken: String = "",
                  allowedUserIDs: String = "",
                  workingDirectory: String = "",
                  approvalMode: NexusAgentApprovalMode = .yolo,
                  model: String = "",
-                 effort: NexusAgentEffort = .automatic) {
+                 effort: NexusAgentEffort = .automatic,
+                 activeProvider: NexusAgentCLIProvider = .antigravity) {
         self.botToken = botToken
         self.allowedUserIDs = allowedUserIDs
         self.workingDirectory = workingDirectory
         self.approvalMode = approvalMode
         self.model = model
         self.effort = effort
+        self.activeProvider = activeProvider
     }
 
     /// The placeholder the bot's example file ships with.
@@ -295,16 +339,16 @@ package enum NexusAgentSupport {
         [(home as NSString).appendingPathComponent(".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
     }
 
-    /// `AGY_BIN` first, then the usual install locations. Nil when none is
+    /// `AGY_BIN` or named executable first, then the usual install locations. Nil when none is
     /// executable, so the page can say so instead of failing at run time.
-    package static func locateAgent(environment: [String: String], home: String,
+    package static func locateAgent(named binary: String = "agy", environment: [String: String], home: String,
                                     isExecutable: (String) -> Bool) -> String? {
-        if let explicit = environment["AGY_BIN"]?.trimmingCharacters(in: .whitespaces),
+        if binary == "agy", let explicit = environment["AGY_BIN"]?.trimmingCharacters(in: .whitespaces),
            !explicit.isEmpty, isExecutable(explicit) {
             return explicit
         }
         return searchDirectories(home: home)
-            .map { ($0 as NSString).appendingPathComponent("agy") }
+            .map { ($0 as NSString).appendingPathComponent(binary) }
             .first(where: isExecutable)
     }
 
@@ -327,12 +371,53 @@ package enum NexusAgentSupport {
         return environment
     }
 
-    /// One Quick Prompt turn: print mode, streamed JSON, the page's approval
-    /// mode, model and effort, and the conversation to continue if any.
+    /// Check whether a folder contains a .git directory.
+    package static func isGitRepo(at url: URL) -> Bool {
+        let gitDir = url.appendingPathComponent(".git")
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: gitDir.path, isDirectory: &isDirectory)
+    }
+
+    /// One Quick Prompt turn: formatted per active provider.
     package static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
-                                       conversationID: String?) -> [String] {
+                                       conversationID: String?,
+                                       planMode: Bool = false,
+                                       worktreeMode: Bool = false) -> [String] {
+        if configuration.activeProvider.id == NexusAgentCLIProvider.claude.id {
+            var args = ["-p", prompt]
+            if planMode {
+                args += ["--permission-mode", "plan",
+                         "--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+            }
+            if worktreeMode {
+                args += ["-w"]
+            }
+            if let conversationID, !conversationID.isEmpty {
+                args += ["--resume", conversationID]
+            }
+            return args
+        }
+        if configuration.activeProvider.id == NexusAgentCLIProvider.ollama.id {
+            let model = configuration.model.trimmingCharacters(in: .whitespaces)
+            let args = ["launch", "claude", "--model", model.isEmpty ? "default" : model]
+            var innerArgs = ["-p", prompt]
+            if planMode {
+                innerArgs += ["--permission-mode", "plan"]
+            }
+            if worktreeMode {
+                innerArgs += ["-w"]
+            }
+            if let conversationID, !conversationID.isEmpty {
+                innerArgs += ["--resume", conversationID]
+            }
+            return args + ["--"] + innerArgs
+        }
         var arguments = ["-p", prompt, "--output-format", "stream-json"]
-        arguments += configuration.approvalMode.agyArguments
+        if planMode {
+            arguments += ["--mode", "plan"]
+        } else {
+            arguments += configuration.approvalMode.agyArguments
+        }
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         if !model.isEmpty { arguments += ["--model", model] }
         if configuration.effort != .automatic { arguments += ["--effort", configuration.effort.rawValue] }
@@ -364,13 +449,38 @@ package enum NexusAgentSupport {
     }
 }
 
+package struct NexusAgentTurnMetrics: Equatable {
+    package var durationMs: Int?
+    package var inputTokens: Int?
+    package var outputTokens: Int?
+    package var cachedTokens: Int?
+    package var numTurns: Int?
+    package var toolCalls: Int?
+
+    package init(
+        durationMs: Int? = nil,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cachedTokens: Int? = nil,
+        numTurns: Int? = nil,
+        toolCalls: Int? = nil
+    ) {
+        self.durationMs = durationMs
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cachedTokens = cachedTokens
+        self.numTurns = numTurns
+        self.toolCalls = toolCalls
+    }
+}
+
 /// One line of `agy --output-format stream-json`, reduced to what the Quick
 /// Prompt shows.
 package enum NexusAgentStreamEvent: Equatable {
     case started(conversationID: String?)
     case text(String)
     case tool(name: String, finished: Bool)
-    case finished(status: String, response: String?, error: String?, conversationID: String?)
+    case finished(status: String, response: String?, error: String?, conversationID: String?, metrics: NexusAgentTurnMetrics? = nil)
 
     /// Nil for blank lines, non-JSON noise and events the prompt ignores.
     package static func parse(_ line: String) -> NexusAgentStreamEvent? {
@@ -396,10 +506,30 @@ package enum NexusAgentStreamEvent: Equatable {
             }
         case "result":
             guard let result = json["result"] as? [String: Any] else { return nil }
+            var m = NexusAgentTurnMetrics()
+            var hasMetrics = false
+            if let secs = result["duration_seconds"] as? NSNumber {
+                m.durationMs = Int(secs.doubleValue * 1000)
+                hasMetrics = true
+            } else if let ms = result["duration_ms"] as? NSNumber {
+                m.durationMs = ms.intValue
+                hasMetrics = true
+            }
+            if let usage = result["usage"] as? [String: Any] {
+                if let t = usage["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+                if let t = usage["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+                if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+            }
+            if let t = result["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+            if let t = result["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+            if let t = result["cached_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+            if let turns = result["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
+            if let tools = result["tool_calls"] as? NSNumber { m.toolCalls = tools.intValue; hasMetrics = true }
             return .finished(status: (result["status"] as? String) ?? "",
                              response: nonEmpty(result["response"]),
                              error: nonEmpty(result["error"]),
-                             conversationID: nonEmpty(result["conversation_id"]))
+                             conversationID: nonEmpty(result["conversation_id"]),
+                             metrics: hasMetrics ? m : nil)
         default:
             return nil
         }

@@ -27,6 +27,9 @@ enum NexusAgentTests {
         transcriptParsing(suite)
         replyBlocks(suite)
         markdownBlocks(suite)
+        cliProviders(suite)
+        turnMetrics(suite)
+        pinningAndRetry(suite)
     }
 
     // MARK: - .env
@@ -766,5 +769,62 @@ enum NexusAgentTests {
         suite.expect(NexusAgentReplyBlock.parse(reply) == [
             .code(language: "mermaid", body: "graph TD\nA --> B"),
         ], "mermaid code fence retains mermaid language")
+    }
+
+    // MARK: - Parity: CLI Providers & Arguments
+
+    private static func cliProviders(_ suite: TestSuite) {
+        let agy = NexusAgentCLIProvider.antigravity
+        let claude = NexusAgentCLIProvider.claude
+        let ollama = NexusAgentCLIProvider.ollama
+        suite.expect(agy.executableName == "agy", "agy executable is agy")
+        suite.expect(claude.executableName == "claude", "claude executable is claude")
+        suite.expect(ollama.executableName == "ollama", "ollama executable is ollama")
+        suite.expect(NexusAgentCLIProvider.builtIns.count == 3, "there are 3 built-in providers")
+
+        // Provider arguments
+        var config = NexusAgentConfiguration()
+        config.activeProvider = claude
+        let claudeArgs = NexusAgentSupport.agentArguments(prompt: "hello", configuration: config, conversationID: "c1", planMode: true, worktreeMode: true)
+        suite.expect(claudeArgs.contains("-p") && claudeArgs.contains("hello") && claudeArgs.contains("--permission-mode") && claudeArgs.contains("-w") && claudeArgs.contains("--resume"),
+                     "claude arguments include plan, worktree, and resume")
+
+        config.activeProvider = ollama
+        config.model = "qwen2.5-coder:7b"
+        let ollamaArgs = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil, planMode: true, worktreeMode: false)
+        suite.expect(ollamaArgs.contains("launch") && ollamaArgs.contains("claude") && ollamaArgs.contains("--model") && ollamaArgs.contains("qwen2.5-coder:7b") && ollamaArgs.contains("--permission-mode"),
+                     "ollama arguments launch claude with model and inner flags")
+    }
+
+    // MARK: - Parity: Metrics & Stream Parsing
+
+    private static func turnMetrics(_ suite: TestSuite) {
+        let metrics = NexusAgentTurnMetrics(durationMs: 1250, inputTokens: 500, outputTokens: 150, cachedTokens: 50, numTurns: 2, toolCalls: 3)
+        suite.expect(metrics.durationMs == 1250 && metrics.inputTokens == 500 && metrics.outputTokens == 150, "metrics preserve values")
+
+        let resultJson = """
+        {"event":"result","result":{"status":"ok","duration_ms":3400,"input_tokens":1200,"output_tokens":450,"cached_tokens":100,"num_turns":1,"tool_calls":2,"response":"Done."}}
+        """
+        let event = NexusAgentStreamEvent.parse(resultJson)
+        if case .finished(_, _, _, _, let parsedMetrics) = event {
+            suite.expect(parsedMetrics?.durationMs == 3400 && parsedMetrics?.outputTokens == 450, "result event parsed into finished with metrics")
+        } else {
+            suite.expect(false, "expected .finished event with metrics: \(String(describing: event))")
+        }
+    }
+
+    // MARK: - Parity: Pinning & Session Retry
+
+    private static func pinningAndRetry(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        suite.expect(!service.isPinned, "window starts unpinned")
+        service.isPinned = true
+        suite.expect(service.isPinned, "window can be pinned")
+
+        // Retry tracking
+        service.session.lastFailedPrompt = "failed prompt"
+        suite.expect(service.session.lastFailedPrompt == "failed prompt", "last failed prompt is retained")
     }
 }

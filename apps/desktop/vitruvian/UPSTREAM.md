@@ -2414,6 +2414,20 @@ is that notice. Add an entry for every change to upstream files.
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
   - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-06**: Complete 100% Quick Prompt parity with upstream Nexus Agent:
+  - Window pinning: `isPinned` state, `.floating` window level, outside-click dismissal suppression, animated 45° rotation toggle between `pin.circle` and `pin.circle.fill`;
+  - Interactive CLI provider switching: `NexusAgentCLIProvider` (Antigravity CLI, Claude Code, Ollama), `ModularProviderButtonView` with `cpu` icon on hover input bar, `ChatProviderBadge` in header, dynamic placeholders;
+  - Interactive header badges: `ChatModelBadge` with inline model editor, `ChatWorkingDirectoryBadge` with folder picker;
+  - Mode toggle strip: `ModeToggleStrip` above follow-up bar with Plan mode and Worktree mode pills;
+  - Floating scroll-to-bottom capsule: `ScrollOffsetPreferenceKey` and `ScrollViewHeightPreferenceKey` tracking with "Scroll to bottom" / "New messages" floating button;
+  - Animated typing indicator: avatar circle, 3 oscillating bouncing dots, elapsed timer, activity label, inline Stop button;
+  - Message bubble details: user and assistant gradient avatar circles, double-click to copy, hover copy button with spring bounce, expandable token metrics summary card;
+  - Shimmer skeleton loading state: 3 animated placeholder bars during initial prompt execution;
+  - Character counter overlay on follow-up input when draft exceeds 20 characters;
+  - Background completion notifications: `Notifier.post(title:body:)` alerts when generation finishes while panel is backgrounded;
+  - Keyboard shortcuts: `⌘N` new chat, `⌘W` / `Esc` dismissal, Up/Down prompt history;
+  - Inline error banner with 1-click retry (`arrow.clockwise`);
+  - Comprehensive unit test suite covering providers, arguments, metrics, pinning, and retry.
 - **2026-10-06**: Rich Markdown blocks and interactive Mermaid diagrams in Quick Prompt:
   - `NexusAgentQuickPromptLayout`: added `NexusAgentMarkdownBlock` enum (`heading`, `bulletItem`, `numberedItem`, `blockquote`, `divider`, `paragraph`) with block parser;
   - `NexusAgentQuickPromptView`: updated `NexusAgentMessageBubble` to render structured Markdown blocks (headings with proportional scale, custom styled bullets and numbered items, blockquote callouts, dividers), added `NexusAgentMermaidCard` with `WKWebView` rendering and Diagram/Source toggle, and added styled `NexusAgentCodeBlockView` with language tags and line numbers;

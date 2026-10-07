@@ -25,12 +25,40 @@ package struct NexusAgentQuickPromptView: View {
     /// The pointer is over the pill, which is what brings the action buttons in.
     @State private var isHoveringInput = false
     @State private var sparklePulse = false
+    @State private var hoveringPin = false
+    @State private var typingDotPhase = 0
+    @State private var isNearBottom = true
+    @State private var scrollViewHeight: CGFloat = 500
+    @State private var hoveringInlineStop = false
+    @State private var hoveringNewChat = false
+    @State private var hoveringSessions = false
 
     package init() {}
 
     private typealias Layout = NexusAgentQuickPromptLayout
     private var strings: NexusAgentFeatureStrings { FeatureStrings.nexusAgent(l10n.language) }
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous) }
+
+    private var isGitDir: Bool {
+        let path = session.workingDirectory(for: service.configuration)
+        return NexusAgentSupport.isGitRepo(at: URL(fileURLWithPath: path))
+    }
+
+    private var contextualPlaceholder: String {
+        if session.mode == .sessions {
+            return strings.sessionsFilter
+        }
+        let providerName = service.activeProvider.name.components(separatedBy: " ").first ?? "Agent"
+        return "Ask \(providerName) anything…"
+    }
+
+    private var followUpPlaceholder: String {
+        if session.planMode {
+            return strings.planModeOn
+        }
+        let providerName = service.activeProvider.name.components(separatedBy: " ").first ?? "Agent"
+        return "Follow up with \(providerName)…"
+    }
 
     package var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +67,13 @@ package struct NexusAgentQuickPromptView: View {
                 Divider().opacity(0.5)
                 conversation
                 Divider().opacity(0.5)
+                ModeToggleStrip(
+                    planEnabled: $session.planMode,
+                    worktreeEnabled: $session.worktreeMode,
+                    isGitDir: isGitDir,
+                    worktreeSupported: service.configuration.activeProvider.id != NexusAgentCLIProvider.antigravity.id,
+                    strings: strings
+                )
                 followUpBar
             } else {
                 pill
@@ -89,7 +124,7 @@ package struct NexusAgentQuickPromptView: View {
     private var inputBar: some View {
         HStack(spacing: 12) {
             pulsingSparkles
-            TextField(strings.promptPlaceholder, text: $session.draft)
+            TextField(contextualPlaceholder, text: $session.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 18, weight: .regular))
                 .focused($inputFocused)
@@ -184,9 +219,22 @@ package struct NexusAgentQuickPromptView: View {
                 }
             }
 
+            if isGitDir && service.configuration.activeProvider.id != NexusAgentCLIProvider.antigravity.id {
+                ModularButtonView(icon: "arrow.triangle.branch",
+                                  isActive: session.worktreeMode,
+                                  help: session.worktreeMode ? strings.worktreeModeOn : strings.worktreeModeOff,
+                                  activeColor: .green) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        session.worktreeMode.toggle()
+                    }
+                }
+            }
+
             ModularButtonView(icon: "folder", isActive: false, help: strings.workingFolder) {
                 chooseWorkingFolder()
             }
+
+            ModularProviderButtonView(service: service)
         }
     }
 
@@ -375,11 +423,73 @@ package struct NexusAgentQuickPromptView: View {
                     .padding(.vertical, 1)
                     .background(Capsule().fill(Color.accentColor.opacity(0.12)))
             }
+            if !session.messages.isEmpty {
+                Text("\(session.messages.count)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.2), value: session.messages.count)
+
+                Circle()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 3, height: 3)
+            }
+
+            ChatProviderBadge(service: service)
+            ChatModelBadge(service: service)
+            ChatWorkingDirectoryBadge(service: service, session: session)
+
             Spacer()
-            sessionsButton
-            Button(strings.newChat) { session.newChat() }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+
+            Button {
+                session.newChat()
+            } label: {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(hoveringNewChat ? Color.primary : Color.secondary)
+                    .scaleEffect(hoveringNewChat ? 1.1 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: hoveringNewChat)
+            }
+            .buttonStyle(.plain)
+            .help(strings.newChat + " (⌘N)")
+            .onHover { hoveringNewChat = $0 }
+
+            Button {
+                session.toggleSessions(configuration: service.configuration)
+            } label: {
+                Image(systemName: "clock")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(hoveringSessions ? Color.primary : Color.secondary.opacity(0.8))
+                    .scaleEffect(hoveringSessions ? 1.1 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: hoveringSessions)
+            }
+            .buttonStyle(.plain)
+            .help(strings.sessionsToggle)
+            .onHover { hoveringSessions = $0 }
+
+            Button {
+                service.isPinned.toggle()
+            } label: {
+                Group {
+                    if service.isPinned {
+                        Image(systemName: "pin.circle.fill")
+                    } else {
+                        Image(systemName: "pin.circle")
+                    }
+                }
+                .font(.system(size: 16))
+                .foregroundStyle(service.isPinned ? Color.blue : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
+                .rotationEffect(.degrees(service.isPinned ? 0 : 45))
+                .scaleEffect(hoveringPin ? 1.1 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: service.isPinned)
+                .animation(.easeInOut(duration: 0.15), value: hoveringPin)
+            }
+            .buttonStyle(.plain)
+            .help(service.isPinned ? strings.unpinWindow : strings.pinWindow)
+            .onHover { hoveringPin = $0 }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -387,21 +497,130 @@ package struct NexusAgentQuickPromptView: View {
     }
 
     private var conversation: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(session.messages) { message in
-                        if !(message.role == .agent && message.text.isEmpty) {
-                            NexusAgentMessageBubble(message: message)
+        ZStack(alignment: .bottom) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        if session.messages.isEmpty && session.isRunning {
+                            VStack(spacing: 12) {
+                                ForEach(0..<3, id: \.self) { i in
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color.primary.opacity(0.05))
+                                        .frame(height: i == 1 ? 40 : 20)
+                                        .frame(maxWidth: i == 2 ? 200 : .infinity)
+                                        .shimmer()
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 20)
+                        }
+                        ForEach(session.messages) { message in
+                            if !(message.role == .agent && message.text.isEmpty) {
+                                NexusAgentMessageBubble(message: message)
+                            }
+                        }
+                        if session.isRunning { progress }
+                        if session.lastFailedPrompt != nil {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                Text(strings.agentFailed)
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption)
+                                Spacer()
+                                Button {
+                                    service.retryQuickPrompt()
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.caption)
+                                        Text(strings.retry)
+                                            .font(.caption)
+                                    }
+                                    .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .help(strings.retry)
+
+                                Button {
+                                    session.lastFailedPrompt = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.quaternary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.red.opacity(0.08)))
+                        }
+                        Color.clear.frame(height: 1).id(Self.bottomID)
+                    }
+                    .padding(14)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: ScrollOffsetPreferenceKey.self,
+                                value: geo.frame(in: .named("chatScroll")).maxY
+                            )
+                        }
+                    )
+                }
+                .overlay(
+                    GeometryReader { scrollGeo in
+                        Color.clear.preference(
+                            key: ScrollViewHeightPreferenceKey.self,
+                            value: scrollGeo.size.height
+                        )
+                    }
+                )
+                .coordinateSpace(name: "chatScroll")
+                .onPreferenceChange(ScrollOffsetPreferenceKey.self) { maxY in
+                    isNearBottom = maxY < scrollViewHeight + 60
+                }
+                .onPreferenceChange(ScrollViewHeightPreferenceKey.self) { height in
+                    scrollViewHeight = height
+                }
+                .onChange(of: session.messages) { _, _ in
+                    if isNearBottom {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(Self.bottomID, anchor: .bottom)
                         }
                     }
-                    if session.isRunning { progress }
-                    Color.clear.frame(height: 1).id(Self.bottomID)
                 }
-                .padding(14)
+                .onChange(of: session.isRunning) { _, loading in
+                    if loading && isNearBottom {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                        }
+                    }
+                }
+
+                if !isNearBottom {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down")
+                                .font(.caption2.weight(.bold))
+                            Text(session.isRunning ? strings.newMessages : strings.scrollToBottom)
+                                .font(.caption2)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            .onChange(of: session.messages) { _, _ in proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-            .onChange(of: session.isRunning) { _, _ in proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+            .animation(.easeInOut(duration: 0.25), value: isNearBottom)
         }
     }
 
@@ -409,27 +628,111 @@ package struct NexusAgentQuickPromptView: View {
 
     private var progress: some View {
         HStack(spacing: 6) {
-            ProgressView().controlSize(.small)
+            Image(systemName: "ellipsis.bubble")
+                .font(.caption2)
+                .foregroundStyle(.linearGradient(
+                    colors: [.blue, .purple],
+                    startPoint: .top, endPoint: .bottom
+                ))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Color.blue.opacity(0.15)))
+
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(Color.blue.opacity(0.6))
+                        .frame(width: 6, height: 6)
+                        .scaleEffect(typingDotPhase == i ? 1.3 : 0.7)
+                        .animation(
+                            .easeInOut(duration: 0.4)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.15),
+                            value: typingDotPhase
+                        )
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.secondary.opacity(0.1)))
+
             if let tool = session.activity {
                 Text(strings.working)
                 Text(tool).font(.system(size: 11, design: .monospaced))
             } else {
                 Text(strings.thinking)
             }
+
+            if session.elapsedSeconds > 0 {
+                Text("\(session.elapsedSeconds)s")
+                    .font(.system(.caption2, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.2), value: session.elapsedSeconds)
+            }
+
+            Spacer()
+
+            Button {
+                session.stop()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "stop.circle.fill")
+                    Text(strings.stopReply)
+                }
+                .font(.caption)
+                .foregroundStyle(Color.red.opacity(hoveringInlineStop ? 0.6 : 1.0))
+                .animation(.easeInOut(duration: 0.12), value: hoveringInlineStop)
+            }
+            .buttonStyle(.plain)
+            .onHover { hoveringInlineStop = $0 }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        .onAppear { typingDotPhase = 1 }
     }
 
     private var followUpBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
             planButton
-            TextField(strings.followUpPlaceholder, text: $session.draft, axis: .vertical)
+            TextField(followUpPlaceholder, text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...6)
                 .focused($inputFocused)
                 .onSubmit { if session.canSend { service.sendQuickPrompt() } }
+                .onExitCommand { if session.isRunning { session.stop() } }
+                .onKeyPress(.upArrow) {
+                    if session.draft.isEmpty && !session.promptHistory.isEmpty {
+                        if session.historyIndex < 0 { session.historyIndex = session.promptHistory.count }
+                        session.historyIndex = max(0, session.historyIndex - 1)
+                        session.draft = session.promptHistory[session.historyIndex]
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.downArrow) {
+                    if session.historyIndex >= 0 && session.historyIndex < session.promptHistory.count - 1 {
+                        session.historyIndex += 1
+                        session.draft = session.promptHistory[session.historyIndex]
+                        return .handled
+                    } else if session.historyIndex >= 0 {
+                        session.historyIndex = -1
+                        session.draft = ""
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if session.draft.count > 20 {
+                        Text("\(session.draft.count)")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(.quaternary)
+                            .padding(.trailing, 4)
+                            .padding(.bottom, 2)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.15), value: session.draft.count > 20)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -444,80 +747,224 @@ package struct NexusAgentQuickPromptView: View {
 /// One chat bubble: rich Markdown blocks (headings, lists, quotes, dividers) and interactive code/diagram cards.
 private struct NexusAgentMessageBubble: View {
     let message: NexusAgentChatMessage
+    @State private var copied = false
+    @State private var copyBounce = false
+    @State private var hovering = false
+    @State private var showingStats = false
+
+    private func copyContent() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message.text, forType: .string)
+        copied = true
+        copyBounce = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { copyBounce = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+
+    private func formatTokenCount(_ count: Int) -> String {
+        if count >= 1000 {
+            return String(format: "%.1fK", locale: Locale.current, Double(count) / 1000.0)
+        }
+        return "\(count)"
+    }
+
+    private func buildStatsParts() -> [String] {
+        var parts: [String] = []
+        if let ms = message.durationMs {
+            parts.append(String(format: "%.1fs", locale: Locale.current, Double(ms) / 1000.0))
+        }
+        if let input = message.inputTokens {
+            parts.append("\(formatTokenCount(input)) in")
+        }
+        if let output = message.outputTokens {
+            parts.append("\(formatTokenCount(output)) out")
+        }
+        if let cached = message.cachedTokens, cached > 0 {
+            parts.append("\(formatTokenCount(cached)) cached")
+        }
+        if let tools = message.toolCalls, tools > 0 {
+            parts.append("\(tools) tool\(tools == 1 ? "" : "s")")
+        }
+        return parts
+    }
+
+    @ViewBuilder
+    private func statsRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .foregroundStyle(.quaternary)
+                .frame(width: 65, alignment: .trailing)
+            Text(value)
+                .foregroundStyle(.tertiary)
+        }
+        .font(.system(size: 9, weight: .medium, design: .rounded))
+    }
 
     var body: some View {
         let isUser = message.role == .user
-        HStack {
-            if isUser { Spacer(minLength: 60) }
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(NexusAgentReplyBlock.parse(message.text).enumerated()), id: \.offset) { _, block in
-                    switch block {
-                    case .text(let text):
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(NexusAgentMarkdownBlock.parse(text).enumerated()), id: \.offset) { _, mdBlock in
-                                switch mdBlock {
-                                case .heading(let level, let headingText):
-                                    Text(Self.markdown(headingText))
-                                        .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
-                                        .foregroundStyle(message.isError ? Color.orange : Color.primary)
+        HStack(alignment: .top, spacing: 8) {
+            if isUser { Spacer(minLength: 40) }
+
+            if !isUser {
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.linearGradient(
+                        colors: [.blue, .purple],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.blue.opacity(0.15)))
+                    .padding(.top, 4)
+            }
+
+            VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(NexusAgentReplyBlock.parse(message.text).enumerated()), id: \.offset) { _, block in
+                        switch block {
+                        case .text(let text):
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(Array(NexusAgentMarkdownBlock.parse(text).enumerated()), id: \.offset) { _, mdBlock in
+                                    switch mdBlock {
+                                    case .heading(let level, let headingText):
+                                        Text(Self.markdown(headingText))
+                                            .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
+                                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                            .padding(.vertical, 2)
+                                    case .bulletItem(let bulletText):
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Image(systemName: "circle.fill")
+                                                .font(.system(size: 4))
+                                                .foregroundStyle(Color.accentColor)
+                                                .padding(.top, 6)
+                                            Text(Self.markdown(bulletText))
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                        }
+                                    case .numberedItem(let number, let itemText):
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Text("\(number).")
+                                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.secondary)
+                                                .padding(.top, 1)
+                                            Text(Self.markdown(itemText))
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                        }
+                                    case .blockquote(let quoteText):
+                                        HStack(alignment: .top, spacing: 8) {
+                                            RoundedRectangle(cornerRadius: 1.5)
+                                                .fill(Color.accentColor.opacity(0.6))
+                                                .frame(width: 3)
+                                            Text(Self.markdown(quoteText))
+                                                .font(.system(size: 13))
+                                                .italic()
+                                                .foregroundStyle(.secondary)
+                                        }
                                         .padding(.vertical, 2)
-                                case .bulletItem(let bulletText):
-                                    HStack(alignment: .top, spacing: 6) {
-                                        Image(systemName: "circle.fill")
-                                            .font(.system(size: 4))
-                                            .foregroundStyle(Color.accentColor)
-                                            .padding(.top, 6)
-                                        Text(Self.markdown(bulletText))
+                                    case .divider:
+                                        Divider()
+                                            .opacity(0.4)
+                                            .padding(.vertical, 4)
+                                    case .paragraph(let paragraphText):
+                                        Text(Self.markdown(paragraphText))
                                             .font(.system(size: 13))
                                             .foregroundStyle(message.isError ? Color.orange : Color.primary)
                                     }
-                                case .numberedItem(let number, let itemText):
-                                    HStack(alignment: .top, spacing: 6) {
-                                        Text("\(number).")
-                                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                                            .foregroundStyle(.secondary)
-                                            .padding(.top, 1)
-                                        Text(Self.markdown(itemText))
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
-                                    }
-                                case .blockquote(let quoteText):
-                                    HStack(alignment: .top, spacing: 8) {
-                                        RoundedRectangle(cornerRadius: 1.5)
-                                            .fill(Color.accentColor.opacity(0.6))
-                                            .frame(width: 3)
-                                        Text(Self.markdown(quoteText))
-                                            .font(.system(size: 13))
-                                            .italic()
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.vertical, 2)
-                                case .divider:
-                                    Divider()
-                                        .opacity(0.4)
-                                        .padding(.vertical, 4)
-                                case .paragraph(let paragraphText):
-                                    Text(Self.markdown(paragraphText))
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(message.isError ? Color.orange : Color.primary)
                                 }
                             }
+                        case .code(let language, let body):
+                            if let lang = language?.lowercased(), lang == "mermaid" {
+                                NexusAgentMermaidCard(source: body)
+                            } else {
+                                NexusAgentCodeBlockView(language: language, bodyText: body)
+                            }
                         }
-                    case .code(let language, let body):
-                        if let lang = language?.lowercased(), lang == "mermaid" {
-                            NexusAgentMermaidCard(source: body)
-                        } else {
-                            NexusAgentCodeBlockView(language: language, bodyText: body)
+                    }
+                }
+                .textSelection(.enabled)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isUser ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
+
+                Button(action: copyContent) {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        Text(copied ? "Copied!" : "Copy")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(copied ? Color.blue : Color.secondary)
+                    .scaleEffect(copyBounce ? 1.25 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
+                }
+                .buttonStyle(.plain)
+                .opacity(hovering || copied ? 1 : 0)
+
+                if !isUser && (message.durationMs != nil || message.outputTokens != nil) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showingStats.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 0) {
+                                let parts = buildStatsParts()
+                                ForEach(Array(parts.enumerated()), id: \.offset) { i, part in
+                                    if i > 0 { Text(" · ") }
+                                    Text(part)
+                                }
+                                Text("  ")
+                                Image(systemName: showingStats ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 7, weight: .bold))
+                            }
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                        }
+                        .buttonStyle(.plain)
+
+                        if showingStats {
+                            VStack(alignment: .leading, spacing: 3) {
+                                if let model = message.modelName { statsRow("Model", model) }
+                                if let ms = message.durationMs { statsRow("Duration", String(format: "%.1fs", locale: Locale.current, Double(ms) / 1000.0)) }
+                                if let input = message.inputTokens { statsRow("Input", "\(formatTokenCount(input)) tokens") }
+                                if let output = message.outputTokens { statsRow("Output", "\(formatTokenCount(output)) tokens") }
+                                if let cached = message.cachedTokens, cached > 0 { statsRow("Cached", "\(formatTokenCount(cached)) tokens") }
+                                if let tools = message.toolCalls, tools > 0 { statsRow("Tool calls", "\(tools)") }
+                                if let turns = message.numTurns, turns > 0 { statsRow("Turns", "\(turns)") }
+                                if let reason = message.stopReason { statsRow("Status", reason) }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(0.03))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                                    )
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                 }
             }
-            .textSelection(.enabled)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isUser ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
-            if !isUser { Spacer(minLength: 60) }
+            .onTapGesture(count: 2) { copyContent() }
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+
+            if isUser {
+                Text(String(NSFullUserName().prefix(1)).uppercased())
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.linearGradient(
+                        colors: [.indigo, .purple],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.indigo.opacity(0.15)))
+                    .padding(.top, 4)
+            }
+
+            if !isUser { Spacer(minLength: 40) }
         }
     }
 
@@ -809,8 +1256,24 @@ private struct ModularButtonView: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
+            Group {
+                if icon == "clock.fill" {
+                    Image(systemName: "clock.fill")
+                } else if icon == "clock" {
+                    Image(systemName: "clock")
+                } else if icon == "doc.text.fill" {
+                    Image(systemName: "doc.text.fill")
+                } else if icon == "doc.text" {
+                    Image(systemName: "doc.text")
+                } else if icon == "arrow.triangle.branch" {
+                    Image(systemName: "arrow.triangle.branch")
+                } else if icon == "folder" {
+                    Image(systemName: "folder")
+                } else {
+                    Image(systemName: icon)
+                }
+            }
+            .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(isActive ? activeColor : Color.primary.opacity(isHovered ? 0.7 : 0.45))
                 .frame(width: 34, height: 34)
                 .background(
@@ -875,3 +1338,333 @@ private struct QuickPromptDragHandle: NSViewRepresentable {
         }
     }
 }
+
+/// Compact provider picker button beside the prompt bar.
+private struct ModularProviderButtonView: View {
+    @ObservedObject var service: NexusAgentService
+    @State private var isHovered = false
+
+    var body: some View {
+        Menu {
+            ForEach(NexusAgentCLIProvider.builtIns) { provider in
+                Button {
+                    service.updateActiveProvider(provider)
+                } label: {
+                    HStack {
+                        Text(provider.name)
+                        if service.configuration.activeProvider.id == provider.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "cpu")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.primary.opacity(isHovered ? 0.7 : 0.45))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(isHovered ? Color.primary.opacity(0.06) : Color.clear))
+                .background(Circle().strokeBorder(Color.primary.opacity(isHovered ? 0.18 : 0.1), lineWidth: 0.5))
+                .scaleEffect(isHovered ? 1.08 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Switch provider")
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Compact provider picker badge for the chat header.
+private struct ChatProviderBadge: View {
+    @ObservedObject var service: NexusAgentService
+    @State private var isHovered = false
+
+    var body: some View {
+        Menu {
+            ForEach(NexusAgentCLIProvider.builtIns) { provider in
+                Button {
+                    service.updateActiveProvider(provider)
+                } label: {
+                    HStack {
+                        Text(provider.name)
+                        if service.configuration.activeProvider.id == provider.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Text(service.configuration.activeProvider.name)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(isHovered ? Color.secondary : Color.secondary.opacity(0.6))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.1))
+                )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Switch provider")
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Compact clickable model badge for the chat header.
+private struct ChatModelBadge: View {
+    @ObservedObject var service: NexusAgentService
+    @State private var isEditing = false
+    @State private var draft = ""
+    @State private var isHovered = false
+    @FocusState private var isFocused: Bool
+
+    private var displayName: String {
+        let m = service.configuration.model.trimmingCharacters(in: .whitespaces)
+        return m.isEmpty ? "Auto" : m
+    }
+
+    var body: some View {
+        if isEditing {
+            TextField("model name", text: $draft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .frame(width: 100)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.secondary.opacity(0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Color.blue.opacity(0.4), lineWidth: 1)
+                        )
+                )
+                .focused($isFocused)
+                .onSubmit {
+                    var next = service.configuration
+                    next.model = draft.trimmingCharacters(in: .whitespaces)
+                    service.save(next)
+                    isEditing = false
+                }
+                .onExitCommand { isEditing = false }
+        } else {
+            Button {
+                draft = service.configuration.model
+                isEditing = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isFocused = true
+                }
+            } label: {
+                Text(displayName)
+                    .font(.system(size: 10, weight: .medium, design: service.configuration.model.isEmpty ? .default : .monospaced))
+                    .foregroundStyle(service.configuration.model.isEmpty
+                        ? (isHovered ? Color.secondary : Color.secondary.opacity(0.4))
+                        : (isHovered ? Color.secondary : Color.secondary.opacity(0.7)))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.08))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(service.configuration.model.isEmpty ? "Set model" : "Model: \(service.configuration.model)")
+            .onHover { isHovered = $0 }
+        }
+    }
+}
+
+/// Compact badge showing working directory with click to choose.
+private struct ChatWorkingDirectoryBadge: View {
+    @ObservedObject var service: NexusAgentService
+    @ObservedObject var session: NexusAgentQuickPromptSession
+    @State private var isHovered = false
+
+    private var fullDirPath: String {
+        session.workingDirectory(for: service.configuration)
+    }
+
+    private var currentDirName: String {
+        URL(fileURLWithPath: fullDirPath).lastPathComponent
+    }
+
+    var body: some View {
+        Button {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.directoryURL = URL(fileURLWithPath: fullDirPath)
+            panel.prompt = "Set Working Directory"
+
+            NSApp.activate(ignoringOtherApps: true)
+            if panel.runModal() == .OK, let url = panel.url {
+                var next = service.configuration
+                next.workingDirectory = url.path
+                service.save(next)
+            }
+            service.showQuickPrompt()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "folder")
+                Text(currentDirName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 120, alignment: .leading)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(isHovered ? Color.secondary : Color.secondary.opacity(0.7))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.08))
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Working Directory: \(fullDirPath)\nClick to change")
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Mode toggle strip above follow-up bar for plan and worktree modes.
+private struct ModeToggleStrip: View {
+    @Binding var planEnabled: Bool
+    @Binding var worktreeEnabled: Bool
+    var isGitDir: Bool
+    var worktreeSupported: Bool
+    let strings: NexusAgentFeatureStrings
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    planEnabled.toggle()
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    if planEnabled {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 9))
+                    } else {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 9))
+                    }
+                    Text("Plan")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(planEnabled ? Color.orange : Color.secondary.opacity(0.4))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule()
+                        .fill(planEnabled ? Color.orange.opacity(0.12) : Color.clear)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(planEnabled ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            .help(planEnabled ? strings.planModeOn : strings.planModeOff)
+
+            if isGitDir && worktreeSupported {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        worktreeEnabled.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 9))
+                        Text("Worktree")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(worktreeEnabled ? Color.green : Color.secondary.opacity(0.4))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(worktreeEnabled ? Color.green.opacity(0.12) : Color.clear)
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(worktreeEnabled ? Color.green.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .help(worktreeEnabled ? strings.worktreeModeOn : strings.worktreeModeOff)
+            }
+
+            if planEnabled {
+                Text(strings.planContext)
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.orange.opacity(0.7))
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else if worktreeEnabled {
+                Text(strings.worktreeContext)
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.green.opacity(0.7))
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+    }
+}
+
+private struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ScrollViewHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Color.primary.opacity(0.06),
+                        Color.clear,
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: phase)
+                .mask(content)
+            )
+            .onAppear {
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    phase = 400
+                }
+            }
+            .onDisappear {
+                phase = 0
+            }
+    }
+}
+
+private extension View {
+    func shimmer() -> some View {
+        modifier(ShimmerModifier())
+    }
+}
+

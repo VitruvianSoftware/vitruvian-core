@@ -67,6 +67,22 @@ package struct NexusAgentFeatureStrings {
     package let followUpPlaceholder: String
     package let untitledSession: String
 
+    package var pinWindow: String { "Pin window" }
+    package var unpinWindow: String { "Unpin window" }
+    package var scrollToBottom: String { "Scroll to bottom" }
+    package var newMessages: String { "New messages" }
+    package var copy: String { "Copy" }
+    package var copied: String { "Copied!" }
+    package var retry: String { "Retry" }
+    package var switchProvider: String { "Switch provider" }
+    package var autoModel: String { "Auto" }
+    package var worktreeModeOn: String { "Worktree mode on (isolated branch)" }
+    package var worktreeModeOff: String { "Enable git worktree" }
+    package var confirmDeleteAll: String { "Confirm?" }
+    package var clearAll: String { "Clear All" }
+    package var worktreeContext: String { "Isolated git branch — ask the agent to merge when finished" }
+    package var planContext: String { "Read-only — agent will explain without making changes" }
+
     package func approvalModeName(_ mode: NexusAgentApprovalMode) -> String {
         switch mode {
         case .yolo: return approvalYolo
