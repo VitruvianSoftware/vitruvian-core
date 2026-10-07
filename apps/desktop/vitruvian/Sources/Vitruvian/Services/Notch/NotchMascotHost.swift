@@ -1105,7 +1105,9 @@ package final class NotchMascotHostView: NSView {
     package func configure(look: NotchMascotLook, size: CGFloat, mood: NotchMascotMood, idles: Bool,
                            reduceMotion: Bool, animated: Bool) {
         mascot.reduceMotion = reduceMotion
+        let shift = figureShift
         mascot.configure(look: look, size: size, contentsScale: backingScale)
+        if figureShift != shift { applyPlacement() }
         if mood != requestedMood {
             requestedMood = mood
             mascot.setMood(mood, animated: animated && window != nil)
@@ -1145,8 +1147,13 @@ package final class NotchMascotHostView: NSView {
         applyPlacement()
     }
 
+    /// Its box's offset from the figure's own middle, so that what a caller
+    /// centres, at rest or on a visit, is the body that shows.
+    private var figureShift: CGFloat { NotchMascotGeometry.figureOffset(mascot.look) * mascot.size }
+
     private func applyPlacement() {
-        let center = placement.center ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        let placed = placement.center ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        let center = CGPoint(x: placed.x, y: placed.y - figureShift)
         let visible = placement.visible
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1176,6 +1183,9 @@ package final class NotchMascotHostView: NSView {
     /// being how high a hop may take it there.
     package func playVisit(_ visit: NotchMascotVisit?, path: @autoclosure () -> NotchMascotPath, baseline: CGFloat,
                            stand: CGPoint, lift: CGFloat) {
+        let shift = figureShift
+        let baseline = baseline - shift
+        let stand = CGPoint(x: stand.x, y: stand.y - shift)
         guard let visit else {
             // Ended early while it stands in its place, as when what it
             // reacted over went away: it stays there rather than leave.

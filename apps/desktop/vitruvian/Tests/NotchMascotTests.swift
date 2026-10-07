@@ -29,6 +29,34 @@ enum NotchMascotTests {
         commandBarContracts(suite)
         dropletContracts(suite)
         calendarContracts(suite)
+        centeringContracts(suite)
+    }
+
+    /// Placed by its box, a minimal body sat below the middle it was given,
+    /// a capsule's included: the box keeps room above it for the robot's
+    /// antenna. Every look now meets the line it is centred on.
+    private static func centeringContracts(_ suite: TestSuite) {
+        for style in NotchMascotStyle.allCases {
+            for shape in NotchMascotShape.allCases {
+                let look = NotchMascotLook(style: style, shape: shape, palette: .pearl)
+                for size: CGFloat in [10, 16, 18, 20] {
+                    let middle: CGFloat = 15
+                    let boxTop = middle - NotchMascotGeometry.figureOffset(look) * size - size / 2
+                    let figure: CGRect
+                    if style == .robot {
+                        let parts = NotchMascotGeometry.robot(size: size)
+                        figure = [parts.ears, parts.antenna, parts.bulb]
+                            .reduce(parts.head.boundingBoxOfPath) { $0.union($1.boundingBoxOfPath) }
+                    } else {
+                        figure = NotchMascotGeometry.body(shape, size: size).boundingBoxOfPath
+                    }
+                    suite.expect(abs(boxTop + figure.midY - middle) < 0.001,
+                                 "a \(style.rawValue) \(shape.rawValue) companion of \(size) points is centred on its line")
+                }
+            }
+        }
+        suite.expect(NotchMascotGeometry.figureOffset(.standard) > 0.03,
+                     "a minimal ball sits low in its box, which the placement makes up for")
     }
 
     private static func calendarContracts(_ suite: TestSuite) {
