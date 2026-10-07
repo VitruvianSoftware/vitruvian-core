@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.11.0...vitruvian-v3.12.0) (2026-10-07)
+
+
+### Features
+
+* **vitruvian:** track upstream vorssaint-utils and port its changes ([#2798](https://github.com/VitruvianSoftware/vitruvian-core/issues/2798)) ([2993c14](https://github.com/VitruvianSoftware/vitruvian-core/commit/2993c14aa3fc36f98bbfa404191efa274d4b9e0d))
+
 ## [3.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.10.0...vitruvian-v3.11.0) (2026-10-06)
 
 
