@@ -431,6 +431,8 @@ package enum Preferences {
     package static let monitorInterval = Preference(DefaultsKey.monitorInterval, default: 2)
     package static let windowLayoutWindowGap = Preference(DefaultsKey.windowLayoutWindowGap, default: 0)
     package static let windowLayoutScreenGap = Preference(DefaultsKey.windowLayoutScreenGap, default: 0)
+    package static let windowLayoutMarginPercent = Preference(DefaultsKey.windowLayoutMarginPercent,
+                                                              default: WindowLayoutMargin.defaultPercent)
     package static let monitorAlertCPUThreshold = Preference(DefaultsKey.monitorAlertCPUThreshold, default: 90)
     package static let monitorAlertCPUTemperatureThreshold = Preference(DefaultsKey.monitorAlertCPUTemperatureThreshold, default: 90)
     package static let monitorAlertBatteryTemperatureThreshold = Preference(DefaultsKey.monitorAlertBatteryTemperatureThreshold, default: 40)

@@ -26,6 +26,7 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow: Bool
     @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap: Int
     @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap: Int
+    @AppStorage(Preferences.windowLayoutMarginPercent) private var marginPercent: Double
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
     // Same preference the Switcher page exposes next to Dock Preview; it is
     // mirrored here because it is a window-juggling behavior people look for
@@ -205,6 +206,7 @@ package struct WindowLayoutSettings: View {
                 Section(text.other) {
                     actionRow(.maximize)
                     actionRow(.marginMaximize)
+                    marginSlider
                     actionRow(.fullScreen)
                     actionRow(.center)
                     actionRow(.previousDisplay)
@@ -278,6 +280,22 @@ package struct WindowLayoutSettings: View {
         default: return "\(value) px"
         }
         return "\(name) (\(value) px)"
+    }
+
+    private var marginSlider: some View {
+        HStack(spacing: 12) {
+            Slider(value: Binding(
+                get: { WindowLayoutMargin.sanitizedPercent(marginPercent) },
+                set: { marginPercent = WindowLayoutMargin.sanitizedPercent($0) }
+            ), in: WindowLayoutMargin.percentRange, step: 1) {
+                Text(text.marginPerEdge)
+            }
+            Text(WindowLayoutMargin.sanitizedPercent(marginPercent) / 100,
+                 format: .percent.precision(.fractionLength(0)))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+        }
     }
 
     private func refreshSystemTilingState() {

@@ -650,6 +650,7 @@ package enum Defaults {
         DefaultsKey.windowLayoutHiddenActions: Preferences.windowLayoutHiddenActions.defaultValue,
         DefaultsKey.windowLayoutWindowGap: Preferences.windowLayoutWindowGap.defaultValue,
         DefaultsKey.windowLayoutScreenGap: Preferences.windowLayoutScreenGap.defaultValue,
+        DefaultsKey.windowLayoutMarginPercent: Preferences.windowLayoutMarginPercent.defaultValue,
         DefaultsKey.windowLayoutSideRepeatCyclesThirds: Preferences.windowLayoutSideRepeatCyclesThirds.defaultValue,
         DefaultsKey.menuBarMetricOrder: Preferences.menuBarMetricOrder.defaultValue,
         DefaultsKey.menuBarCombineTemperatures: Preferences.menuBarCombineTemperatures.defaultValue,
