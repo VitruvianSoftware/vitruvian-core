@@ -72,6 +72,7 @@ enum NotchDestinationContract {
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
         scratchpadContracts(defaults: defaults, suite: suite)
         reopeningContracts(defaults: defaults, suite: suite)
+        countdownContracts(defaults: defaults, suite: suite)
         stepBackContracts(suite)
         for resting in [NotchIdleContent.none, .music] {
             defaults.set(resting.rawValue, forKey: DefaultsKey.notchIdleContent)
@@ -459,6 +460,34 @@ enum NotchDestinationContract {
         default:
             break
         }
+    }
+
+    /// A click on the closed island's countdown opens Calendar on its event;
+    /// a page that opens in Calendar's place keeps no event for a later visit.
+    private static func countdownContracts(defaults: UserDefaults, suite: TestSuite) {
+        let keys = [DefaultsKey.notchCalendarTimeLeft, DefaultsKey.notchOpensActivity,
+                    DefaultsKey.notchReturnHome, DefaultsKey.notchHomeModule]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        defaults.set(true, forKey: DefaultsKey.notchCalendarTimeLeft)
+        defaults.set(true, forKey: DefaultsKey.notchOpensActivity)
+        let fixture = island()
+        let service = fixture.island
+        show(.calendar, on: fixture)
+        let event = fixture.services.calendarCountdown?.event.id
+        service.openCountdownEvent()
+        suite.expect(event != nil && service.expanded && service.selected == .calendar
+                     && fixture.services.revealedCalendarEvent == event,
+                     "a click on the event countdown opens Calendar on its event")
+        service.collapse()
+        // With activities turned off the island reopens its home page instead.
+        defaults.set(false, forKey: DefaultsKey.notchOpensActivity)
+        defaults.set(true, forKey: DefaultsKey.notchReturnHome)
+        defaults.set(NotchModule.controls.rawValue, forKey: DefaultsKey.notchHomeModule)
+        service.openCountdownEvent()
+        suite.expect(service.expanded && service.selected != .calendar
+                     && fixture.services.revealedCalendarEvent == nil,
+                     "a page opened in Calendar's place keeps no event for later")
     }
 
     /// What the closed island is already showing is what opening it shows,

@@ -58,6 +58,8 @@ package final class NotchCalendarService: NSObject, ObservableObject {
     @Published package private(set) var events: [NotchCalendarEvent] = []
     @Published package private(set) var countdown: NotchCalendarCountdown?
     @Published package private(set) var loading = false
+    /// The event the Calendar page scrolls to once, after a click on the countdown.
+    @Published package var revealing: String?
     /// Countdown keys of the events chosen from their menu.
     @Published package private(set) var chosenCountdowns = Set<String>()
     private var reader: NotchCalendarReader?

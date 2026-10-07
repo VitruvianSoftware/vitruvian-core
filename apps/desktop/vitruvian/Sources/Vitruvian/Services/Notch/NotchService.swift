@@ -313,7 +313,7 @@ package final class NotchService: ObservableObject {
             keepsWorkingSurface: { [weak self] in self?.keepsWorkingSurface ?? false },
             containsDestination: { [weak self] in self?.windowHost?.containsDestination($0) == true },
             pressed: { [weak self] in self?.screenEdgePressed() },
-            clicked: { [weak self] in self?.open() }))
+            clicked: { [weak self] in self?.openFromClosedIsland() }))
     /// Files dragged onto the island (`NotchFileDrop`).
     private lazy var fileDrop: NotchFileDrop = NotchFileDrop(
         environment: parts.fileDrop({ Self.collaborators.shelfAccept($0) }),
@@ -525,7 +525,7 @@ package final class NotchService: ObservableObject {
             self.move(to: display)
             return true
         },
-        open: { [weak self] in self?.open() }))
+        open: { [weak self] in self?.openFromClosedIsland() }))
     /// The island following the pointer to another display (`NotchPointerFollower`).
     private lazy var pointerFollower: NotchPointerFollower = NotchPointerFollower(
         environment: parts.pointerFollower,
@@ -1447,6 +1447,21 @@ package final class NotchService: ObservableObject {
     package func openActivity(_ module: NotchModule) {
         let opensActivity = defaults[Preferences.notchOpensActivity]
         if opensActivity { open(module) } else { open() }
+    }
+
+    /// Opens the Calendar page scrolled to the countdown's event.
+    package func openCountdownEvent() {
+        services.revealCalendarEvent(services.calendarCountdown?.event.id)
+        openActivity(.calendar)
+        // Explore or an app panel opened in the page's place keeps no event
+        // for a later visit to Calendar.
+        if !expanded || selected != .calendar || showingSections || showingAppPanel { services.revealCalendarEvent(nil) }
+    }
+
+    /// A click on the closed island, the screen edge above it or a copy on
+    /// another display: a countdown opens the Calendar page at its event.
+    private func openFromClosedIsland() {
+        if compactActivity == .calendar { openCountdownEvent() } else { open() }
     }
 
     package func open(_ module: NotchModule? = nil, pinned: Bool = false, takeFocus: Bool = true,
@@ -2602,7 +2617,9 @@ package final class NotchService: ObservableObject {
             }, activate: { [weak self] in
                 guard let self else { return }
                 if self.captureControls != nil { self.expandCaptureControls() }
-                else { self.toggle() }
+                else if !self.expanded, self.compactActivity == .calendar {
+                    self.openFromClosedIsland()
+                } else { self.toggle() }
             })
         if panel?.isVisible != true { panel?.orderFrontRegardless() }
         rememberPresentedMusic(playback: services.playback, artwork: services.artwork, tint: services.artworkTint)
