@@ -172,12 +172,12 @@ dd9d1160e8b6bbd3e41cef48a53968c4d089cd3a	-	2026-09-24	ported	#2829	Merge remote-
 5db6be949fdb0873017544217da24e0a57eb874e	-	2026-09-27	skipped	merge that only resolves conflicts between two sides ported on their own	Merge vorssaint/main into claude/inspiring-curie-4p6k9g
 e3399a1657a35385b4c090466f0ab784227f7461	-	2026-10-04	ported	#2831	fix(window-layout): preserve deferred modifier gesture ownership
 848b6042a77cae4038b7038c2c8636d2cc033aef	-	2026-10-04	ported	#2829	fix(spaces): preserve restoration across failed and delayed work
-ff48187a9ac421dc5999938baf5fb4610c650085	0a59e306ae6b3c062cce49a977b04d7aa81655b1	2026-10-07	pending	-	fix(dock-click): let a click on a windowless frontmost app reach the Dock (#2691)
-828fb47b4e1baa5af5d16591e5e24dc197d40440	3bf3b9705fef95abbdc0cb2b523fe4b060a3d403	2026-10-07	pending	-	fix(monitor): keep the menu bar power reading on the chosen interval (#2764)
-4fc5fa9aa99d7452e8be8757743b7ad6abe4df3f	17b8538498ded1f1dfc679142dacb3e33c885927	2026-10-07	pending	-	perf(notch): step the music bars and agent pulse at 30 Hz (#2768)
-77b660946fbadd08c886673986c0f5a9fe23a0c4	a2b54553139b8455495af29a17ac593964011080	2026-10-07	pending	-	fix(notch): animate switching the timer's mode like changing pages (#2765)
-38026b06ee587f54482e004bbcac085f9d22475c	ca9a858516ace95694feb7272784a8e15b168d7d	2026-10-07	pending	-	fix(notch): follow browsers and other apps in automatic playback (#2760)
-b8ba5da64a5e339f65cd38f6065a3ca4952d4960	766c342f0ddc06f43e7bec018262ae5eadc54ec5	2026-10-07	pending	-	fix(notch): open and close the island with shorter swipes and flicks (#2762)
-c6103a44afc1d00d4853c52a96a392d19054981c	afa7917a4b9bdf2a358a977e0ac33ed8fc913bcd	2026-10-07	pending	-	fix(focus): leave focus on an open sheet or modal window (#2763)
-492615dacd7537cefa79ea7f407067f356f829f0	ccb194c568ef199665b3eb1a4c37fd22e05121e9	2026-10-07	pending	-	fix(command-bar): accept both decimal separators where thousands use a space (#2738)
-b6d4f38f9fe5ab9dc02fc7ccc820abe50fc7658c	f2f452aa74a6129065ec46daed2d74fe8de826ca	2026-10-07	pending	-	fix(command-bar): preserve alternate decimal separators in conversions (#2687)
+ff48187a9ac421dc5999938baf5fb4610c650085	0a59e306ae6b3c062cce49a977b04d7aa81655b1	2026-10-07	ported	#2838	fix(dock-click): let a click on a windowless frontmost app reach the Dock (#2691)
+828fb47b4e1baa5af5d16591e5e24dc197d40440	3bf3b9705fef95abbdc0cb2b523fe4b060a3d403	2026-10-07	ported	#2838	fix(monitor): keep the menu bar power reading on the chosen interval (#2764)
+4fc5fa9aa99d7452e8be8757743b7ad6abe4df3f	17b8538498ded1f1dfc679142dacb3e33c885927	2026-10-07	ported	#2838	perf(notch): step the music bars and agent pulse at 30 Hz (#2768)
+77b660946fbadd08c886673986c0f5a9fe23a0c4	a2b54553139b8455495af29a17ac593964011080	2026-10-07	ported	#2838	fix(notch): animate switching the timer's mode like changing pages (#2765)
+38026b06ee587f54482e004bbcac085f9d22475c	ca9a858516ace95694feb7272784a8e15b168d7d	2026-10-07	ported	#2838	fix(notch): follow browsers and other apps in automatic playback (#2760)
+b8ba5da64a5e339f65cd38f6065a3ca4952d4960	766c342f0ddc06f43e7bec018262ae5eadc54ec5	2026-10-07	ported	#2838	fix(notch): open and close the island with shorter swipes and flicks (#2762)
+c6103a44afc1d00d4853c52a96a392d19054981c	afa7917a4b9bdf2a358a977e0ac33ed8fc913bcd	2026-10-07	ported	#2838	fix(focus): leave focus on an open sheet or modal window (#2763)
+492615dacd7537cefa79ea7f407067f356f829f0	ccb194c568ef199665b3eb1a4c37fd22e05121e9	2026-10-07	ported	#2838	fix(command-bar): accept both decimal separators where thousands use a space (#2738)
+b6d4f38f9fe5ab9dc02fc7ccc820abe50fc7658c	f2f452aa74a6129065ec46daed2d74fe8de826ca	2026-10-07	ported	#2838	fix(command-bar): preserve alternate decimal separators in conversions (#2687)
