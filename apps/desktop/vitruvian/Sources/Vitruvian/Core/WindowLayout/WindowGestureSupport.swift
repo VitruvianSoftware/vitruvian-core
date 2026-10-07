@@ -796,6 +796,42 @@ package struct WindowDirectionalModifierPointerSnapshot: Equatable {
     }
 }
 
+package enum WindowDirectionalModifierStartupOutcome<Value> {
+    case ready(Value)
+    case cancelled
+    case observationFailed
+    case targetUnavailable
+}
+
+/// Orders the active observation and custody checks around target lookup. The
+/// injected seams let tests introduce pointer input at either race boundary
+/// without posting real system events.
+package enum WindowDirectionalModifierStartupGuard {
+    package static func resolve<Value>(
+        armedAt: WindowDirectionalModifierPointerSnapshot?,
+        currentSnapshot: () -> WindowDirectionalModifierPointerSnapshot,
+        mouseButtonPressed: () -> Bool,
+        startObserving: () -> Bool,
+        lookupTarget: () -> Value?
+    ) -> WindowDirectionalModifierStartupOutcome<Value> {
+        func canContinue() -> Bool {
+            let pointerInputSinceArm = armedAt.map {
+                currentSnapshot().hasPointerInput(since: $0)
+            } ?? false
+            return WindowDirectionalModifierInputPolicy.canBegin(
+                mouseButtonPressed: mouseButtonPressed(),
+                pointerInputSinceArm: pointerInputSinceArm)
+        }
+
+        guard canContinue() else { return .cancelled }
+        guard startObserving() else { return .observationFailed }
+        guard canContinue() else { return .cancelled }
+        guard let target = lookupTarget() else { return .targetUnavailable }
+        guard canContinue() else { return .cancelled }
+        return .ready(target)
+    }
+}
+
 /// A modifier chord starts once, finishes on its first required-key release,
 /// and cannot restart until all its keys are up. Extra modifiers cancel it.
 package struct WindowDirectionalModifierHold {

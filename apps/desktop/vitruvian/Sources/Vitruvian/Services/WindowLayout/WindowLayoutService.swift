@@ -918,36 +918,43 @@ package final class WindowLayoutService: ObservableObject {
               !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted()
         else { return }
         let hasModifierTrigger = directionalModifierHold != nil
+        let target: WindowLayoutTarget
+        let screen: NSScreen
         if hasModifierTrigger {
-            guard canBeginDirectionalModifierGesture(pointerSnapshot: pointerSnapshot) else {
-                cancelDirectionalGesture()
-                return
-            }
-            guard startDirectionalTap() else {
+            let outcome = WindowDirectionalModifierStartupGuard.resolve(
+                armedAt: pointerSnapshot,
+                currentSnapshot: WindowDirectionalModifierPointerSnapshot.current,
+                mouseButtonPressed: { [weak self] in self?.isAnyMouseButtonPressed() ?? true },
+                startObserving: { [weak self] in self?.startDirectionalTap() ?? false },
+                lookupTarget: { [weak self] () -> (WindowLayoutTarget, NSScreen)? in
+                    guard let self,
+                          let target = self.focusedTarget(for: .leftHalf),
+                          let screen = self.bestScreen(for: target.frame) else { return nil }
+                    return (target, screen)
+                })
+            switch outcome {
+            case .ready(let resolved):
+                (target, screen) = resolved
+            case .observationFailed:
                 directionalShortcutRegistrationFailed = true
                 cancelDirectionalGesture()
                 return
-            }
-            guard canBeginDirectionalModifierGesture(pointerSnapshot: pointerSnapshot) else {
+            case .cancelled:
                 cancelDirectionalGesture()
                 return
-            }
-        }
-        guard let target = focusedTarget(for: .leftHalf),
-              let screen = bestScreen(for: target.frame) else {
-            if hasModifierTrigger {
+            case .targetUnavailable:
                 cancelDirectionalGesture(modifierCancellation: .preserveHold)
-            }
-            return
-        }
-        if hasModifierTrigger {
-            guard canBeginDirectionalModifierGesture(pointerSnapshot: pointerSnapshot) else {
-                cancelDirectionalGesture()
                 return
             }
-        } else if !startDirectionalTap() {
-            directionalShortcutRegistrationFailed = true
-            return
+        } else {
+            guard let resolvedTarget = focusedTarget(for: .leftHalf),
+                  let resolvedScreen = bestScreen(for: resolvedTarget.frame) else { return }
+            target = resolvedTarget
+            screen = resolvedScreen
+            guard startDirectionalTap() else {
+                directionalShortcutRegistrationFailed = true
+                return
+            }
         }
         directionalShortcutRegistrationFailed = false
         directionalSession = WindowDirectionalSession(
@@ -1187,17 +1194,6 @@ package final class WindowLayoutService: ObservableObject {
             guard let button = CGMouseButton(rawValue: UInt32(index)) else { return false }
             return CGEventSource.buttonState(.combinedSessionState, button: button)
         }
-    }
-
-    private func canBeginDirectionalModifierGesture(
-        pointerSnapshot: WindowDirectionalModifierPointerSnapshot?
-    ) -> Bool {
-        let pointerInputSinceArm = pointerSnapshot.map {
-            WindowDirectionalModifierPointerSnapshot.current().hasPointerInput(since: $0)
-        } ?? false
-        return WindowDirectionalModifierInputPolicy.canBegin(
-            mouseButtonPressed: isAnyMouseButtonPressed(),
-            pointerInputSinceArm: pointerInputSinceArm)
     }
 
     private func updateDirectionalGesture() {

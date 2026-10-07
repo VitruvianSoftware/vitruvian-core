@@ -170,6 +170,42 @@ enum WindowLayoutFeatureTests {
                     leftMouseDown: 1, rightMouseDown: 2, otherMouseDown: 3, scrollWheel: 5
                 ).hasPointerInput(since: pointerSnapshot),
             "pointer counters invalidate a deferred modifier start after quick input completes")
+        var startupSnapshot = pointerSnapshot
+        var startupOrder: [String] = []
+        let interruptedStartup = WindowDirectionalModifierStartupGuard.resolve(
+            armedAt: pointerSnapshot,
+            currentSnapshot: { startupSnapshot },
+            mouseButtonPressed: { false },
+            startObserving: {
+                startupOrder.append("observe")
+                return true
+            },
+            lookupTarget: {
+                startupOrder.append("lookup")
+                startupSnapshot = WindowDirectionalModifierPointerSnapshot(
+                    leftMouseDown: 2, rightMouseDown: 2,
+                    otherMouseDown: 3, scrollWheel: 4)
+                return "target"
+            })
+        let cancelledDuringLookup: Bool
+        if case .cancelled = interruptedStartup { cancelledDuringLookup = true }
+        else { cancelledDuringLookup = false }
+        suite.expect(cancelledDuringLookup
+                && startupOrder == ["observe", "lookup"]
+                && WindowDirectionalModifierInputPolicy.cancelsAndPassesThrough(.leftMouseDown),
+            "pointer input during deferred target lookup cancels startup and remains pass-through")
+        startupSnapshot = pointerSnapshot
+        let uninterruptedStartup = WindowDirectionalModifierStartupGuard.resolve(
+            armedAt: pointerSnapshot,
+            currentSnapshot: { startupSnapshot },
+            mouseButtonPressed: { false },
+            startObserving: { true },
+            lookupTarget: { "target" })
+        let resolvedStartup: Bool
+        if case .ready("target") = uninterruptedStartup { resolvedStartup = true }
+        else { resolvedStartup = false }
+        suite.expect(resolvedStartup,
+            "deferred modifier startup proceeds when pointer custody stays unchanged")
         let deferredModifierWork = DispatchSemaphore(value: 0)
         WindowDirectionalModifierTapSupport.afterCallback { deferredModifierWork.signal() }
         let modifierWorkWasDeferred = deferredModifierWork.wait(timeout: .now()) == .timedOut
