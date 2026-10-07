@@ -807,22 +807,64 @@ extension NexusAgentService {
                 }
             } else if type == "assistant" {
                 var assistantText = ""
+                var thinkingParts: [String] = []
+                var steps: [NexusAgentToolStep] = []
+
+                let contentBlocks: [[String: Any]]
                 if let message = json["message"] as? [String: Any] {
                     if let blocks = message["content"] as? [[String: Any]] {
-                        let textBlocks = blocks.filter { ($0["type"] as? String) == "text" }
-                        assistantText = textBlocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                        contentBlocks = blocks
                     } else if let strContent = message["content"] as? String {
                         assistantText = strContent
+                        contentBlocks = []
+                    } else {
+                        contentBlocks = []
                     }
                 } else if let blocks = json["content"] as? [[String: Any]] {
-                    let textBlocks = blocks.filter { ($0["type"] as? String) == "text" }
-                    assistantText = textBlocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                    contentBlocks = blocks
                 } else if let strContent = json["content"] as? String {
                     assistantText = strContent
+                    contentBlocks = []
+                } else {
+                    contentBlocks = []
                 }
+
+                for block in contentBlocks {
+                    let blockType = block["type"] as? String ?? ""
+                    if blockType == "text", let text = block["text"] as? String {
+                        if !assistantText.isEmpty { assistantText += "\n" }
+                        assistantText += text
+                    } else if blockType == "thinking", let thinking = block["thinking"] as? String {
+                        thinkingParts.append(thinking)
+                    } else if blockType == "tool_use" {
+                        let name = block["name"] as? String ?? "tool"
+                        let input = block["input"] as? [String: Any]
+                        var summary: String?
+                        if name == "Bash" {
+                            if let command = input?["command"] as? String {
+                                let firstLine = command.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? command
+                                summary = String(firstLine.prefix(80))
+                            }
+                        } else if name == "Task" {
+                            summary = input?["description"] as? String ?? input?["prompt"] as? String
+                        } else if name == "Read" || name == "Edit" {
+                            summary = input?["file_path"] as? String
+                        } else {
+                            summary = input?["description"] as? String ?? name
+                        }
+                        steps.append(NexusAgentToolStep(title: summary ?? name, detail: name, isFinished: true))
+                    }
+                }
+
                 let trimmedText = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmedText.isEmpty {
-                    messages.append(NexusAgentChatMessage(role: .agent, text: trimmedText))
+                let thinkingText = thinkingParts.isEmpty ? nil : thinkingParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmedText.isEmpty || !steps.isEmpty || thinkingText != nil {
+                    messages.append(NexusAgentChatMessage(
+                        role: .agent,
+                        text: trimmedText,
+                        toolSteps: steps.isEmpty ? nil : steps,
+                        thinkingText: thinkingText
+                    ))
                 }
             }
         }
@@ -908,15 +950,27 @@ extension NexusAgentService {
                   let data = trimmed.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
 
+            var textContent = ""
             if let content = json["content"] as? String {
-                if content.contains("sender=") || content.contains("Message sent to") || content.contains("Completed At:") {
+                textContent = content
+            } else if let message = json["message"] as? [String: Any] {
+                if let content = message["content"] as? String {
+                    textContent = content
+                } else if let blocks = message["content"] as? [[String: Any]] {
+                    textContent = blocks.compactMap { $0["text"] as? String ?? $0["content"] as? String }.joined(separator: " ")
+                }
+            }
+
+            if !textContent.isEmpty {
+                if textContent.contains("sender=") || textContent.contains("Message sent to") || textContent.contains("Completed At:") || textContent.contains("Completed") {
                     for s in spawned {
-                        if content.contains("sender=\(s.typeName)") || content.contains("sender=\(s.id)") || (content.contains(s.role) && content.contains("Completed")) {
+                        if textContent.contains("sender=\(s.typeName)") || textContent.contains("sender=\(s.id)") || textContent.contains(s.id) || (textContent.contains(s.role) && textContent.contains("Completed")) {
                             completedSubagents.insert(s.id)
                         }
                     }
                 }
             }
+
             if let type = json["type"] as? String, type == "SYSTEM_MESSAGE" || type == "USER_INPUT" {
                 if let content = json["content"] as? String {
                     for s in spawned {
@@ -927,6 +981,27 @@ extension NexusAgentService {
                 }
             }
 
+            // Claude tool_result completion checking
+            if let directToolUseID = json["tool_use_id"] as? String {
+                completedSubagents.insert(directToolUseID)
+            }
+            let checkBlocks: [[String: Any]]
+            if let message = json["message"] as? [String: Any], let blocks = message["content"] as? [[String: Any]] {
+                checkBlocks = blocks
+            } else if let blocks = json["content"] as? [[String: Any]] {
+                checkBlocks = blocks
+            } else {
+                checkBlocks = []
+            }
+            for block in checkBlocks {
+                if (block["type"] as? String) == "tool_result" {
+                    if let toolUseID = block["tool_use_id"] as? String {
+                        completedSubagents.insert(toolUseID)
+                    }
+                }
+            }
+
+            // Antigravity invoke_subagent tool calls
             if let toolCalls = json["tool_calls"] as? [[String: Any]] {
                 for call in toolCalls {
                     guard let name = call["name"] as? String, name == "invoke_subagent",
@@ -948,6 +1023,30 @@ extension NexusAgentService {
                         let model = sub["Model"] as? String ?? "inherit"
                         let id = "\(typeName)-\(role)-\(spawned.count)"
                         let active = NexusAgentActiveSubagent(id: id, typeName: typeName, role: role, prompt: prompt, model: model, isRunning: true)
+                        spawned.append(active)
+                    }
+                }
+            }
+
+            // Claude Code Task tool calls in assistant turns
+            let lineType = json["type"] as? String
+            if lineType == "assistant" {
+                let assistantBlocks: [[String: Any]]
+                if let message = json["message"] as? [String: Any], let blocks = message["content"] as? [[String: Any]] {
+                    assistantBlocks = blocks
+                } else if let blocks = json["content"] as? [[String: Any]] {
+                    assistantBlocks = blocks
+                } else {
+                    assistantBlocks = []
+                }
+                for block in assistantBlocks {
+                    if (block["type"] as? String) == "tool_use", (block["name"] as? String) == "Task" {
+                        let toolId = block["id"] as? String ?? UUID().uuidString
+                        let input = block["input"] as? [String: Any]
+                        let subagentType = input?["subagent_type"] as? String ?? "subagent"
+                        let description = input?["description"] as? String ?? subagentType
+                        let prompt = input?["prompt"] as? String ?? ""
+                        let active = NexusAgentActiveSubagent(id: toolId, typeName: subagentType, role: description, prompt: prompt, model: "claude", isRunning: true)
                         spawned.append(active)
                     }
                 }

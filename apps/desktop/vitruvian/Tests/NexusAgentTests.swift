@@ -922,5 +922,46 @@ enum NexusAgentTests {
 
         session.stopTranscriptFollower()
         suite.expect(!session.isFollowerActive, "stopping follower deactivates it")
+
+        // Claude Code tool_use and thinking extraction
+        let claudeTranscriptWithTools = """
+        {"type":"user","message":{"role":"user","content":"Run tests and monitor CI"}}
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"I should run git status then launch scout subagent"},{"type":"tool_use","id":"toolu_bash_1","name":"Bash","input":{"command":"git status --porcelain"}},{"type":"tool_use","id":"toolu_task_1","name":"Task","input":{"subagent_type":"scout","description":"Monitor CI checks","prompt":"Watch the CI workflow"}},{"type":"text","text":"I have started the checks."}]}}
+        """
+        let parsedClaude = NexusAgentService.parseClaudeTranscript(claudeTranscriptWithTools)
+        suite.expect(parsedClaude?.count == 2, "claude transcript parses user and assistant turns")
+        let assistantMsg = parsedClaude?.last
+        suite.expect(assistantMsg?.role == .agent, "second message is agent role")
+        suite.expect(assistantMsg?.text == "I have started the checks.", "assistant text extracted")
+        suite.expect(assistantMsg?.thinkingText == "I should run git status then launch scout subagent", "thinking block extracted")
+        suite.expect(assistantMsg?.toolSteps?.count == 2, "two tool steps extracted")
+        suite.expect(assistantMsg?.toolSteps?.first?.title == "git status --porcelain" && assistantMsg?.toolSteps?.first?.detail == "Bash",
+                     "Bash tool step extracted with command title and Bash detail")
+        suite.expect(assistantMsg?.toolSteps?.last?.title == "Monitor CI checks" && assistantMsg?.toolSteps?.last?.detail == "Task",
+                     "Task tool step extracted with description title and Task detail")
+
+        // Claude Code active subagent tracking and clearance
+        let claudeSubagentRunning = """
+        {"type":"user","message":{"role":"user","content":"Launch subagent"}}
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_task_42","name":"Task","input":{"subagent_type":"scout","description":"Watch CI Checks","prompt":"Keep polling checks until green"}}]}}
+        """
+        let activeClaude = NexusAgentService.parseActiveSubagents(from: claudeSubagentRunning)
+        suite.expect(activeClaude.count == 1
+                     && activeClaude.first?.id == "toolu_task_42"
+                     && activeClaude.first?.typeName == "scout"
+                     && activeClaude.first?.role == "Watch CI Checks"
+                     && activeClaude.first?.prompt == "Keep polling checks until green"
+                     && activeClaude.first?.model == "claude"
+                     && activeClaude.first?.isRunning == true,
+                     "parseActiveSubagents extracts active subagent from Claude Task tool_use")
+
+        let claudeSubagentCompleted = """
+        {"type":"user","message":{"role":"user","content":"Launch subagent"}}
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_task_42","name":"Task","input":{"subagent_type":"scout","description":"Watch CI Checks","prompt":"Keep polling checks until green"}}]}}
+        {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_task_42","content":"All checks succeeded!"}]}}
+        """
+        let clearedClaude = NexusAgentService.parseActiveSubagents(from: claudeSubagentCompleted)
+        suite.expect(clearedClaude.isEmpty,
+                     "Claude subagent is cleared when matching tool_result arrives")
     }
 }
