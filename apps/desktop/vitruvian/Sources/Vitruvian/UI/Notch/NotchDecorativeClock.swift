@@ -56,6 +56,8 @@ package final class NotchDecorativeClock {
         // The link runs on the main run loop (start(in:)).
         @objc func fire(_ link: CADisplayLink) {
             let time = link.targetTimestamp
+            // The clock is main-actor isolated and so Sendable; the target is not.
+            let clock = clock
             MainActor.assumeIsolated { clock?.step(time) }
         }
     }
