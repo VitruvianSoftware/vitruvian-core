@@ -847,7 +847,7 @@ package final class NotchService: ObservableObject {
     private var mascotWantsRoom: Bool { NotchMascotSupport.isEnabled(in: defaults) }
 
     package var hasTimerActivity: Bool {
-        NotchTimerSupport.showsActivity(hasSession: services.timerSession.hasSession, in: defaults)
+        NotchTimerSupport.showsActivity(services.timerSession, in: defaults)
     }
 
     package var hasWatchActivity: Bool {
