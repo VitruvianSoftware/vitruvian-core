@@ -456,6 +456,7 @@ package enum Defaults {
         DefaultsKey.notchIdleContent: Preferences.notchIdleContent.defaultValue,
         DefaultsKey.notchHiddenControls: Preferences.notchHiddenControls.defaultValue,
         DefaultsKey.notchScratchpadControlHidden: Preferences.notchScratchpadControlHidden.defaultValue,
+        DefaultsKey.notchKeyboardLightControlHidden: Preferences.notchKeyboardLightControlHidden.defaultValue,
         DefaultsKey.notchControlOrder: Preferences.notchControlOrder.defaultValue,
         DefaultsKey.notchSize: Preferences.notchSize.defaultValue,
         DefaultsKey.notchOutlineEnabled: Preferences.notchOutlineEnabled.defaultValue,
@@ -549,6 +550,16 @@ package enum Defaults {
         DefaultsKey.notchShowInCaptures: Preferences.notchShowInCaptures.defaultValue,
         DefaultsKey.notchLockScreen: Preferences.notchLockScreen.defaultValue,
         DefaultsKey.notchLockSounds: Preferences.notchLockSounds.defaultValue,
+        DefaultsKey.notchMascotEnabled: Preferences.notchMascotEnabled.defaultValue,
+        DefaultsKey.notchMascotVisits: Preferences.notchMascotVisits.defaultValue,
+        DefaultsKey.notchMascotReactions: Preferences.notchMascotReactions.defaultValue,
+        DefaultsKey.notchMascotStyle: Preferences.notchMascotStyle.defaultValue,
+        DefaultsKey.notchMascotShape: Preferences.notchMascotShape.defaultValue,
+        DefaultsKey.notchMascotPalette: Preferences.notchMascotPalette.defaultValue,
+        DefaultsKey.notchMascotSide: Preferences.notchMascotSide.defaultValue,
+        DefaultsKey.notchMascotVisitFrequency: Preferences.notchMascotVisitFrequency.defaultValue,
+        DefaultsKey.notchCommandBar: Preferences.notchCommandBar.defaultValue,
+        DefaultsKey.notchCommandBarStyle: Preferences.notchCommandBarStyle.defaultValue,
         DefaultsKey.notchHideInCaptures: Preferences.notchHideInCaptures.defaultValue,
         DefaultsKey.panelControlNotch: Preferences.panelControlNotch.defaultValue,
         DefaultsKey.radialMenuEnabled: Preferences.radialMenuEnabled.defaultValue,
@@ -999,6 +1010,7 @@ package enum Defaults {
         defaults.register(defaults: registeredDefaults)
         defaults.register(defaults: AppFeature.availabilityDefaults)
         activateBetaChannelIfRunningBeta(in: defaults)
+        installCompanionForBetaCommandBar(in: defaults)
         migrateLegacyMenuBarTemperatureMetric(in: defaults)
         migrateLegacySwitcherWindowShortcut(in: defaults)
         migrateLegacyKeyboardDebounceWindow(in: defaults)
@@ -1012,6 +1024,7 @@ package enum Defaults {
         migrateSwitcherWindowlessFinder(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
+        hideKeyboardLightControlOnce(in: defaults)
     }
 
     /// Existing users keep the island's previous glass choice. The island
@@ -1041,6 +1054,7 @@ package enum Defaults {
             return
         }
         let automaticKeys: Set<String> = [DefaultsKey.notchScratchpadControlHidden,
+                                          DefaultsKey.notchKeyboardLightControlHidden,
                                           DefaultsKey.notchHidesMenuBarIcon]
         let wasConfigured = saved.keys.contains {
             $0.hasPrefix("notch") && !automaticKeys.contains($0)
@@ -1089,6 +1103,18 @@ package enum Defaults {
         var hidden = saved.split(separator: ",").map(String.init)
         guard !hidden.contains(NotchControlItem.scratchpad.rawValue) else { return }
         hidden.append(NotchControlItem.scratchpad.rawValue)
+        defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenControls)
+    }
+
+    /// The keyboard light level joined the hidden controls the same way, and
+    /// a list saved before it would otherwise grow a third slider on update.
+    package static func hideKeyboardLightControlOnce(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.notchKeyboardLightControlHidden) else { return }
+        defaults.set(true, forKey: DefaultsKey.notchKeyboardLightControlHidden)
+        guard let saved = defaults.string(forKey: DefaultsKey.notchHiddenControls) else { return }
+        var hidden = saved.split(separator: ",").map(String.init)
+        guard !hidden.contains(NotchControlItem.keyboardLight.rawValue) else { return }
+        hidden.append(NotchControlItem.keyboardLight.rawValue)
         defaults.set(hidden.joined(separator: ","), forKey: DefaultsKey.notchHiddenControls)
     }
 
@@ -1144,6 +1170,25 @@ package enum Defaults {
         guard !defaults.bool(forKey: markerKey) else { return }
         defaults.set(true, forKey: markerKey)
         defaults.set(true, forKey: DefaultsKey.includeBetaUpdates)
+    }
+
+    /// On a beta, people with the Command Bar get the island's companion,
+    /// which can be its face, installed and on, once: uninstalled afterwards,
+    /// it stays out. A clean install waits for its setup to finish, since
+    /// setup picks the installed features afresh. It lives in the island, so
+    /// someone without the island gets nothing.
+    package static func installsCompanionForBeta(in defaults: UserDefaults, isBeta: Bool = AppInfo.isBeta) -> Bool {
+        isBeta && defaults.bool(forKey: DefaultsKey.hasOnboarded)
+            && !defaults.bool(forKey: DefaultsKey.notchMascotBetaInstalled)
+            && AppFeature.commandBar.isAvailable(in: defaults)
+            && AppFeature.notch.isAvailable(in: defaults)
+    }
+
+    package static func installCompanionForBetaCommandBar(in defaults: UserDefaults, isBeta: Bool = AppInfo.isBeta) {
+        guard installsCompanionForBeta(in: defaults, isBeta: isBeta) else { return }
+        defaults.set(true, forKey: DefaultsKey.notchMascotBetaInstalled)
+        defaults.set(true, forKey: AppFeature.notchMascot.availabilityKey)
+        defaults[Preferences.notchMascotEnabled] = true
     }
 
     /// The downloads cleanup for a messaging app used to sit in Cleaner for

@@ -10,34 +10,57 @@ import VitruvianServices
 package struct NotchNoticeView: View {
     package let notice: NotchNotice
     package let geometry: NotchGeometry
+    /// The window's own layer shows the companion stepping in from its rest
+    /// and out again, and the notice leaves its own out meanwhile.
+    package var hidesMascot = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var wingWidth: CGFloat { geometry.noticeWingWidth(preferred: notice.preferredWingWidth) }
-    private var inset: CGFloat { NotchNoticeLayout.inset(wing: wingWidth) }
+    private var wings: NotchNoticeWings { notice.wings(in: geometry) }
     private var tint: Color {
         switch notice.event {
         // A warning reads as one in any agent's color; other AI notices wear it.
         case .agents: return notice.symbol.hasPrefix("exclamationmark") ? .orange : notice.agent?.tint ?? .white
+        // The timer's notice keeps the orange its strip and page wear.
+        case .timer: return .orange
         default: return .white
         }
+    }
+    /// The words of a timer's notice share its orange too.
+    private var textTint: Color { notice.event == .timer ? .orange : .white }
+    /// With the companion on, it stands in for the symbol, and reacts unless
+    /// its reactions are off.
+    private var companionReaction: NotchMascotReaction? {
+        NotchMascotSupport.isEnabled() ? notice.mascot : nil
     }
 
     package var body: some View {
         HStack(spacing: 0) {
             leading
-                .padding(.leading, inset)
+                .padding(.leading, notice.inset(wing: wings.leading))
                 .padding(.trailing, notice.cameraGap)
-                .frame(width: wingWidth, height: geometry.stripHeight)
+                .frame(width: wings.leading, height: geometry.stripHeight)
                 .clipped()
             Color.clear.frame(width: geometry.noticeCameraGap)
             trailing
-                .padding(.trailing, inset)
+                .padding(.trailing, notice.inset(wing: wings.trailing))
                 .padding(.leading, notice.cameraGap)
-                .frame(width: wingWidth, height: geometry.stripHeight)
+                .frame(width: wings.trailing, height: geometry.stripHeight)
                 .clipped()
         }
         .foregroundStyle(.white)
         .frame(height: geometry.stripHeight)
+        // Each side is as wide as what it shows, so the island reaches
+        // further toward the wider one and the camera's gap stays over it.
+        .offset(x: (wings.trailing - wings.leading) / 2)
+        // A new reading that needs another width, as a level passing 99%,
+        // moves its mark and meter with the island's steady ease, not ahead of it.
+        // Keyed on the notice's own widths, so a display change does not ease it.
+        .animation(reduceMotion ? nil : .spring(duration: NotchMotion.steadyWidth.duration, bounce: 0),
+                   value: notice.preferredWings)
+        .transaction { $0.disablesAnimations = false }
+        // Another kind of notice is drawn anew at its place, as the island
+        // springs to it, rather than easing out of the last one's layout.
+        .id(notice.event)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(notice.accessibilityText)
     }
@@ -55,9 +78,23 @@ package struct NotchNoticeView: View {
         } else {
             HStack(spacing: NotchNoticeLayout.spacing) {
                 Group {
-                    // A notice about the agent itself wears its mark; warnings
-                    // and renewals keep a symbol that says what happened.
-                    if notice.event == .agents, let agent = notice.agent, notice.symbol == agent.symbol {
+                    // A notice about the agent itself wears its mark, and a
+                    // warning keeps a symbol that says what happened.
+                    if let reaction = companionReaction {
+                        let size = NotchMascotSupport.noticeSize
+                        NotchMascotView(look: NotchMascotSupport.look(), mood: NotchService.shared.mascotRestingMood,
+                                        size: size, reaction: NotchMascotSupport.reacts() ? reaction : nil)
+                            .frame(width: size, height: size)
+                            // Half a point low, on the line it rests on beside
+                            // the camera, so it steps in and out with no jump.
+                            .offset(y: 0.5)
+                            // One notice in place of another plays its own reaction,
+                            // swapped at once: two of it crossfading in one place dimmed it.
+                            .id("\(notice.event)|\(notice.title)|\(notice.detail)|\(reaction.rawValue)")
+                            .transition(.identity)
+                            .opacity(hidesMascot ? 0 : 1)
+                            .animation(nil, value: hidesMascot)
+                    } else if notice.event == .agents, let agent = notice.agent, notice.symbol == agent.symbol {
                         NotchAgentMark(provider: agent, size: 13)
                     } else if notice.event == .track {
                         NotchTrackArtwork(size: min(18, geometry.stripHeight - 6))
@@ -70,6 +107,7 @@ package struct NotchNoticeView: View {
                 .frame(width: NotchNoticeLayout.symbolWidth)
                 Text(notice.level == nil ? notice.title : notice.detail)
                     .font(.system(size: NotchNoticeLayout.textSize, weight: .medium))
+                    .foregroundStyle(textTint)
                     .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(notice.event == .track ? .tail : .middle)
@@ -83,11 +121,13 @@ package struct NotchNoticeView: View {
 
     @ViewBuilder private var trailing: some View {
         if let content = notice.notification {
+            // At the far end, as far from it as the sender is from the other
+            // one, with the air that fits it beside the camera.
             Text(content.compactDetail)
                 .font(Font(NotchNotificationBannerLayout.messageFont as CTFont))
                 .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(geometry.stripHeight >= 30 ? 2 : 1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(NotchNotificationBannerLayout.messageLines(stripHeight: geometry.stripHeight))
+                .frame(maxWidth: .infinity, alignment: .trailing)
         } else if let level = notice.level {
             NotchMeter(value: level, height: 5, tint: tint)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: level)
@@ -95,7 +135,7 @@ package struct NotchNoticeView: View {
         } else {
             Text(notice.detail)
                 .font(.system(size: NotchNoticeLayout.textSize, weight: .medium))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(textTint.opacity(0.8))
                 .lineLimit(1)
                 .truncationMode(notice.event == .accessory ? .middle : .tail)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -103,9 +143,10 @@ package struct NotchNoticeView: View {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(notice: NotchNotice, geometry: NotchGeometry) {
+    package init(notice: NotchNotice, geometry: NotchGeometry, hidesMascot: Bool = false) {
         self.notice = notice
         self.geometry = geometry
+        self.hidesMascot = hidesMascot
     }
 }
 

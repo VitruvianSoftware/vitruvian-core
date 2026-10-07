@@ -1056,18 +1056,34 @@ enum NotchHoverTests {
         expect(!interrupted.island.expanded && interrupted.island.notice == nil,
                "leaving afterwards has nothing left to close")
 
+        // A new reading of the same level only fits its width; another notice
+        // takes its place the usual way.
+        // Brightness notices show only while the app's brightness control is on.
+        Self.defaults.set(true, forKey: DefaultsKey.brightnessControlEnabled)
+        defer { Self.defaults.removeObject(forKey: DefaultsKey.brightnessControlEnabled) }
+        let reading = island()
+        leave(reading)
+        let full = NotchNotice(event: .volume, title: "Volume", detail: "100%", symbol: "speaker.wave.3.fill", level: 1)
+        let bright = NotchNotice(event: .brightness, title: "Brightness", detail: "100%", symbol: "sun.max.fill", level: 1)
+        expect(reading.island.show(volume) && reading.host?.steadies.last == false,
+               "a level shown on its own arrives the usual way")
+        expect(reading.island.show(full) && reading.host?.steadies.last == true,
+               "a new reading of the same level eases to its width in place")
+        expect(reading.island.show(bright) && reading.host?.steadies.last == false,
+               "another kind of notice replaces it the usual way")
+
         // A burst keeps the banner's width, so the island does not resize
         // with each message and a banner held near its end stays in reach.
         let wide = banner(String(repeating: "A long message in a busy chat ", count: 8))
         let burst = island()
         leave(burst)
         expect(burst.island.show(wide) && burst.island.show(banner("ok")), "precondition: a burst replaces the banner")
-        expect(burst.island.surfaceSize == burst.island.geometry.noticeSize(wingWidth: wide.preferredWingWidth),
+        expect(burst.island.surfaceSize == burst.island.geometry.noticeSize(wings: wide.wings(in: burst.island.geometry)),
                "a message replacing a banner still on screen keeps its width")
         burst.advance(3.1)
         let alone = banner("ok")
         expect(burst.island.notice == nil && burst.island.show(alone) && alone.preferredWingWidth < wide.preferredWingWidth
-               && burst.island.surfaceSize == burst.island.geometry.noticeSize(wingWidth: alone.preferredWingWidth),
+               && burst.island.surfaceSize == burst.island.geometry.noticeSize(wings: alone.wings(in: burst.island.geometry)),
                "the next message on its own takes only the width it needs")
         let held = island()
         leave(held)

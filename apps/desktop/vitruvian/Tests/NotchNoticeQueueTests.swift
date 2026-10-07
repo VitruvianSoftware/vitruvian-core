@@ -10,6 +10,11 @@ import VitruvianUI
 /// The island's notice queue (`NotchNoticeQueue`) on its own: which notice
 /// may take the screen, and how each arrives and leaves.
 enum NotchNoticeQueueTests {
+    /// A notched MacBook's closed strip, which notices arrive on.
+    private static var geometry: NotchGeometry {
+        NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1512, height: 982), safeAreaTop: 32, cameraWidth: 185)
+    }
+
     private static func plain(_ event: NotchEvent, _ title: String = "Notice") -> NotchNotice {
         NotchNotice(event: event, title: title, detail: "50%", symbol: "speaker.wave.2.fill")
     }
@@ -23,7 +28,7 @@ enum NotchNoticeQueueTests {
     /// A queue showing `notice`, open in place when `expanded`.
     private static func showing(_ notice: NotchNotice, expanded: Bool = false) -> NotchNoticeQueue {
         var queue = NotchNoticeQueue()
-        queue.show(queue.arrival(of: notice, canPresent: true, pointerOver: true))
+        queue.show(queue.arrival(of: notice, in: geometry, canPresent: true, pointerOver: true))
         if expanded { queue.open() }
         return queue
     }
@@ -32,16 +37,16 @@ enum NotchNoticeQueueTests {
         var queue = NotchNoticeQueue()
         suite.expect(queue.admits(.track) && queue.admits(.volume), "an empty island takes any notice")
         var read = false
-        let first = queue.arrival(of: plain(.volume), canPresent: true, pointerOver: { read = true; return true }())
+        let first = queue.arrival(of: plain(.volume), in: geometry, canPresent: true, pointerOver: { read = true; return true }())
         suite.expect(first.transition == .reveal && !first.expanded && !read,
                      "the first notice reveals the island, and the pointer is not read for it")
         queue.show(first)
         suite.expect(queue.notice?.event == .volume, "the arriving notice is the one on screen")
-        suite.expect(queue.arrival(of: plain(.volume, "Louder"), canPresent: true, pointerOver: false).transition == .none,
+        suite.expect(queue.arrival(of: plain(.volume, "Louder"), in: geometry, canPresent: true, pointerOver: false).transition == .none,
                      "a burst of the same kind only replaces the value on screen")
-        suite.expect(queue.arrival(of: plain(.brightness), canPresent: true, pointerOver: false).transition == .replace,
+        suite.expect(queue.arrival(of: plain(.brightness), in: geometry, canPresent: true, pointerOver: false).transition == .replace,
                      "another kind of notice replaces the one on screen")
-        suite.expect(queue.arrival(of: plain(.timer), canPresent: false, pointerOver: false).transition == .none,
+        suite.expect(queue.arrival(of: plain(.timer), in: geometry, canPresent: false, pointerOver: false).transition == .none,
                      "a notice the closed island cannot show changes nothing on screen")
         suite.expect(!queue.admits(.track) && queue.admits(.volume) && queue.admits(.brightness),
                      "a notice gives way only to one as urgent or more")
@@ -52,25 +57,25 @@ enum NotchNoticeQueueTests {
                      && !held.admits(.battery),
                      "an open message gives way only to its own kind or a more urgent one")
         let replacement = banner("Again")
-        suite.expect(held.arrival(of: replacement, canPresent: true, pointerOver: true).expanded,
+        suite.expect(held.arrival(of: replacement, in: geometry, canPresent: true, pointerOver: true).expanded,
                      "a new message under the pointer keeps the open message open")
-        suite.expect(!held.arrival(of: replacement, canPresent: true, pointerOver: false).expanded,
+        suite.expect(!held.arrival(of: replacement, in: geometry, canPresent: true, pointerOver: false).expanded,
                      "a new message with the pointer elsewhere arrives as a timed banner")
-        suite.expect(held.arrival(of: plain(.volume), canPresent: true, pointerOver: true).transition == .replace
-                     && !held.arrival(of: plain(.volume), canPresent: true, pointerOver: true).expanded,
+        suite.expect(held.arrival(of: plain(.volume), in: geometry, canPresent: true, pointerOver: true).transition == .replace
+                     && !held.arrival(of: plain(.volume), in: geometry, canPresent: true, pointerOver: true).expanded,
                      "feedback takes the place of an open message as a plain notice")
 
         // A burst of banners keeps the first one's width.
         let wide = banner(String(repeating: "A long message in a busy chat ", count: 8))
         let burst = showing(wide)
         let short = banner("ok")
-        suite.expect(burst.arrival(of: short, canPresent: true, pointerOver: false).notice.preferredWingWidth
-                     == wide.preferredWingWidth && short.preferredWingWidth < wide.preferredWingWidth,
+        suite.expect(burst.arrival(of: short, in: geometry, canPresent: true, pointerOver: false).notice.preferredWingWidth
+                     == wide.wings(in: geometry).widest && short.preferredWingWidth < wide.preferredWingWidth,
                      "a message replacing a banner still on screen keeps its width")
-        suite.expect(NotchNoticeQueue().arrival(of: short, canPresent: true, pointerOver: false).notice.preferredWingWidth
+        suite.expect(NotchNoticeQueue().arrival(of: short, in: geometry, canPresent: true, pointerOver: false).notice.preferredWingWidth
                      == short.preferredWingWidth,
                      "a message on its own takes only the width it needs")
-        suite.expect(burst.arrival(of: short, canPresent: false, pointerOver: false).notice.preferredWingWidth
+        suite.expect(burst.arrival(of: short, in: geometry, canPresent: false, pointerOver: false).notice.preferredWingWidth
                      == short.preferredWingWidth,
                      "a message the island cannot show does not inherit a width")
 

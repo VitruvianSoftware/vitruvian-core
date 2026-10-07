@@ -48,6 +48,7 @@ enum MixerInputVolumeContract {
         nonisolated(unsafe) static var showsMicrophone = false
         nonisolated(unsafe) static var microphone: [Bool] = []
         nonisolated(unsafe) static var retractions = 0
+        nonisolated(unsafe) static var reactions: [NotchMascotReaction] = []
     }
     nonisolated struct Key: Hashable {
         let d: UInt32
@@ -116,7 +117,8 @@ enum MixerInputVolumeContract {
                     return true
                 },
                 retractMicrophoneNotice: { Feedback.retractions += 1 },
-                hud: { _, message in Feedback.messages.append(message) }))
+                hud: { _, message in Feedback.messages.append(message) },
+                reactMascot: { Feedback.reactions.append($0) }))
         }
 
         @MainActor static func makeManager() -> AudioInputDeviceManager {
@@ -831,6 +833,7 @@ enum MixerInputVolumeContract {
         HAL.levels[HAL.key(10)] = 0.5
         Feedback.showsMicrophone = true
         Feedback.messages = []
+        Feedback.reactions = []
         HAL.muteService.setMuted(true)
         Queue.drain()
         HAL.muteService.setMuted(false)
@@ -838,6 +841,8 @@ enum MixerInputVolumeContract {
         check(
             Feedback.messages.isEmpty && Feedback.microphone == [true, false],
             "with Dynamic Island showing it, the switch reports there instead of a floating confirmation")
+        check(Feedback.reactions == [.hush, .perk],
+              "the companion hushes as the microphone mutes and perks up as it opens")
         HAL.reset()
         HAL.devices = [10, 20]
         HAL.levels[HAL.key(10)] = 0.5

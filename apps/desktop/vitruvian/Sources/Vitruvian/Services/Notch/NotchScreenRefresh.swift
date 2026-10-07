@@ -100,6 +100,9 @@ package final class NotchScreenRefresh {
         package var stopMenuSpace: () -> Void
         package var invalidateMenuSpace: () -> Void
         package var readMenuSpace: () -> Void
+        /// The companion is on, and needs the menus measured to know where
+        /// its wings fit.
+        package var mascotWantsRoom: () -> Bool
 
         package init(running: @escaping () -> Bool, suspended: @escaping () -> Bool,
                      hiddenInFullscreen: @escaping () -> Bool, hiddenUntilHover: @escaping () -> Bool,
@@ -120,7 +123,8 @@ package final class NotchScreenRefresh {
                      takeDisplay: @escaping (CGDirectDisplayID) -> Void,
                      syncVisibleConsumers: @escaping () -> Void,
                      startMenuSpace: @escaping () -> Void, stopMenuSpace: @escaping () -> Void,
-                     invalidateMenuSpace: @escaping () -> Void, readMenuSpace: @escaping () -> Void) {
+                     invalidateMenuSpace: @escaping () -> Void, readMenuSpace: @escaping () -> Void,
+                     mascotWantsRoom: @escaping () -> Bool = { false }) {
             self.running = running
             self.suspended = suspended
             self.hiddenInFullscreen = hiddenInFullscreen
@@ -155,6 +159,7 @@ package final class NotchScreenRefresh {
             self.startMenuSpace = startMenuSpace
             self.stopMenuSpace = stopMenuSpace
             self.invalidateMenuSpace = invalidateMenuSpace
+            self.mascotWantsRoom = mascotWantsRoom
             self.readMenuSpace = readMenuSpace
         }
     }
@@ -242,7 +247,8 @@ package final class NotchScreenRefresh {
         }
         let wanted = island.running() && !island.suspended() && !island.hiddenUntilHover() && !island.expanded()
             && !island.showsCaptureControls()
-            && (island.idleContent() != .none || island.hasCompactActivity() || !geometry.isNotched)
+            && (island.idleContent() != .none || island.hasCompactActivity() || !geometry.isNotched
+                || island.mascotWantsRoom())
         guard wanted else { island.stopMenuSpace(); return }
         island.startMenuSpace()
     }

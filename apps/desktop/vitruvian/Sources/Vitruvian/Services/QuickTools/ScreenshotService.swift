@@ -448,6 +448,8 @@ package final class ScreenshotService: ObservableObject {
         package var presentPreview: (_ capture: Capture, _ defaultAction: ScreenshotDefaultAction,
                                      _ saved: Saved?, _ performed: Set<ScreenshotQuickPreviewController.Action>,
                                      _ dismissInterval: TimeInterval?, _ latestCapture: UUID?) -> Void
+        /// The island's companion sees the capture.
+        package var flash: () -> Void
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(beginLatest: @escaping (Capture) -> Void, latestID: @escaping () -> UUID,
@@ -460,7 +462,8 @@ package final class ScreenshotService: ObservableObject {
                      presentPreview: @escaping (_ capture: Capture, _ defaultAction: ScreenshotDefaultAction,
                                                 _ saved: Saved?,
                                                 _ performed: Set<ScreenshotQuickPreviewController.Action>,
-                                                _ dismissInterval: TimeInterval?, _ latestCapture: UUID?) -> Void) {
+                                                _ dismissInterval: TimeInterval?, _ latestCapture: UUID?) -> Void,
+                     flash: @escaping () -> Void = {}) {
             self.beginLatest = beginLatest
             self.latestID = latestID
             self.closePreview = closePreview
@@ -470,6 +473,7 @@ package final class ScreenshotService: ObservableObject {
             self.openEditor = openEditor
             self.runDefaultAction = runDefaultAction
             self.presentPreview = presentPreview
+            self.flash = flash
         }
     }
 
@@ -493,7 +497,8 @@ package final class ScreenshotService: ObservableObject {
                                     completedActions: performed,
                                     dismissInterval: dismissInterval,
                                     latestCapture: latestCapture)
-            })
+            },
+            flash: { NotchService.shared.reactMascot(.flash, patience: 1) })
     }
 
     /// A finished capture runs its configured after-capture action first, then
@@ -509,6 +514,8 @@ package final class ScreenshotService: ObservableObject {
     package static func route<Capture, Saved>(_ capture: Capture, defaults: UserDefaults,
                                               steps: PreviewRoute<Capture, Saved>) {
         steps.beginLatest(capture)
+        // The island's companion blinks hard, as a flash, if it is there to see.
+        steps.flash()
         steps.closePreview()
         steps.record(capture)
         if defaults[Preferences.screenshotCopyToClipboard] {

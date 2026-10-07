@@ -86,6 +86,7 @@ enum NotchPresentationRefreshContract {
         defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
         defaults.set(false, forKey: DefaultsKey.notchCoversMenus)
         compactMusicDepartureChecks(suite)
+        mascotYieldChecks(suite)
 
         let outlined = island()
         defaults.set(true, forKey: DefaultsKey.notchOutlineEnabled)
@@ -227,6 +228,11 @@ enum NotchPresentationRefreshContract {
         suite.expect(material.island.peeking && material.host?.usesGlass == true, "peek requests the glass backdrop")
         material.island.open()
         suite.expect(material.host?.usesGlass == true, "expanded content requests the glass backdrop")
+        material.island.collapse()
+        _ = material.island.presentCommandBar()
+        suite.expect(material.island.showingCommandBar && !material.island.usesGlassSurface
+                     && material.host?.usesGlass == false,
+                     "the Command Bar keeps the open island black, as its drop is")
         material.island.collapse()
         // A banner that arrives while the pointer is away, then held by it.
         material.move(to: away)
@@ -420,6 +426,40 @@ enum NotchPresentationRefreshContract {
                "an active timer on a physical camera retracts its wings and stays at menu-bar height without a menu measurement")
     }
 
+    /// Posts counted from any thread; the island posts them on the main one.
+    nonisolated private final class PostCount: @unchecked Sendable {
+        var value = 0
+    }
+
+    /// The companion resting in the closed island fades out ahead of an
+    /// activity's strip, told once by the refresh that brings the strip.
+    private static func mascotYieldChecks(_ suite: TestSuite) {
+        defaults[Preferences.notchMascotEnabled] = true
+        defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
+        defer { defaults.removeValue(for: Preferences.notchMascotEnabled) }
+        let yields = PostCount()
+        let token = NotificationCenter.default.addObserver(forName: .notchMascotRestYields, object: nil,
+                                                           queue: nil) { _ in yields.value += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+        func arrival(reduceMotion: Bool = false, activity: Bool = true) -> (first: Int, again: Int) {
+            let fixture = island()
+            fixture.reducesMotion = reduceMotion
+            // At rest in view first, as the island draws it.
+            fixture.island.refreshPresentation(animated: false)
+            yields.value = 0
+            if activity { fixture.services.timerSession = NotchTimerSession(anchor: fixture.services.timerNow + 300) }
+            fixture.island.refreshPresentation()
+            let first = yields.value
+            fixture.island.refreshPresentation()
+            return (first, yields.value - first)
+        }
+        let arrived = arrival()
+        suite.expect(arrived.first == 1 && arrived.again == 0,
+                     "an activity taking the resting companion's place tells it once to fade out ahead of the strip")
+        suite.expect(arrival(reduceMotion: true).first == 0 && arrival(activity: false).first == 0,
+                     "Reduce Motion or nothing arriving leaves it where it rests")
+    }
+
     private static func compactMusicDepartureChecks(_ suite: TestSuite) {
         defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
         defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
@@ -447,6 +487,31 @@ enum NotchPresentationRefreshContract {
         suite.expect(changed.host?.transitions.last == .depart && departing?.playback.track.title == "Two"
                      && departing?.artwork === newCover && departing?.tint == tint,
                      "a track and cover changed during playback remain current through departure")
+
+        let stopped = island(before: playing("Three"))
+        stopped.services.playback = playback("Three", playing: false)
+        suite.expect(stopped.island.lingeringMusic?.playback.track.title == "Three",
+                     "music that just stopped stays drawn until the refresh that lets it depart")
+        stopped.island.refreshPresentation()
+        suite.expect(stopped.island.departingMusic?.playback.track.title == "Three" && stopped.island.lingeringMusic == nil,
+                     "its departure takes over the same track, with nothing drawn in between")
+        let live = island(before: playing("Four"))
+        suite.expect(live.island.compactActivity == .music && live.island.lingeringMusic == nil,
+                     "live music is drawn as itself, never as a lingering copy")
+        live.island.open()
+        suite.expect(live.island.lingeringMusic == nil, "an open island draws its page, not a lingering song")
+
+        defaults[Preferences.notchMascotEnabled] = true
+        defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
+        let resting = island()
+        resting.island.refreshPresentation(animated: false)
+        suite.expect(resting.island.mascotRestedInView,
+                     "a refresh remembers the companion resting in view, so what arrives over it can crossfade from it")
+        resting.island.open()
+        suite.expect(!resting.island.mascotRestedInView,
+                     "the open island hides the closed one, so nothing crossfades from a companion it does not show")
+        defaults.removeValue(for: Preferences.notchMascotEnabled)
+        defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
 
         let closing = island(before: playing("One"))
         closing.services.playback = playback("One", playing: false)

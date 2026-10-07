@@ -31,13 +31,16 @@ package final class MicMuteService: ObservableObject {
         package var showMicrophone: @MainActor (Bool) -> Bool
         package var retractMicrophoneNotice: @MainActor () -> Void
         package var hud: @MainActor (_ icon: String, _ message: String) -> Void
+        /// The island's companion reacts to the switch.
+        package var reactMascot: @MainActor (NotchMascotReaction) -> Void
 
         package init(hal: AudioHAL, halQueue: AudioWorkQueue,
                      main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
                      defaults: UserDefaults,
                      showMicrophone: @escaping @MainActor (Bool) -> Bool,
                      retractMicrophoneNotice: @escaping @MainActor () -> Void,
-                     hud: @escaping @MainActor (String, String) -> Void) {
+                     hud: @escaping @MainActor (String, String) -> Void,
+                     reactMascot: @escaping @MainActor (NotchMascotReaction) -> Void = { _ in }) {
             self.hal = hal
             self.halQueue = halQueue
             self.main = main
@@ -45,6 +48,7 @@ package final class MicMuteService: ObservableObject {
             self.showMicrophone = showMicrophone
             self.retractMicrophoneNotice = retractMicrophoneNotice
             self.hud = hud
+            self.reactMascot = reactMascot
         }
 
         package static var live: Environment {
@@ -54,7 +58,8 @@ package final class MicMuteService: ObservableObject {
                         defaults: .standard,
                         showMicrophone: { NotchService.shared.showMicrophone(muted: $0) },
                         retractMicrophoneNotice: { NotchService.shared.retractMicrophoneNotice() },
-                        hud: { QuickToolHUD.show(icon: $0, message: $1) })
+                        hud: { QuickToolHUD.show(icon: $0, message: $1) },
+                        reactMascot: { NotchService.shared.reactMascot($0) })
         }
     }
 
@@ -293,8 +298,11 @@ package final class MicMuteService: ObservableObject {
                             muted ? L10n.shared.s.micMutePartialHUD : L10n.shared.s.micUnmutePartialHUD)
             return
         }
-        // With Dynamic Island on, the switch reports there like the volume.
-        guard !environment.showMicrophone(muted) else { return }
+        // With Dynamic Island on, the switch reports there like the volume,
+        // and the companion hushes or perks up, in its notice or where it is.
+        let shownInIsland = environment.showMicrophone(muted)
+        environment.reactMascot(muted ? .hush : .perk)
+        guard !shownInIsland else { return }
         environment.hud(muted ? "mic.slash.fill" : "mic.fill",
                         muted ? L10n.shared.s.micMutedHUD : L10n.shared.s.micUnmutedHUD)
     }

@@ -189,9 +189,11 @@ package struct NotchCameraFit: Equatable {
 /// A capsule sized and placed by hand. By itself it takes the height of the
 /// menu bar around it; a fit makes it wider or narrower at rest, taller or
 /// shorter from its top edge, and lowers it from the top of the display.
+/// Width and height reach as far each way, so an untouched slider rests in
+/// the middle, as the camera fit's do.
 package struct NotchCapsuleFit: Equatable {
-    package static let widthRange = -40.0...80.0
-    package static let heightRange = -4.0...12.0
+    package static let widthRange = -40.0...40.0
+    package static let heightRange = -4.0...4.0
     package static let dropRange = 0.0...20.0
     package static let zero = NotchCapsuleFit(width: 0, height: 0, drop: 0)
 
@@ -498,6 +500,15 @@ package enum NotchLayout {
     /// horizontal padding. Track titles truncate within the remaining space.
     package static func musicCardMinimumWidth(height: CGFloat) -> CGFloat {
         musicCardArtworkSide(height: height) + musicCardSpacing + musicCardTransportWidth + musicCardPadding * 2
+    }
+
+    /// Level cards keep their title and device row only where every card in
+    /// the row has one and the titles fit: a card alone, or volume beside
+    /// brightness. The keyboard light has no device to choose, so beside it,
+    /// and three across, every card folds to its readout and they line up.
+    package static func levelCardsShowDetails(_ levels: [NotchControlItem], height: CGFloat) -> Bool {
+        guard height >= 88 else { return false }
+        return levels.count == 1 || (levels.count == 2 && !levels.contains(.keyboardLight))
     }
 
     /// The home page: one row of cards (playback and levels) over a rail of
@@ -1099,14 +1110,25 @@ package enum NotchControlSetupRequirement: Equatable {
 }
 
 package enum NotchControlItem: String, CaseIterable, Identifiable {
-    case volume, brightness, music, mixer, keepAwake, timer, calendar, microphone, screenshot, recording, speedTest, panel, commandBar, scratchpad
-    package static let defaultHidden = "microphone,screenshot,recording,speedTest,panel,commandBar,scratchpad"
+    case volume, brightness, keyboardLight, music, mixer, keepAwake, timer, calendar, microphone, screenshot, recording, speedTest, panel, commandBar, scratchpad
+    package static let defaultHidden = "keyboardLight,microphone,screenshot,recording,speedTest,panel,commandBar,scratchpad"
     package var id: String { rawValue }
+
+    /// A level draws as a slider in the card row; everything else is a tile.
+    package var isLevel: Bool { self == .volume || self == .brightness || self == .keyboardLight }
+
+    /// Whether this Mac has a keyboard light. Only the brightness service can
+    /// ask the hardware, so launch points this at it before anything reads
+    /// the controls. Without it, a level restored from a Mac that has one
+    /// would sit in the island as a dead card that Settings cannot hide.
+    /// Set once at launch, before any reader runs.
+    nonisolated(unsafe) package static var keyboardLightIsSupported: @Sendable () -> Bool = { true }
 
     package var symbol: String {
         switch self {
         case .volume: return "speaker.wave.2.fill"
         case .brightness: return "sun.max.fill"
+        case .keyboardLight: return "light.max"
         case .keepAwake: return "cup.and.saucer"
         case .microphone: return "mic.fill"
         case .screenshot: return "camera.viewfinder"
@@ -1126,7 +1148,7 @@ package enum NotchControlItem: String, CaseIterable, Identifiable {
     package var setupRequirement: NotchControlSetupRequirement {
         switch self {
         case .volume: return .feature(.mixer)
-        case .brightness: return .feature(.brightness)
+        case .brightness, .keyboardLight: return .feature(.brightness)
         case .keepAwake: return .feature(.keepAwake)
         case .microphone: return .feature(.micMute)
         case .screenshot: return .feature(.screenshot)
@@ -1147,6 +1169,7 @@ package enum NotchControlItem: String, CaseIterable, Identifiable {
         case .volume: return AppFeature.mixer.isAvailable(in: defaults)
         case .mixer: return AppFeature.mixer.isAvailable(in: defaults) && NotchSupport.modules(in: defaults).contains(.mixer)
         case .brightness: return AppFeature.brightness.isAvailable(in: defaults)
+        case .keyboardLight: return AppFeature.brightness.isAvailable(in: defaults) && Self.keyboardLightIsSupported()
         case .keepAwake: return AppFeature.keepAwake.isAvailable(in: defaults)
         case .microphone: return AppFeature.micMute.isAvailable(in: defaults)
         case .screenshot: return AppFeature.screenshot.isAvailable(in: defaults)
@@ -1171,9 +1194,9 @@ package struct NotchControlGroups: Equatable {
     package let shortcuts: [NotchControlItem]
 
     package init(_ items: [NotchControlItem]) {
-        levels = items.filter { $0 == .volume || $0 == .brightness }
+        levels = items.filter(\.isLevel)
         music = items.contains(.music)
-        shortcuts = items.filter { $0 != .volume && $0 != .brightness && $0 != .music }
+        shortcuts = items.filter { !$0.isLevel && $0 != .music }
     }
 
     /// Whether the page has its row of cards.
@@ -1212,7 +1235,7 @@ package enum NotchQuickAction: Hashable, Identifiable {
 
     package static var optionalActions: [Self] {
         [.explore, .settings, .pin] + NotchModule.allCases.map(Self.module)
-            + NotchControlItem.allCases.filter { $0 != .volume && $0 != .brightness }.map(Self.control)
+            + NotchControlItem.allCases.filter { !$0.isLevel }.map(Self.control)
     }
 
     package func isAvailable(in defaults: UserDefaults = .standard) -> Bool {
@@ -1864,10 +1887,28 @@ package struct NotchMenuBarMeasurements {
     package init() {}
 }
 
+/// The two sides of a closed notice beside the camera, each as wide as
+/// what it shows.
+package struct NotchNoticeWings: Equatable {
+    package var leading: CGFloat
+    package var trailing: CGFloat
+    package static let zero = NotchNoticeWings(leading: 0, trailing: 0)
+    package var widest: CGFloat { max(leading, trailing) }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(leading: CGFloat, trailing: CGFloat) {
+        self.leading = leading
+        self.trailing = trailing
+    }
+}
+
 /// Screen coordinates stay in points, including displays to the left or above
 /// the primary display. No model name or pixel density is assumed.
 package struct NotchGeometry: Equatable {
     package let screen: CGRect
+    /// How far the island's centre sits right of the camera's: a closed
+    /// notice reaches further toward its wider side. Zero everywhere else.
+    package var surfaceShift: CGFloat = 0
     package let cameraWidth: CGFloat
     package let cameraHeight: CGFloat
     package let isNotched: Bool
@@ -1899,7 +1940,7 @@ package struct NotchGeometry: Equatable {
          menuBarHeight: CGFloat = 24, compactSideRoom: CGFloat? = nil,
          customWidth: Double = NotchSize.defaultWidth, customHeight: Double = NotchSize.defaultHeight,
          cameraFit: NotchCameraFit = .zero, silhouette: NotchSilhouette = .notch, capsuleFit: NotchCapsuleFit = .zero,
-         outline: Bool = false) {
+         outline: Bool = false, barEdge: CGFloat = 0) {
         self.screen = screen
         self.layout = layout
         self.customWidth = NotchSize.clamped(customWidth, to: NotchSize.widthRange, fallback: NotchSize.defaultWidth)
@@ -1917,8 +1958,15 @@ package struct NotchGeometry: Equatable {
         let capsuleFit = gap == nil ? NotchCapsuleFit.zero : capsuleFit
         floatingDrop = capsuleFit.drop
         capsuleWidthFit = capsuleFit.width
-        let stripHeight = gap.map { max(barHeight + capsuleFit.height, $0 * 2 + 12) } ?? barHeight
-        let profileHeight = gap.map { stripHeight - ($0 - NotchLayout.capsuleMargin) * 2 } ?? barHeight
+        // The bar ends in a hairline, `barEdge` thick, that reads as its edge:
+        // the capsule's margin below is measured from it, as the one above is
+        // from the top of the display, so the capsule shows centred in the
+        // bar. Its width keeps following the whole bar.
+        let edge = barEdge.isFinite ? min(max(0, barEdge), 1) : 0
+        let fullStrip = gap.map { max(barHeight + capsuleFit.height, $0 * 2 + 12) }
+        let stripHeight = gap.map { max(barHeight - edge + capsuleFit.height, $0 * 2 + 12) } ?? barHeight
+        let profileHeight = gap.flatMap { gap in fullStrip.map { $0 - (gap - NotchLayout.capsuleMargin) * 2 } }
+            ?? barHeight
         // A capsule's camera is only the room it keeps, on whole points.
         let simulated = 180 * profileHeight / 32
         // A simulated cutout sits on the menu bar, where its outline already shows.
@@ -2221,6 +2269,23 @@ package struct NotchGeometry: Equatable {
     package func noticeWingWidth(preferred: CGFloat) -> CGFloat {
         max(0, (noticeSize(wingWidth: preferred).width - noticeCameraGap) / 2)
     }
+
+    /// Each side as wide as it asks, short of the display's edge.
+    package func noticeWings(_ preferred: NotchNoticeWings) -> NotchNoticeWings {
+        NotchNoticeWings(leading: noticeWingWidth(preferred: preferred.leading),
+                         trailing: noticeWingWidth(preferred: preferred.trailing))
+    }
+
+    package func noticeSize(wings preferred: NotchNoticeWings) -> CGSize {
+        let wings = noticeWings(preferred)
+        return CGSize(width: noticeCameraGap + wings.leading + wings.trailing, height: stripHeight)
+    }
+
+    /// How far a notice's centre sits from the camera's, toward its wider side.
+    package func noticeShift(_ preferred: NotchNoticeWings) -> CGFloat {
+        let wings = noticeWings(preferred)
+        return (wings.trailing - wings.leading) / 2
+    }
     /// A held notification opens as a card about as wide as a native banner,
     /// never wider than the island itself.
     package var notificationPreviewWidth: CGFloat { min(max(400, cameraWidth + 200), expandedWidth) }
@@ -2373,7 +2438,7 @@ package struct NotchGeometry: Equatable {
     }
     package var appPanelSize: CGSize { contentSize(for: expandedSize(module: .tools, panel: true)) }
     package func frame(for size: CGSize) -> CGRect {
-        CGRect(x: screen.midX - size.width / 2,
+        CGRect(x: screen.midX + surfaceShift - size.width / 2,
                y: screen.maxY - floatingDrop - size.height,
                width: size.width, height: size.height)
     }
@@ -2465,13 +2530,17 @@ package enum NotchMotion {
     package static let growingHeight = Spring(duration: 0.38, bounce: 0.22)
     package static let shrinkingWidth = Spring(duration: 0.30, bounce: 0)
     package static let shrinkingHeight = Spring(duration: 0.26, bounce: 0)
+    /// A strip that stays on screen and only fits a new reading, as a level
+    /// passing 99% or 9%, eases to its width without a swing, either way.
+    package static let steadyWidth = Spring(duration: 0.5, bounce: 0)
     /// The farthest a side may pass its target. The display always keeps at
     /// least this much free around the island and its floating controls.
     package static let overshootLimit: CGFloat = 12
     /// Sides closer than this to their targets read as settled.
     package static let settledDistance: CGFloat = 0.5
 
-    package static func spring(from: CGFloat, to: CGFloat, width: Bool) -> Spring {
+    package static func spring(from: CGFloat, to: CGFloat, width: Bool, steady: Bool = false) -> Spring {
+        if steady && width { return steadyWidth }
         let spring = to > from ? (width ? growingWidth : growingHeight) : (width ? shrinkingWidth : shrinkingHeight)
         return spring.limited(travel: abs(to - from), limit: overshootLimit)
     }
@@ -2490,10 +2559,11 @@ package enum NotchMotion {
         return durations.max() ?? growingWidth.duration
     }
 
-    package static func size(at time: TimeInterval, from: CGSize, to: CGSize) -> CGSize {
+    package static func size(at time: TimeInterval, from: CGSize, to: CGSize, steady: Bool = false) -> CGSize {
         func side(_ start: CGFloat, _ end: CGFloat, width: Bool) -> CGFloat {
             guard start != end else { return end }
-            return max(0, start + (end - start) * CGFloat(spring(from: start, to: end, width: width).progress(at: time)))
+            let spring = spring(from: start, to: end, width: width, steady: steady)
+            return max(0, start + (end - start) * CGFloat(spring.progress(at: time)))
         }
         return CGSize(width: side(from.width, to.width, width: true), height: side(from.height, to.height, width: false))
     }
@@ -2510,14 +2580,16 @@ package enum NotchMotion {
         return sides.isEmpty ? 0 : time
     }
 
-    /// When both sides stay within `settledDistance` of their targets for good.
-    package static func settlingTime(from: CGSize, to: CGSize) -> TimeInterval {
+    /// When the size and centre stay within `settledDistance` of their targets for good.
+    package static func settlingTime(from: CGSize, to: CGSize, steady: Bool = false, offset startOffset: CGFloat = 0) -> TimeInterval {
         let step = 1.0 / 240
         var settled = step
         var time = step
         while time < 2 {
-            let size = size(at: time, from: from, to: to)
-            if abs(size.width - to.width) > settledDistance || abs(size.height - to.height) > settledDistance {
+            let size = size(at: time, from: from, to: to, steady: steady)
+            let offset = offset(at: time, from: from, to: to, start: startOffset, steady: steady)
+            if abs(size.width - to.width) > settledDistance || abs(size.height - to.height) > settledDistance
+                || abs(offset) > settledDistance {
                 settled = time + step
             }
             time += step
@@ -2525,13 +2597,23 @@ package enum NotchMotion {
         return settled
     }
 
+    /// How far a moving island's centre still sits from its new one. It
+    /// travels with the width's spring, or eases on its own when two notices
+    /// have the same total width but different sides.
+    package static func offset(at time: TimeInterval, from: CGSize, to: CGSize, start: CGFloat, steady: Bool = false) -> CGFloat {
+        guard start != 0 else { return 0 }
+        let spring = from.width == to.width ? steadyWidth : spring(from: from.width, to: to.width, width: true, steady: steady)
+        return start * CGFloat(1 - spring.progress(at: time))
+    }
+
     /// Sizes at a steady rate, ending exactly at `to`, and where each falls
-    /// within the duration.
-    package static func frames(from: CGSize, to: CGSize) -> (sizes: [CGSize], keyTimes: [Double], duration: TimeInterval) {
-        let duration = settlingTime(from: from, to: to)
+    /// within the duration, including a centre still on its way there.
+    package static func frames(from: CGSize, to: CGSize,
+                               steady: Bool = false, offset: CGFloat = 0) -> (sizes: [CGSize], keyTimes: [Double], duration: TimeInterval) {
+        let duration = settlingTime(from: from, to: to, steady: steady, offset: offset)
         let count = max(1, Int((duration * 120).rounded(.up)))
         let keyTimes = (0...count).map { Double($0) / Double(count) }
-        let sizes = keyTimes.map { $0 == 1 ? to : size(at: duration * $0, from: from, to: to) }
+        let sizes = keyTimes.map { $0 == 1 ? to : size(at: duration * $0, from: from, to: to, steady: steady) }
         return (sizes, keyTimes, duration)
     }
 

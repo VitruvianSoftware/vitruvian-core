@@ -62,12 +62,15 @@ package final class NotchFileDrop {
         package var refreshPresentation: () -> Void
         /// A drop landed: the island stops holding the drag.
         package var landed: () -> Void
+        /// The files are in: the companion gives a little hop for the file
+        /// it watched come in, once the island rests again.
+        package var cheer: () -> Void
 
         package init(acceptsUserInteraction: @escaping () -> Bool, capturing: @escaping () -> Bool,
                      showsFiles: @escaping () -> Bool,
                      mediaArea: @escaping () -> CGRect, willChange: @escaping () -> Void,
                      openFiles: @escaping (_ takeFocus: Bool) -> Void, refreshPresentation: @escaping () -> Void,
-                     landed: @escaping () -> Void) {
+                     landed: @escaping () -> Void, cheer: @escaping () -> Void = {}) {
             self.acceptsUserInteraction = acceptsUserInteraction
             self.capturing = capturing
             self.showsFiles = showsFiles
@@ -76,6 +79,7 @@ package final class NotchFileDrop {
             self.openFiles = openFiles
             self.refreshPresentation = refreshPresentation
             self.landed = landed
+            self.cheer = cheer
         }
     }
 
@@ -138,6 +142,7 @@ package final class NotchFileDrop {
             island.landed()
             if !optimize { environment.hideMedia() }
             island.openFiles(true)
+            island.cheer()
         }
         return accepted
     }

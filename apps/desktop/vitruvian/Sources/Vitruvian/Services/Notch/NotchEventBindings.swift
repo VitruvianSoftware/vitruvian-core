@@ -52,6 +52,13 @@ package final class NotchEventBindings {
         package var hideNativeNotification: (UUID) -> Void
         /// Each copy the clipboard history captures, on the main queue.
         package var clipboardCaptures: () -> AnyPublisher<Void, Never>
+        /// Music starting, not music already playing when the island came
+        /// up, on the main queue.
+        package var musicStarts: () -> AnyPublisher<Void, Never>
+        /// Sets or clears what runs when a download fails.
+        package var setDownloadFailure: ((() -> Void)?) -> Void
+        /// Keep Awake turning on or off, on the main queue.
+        package var keepAwakeTurns: () -> AnyPublisher<Void, Never>
 
         package init(timer: @escaping () -> AnyPublisher<Void, Never>,
                      watch: @escaping () -> AnyPublisher<Void, Never>,
@@ -70,7 +77,10 @@ package final class NotchEventBindings {
                      agentEvents: @escaping () -> AnyPublisher<AgentUsageEvent, Never>,
                      systemNotifications: @escaping () -> AnyPublisher<NotchSystemNotification, Never>,
                      hideNativeNotification: @escaping (UUID) -> Void,
-                     clipboardCaptures: @escaping () -> AnyPublisher<Void, Never>) {
+                     clipboardCaptures: @escaping () -> AnyPublisher<Void, Never>,
+                     musicStarts: @escaping () -> AnyPublisher<Void, Never> = { Empty().eraseToAnyPublisher() },
+                     setDownloadFailure: @escaping ((() -> Void)?) -> Void = { _ in },
+                     keepAwakeTurns: @escaping () -> AnyPublisher<Void, Never> = { Empty().eraseToAnyPublisher() }) {
             self.timer = timer
             self.watch = watch
             self.music = music
@@ -89,6 +99,9 @@ package final class NotchEventBindings {
             self.systemNotifications = systemNotifications
             self.hideNativeNotification = hideNativeNotification
             self.clipboardCaptures = clipboardCaptures
+            self.musicStarts = musicStarts
+            self.setDownloadFailure = setDownloadFailure
+            self.keepAwakeTurns = keepAwakeTurns
         }
 
         /// The app's services.
@@ -164,6 +177,16 @@ package final class NotchEventBindings {
                 clipboardCaptures: {
                     ClipboardHistoryService.shared.capturedEntry.receive(on: DispatchQueue.main)
                         .map { _ in () }.eraseToAnyPublisher()
+                },
+                musicStarts: {
+                    NotchMusicService.shared.$playback.map { $0?.isPlaying == true }
+                        .removeDuplicates().dropFirst().filter { $0 }.receive(on: DispatchQueue.main)
+                        .map { _ in () }.eraseToAnyPublisher()
+                },
+                setDownloadFailure: { NotchDownloadService.shared.onFailure = $0 },
+                keepAwakeTurns: {
+                    KeepAwakeManager.shared.$isActive.removeDuplicates().dropFirst().receive(on: DispatchQueue.main)
+                        .map { _ in () }.eraseToAnyPublisher()
                 })
         }
     }
@@ -194,6 +217,14 @@ package final class NotchEventBindings {
         package var systemNotification: (NotchSystemNotification) -> Bool
         /// The clipboard history captured a copy.
         package var clipboardCaptured: () -> Void
+        /// Music started playing.
+        package var musicStarted: () -> Void
+        /// A download failed.
+        package var downloadFailed: () -> Void
+        /// The calendar countdown changed.
+        package var calendarChanged: () -> Void
+        /// Keep Awake turned on or off.
+        package var keepAwakeChanged: () -> Void
 
         package init(resize: @escaping () -> Void,
                      rememberMusic: @escaping (NotchPlayback, NSImage?, NotchArtworkTint?) -> Void,
@@ -205,7 +236,11 @@ package final class NotchEventBindings {
                      downloadArrived: @escaping (NotchDownloadItem) -> Void,
                      agentEvent: @escaping (AgentUsageEvent) -> Void,
                      systemNotification: @escaping (NotchSystemNotification) -> Bool,
-                     clipboardCaptured: @escaping () -> Void) {
+                     clipboardCaptured: @escaping () -> Void,
+                     musicStarted: @escaping () -> Void = {},
+                     downloadFailed: @escaping () -> Void = {},
+                     calendarChanged: @escaping () -> Void = {},
+                     keepAwakeChanged: @escaping () -> Void = {}) {
             self.resize = resize
             self.rememberMusic = rememberMusic
             self.holdEndingTrack = holdEndingTrack
@@ -217,6 +252,10 @@ package final class NotchEventBindings {
             self.agentEvent = agentEvent
             self.systemNotification = systemNotification
             self.clipboardCaptured = clipboardCaptured
+            self.musicStarted = musicStarted
+            self.downloadFailed = downloadFailed
+            self.calendarChanged = calendarChanged
+            self.keepAwakeChanged = keepAwakeChanged
         }
     }
 
@@ -275,6 +314,7 @@ package final class NotchEventBindings {
                 .sink { island.holdEndingTrack() }
                 .store(in: &subscriptions)
             sources.musicActivity().sink { island.resize() }.store(in: &subscriptions)
+            sources.musicStarts().sink { island.musicStarted() }.store(in: &subscriptions)
             // A capsule names each new song for a moment: the song playing,
             // or the next one once the notice releases the song it held.
             sources.songTitles().removeDuplicates().map { _ in () }
@@ -303,13 +343,17 @@ package final class NotchEventBindings {
         if settings.routes(.download) {
             sources.downloads().sink { island.resize() }.store(in: &subscriptions)
             sources.setDownloadArrival { island.downloadArrived($0) }
+            sources.setDownloadFailure { island.downloadFailed() }
         }
         if modules.contains(.agents) {
             sources.agentActivity().sink { island.resize() }.store(in: &subscriptions)
         }
         if modules.contains(.calendar) {
-            sources.calendar().sink { island.resize() }.store(in: &subscriptions)
+            sources.calendar().sink { island.calendarChanged(); island.resize() }.store(in: &subscriptions)
         }
+        // The companion is wide awake while Keep Awake holds the Mac up, and
+        // yawns as it lets go.
+        sources.keepAwakeTurns().sink { island.keepAwakeChanged() }.store(in: &subscriptions)
         if settings.keepAwakeActivity {
             sources.keepAwake().sink { island.resize() }.store(in: &subscriptions)
         }

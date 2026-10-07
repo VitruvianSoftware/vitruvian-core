@@ -10,7 +10,8 @@ import VitruvianServices
 package struct NotchMusicStrip: View {
     @ObservedObject package var service: NotchService
     package var snapshot: NotchCompactMusicSnapshot? = nil
-    /// Another display's strip, when the island shows on every display.
+    /// Where the island draws it: its own strip as of the last update, or
+    /// another display's when the island shows on every display.
     package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared

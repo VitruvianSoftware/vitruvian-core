@@ -91,13 +91,18 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         package var activity: NotchCompactActivity?
         package var companion: NotchCompactActivity?
         package var showsIdleContent: Bool
+        /// Whether the companion rests or visits in the closed island drawn
+        /// with a geometry, which then grows the wings it stands in.
+        package var showsMascot: (NotchGeometry) -> Bool
 
         package init(displayID: CGDirectDisplayID?, activity: NotchCompactActivity?,
-                     companion: NotchCompactActivity?, showsIdleContent: Bool) {
+                     companion: NotchCompactActivity?, showsIdleContent: Bool,
+                     showsMascot: @escaping (NotchGeometry) -> Bool = { _ in false }) {
             self.displayID = displayID
             self.activity = activity
             self.companion = companion
             self.showsIdleContent = showsIdleContent
+            self.showsMascot = showsMascot
         }
     }
 
@@ -245,7 +250,8 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
     /// for that display, or the island at rest there.
     private func surface(on base: NotchGeometry, island: Island) -> (strip: NotchGeometry, size: CGSize) {
         guard let activity = island.activity else {
-            return (base, base.restingSize(showsContent: !base.floats && island.showsIdleContent))
+            return (base, base.restingSize(showsContent: !base.floats
+                                               && (island.showsIdleContent || island.showsMascot(base))))
         }
         if base.floats { return (base, stripSize(activity, island.companion, base)) }
         let strip = compactGeometry(activity, island.companion, base)

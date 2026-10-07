@@ -23,14 +23,19 @@ package struct NotchCollaborators {
     package var shelfCanAccept: (NSPasteboard) -> Bool
     /// Hands files dropped on the island to the Shelf; false when it took none.
     package var shelfAccept: (NSPasteboard) -> Bool
+    /// The island closed around the Command Bar on its own, from a click
+    /// away or a page opened in its place, so the bar closes too.
+    package var commandBarIslandDidClose: () -> Void
 
     package init(feedbackRoutingDidChange: @escaping () -> Void = {},
                  fileRoutingDidChange: @escaping () -> Void = {},
                  shelfCanAccept: @escaping (NSPasteboard) -> Bool = { _ in false },
-                 shelfAccept: @escaping (NSPasteboard) -> Bool = { _ in false }) {
+                 shelfAccept: @escaping (NSPasteboard) -> Bool = { _ in false },
+                 commandBarIslandDidClose: @escaping () -> Void = {}) {
         self.feedbackRoutingDidChange = feedbackRoutingDidChange
         self.fileRoutingDidChange = fileRoutingDidChange
         self.shelfCanAccept = shelfCanAccept
         self.shelfAccept = shelfAccept
+        self.commandBarIslandDidClose = commandBarIslandDidClose
     }
 }

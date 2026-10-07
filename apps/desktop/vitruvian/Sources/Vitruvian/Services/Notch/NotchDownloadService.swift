@@ -36,6 +36,8 @@ package final class NotchDownloadService: ObservableObject {
     @Published package private(set) var folderName: String?
     @Published package private(set) var folderUnavailable = false
     package var onArrival: ((NotchDownloadItem) -> Void)?
+    /// A download went away unfinished: cancelled or failed.
+    package var onFailure: (() -> Void)?
 
     private var folder: URL?
     private var securityScope = false
@@ -222,6 +224,16 @@ package final class NotchDownloadService: ObservableObject {
                     name: old.expectedURL.lastPathComponent, receivedBytes: Int64(values.fileSize ?? 0),
                     fraction: 1, completed: true, active: false, date: Date())
             }
+            // A partial gone with no file in its place and no other partial
+            // taking it over did not finish.
+            let failed = current.map { current in
+                previous.values.contains { old in
+                    current.partials[old.url] == nil
+                        && !current.partials.values.contains { $0.expectedURL == old.expectedURL }
+                        && !FileManager.default.fileExists(atPath: old.url.path)
+                        && !FileManager.default.fileExists(atPath: old.expectedURL.path)
+                }
+            } ?? false
             DispatchQueue.main.async {
                 guard let self, self.generation == id else { return }
                 self.scanning = false
@@ -237,6 +249,7 @@ package final class NotchDownloadService: ObservableObject {
                     self.fileSources[url] = self.watch(url, directory: false)
                 }
                 completed.forEach(self.recordCompletion)
+                if failed { self.onFailure?() }
                 self.progressObserver?.requestRefresh()
                 self.refreshItems()
                 if self.rescan { self.rescan = false; self.scheduleScan() }

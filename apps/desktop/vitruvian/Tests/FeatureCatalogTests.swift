@@ -450,7 +450,7 @@ enum FeatureCatalogTests {
 
         // MARK: Features hub catalog
 
-        suite.expect(AppFeature.allCases.count == 77, "feature catalog has 77 features")
+        suite.expect(AppFeature.allCases.count == 78, "feature catalog has 78 features")
         suite.expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         suite.expect(AppFeature.allCases.map(\.rawValue) == [
@@ -463,7 +463,7 @@ enum FeatureCatalogTests {
             "keepAwake", "brightness", "extraBrightness", "bluetoothSleep",
             "quickLauncher", "quickToggles", "colorPicker", "screenOCR", "cleaningMode", "mediaTools",
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
-            "radialMenu", "scratchpad", "commandBar", "screenRecorder", "wallpaper", "killProcess", "portManager", "nexusAgent", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads", "notchAgents", "notchWatch",
+            "radialMenu", "scratchpad", "commandBar", "screenRecorder", "wallpaper", "killProcess", "portManager", "nexusAgent", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads", "notchAgents", "notchWatch", "notchMascot",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
             "connectedDevices", "fanControl",
         ], "feature ids are stable (they persist inside availability keys)")
@@ -647,7 +647,8 @@ enum FeatureCatalogTests {
         suite.expect((AppFeature.availabilityDefaults[AppFeature.linearScroll.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.focusFollowsMouse.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.fanControl.availabilityKey] as? Bool) == false
-                && (AppFeature.availabilityDefaults[AppFeature.spacesOrder.availabilityKey] as? Bool) == false,
+                && (AppFeature.availabilityDefaults[AppFeature.spacesOrder.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.notchMascot.availabilityKey] as? Bool) == false,
                "features added after the list was frozen wait on the Features page instead of installing themselves")
         let linearScrollSuiteName = "com.vitruviansoftware.vitruvian.tests.linear-scroll-availability.\(UUID().uuidString)"
         if let linearDefaults = UserDefaults(suiteName: linearScrollSuiteName) {
@@ -714,13 +715,22 @@ enum FeatureCatalogTests {
         suite.expect(AppFeature.features(in: .dynamicIsland) == [
             .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer,
             .notchAccessories, .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchAgents, .notchWatch,
+            .notchMascot,
         ], "the Dynamic Island heads its own hub section, followed by its extensions")
         suite.expect(AppFeature.dynamicIslandExtensions
                 == Array(AppFeature.features(in: .dynamicIsland).dropFirst()),
                "the Dynamic Island's extensions are every other feature of its section")
-        suite.expect(AppFeature.notch.initialInstallGroup == AppFeature.features(in: .dynamicIsland)
+        suite.expect(AppFeature.notch.initialInstallGroup
+                        == AppFeature.features(in: .dynamicIsland).filter { $0 != .notchMascot }
                      && AppFeature.mixer.initialInstallGroup == [.mixer],
                      "choosing the island for the first time includes its extensions without changing other features")
+        suite.expect(AppFeature.dynamicIslandExtensions.contains(.notchMascot)
+                        && !AppFeature.notch.initialInstallGroup.contains(.notchMascot)
+                        && AppFeature.notchMascot.permissions.isEmpty
+                        && AppFeature.notchMascot.enabledKeys == [DefaultsKey.notchMascotEnabled]
+                        && AppFeature.notchMascot.settingsDestination == FeatureSettingsDestination(.notchMascot)
+                        && FeatureVisibilitySupport.features(for: .notchMascot) == [.notchMascot],
+                     "the companion leaves with the island but only comes when picked, with a page of its own")
         suite.expect(AppPermission.allCases.map(\.rawValue) == [
             "accessibility", "screenRecording", "fullDiskAccess", "filesAndFolders", "notifications",
             "automationFinder", "automationTerminal", "automationPlayback", "audioCapture", "microphone", "camera",
@@ -2100,6 +2110,14 @@ enum FeatureCatalogTests {
                 == FeatureSettingsDestination(.monitor, sectionAnchor: .fanControl),
                "shared monitor destinations distinguish the dedicated fan controls")
         let settingsRouter = SettingsRouter.shared
+        let companionRouter = SettingsRouter()
+        companionRouter.request(AppFeature.notchMascot.settingsDestination)
+        suite.expect(companionRouter.page == .notch && companionRouter.notchCompanion
+                     && pageVisible(companionRouter.page, available: [.notchMascot]),
+                     "the companion's settings remain reachable when it alone is installed, including the install-island prompt")
+        suite.expect(pageVisible(companionRouter.page, available: [.notch, .notchMascot])
+                     && !pageVisible(companionRouter.page, available: []),
+                     "the companion shares the installed island's page without exposing it when every extension is uninstalled")
         var settingsRequestCount = 0
         var settingsRequestsPublishedReady = true
         let settingsRequestObservation = settingsRouter.$requestID

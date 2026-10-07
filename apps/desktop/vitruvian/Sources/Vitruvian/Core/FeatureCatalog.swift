@@ -31,7 +31,7 @@ package enum AppFeature: String, CaseIterable {
          commandBar, screenRecorder, wallpaper, killProcess, portManager, nexusAgent
     // Dynamic Island, then its extensions
     case notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics,
-         notchQueue, notchLiveEqualizer, notchDownloads, notchAgents, notchWatch
+         notchQueue, notchLiveEqualizer, notchDownloads, notchAgents, notchWatch, notchMascot
     // System monitor, one entry per metric family (temperatures live with
     // their parent metric: CPU temp with CPU, battery temp with power).
     case monitorCPU, monitorGPU, monitorMemory, monitorNetwork, monitorDisk, monitorPower, connectedDevices, fanControl
@@ -80,8 +80,10 @@ extension AppFeature {
                     && !WindowEdgeSnapZone.enabledZones(
                         from: edgeSnapDisabledZones
                     ).isEmpty)
-        // Watch asks when an area is chosen and checks on every reading.
-        case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder, .wallpaper, .notchWatch:
+        // Watch asks when an area is chosen and checks on every reading. The
+        // companion uses no permission at all.
+        case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder, .wallpaper, .notchWatch,
+             .notchMascot:
             return false
         default:
             return true
@@ -114,7 +116,8 @@ extension AppFeature {
              .scratchpad, .commandBar, .screenRecorder, .wallpaper, .killProcess, .portManager, .nexusAgent:
             return .tools
         case .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories,
-             .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchAgents, .notchWatch:
+             .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchAgents, .notchWatch,
+             .notchMascot:
             return .dynamicIsland
         case .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .connectedDevices, .fanControl:
@@ -189,6 +192,7 @@ extension AppFeature {
         case .notchCalendar: return "calendar"
         case .notchAgents: return "sparkles"
         case .notchWatch: return "eye"
+        case .notchMascot: return "face.smiling"
         case .notch: return "macbook"
         case .radialMenu: return "circle.grid.cross"
         case .scratchpad: return "note.text"
@@ -263,6 +267,7 @@ extension AppFeature {
         case .notchCalendar: return [DefaultsKey.notchCalendarEnabled]
         case .notchAgents: return [DefaultsKey.notchAgentsEnabled]
         case .notchWatch: return [DefaultsKey.notchWatchEnabled]
+        case .notchMascot: return [DefaultsKey.notchMascotEnabled]
         case .notch: return [DefaultsKey.notchEnabled]
         case .radialMenu: return [DefaultsKey.radialMenuEnabled]
         case .clipboardHistory: return [DefaultsKey.clipboardHistoryEnabled]
@@ -329,6 +334,8 @@ extension AppFeature {
         // Session logs and the saved limits sit in the home folder, outside
         // every protected location, and no sign-in or keychain item is used.
         case .notchAgents: return []
+        // It only draws, and hears of what happens from the island itself.
+        case .notchMascot: return []
         // The bars read the player's own audio output, which macOS gates
         // behind the same permission the mixer and the recorder ask for.
         case .notchLiveEqualizer: return [.audioCapture]
@@ -422,8 +429,15 @@ extension AppFeature {
         features(in: .dynamicIsland).filter { $0 != .notch }
     }
 
+    /// The extensions a first install of the island brings along. The
+    /// companion changes how the closed island looks at rest, so it only
+    /// comes when someone picks it.
+    package static var dynamicIslandInitialExtensions: [AppFeature] {
+        dynamicIslandExtensions.filter { $0 != .notchMascot }
+    }
+
     package var initialInstallGroup: [AppFeature] {
-        self == .notch ? [self] + Self.dynamicIslandExtensions : [self]
+        self == .notch ? [self] + Self.dynamicIslandInitialExtensions : [self]
     }
 
     /// Switches the Features page may offer to uninstall once they turn out
@@ -485,7 +499,7 @@ extension AppFeature {
              .connectedDevices:
             return true
         case .focusFollowsMouse, .scrollHorizontal, .linearScroll, .diskImageInstaller, .audioPriority,
-             .wallpaper, .killProcess, .portManager, .nexusAgent, .fanControl, .spacesOrder:
+             .wallpaper, .killProcess, .portManager, .nexusAgent, .fanControl, .spacesOrder, .notchMascot:
             return false
         }
     }

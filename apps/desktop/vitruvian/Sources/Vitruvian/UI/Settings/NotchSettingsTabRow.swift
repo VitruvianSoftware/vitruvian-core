@@ -7,7 +7,7 @@ import VitruvianDesign
 import VitruvianServices
 
 package enum NotchSettingsTab: CaseIterable {
-    case layout, content, activity, behavior
+    case layout, content, activity, behavior, companion
 }
 
 /// The Dynamic Island page's tabs, with the button that opens the island.
@@ -18,6 +18,8 @@ package enum NotchSettingsTab: CaseIterable {
 package struct NotchSettingsTabRow: View {
     @Binding package var tab: NotchSettingsTab
     package let language: AppLanguage
+    /// The companion's tab, once it is installed.
+    package var showsCompanion = false
     package let canOpen: Bool
     package let open: () -> Void
 
@@ -40,14 +42,19 @@ package struct NotchSettingsTabRow: View {
             Text(editor.content).tag(NotchSettingsTab.content)
             Text(editor.activity).tag(NotchSettingsTab.activity)
             Text(editor.behavior).tag(NotchSettingsTab.behavior)
+            if showsCompanion {
+                Text(FeatureStrings.notchMascot(language).title).tag(NotchSettingsTab.companion)
+            }
         }
         .labelsHidden()
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(tab: Binding<NotchSettingsTab>, language: AppLanguage, canOpen: Bool, open: @escaping () -> Void) {
+    package init(tab: Binding<NotchSettingsTab>, language: AppLanguage, showsCompanion: Bool = false, canOpen: Bool,
+                 open: @escaping () -> Void) {
         self._tab = tab
         self.language = language
+        self.showsCompanion = showsCompanion
         self.canOpen = canOpen
         self.open = open
     }

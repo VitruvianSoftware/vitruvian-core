@@ -99,6 +99,8 @@ package enum SettingsBackupSupport {
     /// out by construction (they are not preference keys), listed here only
     /// when they would otherwise slip in through the registered set.
     package static let machineStateKeys: Set<String> = [
+        DefaultsKey.displaysSwitchedOff,
+        DefaultsKey.displaysSwitchedOffFingerprints,
         DefaultsKey.dockPreviewRestoreAutohide,
         // The Space arrangement setting to put back, and a Dock restart still
         // owed, belong to this Mac's Dock.
