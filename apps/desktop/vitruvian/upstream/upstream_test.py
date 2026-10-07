@@ -380,6 +380,27 @@ class PackageTest(unittest.TestCase):
         self.assertIn("    package static func c() {\n        func local() {}\n", out)
         self.assertIn("        package func y() {}\n", out)
 
+    def test_a_new_type_a_package_signature_uses_gets_package(self):
+        # Nested types here are mostly internal, so neighbours alone would
+        # leave the new enums internal, and the compiler rejects a `package`
+        # function that returns or takes them.
+        ours = (
+            "package enum Support {\n    enum Old {}\n    enum Older {}\n"
+            "    package static func a() {}\n}\n"
+        )
+        merged = (
+            "enum Support {\n    enum Old {}\n    enum Older {}\n"
+            "    enum Witness {}\n    enum Answer {}\n    enum Unused {}\n"
+            "    static func a() {}\n"
+            "    static func b(x: Int,\n                  y: Answer) -> Witness {\n"
+            "        let u = Unused()\n    }\n}\n"
+        )
+        out = self.restore(merged, ours)
+        self.assertIn("\n    package enum Witness {}\n", out)
+        self.assertIn("\n    package enum Answer {}\n", out)
+        self.assertIn("\n    enum Unused {}\n", out)
+        self.assertIn("\n    enum Old {}\n", out)
+
     def test_a_file_without_package_gets_none(self):
         ours = "final class A {\n    func a() {}\n}\n"
         merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"
