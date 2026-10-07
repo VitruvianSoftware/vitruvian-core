@@ -80,6 +80,21 @@ output="$TEST_TMPDIR/unit-tests.log"
 
 status=0
 "$binary" 2>&1 | tee "$output" || status=$?
+if [[ $status -ne 0 ]]; then
+	# A suite that ends the process prints nothing of its own: say how it
+	# ended, and show the system's crash report when it left one.
+	if [[ $status -gt 128 ]]; then
+		echo "the test binary was killed by signal $((status - 128))"
+	else
+		echo "the test binary exited with status $status"
+	fi
+	report="$(ls -t "$real_home/Library/Logs/DiagnosticReports"/metrics-tests* 2>/dev/null | head -1 || true)"
+	if [[ -n "$report" ]]; then
+		echo "crash report: $report"
+		head -c 16000 "$report"
+		echo
+	fi
+fi
 reported=$(grep -cE '^[[:alnum:]-]+: (OK|FAILED) \([0-9]+ checks' "$output" || true)
 if [[ $reported -ne $expected ]]; then
 	echo "$reported of $expected suites reported a result"
