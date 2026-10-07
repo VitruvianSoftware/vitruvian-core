@@ -378,36 +378,145 @@ package enum ClipboardHistoryEditing {
     }
 }
 
-package struct ClipboardHistorySearchCandidate {
+package struct ClipboardHistorySearchFolded: Equatable {
+    package let searchableText: String
+    package let normalizedText: String
+    package let words: Set<String>
+
+    package init(searchableText: String) {
+        self.searchableText = searchableText
+        let folded = ClipboardHistorySearch.normalized(searchableText)
+        self.normalizedText = folded
+        self.words = ClipboardHistorySearch.words(in: folded)
+    }
+}
+
+package struct ClipboardHistorySearchCandidate: Equatable {
     package var index: Int
-    package var text: String
+    package var text: String {
+        didSet {
+            normalizedText = ClipboardHistorySearch.normalized(text)
+            words = ClipboardHistorySearch.words(in: normalizedText)
+        }
+    }
     package var isPinned: Bool
+    package private(set) var normalizedText: String
+    package private(set) var words: Set<String>
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(index: Int, text: String, isPinned: Bool) {
+    package init(index: Int,
+                 text: String,
+                 isPinned: Bool,
+                 normalizedText: String? = nil,
+                 words: Set<String>? = nil) {
         self.index = index
         self.text = text
         self.isPinned = isPinned
+        let folded = normalizedText ?? ClipboardHistorySearch.normalized(text)
+        self.normalizedText = folded
+        self.words = words ?? ClipboardHistorySearch.words(in: folded)
+    }
+}
+
+package struct ClipboardHistorySearchCache {
+    private var foldedEntries: [UUID: ClipboardHistorySearchFolded] = [:]
+    private var cachedCandidates: [ClipboardHistorySearchCandidate] = []
+    private var cachedStamp: Int?
+    private var cachedImageLabel: String?
+
+    package var cachedEntryCount: Int { foldedEntries.count }
+    package var candidateCount: Int { cachedCandidates.count }
+    package private(set) var foldCount = 0
+
+    package init() {}
+
+    package mutating func candidates(for entries: [ClipboardHistoryEntry],
+                                     stamp: Int,
+                                     imageLabel: String) -> [ClipboardHistorySearchCandidate] {
+        if cachedStamp == stamp && cachedImageLabel == imageLabel {
+            return cachedCandidates
+        }
+
+        if entries.isEmpty {
+            clear()
+            cachedStamp = stamp
+            cachedImageLabel = imageLabel
+            return []
+        }
+
+        var nextFolded: [UUID: ClipboardHistorySearchFolded] = [:]
+        nextFolded.reserveCapacity(entries.count)
+
+        let candidates = entries.enumerated().map { index, entry in
+            let searchable = entry.searchableText(imageLabel: imageLabel)
+            let folded: ClipboardHistorySearchFolded
+            if let existing = foldedEntries[entry.id], existing.searchableText == searchable {
+                folded = existing
+            } else {
+                folded = ClipboardHistorySearchFolded(searchableText: searchable)
+                foldCount += 1
+            }
+            nextFolded[entry.id] = folded
+            return ClipboardHistorySearchCandidate(index: index,
+                                                   text: searchable,
+                                                   isPinned: entry.isPinned,
+                                                   normalizedText: folded.normalizedText,
+                                                   words: folded.words)
+        }
+
+        foldedEntries = nextFolded
+        cachedStamp = stamp
+        cachedImageLabel = imageLabel
+        cachedCandidates = candidates
+        return candidates
+    }
+
+    package mutating func prune(keeping entries: [ClipboardHistoryEntry], imageLabel: String? = nil) {
+        if entries.isEmpty {
+            clear()
+            return
+        }
+        guard !foldedEntries.isEmpty || !cachedCandidates.isEmpty else { return }
+        guard let label = imageLabel ?? cachedImageLabel else { return }
+        cachedCandidates.removeAll()
+        cachedStamp = nil
+        var retained: [UUID: ClipboardHistorySearchFolded] = [:]
+        retained.reserveCapacity(foldedEntries.count)
+        for entry in entries {
+            if let existing = foldedEntries[entry.id],
+               existing.searchableText == entry.searchableText(imageLabel: label) {
+                retained[entry.id] = existing
+            }
+        }
+        foldedEntries = retained
+    }
+
+    package func isCached(id: UUID) -> Bool {
+        foldedEntries[id] != nil
+    }
+
+    package mutating func clear() {
+        foldedEntries.removeAll()
+        cachedCandidates.removeAll()
+        cachedStamp = nil
+        cachedImageLabel = nil
     }
 }
 
 package enum ClipboardHistorySearch {
-    /// `textIsNormalized` is for callers that already ran every candidate's
-    /// text through `normalized(_:)` once and search it on every keystroke:
-    /// folding long entries is what made typing lag (#1885).
     package static func rankedIndexes(candidates: [ClipboardHistorySearchCandidate],
-                              matching query: String,
-                              textIsNormalized: Bool = false) -> [Int] {
+                              matching query: String) -> [Int] {
         let normalizedQuery = normalized(query)
         let tokens = queryTokens(normalizedQuery)
         guard !tokens.isEmpty else { return candidates.map(\.index) }
 
         return candidates
             .compactMap { candidate -> (index: Int, score: Int, originalOrder: Int)? in
-                let text = textIsNormalized ? candidate.text : normalized(candidate.text)
+                let text = candidate.normalizedText
                 guard tokens.allSatisfy({ text.contains($0) }) else { return nil }
                 return (candidate.index,
                         score(for: text,
+                              words: candidate.words,
                               normalizedQuery: normalizedQuery,
                               tokens: tokens,
                               isPinned: candidate.isPinned),
@@ -418,12 +527,6 @@ package enum ClipboardHistorySearch {
                 return $0.originalOrder < $1.originalOrder
             }
             .map(\.index)
-    }
-
-    /// Whether the query filters at all; an empty one lists every candidate
-    /// in order, so there is nothing to fold for it.
-    package static func hasSearchTerms(_ query: String) -> Bool {
-        !queryTokens(normalized(query)).isEmpty
     }
 
     package static func matches(_ text: String, query: String) -> Bool {
@@ -463,7 +566,12 @@ package enum ClipboardHistorySearch {
         return ranges
     }
 
+    package static func words(in normalizedText: String) -> Set<String> {
+        Set(normalizedText.split(whereSeparator: \.isWhitespace).map(String.init))
+    }
+
     private static func score(for text: String,
+                              words: Set<String>,
                               normalizedQuery: String,
                               tokens: [String],
                               isPinned: Bool) -> Int {
@@ -472,7 +580,6 @@ package enum ClipboardHistorySearch {
         if text.hasPrefix(normalizedQuery) { score += 900 }
         if text.contains(normalizedQuery) { score += 700 }
 
-        let words = Set(text.split(whereSeparator: \.isWhitespace).map(String.init))
         for token in tokens {
             if words.contains(token) {
                 score += 140

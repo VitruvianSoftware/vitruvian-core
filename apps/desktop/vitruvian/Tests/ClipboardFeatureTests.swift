@@ -151,6 +151,190 @@ enum ClipboardFeatureTests {
                      && longStyled.characters.count == SearchHighlightText.visibleCharacters + 1
                      && longStyled.runs.filter { $0[HighlightFont.self] != nil }.count == 36,
                      "a long preview is searched and styled only as far as a row can show")
+        // MARK: Clipboard history search cache & ranking parity
+
+        let sampleTexts = [
+            "Deploy checklist final",
+            "Token cleanup note",
+            "Final database deploy plan",
+            "Reunião com João",
+            "Серверная конфигурация nginx",
+            "İstanbul boğazı turu",
+            "Lorem ipsum dolor sit amet",
+            "Multi\nline\ttext\rwith  extra   whitespace",
+            "Exact Match Only",
+            "prefix matching candidate",
+        ]
+        var testEntries = sampleTexts.enumerated().map { index, text in
+            ClipboardHistoryEntry(text: text, pinnedAt: index == 1 ? Date() : nil)
+        }
+
+        var searchCache = ClipboardHistorySearchCache()
+        let initialCandidates = searchCache.candidates(for: testEntries, stamp: 1, imageLabel: "Image")
+        suite.expect(searchCache.candidateCount == testEntries.count, "candidates populated")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count, "folded entries cached")
+        let initialFoldCount = searchCache.foldCount
+        suite.expect(initialFoldCount == testEntries.count, "first search folds every entry exactly once")
+
+        let testQueries = ["deploy", "dep", "clean", "joao", "сервер", "istanbul", "exact", "missing", ""]
+        for q in testQueries {
+            let nextCandidates = searchCache.candidates(for: testEntries, stamp: 1, imageLabel: "Image")
+            suite.expect(nextCandidates == initialCandidates, "candidates reused across keystrokes without recreation")
+            let ranked = ClipboardHistorySearch.rankedIndexes(candidates: nextCandidates, matching: q)
+            let naiveCandidates = testEntries.enumerated().map { index, entry in
+                ClipboardHistorySearchCandidate(index: index,
+                                                text: entry.searchableText(imageLabel: "Image"),
+                                                isPinned: entry.isPinned)
+            }
+            let naiveRanked = ClipboardHistorySearch.rankedIndexes(candidates: naiveCandidates, matching: q)
+            suite.expect(ranked == naiveRanked, "ranking for '\(q)' is identical before and after caching")
+        }
+        suite.expect(searchCache.foldCount == initialFoldCount,
+                     "keystrokes reuse folded entries without refolding a single one")
+
+        let newEntry = ClipboardHistoryEntry(text: "Brand new clipboard item")
+        testEntries.append(newEntry)
+        let updatedCandidates = searchCache.candidates(for: testEntries, stamp: 2, imageLabel: "Image")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count, "cache contains new entry along with existing")
+        suite.expect(updatedCandidates.count == testEntries.count, "candidates updated after stamp bump")
+        let foldsAfterAppend = searchCache.foldCount
+        suite.expect(foldsAfterAppend == initialFoldCount + 1, "appending one entry folds only that entry")
+
+        let removedID = testEntries[0].id
+        testEntries.remove(at: 0)
+        searchCache.prune(keeping: testEntries)
+        suite.expect(!searchCache.isCached(id: removedID), "removed entry evicted immediately from cache without search")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count, "cache pruned deleted entry without search")
+        suite.expect(searchCache.candidateCount == 0, "candidate count is 0 before next search")
+        let prunedCandidates = searchCache.candidates(for: testEntries, stamp: 3, imageLabel: "Image")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count, "cache pruned deleted entry")
+        suite.expect(prunedCandidates.count == testEntries.count, "candidates match remaining count")
+        suite.expect(searchCache.foldCount == foldsAfterAppend, "prune and rebuild add no folds")
+
+        let editedID = testEntries[0].id
+        testEntries[0].text = "Refactored token cleanup procedure"
+        searchCache.prune(keeping: testEntries)
+        suite.expect(!searchCache.isCached(id: editedID), "replaced entry text evicted immediately from cache without search")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count - 1, "stale folded entry purged without search")
+        suite.expect(searchCache.candidateCount == 0, "candidate count is 0 after text edit before next search")
+        let editedCandidates = searchCache.candidates(for: testEntries, stamp: 4, imageLabel: "Image")
+        suite.expect(searchCache.isCached(id: editedID), "edited entry re-folded during next search")
+        suite.expect(searchCache.foldCount == foldsAfterAppend + 1, "only the edited entry refolds")
+        suite.expect(editedCandidates[0].normalizedText.contains("refactored"), "candidate normalizedText updated after text edit")
+        suite.expect(editedCandidates[0].words.contains("refactored"), "candidate words set updated after text edit")
+        let editedRanked = ClipboardHistorySearch.rankedIndexes(candidates: editedCandidates, matching: "refactored")
+        suite.expect(editedRanked == [0], "search finds edited text")
+
+        suite.expect(!testEntries[1].isPinned, "target entry is unpinned before toggle")
+        testEntries[1].pinnedAt = Date()
+        let pinToggledCandidates = searchCache.candidates(for: testEntries, stamp: 5, imageLabel: "Image")
+        suite.expect(pinToggledCandidates[1].isPinned, "candidate reflects updated pinned status")
+        let pinRanked = ClipboardHistorySearch.rankedIndexes(candidates: pinToggledCandidates, matching: "deploy")
+        suite.expect(pinRanked.first == 1, "pinned entry gets priority boost in search")
+
+        let testImageEntry = ClipboardHistoryEntry(text: "", kind: .image, imageWidth: 1024, imageHeight: 768)
+        testEntries.append(testImageEntry)
+        let imageCandidatesEN = searchCache.candidates(for: testEntries, stamp: 6, imageLabel: "Image")
+        let imageRankedEN = ClipboardHistorySearch.rankedIndexes(candidates: imageCandidatesEN, matching: "image")
+        suite.expect(imageRankedEN.contains(testEntries.count - 1), "finds image with English label")
+
+        let imageCandidatesPT = searchCache.candidates(for: testEntries, stamp: 6, imageLabel: "Imagem")
+        let imageRankedPT = ClipboardHistorySearch.rankedIndexes(candidates: imageCandidatesPT, matching: "imagem")
+        suite.expect(imageRankedPT.contains(testEntries.count - 1), "finds image with Portuguese label after localization switch")
+
+        let emptyCandidates = searchCache.candidates(for: [], stamp: 7, imageLabel: "Image")
+        suite.expect(emptyCandidates.isEmpty, "empty entries return empty candidates")
+        suite.expect(searchCache.cachedEntryCount == 0, "cache is cleared when entries is empty")
+        suite.expect(searchCache.candidateCount == 0, "candidate count is 0 for empty history")
+
+        _ = searchCache.candidates(for: testEntries, stamp: 8, imageLabel: "Image")
+        suite.expect(searchCache.cachedEntryCount > 0, "cache populated")
+
+        var clearEntries = testEntries
+        var clearCache = ClipboardHistorySearchCache()
+        _ = clearCache.candidates(for: clearEntries, stamp: 1, imageLabel: "Image")
+        suite.expect(clearCache.cachedEntryCount > 0 && clearCache.candidateCount > 0, "cache populated before clearing history")
+        clearEntries.removeAll()
+        clearCache.prune(keeping: clearEntries)
+        suite.expect(clearCache.cachedEntryCount == 0, "clearing history immediately evicts all cached entries without search")
+        suite.expect(clearCache.candidateCount == 0, "candidate count is 0 after clearing history without search")
+
+        var recentAndPinned = [
+            ClipboardHistoryEntry(text: "Pinned Item", pinnedAt: Date()),
+            ClipboardHistoryEntry(text: "Unpinned Recent Item")
+        ]
+        var recentCache = ClipboardHistorySearchCache()
+        _ = recentCache.candidates(for: recentAndPinned, stamp: 1, imageLabel: "Image")
+        suite.expect(recentCache.cachedEntryCount == 2 && recentCache.candidateCount == 2, "cache populated with pinned and unpinned")
+        let unpinnedID = recentAndPinned[1].id
+        let pinnedID = recentAndPinned[0].id
+        recentAndPinned.removeAll { !$0.isPinned }
+        recentCache.prune(keeping: recentAndPinned)
+        suite.expect(!recentCache.isCached(id: unpinnedID), "clearing recent history immediately evicts unpinned item")
+        suite.expect(recentCache.isCached(id: pinnedID), "clearing recent history preserves pinned item")
+        suite.expect(recentCache.cachedEntryCount == 1, "only pinned item remains cached")
+        suite.expect(recentCache.candidateCount == 0, "candidate count is 0 after clearing recent history")
+
+        var imageAndText = [
+            ClipboardHistoryEntry(text: "Text Alpha"),
+            ClipboardHistoryEntry(text: "", kind: .image, imageWidth: 800, imageHeight: 600)
+        ]
+        var imagePruneCache = ClipboardHistorySearchCache()
+        _ = imagePruneCache.candidates(for: imageAndText, stamp: 1, imageLabel: "Image")
+        suite.expect(imagePruneCache.cachedEntryCount == 2, "cache holds text and image entries")
+        let removedImageID = imageAndText[1].id
+        imageAndText.remove(at: 1)
+        imagePruneCache.prune(keeping: imageAndText, imageLabel: "Image")
+        suite.expect(!imagePruneCache.isCached(id: removedImageID), "image entry evicted on deletion without search")
+        suite.expect(imagePruneCache.cachedEntryCount == 1, "text entry retained after image entry removal")
+
+        let foldsBeforeSwap = searchCache.foldCount
+        testEntries.swapAt(0, 1)
+        let swappedCandidates = searchCache.candidates(for: testEntries, stamp: 9, imageLabel: "Image")
+        suite.expect(swappedCandidates[0].text == testEntries[0].text, "candidate 0 reflects swapped entry")
+        suite.expect(swappedCandidates[1].text == testEntries[1].text, "candidate 1 reflects swapped entry")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count, "folded texts reused during swap")
+        suite.expect(searchCache.foldCount == foldsBeforeSwap, "reordering entries refolds nothing")
+
+        testEntries[0].copiedAt = Date()
+        let touchedCandidates = searchCache.candidates(for: testEntries, stamp: 10, imageLabel: "Image")
+        suite.expect(touchedCandidates.count == testEntries.count, "candidates rebuilt after metadata stamp bump")
+        suite.expect(searchCache.cachedEntryCount == testEntries.count, "folded texts preserved after metadata stamp bump")
+        suite.expect(searchCache.foldCount == foldsBeforeSwap, "metadata-only change refolds nothing")
+
+        for spaceQuery in ["  deploy   plan  ", "   ", "deploy\tplan", "deploy\nplan"] {
+            let spaceRanked = ClipboardHistorySearch.rankedIndexes(candidates: touchedCandidates, matching: spaceQuery)
+            let naiveCandidates = testEntries.enumerated().map { index, entry in
+                ClipboardHistorySearchCandidate(index: index,
+                                                text: entry.searchableText(imageLabel: "Image"),
+                                                isPinned: entry.isPinned)
+            }
+            let naiveRanked = ClipboardHistorySearch.rankedIndexes(candidates: naiveCandidates, matching: spaceQuery)
+            suite.expect(spaceRanked == naiveRanked, "ranking for whitespace query '\(spaceQuery)' matches naive search")
+        }
+
+        searchCache.clear()
+        suite.expect(searchCache.cachedEntryCount == 0 && searchCache.candidateCount == 0, "clear resets cache completely")
+        _ = searchCache.candidates(for: testEntries, stamp: 11, imageLabel: "Image")
+        suite.expect(searchCache.foldCount == foldsBeforeSwap + testEntries.count,
+                     "search after clear refolds every entry from scratch")
+
+        var largeEntries: [ClipboardHistoryEntry] = []
+        for i in 0..<100 {
+            let longText = String(repeating: "Текст для проверки производительности буфера обмена номер \(i). Многострочные логи и документы.\n", count: 50)
+            largeEntries.append(ClipboardHistoryEntry(text: longText))
+        }
+        var largeCache = ClipboardHistorySearchCache()
+        let largeCand1 = largeCache.candidates(for: largeEntries, stamp: 1, imageLabel: "Image")
+        _ = ClipboardHistorySearch.rankedIndexes(candidates: largeCand1, matching: "производительности")
+
+        for keystroke in ["произ", "произв", "производ", "номер 42"] {
+            let largeCandN = largeCache.candidates(for: largeEntries, stamp: 1, imageLabel: "Image")
+            let matches = ClipboardHistorySearch.rankedIndexes(candidates: largeCandN, matching: keystroke)
+            if keystroke == "номер 42" {
+                suite.expect(matches.first == 42, "finds target entry among 100 long entries")
+            }
+        }
 
         // MARK: Clipboard history color swatches
 
@@ -934,14 +1118,13 @@ enum ClipboardFeatureTests {
 /// land on a recorded pasteboard, never the system's, and a saved-text edit
 /// must not claim that the clipboard changed.
 enum ClipboardPreviewContract {
-    /// What the history reached: the pasteboard writes it started, the image
-    /// sweeps and the search folds.
+    /// What the history reached: the pasteboard writes it started and the
+    /// image sweeps.
     final class Recorder {
         typealias Answer = @MainActor (ClipboardHistoryWriteResult?) -> Void
         var writes: [ClipboardHistoryWrite] = []
         var pending: [(then: Answer, didFinish: Answer)] = []
         var sweeps: [Set<String>] = []
-        var folds = 0
         private var changeCount = 0
 
         /// Ends the oldest write the way the pasteboard lane does: the lane
@@ -989,10 +1172,6 @@ enum ClipboardPreviewContract {
                 writePasteboard: { write, then, didFinish in
                     recorder.writes.append(write)
                     recorder.pending.append((then, didFinish))
-                },
-                fold: {
-                    recorder.folds += 1
-                    return ClipboardHistorySearch.normalized($0)
                 }))
         }
 
@@ -1200,11 +1379,13 @@ enum ClipboardPreviewContract {
         let entries = service.entries
 
         _ = service.filteredEntries(matching: "")
-        suite.expect(history.recorder.folds == 0, "an empty search lists the history without folding it")
+        _ = service.filteredEntries(matching: "   ")
+        suite.expect(service.searchCache.foldCount == 0 && service.searchCache.cachedEntryCount == 0,
+                     "an empty search lists the history without folding it")
         _ = service.filteredEntries(matching: "d")
-        suite.expect(history.recorder.folds == entries.count, "a search folds each entry once")
+        suite.expect(service.searchCache.foldCount == entries.count, "a search folds each entry once")
         _ = service.filteredEntries(matching: "de")
-        suite.expect(history.recorder.folds == entries.count,
+        suite.expect(service.searchCache.foldCount == entries.count,
                      "the next keystroke reuses the folded history instead of folding it again")
 
         let unfolded = entries.enumerated().map { index, entry in
@@ -1222,8 +1403,25 @@ enum ClipboardPreviewContract {
         suite.expect(deploy.contains(entries[1].id)
                      && service.filteredEntries(matching: "deploy").map(\.id) == deploy.filter { $0 != entries[1].id },
                      "a history change drops the last result for the same query")
+        suite.expect(!service.searchCache.isCached(id: entries[1].id),
+                     "an edit drops the old text's fold before any search")
         suite.expect(service.filteredEntries(matching: "sentinel").map(\.id) == [entries[1].id]
-                     && history.recorder.folds == 2 * entries.count,
-                     "a history change folds the new text and drops the old fold")
+                     && service.searchCache.foldCount == entries.count + 1,
+                     "a history change folds only the changed text")
+
+        // Text that leaves the history leaves the search cache with it, so a
+        // cleared item's content is not kept folded until the next search.
+        service.clearRecent()
+        let kept = service.entries.map(\.id)
+        suite.expect(kept == [pinned.id] && service.searchCache.cachedEntryCount == 1
+                     && service.searchCache.isCached(id: pinned.id) && service.searchCache.candidateCount == 0,
+                     "clearing recent items evicts their folded text and keeps the pinned item's")
+        let foldsBeforeSurvivor = service.searchCache.foldCount
+        suite.expect(service.filteredEntries(matching: "cleanup").map(\.id) == [pinned.id]
+                     && service.searchCache.foldCount == foldsBeforeSurvivor,
+                     "the surviving item's fold is reused by the next search")
+        service.remove(pinned)
+        suite.expect(service.searchCache.cachedEntryCount == 0 && service.searchCache.candidateCount == 0,
+                     "removing the last item empties the search cache without another search")
     }
 }

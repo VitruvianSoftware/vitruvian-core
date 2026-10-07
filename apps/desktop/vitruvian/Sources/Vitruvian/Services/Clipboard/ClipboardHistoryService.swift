@@ -23,7 +23,7 @@ package enum ClipboardHistoryMoveDirection {
 @MainActor
 package final class ClipboardHistoryService: ObservableObject {
     /// What the history reaches outside itself: the settings, where it is
-    /// saved, the stored images, the pasteboard and the search folding. A
+    /// saved, the stored images and the pasteboard. A
     /// contract runs a real history over a temporary file and a pasteboard
     /// of its own.
     @MainActor package struct Environment {
@@ -48,8 +48,6 @@ package final class ClipboardHistoryService: ObservableObject {
         package var writePasteboard: (_ write: ClipboardHistoryWrite,
                                       _ then: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void,
                                       _ didFinish: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void) -> Void
-        /// Folds an entry's text for search.
-        package var fold: (String) -> String
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(defaults: UserDefaults, storeURL: URL?, encodedHistoryByteLimit: Int,
@@ -58,15 +56,13 @@ package final class ClipboardHistoryService: ObservableObject {
                      writePasteboard: @escaping (_ write: ClipboardHistoryWrite,
                                                  _ then: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void,
                                                  _ didFinish: @escaping @MainActor (ClipboardHistoryWriteResult?) -> Void)
-                         -> Void,
-                     fold: @escaping (String) -> String) {
+                         -> Void) {
             self.defaults = defaults
             self.storeURL = storeURL
             self.encodedHistoryByteLimit = encodedHistoryByteLimit
             self.imageData = imageData
             self.sweepImages = sweepImages
             self.writePasteboard = writePasteboard
-            self.fold = fold
         }
 
         package static var live: Environment {
@@ -83,8 +79,7 @@ package final class ClipboardHistoryService: ObservableObject {
                                                          { isExpired in
                         write.write(to: NSPasteboard.general, isExpired: isExpired)
                     }, then: then, didFinish: didFinish)
-                },
-                fold: { ClipboardHistorySearch.normalized($0) })
+                })
         }
     }
 
@@ -94,9 +89,10 @@ package final class ClipboardHistoryService: ObservableObject {
     @Published package private(set) var entries: [ClipboardHistoryEntry] = [] {
         didSet {
             entriesStamp &+= 1
-            // Dropped rather than left to go stale, so clearing the history
-            // does not keep a folded copy of its text around.
-            foldedCandidateCache = nil
+            searchCache.prune(keeping: entries)
+            // The result array holds full entry texts, so a cleared or edited
+            // history's content must not linger in it until the next search.
+            filterCache = nil
             // Keeps latestPasteboardEntry from outliving the entry it points
             // to: removing it, clearing recent/all, or trimming to a smaller
             // limit must stop the preview from claiming stale content is
@@ -330,15 +326,19 @@ package final class ClipboardHistoryService: ObservableObject {
     }
 
     private func touch(_ entryIDs: [UUID]) {
+        // One assignment for the whole batch: each element write fires the
+        // entries observer, which a large selection copy must not pay per item.
+        var updated = entries
         var didUpdate = false
         let now = Date()
         for entryID in entryIDs {
-            if let index = entries.firstIndex(where: { $0.id == entryID }) {
-                entries[index].copiedAt = now
+            if let index = updated.firstIndex(where: { $0.id == entryID }) {
+                updated[index].copiedAt = now
                 didUpdate = true
             }
         }
         if didUpdate {
+            entries = updated
             save()
         }
     }
@@ -508,6 +508,8 @@ package final class ClipboardHistoryService: ObservableObject {
     private var entriesStamp = 0
     private var filterCache: (query: String, stamp: Int, imageLabel: String,
                               result: [ClipboardHistoryEntry])?
+    /// The folded text of each entry, kept between keystrokes (#1885).
+    package private(set) var searchCache = ClipboardHistorySearchCache()
 
     package func filteredEntries(matching query: String) -> [ClipboardHistoryEntry] {
         // One ranking pass over a large history of long texts costs real
@@ -519,37 +521,23 @@ package final class ClipboardHistoryService: ObservableObject {
            cache.stamp == entriesStamp, cache.imageLabel == imageLabel {
             return cache.result
         }
-        let result: [ClipboardHistoryEntry]
-        if ClipboardHistorySearch.hasSearchTerms(query) {
-            result = ClipboardHistorySearch.rankedIndexes(candidates: foldedCandidates(imageLabel: imageLabel),
-                                                          matching: query,
-                                                          textIsNormalized: true)
-                .map { entries[$0] }
-        } else {
-            result = entries
+        guard !entries.isEmpty else {
+            searchCache.clear()
+            filterCache = (query, entriesStamp, imageLabel, [])
+            return []
         }
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedQuery.isEmpty {
+            filterCache = (query, entriesStamp, imageLabel, entries)
+            return entries
+        }
+        let candidates = searchCache.candidates(for: entries,
+                                                stamp: entriesStamp,
+                                                imageLabel: imageLabel)
+        let result = ClipboardHistorySearch.rankedIndexes(candidates: candidates, matching: query)
+            .compactMap { entries.indices.contains($0) ? entries[$0] : nil }
         filterCache = (query, entriesStamp, imageLabel, result)
         return result
-    }
-
-    private var foldedCandidateCache: (imageLabel: String, candidates: [ClipboardHistorySearchCandidate])?
-
-    /// The query changes on every keystroke, so the result cache above never
-    /// hits while typing; folding every entry's full text again each time is
-    /// what made the Command Bar lag with a large history (#1885). The folded
-    /// text only changes with the history or the language.
-    private func foldedCandidates(imageLabel: String) -> [ClipboardHistorySearchCandidate] {
-        if let cache = foldedCandidateCache, cache.imageLabel == imageLabel {
-            return cache.candidates
-        }
-        let candidates = entries.enumerated().map { index, entry in
-            ClipboardHistorySearchCandidate(
-                index: index,
-                text: environment.fold(entry.searchableText(imageLabel: imageLabel)),
-                isPinned: entry.isPinned)
-        }
-        foldedCandidateCache = (imageLabel, candidates)
-        return candidates
     }
 
     package func copyQuickEntry(at index: Int) {
