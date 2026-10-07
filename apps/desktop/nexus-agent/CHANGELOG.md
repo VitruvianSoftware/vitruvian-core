@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.16.1...nexus-agent-v1.17.0) (2026-10-07)
+
+
+### Features
+
+* **desktop:** token streaming, plan mode append, and approval cards for nexus agent ([#2857](https://github.com/VitruvianSoftware/vitruvian-core/issues/2857)) ([e0eac40](https://github.com/VitruvianSoftware/vitruvian-core/commit/e0eac40eb607581fb48d35df8785750a28f3df60))
+
 ## [1.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.16.0...nexus-agent-v1.16.1) (2026-09-21)
 
 
