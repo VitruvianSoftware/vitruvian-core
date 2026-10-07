@@ -997,7 +997,7 @@ extension Strings {
         cleanerNotifDenied: "Vitruvian bildirimleri sistemde kapalı.",
         cleanerNotifOpenSettings: "Bildirim ayarlarını aç…",
         launchAtLoginNeedsApplications: "Uygulama, oturum açılırken açılmaya izin vermeyen bir konumdan çalışıyor. Vitruvian’i Uygulamalar klasörüne sürükleyin, oradan açın ve bu seçeneği yeniden açın.",
-        launchAtLoginNeedsApproval: "Giriş ögesi kayıtlı, ancak Sistem Ayarları’nda hâlâ kapalı. Sistem Ayarları › Genel › Giriş Ögeleri ve Uzantılar’ı açın ve “Oturum açılırken aç” altında Vitruvian’i açın.",
+        launchAtLoginNeedsApproval: "Giriş ögesi kayıtlı, ancak macOS hâlâ onayınızı bekliyor. Sistem Ayarları’nda Vitruvian’in oturum açılırken açılmasına ve arka planda çalışmasına izin verin.",
         ocrRemoveLineBreaksToggle: "Satır sonlarını kaldır",
         ocrRemoveLineBreaksCaption: "Satır sonlarını kaldırarak kopyalanan metnin tek paragraf olarak yapıştırılmasını sağlar.",
         ocrQRToggle: "QR kodlarını oku",

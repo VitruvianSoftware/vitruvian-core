@@ -997,7 +997,7 @@ extension Strings {
         cleanerNotifDenied: "Las notificaciones de Vitruvian están desactivadas en el sistema.",
         cleanerNotifOpenSettings: "Abrir ajustes de notificaciones…",
         launchAtLoginNeedsApplications: "La app se está ejecutando desde un lugar que no permite abrirse al iniciar sesión. Arrastra Vitruvian a la carpeta Aplicaciones, ábrelo desde ahí y actívalo de nuevo.",
-        launchAtLoginNeedsApproval: "El ítem de inicio está registrado, pero sigue desactivado en Ajustes del Sistema. Abre Ajustes del Sistema › General › Ítems de inicio y extensiones y activa Vitruvian en “Abrir al iniciar sesión”.",
+        launchAtLoginNeedsApproval: "El ítem de inicio está registrado, pero macOS aún necesita tu autorización. En Ajustes del Sistema, permite que Vitruvian se abra al iniciar sesión y funcione en segundo plano.",
         ocrRemoveLineBreaksToggle: "Eliminar saltos de línea",
         ocrRemoveLineBreaksCaption: "Elimina los saltos de línea para que el texto copiado se pegue como un solo párrafo.",
         ocrQRToggle: "Leer códigos QR",

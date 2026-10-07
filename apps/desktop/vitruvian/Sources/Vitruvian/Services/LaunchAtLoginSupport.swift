@@ -14,11 +14,15 @@ import VitruvianDesign
 /// seen dropping third-party items outright. So the app remembers the user's
 /// choice in preferences and redoes a lost registration at startup.
 package enum LaunchAtLoginSupport {
+    /// Settings keeps its view alive when the window closes, so onAppear
+    /// alone cannot refresh a choice made in System Settings.
+    package static let settingsRefreshRequested = Notification.Name("Vitruvian.launchAtLoginSettingsRefreshRequested")
+
     /// What the system holds for this app. `needsApproval` is a registration
-    /// that exists but is switched off in System Settings › Login Items: only
-    /// the user can turn it back on there, so the app must neither treat it as
-    /// working nor keep registering over it.
-    package enum Registration: Equatable {
+    /// that exists but is not allowed to run. Background permission can block
+    /// it even when it appears under Open at Login. Only the user can approve
+    /// it in System Settings; registering again does not grant that permission.
+    package enum Registration: Equatable, Sendable {
         case enabled
         case needsApproval
         case off

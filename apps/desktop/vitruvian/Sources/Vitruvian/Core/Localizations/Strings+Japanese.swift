@@ -997,7 +997,7 @@ extension Strings {
         cleanerNotifDenied: "Vitruvian の通知がシステムでオフになっています。",
         cleanerNotifOpenSettings: "通知設定を開く…",
         launchAtLoginNeedsApplications: "ログイン時に開けない場所からアプリが実行されています。Vitruvianをアプリケーションフォルダにドラッグし、そこから開いてもう一度オンにしてください。",
-        launchAtLoginNeedsApproval: "ログイン項目は登録されていますが、システム設定ではオフのままです。「システム設定 › 一般 › ログイン項目と機能拡張」を開き、「ログイン時に開く」でVitruvianをオンにしてください。",
+        launchAtLoginNeedsApproval: "ログイン項目は登録されていますが、macOSの許可がまだ必要です。「システム設定」で、Vitruvianがログイン時に開き、バックグラウンドで実行できるように許可してください。",
         ocrRemoveLineBreaksToggle: "改行を削除",
         ocrRemoveLineBreaksCaption: "認識したテキストの改行を取り除き、1つの段落としてペーストします。",
         ocrQRToggle: "QRコードを読み取る",

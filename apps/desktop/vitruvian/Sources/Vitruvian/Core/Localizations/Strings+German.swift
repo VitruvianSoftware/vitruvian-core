@@ -997,7 +997,7 @@ extension Strings {
         cleanerNotifDenied: "Mitteilungen von Vitruvian sind im System deaktiviert.",
         cleanerNotifOpenSettings: "Mitteilungseinstellungen öffnen…",
         launchAtLoginNeedsApplications: "Die App läuft von einem Ort, der das Öffnen bei der Anmeldung nicht erlaubt. Ziehe Vitruvian in den Ordner Programme, öffne die App von dort und schalte die Option wieder ein.",
-        launchAtLoginNeedsApproval: "Das Anmeldeobjekt ist registriert, in den Systemeinstellungen aber weiterhin aus. Öffne Systemeinstellungen › Allgemein › Anmeldeobjekte & Erweiterungen und schalte Vitruvian unter „Bei der Anmeldung öffnen“ ein.",
+        launchAtLoginNeedsApproval: "Das Anmeldeobjekt ist registriert, macOS braucht aber noch deine Genehmigung. Erlaube Vitruvian in den Systemeinstellungen, sich bei der Anmeldung zu öffnen und im Hintergrund zu laufen.",
         ocrRemoveLineBreaksToggle: "Zeilenumbrüche entfernen",
         ocrRemoveLineBreaksCaption: "Entfernt Zeilenumbrüche, damit kopierter Text als ein Absatz eingefügt wird.",
         ocrQRToggle: "QR-Codes lesen",
