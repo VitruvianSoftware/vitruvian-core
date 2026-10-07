@@ -81,6 +81,13 @@ type syncedProject struct {
 	// so it needs no GitHub App dispatch credentials — only the export SSH
 	// key provisioned in steps 1-3 below.
 	OneWay bool
+
+	// CreateRepo declares the standalone repository itself as code via github.NewRepository,
+	// ensuring zero click-ops or manual repository creation.
+	CreateRepo bool
+
+	// Description is the repository description used when CreateRepo is true.
+	Description string
 }
 
 // syncedProjects is the source of truth for which components have sync auth
@@ -131,6 +138,15 @@ var syncedProjects = []syncedProject{
 		StandaloneRepo: "pulumi_ts-example-foundation",
 		OneWay:         true,
 	},
+	{
+		// Export-only standalone mirror for the Roborock vacuum integration,
+		// CLI, FastMCP server, and plugins (apps/mcp/roborock).
+		Name:           "mcp-roborock",
+		StandaloneRepo: "mcp-roborock",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Roborock vacuum integration, local daemon, FastMCP server, and plugins for Claude Code and Antigravity",
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its
@@ -160,6 +176,31 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 	for _, project := range syncedProjects {
 		prefix := secretPrefix(project.Name)
 
+		var repo *github.Repository
+		if project.CreateRepo {
+			var repoErr error
+			repo, repoErr = github.NewRepository(ctx, project.StandaloneRepo, &github.RepositoryArgs{
+				Name:                pulumi.String(project.StandaloneRepo),
+				Description:         pulumi.String(project.Description),
+				Visibility:          pulumi.String("public"),
+				DeleteBranchOnMerge: pulumi.Bool(true),
+				AllowAutoMerge:      pulumi.Bool(true),
+				HasIssues:           pulumi.Bool(true),
+				AutoInit:            pulumi.Bool(true),
+				SecurityAndAnalysis: &github.RepositorySecurityAndAnalysisArgs{
+					SecretScanning: &github.RepositorySecurityAndAnalysisSecretScanningArgs{
+						Status: pulumi.String("enabled"),
+					},
+					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
+						Status: pulumi.String("enabled"),
+					},
+				},
+			})
+			if repoErr != nil {
+				return repoErr
+			}
+		}
+
 		// 1. Create a fresh ED25519 key pair for the export push.
 		privateKey, err := tls.NewPrivateKey(ctx, fmt.Sprintf("%s-sync-key", project.Name), &tls.PrivateKeyArgs{
 			Algorithm: pulumi.String("ED25519"),
@@ -170,12 +211,18 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 
 		// 2. Install the PUBLIC half as a WRITE deploy key on the STANDALONE repo
 		//    so the monorepo's export workflow can push to it.
-		_, err = github.NewRepositoryDeployKey(ctx, fmt.Sprintf("%s-standalone-deploy-key", project.Name), &github.RepositoryDeployKeyArgs{
+		deployKeyArgs := &github.RepositoryDeployKeyArgs{
 			Title:      pulumi.String("copybara-sync (write)"),
 			Repository: pulumi.String(project.StandaloneRepo),
 			Key:        privateKey.PublicKeyOpenssh,
 			ReadOnly:   pulumi.Bool(false),
-		})
+		}
+		var deployKeyOpts []pulumi.ResourceOption
+		if repo != nil {
+			deployKeyArgs.Repository = repo.Name
+			deployKeyOpts = append(deployKeyOpts, pulumi.DependsOn([]pulumi.Resource{repo}))
+		}
+		_, err = github.NewRepositoryDeployKey(ctx, fmt.Sprintf("%s-standalone-deploy-key", project.Name), deployKeyArgs, deployKeyOpts...)
 		if err != nil {
 			return err
 		}
@@ -216,24 +263,26 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			// freshly-imported resource. repo_config passes repo.NodeId for the same
 			// reason; we resolve it with a LookupRepository since these mirror repos
 			// are referenced by name only and never adopted as a Repository here.
-			mirrorRepo, err := github.LookupRepository(ctx, &github.LookupRepositoryArgs{
-				Name: pulumi.StringRef(project.StandaloneRepo),
-			})
-			if err != nil {
-				return err
+			var repoNodeID pulumi.StringInput
+			var bpOpts []pulumi.ResourceOption
+			if repo != nil {
+				repoNodeID = repo.NodeId
+				bpOpts = append(bpOpts, pulumi.DependsOn([]pulumi.Resource{repo}))
+			} else {
+				mirrorRepo, err := github.LookupRepository(ctx, &github.LookupRepositoryArgs{
+					Name: pulumi.StringRef(project.StandaloneRepo),
+				})
+				if err != nil {
+					return err
+				}
+				repoNodeID = pulumi.String(mirrorRepo.NodeId)
+				bpOpts = append(bpOpts, pulumi.Import(pulumi.ID(project.StandaloneRepo+":main")))
 			}
 
-			// ADOPT via pulumi.Import (id "<repo>:main"), the same brownfield
-			// pattern repo_config uses. The pulumi-github provider's Create is NOT
-			// idempotent — it errors "Name already protected: main" when a rule
-			// already exists (these mirrors carried manual protection from their
-			// standalone days). Import adopts the existing rule and reconciles it to
-			// the args below; it is a harmless no-op once the resource is in state,
-			// so it can stay on the resource permanently (as repo_config does). With
-			// the node-id RepositoryId above no replace is planned, so the
-			// import-plus-replace conflict cannot arise.
+			// ADOPT via pulumi.Import (id "<repo>:main") for brownfield repos,
+			// or create natively for newly declared repositories.
 			_, err = github.NewBranchProtection(ctx, fmt.Sprintf("%s-mirror-readonly", project.Name), &github.BranchProtectionArgs{
-				RepositoryId:      pulumi.String(mirrorRepo.NodeId),
+				RepositoryId:      repoNodeID,
 				Pattern:           pulumi.String("main"),
 				EnforceAdmins:     pulumi.Bool(false),
 				AllowsForcePushes: pulumi.Bool(false),
@@ -243,7 +292,7 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 						RequiredApprovingReviewCount: pulumi.Int(0),
 					},
 				},
-			}, pulumi.Import(pulumi.ID(project.StandaloneRepo+":main")))
+			}, bpOpts...)
 			if err != nil {
 				return err
 			}
