@@ -14,12 +14,19 @@ package struct NotchLockScreenIsland: View {
     @ObservedObject package var model: NotchLockScreenModel
     package let size: CGSize
     package let cameraWidth: CGFloat
+    /// The music strip's own geometry: the padlock takes the cover's place and
+    /// the bars keep theirs, so locking changes what shows, not where.
+    package let geometry: NotchGeometry
+    /// The window on whole points around the island, and the island's top
+    /// left corner inside it; the rest of the window stays clear.
+    package var window: CGSize? = nil
+    package var origin: CGPoint = .zero
     @ObservedObject private var music = NotchMusicService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     package var body: some View {
-        let shoulder = NotchLayout.shoulder(height: size.height)
-        let wing = max(0, (size.width - cameraWidth) / 2 - shoulder)
+        let wing = max(0, (size.width - cameraWidth) / 2)
+        let padlockSide = min(geometry.compactMusicArtworkSide, wing)
         let playing = model.showsMusic(music.playback) && music.playback?.isPlaying == true
         NotchShape(attached: true, radius: NotchLayout.surfaceRadius(height: size.height))
             .fill(.black)
@@ -31,17 +38,23 @@ package struct NotchLockScreenIsland: View {
                         .contentTransition(.symbolEffect(.replace))
                         .symbolEffect(.bounce, options: .speed(1.4), value: reduceMotion ? false : model.padlockOpen)
                         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.padlockOpen)
-                        .frame(width: wing, height: size.height)
+                        .frame(width: padlockSide, height: padlockSide)
+                        .padding(.leading, max(0, min(geometry.compactMusicArtworkInset, wing - padlockSide)))
+                        .frame(width: wing, height: size.height, alignment: .leading)
                     Spacer(minLength: 0)
-                    NotchEqualizerBars(isPlaying: playing, bars: 4, barWidth: 2.5, height: min(12, size.height * 0.38),
+                    NotchEqualizerBars(isPlaying: playing, bars: NotchLayout.compactMusicBarCount,
+                                       barWidth: NotchLayout.compactMusicBarWidth, height: geometry.compactMusicBarHeight,
                                        tint: music.artworkTint?.color ?? .white)
                         .opacity(playing ? 1 : 0)
                         .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: playing)
-                        .frame(width: wing, height: size.height)
+                        .padding(.trailing, max(0, min(geometry.compactMusicBarsInset, wing - NotchLayout.compactMusicBarsWidth)))
+                        .frame(width: wing, height: size.height, alignment: .trailing)
                 }
-                .padding(.horizontal, shoulder)
             }
             .frame(width: size.width, height: size.height)
+            .padding(.leading, origin.x)
+            .padding(.top, origin.y)
+            .frame(width: window?.width ?? size.width, height: window?.height ?? size.height, alignment: .topLeading)
             .accessibilityHidden(true)
     }
 }

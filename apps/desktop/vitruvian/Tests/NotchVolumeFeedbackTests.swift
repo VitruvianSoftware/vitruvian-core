@@ -190,5 +190,62 @@ enum NotchVolumeFeedbackTests {
         suite.expect(!feedback.showVolume(0.9) && island.notice?.level == 0.2,
                "an island that cannot show volume leaves the confirmation to the caller")
         subscription.cancel()
+
+        // An output that adapts its own level, measured from AirPods Pro
+        // reacting to the room: a hundredth at a time, a ramp up and back
+        // down, steps 0.2 to 0.6 s apart, each ramp closing with a coarser
+        // correction about 1.7 s after its last fine step.
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.43, to: 0.44, sinceRide: .infinity) == .rides,
+               "a hundredth of the scale is finer than any volume key can press")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.47, to: 0.45, sinceRide: 0.5) == .rides,
+               "the coarser correction that closes a ramp belongs to the ramp")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.47, to: 0.45, sinceRide: 10) == .announces,
+               "the same two hundredths announce themselves when no ramp is under way")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.42, to: 0.42 + 1.0 / 16, sinceRide: 0.1) == .announces,
+               "a full key step reports however busy the output is")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.41, to: 0.47, sinceRide: 0.1) == .announces,
+               "a full key step rounded into hundredths by the output still reports")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.42, to: 0.42 + 1.0 / 64,
+                                                     sinceRide: .infinity) == .announces,
+               "the keyboard's fine step reports when the output is still")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.005, to: 0, sinceRide: 0.1) == .announces
+               && NotchSupport.volumeChangeOrigin(from: 0.995, to: 1, sinceRide: 0.1) == .announces,
+               "a level pressed against either end reports however little it moved")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: .nan, to: 0.5, sinceRide: 0) == .announces,
+               "an unreadable previous level leaves the change to the caller's judgement")
+
+        let adaptive = Mixer()
+        let riding = Island()
+        let ridingFeedback = makeFeedback(adaptive, riding)
+        let ride = ridingFeedback.follow()
+        drain()
+        // The level the person left it at, which reports as it always did.
+        adaptive.systemOutputVolume = 0.43
+        drain()
+        suite.expect(riding.presented.count == 1, "the level a person sets still reports before any ramp")
+        riding.presented.removeAll()
+        riding.notice = nil
+        // The levels this Mac recorded over one ramp, including the two
+        // hundredths that turn it around, a fraction of a second apart.
+        for level in [0.44, 0.45, 0.46, 0.47, 0.45, 0.44, 0.43, 0.42] {
+            riding.now += 0.4
+            adaptive.systemOutputVolume = level
+            drain()
+        }
+        suite.expect(riding.presented.isEmpty && riding.notice == nil,
+               "a ramp the output drives itself never raises the volume indicator")
+        adaptive.systemOutputMuted = true
+        drain()
+        suite.expect(riding.presented.count == 1 && riding.notice?.level == 0,
+               "muting during such a ramp still reports")
+        riding.presented.removeAll()
+        adaptive.systemOutputMuted = false
+        drain()
+        adaptive.systemOutputVolume = 0.42 + 1.0 / 16
+        drain()
+        suite.expect(riding.presented.count == 2 && riding.notice?.level == 0.42 + 1.0 / 16,
+               "a key press after the ramp reports from the level the ramp left behind")
+        ride.cancel()
+        withExtendedLifetime(ridingFeedback) {}
     }
 }

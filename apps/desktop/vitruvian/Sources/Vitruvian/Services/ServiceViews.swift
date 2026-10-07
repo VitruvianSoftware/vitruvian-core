@@ -42,7 +42,10 @@ package protocol ServiceViewFactory {
     func notchBackground(_ presentation: NotchBackdropPresentation) -> AnyView
     func lockScreenPlayer(model: NotchLockScreenModel, size: CGSize) -> AnyView
     func lockScreenActivities(model: NotchLockScreenModel, size: CGSize) -> AnyView
-    func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat) -> AnyView
+    /// The locked island at `size`, drawn at `origin` in a window of
+    /// `window`, with the music strip's `geometry` for its padlock and bars.
+    func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat, geometry: NotchGeometry,
+                          window: CGSize, origin: CGPoint) -> AnyView
 }
 
 /// Where services find the installed view factory.

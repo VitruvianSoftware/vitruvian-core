@@ -28,13 +28,16 @@ enum CommandBarCatalogRowContract {
 
         // Clearing the clipboard history asks first.
         let clipboard = FeatureStrings.clipboard(language)
+        let counted: Set<UUID> = [UUID(), UUID(), UUID()]
         let clear = CommandBarCatalog.clipboardClearEntry(clipboard, subtitle: clipboard.title, trouble: nil,
-                                                          clear: { log.calls.append("clear") })
+                                                          recentIDs: counted,
+                                                          clear: { log.calls.append($0 == counted ? "clear counted" : "clear") })
         suite.expect(clear.id == "action.clipboardClearRecent" && clear.title == clipboard.clearRecent
-                     && clear.confirmationPrompt == clipboard.clearRecent && clear.needsPrompt,
-                     "the Command Bar clears the clipboard history only after confirmation")
+                     && clear.confirmationPrompt == String(format: clipboard.clearRecentConfirmFormat, 3)
+                     && clear.needsPrompt,
+                     "the Command Bar clears the clipboard history only after a confirmation that counts it")
         clear.run(nil)
-        suite.expect(log.calls == ["clear"], "the confirmed row clears the history once")
+        suite.expect(log.calls == ["clear counted"], "the confirmed row clears the unpinned items it counted, once")
 
         // Volume confirms in Dynamic Island when it can.
         log.calls = []

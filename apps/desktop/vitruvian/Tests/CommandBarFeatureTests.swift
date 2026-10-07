@@ -259,7 +259,7 @@ enum CommandBarFeatureTests {
         for language in AppLanguage.allCases {
             let clipboard = FeatureStrings.clipboard(language)
             let clear = CommandBarCatalog.clipboardClearEntry(clipboard, subtitle: clipboard.title,
-                                                              trouble: nil, clear: {})
+                                                              trouble: nil, recentIDs: [], clear: { _ in })
             suite.expect(CommandBarSearch.matches(title: clear.title, keywords: clear.keywords,
                                                   query: clipboard.clearRecentKeywords),
                    "the clipboard clear action keeps its former \(language) name as a search term")

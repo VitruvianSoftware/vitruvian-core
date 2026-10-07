@@ -567,6 +567,8 @@ enum ClipboardFeatureTests {
                          "\(language.rawValue) paste-selected button format")
             expectFormat(clipboardStrings.copySelectedFormat, ["d"],
                          "\(language.rawValue) copy-selected button format")
+            expectFormat(clipboardStrings.clearRecentConfirmFormat, ["d"],
+                         "\(language.rawValue) clear-unpinned confirmation format")
             suite.expect(!clipboardStrings.autoClearEnable.isEmpty
                    && !clipboardStrings.autoClearSecondsSuffix.isEmpty
                    && !clipboardStrings.autoClearOnSleep.isEmpty
@@ -618,10 +620,6 @@ enum ClipboardFeatureTests {
                "English monitor repeat control is explicit")
         suite.expect(FeatureStrings.monitorAlerts(.ptBR).cooldown == "Repetir o mesmo alerta depois de",
                "Portuguese monitor repeat control is explicit")
-        suite.expect(ClipboardHistorySelection.initialIndex(totalCount: 3) == 0,
-               "clipboard quick window starts keyboard navigation on the first item")
-        suite.expect(ClipboardHistorySelection.initialIndex(totalCount: 0) == 0,
-               "clipboard quick window keeps an empty selection index safe")
 
         // MARK: Settings search navigation
 
@@ -1416,6 +1414,41 @@ enum ClipboardPreviewContract {
         suite.expect(kept.map(\.text) == ["P", "Q", "R", "B", "A"]
                      && kept[1].copiedAt > Date(timeIntervalSinceNow: -30),
                      "a pasted pinned entry keeps its place and its shortcut, and only its time changes")
+
+        // The confirmation counted what it asked about: a copy or a pin made
+        // while it was open survives the clear.
+        let counted = ClipboardHistoryEntry(text: "Counted by the confirmation")
+        let copiedLater = ClipboardHistoryEntry(text: "Copied while the confirmation was open")
+        var pinnedLater = ClipboardHistoryEntry(text: "Pinned while the confirmation was open")
+        pinnedLater.pinnedAt = Date()
+        let clearing = History([pinnedLater, copiedLater, counted])
+        clearing.service.clearRecent([counted.id, pinnedLater.id])
+        suite.expect(clearing.service.entries.map(\.id) == [pinnedLater.id, copiedLater.id],
+                     "clearing deletes only the unpinned items the confirmation counted")
+        quickSelection(suite)
+    }
+
+    /// The window's highlight is what Return pastes, so it has to stay on the
+    /// entry the arrow keys chose while the history changes under it.
+    private static func quickSelection(_ suite: TestSuite) {
+        let a = ClipboardHistoryEntry(text: "A"), b = ClipboardHistoryEntry(text: "B")
+        let c = ClipboardHistoryEntry(text: "C"), d = ClipboardHistoryEntry(text: "D")
+        let quick = History([a, b, c, d])
+        let service = quick.service
+        suite.expect(service.selectedQuickEntry?.id == a.id, "before any arrow key, Return pastes the newest entry")
+        service.moveQuickSelection(1)
+        service.moveQuickSelection(1)
+        suite.expect(service.selectedQuickEntry?.id == b.id, "the second arrow press highlights the second entry")
+        // Copying moves an entry to the top, above the highlight.
+        quick.copy(d)
+        suite.expect(service.entries.map(\.id) == [d.id, a.id, b.id, c.id] && service.selectedQuickEntry?.id == b.id,
+                     "a copy arriving above the highlight leaves it on the entry Return will paste")
+        service.moveQuickSelection(1)
+        suite.expect(service.selectedQuickEntry?.id == c.id, "the next arrow press moves on from where the highlight is")
+        service.moveQuickSelection(-1)
+        service.removeSelectedQuickEntries()
+        suite.expect(service.entries.map(\.id) == [d.id, a.id, c.id] && service.selectedQuickEntry?.id == c.id,
+                     "deleting the highlighted entry highlights the one that took its place")
     }
 
     /// #1885: typing searches the history once per keystroke, so the folded
@@ -1463,7 +1496,7 @@ enum ClipboardPreviewContract {
 
         // Text that leaves the history leaves the search cache with it, so a
         // cleared item's content is not kept folded until the next search.
-        service.clearRecent()
+        service.clearRecent(Set(service.entries.filter { !$0.isPinned }.map(\.id)))
         let kept = service.entries.map(\.id)
         suite.expect(kept == [pinned.id] && service.searchCache.cachedEntryCount == 1
                      && service.searchCache.isCached(id: pinned.id) && service.searchCache.candidateCount == 0,

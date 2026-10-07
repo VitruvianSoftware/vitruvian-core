@@ -106,8 +106,10 @@ package struct UIServiceViewFactory: ServiceViewFactory {
         AnyView(NotchLockScreenActivities(model: model, size: size))
     }
 
-    package func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat) -> AnyView {
-        AnyView(NotchLockScreenIsland(model: model, size: size, cameraWidth: cameraWidth))
+    package func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat,
+                                  geometry: NotchGeometry, window: CGSize, origin: CGPoint) -> AnyView {
+        AnyView(NotchLockScreenIsland(model: model, size: size, cameraWidth: cameraWidth, geometry: geometry,
+                                      window: window, origin: origin))
     }
 
     // Spelled out because a memberwise initializer never leaves its module.

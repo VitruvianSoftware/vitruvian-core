@@ -487,7 +487,7 @@ package enum NotchLayout {
     package static let musicCardPadding: CGFloat = 12
     package static let musicCardSpacing: CGFloat = 12
     /// The three compact transport buttons.
-    package static let musicCardTransportWidth: CGFloat = 120
+    package static let musicCardTransportWidth: CGFloat = 132
 
     /// The card's square artwork, never smaller than 40pt.
     package static func musicCardArtworkSide(height: CGFloat) -> CGFloat {
@@ -556,17 +556,6 @@ package enum NotchLayout {
     /// volume and the lyrics or queue toggles.
     package static func musicPlayerHeight(layout: NotchSize, height: CGFloat) -> CGFloat {
         min(layout == .spacious ? 148 : 120, max(musicPlayerMinimumHeight, height - musicControlsRowHeight - rowSpacing))
-    }
-
-    /// The lyrics and queue cards: their padding, the space below their
-    /// title row, and that row.
-    package static let musicExtraPadding: CGFloat = 12
-    package static let musicExtraSpacing: CGFloat = 10
-    package static let musicExtraTitleHeight: CGFloat = 18
-
-    /// The room a lyrics or queue card `height` tall leaves for its list.
-    package static func musicExtraListHeight(_ height: CGFloat) -> CGFloat {
-        height - musicExtraPadding * 2 - musicExtraSpacing - musicExtraTitleHeight
     }
 
     /// The smallest player the music page draws. Lyrics or the queue take
@@ -1764,6 +1753,47 @@ package enum NotchSupport {
         return min(1, max(0, current + Double(direction.signum()) / (fine ? 64 : 16)))
     }
 
+    /// The steps a volume key takes, as `volumeLevel` above gives them: a
+    /// full step on its own, a quarter of one with the fine modifiers.
+    package static let fullVolumeKeyStep = 1.0 / 16
+    package static let finestVolumeKeyStep = 1.0 / 64
+
+    /// How long an output that has just moved its own level is assumed to
+    /// still be moving it. Measured from AirPods Pro adapting to the room:
+    /// each ramp walks the level a hundredth at a time and closes with a
+    /// coarser correction about 1.7 s after its last fine step, so a window
+    /// slightly wider than that keeps one ramp together.
+    package static let volumeRideWindow: TimeInterval = 2
+
+    /// What an observed change of the system output level means.
+    package enum VolumeChangeOrigin: Equatable {
+        /// Something a person did: the island confirms it.
+        case announces
+        /// The output riding its own level, which is state to keep rather
+        /// than news to show.
+        case rides
+    }
+
+    /// Reads an observed level change. An output that adapts to its
+    /// surroundings moves the level in steps finer than a key press makes,
+    /// and keeps moving it for as long as the room is noisy, so those steps
+    /// ride quietly. A full key step always announces itself, however busy
+    /// the output is, and so does a level pressed against either end, where a
+    /// press moves it by less than a step or not at all. In between, a step
+    /// belongs to a ramp already under way if it lands inside its window.
+    package static func volumeChangeOrigin(from previous: Double, to next: Double,
+                                           sinceRide: TimeInterval) -> VolumeChangeOrigin {
+        guard previous.isFinite, next.isFinite else { return .announces }
+        if next <= 0 || next >= 1 { return .announces }
+        let delta = abs(next - previous)
+        // An output that keeps its level in hundredths lands a key step a
+        // little short of its nominal size, so a full step is recognized
+        // with half of the finest one to spare.
+        if delta + finestVolumeKeyStep / 2 >= fullVolumeKeyStep { return .announces }
+        if delta + 1e-9 < finestVolumeKeyStep { return .rides }
+        return sinceRide < volumeRideWindow ? .rides : .announces
+    }
+
     /// A laptop with its lid closed has no built-in screen to show on, so the
     /// built-in choice hides the island there. A Mac without a built-in panel
     /// never has one, so that choice keeps the main display. The pointer
@@ -1996,6 +2026,13 @@ package struct NotchGeometry: Equatable {
         compact.compactSideRoom = room.isFinite && room >= wing ? min(isNotched ? wing : 56, room) : 0
         compact.minimumWing = wing
         return compact
+    }
+    /// The Lock Screen keeps no menus beside the camera, so its island always
+    /// takes the wings the music strip fits to the cover and the bars.
+    package var lockScreenMusicGeometry: NotchGeometry {
+        var unobstructed = self
+        unobstructed.compactSideRoom = screen.width
+        return unobstructed.compactMusicGeometry
     }
     /// The cover takes the strip's height less an even gap above and below.
     package var compactMusicArtworkSide: CGFloat {
@@ -2586,40 +2623,6 @@ package enum NotchMenuBarLayout {
             if rect.minX >= camera.maxX { right = min(right, rect.minX - 8) }
         }
         return max(0, min(camera.minX - left, right - camera.maxX))
-    }
-}
-
-/// The dimming over the island's Liquid Glass, top to bottom. The glass is
-/// clear, not blurred, so wherever the black thins a window's text behind it
-/// reads through the island's own. The page and its cards stay over black,
-/// and only the margin below the page opens into the glass lip.
-package enum NotchGlassLip {
-    /// The margin below the page, which holds no content.
-    package static let depth = NotchLayout.bottomInset
-    /// How much of the glass the lip lets through at its lowest edge.
-    package static let transparency = 0.45
-    package static let increasedContrastTransparency = 0.10
-
-    package static func opacity(atDepth depth: CGFloat, height: CGFloat,
-                        openness: Double, increasedContrast: Bool) -> Double {
-        let lipTop = height - Self.depth
-        guard depth > lipTop else { return 1 }
-        let ramp = Double(min(1, (depth - lipTop) / Self.depth))
-        let eased = ramp * ramp * (3 - 2 * ramp)
-        return 1 - min(1, max(0, openness))
-            * (increasedContrast ? increasedContrastTransparency : transparency) * eased
-    }
-
-    /// Gradient stops over an island `height` points tall, top to bottom.
-    package static func stops(height: CGFloat, openness: Double,
-                      increasedContrast: Bool) -> [(location: Double, opacity: Double)] {
-        guard height > 0 else { return [(0, 1), (1, 1)] }
-        let lipTop = max(0, height - Self.depth)
-        let depths = [0, lipTop] + (1...8).map { lipTop + (height - lipTop) * CGFloat($0) / 8 }
-        return depths.map {
-            (Double($0 / height), opacity(atDepth: $0, height: height,
-                                          openness: openness, increasedContrast: increasedContrast))
-        }
     }
 }
 

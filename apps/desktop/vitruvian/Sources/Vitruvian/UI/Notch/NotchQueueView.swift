@@ -8,14 +8,12 @@ import VitruvianServices
 
 package struct NotchQueueView: View {
     package let playback: NotchPlayback
-    /// The list takes the room the island gives the card.
-    package let height: CGFloat
     @ObservedObject private var service = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
     private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
 
     package var body: some View {
-        VStack(alignment: .leading, spacing: NotchLayout.musicExtraSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(text.queue).font(.callout.weight(.semibold))
                 Spacer()
@@ -32,8 +30,6 @@ package struct NotchQueueView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(service.upcomingRows) { item in
                             HStack(spacing: 10) {
-                                Text("\(item.offset)").font(.caption).monospacedDigit()
-                                    .foregroundStyle(.secondary).frame(width: 20)
                                 NotchArtwork(image: service.upcomingArtwork[item.id], size: 34)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(item.title).font(.callout.weight(.medium)).lineLimit(1)
@@ -51,17 +47,16 @@ package struct NotchQueueView: View {
                             }.padding(.vertical, 8)
                         }
                     }
-                }.frame(height: max(40, NotchLayout.musicExtraListHeight(height)))
+                }
+                .notchScrollEdgeFade()
             } else if !service.queueLoading {
-                Text(service.upcoming == nil ? text.queueUnavailable : text.queueEmpty)
-                    .font(.callout).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 50, alignment: .center)
-                Button(text.openPlayer) { RadialNowPlayingApplication.open(playback.track) }
-                    .buttonStyle(.borderless).font(.caption)
+                NotchEmptyView(symbol: "list.bullet", message: service.upcoming == nil ? text.queueUnavailable : text.queueEmpty) {
+                    NotchPillButton(title: text.openPlayer, prominent: true) { RadialNowPlayingApplication.open(playback.track) }
+                }
             }
         }
-        .padding(NotchLayout.musicExtraPadding)
+        // The title sits as far below the player as the first verse would.
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
     }
 }
