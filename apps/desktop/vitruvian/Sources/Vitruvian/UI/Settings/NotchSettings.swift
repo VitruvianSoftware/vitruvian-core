@@ -19,6 +19,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchDismissNativeNotifications) private var dismissNativeNotifications: Bool
     @AppStorage(Preferences.notchTimerEnabled) private var timerEnabled: Bool
     @AppStorage(Preferences.notchTimerSoundEnabled) private var timerSoundEnabled: Bool
+    @AppStorage(Preferences.notchHideTimerCountdown) private var hideTimerCountdown: Bool
     @AppStorage(Preferences.notchCameraEnabled) private var cameraEnabled: Bool
     @AppStorage(Preferences.notchAccessoriesEnabled) private var accessoriesEnabled: Bool
     @AppStorage(Preferences.notchCalendarEnabled) private var calendarEnabled: Bool
@@ -95,7 +96,7 @@ package struct NotchSettings: View {
 
     private var configuration: [String] {
         [String(enabled), String(calendarEnabled), String(calendarCountdown), String(calendarTimeLeft), String(notificationsEnabled), String(dismissNativeNotifications), String(gesturesEnabled), String(lyricsEnabled), String(lyricsOnline), String(queueEnabled), String(liveEqualizer), String(showPlayingMusic), String(includeOtherPlayers), idle, hiddenControls, controlOrder, size,
-         String(timerEnabled), String(timerSoundEnabled), String(cameraEnabled), String(accessoriesEnabled), String(outlineEnabled), String(customWidth), String(customHeight), String(cameraFitWidth), String(cameraFitHeight), String(capsuleFitWidth), String(capsuleFitHeight), String(capsuleFitDrop), String(hapticFeedback), String(shelfWindow), String(dragReveal), String(captureControls), String(quickPanel), String(appPanel), String(hoverExpand), String(hideUntilHover), String(hideInFullscreen), String(coversMenus), display, silhouette, String(hover), hidden, order, String(volume),
+         String(timerEnabled), String(timerSoundEnabled), String(hideTimerCountdown), String(cameraEnabled), String(accessoriesEnabled), String(outlineEnabled), String(customWidth), String(customHeight), String(cameraFitWidth), String(cameraFitHeight), String(capsuleFitWidth), String(capsuleFitHeight), String(capsuleFitDrop), String(hapticFeedback), String(shelfWindow), String(dragReveal), String(captureControls), String(quickPanel), String(appPanel), String(hoverExpand), String(hideUntilHover), String(hideInFullscreen), String(coversMenus), display, silhouette, String(hover), hidden, order, String(volume),
          String(brightness), String(keyboardLight), String(microphone), String(battery), String(clipboard), String(clipboardWindow), String(capture), String(trackChange), captureAction, String(showInCaptures), String(returnHome), homeModule, String(opensActivity), String(scratchpad), String(agentsEnabled), String(watchEnabled), String(keepAwakeActivity)]
     }
 
@@ -403,7 +404,11 @@ package struct NotchSettings: View {
             switchRow("hourglass", calendar.timeLeft, caption: calendar.timeLeftHint, isOn: $calendarTimeLeft)
             if permissions.calendarAccess == .fullAccess { NotchCalendarSelection() }
         case .timer:
-            switchRow("speaker.wave.2", FeatureStrings.notchActivities(l10n.language).soundEnabled, isOn: $timerSoundEnabled)
+            let activities = FeatureStrings.notchActivities(l10n.language)
+            switchRow("eye.slash", activities.hideTimerCountdown,
+                      isOn: $hideTimerCountdown)
+                .disabled(!AppFeature.notchTimer.isAvailable)
+            switchRow("speaker.wave.2", activities.soundEnabled, isOn: $timerSoundEnabled)
                 .disabled(!AppFeature.notchTimer.isAvailable)
         case .camera:
             Text(FeatureStrings.notchActivities(l10n.language).cameraHint).font(.callout).foregroundStyle(.secondary)

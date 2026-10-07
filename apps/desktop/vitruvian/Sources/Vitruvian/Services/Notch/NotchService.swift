@@ -685,7 +685,7 @@ package final class NotchService: ObservableObject {
     }
 
     package var hasTimerActivity: Bool {
-        NotchTimerSupport.isEnabled(in: defaults) && services.timerSession.hasSession
+        NotchTimerSupport.showsActivity(hasSession: services.timerSession.hasSession, in: defaults)
     }
 
     package var hasWatchActivity: Bool {

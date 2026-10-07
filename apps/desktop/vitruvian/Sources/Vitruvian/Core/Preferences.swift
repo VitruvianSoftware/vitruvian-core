@@ -133,6 +133,7 @@ package enum Preferences {
     package static let notchDismissNativeNotifications = Preference(DefaultsKey.notchDismissNativeNotifications, default: false)
     package static let notchTimerEnabled = Preference(DefaultsKey.notchTimerEnabled, default: true)
     package static let notchTimerSoundEnabled = Preference(DefaultsKey.notchTimerSoundEnabled, default: true)
+    package static let notchHideTimerCountdown = Preference(DefaultsKey.notchHideTimerCountdown, default: false)
     package static let notchCameraEnabled = Preference(DefaultsKey.notchCameraEnabled, default: true)
     package static let notchAccessoriesEnabled = Preference(DefaultsKey.notchAccessoriesEnabled, default: true)
     package static let notchCalendarEnabled = Preference(DefaultsKey.notchCalendarEnabled, default: true)
