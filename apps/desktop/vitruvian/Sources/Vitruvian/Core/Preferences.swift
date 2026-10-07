@@ -656,6 +656,7 @@ package enum Preferences {
     package static let radialMenuActivationMode = Preference(DefaultsKey.radialMenuActivationMode, default: RadialMenuActivationMode.pressOrHold.rawValue)
     package static let appUpdatesCheckFrequency = Preference(DefaultsKey.appUpdatesCheckFrequency, default: AppUpdatesSupport.CheckFrequency.off.rawValue)
     package static let temperatureUnit = Preference(DefaultsKey.temperatureUnit, default: TemperatureUnit.celsius.rawValue)
+    package static let networkSpeedUnit = Preference(DefaultsKey.networkSpeedUnit, default: NetworkSpeedUnit.bytes.rawValue)
     package static let fanControlMode = Preference(DefaultsKey.fanControlMode, default: FanControlMode.system.rawValue)
     package static let fanControlCoolingLevel = Preference(DefaultsKey.fanControlCoolingLevel, default: FanControlPolicy.defaultCoolingLevel)
     package static let fanControlCurves = Preference(DefaultsKey.fanControlCurves, default: FanControlConfiguration.defaultCurvesStorage)

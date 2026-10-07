@@ -404,6 +404,7 @@ package enum DefaultsKey {
     package static let monitorMemoryMetric = "monitorMemoryMetric" // used | app
     package static let monitorInterval = "monitorIntervalSeconds"  // sampling cadence: 1/2/5
     package static let temperatureUnit = "temperatureUnit"          // celsius | fahrenheit
+    package static let networkSpeedUnit = "networkSpeedUnit"        // bytes | bits, for every live network speed readout
     // System monitor — which blocks appear in the panel.
     package static let monitorShowSystem = "monitorShowSystem"
     package static let monitorShowNetwork = "monitorShowNetwork"
