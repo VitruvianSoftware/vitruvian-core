@@ -610,7 +610,10 @@ def _decl_key(line):
     return (m.group(1), m.group(2), m.group(3)) if m else None
 
 
-ACCESS_RE = re.compile(r"\b(?:private|fileprivate|internal|public|open|package)\b")
+# An access modifier, but not a setter's: `private(set)` leaves the getter open.
+ACCESS_RE = re.compile(
+    r"\b(?:private|fileprivate|internal|public|open|package)\b(?!\(set\))"
+)
 
 
 def _indent(line):

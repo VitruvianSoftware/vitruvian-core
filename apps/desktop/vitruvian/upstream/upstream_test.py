@@ -353,6 +353,17 @@ class PackageTest(unittest.TestCase):
         )
         self.assertEqual(self.restore(merged, ours), ours)
 
+    def test_a_private_setter_still_gets_package(self):
+        ours = "package final class S {\n    @Published package var a = 0\n    package func f() {}\n}\n"
+        merged = (
+            "final class S {\n    @Published var a = 0\n"
+            "    @Published private(set) var b = false\n    func f() {}\n}\n"
+        )
+        self.assertIn(
+            "    @Published package private(set) var b = false\n",
+            self.restore(merged, ours),
+        )
+
     def test_a_file_without_package_gets_none(self):
         ours = "final class A {\n    func a() {}\n}\n"
         merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"
