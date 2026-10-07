@@ -1637,6 +1637,72 @@ def package_signatures_name_no_internal_type(repo):
     return problems
 
 
+VIEW_TYPE_RE = re.compile(
+    r"^([ \t]*)(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+    r"((?:(?:public|open|package|final)[ \t]+)*)(?:struct|class)[ \t]+\w+[^{]*?"
+    r":[^{]*?(?<![\w.])(?:SwiftUI\.)?View(?![\w])"
+)
+BODY_RE = re.compile(r"^[ \t]*(?:@[\w.]+[ \t]+)*((?:\w+[ \t]+)*)var[ \t]+body\b")
+
+
+def unpublished_view_bodies(lines):
+    """1-based lines of `var body` in a package or public SwiftUI view that
+    does not give `body` the view's own access."""
+    found = []
+    for index, line in enumerate(lines):
+        match = VIEW_TYPE_RE.match(line)
+        if not match or not set(match.group(2).split()) & {"package", "public", "open"}:
+            continue
+        indent = len(match.group(1))
+        for inner in range(index + 1, len(lines)):
+            text = lines[inner]
+            depth = len(text) - len(text.lstrip(" \t"))
+            if text.strip() and depth <= indent:
+                break
+            body = BODY_RE.match(text)
+            if body and depth == indent + 4:
+                if not set(body.group(1).split()) & {"package", "public", "open"}:
+                    found.append(inner + 1)
+                break
+    return found
+
+
+def package_views_publish_their_body(repo):
+    """A package SwiftUI view declares `package var body`. `body` meets a
+    requirement of the public `View` protocol, so the compiler wants it as
+    visible as its type, but only the macOS build compiles. Upstream's views
+    are internal, so a port that makes a new one package must publish its
+    body too, or keep the view internal."""
+    problems = []
+    sample = [
+        "package struct Shown: View {",
+        "    @ObservedObject private var model = Model.shared",
+        "    var body: some View { Text(model.title) }",
+        "}",
+        "package struct Fine: View {",
+        "    package var body: some View { EmptyView() }",
+        "}",
+        "struct Internal: View {",
+        "    var body: some View { EmptyView() }",
+        "}",
+        "@MainActor package final class Host: NSView {",
+        "    var body: Int { 0 }",
+        "}",
+    ]
+    if unpublished_view_bodies(sample) != [3]:
+        problems.append(
+            "the scan finds an internal body in a package view, and not in an "
+            "internal view, a published body or an AppKit view"
+        )
+    for path in repo.app_sources():
+        for number in unpublished_view_bodies(repo.lines_at(path)):
+            problems.append(
+                f"{path}:{number}: a package view's body must be package too "
+                "(or make the view internal)"
+            )
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -1675,6 +1741,7 @@ RULES = [
     unit_tests_read_no_source_text,
     preferences_are_reached_through_their_type,
     package_signatures_name_no_internal_type,
+    package_views_publish_their_body,
 ]
 
 
