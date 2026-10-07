@@ -24,6 +24,7 @@ package struct MonitorSettings: View {
     @AppStorage(Preferences.monitorInterval) private var interval: Int
     @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     @AppStorage(Preferences.monitorMemoryMetric) private var memoryMetric: String
+    @AppStorage(Preferences.monitorGraphScale) private var graphScale: Bool
     @AppStorage(Preferences.panelShowFanControl) private var showFanControl: Bool
 
     package var body: some View {
@@ -217,6 +218,9 @@ package struct MonitorSettings: View {
             Text(l10n.s.monitorPanelConfigHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            SettingsRow(symbol: "arrow.up.to.line", title: GraphScaleStrings.localized(l10n.language).title) {
+                Toggle(GraphScaleStrings.localized(l10n.language).title, isOn: $graphScale).labelsHidden()
+            }
         }
     }
 

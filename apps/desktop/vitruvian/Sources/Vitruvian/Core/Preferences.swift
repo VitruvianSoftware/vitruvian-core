@@ -266,6 +266,7 @@ package enum Preferences {
     package static let monitorGraphDisk = Preference(DefaultsKey.monitorGraphDisk, default: true)
     package static let monitorGraphPower = Preference(DefaultsKey.monitorGraphPower, default: true)
     package static let monitorGraphBattery = Preference(DefaultsKey.monitorGraphBattery, default: true)
+    package static let monitorGraphScale = Preference(DefaultsKey.monitorGraphScale, default: true)
     package static let monitorSysTemps = Preference(DefaultsKey.monitorSysTemps, default: true)
     package static let monitorSysCPU = Preference(DefaultsKey.monitorSysCPU, default: true)
     package static let monitorSysGPU = Preference(DefaultsKey.monitorSysGPU, default: true)

@@ -422,6 +422,7 @@ package enum DefaultsKey {
     package static let monitorGraphDisk = "monitorGraphDisk"
     package static let monitorGraphPower = "monitorGraphPower"
     package static let monitorGraphBattery = "monitorGraphBattery"
+    package static let monitorGraphScale = "monitorGraphScale"
     // System monitor — per-item visibility inside each panel section.
     package static let monitorSysTemps = "monitorSysTemps"
     package static let monitorSysCPU = "monitorSysCPU"

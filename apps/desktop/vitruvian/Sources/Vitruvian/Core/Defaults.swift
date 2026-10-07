@@ -680,6 +680,7 @@ package enum Defaults {
         DefaultsKey.monitorGraphDisk: Preferences.monitorGraphDisk.defaultValue,
         DefaultsKey.monitorGraphPower: Preferences.monitorGraphPower.defaultValue,
         DefaultsKey.monitorGraphBattery: Preferences.monitorGraphBattery.defaultValue,
+        DefaultsKey.monitorGraphScale: Preferences.monitorGraphScale.defaultValue,
         // Every per-item block shows by default; users hide what they don't want.
         DefaultsKey.monitorSysTemps: Preferences.monitorSysTemps.defaultValue,
         DefaultsKey.monitorSysCPU: Preferences.monitorSysCPU.defaultValue,
