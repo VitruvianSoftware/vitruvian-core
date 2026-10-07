@@ -24,7 +24,8 @@ MainActor.assumeIsolated {
             if AppFeature.shelf.isAvailable { ShelfService.shared.syncWithPreferences() }
         },
         shelfCanAccept: { !ShelfService.shared.isInternalDragActive && ShelfService.shared.canAcceptPasteboard($0) },
-        shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) })
+        shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) },
+        commandBarIslandDidClose: { CommandBarService.shared.islandDidClose() })
 }
 MouseAccelerationGuard.runIfRequestedAndExit()
 // Top-level code runs on the main thread.

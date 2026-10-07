@@ -24,6 +24,8 @@ package struct NotchNoticeQueue: Equatable {
         /// A message open in place stays open for the one replacing it.
         package let expanded: Bool
         package let transition: NotchContentTransition
+        /// The same notice with a new reading only fits its width, steadily.
+        package let fitsInPlace: Bool
     }
 
     /// A notice leaving the screen.
@@ -39,23 +41,25 @@ package struct NotchNoticeQueue: Equatable {
         NotchSupport.shouldReplace(notice?.event, with: event, held: expanded)
     }
 
-    /// How `incoming` arrives. `canPresent` is whether the closed island can
-    /// show a notice now; `pointerOver`, whether the pointer is over the
-    /// island, is read only when an open message could stay open.
-    package func arrival(of incoming: NotchNotice, canPresent: Bool,
+    /// How `incoming` arrives on a closed strip drawn with `geometry`.
+    /// `canPresent` is whether the closed island can show a notice now;
+    /// `pointerOver`, whether the pointer is over the island, is read only
+    /// when an open message could stay open.
+    package func arrival(of incoming: NotchNotice, in geometry: NotchGeometry, canPresent: Bool,
                          pointerOver: @autoclosure () -> Bool) -> Arrival {
         var incoming = incoming
-        // A banner replacing one still on screen keeps its width, so a burst
+        // A banner replacing one still on screen keeps its wings, so a burst
         // does not resize the island with each message.
         if incoming.notification != nil, let shown = notice, shown.notification != nil, canPresent, !expanded {
-            incoming.minimumWingWidth = shown.preferredWingWidth
+            incoming.minimumWings = shown.wings(in: geometry)
         }
         let keepsPreview = expanded && incoming.notificationID != nil && pointerOver()
         // Slider and key bursts only replace the displayed value. They never
         // restart a window resize or enqueue another layout animation.
         let transition: NotchContentTransition = !canPresent ? .none
             : notice == nil ? .reveal : notice?.event != incoming.event || expanded ? .replace : .none
-        return Arrival(notice: incoming, expanded: keepsPreview, transition: transition)
+        let fitsInPlace = canPresent && !expanded && !keepsPreview && notice?.event == incoming.event
+        return Arrival(notice: incoming, expanded: keepsPreview, transition: transition, fitsInPlace: fitsInPlace)
     }
 
     package mutating func show(_ arrival: Arrival) {

@@ -217,6 +217,8 @@ package enum DefaultsKey {
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     package static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
+    /// A beta already installed the companion for this Command Bar user, once.
+    package static let notchMascotBetaInstalled = "notchMascotBetaInstalled"
     // Per-monitor connection paths a person has told this app to dim in
     // software: the only way to know a write-only channel swallows its writes
     // is to watch the panel, which no probe can do. Issue #1589.
@@ -897,6 +899,17 @@ package enum DefaultsKey {
     package static let notchShowInCaptures = "notchShowInCaptures"
     package static let notchLockScreen = "notchLockScreen" // music and live activities over the lock screen
     package static let notchLockSounds = "notchLockSounds" // padlock sounds as the Mac locks and unlocks
+    // Companion: a small friend who rests in the closed island and is the Command Bar's face.
+    package static let notchMascotEnabled = "notchMascotEnabled"
+    package static let notchMascotVisits = "notchMascotVisits" // passes through the island now and then
+    package static let notchMascotReactions = "notchMascotReactions" // comes out to react to what the island sees
+    package static let notchMascotStyle = "notchMascotStyle" // NotchMascotStyle.rawValue
+    package static let notchMascotShape = "notchMascotShape" // NotchMascotShape.rawValue
+    package static let notchMascotPalette = "notchMascotPalette" // NotchMascotPalette.rawValue
+    package static let notchMascotSide = "notchMascotSide" // NotchMascotSide.rawValue, beside the camera
+    package static let notchMascotVisitFrequency = "notchMascotVisitFrequency" // NotchMascotVisitFrequency.rawValue
+    package static let notchCommandBar = "notchCommandBar" // the Command Bar comes out of the island
+    package static let notchCommandBarStyle = "notchCommandBarStyle" // NotchCommandBarStyle.rawValue
     // Legacy inverse preference; the explicit visibility switch supersedes it.
     package static let notchHideInCaptures = "notchHideInCaptures"
     package static let panelControlNotch = "panelControlNotch"

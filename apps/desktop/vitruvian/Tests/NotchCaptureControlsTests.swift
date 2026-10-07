@@ -59,6 +59,18 @@ extension NotchPresentationRefreshContract {
                      "capture controls leave a timed preview owned by its existing dismissal timer")
         timed.island.endCaptureControls()
 
+        // A Command Bar open in the island gives way to capture controls,
+        // and the bar hears that the island closed around it.
+        var barClosings = 0
+        NotchService.collaborators = NotchCollaborators(commandBarIslandDidClose: { barClosings += 1 })
+        let bar = island()
+        let barPanel = bar.island.presentCommandBar()
+        bar.island.presentCaptureControls(captureOptions(), cancel: {})
+        suite.expect(barPanel != nil && !bar.island.showingCommandBar && barClosings == 1,
+                     "capture controls close a Command Bar open in the island")
+        bar.island.endCaptureControls()
+        NotchService.collaborators = NotchCollaborators()
+
         // The screenshot preview itself, presented into the island: whether it
         // takes the keyboard and whether a collapse closes it come from its
         // presentation policy, read from these settings.

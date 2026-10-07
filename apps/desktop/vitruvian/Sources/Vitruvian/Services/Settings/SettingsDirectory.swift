@@ -95,8 +95,11 @@ package enum SettingsDirectory {
             default: return item.destination.page == .monitor
             }
         }
+        // The companion lives in the island, and its settings in a tab of the
+        // island's page rather than a row of their own.
+        let islandPages: Set<SettingsSidebarItem.ID> = [.page(.notch)]
         let island = grouped.first(where: { $0.id == 4 })?.items.filter {
-            $0.id == .page(.notch)
+            islandPages.contains($0.id)
         } ?? []
         let sound: [SettingsSidebarItem] = essentials.items.filter { item in
             item.destination.page == .general
@@ -110,7 +113,8 @@ package enum SettingsDirectory {
             grouped.first(where: { $0.id == id })?.items ?? []
         }
         let byGroup = SettingsSidebarSupport.featureGroupRows(
-            windowsControls: rows(1), utilities: rows(4).filter { $0.id != .page(.notch) })
+            windowsControls: rows(1),
+            utilities: rows(4).filter { !islandPages.contains($0.id) && $0.id != .page(.notchMascot) })
         let featured = [
             SettingsSidebarSection(id: 0, title: categories.essentials,
                                    items: Array(core.prefix(3)) + island + Array(core.dropFirst(3))),
@@ -379,6 +383,10 @@ package enum SettingsDirectory {
                                           + (NotchSupport.hasDisplayWithoutNotch
                                              ? [FeatureStrings.notch(language).withoutNotch,
                                                 FeatureStrings.notch(language).capsuleFit] : [])),
+                SettingsDirectoryItem(page: .notchMascot,
+                                      title: FeatureStrings.notchMascot(language).title,
+                                      icon: AppFeature.notchMascot.symbolName,
+                                      keywords: FeatureStrings.notchMascot(language).searchKeywords),
                 SettingsDirectoryItem(page: .commandBar,
                                       title: FeatureStrings.commandBar(language).pageTitle,
                                       icon: "command",

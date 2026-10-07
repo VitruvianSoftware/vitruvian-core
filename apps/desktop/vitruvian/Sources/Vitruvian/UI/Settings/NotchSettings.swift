@@ -32,6 +32,11 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchQueueEnabled) private var queueEnabled: Bool
     @AppStorage(Preferences.notchLiveEqualizer) private var liveEqualizer: Bool
     @AppStorage(Preferences.notchEnabled) private var enabled: Bool
+    @AppStorage(Preferences.notchMascotEnabled) private var mascotEnabled: Bool
+    @AppStorage(Preferences.notchMascotStyle) private var mascotStyle: String
+    @AppStorage(Preferences.notchMascotShape) private var mascotShape: String
+    @AppStorage(Preferences.notchMascotPalette) private var mascotPalette: String
+    @AppStorage(Preferences.notchMascotSide) private var mascotSide: String
     @AppStorage(Preferences.notchDisplay) private var display: String
     @AppStorage(Preferences.notchSilhouette) private var silhouette: String
     @AppStorage(Preferences.notchOpenOnHover) private var hover: Bool
@@ -129,9 +134,12 @@ package struct NotchSettings: View {
                     PermissionRow(kind: .accessibility)
                 }
             }
-            NotchSettingsTabRow(tab: $tab, language: l10n.language, canOpen: enabled) { NotchService.shared.open() }
+            NotchSettingsTabRow(tab: $tab, language: l10n.language, showsCompanion: features.isAvailable(.notchMascot),
+                                canOpen: enabled) { NotchService.shared.open() }
             if tab == .content {
                 GeometryReader { proxy in contentEditor(in: proxy.size) }
+            } else if tab == .companion {
+                NotchMascotSettings(embedded: true)
             } else {
                 pageScroll
             }
@@ -142,6 +150,19 @@ package struct NotchSettings: View {
         .onChange(of: tab) { _, _ in draggingModule = nil; draggingControl = nil }
         .onAppear(perform: consumeModuleHint)
         .onChange(of: router.notchModule) { _, _ in consumeModuleHint() }
+        .onAppear(perform: consumeCompanionHint)
+        .onChange(of: router.notchCompanion) { _, _ in consumeCompanionHint() }
+        // Uninstalled while its tab shows, the companion leaves the page to the layout.
+        .onChange(of: features.isAvailable(.notchMascot)) { _, installed in
+            if !installed, tab == .companion { tab = .layout }
+        }
+    }
+
+    /// The companion's own settings were asked for; the hint is one-shot.
+    private func consumeCompanionHint() {
+        guard router.notchCompanion else { return }
+        router.notchCompanion = false
+        if features.isAvailable(.notchMascot) { tab = .companion }
     }
 
     private var pageScroll: some View {
@@ -152,6 +173,7 @@ package struct NotchSettings: View {
                 case .content: EmptyView()
                 case .activity: activityPage
                 case .behavior: behaviorPage
+                case .companion: EmptyView()
                 }
             }.padding(.bottom, 22)
         }.id(tab)
@@ -450,7 +472,10 @@ package struct NotchSettings: View {
         VStack(alignment: .leading, spacing: 20) {
             SettingsCard(title: editor.resting) {
                 HStack(spacing: 10) {
-                    idleChoice(.none, title: text.idleNone, symbol: "minus")
+                    // With the companion on, the island rests with it when it
+                    // has nothing else to show, so that choice is the companion.
+                    idleChoice(.none, title: restsWithMascot ? FeatureStrings.notchMascot(l10n.language).title : text.idleNone,
+                               symbol: "minus")
                     if PowerSampler.hasInternalBattery {
                         idleChoice(.battery, title: text.battery, symbol: "battery.75percent")
                     }
@@ -746,11 +771,30 @@ package struct NotchSettings: View {
         return choice == .agents && !offersAgentsResting ? .none : choice
     }
 
+    private var restsWithMascot: Bool { enabled && mascotEnabled && features.isAvailable(.notchMascot) }
+
+    /// The companion where it rests, beside a camera drawn black on black.
+    private var restingMascot: some View {
+        let look = NotchMascotLook(style: NotchMascotStyle(rawValue: mascotStyle) ?? .minimal,
+                                   shape: NotchMascotShape(rawValue: mascotShape) ?? .ball,
+                                   palette: NotchMascotPalette(rawValue: mascotPalette) ?? .pearl)
+        let right = NotchMascotSide(rawValue: mascotSide) == .right
+        return HStack(spacing: 14) {
+            if right { Color.clear.frame(width: 12, height: 12) }
+            else { NotchMascotView(look: look, size: 12, idles: false).frame(width: 12, height: 12) }
+            RoundedRectangle(cornerRadius: 4).fill(.black).frame(width: 20, height: 12)
+            if right { NotchMascotView(look: look, size: 12, idles: false).frame(width: 12, height: 12) }
+            else { Color.clear.frame(width: 12, height: 12) }
+        }
+    }
+
     private func idleChoice(_ item: NotchIdleContent, title: String, symbol: String) -> some View {
         Button { idle = item.rawValue } label: {
             VStack(spacing: 14) {
                 HStack(spacing: 14) {
-                    if item != .none {
+                    if item == .none, restsWithMascot {
+                        restingMascot
+                    } else if item != .none {
                         Image(systemName: symbol).font(.system(size: 11))
                         RoundedRectangle(cornerRadius: 4).fill(.black).frame(width: 20, height: 12)
                         if item == .battery || item == .agents { Text(item == .agents ? "62%" : "76%").font(.system(size: 9, weight: .medium)) }

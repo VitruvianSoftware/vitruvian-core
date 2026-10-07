@@ -12,13 +12,14 @@ package enum NotchNoticeLayout {
     package static let spacing: CGFloat = 8
     /// The inset from the island's curved end.
     package static let inset: CGFloat = 16
-    /// The narrowest wing a notice or a banner takes.
-    package static let minimumWing: CGFloat = 88
+    /// The narrowest side a text notice or a banner keeps: its curved end
+    /// and some air.
+    package static let minimumWing: CGFloat = 36
+    /// Room a level keeps inside its curved ends, as wide as its wings had
+    /// when they were a fixed 80 pt.
+    package static let levelInset: CGFloat = 13
     package static let textSize: CGFloat = 11
     // NSFont is immutable once made, so any thread may share it.
     /// The text measured in the font it is drawn in.
     nonisolated(unsafe) package static let font = NSFont.monospacedDigitSystemFont(ofSize: textSize, weight: .medium)
-
-    /// The inset a wing keeps from the curved end; a narrow one keeps a sixth of itself.
-    package static func inset(wing: CGFloat) -> CGFloat { min(inset, wing / 6) }
 }

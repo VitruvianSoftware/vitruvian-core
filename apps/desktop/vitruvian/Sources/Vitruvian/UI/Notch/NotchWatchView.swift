@@ -378,7 +378,8 @@ package struct NotchWatchStrip: View {
     package static let eyeTint = NSColor.systemPurple.withAlphaComponent(0.75)
 
     @ObservedObject package var service: NotchService
-    /// Another display's strip, when the island shows on every display.
+    /// Where the island draws it: its own strip as of the last update, or
+    /// another display's when the island shows on every display.
     package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var watch = NotchWatchService.shared
     @ObservedObject private var l10n = L10n.shared

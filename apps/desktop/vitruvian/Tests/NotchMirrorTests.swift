@@ -61,6 +61,8 @@ enum NotchMirrorContract {
         var idleContent = NotchIdleContent.none
         var made: [Host] = []
         var activated: [CGDirectDisplayID] = []
+        /// The companion rests or visits in the closed island.
+        var mascotVisible = false
 
         /// A built-in display with a camera housing, or an external one with a capsule.
         func baseGeometry(for screen: Screen) -> NotchGeometry {
@@ -100,7 +102,10 @@ enum NotchMirrorContract {
                 island: { [unowned self] in
                     guard self.showsOnAllDisplays, self.running, !self.suspended, self.hasWindow else { return nil }
                     return NotchMirrors.Island(displayID: self.displayID, activity: self.activity,
-                                               companion: nil, showsIdleContent: self.idleContent != .none)
+                                               companion: nil, showsIdleContent: self.idleContent != .none,
+                                               showsMascot: { [unowned self] in
+                                                   self.mascotVisible && ($0.floats || $0.restingWingWidth > 0)
+                                               })
                 },
                 stripSize: { [unowned self] in self.capsuleStripSize(for: $0, companion: $1, geometry: $2) },
                 compactGeometry: { [unowned self] in self.compactGeometry(for: $0, companion: $1, base: $2) },
@@ -228,6 +233,17 @@ enum NotchMirrorContract {
                      "a copy on a camera keeps the camera covered without wings")
         world.coversMenus = true
         world.separateSpaces = false
+
+        // The companion rests in each copy too, beside that display's camera.
+        world.displayID = 2
+        world.activity = nil
+        world.mascotVisible = true
+        mirrors.sync()
+        suite.expect(mirrors.copies[1]?.model.size == mirrors.copies[1]?.model.geometry.collapsed
+                     && (mirrors.copies[1]?.model.size.width ?? 0) > builtInBase.cameraWidth,
+                     "a copy beside a camera opens its wings for the resting companion")
+        world.mascotVisible = false
+        mirrors.sync()
 
         // A click on a copy asks for the island on that display.
         mirrors.copies[1]?.host.activate?()

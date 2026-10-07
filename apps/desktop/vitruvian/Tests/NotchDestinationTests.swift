@@ -74,6 +74,18 @@ enum NotchDestinationContract {
         reopeningContracts(defaults: defaults, suite: suite)
         countdownContracts(defaults: defaults, suite: suite)
         stepBackContracts(suite)
+        // A page opened while the Command Bar is in the island takes its place.
+        var commandBarClosings = 0
+        NotchService.collaborators = NotchCollaborators(feedbackRoutingDidChange: { feedbackRoutingChanges += 1 },
+                                                        commandBarIslandDidClose: { commandBarClosings += 1 })
+        let barHost = island()
+        let barPanel = barHost.island.presentCommandBar()
+        barHost.island.open(.controls)
+        suite.expect(barPanel != nil && barHost.island.expanded && !barHost.island.showingCommandBar
+                     && barHost.island.selected == .controls && commandBarClosings == 1,
+                     "opening a page in place of the Command Bar closes the bar once")
+        barHost.island.open(.controls)
+        suite.expect(commandBarClosings == 1, "opening a page without the bar leaves the bar alone")
         for resting in [NotchIdleContent.none, .music] {
             defaults.set(resting.rawValue, forKey: DefaultsKey.notchIdleContent)
             defaults.set(false, forKey: DefaultsKey.notchShowPlayingMusic)

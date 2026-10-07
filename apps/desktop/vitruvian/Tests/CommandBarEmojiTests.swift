@@ -20,13 +20,19 @@ enum CommandBarEmojiContract {
         private(set) lazy var runs = CommandBarRunRecorder(host: .init(
             field: { [unowned self] in self.field },
             hide: { [unowned self] in
+                self.closing.append("hide")
                 self.field.isVisible = false
                 self.field.query = ""
                 self.field.savedQuery = ""
                 self.field.selectedText = ""
             },
             type: { CommandBarEmojiContract.typed.append($0) },
-            defaults: defaults))
+            defaults: defaults,
+            closingForRun: { [unowned self] in self.closing.append("farewell") },
+            closedForRun: { [unowned self] in self.closing.append("cheer") }))
+        /// What closing the bar for a run did, in order: the companion's
+        /// glad farewell, the close, and its hop back in the island.
+        var closing: [String] = []
 
         init(_ defaults: Foundation.UserDefaults) { self.defaults = defaults }
     }
@@ -129,6 +135,8 @@ enum CommandBarEmojiContract {
                      "normal insertion still records usage and learning once before closing")
         suite.expect(normal.runs.queryWhenRun == " :thumb " && normal.runs.selectionWhenRun == "the selection",
                      "the field and the selection are handed over before closing wipes them")
+        suite.expect(normal.closing == ["farewell", "hide", "cheer"],
+                     "a command run from the bar sends the companion home smiling, to hop for it")
         normal.runs.forgetRun()
         suite.expect(normal.runs.queryWhenRun.isEmpty && normal.runs.selectionWhenRun.isEmpty,
                      "a new opening starts with nothing handed over")
@@ -164,6 +172,7 @@ enum CommandBarEmojiContract {
         let open = Bar(defaults)
         typed = []
         open.runs.finish(transient, value: nil)
+        suite.expect(open.closing.isEmpty, "a command that keeps the bar open sends the companion nowhere")
         suite.expect(open.field.isVisible && open.runs.queryMemoryStep == 0 && open.runs.usage.isEmpty
                      && open.runs.queryHabitStore.store.isEmpty
                      && defaults.string(forKey: DefaultsKey.commandBarUsage) == before && typed.count == 1,

@@ -549,6 +549,16 @@ package enum Defaults {
         DefaultsKey.notchShowInCaptures: Preferences.notchShowInCaptures.defaultValue,
         DefaultsKey.notchLockScreen: Preferences.notchLockScreen.defaultValue,
         DefaultsKey.notchLockSounds: Preferences.notchLockSounds.defaultValue,
+        DefaultsKey.notchMascotEnabled: Preferences.notchMascotEnabled.defaultValue,
+        DefaultsKey.notchMascotVisits: Preferences.notchMascotVisits.defaultValue,
+        DefaultsKey.notchMascotReactions: Preferences.notchMascotReactions.defaultValue,
+        DefaultsKey.notchMascotStyle: Preferences.notchMascotStyle.defaultValue,
+        DefaultsKey.notchMascotShape: Preferences.notchMascotShape.defaultValue,
+        DefaultsKey.notchMascotPalette: Preferences.notchMascotPalette.defaultValue,
+        DefaultsKey.notchMascotSide: Preferences.notchMascotSide.defaultValue,
+        DefaultsKey.notchMascotVisitFrequency: Preferences.notchMascotVisitFrequency.defaultValue,
+        DefaultsKey.notchCommandBar: Preferences.notchCommandBar.defaultValue,
+        DefaultsKey.notchCommandBarStyle: Preferences.notchCommandBarStyle.defaultValue,
         DefaultsKey.notchHideInCaptures: Preferences.notchHideInCaptures.defaultValue,
         DefaultsKey.panelControlNotch: Preferences.panelControlNotch.defaultValue,
         DefaultsKey.radialMenuEnabled: Preferences.radialMenuEnabled.defaultValue,
@@ -999,6 +1009,7 @@ package enum Defaults {
         defaults.register(defaults: registeredDefaults)
         defaults.register(defaults: AppFeature.availabilityDefaults)
         activateBetaChannelIfRunningBeta(in: defaults)
+        installCompanionForBetaCommandBar(in: defaults)
         migrateLegacyMenuBarTemperatureMetric(in: defaults)
         migrateLegacySwitcherWindowShortcut(in: defaults)
         migrateLegacyKeyboardDebounceWindow(in: defaults)
@@ -1144,6 +1155,23 @@ package enum Defaults {
         guard !defaults.bool(forKey: markerKey) else { return }
         defaults.set(true, forKey: markerKey)
         defaults.set(true, forKey: DefaultsKey.includeBetaUpdates)
+    }
+
+    /// On a beta, people with the Command Bar get the island's companion,
+    /// which can be its face, installed and on, once: uninstalled afterwards,
+    /// it stays out. A clean install waits for its setup to finish, since
+    /// setup picks the installed features afresh.
+    package static func installsCompanionForBeta(in defaults: UserDefaults, isBeta: Bool = AppInfo.isBeta) -> Bool {
+        isBeta && defaults.bool(forKey: DefaultsKey.hasOnboarded)
+            && !defaults.bool(forKey: DefaultsKey.notchMascotBetaInstalled)
+            && AppFeature.commandBar.isAvailable(in: defaults)
+    }
+
+    package static func installCompanionForBetaCommandBar(in defaults: UserDefaults, isBeta: Bool = AppInfo.isBeta) {
+        guard installsCompanionForBeta(in: defaults, isBeta: isBeta) else { return }
+        defaults.set(true, forKey: DefaultsKey.notchMascotBetaInstalled)
+        defaults.set(true, forKey: AppFeature.notchMascot.availabilityKey)
+        defaults[Preferences.notchMascotEnabled] = true
     }
 
     /// The downloads cleanup for a messaging app used to sit in Cleaner for

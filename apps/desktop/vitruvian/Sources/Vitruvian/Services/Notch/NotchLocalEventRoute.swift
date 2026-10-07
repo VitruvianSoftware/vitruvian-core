@@ -60,6 +60,8 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         package var stepBack: () -> Void
         package var collapse: () -> Void
         package var clickedInside: () -> Void
+        /// The Command Bar inside the island reads its own keys, Escape included.
+        package var showingCommandBar: () -> Bool
 
         package init(panel: @escaping () -> AnyObject?, isComposing: @escaping () -> Bool,
                      fieldTakesEscape: @escaping () -> Bool, isCapturing: @escaping () -> Bool,
@@ -72,7 +74,8 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
                      clipboardPasteKey: @escaping (Event) -> Bool,
                      toolsKey: @escaping (Event, QuickToolsSupport.GridFlow) -> Bool,
                      stepBack: @escaping () -> Void, collapse: @escaping () -> Void,
-                     clickedInside: @escaping () -> Void) {
+                     clickedInside: @escaping () -> Void,
+                     showingCommandBar: @escaping () -> Bool = { false }) {
             self.panel = panel
             self.isComposing = isComposing
             self.fieldTakesEscape = fieldTakesEscape
@@ -94,6 +97,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
             self.stepBack = stepBack
             self.collapse = collapse
             self.clickedInside = clickedInside
+            self.showingCommandBar = showingCommandBar
         }
     }
 
@@ -110,6 +114,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         // While an input method is composing, Esc belongs to it and drops
         // the candidate; the island takes the next one.
         if key, event.keyCode == 53, island.isComposing() { return false }
+        if key, island.showingCommandBar() { return false }
         if key, !island.isCapturing() {
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
             if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "k" {

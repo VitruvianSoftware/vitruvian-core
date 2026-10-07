@@ -270,6 +270,9 @@ if (( TEST )); then
         Sources/Vitruvian/Core/NotchFilesStrings.swift
         Sources/Vitruvian/Core/NotchWatchStrings.swift
         Sources/Vitruvian/Core/Notch/NotchWatchSupport.swift
+        Sources/Vitruvian/Core/NotchMascotStrings.swift
+        Sources/Vitruvian/Core/Notch/NotchMascotSupport.swift
+        Sources/Vitruvian/Services/CommandBar/CommandBarDropletMotion.swift
         Sources/Vitruvian/Services/Notch/NotchFileToolsSupport.swift
         Sources/Vitruvian/Core/Notch/NotchDownloadSupport.swift
         Sources/Vitruvian/Services/Notch/NotchDownloadProgressObserver.swift

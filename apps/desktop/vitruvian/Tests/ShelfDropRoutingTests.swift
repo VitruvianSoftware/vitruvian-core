@@ -103,7 +103,10 @@ enum ShelfDropRoutingContract {
                 landed: { [unowned self] in
                     self.heldDrag = false
                     self.dragPlaceholder = false
-                }))
+                },
+                cheer: { [unowned self] in self.reactions.append(.celebrate) }))
+        /// The companion's reactions to what the island took.
+        var reactions: [NotchMascotReaction] = []
 
         var choosingFileDropDestination: Bool { fileDrop.choosingDestination }
         var targetsMediaDrop: Bool { fileDrop.targetsMedia }
@@ -177,6 +180,8 @@ enum ShelfDropRoutingTests {
                 suite.expect(notch.opened == (accepted ? [.files] : [])
                        && notch.heldDrag == !accepted && notch.dragPlaceholder == !accepted,
                        "only accepted deliveries open files and release the island placeholder")
+                suite.expect(notch.reactions == (accepted ? [.celebrate] : []),
+                       "the companion cheers only a file that landed")
                 suite.expect(!canvas.finish(board), "one gesture cannot deliver twice")
 
                 suite.expect(shelf.intake.accept(board, destination: NSObject()) == accepted

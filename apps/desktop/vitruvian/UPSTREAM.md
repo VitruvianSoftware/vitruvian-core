@@ -2487,6 +2487,23 @@ is that notice. Add an entry for every change to upstream files.
   added `upstream/` (the ledger, `upstream.py` and its tests) and the
   `track_upstream` and `upstream_test` targets in `BUILD`. No upstream file
   changed.
+- **2026-10-07**: Notch companion and in-island Command Bar (upstream
+  `4a8967e9`), placed in this fork's modules:
+  - upstream's `NotchMascotView.swift` is split: the AppKit host
+    (`NotchMascotHostView`, its rig and cues) is in
+    `Services/Notch/NotchMascotHost.swift`, so the island's window host can
+    carry the companion across a resize, and the SwiftUI wrappers stay in UI;
+  - `NotchMascotSupport` and `NotchMascotStrings` are in Core,
+    `CommandBarDroplet` is in Services, and the bar's width and field height
+    are `CommandBarLayout` in Core, for the droplet and the view to share;
+  - the island reaches the companion's inputs (Keep Awake, agent usage, the
+    calendar, playback, updates) through `NotchIslandServices`, closes the
+    bar through `NotchCollaborators.commandBarIslandDidClose`, and the mic,
+    screenshot and drop reactions through each service's environment;
+  - notice sizing uses this fork's `NotchNoticeLayout` constants;
+  - upstream's checks on generated copies of the island are ported onto the
+    real island, except two companion-yield cases (lingering music and the
+    bridge fade) that need a seam the island does not have yet.
 
 ## Tracking and porting upstream
 

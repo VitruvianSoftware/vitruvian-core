@@ -36,13 +36,20 @@ package final class CommandBarRunRecorder {
         /// Types text at the caret of the app the person was using.
         package var type: (String) -> Void
         package var defaults: UserDefaults
+        /// The bar closes because a row ran, and again once it has closed:
+        /// the companion leaves glad and hops for it back in the island.
+        package var closingForRun: () -> Void
+        package var closedForRun: () -> Void
 
         package init(field: @escaping () -> Field, hide: @escaping () -> Void,
-                     type: @escaping (String) -> Void, defaults: UserDefaults) {
+                     type: @escaping (String) -> Void, defaults: UserDefaults,
+                     closingForRun: @escaping () -> Void = {}, closedForRun: @escaping () -> Void = {}) {
             self.field = field
             self.hide = hide
             self.type = type
             self.defaults = defaults
+            self.closingForRun = closingForRun
+            self.closedForRun = closedForRun
         }
     }
 
@@ -150,7 +157,9 @@ package final class CommandBarRunRecorder {
             entry.run(value)
             return
         }
+        host.closingForRun()
         host.hide()
+        host.closedForRun()
         entry.run(value)
     }
 }

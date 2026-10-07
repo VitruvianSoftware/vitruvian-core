@@ -42,6 +42,7 @@ enum NotchKeyMonitorTests {
         var selected = NotchModule.controls
         var showingSections = false
         var showingAppPanel = false
+        var showingCommandBar = false
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
                                      safeAreaTop: 32, cameraWidth: 180)
         var tools = (editing: false, count: 3)
@@ -77,7 +78,8 @@ enum NotchKeyMonitorTests {
                 },
                 stepBack: { [unowned self] in self.actions.append("stepBack") },
                 collapse: { [unowned self] in self.actions.append("collapse") },
-                clickedInside: { [unowned self] in self.actions.append("clicked") }))
+                clickedInside: { [unowned self] in self.actions.append("clicked") },
+                showingCommandBar: { [unowned self] in self.showingCommandBar }))
         }
 
         private func takes(_ handler: String) -> Bool {
@@ -142,6 +144,19 @@ enum NotchKeyMonitorTests {
         island.fieldTakesEscape = false
         let other = island.send(elsewhere)
         suite.expect(!other.taken && other.actions.isEmpty, "a key for another window is not the island's")
+
+        // The Command Bar inside the island reads its own keys: Escape steps
+        // back through its search, and Command-K is its actions, not the gallery.
+        let bar = Island()
+        bar.showingCommandBar = true
+        let barEscape = bar.send(bar.key(53))
+        let barCommandK = bar.send(bar.key(40, .command, "k"))
+        suite.expect(!barEscape.taken && barEscape.actions.isEmpty && !barCommandK.taken && barCommandK.actions.isEmpty,
+                     "the island hands Escape and its shortcuts to the Command Bar open inside it")
+        bar.showingCommandBar = false
+        let islandEscape = bar.send(bar.key(53))
+        suite.expect(islandEscape.taken && islandEscape.actions == ["stepBack"],
+                     "without the bar, Escape steps back through the island again")
     }
 
     /// A title too long to sit beside the camera takes a row below it, so a

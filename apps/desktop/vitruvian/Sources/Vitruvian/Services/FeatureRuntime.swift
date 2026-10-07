@@ -183,7 +183,7 @@ package final class FeatureRuntime: ObservableObject {
             && mayFlip(.notch, to: true)
             && !defaults.bool(forKey: DefaultsKey.notchInitialExtensionsInstalled)
         let requested = firstIslandInstall
-            ? features + AppFeature.dynamicIslandExtensions.filter { !features.contains($0) }
+            ? features + AppFeature.dynamicIslandInitialExtensions.filter { !features.contains($0) }
             : features
         let savedValues = savedPreferences()
         for feature in requested where mayFlip(feature, to: available) {
@@ -399,6 +399,8 @@ package final class FeatureRuntime: ObservableObject {
         case .notchCalendar: return islandExtension(stopping: .stopNotchCalendar)
         case .notchAgents: return islandExtension(stopping: .stopAgentUsage)
         case .notchWatch: return islandExtension(stopping: .stopNotchWatch)
+        // Leaving folds the wings it rests in, and coming back greets.
+        case .notchMascot: return islandExtension(stopping: nil)
         case .scratchpad: return [.scratchpad]
         case .commandBar: return [.commandBar]
         // Its hotkey, the auto-start and, on uninstall, stopping the bot.

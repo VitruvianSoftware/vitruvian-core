@@ -297,6 +297,8 @@ final class RecordingIslandHost: NotchIslandHost {
     /// Whether each hide was animated, in order.
     private(set) var hideAnimations: [Bool] = []
     private(set) var transitions: [NotchContentTransition] = []
+    /// Whether each presentation only eased a strip to a new reading's width.
+    private(set) var steadies: [Bool] = []
     private(set) var usesGlass = false
     private(set) var revealFromHidden = false
     private(set) var outlineEnabled = false
@@ -344,8 +346,9 @@ final class RecordingIslandHost: NotchIslandHost {
 
     func present(size: CGSize, geometry: NotchGeometry, animated: Bool, transitionContent: NotchContentTransition,
                  quickAccess: NotchQuickAccessConfiguration?, revealFromHidden: Bool,
-                 hideWhenSettled: Bool, usesGlass: Bool) {
+                 hideWhenSettled: Bool, usesGlass: Bool, steady: Bool) {
         presents += 1
+        steadies.append(steady)
         let ignoresMouse = input.present(hidingWhenSettled: hideWhenSettled, panelIgnores: panel.ignoresMouseEvents)
         if panel.ignoresMouseEvents != ignoresMouse { panel.ignoresMouseEvents = ignoresMouse }
         transitions.append(transitionContent)
@@ -494,6 +497,7 @@ final class RecordingIslandServices: NotchIslandServices {
     var offersMediaDrop = false
     var systemSnapshot = SystemSnapshot()
     var updateOffered = false
+    var headerShowsUpdate = false
     var openingNotification: UUID?
 
     // MARK: Starting and stopping

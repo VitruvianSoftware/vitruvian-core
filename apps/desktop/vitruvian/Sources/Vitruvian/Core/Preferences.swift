@@ -175,6 +175,10 @@ package enum Preferences {
     package static let notchShowInCaptures = Preference(DefaultsKey.notchShowInCaptures, default: true)
     package static let notchLockScreen = Preference(DefaultsKey.notchLockScreen, default: false)
     package static let notchLockSounds = Preference(DefaultsKey.notchLockSounds, default: false)
+    package static let notchMascotEnabled = Preference(DefaultsKey.notchMascotEnabled, default: false)
+    package static let notchMascotVisits = Preference(DefaultsKey.notchMascotVisits, default: true)
+    package static let notchMascotReactions = Preference(DefaultsKey.notchMascotReactions, default: true)
+    package static let notchCommandBar = Preference(DefaultsKey.notchCommandBar, default: true)
     package static let notchHideInCaptures = Preference(DefaultsKey.notchHideInCaptures, default: false)
     package static let panelControlNotch = Preference(DefaultsKey.panelControlNotch, default: true)
     package static let radialMenuEnabled = Preference(DefaultsKey.radialMenuEnabled, default: false)
@@ -707,6 +711,18 @@ package enum Preferences {
         DefaultsKey.notchWatchCondition, default: NotchWatchCondition.changes.rawValue)
     package static let notchSilhouette = Preference(
         DefaultsKey.notchSilhouette, default: NotchSilhouette.capsule.rawValue)
+    package static let notchMascotStyle = Preference(
+        DefaultsKey.notchMascotStyle, default: NotchMascotStyle.minimal.rawValue)
+    package static let notchMascotShape = Preference(
+        DefaultsKey.notchMascotShape, default: NotchMascotShape.ball.rawValue)
+    package static let notchMascotPalette = Preference(
+        DefaultsKey.notchMascotPalette, default: NotchMascotPalette.pearl.rawValue)
+    package static let notchMascotSide = Preference(
+        DefaultsKey.notchMascotSide, default: NotchMascotSide.left.rawValue)
+    package static let notchMascotVisitFrequency = Preference(
+        DefaultsKey.notchMascotVisitFrequency, default: NotchMascotVisitFrequency.normal.rawValue)
+    package static let notchCommandBarStyle = Preference(
+        DefaultsKey.notchCommandBarStyle, default: NotchCommandBarStyle.droplet.rawValue)
     package static let notchHomeModule = Preference(DefaultsKey.notchHomeModule, default: NotchModule.controls.rawValue)
     package static let radialMenuShortcut = Preference(
         DefaultsKey.radialMenuShortcut, default: GlobalShortcut.radialMenuDefault.storageValue)

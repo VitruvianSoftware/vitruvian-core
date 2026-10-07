@@ -44,6 +44,9 @@ package protocol NotchIslandServices: AnyObject {
     var offersMediaDrop: Bool { get }
     var systemSnapshot: SystemSnapshot { get }
     var updateOffered: Bool { get }
+    /// The open island's header shows the update control: a version is on
+    /// offer, downloading or installing.
+    var headerShowsUpdate: Bool { get }
     var openingNotification: UUID? { get }
 
     // MARK: What the island starts and stops
@@ -148,6 +151,12 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var offersMediaDrop: Bool { NotchFileToolsService.shared.offersMediaDrop }
     package var systemSnapshot: SystemSnapshot { SystemMonitor.shared.snapshot }
     package var updateOffered: Bool { UpdateService.shared.state.isOffer }
+    package var headerShowsUpdate: Bool {
+        switch UpdateService.shared.state {
+        case .available, .downloading, .installing: return true
+        default: return false
+        }
+    }
     package var openingNotification: UUID? { NotchNotificationService.shared.openingID }
 
     package func startMusic() { NotchMusicService.shared.start() }

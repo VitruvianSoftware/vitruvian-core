@@ -13,7 +13,8 @@ import VitruvianServices
 /// island shows.
 package struct NotchTimerStrip: View {
     @ObservedObject package var service: NotchService
-    /// Another display's strip, when the island shows on every display.
+    /// Where the island draws it: its own strip as of the last update, or
+    /// another display's when the island shows on every display.
     package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var timer = NotchTimerService.shared
     // The companion's label reads these.

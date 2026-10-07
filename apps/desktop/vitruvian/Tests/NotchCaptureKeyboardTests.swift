@@ -58,6 +58,8 @@ enum NotchCaptureKeyboardTests {
             (focus { $0.showingSections = true }, "section search keeps typing, deletion and clipboard shortcuts"),
             (focus { $0.showingAppPanel = true }, "the app panel never inherits hidden capture commands"),
             (focus { $0.showingMetric = true }, "a metric's detail never inherits hidden capture commands"),
+            (focus { $0.showingCommandBar = true },
+             "the Command Bar out of the island never inherits hidden capture commands"),
             (focus { $0.expanded = false }, "a collapsed capture cannot consume keyboard input"),
             (focus { $0.choosing = true }, "an active chooser cannot trigger actions on the previous capture"),
             (focus { $0.captureID = UUID() }, "a replaced preview cannot act on its successor"),
