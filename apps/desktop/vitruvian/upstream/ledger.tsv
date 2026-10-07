@@ -39,7 +39,7 @@ df6c9b01a226ed28fcc3c23208a22c2561cee179	f2f4f0598e90b49b18d04e576cfca673bf3e134
 9e84e292f85a052ae455e8528ee9c6f94708f0c5	6a033ee1d31baf0eaa8969922ba1f718aa7aa1e5	2026-10-04	pending	-	fix(capture): keep the dialog when a window spans two displays (#1962)
 c2284750ec7022980ed5a1d57cafacc0ab15078e	2a5e7700e78cfa74260441f0950fa72a572b3be8	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record capture and usability fixes
 7c9dd7d0dab049875458f9031f4214c0339e65cb	9261e50a1c0a96275690b22a8c34457071bb311d	2026-10-04	pending	-	fix(agents): stop resets checks from fetching codex plugin marketplaces (#2426)
-26ca5bfbe84cdaedf2fd61d779a894bc46a03f58	fd783013481e5eb5f4bd293ef17bfd5b1b65157d	2026-10-04	pending	-	fix(ui): improve `donateThanks` visibility in dark mode (#2451)
+26ca5bfbe84cdaedf2fd61d779a894bc46a03f58	fd783013481e5eb5f4bd293ef17bfd5b1b65157d	2026-10-04	skipped	donation UI never shown in this fork (AppInfo.hasCommunityChannels)	fix(ui): improve `donateThanks` visibility in dark mode (#2451)
 642fac5f7eb3fa0b10edbb6f0803daf2fbe9d30d	e89407470451545ccd0584ed90f2eb811955bb2f	2026-10-05	pending	-	fix(settings): keep chosen folder paths out of a settings backup (#2443)
 f025ff844c8fe33d45fcab67385c4283ce63c801	b78deebdaec562d5cd774ecabd3b5d1918b039f4	2026-10-05	pending	-	fix(monitor): promote a byte rate that only rounds into the next unit (#2441)
 8468a41bb53e3f3b26c8d57943f8028601ec35da	487d14afa2c1a819608e7a9372127875b2871d01	2026-10-05	pending	-	fix(monitor): clamp SMART percentage-used instead of trapping (#2435)
