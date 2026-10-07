@@ -739,6 +739,30 @@ def port_commit(
     parent = parent[1] if len(parent) > 1 else None
     labels = ("vitruvian", f"upstream {short}^", f"upstream {short}")
 
+    # Refuse before writing anything: a refusal halfway through would leave
+    # some of the commit applied and the rest not.
+    if not (allow_dirty or dry_run):
+        dirty = []
+        for status, old, new in upstream.changes(sha):
+            if (
+                (upstream_only(new) and upstream_only(old))
+                or new in FORK_RETIRED
+                or old in FORK_RETIRED
+            ):
+                continue
+            target_rel, _ = pathmap.map(new if status == "A" else old)
+            if target_rel is None:
+                continue
+            rel = f"{APP_DIR}/{target_rel}"
+            if (root / rel).exists() and out(
+                ["status", "--porcelain", "--", rel], cwd=root
+            ).strip():
+                dirty.append(rel)
+        if dirty:
+            raise ToolError(
+                f"{', '.join(dirty)} has uncommitted changes; commit or stash them, or pass --allow-dirty"
+            )
+
     for status, old, new in upstream.changes(sha):
         if upstream_only(new) and upstream_only(old):
             lines.append(f"- `{new}`: upstream-only path, not ported")
