@@ -2900,6 +2900,10 @@ package final class NotchService: ObservableObject {
            NotchLockScreenSupport.playsSounds(in: defaults) {
             services.playLockSound(locking: session.locked)
         }
+        // The lock screen starts leaving before the island comes back, since
+        // rebuilding the island holds the main thread for a moment. It stops
+        // none of the sources an island that returns takes back.
+        if wasLocked, !session.locked { services.syncLockScreen(session) }
         if couldPresent != session.canPresent {
             if session.canPresent {
                 syncWithPreferences()
