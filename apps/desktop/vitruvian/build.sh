@@ -555,6 +555,7 @@ if (( TEST )); then
     ./build/metrics-tests "${TEST_ARGS[@]}" || test_status=$?
     if (( ${#TEST_ARGS} == 0 )); then
         ./Tests/PreferenceCleanupTests.sh || test_status=1
+        ./Tests/UninstallSpacesTests.sh || test_status=1
     fi
     discard_test_preferences || test_status=1
     exit $test_status

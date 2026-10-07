@@ -50,6 +50,21 @@ read_sleep_disabled() {
     pmset -g 2>/dev/null | awk '/SleepDisabled/ { print $2 }'
 }
 
+# What fixed Space order leaves behind once the app is gone, from the restore
+# marker, what the Dock still runs while it owes a restart, and the Dock's
+# mru-spaces value: "stuck" while rearranging is still off, "unloaded" while it
+# is back on but the Dock keeps a fixed order until it restarts, and nothing
+# when settled. The owed restart counts on its own, because the marker can
+# already be gone while the Dock still waits for it.
+spaces_leftover() {
+    local owed=$1 dock_runs=$2 preference=$3
+    if [[ -n "$owed" && "$preference" == "0" ]]; then
+        print stuck
+    elif [[ "$dock_runs" == fixed && "$preference" != "0" ]]; then
+        print unloaded
+    fi
+}
+
 echo "▸ Quitting…"
 pkill -x Vitruvian 2>/dev/null || true
 sleep 0.5
@@ -92,12 +107,10 @@ sleep_was_ours=0
 # marker once the setting is back, so one still here means that restore failed
 # or never ran (an app trashed by hand). It is read here for the same reason
 # as the sleep flag above.
-spaces_owed=0
-[[ -n "$(defaults read "$BUNDLE" spacesOrderRestore 2>/dev/null)" ]] && spaces_owed=1
-# A preference written back without the Dock restart that reads it: the Dock
-# still keeps the order it had until it restarts.
-spaces_restart_owed=0
-[[ "$(defaults read "$BUNDLE" spacesOrderRestartPending 2>/dev/null)" == "1" ]] && spaces_restart_owed=1
+spaces_owed="$(defaults read "$BUNDLE" spacesOrderRestore 2>/dev/null)"
+# What the Dock still runs while it owes the restart that reads a written
+# preference. Kept apart from the marker, which can already be gone.
+spaces_dock_runs="$(defaults read "$BUNDLE" spacesOrderRestartPending 2>/dev/null)"
 
 echo "▸ Resetting permissions (Accessibility, Screen Recording)…"
 tccutil reset All "$BUNDLE" >/dev/null 2>&1 || true
@@ -137,17 +150,13 @@ fi
 # is the only warning anyone will get. Only a 0 proves it is still off: a
 # missing key is the system default, which rearranges. This only reads the
 # Dock's preference; changing it is left to the user.
-# A preference already back on still leaves the Dock in a fixed order while
-# its restart is owed, so that is not a finished restore either.
 spaces_stuck=0
 spaces_unloaded=0
-if (( spaces_owed )); then
-    if [[ "$(defaults read com.apple.dock mru-spaces 2>/dev/null)" == "0" ]]; then
-        spaces_stuck=1
-    elif (( spaces_restart_owed )); then
-        spaces_unloaded=1
-    fi
-fi
+case "$(spaces_leftover "$spaces_owed" "$spaces_dock_runs" \
+            "$(defaults read com.apple.dock mru-spaces 2>/dev/null)")" in
+    stuck) spaces_stuck=1 ;;
+    unloaded) spaces_unloaded=1 ;;
+esac
 
 if (( detached == 0 && sleep_stuck == 0 && sleep_unknown == 0 && spaces_stuck == 0 && spaces_unloaded == 0 )); then
     echo "✓ Vitruvian fully removed."

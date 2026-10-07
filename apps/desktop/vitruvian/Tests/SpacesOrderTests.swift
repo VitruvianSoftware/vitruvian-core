@@ -26,6 +26,8 @@ enum SpacesOrderTests {
         var changeAfterFirstRead: SpacesRearrangeSetting?
         /// The saved marker at the first call that could change the setting.
         var markerAtFirstCall: String?
+        /// What the hold had saved the Dock still runs, at each write.
+        var dockRunsAtWrites: [String?] = []
         /// One signal per recorded event, for the syncs that run on the
         /// hold's own queue.
         let signals = DispatchSemaphore(value: 0)
@@ -69,6 +71,7 @@ enum SpacesOrderTests {
                 },
                 write: { rearranging in
                     self.record("write(\(rearranging.map { String($0) } ?? "nil"))")
+                    self.dockRunsAtWrites.append(self.defaults.string(forKey: DefaultsKey.spacesOrderRestartPending))
                     guard self.writable else { return false }
                     self.value = rearranging.map { $0 ? .on : .off } ?? .absent
                     return true
@@ -104,11 +107,20 @@ enum SpacesOrderTests {
                 defaults.removeObject(forKey: marker)
             }
         }
-        func make(_ value: SpacesRearrangeSetting, marker saved: String? = nil) -> (SpacesOrderHold, FakeDock) {
+        func make(_ value: SpacesRearrangeSetting, marker saved: String? = nil,
+                  dockRuns running: SpacesOrderSupport.DockState? = nil) -> (SpacesOrderHold, FakeDock) {
             setMarker(saved)
-            defaults.removeObject(forKey: restartPending)
+            if let running {
+                defaults.set(running.rawValue, forKey: restartPending)
+            } else {
+                defaults.removeObject(forKey: restartPending)
+            }
             let dock = FakeDock(value, defaults: defaults)
             return (SpacesOrderHold(defaults: defaults, system: dock.system), dock)
+        }
+        /// What the hold has saved the Dock still runs; nil when no restart is owed.
+        func owed() -> SpacesOrderSupport.DockState? {
+            defaults.string(forKey: restartPending).flatMap(SpacesOrderSupport.DockState.init(rawValue:))
         }
 
         // MARK: Reading the preference
@@ -127,7 +139,8 @@ enum SpacesOrderTests {
 
         // MARK: Planning
 
-        let step = SpacesOrderSupport.step
+        let plan = SpacesOrderSupport.step
+        let step: (Bool, SpacesRearrangeSetting, String?) -> SpacesOrderSupport.Step = { plan($0, $1, $2, nil) }
         suite.expect(step(true, .off, nil) == .none && step(true, .off, absent) == .none
                      && step(true, .unsupported, nil) == .none && step(true, .unsupported, on) == .none,
                      "a setting already off or managed is left alone, so launch never restarts the Dock")
@@ -147,6 +160,20 @@ enum SpacesOrderTests {
         suite.expect(step(false, .absent, absent) == .forget && step(false, .on, absent) == .forget
                      && step(false, .on, on) == .forget && step(false, .unsupported, on) == .forget,
                      "a setting the user already changed is never undone")
+        suite.expect(plan(true, .off, absent, .rearranging) == .restart
+                     && plan(false, .absent, absent, .fixed) == .restart
+                     && plan(false, .on, on, .fixed) == .restart
+                     && plan(false, .absent, nil, .fixed) == .restart,
+                     "an owed restart runs once the preference already says what is wanted")
+        suite.expect(plan(true, .absent, absent, .fixed) == .hold(marker: absent)
+                     && plan(true, .on, on, .fixed) == .hold(marker: on)
+                     && plan(true, .absent, absent, .rearranging) == .hold(marker: absent),
+                     "a preference the Dock has not read yet is never taken for rearranging turned back on")
+        suite.expect(plan(true, .off, absent, .fixed) == .none
+                     && plan(false, .off, absent, .fixed) == .release(removeKey: true)
+                     && plan(false, .off, on, .rearranging) == .release(removeKey: false)
+                     && plan(false, .absent, absent, .rearranging) == .forget,
+                     "the latest toggle is applied over a change still waiting for its restart")
 
         // MARK: Turning rearranging off
 
@@ -188,25 +215,26 @@ enum SpacesOrderTests {
         dock.liveAvailable = false
         dock.writable = false
         suite.expect(!hold.reconcile(wanted: true) && dock.events == ["write(false)"]
-                     && defaults.object(forKey: marker) == nil,
+                     && defaults.object(forKey: marker) == nil && owed() == nil,
                      "a hold that changed nothing removes the marker it created and never restarts the Dock")
         (hold, dock) = make(.absent)
         dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.reconcile(wanted: true) && dock.value == .off
-                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     && defaults.string(forKey: marker) == absent && owed() == .rearranging,
                      "a written preference whose restart failed keeps its marker and the owed restart")
+        suite.expect(dock.dockRunsAtWrites == [SpacesOrderSupport.DockState.rearranging.rawValue],
+                     "what the Dock still runs is saved before a hold writes the preference")
         // The preference already reads off, so only the owed restart keeps the
         // next sync from taking it for what the Dock does.
         dock.events = []
         suite.expect(!hold.reconcile(wanted: true) && dock.events == ["restart"]
-                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     && defaults.string(forKey: marker) == absent && owed() == .rearranging,
                      "the next sync retries a failed restart instead of trusting the written preference")
         dock.restartSucceeds = true
         dock.events = []
         suite.expect(hold.reconcile(wanted: true) && dock.events == ["restart"]
-                     && dock.value == .off && defaults.string(forKey: marker) == absent
-                     && !defaults.bool(forKey: restartPending),
+                     && dock.value == .off && defaults.string(forKey: marker) == absent && owed() == nil,
                      "a restart that finally runs finishes the hold and keeps what to put back")
 
         // A live call the Dock accepted can still land after its checks ran
@@ -266,19 +294,70 @@ enum SpacesOrderTests {
         dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.reconcile(wanted: false) && dock.events == ["write(nil)", "restart"]
-                     && dock.value == .absent && defaults.string(forKey: marker) == absent
-                     && defaults.bool(forKey: restartPending),
+                     && dock.value == .absent && defaults.string(forKey: marker) == absent && owed() == .fixed,
                      "a restored preference whose restart failed keeps its marker and the owed restart")
+        suite.expect(dock.dockRunsAtWrites == [SpacesOrderSupport.DockState.fixed.rawValue],
+                     "what the Dock still runs is saved before a restore writes the preference")
         dock.events = []
         suite.expect(!hold.reconcile(wanted: false) && dock.events == ["restart"]
-                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     && defaults.string(forKey: marker) == absent && owed() == .fixed,
                      "the next sync retries the restart instead of forgetting the marker")
         dock.restartSucceeds = true
         dock.events = []
         suite.expect(hold.reconcile(wanted: false) && dock.events == ["restart"]
-                     && dock.value == .absent && defaults.object(forKey: marker) == nil
-                     && !defaults.bool(forKey: restartPending),
+                     && dock.value == .absent && defaults.object(forKey: marker) == nil && owed() == nil,
                      "a restart that finally runs finishes the restore and clears the marker")
+
+        // Turning fixed order back on while a restore still waits for its
+        // restart is the latest toggle, not rearranging turned back on in
+        // System Settings: the Dock never left its fixed order.
+        defaults.set(true, forKey: DefaultsKey.spacesOrderEnabled)
+        defaults.set(true, forKey: AppFeature.spacesOrder.availabilityKey)
+        (hold, dock) = make(.off, marker: absent)
+        dock.liveAvailable = false
+        dock.restartSucceeds = false
+        suite.expect(!hold.reconcile(wanted: false) && owed() == .fixed
+                     && !hold.letGoIfRearrangingReturned() && defaults.string(forKey: marker) == absent
+                     && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
+                     "a restore still waiting for its restart is never taken for rearranging turned back on")
+        dock.events = []
+        suite.expect(!hold.reconcile(wanted: true) && dock.events == ["write(false)", "restart"]
+                     && dock.value == .off && defaults.string(forKey: marker) == absent && owed() == .fixed
+                     && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
+                     "turning fixed order back on over an owed restore writes rearranging off again and keeps the feature on")
+        dock.events = []
+        suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty
+                     && defaults.string(forKey: marker) == absent && owed() == nil
+                     && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
+                     "the Dock never left its fixed order, so its owed restart is dropped once the preference matches")
+        (hold, dock) = make(.absent, marker: absent, dockRuns: .fixed)
+        suite.expect(hold.reconcile(wanted: true) && dock.events == ["live(false)"]
+                     && dock.value == .off && defaults.string(forKey: marker) == absent && owed() == nil
+                     && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
+                     "the Dock's own call applies the latest toggle over an owed restore")
+
+        // The app can stop right after saving what the Dock still runs, before
+        // the preference is written, or right after that write, before the
+        // restart. Either way the next launch finishes the change.
+        (hold, dock) = make(.off, marker: absent, dockRuns: .fixed)
+        suite.expect(hold.reconcile(wanted: false) && dock.events == ["live(true)", "write(nil)"]
+                     && dock.value == .absent && defaults.object(forKey: marker) == nil && owed() == nil,
+                     "a restore stopped before its write is written again at the next launch")
+        (hold, dock) = make(.absent, marker: absent, dockRuns: .fixed)
+        suite.expect(hold.reconcile(wanted: false) && dock.events == ["restart"]
+                     && defaults.object(forKey: marker) == nil && owed() == nil,
+                     "a restore stopped after its write restarts the Dock instead of forgetting the marker")
+        (hold, dock) = make(.absent, marker: absent, dockRuns: .rearranging)
+        suite.expect(hold.reconcile(wanted: true) && dock.events == ["live(false)"]
+                     && dock.value == .off && defaults.string(forKey: marker) == absent && owed() == nil
+                     && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
+                     "a hold stopped before its write holds again at the next launch instead of letting go")
+        (hold, dock) = make(.off, marker: absent, dockRuns: .rearranging)
+        suite.expect(hold.reconcile(wanted: true) && dock.events == ["restart"]
+                     && defaults.string(forKey: marker) == absent && owed() == nil,
+                     "a hold stopped after its write restarts the Dock at the next launch")
+        defaults.removeObject(forKey: DefaultsKey.spacesOrderEnabled)
+        defaults.removeObject(forKey: AppFeature.spacesOrder.availabilityKey)
 
         (hold, dock) = make(.on, marker: absent)
         suite.expect(hold.reconcile(wanted: false) && dock.events.isEmpty
@@ -313,17 +392,20 @@ enum SpacesOrderTests {
         dock.restartSucceeds = false
         suite.expect(!hold.restoreForRemoval() && !hold.restoreForRemoval()
                      && dock.events == ["write(nil)", "restart", "restart"]
-                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     && defaults.string(forKey: marker) == absent && owed() == .fixed,
                      "a removal whose restart keeps failing never reports the restore as done")
         dock.restartSucceeds = true
         suite.expect(hold.restoreForRemoval() && dock.events == ["write(nil)", "restart", "restart", "restart"]
-                     && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: restartPending),
+                     && defaults.object(forKey: marker) == nil && owed() == nil,
                      "a removal finishes once the owed restart runs")
-        // A let-go clears the marker, but not a restart still owed.
-        (hold, dock) = make(.on)
-        defaults.set(true, forKey: restartPending)
-        suite.expect(hold.restoreForRemoval() && dock.events == ["restart"]
-                     && !defaults.bool(forKey: restartPending),
+        // The marker can already be gone while the Dock still owes a restart.
+        (hold, dock) = make(.on, dockRuns: .fixed)
+        dock.restartSucceeds = false
+        suite.expect(!hold.restoreForRemoval() && !hold.restoreForRemoval()
+                     && dock.events == ["restart", "restart"] && owed() == .fixed,
+                     "a removal whose owed restart keeps failing without a marker never reports it done")
+        dock.restartSucceeds = true
+        suite.expect(hold.restoreForRemoval() && dock.events == ["restart", "restart", "restart"] && owed() == nil,
                      "removal runs an owed restart even without a marker")
 
         // Removal runs on the hold's queue, behind a sync still holding, so
