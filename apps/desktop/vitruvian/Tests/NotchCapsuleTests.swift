@@ -379,6 +379,29 @@ enum NotchCapsuleTests {
                      && NotchCapsuleFit(width: -1_000, height: -9, drop: -5) == NotchCapsuleFit(width: -40, height: -4, drop: 0),
                      "a fit stays inside its ranges")
 
+        // The bar's bottom hairline reads as its edge, so the capsule keeps the
+        // same margin above that line as below the top of the display, on a
+        // plain and a Retina display alike, and stays as wide as before.
+        for bar: CGFloat in [24, 30] {
+            for scale: CGFloat in [1, 2] {
+                let edge = 1 / scale
+                let plain = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, layout: .spacious,
+                                          menuBarHeight: bar, silhouette: .capsule)
+                let edged = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, layout: .spacious,
+                                          menuBarHeight: bar, silhouette: .capsule, barEdge: edge)
+                let gap = edged.floatingGap ?? -1
+                let below = bar - edge - gap - edged.stripBodyHeight
+                suite.expect(gap > 0 && below == gap && edged.stripHeight == plain.stripHeight - edge
+                             && edged.cameraWidth == plain.cameraWidth && edged.menuBarHeight == plain.menuBarHeight
+                             && (edged.stripBodyHeight * scale).rounded() == edged.stripBodyHeight * scale,
+                             "a capsule on a \(bar)-point bar at \(scale)x shows the same margin above and below, on whole pixels")
+            }
+            let notched = NotchGeometry(screen: screen, safeAreaTop: 32, cameraWidth: 185, menuBarHeight: bar)
+            let notchedEdged = NotchGeometry(screen: screen, safeAreaTop: 32, cameraWidth: 185, menuBarHeight: bar,
+                                             barEdge: 1)
+            suite.expect(notched == notchedEdged, "a camera cutout ignores the bar's hairline")
+        }
+
         for safeArea: CGFloat in [0, 32] {
             let plain = NotchGeometry(screen: screen, safeAreaTop: safeArea, cameraWidth: safeArea > 0 ? 185 : 0,
                                       menuBarHeight: 24, silhouette: safeArea > 0 ? .capsule : .notch)

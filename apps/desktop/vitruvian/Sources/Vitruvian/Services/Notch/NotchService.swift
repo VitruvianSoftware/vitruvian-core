@@ -3113,7 +3113,8 @@ package final class NotchService: ObservableObject {
                       customHeight: defaults[Preferences.notchCustomHeight],
                       cameraFit: NotchCameraFit.current(in: defaults), silhouette: NotchSilhouette.current(in: defaults),
                       capsuleFit: NotchCapsuleFit.current(in: defaults),
-                      outline: defaults[Preferences.notchOutlineEnabled])
+                      outline: defaults[Preferences.notchOutlineEnabled],
+                      barEdge: 1 / max(1, screen.backingScale))
     }
 
     private func updateFullscreenVisibility(displayID: CGDirectDisplayID) {

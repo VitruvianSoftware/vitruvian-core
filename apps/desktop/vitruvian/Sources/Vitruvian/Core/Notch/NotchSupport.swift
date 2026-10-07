@@ -1917,7 +1917,7 @@ package struct NotchGeometry: Equatable {
          menuBarHeight: CGFloat = 24, compactSideRoom: CGFloat? = nil,
          customWidth: Double = NotchSize.defaultWidth, customHeight: Double = NotchSize.defaultHeight,
          cameraFit: NotchCameraFit = .zero, silhouette: NotchSilhouette = .notch, capsuleFit: NotchCapsuleFit = .zero,
-         outline: Bool = false) {
+         outline: Bool = false, barEdge: CGFloat = 0) {
         self.screen = screen
         self.layout = layout
         self.customWidth = NotchSize.clamped(customWidth, to: NotchSize.widthRange, fallback: NotchSize.defaultWidth)
@@ -1935,8 +1935,15 @@ package struct NotchGeometry: Equatable {
         let capsuleFit = gap == nil ? NotchCapsuleFit.zero : capsuleFit
         floatingDrop = capsuleFit.drop
         capsuleWidthFit = capsuleFit.width
-        let stripHeight = gap.map { max(barHeight + capsuleFit.height, $0 * 2 + 12) } ?? barHeight
-        let profileHeight = gap.map { stripHeight - ($0 - NotchLayout.capsuleMargin) * 2 } ?? barHeight
+        // The bar ends in a hairline, `barEdge` thick, that reads as its edge:
+        // the capsule's margin below is measured from it, as the one above is
+        // from the top of the display, so the capsule shows centred in the
+        // bar. Its width keeps following the whole bar.
+        let edge = barEdge.isFinite ? min(max(0, barEdge), 1) : 0
+        let fullStrip = gap.map { max(barHeight + capsuleFit.height, $0 * 2 + 12) }
+        let stripHeight = gap.map { max(barHeight - edge + capsuleFit.height, $0 * 2 + 12) } ?? barHeight
+        let profileHeight = gap.flatMap { gap in fullStrip.map { $0 - (gap - NotchLayout.capsuleMargin) * 2 } }
+            ?? barHeight
         // A capsule's camera is only the room it keeps, on whole points.
         let simulated = 180 * profileHeight / 32
         // A simulated cutout sits on the menu bar, where its outline already shows.
