@@ -111,6 +111,20 @@ package struct RadialMenuProfile: Codable, Identifiable, Equatable {
 }
 
 extension RadialMenuProfile {
+    /// The profiles left, and the one to select, after deleting the profile
+    /// the user confirmed, which the selection may no longer point at by the
+    /// time the dialog closes. Nil when nothing is deleted: that profile is
+    /// already gone, or it is the last one.
+    package static func deleting(_ id: UUID,
+                                 from profiles: [RadialMenuProfile]) -> (profiles: [RadialMenuProfile], selected: UUID)? {
+        guard profiles.count > 1, let index = profiles.firstIndex(where: { $0.id == id }) else { return nil }
+        var remaining = profiles
+        remaining.remove(at: index)
+        return (remaining, remaining[min(index, remaining.count - 1)].id)
+    }
+}
+
+extension RadialMenuProfile {
     private enum CodingKeys: String, CodingKey {
         case id, name, color, shortcut, mouseButton, items, preset, trackpadTap
     }

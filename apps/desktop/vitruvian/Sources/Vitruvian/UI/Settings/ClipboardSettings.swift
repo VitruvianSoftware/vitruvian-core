@@ -285,10 +285,6 @@ package struct ClipboardSettings: View {
                         history.clearRecent()
                     }
                     .disabled(history.recentEntries.isEmpty)
-                    Button(text.clearAll) {
-                        history.clearAll()
-                    }
-                    .disabled(history.recentEntries.isEmpty)
                 }
             }
     }

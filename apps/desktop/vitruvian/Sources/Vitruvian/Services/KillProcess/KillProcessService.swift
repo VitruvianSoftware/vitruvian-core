@@ -96,9 +96,14 @@ package final class KillProcessService: ObservableObject {
         groupRelated = UserDefaults.standard[Preferences.killProcessGroupRelated]
     }
 
-    package var filteredEntries: [KillProcessEntry] {
-        let ascending = sortAscending
-        let sorted = entries.sorted { lhs, rhs in
+    /// The processes in the page's sort order, which the Command Bar lists in too.
+    package var sortedEntries: [KillProcessEntry] {
+        Self.sorted(entries, by: sortBy, ascending: sortAscending)
+    }
+
+    package static func sorted(_ entries: [KillProcessEntry], by sortBy: SortBy,
+                               ascending: Bool) -> [KillProcessEntry] {
+        entries.sorted { lhs, rhs in
             switch sortBy {
             case .cpu:
                 return KillProcessSupport.numberComesBefore(lhs.cpuPercent, rhs.cpuPercent,
@@ -118,9 +123,12 @@ package final class KillProcessService: ObservableObject {
                                                             ascending: ascending)
             }
         }
+    }
+
+    package var filteredEntries: [KillProcessEntry] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return sorted }
-        return sorted.filter {
+        guard !needle.isEmpty else { return sortedEntries }
+        return sortedEntries.filter {
             $0.name.lowercased().contains(needle) || String($0.pid) == needle
         }
     }

@@ -2854,6 +2854,27 @@ enum ScreenshotFeatureTests {
         }
         suite.expectClose(steppedLoupeZoom, ScreenshotSupport.captureLoupeMinZoom,
                     "all stepped magnifier levels are reversible without dead notches")
+        var plainFastZoom = ScreenshotSupport.captureLoupeMinZoom
+        var plainFastNotches = 0
+        while plainFastZoom < ScreenshotSupport.captureLoupeMaxZoom, plainFastNotches < 20 {
+            plainFastZoom = ScreenshotSupport.captureLoupeFastZoom(
+                plainFastZoom, adjustedBy: 1, isContinuous: false)
+            plainFastNotches += 1
+        }
+        suite.expect(plainFastNotches <= 6,
+               "fast zoom on a plain wheel crosses the range in a few notches, not one level each")
+        suite.expectClose(ScreenshotSupport.captureLoupeFastZoom(1, adjustedBy: 1,
+                                                                 isContinuous: true), 1.15,
+                    "fast zoom keeps its per-packet factor for a smoothed wheel")
+        suite.expectClose(ScreenshotSupport.captureLoupeFastZoom(4, adjustedBy: -1,
+                                                                 isContinuous: false),
+                    4 / (1.15 * 1.15 * 1.15),
+                    "fast zoom on a plain wheel zooms back out at the same pace")
+        // A scroll tool can write three lines per notch; the notch keeps its pace.
+        suite.expectClose(ScreenshotSupport.captureLoupeFastZoom(1, adjustedBy: 3,
+                                                                 isContinuous: false),
+                    ScreenshotSupport.captureLoupeFastZoom(1, adjustedBy: 1, isContinuous: false),
+                    "a plain notch carrying three lines lands where a one-line notch does")
         var fastLoupeZoom: CGFloat = 1
         for _ in 0..<6 {
             fastLoupeZoom = ScreenshotSupport.captureLoupeZoom(
@@ -3386,6 +3407,7 @@ enum ScreenshotFeatureTests {
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.radialMenuEnabled] as? Bool == false,
                "the radial menu ships off by default")
+        RadialMenuProfileDeletionContract.run(suite)
         suite.expect(Defaults.registeredDefaults[DefaultsKey.radialMenuShortcut] as? String
                 == "control+option+command:49",
                "the default radial menu shortcut is control option command space")
@@ -3468,5 +3490,24 @@ enum ScreenshotFeatureTests {
                 == [.screenshot, .colorPicker],
                "capture roles are reordered for display and other roles fall away")
         GlobalShortcut.refreshLayoutLabels()
+    }
+}
+
+/// Upstream #1979: Settings deletes the profile the user confirmed, through
+/// RadialMenuProfile.deleting(_:from:).
+enum RadialMenuProfileDeletionContract {
+    static func run(_ suite: TestSuite) {
+        let first = RadialMenuProfile(name: "First")
+        let second = RadialMenuProfile(name: "Second")
+        let third = RadialMenuProfile(name: "Third")
+        let afterFirst = RadialMenuProfile.deleting(first.id, from: [first, second, third])
+        suite.expect(afterFirst?.profiles.map(\.id) == [second.id, third.id],
+                     "the confirmed profile is deleted even after the selection moved to another one")
+        suite.expect(RadialMenuProfile.deleting(first.id, from: [second, third]) == nil,
+                     "a confirmation for a profile that is already gone deletes nothing")
+        let afterSecond = RadialMenuProfile.deleting(second.id, from: [second, third])
+        suite.expect(afterSecond?.profiles.map(\.id) == [third.id] && afterSecond?.selected == third.id
+                     && RadialMenuProfile.deleting(third.id, from: [third]) == nil,
+                     "the last profile is never deleted and stays selected")
     }
 }

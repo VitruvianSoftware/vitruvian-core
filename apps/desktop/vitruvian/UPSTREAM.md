@@ -2511,7 +2511,13 @@ Run `triage` and commit the ledger, then decide each pending commit:
    - finds where the file lives now (the refactor renamed or split most of them);
    - rewrites upstream's names to this fork's;
    - three-way merges the upstream change into this fork's copy, ignoring the
-     `package` modifiers the module split added.
+     `package` modifiers the module split added, then puts them back where this
+     fork had them;
+   - gives a new declaration `package` when its neighbours of the same kind
+     have it, since what another module uses must be `package`;
+   - does not merge `Tests/generate_sources.py`, whose generated test copies
+     this fork retired. It reports the change with the upstream patch, so that
+     the test it feeds can be ported as a behavioural test.
 
    It never rewrites upstream's domains, repository or services. Any line that
    still names upstream is reported for brand review. Its `report.md` lists what
@@ -2530,7 +2536,14 @@ Run `triage` and commit the ledger, then decide each pending commit:
    - Keep the Swift 6 rules in `AGENTS.md`.
    - Give a new declaration `package` when another module uses it.
    - Port upstream's tests as behavioural tests: a test that reads source text
-     fails `source_lints_test`.
+     fails `source_lints_test`, and a generated-copy fixture (a `Fixture` class
+     whose typealiases stand in for app types) fails its shadowing check.
+     Where the code under test is private, move the rule into a function the
+     test can call, the way `KillProcessService.sorted(_:by:ascending:)` and
+     `RadialMenuProfile.deleting(_:from:)` were. If that needs seams that
+     don't exist yet, port the fix without the test and say so in the commit.
+   - Run `bazel test //apps/desktop/vitruvian:source_lints_test`, which runs on
+     Linux, before pushing. Compile errors only show on macOS.
    - Keep upstream's notice (`Copyright (C) 2026 Vorssaint`) on files that are
      upstream's code.
 4. If `build.sh` changed, run `bazel run //apps/desktop/vitruvian:sync_sources`.

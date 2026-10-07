@@ -28,6 +28,25 @@ enum CommandBarFeatureTests {
         CommandBarTerminationContract.run(suite)
         CommandBarAppSortContract.run(suite)
         CommandBarCatalogRowContract.run(suite)
+        // Upstream #1978: the Command Bar lists processes in the Kill Process
+        // page's sort order (KillProcessService.sortedEntries), not raw order.
+        do {
+            func process(_ pid: pid_t, _ name: String, cpu: Double, memory: Double) -> KillProcessEntry {
+                KillProcessEntry(pid: pid, ppid: 1, name: name, path: "/Applications/\(name).app",
+                                 cpuPercent: cpu, memoryBytes: memory, isRegularApp: true,
+                                 bundleURL: nil, groupedCount: 1, isProtected: false, startedAt: nil)
+            }
+            let raw = [process(30, "Mail", cpu: 5, memory: 900),
+                       process(10, "Xcode", cpu: 1, memory: 100),
+                       process(20, "Browser", cpu: 40, memory: 500)]
+            for (sort, ascending, expected) in [(KillProcessService.SortBy.cpu, false, ["Browser", "Mail", "Xcode"]),
+                                                (.memory, false, ["Mail", "Browser", "Xcode"]),
+                                                (.name, true, ["Browser", "Mail", "Xcode"])] {
+                let names = KillProcessService.sorted(raw, by: sort, ascending: ascending).map(\.name)
+                suite.expect(names == expected,
+                       "processes list in the Kill Process page's \(sort) order, found \(names)")
+            }
+        }
         func pageVisible(_ page: SettingsPage, available: Set<AppFeature>) -> Bool {
             FeatureVisibilitySupport.isPageVisible(page) { available.contains($0) }
         }
@@ -191,6 +210,14 @@ enum CommandBarFeatureTests {
                                         keywords: clipboardClearKeywords,
                                         query: "clear clipboard"),
                "the clipboard clear action stays findable by its English name in a non-Latin locale")
+        for language in AppLanguage.allCases {
+            let clipboard = FeatureStrings.clipboard(language)
+            let clear = CommandBarCatalog.clipboardClearEntry(clipboard, subtitle: clipboard.title,
+                                                              trouble: nil, clear: {})
+            suite.expect(CommandBarSearch.matches(title: clear.title, keywords: clear.keywords,
+                                                  query: clipboard.clearRecentKeywords),
+                   "the clipboard clear action keeps its former \(language) name as a search term")
+        }
         for accepts in [true, false] {
             let hud = CopyAnswerHUD()
             CommandBarCatalog.copyAnswer("42", copy: { value, then in
@@ -2257,3 +2284,4 @@ enum CommandBarAppSortContract {
                      "equal shortcuts fall back to the name in either direction")
     }
 }
+

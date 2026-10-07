@@ -32,6 +32,7 @@ them is a decision) are reported for a person to finish.
 
 import argparse
 import collections
+import difflib
 import os
 import re
 import subprocess
@@ -64,6 +65,12 @@ UPSTREAM_ONLY = (
     "ReleaseAssets/",
     "Resources/Brand/",
 )
+
+# Upstream files this fork keeps but no longer runs as upstream does: its
+# generated test copies are retired (REFACTOR.md step 4b), so an upstream
+# change to their extraction script is never merged. The test it feeds is
+# ported as a behavioural test instead.
+FORK_RETIRED = ("Tests/generate_sources.py",)
 
 STATUSES = ("pending", "ported", "skipped")
 COLUMNS = ("sha", "patch_id", "date", "status", "ref", "subject")
@@ -603,26 +610,78 @@ def _decl_key(line):
     return (m.group(1), m.group(2), m.group(3)) if m else None
 
 
+# An access modifier, but not a setter's: `private(set)` leaves the getter open.
+ACCESS_RE = re.compile(
+    r"\b(?:private|fileprivate|internal|public|open|package)\b(?!\(set\))"
+)
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip(" \t"))
+
+
+def _in_protocol(lines, i):
+    """Whether line i sits directly in a protocol body (no modifiers there)."""
+    depth = _indent(lines[i])
+    for j in range(i - 1, -1, -1):
+        if lines[j].strip() and _indent(lines[j]) < depth:
+            key = _decl_key(lines[j])
+            return bool(key) and key[1] == "protocol"
+    return False
+
+
 def restore_package(merged, ours):
-    """Put back `package` on the lines, and declarations, that had it in ours."""
-    exact = {}
+    """Put this fork's `package` modifiers back after a merge that ignored them.
+
+    A line the merge kept from this fork's copy gets back exactly what it had,
+    matched by position, so a name declared in two types is not confused. A
+    line the merge changed or added gets `package` when the same declaration
+    had it in this fork's copy, or, if new, when this fork's declarations of
+    that kind at that depth are mostly `package` (what other modules use must
+    be). Protocol requirements, private declarations and locals are left alone.
+    """
+    ours_lines = ours.decode("utf-8", "surrogateescape").splitlines(keepends=True)
+    ours_bare = [PACKAGE_RE.sub(r"\1", raw) for raw in ours_lines]
     by_decl = collections.defaultdict(set)
-    for raw in ours.decode("utf-8", "surrogateescape").splitlines(keepends=True):
-        bare = PACKAGE_RE.sub(r"\1", raw)
-        if bare != raw:
-            exact.setdefault(bare, raw)
+    by_level = collections.defaultdict(collections.Counter)
+    for raw, bare in zip(ours_lines, ours_bare):
         key = _decl_key(bare)
         if key:
             by_decl[key].add(bare != raw)
+            by_level[(key[0], key[1])][bare != raw] += 1
+    lines = merged.decode("utf-8", "surrogateescape").splitlines(keepends=True)
+    kept = {}
+    matcher = difflib.SequenceMatcher(None, ours_bare, lines, autojunk=False)
+    for a, b, size in matcher.get_matching_blocks():
+        for k in range(size):
+            kept[b + k] = ours_lines[a + k]
     result = []
-    for line in merged.decode("utf-8", "surrogateescape").splitlines(keepends=True):
-        if line in exact:
-            line = exact[line]
-        elif by_decl.get(_decl_key(line) or ()) == {True} and not PACKAGE_RE.match(
-            line
-        ):
-            at = ATTRIBUTES_RE.match(line).end()
-            line = line[:at] + "package " + line[at:]
+    for i, line in enumerate(lines):
+        key = _decl_key(line)
+        if i in kept:
+            line = kept[i]
+        elif key and not PACKAGE_RE.match(line):
+            known = by_decl.get(key)
+            level = by_level.get((key[0], key[1]), collections.Counter())
+            if known == {True} or (
+                known is None
+                and key[1] != "extension"
+                and not ACCESS_RE.search(line[: line.find(key[1])])
+                and level[True] > level[False]
+                and not _in_protocol(lines, i)
+            ):
+                at = ATTRIBUTES_RE.match(line).end()
+                line = line[:at] + "package " + line[at:]
+                shift_from = i + 1
+                balance = line.count("(") - line.count(")")
+                # Parameters aligned under the opening parenthesis move with it.
+                while balance > 0 and shift_from < len(lines):
+                    nxt = lines[shift_from]
+                    if _indent(nxt) <= _indent(line):
+                        break
+                    lines[shift_from] = " " * len("package ") + nxt
+                    balance += nxt.count("(") - nxt.count(")")
+                    shift_from += 1
         result.append(line)
     return "".join(result).encode("utf-8", "surrogateescape")
 
@@ -677,6 +736,16 @@ def port_commit(
         if upstream_only(new) and upstream_only(old):
             lines.append(f"- `{new}`: upstream-only path, not ported")
             continue
+        if new in FORK_RETIRED or old in FORK_RETIRED:
+            clean = False
+            patch = upstream.run(["diff", f"{parent or sha}", sha, "--", old, new])
+            saved = report_dir / (new.replace("/", "__") + ".patch")
+            saved.write_text(patch)
+            lines.append(
+                f"- `{new}`: retired in this fork, not merged; port the test it feeds "
+                f"as a behavioural test (upstream patch: `{saved}`)"
+            )
+            continue
         target_rel, how = pathmap.map(old)
         if status == "A":
             target_rel, how = pathmap.map(new)
@@ -724,10 +793,12 @@ def port_commit(
         theirs = to_fork_bytes(upstream.blob(sha, new))
         if status == "A" and not target.exists():
             result = theirs
+            before = set()
             lines.append(f"- `{new}` -> `{rel}` ({how}): added")
         else:
             base = to_fork_bytes(upstream.blob(parent, old) if parent else b"")
             ours = target.read_bytes() if target.exists() else b""
+            before = set(ours.decode("utf-8", "replace").splitlines())
             result, conflicts = merge3(ours, base, theirs, labels)
             note = (
                 f" (upstream renamed it to `{new}`; the rename is not applied)"
@@ -744,7 +815,11 @@ def port_commit(
         if not dry_run:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(result)
+        # Only lines the port brings in: this fork's own lines that name
+        # upstream (tests asserting its links are gone) are not the port's.
         for n, l in brand_review(result.decode("utf-8", "replace")):
+            if l in before:
+                continue
             clean = False
             lines.append(f"  - brand review `{rel}:{n}`: `{l.strip()}`")
     lines.append("")

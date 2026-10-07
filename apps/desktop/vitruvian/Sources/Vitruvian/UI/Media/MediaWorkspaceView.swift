@@ -1357,10 +1357,6 @@ package struct MediaWorkspaceView: View {
         return true
     }
 
-    private func setInput(_ url: URL) {
-        setInputs([url])
-    }
-
     private func setInputs(_ urls: [URL], resetsMedia: Bool = true) {
         cancelVideoImport()
         inputURLs = selectedTool == .imageCompressor ? urls : Array(urls.prefix(1))

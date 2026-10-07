@@ -242,6 +242,15 @@ package final class SpaceHop {
             state: focusState,
             schedule: { self.schedule(after: $0, $1) },
             isLive: { !self.cancelled && !self.app.isTerminated },
+            shouldFocus: { isFirstPulse in
+                SpaceHopSupport.arrivalPulseShouldFocus(
+                    isFirstPulse: isFirstPulse,
+                    targetSpaceIsVisible: self.windowSpaceIsVisible(),
+                    targetWindowID: self.windowID,
+                    windowOwnerPID: self.windowOwnerPID,
+                    frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                    focusedWindowID: WindowActivator.focusedWindowID(for: self.windowOwnerPID))
+            },
             pulse: { state in
                 WindowActivator.focusAfterSpaceHop(windowID: self.windowID,
                                                    appPID: self.appPID,
@@ -256,15 +265,19 @@ package final class SpaceHop {
     /// becomes visible; a couple of pulses cover the settling time, then the
     /// hop ends. Every pulse is handed the one state the hop took as it
     /// began, so a window the app opened since ends them instead of being
-    /// covered by the target.
+    /// covered by the target. Only the first one raises unconditionally; the
+    /// others ask `shouldFocus` first, which retries unless the target's Space
+    /// is visible and it is the focused window of the process that owns it,
+    /// with that process in front (`SpaceHopSupport.arrivalPulseShouldFocus`).
     package static func scheduleArrivalPulses(state: SwitcherWindowFocusRetryState,
                                               schedule: (_ delay: TimeInterval, _ work: @escaping () -> Void) -> Void,
                                               isLive: @escaping () -> Bool,
+                                              shouldFocus: @escaping (_ isFirstPulse: Bool) -> Bool,
                                               pulse: @escaping (SwitcherWindowFocusRetryState) -> Void,
                                               finish: @escaping () -> Void) {
-        for delay in [0.15, 0.45, 0.9] {
+        for (index, delay) in [0.15, 0.45, 0.9].enumerated() {
             schedule(delay) {
-                guard isLive() else { return }
+                guard isLive(), shouldFocus(index == 0) else { return }
                 pulse(state)
             }
         }

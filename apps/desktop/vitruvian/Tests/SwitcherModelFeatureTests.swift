@@ -610,6 +610,70 @@ enum SwitcherModelFeatureTests {
                "an app with a window on the visible Space cannot travel by being activated, so the move is asked for right away")
         suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: false) == .waitForActivationTravel,
                "an app with no window on the visible Space travels on activation, so that travel is waited on")
+        // Issue #1733: every arrival pulse raised the target again, so a window
+        // that the first pulse already left focused and in front flickered.
+        suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: true,
+                                                       targetSpaceIsVisible: true,
+                                                       targetWindowID: 101,
+                                                       windowOwnerPID: 10,
+                                                       frontmostPID: 10,
+                                                       focusedWindowID: 101),
+               "the first arrival pulse always runs the focus pass")
+        suite.expect(!SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                        targetSpaceIsVisible: true,
+                                                        targetWindowID: 101,
+                                                        windowOwnerPID: 10,
+                                                        frontmostPID: 10,
+                                                        focusedWindowID: 101),
+               "a later arrival pulse does not raise a target already focused with its app in front")
+        suite.expect(!SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                        targetSpaceIsVisible: true,
+                                                        targetWindowID: 101,
+                                                        windowOwnerPID: 11,
+                                                        frontmostPID: 11,
+                                                        focusedWindowID: 101),
+               "a focused window owned by an embedded helper in front counts as landed")
+        suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                       targetSpaceIsVisible: true,
+                                                       targetWindowID: 101,
+                                                       windowOwnerPID: 11,
+                                                       frontmostPID: 10,
+                                                       focusedWindowID: 101),
+               "a later arrival pulse retries while the host app is in front of a window its embedded helper owns and reports as focused")
+        suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                       targetSpaceIsVisible: true,
+                                                       targetWindowID: 101,
+                                                       windowOwnerPID: 10,
+                                                       frontmostPID: 10,
+                                                       focusedWindowID: 102),
+               "a later arrival pulse retries when the app in front focused another of its windows")
+        suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                       targetSpaceIsVisible: true,
+                                                       targetWindowID: 101,
+                                                       windowOwnerPID: 10,
+                                                       frontmostPID: 10,
+                                                       focusedWindowID: nil),
+               "a later arrival pulse retries while Accessibility cannot report the focused window yet")
+        suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                       targetSpaceIsVisible: true,
+                                                       targetWindowID: 101,
+                                                       windowOwnerPID: 10,
+                                                       frontmostPID: 30,
+                                                       focusedWindowID: 101)
+               && SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                    targetSpaceIsVisible: true,
+                                                    targetWindowID: 101,
+                                                    windowOwnerPID: 10,
+                                                    frontmostPID: nil,
+                                                    focusedWindowID: 101),
+               "a later arrival pulse retries while another app, or no app, is reported in front")
+        suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: false,
+                                                       targetSpaceIsVisible: false,
+                                                       targetWindowID: 101,
+                                                       windowOwnerPID: 10,
+                                                       frontmostPID: 10,
+                                                       focusedWindowID: 101),
+               "a later arrival pulse still retries while the window's Space is hidden, even with the window focused and its app in front")
         suite.expect(SpaceHopSupport.eventFlags(fromCarbonModifiers: 0x840000) == [.maskControl, .maskSecondaryFn],
                "the registered control+function mask replays with both flags")
         suite.expect(SpaceHopSupport.eventFlags(fromCarbonModifiers: 0x20000 | 0x100000) == [.maskShift, .maskCommand],
@@ -5733,6 +5797,7 @@ enum SwitcherModelFeatureTests {
                                                scheduled.append(work)
                                            },
                                            isLive: { live },
+                                           shouldFocus: { _ in true },
                                            pulse: { pulsed.append($0) },
                                            finish: { finished += 1 })
             let pulsedBeforeRunning = pulsed.count
@@ -5747,6 +5812,26 @@ enum SwitcherModelFeatureTests {
             live = false
             for work in scheduled.prefix(3) { work() }
             suite.expect(pulsed.count == 3, "a cancelled hop's remaining pulses raise nothing")
+        }
+        // Issue #1733: every arrival pulse raised the target again, so a
+        // window the first pulse already left focused and in front flickered.
+        do {
+            var scheduled: [() -> Void] = []
+            var asked: [Bool] = []
+            var raised = 0
+            let state = SpaceHop.arrivalFocusState(windowID: 77, windowOwnerPID: 21) { _ in [] }
+            SpaceHop.scheduleArrivalPulses(state: state,
+                                           schedule: { _, work in scheduled.append(work) },
+                                           isLive: { true },
+                                           shouldFocus: { isFirstPulse in
+                                               asked.append(isFirstPulse)
+                                               return isFirstPulse
+                                           },
+                                           pulse: { _ in raised += 1 },
+                                           finish: {})
+            for work in scheduled { work() }
+            suite.expect(asked == [true, false, false] && raised == 1,
+                   "each arrival pulse asks whether the target already landed before it raises again")
         }
         // Review of #1578: a hop across two or more desktops arrives with
         // whatever tops each desktop it passed in front. Reading that as "the

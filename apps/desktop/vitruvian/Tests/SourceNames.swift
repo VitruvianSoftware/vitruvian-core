@@ -223,6 +223,7 @@ enum SourceNames {
         "daysFormat",
         "delaySecondsFormat",
         "deletePadMessageFormat",
+        "deleteProfileConfirmFormat",
         "deleteSelectedFormat",
         "diskBodyFormat",
         "fanNameFormat",
