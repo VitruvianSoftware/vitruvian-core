@@ -1570,14 +1570,18 @@ package final class NotchService: ObservableObject {
             && windowHost?.isConcealedForMissionControl == false
             : windowHost?.containsHover(point) == true || pointerOverChildWindow(point)
         hoverState.update(pointerInside: inside)
+        // A full hover opening goes straight from its resting size to the page.
+        // The activity picker replaces that opening and keeps its hover response.
+        let opensOnHover = defaults[Preferences.notchOpenOnHover] && defaults[Preferences.notchHoverExpands]
+            && !showsCompactActivityPicker
         let emphasize = inside && !hiddenInFullscreen && !hiddenUntilHover && !expanded && !peeking && !dragPlaceholder
-            && notice == nil && captureControls == nil
+            && notice == nil && captureControls == nil && !opensOnHover
             && !reducesMotion()
         if hoverEmphasized != emphasize || showedPicker != showsCompactActivityPicker {
             hoverEmphasized = emphasize
             refreshPresentation()
         }
-        syncHoverExitMonitoring(entered: entered, point: point)
+        defer { syncHoverExitMonitoring(entered: entered, point: point) }
         captureHover?(entered)
         if captureControls != nil {
             updateCaptureControlsHover(wasInside: wasInside)
@@ -1605,6 +1609,9 @@ package final class NotchService: ObservableObject {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
+                // An opening that is no longer eligible keeps any following:
+                // an emphasis or a picker may still show, and the next move
+                // decides whether it is still needed.
                 guard self.running, !self.suspended, self.inside, !self.hoverState.suppressed,
                       !self.expanded, !self.peeking, !self.pinned, !self.heldDrag, !self.keepsWorkingSurface,
                       !self.showsCompactActivityPicker,
@@ -1652,13 +1659,16 @@ package final class NotchService: ObservableObject {
     /// The closed island's hover emphasis has the same gap, and worse: a fast
     /// pass up through the top edge to a display above can report its exit
     /// while the pointer still touches the island, or no exit at all. So while
-    /// the emphasis shows, moves are followed from the entry on. A pointer at
-    /// rest costs nothing.
+    /// the emphasis shows or hover waits for an opening or reentry after an
+    /// explicit close, moves are followed. A pointer at rest costs nothing.
     private func syncHoverExitMonitoring(entered: Bool, point: CGPoint) {
         // A timed capture stays attached to the closed island until its timer
         // ends, and each followed move would tell it the pointer left, which
         // restarts its dismissal under a pointer that came back to reopen it.
-        let watching = (hoverEmphasized && captureHover == nil
+        let followsClosedHover = inside && !expanded && !peeking && notice == nil
+            && (hoverWork?.isCancelled == false
+                || hoverState.suppressed && defaults[Preferences.notchOpenOnHover])
+        let watching = ((hoverEmphasized || followsClosedHover) && captureHover == nil
                 || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover))
             && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsWorkingSurface
             // Once watching, a pointer that leaves and slips back unreported is still seen.

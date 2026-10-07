@@ -173,20 +173,26 @@ enum NotchHoverTests {
         suite.expect(hiddenPulse.island.surfaceSize == hiddenResting,
                      "an invisible island does not pulse before its hover reveal")
         let reducedMotion = island()
+        defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
         reducedMotion.reducesMotion = true
         let reducedResting = reducedMotion.island.surfaceSize
         reducedMotion.island.hover(true)
         suite.expect(reducedMotion.island.surfaceSize == reducedResting,
                      "Reduce Motion leaves the resting island still on hover")
-        let compactPulse = island(physical: true, before: playMusic)
-        let compactResting = compactPulse.island.surfaceSize
-        compactPulse.island.hover(true)
-        suite.expect(compactPulse.island.compactActivity == .music
-                     && compactPulse.island.surfaceSize.height == compactResting.height + 5,
-                     "a visible compact activity responds to hover without replacing its content")
-        leave(compactPulse)
-        suite.expect(compactPulse.island.surfaceSize == compactResting,
-                     "the compact activity returns to its original size on exit")
+        for physical in [false, true] {
+            for opensOnHover in [false, true] {
+                let compactPulse = island(physical: physical, before: playMusic)
+                defaults.set(opensOnHover, forKey: DefaultsKey.notchOpenOnHover)
+                let compactResting = compactPulse.island.surfaceSize
+                compactPulse.island.hover(true)
+                suite.expect(compactPulse.island.compactActivity == .music
+                             && compactPulse.island.surfaceSize.height == compactResting.height + (opensOnHover ? 0 : 5),
+                             "a compact activity waits at rest for a hover opening and pulses for a click opening")
+                leave(compactPulse)
+                suite.expect(compactPulse.island.surfaceSize == compactResting,
+                             "the compact activity returns to its original size on exit")
+            }
+        }
         let fullscreen = island(physical: true, before: playMusic)
         defaults.set(true, forKey: DefaultsKey.notchHideInFullscreen)
         defaults.set(true, forKey: DefaultsKey.notchHideUntilHover)
@@ -217,9 +223,13 @@ enum NotchHoverTests {
         defaults.set(false, forKey: DefaultsKey.notchHideInFullscreen)
         for physical in [false, true] {
             let service = island(physical: physical)
+            let resting = service.island.surfaceSize
             service.island.hover(true)
+            suite.expect(service.island.surfaceSize == resting && service.pendingWork == 1,
+                         "hover opening keeps either display's island at rest instead of previewing before expansion")
             service.advance(0.20)
-            suite.expect(!service.island.expanded, "passing briefly over either display's island does not open it")
+            suite.expect(!service.island.expanded && service.island.surfaceSize == resting,
+                         "the island stays at rest throughout the configured hover opening delay")
             service.island.hover(false) // A tracking exit while the pointer is still inside.
             suite.expect(service.pendingWork == 1, "duplicate tracking events preserve the original opening deadline")
             service.advance(0.06)
@@ -407,6 +417,7 @@ enum NotchHoverTests {
         // exit arrives while the pointer still touches the island's top edge.
         do {
             let passed = island()
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
             let edge = passed.host!.frame
             let resting = passed.island.surfaceSize
             passed.pointer = CGPoint(x: edge.midX, y: edge.maxY - 1)
@@ -421,6 +432,7 @@ enum NotchHoverTests {
                          "the closed island stops following the pointer once the emphasis is gone")
             // Fast enough, AppKit reports no exit at all after the entry.
             let silent = island()
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
             silent.pointer = CGPoint(x: edge.midX, y: edge.maxY - 1)
             silent.island.hover(true)
             suite.expect(silent.island.surfaceSize.height == resting.height + 5 && silent.movementWatchCount == 1,
@@ -431,11 +443,90 @@ enum NotchHoverTests {
             silent.drift(to: CGPoint(x: edge.midX, y: edge.maxY + 300))
             suite.expect(silent.island.surfaceSize == resting && !silent.watchesMovement,
                          "an unreported exit to the display above still clears the emphasis and its observers")
+            // A notice that holds back a preview leaves the island emphasized
+            // under a resting pointer, so following goes on past the deadline.
+            let interrupted = island()
+            defaults.set(false, forKey: DefaultsKey.notchHoverExpands)
+            interrupted.pointer = CGPoint(x: edge.midX, y: edge.maxY - 1)
+            interrupted.island.hover(true)
+            _ = interrupted.island.show(volume)
+            interrupted.runScheduled()
+            suite.expect(interrupted.island.notice == nil && !interrupted.island.peeking
+                         && interrupted.movementWatchCount == 1,
+                         "a preview a notice held back keeps following the emphasized island")
+            interrupted.drift(to: CGPoint(x: edge.midX, y: edge.maxY + 300))
+            suite.expect(interrupted.island.surfaceSize == resting && !interrupted.watchesMovement,
+                         "an unreported exit after the notice still clears the emphasis and its observers")
+            // A second activity that starts during a hover opening shows the
+            // picker instead, which still needs the pointer followed out.
+            let joined = island(before: runTimer)
+            joined.pointer = CGPoint(x: edge.midX, y: edge.maxY - 1)
+            joined.island.hover(true)
+            playMusic(joined)
+            joined.island.refreshPresentation(animated: false)
+            joined.advance(1)
+            suite.expect(!joined.island.expanded && joined.island.showsCompactActivityPicker
+                         && joined.movementWatchCount == 1,
+                         "a picker that appears during a hover opening keeps following the pointer")
+            joined.drift(to: CGPoint(x: edge.midX, y: edge.maxY + 300))
+            suite.expect(!joined.island.showsCompactActivityPicker && !joined.watchesMovement,
+                         "an unreported exit to the display above still hides that picker and releases its observers")
+        }
+        // A full opening has no hover emphasis, but still needs an uninterrupted
+        // stay. Leaving without a tracking exit must discard the old deadline.
+        for physical in [false, true] {
+            for reduced in [false, true] {
+                let returning = island(physical: physical)
+                defaults.set(0.6, forKey: DefaultsKey.notchHoverDelay)
+                returning.reducesMotion = reduced
+                let edge = returning.host!.frame
+                let entry = CGPoint(x: edge.midX, y: edge.maxY - 1)
+                let above = CGPoint(x: edge.midX, y: edge.maxY + 300)
+                let resting = returning.island.surfaceSize
+                func pendingOpenings() -> Int { returning.pendingDelays.filter { $0 == 0.6 }.count }
+                returning.pointer = entry
+                returning.island.hover(true)
+                suite.expect(returning.island.surfaceSize == resting && pendingOpenings() == 1
+                             && returning.movementWatchCount == 1,
+                             "hover opening follows the pointer without emphasizing the island, including Reduce Motion")
+                returning.advance(0.4)
+                returning.drift(to: above)
+                suite.expect(pendingOpenings() == 0,
+                             "a move to the display above cancels the opening even without a tracking exit")
+                suite.expect(!returning.watchesMovement, "leaving a pending hover opening releases its pointer observers")
+                returning.advance(0.05)
+                returning.pointer = entry
+                returning.island.hover(true)
+                suite.expect(pendingOpenings() == 1, "returning after an unreported exit starts a fresh hover deadline")
+                returning.advance(0.16)
+                suite.expect(!returning.island.expanded && returning.island.surfaceSize == resting,
+                             "the original opening deadline cannot open an island the pointer left and reentered")
+                returning.advance(0.43)
+                suite.expect(!returning.island.expanded, "reentry waits for the full configured delay")
+                returning.advance(0.02)
+                suite.expect(returning.island.expanded && !returning.watchesMovement,
+                             "the fresh hover opens once and releases the pending opening's pointer observers")
+                returning.island.collapse()
+                returning.island.hover(true)
+                suite.expect(!returning.island.expanded && pendingOpenings() == 0 && returning.movementWatchCount == 1,
+                             "an explicit close under the pointer follows its departure without reopening")
+                returning.drift(to: above)
+                suite.expect(!returning.watchesMovement,
+                             "an unreported departure after an explicit close releases its observers")
+                returning.pointer = entry
+                returning.island.hover(true)
+                returning.advance(0.59)
+                suite.expect(!returning.island.expanded, "reopening after an explicit close waits for the full hover delay")
+                returning.advance(0.02)
+                suite.expect(returning.island.expanded && !returning.watchesMovement,
+                             "the first return after an explicit close opens normally even without a tracking exit")
+            }
         }
         // A timed capture still attached to the closed island would hear each
         // followed move as the pointer leaving and restart its dismissal.
         do {
             let attached = island()
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
             var previewHovered: Bool?
             _ = attached.island.presentCapture(
                 id: UUID(), content: AnyView(EmptyView()), height: 120, takeFocus: false, closeOnCollapse: false,
@@ -457,9 +548,12 @@ enum NotchHoverTests {
             let opening = island()
             defaults.set(expands, forKey: DefaultsKey.notchHoverExpands)
             let edge = opening.host!.frame
+            let resting = opening.island.surfaceSize
             opening.pointer = CGPoint(x: edge.midX, y: edge.maxY - 1)
             opening.island.hover(true)
-            suite.expect(opening.movementWatchCount == 1, "the emphasized island follows the pointer before it opens")
+            suite.expect(opening.island.surfaceSize.height == resting.height + (expands ? 0 : 5)
+                         && opening.movementWatchCount == 1,
+                         "both hover modes follow the pointer before revealing content, while only the preview emphasizes it")
             opening.advance(0.26)
             suite.expect((expands ? opening.island.expanded : opening.island.peeking) && !opening.watchesMovement,
                          "opening or peeking on hover drops the closed island's pointer observers")
@@ -574,6 +668,11 @@ enum NotchHoverTests {
             protected.advance(1)
             suite.expect(!protected.island.expanded && !protected.island.peeking,
                    "a pending hover rechecks eligibility before opening")
+            // Capture controls follow the pointer for their own reasons.
+            let capturing = protected.island.captureControls != nil
+            protected.drift(to: CGPoint(x: protected.displays[0].frame.minX, y: protected.displays[0].frame.minY))
+            suite.expect(capturing || !protected.watchesMovement,
+                         "an aborted hover opening releases its pointer observers once the pointer moves away")
         }
         for protect: (NotchIslandFixture) -> Void in [
             { $0.island.pinned = true }, { $0.island.fileDragChanged(true, internalDrag: true) },
