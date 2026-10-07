@@ -105,6 +105,22 @@ enum WindowLayoutFeatureTests {
             && releasedHold.update([]) == .none
             && releasedHold.update([.control, .command]) == .begin,
             "a finished gesture needs a fresh chord before starting again")
+
+        suite.expect(WindowDirectionalModifierTapSupport.options == .listenOnly
+                && WindowDirectionalModifierTapSupport.eventMask
+                    == CGEventMask(1 << CGEventType.flagsChanged.rawValue),
+            "idle modifier observation is passive and never subscribes to ordinary pointer or key input")
+        let deferredModifierWork = DispatchSemaphore(value: 0)
+        WindowDirectionalModifierTapSupport.afterCallback { deferredModifierWork.signal() }
+        let modifierWorkWasDeferred = deferredModifierWork.wait(timeout: .now()) == .timedOut
+        let modifierWorkDeadline = Date().addingTimeInterval(0.2)
+        var modifierWorkRan = false
+        while !modifierWorkRan, Date() < modifierWorkDeadline {
+            RunLoop.current.run(until: min(modifierWorkDeadline, Date().addingTimeInterval(0.005)))
+            modifierWorkRan = deferredModifierWork.wait(timeout: .now()) == .success
+        }
+        suite.expect(modifierWorkWasDeferred && modifierWorkRan,
+            "modifier target lookup and placement begin only after the input callback returns")
         // The native full screen action, wired like the sixths: real strings,
         // a stable id, and no system-wide key claimed until someone asks.
         suite.expect(WindowLayoutAction.allCases.contains(.fullScreen)

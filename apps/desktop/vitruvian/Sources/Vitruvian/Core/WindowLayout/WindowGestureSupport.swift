@@ -730,6 +730,17 @@ package enum WindowDirectionalTrigger: Equatable {
     }
 }
 
+/// Passive policy for the modifier chord that arms pointer layout. The event
+/// itself is never held while the main queue looks up or places a window.
+package enum WindowDirectionalModifierTapSupport {
+    package static let options: CGEventTapOptions = .listenOnly
+    package static let eventMask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+
+    package static func afterCallback(_ work: @escaping () -> Void) {
+        DispatchQueue.main.async { work() }
+    }
+}
+
 /// A modifier chord starts once, finishes on its first required-key release,
 /// and cannot restart until all its keys are up. Extra modifiers cancel it.
 package struct WindowDirectionalModifierHold {

@@ -52,6 +52,8 @@ package final class WindowLayoutService: ObservableObject {
     private var directionalSession: WindowDirectionalSession?
     private var directionalTimer: Timer?
     private var directionalIndicatorPanel: NSPanel?
+    private var directionalModifierTap: CFMachPort?
+    private var directionalModifierTapSource: CFRunLoopSource?
     private var directionalTap: CFMachPort?
     private var directionalTapSource: CFRunLoopSource?
     private var gestureTap: CFMachPort?
@@ -865,15 +867,20 @@ package final class WindowLayoutService: ObservableObject {
             directionalShortcutRegistrationFailed = true
             return
         }
-        if registeredDirectionalTrigger == trigger,
-           directionalHotKeyRef != nil || directionalTap != nil { return }
+        if registeredDirectionalTrigger == trigger {
+            switch trigger {
+            case .key where directionalHotKeyRef != nil: return
+            case .modifiers where directionalModifierTap != nil: return
+            default: break
+            }
+        }
         unregisterDirectionalHotkey()
         registeredDirectionalTrigger = trigger
         if case .modifiers(let modifiers) = trigger {
             directionalModifierHold = WindowDirectionalModifierHold(
                 expected: modifiers,
                 initiallyHeld: GlobalShortcutModifiers(cgFlags: CGEventSource.flagsState(.combinedSessionState)))
-            directionalShortcutRegistrationFailed = !startDirectionalTap()
+            directionalShortcutRegistrationFailed = !startDirectionalModifierTap()
             return
         }
         guard case .key(let shortcut) = trigger else { return }
@@ -898,9 +905,10 @@ package final class WindowLayoutService: ObservableObject {
         }
         directionalHotKeyRef = nil
         registeredDirectionalTrigger = nil
-        directionalModifierHold = nil
         directionalShortcutRegistrationFailed = false
+        stopDirectionalModifierTap()
         cancelDirectionalGesture()
+        directionalModifierHold = nil
     }
 
     private func beginDirectionalGesture() {
@@ -908,6 +916,11 @@ package final class WindowLayoutService: ObservableObject {
               !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted(),
               let target = focusedTarget(for: .leftHalf),
               let screen = bestScreen(for: target.frame) else { return }
+        guard startDirectionalTap() else {
+            directionalShortcutRegistrationFailed = true
+            return
+        }
+        directionalShortcutRegistrationFailed = false
         directionalSession = WindowDirectionalSession(
             target: target,
             visibleFrame: screen.visibleFrame,
@@ -919,19 +932,92 @@ package final class WindowLayoutService: ObservableObject {
         directionalTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) {
             [weak self] _ in MainActor.assumeIsolated { self?.updateDirectionalGesture() }
         }
-        startDirectionalTap()
+    }
+
+    /// The idle observer can never delay input: it only listens for modifier
+    /// changes, cannot alter them, and defers all state and Accessibility work
+    /// until after its callback has returned.
+    @discardableResult
+    private func startDirectionalModifierTap() -> Bool {
+        guard directionalModifierTap == nil else { return true }
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: WindowDirectionalModifierTapSupport.options,
+            eventsOfInterest: WindowDirectionalModifierTapSupport.eventMask,
+            callback: { _, type, event, userInfo in
+                guard let userInfo else { return Unmanaged.passUnretained(event) }
+                let service = Unmanaged<WindowLayoutService>.fromOpaque(userInfo).takeUnretainedValue()
+                return service.observeDirectionalModifierEvent(type: type, event: event)
+            },
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else { return false }
+
+        directionalModifierTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        directionalModifierTapSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    private func stopDirectionalModifierTap() {
+        if let directionalModifierTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), directionalModifierTapSource, .commonModes)
+        }
+        directionalModifierTapSource = nil
+        if let directionalModifierTap {
+            CGEvent.tapEnable(tap: directionalModifierTap, enable: false)
+            CFMachPortInvalidate(directionalModifierTap)
+        }
+        directionalModifierTap = nil
+    }
+
+    private func observeDirectionalModifierEvent(type: CGEventType,
+                                                  event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
+                self?.cancelDirectionalGesture()
+                if SessionActivity.shared.isActive, AXIsProcessTrusted(), !ShortcutCapture.isCapturing,
+                   let directionalModifierTap = self?.directionalModifierTap {
+                    CGEvent.tapEnable(tap: directionalModifierTap, enable: true)
+                } else {
+                    self?.unregisterDirectionalHotkey()
+                }
+            }
+            return Unmanaged.passUnretained(event)
+        }
+        guard type == .flagsChanged else { return Unmanaged.passUnretained(event) }
+        let held = GlobalShortcutModifiers(cgFlags: event.flags)
+        WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
+            guard let self else { return }
+            guard !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted() else {
+                self.unregisterDirectionalHotkey()
+                return
+            }
+            guard var hold = self.directionalModifierHold else { return }
+            let decision = hold.update(held)
+            self.directionalModifierHold = hold
+            switch decision {
+            case .begin: self.beginDirectionalGesture()
+            case .finish:
+                self.updateDirectionalGesture()
+                self.finishDirectionalGesture()
+            case .cancel: self.cancelDirectionalGesture()
+            case .none: break
+            }
+        }
+        // Modifiers still belong to the frontmost app, including releases.
+        return Unmanaged.passUnretained(event)
     }
 
     @discardableResult
     private func startDirectionalTap() -> Bool {
         guard directionalTap == nil else { return true }
-        var mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+        let mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
             | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.keyDown.rawValue)
-        if directionalModifierHold != nil {
-            mask |= CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-        }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -967,20 +1053,6 @@ package final class WindowLayoutService: ObservableObject {
         }
         guard !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted() else {
             unregisterDirectionalHotkey()
-            return Unmanaged.passUnretained(event)
-        }
-        if type == .flagsChanged, var hold = directionalModifierHold {
-            let decision = hold.update(GlobalShortcutModifiers(cgFlags: event.flags))
-            directionalModifierHold = hold
-            switch decision {
-            case .begin: beginDirectionalGesture()
-            case .finish:
-                updateDirectionalGesture()
-                finishDirectionalGesture()
-            case .cancel: cancelDirectionalGesture()
-            case .none: break
-            }
-            // Modifiers still belong to the frontmost app, including releases.
             return Unmanaged.passUnretained(event)
         }
         guard var session = directionalSession else { return Unmanaged.passUnretained(event) }
@@ -1100,7 +1172,7 @@ package final class WindowLayoutService: ObservableObject {
     }
 
     private func finishDirectionalGesture() {
-        if directionalModifierHold == nil { stopDirectionalTap() }
+        stopDirectionalTap()
         guard let session = directionalSession else { return }
         directionalTimer?.invalidate()
         directionalTimer = nil
@@ -1119,7 +1191,7 @@ package final class WindowLayoutService: ObservableObject {
 
     private func cancelDirectionalGesture() {
         directionalModifierHold?.cancel()
-        if directionalModifierHold == nil { stopDirectionalTap() }
+        stopDirectionalTap()
         directionalTimer?.invalidate()
         directionalTimer = nil
         directionalSession = nil
