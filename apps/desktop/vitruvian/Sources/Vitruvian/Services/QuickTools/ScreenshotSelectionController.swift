@@ -878,7 +878,7 @@ package final class ScreenshotOverlayPanel: OverlayPanel {
     /// full-screen action stays below it even when there is no notch surface.
     let topChromeHeight: CGFloat
     package private(set) var frozenImage: CGImage?
-    let pixelScale: CGFloat
+    package let pixelScale: CGFloat
     private(set) var overlayViewStorage: ScreenshotOverlayView!
     private var backdropView: NSImageView!
 
