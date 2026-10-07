@@ -51,12 +51,15 @@ package enum FocusFollowsMouseSupport {
 
     package static func shouldActivate(targetWindowID: CGWindowID,
                                focusedWindowID: CGWindowID?,
+                               focusedWindowBlocksTarget: Bool,
                                targetAppIsFrontmost: Bool) -> Bool {
         guard targetAppIsFrontmost else { return true }
         // Games may not expose focus through Accessibility. Reasserting it can
         // release their captured pointer, so require a known different window.
         guard let focusedWindowID else { return false }
-        return focusedWindowID != targetWindowID
+        // A sheet or a modal window keeps focus and macOS hands it straight
+        // back, so asking for the window it blocks only flickers.
+        return focusedWindowID != targetWindowID && !focusedWindowBlocksTarget
     }
 
     /// What hover does with `target`. A window that needs no activation is
@@ -67,10 +70,12 @@ package enum FocusFollowsMouseSupport {
     /// `isParkedOnHiddenSpace` is asked last, as it asks the window server.
     package static func handoff(targetWindowID: CGWindowID,
                                 focusedWindowID: CGWindowID?,
+                                focusedWindowBlocksTarget: Bool,
                                 targetAppIsFrontmost: Bool,
                                 isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> FocusFollowsMouseHandoff {
         guard shouldActivate(targetWindowID: targetWindowID,
                              focusedWindowID: focusedWindowID,
+                             focusedWindowBlocksTarget: focusedWindowBlocksTarget,
                              targetAppIsFrontmost: targetAppIsFrontmost) else { return .notNeeded }
         return isParkedOnHiddenSpace(targetWindowID) ? .switchInFlight : .activate
     }
@@ -78,9 +83,11 @@ package enum FocusFollowsMouseSupport {
     /// Whether hover hands `target` to the activator at all.
     package static func handsToActivator(targetWindowID: CGWindowID,
                                          focusedWindowID: CGWindowID?,
+                                         focusedWindowBlocksTarget: Bool,
                                          targetAppIsFrontmost: Bool,
                                          isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> Bool {
         handoff(targetWindowID: targetWindowID, focusedWindowID: focusedWindowID,
+                focusedWindowBlocksTarget: focusedWindowBlocksTarget,
                 targetAppIsFrontmost: targetAppIsFrontmost,
                 isParkedOnHiddenSpace: isParkedOnHiddenSpace) == .activate
     }
