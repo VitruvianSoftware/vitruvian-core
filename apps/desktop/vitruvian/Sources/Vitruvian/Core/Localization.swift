@@ -991,7 +991,6 @@ package struct Strings {
     package let monitorShowPeripheralBattery: String
     package let peripheralBatteryNoDevices: String
     package let monitorGraphsSection: String
-    package let monitorGraphsCaption: String
 
     // MARK: Update notification + onboarding menu bar setup
     package let updateBannerTitle: String
@@ -2092,7 +2091,6 @@ extension Strings {
         monitorShowPeripheralBattery: "Bateria dos periféricos",
         peripheralBatteryNoDevices: "Nenhum periférico encontrado",
         monitorGraphsSection: "Gráficos",
-        monitorGraphsCaption: "Escolha quais métricas mostram um gráfico ao longo do tempo.",
 
         updateBannerTitle: "Atualização disponível",
         updateBannerAction: "Atualizar",
@@ -3183,7 +3181,6 @@ extension Strings {
         monitorShowPeripheralBattery: "Peripheral battery",
         peripheralBatteryNoDevices: "No devices found",
         monitorGraphsSection: "Graphs",
-        monitorGraphsCaption: "Choose which metrics show a graph over time.",
 
         updateBannerTitle: "Update available",
         updateBannerAction: "Update",

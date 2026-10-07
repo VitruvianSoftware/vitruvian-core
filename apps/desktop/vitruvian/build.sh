@@ -339,6 +339,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/GeneralSettingsStrings.swift
         Sources/Vitruvian/Core/SettingsPageStrings.swift
         Sources/Vitruvian/Core/BatteryTimeStrings.swift
+        Sources/Vitruvian/Core/MonitorLayoutStrings.swift
         Sources/Vitruvian/Core/KeepAwakeStrings.swift
         Sources/Vitruvian/Core/BluetoothSleepStrings.swift
         Sources/Vitruvian/Core/PermissionGuideStrings.swift
@@ -476,6 +477,7 @@ if (( TEST )); then
         Sources/Vitruvian/Services/QuickTools/ScreenshotCapturePolicy.swift
         Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift
         Sources/Vitruvian/UI/Settings/ScreenCaptureToolPicker.swift
+        Sources/Vitruvian/UI/Settings/MonitorToken.swift
         Sources/Vitruvian/Services/QuickTools/ScreenshotRenderer.swift
         Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift
         Sources/Vitruvian/Core/QuickTools/ScreenshotSharingSupport.swift
