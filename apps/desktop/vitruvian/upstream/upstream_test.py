@@ -393,6 +393,21 @@ class PackageTest(unittest.TestCase):
         self.assertIn("    package static func c() {\n        func local() {}\n", out)
         self.assertIn("        package func y() {}\n", out)
 
+    def test_a_local_named_like_a_package_member_gets_no_modifier(self):
+        # `url` is a `package` member of the nested struct, at the same depth
+        # as the function's new local, so matching by name alone took it.
+        ours = (
+            "package enum E {\n    package struct R {\n        package let url: String\n    }\n"
+            '    package static func f() -> R {\n        return R(url: "")\n    }\n}\n'
+        )
+        merged = (
+            "enum E {\n    struct R {\n        let url: String\n    }\n"
+            '    static func f() -> R {\n        let url = "x"\n        return R(url: url)\n    }\n}\n'
+        )
+        out = self.restore(merged, ours)
+        self.assertIn("        package let url: String\n", out)
+        self.assertIn('        let url = "x"\n', out)
+
     def test_a_new_type_a_package_signature_uses_gets_package(self):
         # Nested types here are mostly internal, so neighbours alone would
         # leave the new enums internal, and the compiler rejects a `package`

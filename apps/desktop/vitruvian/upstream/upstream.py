@@ -655,7 +655,8 @@ def restore_package(merged, ours):
     line the merge changed or added gets `package` when the same declaration
     had it in this fork's copy, or, if new, when this fork's declarations of
     that kind at that depth are mostly `package` (what other modules use must
-    be). Protocol requirements, private declarations and locals are left alone.
+    be). Protocol requirements, private declarations and locals are left
+    alone, even a local named like a member that has `package` at that depth.
     """
     ours_lines = ours.decode("utf-8", "surrogateescape").splitlines(keepends=True)
     ours_bare = [PACKAGE_RE.sub(r"\1", raw) for raw in ours_lines]
@@ -677,7 +678,7 @@ def restore_package(merged, ours):
         key = _decl_key(line)
         if i in kept:
             line = kept[i]
-        elif key and not PACKAGE_RE.match(line):
+        elif key and not PACKAGE_RE.match(line) and _takes_modifiers(lines, i):
             known = by_decl.get(key)
             level = by_level.get((key[0], key[1]), collections.Counter())
             if known == {True} or (
@@ -685,7 +686,6 @@ def restore_package(merged, ours):
                 and key[1] != "extension"
                 and not ACCESS_RE.search(line[: line.find(key[1])])
                 and level[True] > level[False]
-                and _takes_modifiers(lines, i)
             ):
                 at = ATTRIBUTES_RE.match(line).end()
                 line = line[:at] + "package " + line[at:]
