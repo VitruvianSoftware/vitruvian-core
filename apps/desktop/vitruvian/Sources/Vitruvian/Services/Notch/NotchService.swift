@@ -3515,6 +3515,7 @@ package final class NotchService: ObservableObject {
         var detailNeeds = expanded && !showingSections ? selectedMetric?.monitorNeeds ?? .none : .none
         if needs, AppFeature.monitorDisk.isAvailable(in: defaults) { detailNeeds.disk = true }
         if needs, AppFeature.fanControl.isAvailable(in: defaults) { detailNeeds.fanSpeed = true }
+        if needs, AppFeature.connectedDevices.isAvailable(in: defaults) { detailNeeds.connectedDevices = true }
         services.setMonitorDetailNeeds(detailNeeds)
         if needs != notchNeedsMonitor {
             notchNeedsMonitor = needs

@@ -442,6 +442,7 @@ package enum DefaultsKey {
     package static let monitorSysMemory = "monitorSysMemory"
     package static let monitorSysAlerts = "monitorSysAlerts"
     package static let monitorSysUptime = "monitorSysUptime"
+    package static let monitorSysConnectedDevices = "monitorSysConnectedDevices"
     package static let monitorNetSpeed = "monitorNetSpeed"
     package static let monitorNetApps = "monitorNetApps"
     package static let monitorNetTotals = "monitorNetTotals"

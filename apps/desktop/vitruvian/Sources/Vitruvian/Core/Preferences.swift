@@ -283,6 +283,7 @@ package enum Preferences {
     package static let monitorSysMemory = Preference(DefaultsKey.monitorSysMemory, default: true)
     package static let monitorSysAlerts = Preference(DefaultsKey.monitorSysAlerts, default: true)
     package static let monitorSysUptime = Preference(DefaultsKey.monitorSysUptime, default: true)
+    package static let monitorSysConnectedDevices = Preference(DefaultsKey.monitorSysConnectedDevices, default: true)
     package static let monitorNetSpeed = Preference(DefaultsKey.monitorNetSpeed, default: true)
     package static let monitorNetApps = Preference(DefaultsKey.monitorNetApps, default: true)
     package static let monitorNetTotals = Preference(DefaultsKey.monitorNetTotals, default: true)

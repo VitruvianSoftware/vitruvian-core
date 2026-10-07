@@ -708,6 +708,7 @@ package enum Defaults {
         DefaultsKey.monitorSysMemory: Preferences.monitorSysMemory.defaultValue,
         DefaultsKey.monitorSysAlerts: Preferences.monitorSysAlerts.defaultValue,
         DefaultsKey.monitorSysUptime: Preferences.monitorSysUptime.defaultValue,
+        DefaultsKey.monitorSysConnectedDevices: Preferences.monitorSysConnectedDevices.defaultValue,
         DefaultsKey.monitorNetSpeed: Preferences.monitorNetSpeed.defaultValue,
         DefaultsKey.monitorNetApps: Preferences.monitorNetApps.defaultValue,
         DefaultsKey.monitorNetTotals: Preferences.monitorNetTotals.defaultValue,
