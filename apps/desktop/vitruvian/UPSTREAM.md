@@ -2413,7 +2413,12 @@ is that notice. Add an entry for every change to upstream files.
   - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
-  - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-07**: Live transcript following and active subagent status banner in Quick Prompt:
+  - `NexusAgentSupport`: added `NexusAgentActiveSubagent` and `NexusAgentToolStep` data models;
+  - `NexusAgentService`: added `transcriptPath(home:conversationID:provider:)` and `parseActiveSubagents(from:)` to track running vs completed subagents from JSONL logs, updated `parseTranscript` to extract tool execution steps and thinking content, and wired `showQuickPrompt`, `hideQuickPrompt`, and `modeObserver` to manage the transcript follower lifecycle;
+  - `NexusAgentQuickPromptSession`: added `@Published activeSubagents` and `@Published isFollowerActive` with 1.5s file attribute/modification poller syncing messages and active subagents in real time;
+  - `NexusAgentQuickPromptView`: added `ActiveSubagentBannerView` above the follow-up bar with expandable subagent details (spinner, role, typeName, model pill badge), and collapsible tool execution steps and thinking bubbles in `NexusAgentMessageBubble`;
+  - `NexusAgentTests`: added `liveTranscriptAndSubagents` unit test suite covering active subagent extraction, lifecycle clearance on completion messages, and follower file polling.
 - **2026-10-07**: Provider-aware session history and Claude transcript restoration in Quick Prompt:
   - `NexusAgentSessionSummary`: added `projectSlug(for:)` mapping path strings to Claude project directory slugs, and `parseClaudeSessions(home:directory:)` discovering and parsing JSONL sessions from `~/.claude/projects/`;
   - `NexusAgentService`: updated `Environment.listSessions` and `Environment.readTranscript` to be provider-aware with `NexusAgentCLIProvider`, implemented `parseClaudeTranscript` extracting user turns and assistant text blocks, and wired `updateActiveProvider` to refresh sessions when switching providers;

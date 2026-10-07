@@ -566,3 +566,49 @@ package struct NexusAgentLineBuffer {
         return String(decoding: pending, as: UTF8.self)
     }
 }
+
+/// An active subagent executing in the current session.
+package struct NexusAgentActiveSubagent: Identifiable, Equatable, Sendable {
+    package let id: String
+    package let typeName: String
+    package let role: String
+    package let prompt: String
+    package let model: String
+    package let isRunning: Bool
+
+    package init(
+        id: String,
+        typeName: String,
+        role: String,
+        prompt: String,
+        model: String,
+        isRunning: Bool = true
+    ) {
+        self.id = id
+        self.typeName = typeName
+        self.role = role
+        self.prompt = prompt
+        self.model = model
+        self.isRunning = isRunning
+    }
+}
+
+/// A tool execution step within an agent response.
+package struct NexusAgentToolStep: Identifiable, Equatable, Sendable {
+    package let id: String
+    package let title: String
+    package let detail: String?
+    package let isFinished: Bool
+
+    package init(
+        id: String = UUID().uuidString,
+        title: String,
+        detail: String? = nil,
+        isFinished: Bool = true
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.isFinished = isFinished
+    }
+}

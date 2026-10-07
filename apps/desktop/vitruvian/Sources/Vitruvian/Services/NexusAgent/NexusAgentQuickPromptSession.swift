@@ -25,6 +25,8 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
     package var toolCalls: Int?
     package var modelName: String?
     package var stopReason: String?
+    package var toolSteps: [NexusAgentToolStep]?
+    package var thinkingText: String?
 
     package init(
         id: UUID = UUID(),
@@ -38,7 +40,9 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
         numTurns: Int? = nil,
         toolCalls: Int? = nil,
         modelName: String? = nil,
-        stopReason: String? = nil
+        stopReason: String? = nil,
+        toolSteps: [NexusAgentToolStep]? = nil,
+        thinkingText: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -52,6 +56,8 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
         self.toolCalls = toolCalls
         self.modelName = modelName
         self.stopReason = stopReason
+        self.toolSteps = toolSteps
+        self.thinkingText = thinkingText
     }
 }
 
@@ -100,6 +106,13 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     /// Turns run with `-w` (isolated git worktree) while on.
     @Published package var worktreeMode: Bool = false
 
+    @Published package private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
+    @Published package var isFollowerActive: Bool = false
+    private var followerTimer: Timer?
+    private var lastTranscriptModDate: Date?
+    private var lastTranscriptSize: UInt64?
+    private var activeProvider: NexusAgentCLIProvider?
+
     private let environment: NexusAgentService.Environment
     private var running: NexusAgentRunningAgent?
     private var buffer = NexusAgentLineBuffer()
@@ -143,6 +156,64 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider)
     }
 
+    /// Starts watching the transcript file for live updates while in chat mode.
+    package func startTranscriptFollower(provider: NexusAgentCLIProvider? = nil) {
+        if let provider { self.activeProvider = provider }
+        guard let convID = conversationID, !convID.isEmpty, mode == .chat else { return }
+        stopTranscriptFollower()
+        isFollowerActive = true
+        checkTranscriptUpdates()
+        followerTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.checkTranscriptUpdates()
+            }
+        }
+    }
+
+    /// Stops watching the transcript file.
+    package func stopTranscriptFollower() {
+        followerTimer?.invalidate()
+        followerTimer = nil
+        isFollowerActive = false
+        lastTranscriptModDate = nil
+        lastTranscriptSize = nil
+    }
+
+    /// Checks the transcript file for updates and refreshes messages and active subagents.
+    package func checkTranscriptUpdates() {
+        guard let convID = conversationID, !convID.isEmpty else { return }
+        let provider = activeProvider ?? .antigravity
+        guard let path = environment.transcriptPath(convID, provider) else { return }
+
+        let fm = FileManager.default
+        var isChanged = false
+        if let attrs = try? fm.attributesOfItem(atPath: path) {
+            let modDate = attrs[.modificationDate] as? Date
+            let size = (attrs[.size] as? NSNumber)?.uint64Value
+            if modDate != lastTranscriptModDate || size != lastTranscriptSize {
+                lastTranscriptModDate = modDate
+                lastTranscriptSize = size
+                isChanged = true
+            }
+        } else {
+            isChanged = true
+        }
+
+        if isChanged {
+            if let raw = environment.readTranscriptRaw(convID, provider) {
+                let parsedSubagents = NexusAgentService.parseActiveSubagents(from: raw)
+                if self.activeSubagents != parsedSubagents {
+                    self.activeSubagents = parsedSubagents
+                }
+                if !isRunning, let reloaded = environment.readTranscript(convID, provider) {
+                    if reloaded != self.messages {
+                        self.messages = reloaded
+                    }
+                }
+            }
+        }
+    }
+
     /// Continues a past conversation: the next turn passes its id to the active provider.
     package func resume(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration = NexusAgentConfiguration()) {
         stop()
@@ -174,6 +245,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
             messages = restored
         }
         mode = .chat
+        startTranscriptFollower(provider: configuration.activeProvider)
     }
 
     /// The agy flags for this turn: plan mode overrides the bot's approval mode.
@@ -212,6 +284,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         replyID = reply.id
         messages.append(reply)
         isRunning = true
+        startTranscriptFollower(provider: configuration.activeProvider)
         activity = nil
         elapsedSeconds = 0
         elapsedTimer?.invalidate()
@@ -233,6 +306,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
                                                   { [weak self] status in self?.agentDidExit(status, turn: current) })
         } catch {
             isRunning = false
+            stopTranscriptFollower()
             elapsedTimer?.invalidate()
             elapsedTimer = nil
             replace(reply: strings.agentFailed, isError: true)
@@ -244,6 +318,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     package func stop() {
         guard isRunning else { return }
         stoppedByUser = true
+        stopTranscriptFollower()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         running?.terminate()
@@ -251,6 +326,8 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
 
     package func newChat() {
         stop()
+        stopTranscriptFollower()
+        activeSubagents = []
         turn += 1
         running = nil
         isRunning = false

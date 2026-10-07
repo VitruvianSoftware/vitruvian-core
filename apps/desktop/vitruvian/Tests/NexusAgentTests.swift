@@ -30,6 +30,7 @@ enum NexusAgentTests {
         cliProviders(suite)
         turnMetrics(suite)
         pinningAndRetry(suite)
+        liveTranscriptAndSubagents(suite)
     }
 
     // MARK: - .env
@@ -334,7 +335,21 @@ enum NexusAgentTests {
                     listedProviders.append(provider)
                     return sessionList
                 },
-                readTranscript: { _, _ in nil })
+                readTranscript: { [unowned self] id, _ in
+                    let path = (state as NSString).appendingPathComponent("transcripts/\(id).jsonl")
+                    if let raw = files[path] {
+                        return NexusAgentService.parseTranscript(raw)
+                    }
+                    return nil
+                },
+                transcriptPath: { [unowned self] id, _ in
+                    let path = (state as NSString).appendingPathComponent("transcripts/\(id).jsonl")
+                    return files[path] != nil ? path : nil
+                },
+                readTranscriptRaw: { [unowned self] id, _ in
+                    let path = (state as NSString).appendingPathComponent("transcripts/\(id).jsonl")
+                    return files[path]
+                })
         }
     }
 
@@ -859,5 +874,53 @@ enum NexusAgentTests {
         // Retry tracking
         service.session.lastFailedPrompt = "failed prompt"
         suite.expect(service.session.lastFailedPrompt == "failed prompt", "last failed prompt is retained")
+    }
+
+    // MARK: - Live Transcript & Subagents
+
+    private static func liveTranscriptAndSubagents(_ suite: TestSuite) {
+        let transcriptRunning = """
+        {"step_index":0,"type":"USER_INPUT","content":"Start subagent"}
+        {"step_index":1,"type":"PLANNER_RESPONSE","content":"Starting scout","tool_calls":[{"name":"invoke_subagent","args":{"Subagents":"[{\\"Model\\":\\"flash\\",\\"Prompt\\":\\"Monitor CI\\",\\"Role\\":\\"CI Watchdog\\",\\"TypeName\\":\\"scout\\"}]"}}]}
+        """
+        let active = NexusAgentService.parseActiveSubagents(from: transcriptRunning)
+        suite.expect(active.count == 1
+                     && active.first?.typeName == "scout"
+                     && active.first?.role == "CI Watchdog"
+                     && active.first?.prompt == "Monitor CI"
+                     && active.first?.model == "flash"
+                     && active.first?.isRunning == true,
+                     "parseActiveSubagents extracts active subagents from invoke_subagent")
+
+        let transcriptCompleted = """
+        {"step_index":0,"type":"USER_INPUT","content":"Start subagent"}
+        {"step_index":1,"type":"PLANNER_RESPONSE","content":"Starting scout","tool_calls":[{"name":"invoke_subagent","args":{"Subagents":"[{\\"Model\\":\\"flash\\",\\"Prompt\\":\\"Monitor CI\\",\\"Role\\":\\"CI Watchdog\\",\\"TypeName\\":\\"scout\\"}]"}}]}
+        {"step_index":2,"type":"SYSTEM_MESSAGE","content":"[Message] timestamp=2026-10-07T01:54:53Z sender=scout priority=MESSAGE_PRIORITY_HIGH content=Done"}
+        """
+        let cleared = NexusAgentService.parseActiveSubagents(from: transcriptCompleted)
+        suite.expect(cleared.isEmpty,
+                     "subagent is marked completed and cleared when completion message arrives")
+
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let convID = "live-test-1"
+        let transcriptPath = rig.state + "/transcripts/\(convID).jsonl"
+        rig.files[transcriptPath] = transcriptRunning
+
+        session.resume(NexusAgentSessionSummary(id: convID, title: "Live Session", preview: "Start subagent", steps: 2, modified: nil))
+        suite.expect(session.isFollowerActive, "resuming in chat mode activates transcript follower")
+
+        session.checkTranscriptUpdates()
+        suite.expect(session.activeSubagents.count == 1 && session.activeSubagents.first?.typeName == "scout",
+                     "follower updates activeSubagents from transcript")
+
+        rig.files[transcriptPath] = transcriptCompleted
+        session.checkTranscriptUpdates()
+        suite.expect(session.activeSubagents.isEmpty,
+                     "follower clears activeSubagents when transcript changes on disk")
+
+        session.stopTranscriptFollower()
+        suite.expect(!session.isFollowerActive, "stopping follower deactivates it")
     }
 }
