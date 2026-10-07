@@ -978,7 +978,7 @@ package final class WindowLayoutService: ObservableObject {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             directionalModifierHold?.cancel()
             WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
-                self?.cancelDirectionalGesture(preservingModifierState: true)
+                self?.cancelDirectionalGesture(modifierCancellation: .preserveHold)
                 if SessionActivity.shared.isActive, AXIsProcessTrusted(), !ShortcutCapture.isCapturing,
                    let directionalModifierTap = self?.directionalModifierTap {
                     CGEvent.tapEnable(tap: directionalModifierTap, enable: true)
@@ -996,7 +996,7 @@ package final class WindowLayoutService: ObservableObject {
             directionalModifierHold = hold
             WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
                 guard let self, self.directionalModifierHold?.generation == generation else { return }
-                self.cancelDirectionalGesture(preservingModifierState: true)
+                self.cancelDirectionalGesture(modifierCancellation: .preserveHold)
             }
             return Unmanaged.passUnretained(event)
         }
@@ -1018,7 +1018,7 @@ package final class WindowLayoutService: ObservableObject {
             case .finish:
                 self.updateDirectionalGesture()
                 self.finishDirectionalGesture()
-            case .cancel: self.cancelDirectionalGesture(preservingModifierState: true)
+            case .cancel: self.cancelDirectionalGesture(modifierCancellation: .preserveHold)
             case .none: break
             }
         }
@@ -1204,8 +1204,12 @@ package final class WindowLayoutService: ObservableObject {
         }
     }
 
-    private func cancelDirectionalGesture(preservingModifierState: Bool = false) {
-        if !preservingModifierState { directionalModifierHold?.cancel() }
+    private func cancelDirectionalGesture(
+        modifierCancellation: WindowDirectionalModifierCancellation = .cancelHold
+    ) {
+        if let hold = directionalModifierHold {
+            directionalModifierHold = modifierCancellation.applied(to: hold)
+        }
         stopDirectionalTap()
         directionalTimer?.invalidate()
         directionalTimer = nil
