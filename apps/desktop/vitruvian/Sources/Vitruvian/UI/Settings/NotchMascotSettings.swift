@@ -545,7 +545,9 @@ private struct NotchMascotStage: View {
 
 /// The island the stage draws, at its real size: the closed island at rest
 /// with the companion, its wings beside the camera or a floating capsule,
-/// taken from this Mac's island when it has one to go by.
+/// taken from this Mac's island when it has one to go by. Main-actor, as
+/// it reads the running island for its defaults.
+@MainActor
 struct NotchMascotStageModel {
     let strip: CGSize
     let menuBarHeight: CGFloat

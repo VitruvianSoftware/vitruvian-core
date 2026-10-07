@@ -96,7 +96,8 @@ package struct NotchStripHold<Value: Equatable, Content: View>: View {
 /// gone halfway through the island's crossfade and the one arriving comes in
 /// over the rest of it, so the companion never shows half faded over the
 /// strip's text in the same place.
-package struct NotchFadeThrough: ViewModifier, Animatable {
+/// SwiftUI reads `animatableData` on the main thread, where the modifier lives.
+package struct NotchFadeThrough: ViewModifier, @preconcurrency Animatable {
     package var progress: Double
     package var animatableData: Double {
         get { progress }
