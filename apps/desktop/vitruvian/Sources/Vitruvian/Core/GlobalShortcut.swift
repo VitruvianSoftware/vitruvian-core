@@ -1199,7 +1199,12 @@ package struct ModifierShortcutRecording {
         waitingForRelease = true
     }
 
-    package mutating func flagsChanged(_ modifiers: GlobalShortcutModifiers) -> GlobalShortcutModifiers? {
+    package mutating func flagsChanged(_ modifiers: GlobalShortcutModifiers,
+                                       hasUnsupportedModifier: Bool = false) -> GlobalShortcutModifiers? {
+        if hasUnsupportedModifier {
+            keyPressed()
+            return nil
+        }
         if modifiers.isEmpty {
             let captured = candidate
             candidate = []
