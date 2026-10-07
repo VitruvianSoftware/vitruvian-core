@@ -84,20 +84,6 @@ jobs:
           # worktree, which needs the full object graph.
           fetch-depth: 0
 
-      # Free disk BEFORE any Bazel work -- see the free-disk-space composite
-      # for the rationale (#404/#374 hit "No space left on device").
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-      # Restore the extracted LLVM toolchain (#1039) and pair it with the
-      # tripwire below -- see the llvm-cache-restore composite for the
-      # rationale and how the toolchain folder is found (never pinned; #2456).
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
-
       # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
       # `build-test` is a REQUIRED status check behind the merge queue, so it
       # must ALWAYS report a result -- a naive `paths-ignore` would make it never
@@ -117,6 +103,30 @@ jobs:
           BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: bash tools/ci/relevant-paths.sh
 
+      # Everything from here to the tripwire is setup for the affected-targets
+      # step, so it carries the same condition that step does (#2841): always
+      # on the merge queue, and on the other lanes unless the gate above proved
+      # the diff is docs/gitops/markdown-only. The gate used to run AFTER this
+      # setup, so a docs-only change freed disk, set up Bazel and restored the
+      # 2.2 GiB LLVM toolchain (about a minute) and then skipped the build.
+
+      # Free disk BEFORE any Bazel work -- see the free-disk-space composite
+      # for the rationale (#404/#374 hit "No space left on device").
+      - name: Free up runner disk space
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
+        uses: ./.github/actions/setup-bazel
+      # Restore the extracted LLVM toolchain (#1039) and pair it with the
+      # tripwire below -- see the llvm-cache-restore composite for the
+      # rationale and how the toolchain folder is found (never pinned; #2456).
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
+        uses: ./.github/actions/llvm-cache-restore
+
       # Dependency map for the diff base (#2841). Presubmit's push lane computes
       # "which tests depend on each package" once per main commit and caches it
       # (#2465); restoring it here turns the planner's whole-repo `bazel query`
@@ -126,6 +136,7 @@ jobs:
       # map against the base and falls back to the live query.
       - name: Resolve the diff base
         id: base
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
@@ -233,7 +244,7 @@ jobs:
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
       # (hardened per review on #1304 after a placement-bug incident).
       - name: LLVM cache tripwire
-        if: always()
+        if: always() && (github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false')
         uses: ./.github/actions/llvm-cache-tripwire
         with:
           restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
