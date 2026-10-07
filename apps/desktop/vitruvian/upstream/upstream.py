@@ -756,7 +756,9 @@ def _spelled_out_inits(lines):
         if not SPELLED_INIT_RE.search(line):
             continue
         j = i + 1
-        while j < len(lines) and not lines[j].strip().startswith(("package init(", "public init(")):
+        while j < len(lines) and not lines[j].strip().startswith(
+            ("package init(", "public init(")
+        ):
             j += 1
         if j == len(lines):
             continue
@@ -797,13 +799,17 @@ def init_review(merged, ours):
     ).items():
         old = before.get(name, ({}, ""))[0]
         for prop, line in stored.items():
-            if prop not in old and not re.search(rf"\b{re.escape(prop)}\s*:", signature):
+            if prop not in old and not re.search(
+                rf"\b{re.escape(prop)}\s*:", signature
+            ):
                 gaps.append((line, name, prop))
     return sorted(gaps)
 
 
 PREFERENCES_PATH = APP_DIR + "/Sources/Vitruvian/Core/Preferences.swift"
-DECLARED_PREFERENCE_RE = re.compile(r"=\s*Preference(?:<[^>]+>)?\(\s*DefaultsKey\.(\w+)")
+DECLARED_PREFERENCE_RE = re.compile(
+    r"=\s*Preference(?:<[^>]+>)?\(\s*DefaultsKey\.(\w+)"
+)
 KEYED_STORAGE_RE = re.compile(r"@AppStorage\(\s*DefaultsKey\.(\w+)\s*\)")
 
 
