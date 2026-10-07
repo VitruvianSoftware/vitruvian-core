@@ -3078,7 +3078,9 @@ package enum BrightnessBridge {
 /// its methods at runtime so unsupported hardware or a future removal simply
 /// hides the control instead of affecting launch.
 private final class KeyboardLightBridge {
-    private typealias CopyIDsFn = @convention(c) (NSObject, Selector) -> Unmanaged<AnyObject>
+    // Optional: a Mac with no backlit keyboard (a desktop, or a virtual
+    // machine) answers nil, and a non-optional return reads through it.
+    private typealias CopyIDsFn = @convention(c) (NSObject, Selector) -> Unmanaged<AnyObject>?
     private typealias IsBuiltInFn = @convention(c) (NSObject, Selector, UInt64) -> ObjCBool
     private typealias GetBrightnessFn = @convention(c) (NSObject, Selector, UInt64) -> Float
     private typealias SetBrightnessFn = @convention(c)
@@ -3116,7 +3118,7 @@ private final class KeyboardLightBridge {
                 client, selector: setSelector, as: SetBrightnessFn.self),
               let suspendIdleDimming: SuspendIdleDimmingFn = Self.implementation(
                 client, selector: suspendSelector, as: SuspendIdleDimmingFn.self),
-              let ids = copyIDs(client, copySelector).takeRetainedValue() as? [NSNumber],
+              let ids = copyIDs(client, copySelector)?.takeRetainedValue() as? [NSNumber],
               let keyboardID = ids.map(\.uint64Value).first(where: {
                   isBuiltIn(client, builtInSelector, $0).boolValue
               })

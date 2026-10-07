@@ -74,6 +74,14 @@ enum SelfTest {
             warnings.append("AirPlay routing unavailable; the mixer does not offer AirPlay")
         }
 
+        // The keyboard light goes through private CoreBrightness calls. A Mac
+        // without a backlit keyboard, CI's virtual machines among them, has
+        // no backlight to list, and asking must answer no rather than crash.
+        // The self-test runs from top-level code, on the main thread.
+        if !MainActor.assumeIsolated({ BrightnessService.keyboardLightIsSupported }) {
+            warnings.append("no keyboard light; the island offers no keyboard light control")
+        }
+
         // Network counters should be readable and never run backwards.
         let net1 = NetworkSampler.readCounters()
         let net2 = NetworkSampler.readCounters()
