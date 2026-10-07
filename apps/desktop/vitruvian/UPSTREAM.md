@@ -2551,7 +2551,10 @@ Run `triage` and commit the ledger, then decide each pending commit:
      `@AppStorage(Preferences.x)`, so its default cannot drift;
    - does not merge `Tests/generate_sources.py`, whose generated test copies
      this fork retired. It reports the change with the upstream patch, so that
-     the test it feeds can be ported as a behavioural test.
+     the test it feeds can be ported as a behavioural test;
+   - does not merge upstream's `Core/Defaults.swift`, which this fork split into
+     `DefaultsKey.swift`, `Preferences.swift` and `Defaults.swift`. It reports
+     the change with the upstream patch, to apply where each part now lives.
 
    It never rewrites upstream's domains, repository or services. Any line that
    still names upstream is reported for brand review. Its `report.md` lists what
