@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.13.0...vitruvian-v3.14.0) (2026-10-07)
+
+
+### Features
+
+* **desktop:** claude code subagent banner and tool execution steps in quick prompt ([#2809](https://github.com/VitruvianSoftware/vitruvian-core/issues/2809)) ([5dab715](https://github.com/VitruvianSoftware/vitruvian-core/commit/5dab715c161a44763f199e51147e81ecfb9ca3a2))
+
 ## [3.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.12.1...vitruvian-v3.13.0) (2026-10-07)
 
 
