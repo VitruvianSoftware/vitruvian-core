@@ -58,6 +58,7 @@ package struct KeepAwakeAutomationEditor: View {
                               addTitle: strings.runningAppsAddButton,
                               removeLabel: strings.runningAppsRemoveButton,
                               bundleIDs: awake.runningAppBundleIDs,
+                              reachesEveryApp: true,
                               onAdd: { saveRunningApps(awake.runningAppBundleIDs + [$0]) },
                               onRemove: { id in saveRunningApps(awake.runningAppBundleIDs.filter { $0 != id }) })
             }
