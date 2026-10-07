@@ -384,7 +384,7 @@ package struct NexusAgentQuickPromptView: View {
     }
 
     private func sessionCard(_ summary: NexusAgentSessionSummary) -> some View {
-        Button { session.resume(summary) } label: {
+        Button { session.resume(summary, configuration: service.configuration) } label: {
             HStack(spacing: 10) {
                 Image(systemName: "bubble.left.and.text.bubble.right").foregroundStyle(.secondary)
                 Text(summary.title.isEmpty ? strings.untitledSession : summary.title)
