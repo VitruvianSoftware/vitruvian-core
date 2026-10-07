@@ -261,6 +261,7 @@ enum NexusAgentTests {
         var agentTerminations = 0
         var sessionList: [NexusAgentSessionSummary] = []
         var listedDirectories: [String] = []
+        var listedProviders: [NexusAgentCLIProvider] = []
         let home = "/Users/rig"
         let state = "/Users/rig/Library/Application Support/NexusAgent"
         var bot: String { home + "/.config/nexus-agent" }
@@ -328,10 +329,12 @@ enum NexusAgentTests {
                     agentExit = onExit
                     return NexusAgentRunningAgent(terminate: { [unowned self] in agentTerminations += 1 })
                 },
-                listSessions: { [unowned self] directory in
+                listSessions: { [unowned self] directory, provider in
                     listedDirectories.append(directory)
+                    listedProviders.append(provider)
                     return sessionList
-                })
+                },
+                readTranscript: { _, _ in nil })
         }
     }
 
@@ -670,6 +673,17 @@ enum NexusAgentTests {
         let allSessions = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "")
         suite.expect(allSessions.map(\.id) == ["c1", "c2", "c3"],
                      "an empty directory keeps all sessions across workspaces: \(allSessions.map(\.id))")
+
+        // Project slug conversion for Claude Code projects
+        suite.expect(NexusAgentSessionSummary.projectSlug(for: "/Users/james/Workspace/gh/application/vitruvian/vitruvian-core")
+                     == "-Users-james-Workspace-gh-application-vitruvian-vitruvian-core",
+                     "projectSlug converts monorepo path to slug")
+        suite.expect(NexusAgentSessionSummary.projectSlug(for: "/Users/james/.buzz")
+                     == "-Users-james--buzz",
+                     "projectSlug converts dot paths to slug")
+        suite.expect(NexusAgentSessionSummary.projectSlug(for: "/Users/james")
+                     == "-Users-james",
+                     "projectSlug converts simple path to slug")
     }
 
     private static func transcriptParsing(_ suite: TestSuite) {
@@ -682,6 +696,17 @@ enum NexusAgentTests {
                      && messages?.first?.role == .user && messages?.first?.text == "Hello agent"
                      && messages?.last?.role == .agent && messages?.last?.text == "Hello! How can I help?",
                      "transcript parses user request and agent response")
+
+        let claudeJsonl = """
+        {"type":"queue-operation","operation":"enqueue","content":"Initial prompt"}
+        {"type":"user","message":{"content":"Explain the architecture"}}
+        {"type":"assistant","message":{"content":[{"type":"text","text":"Here is the architecture breakdown."}]}}
+        """
+        let claudeMessages = NexusAgentService.parseClaudeTranscript(claudeJsonl)
+        suite.expect(claudeMessages?.count == 2
+                     && claudeMessages?[0].role == .user && claudeMessages?[0].text == "Explain the architecture"
+                     && claudeMessages?[1].role == .agent && claudeMessages?[1].text == "Here is the architecture breakdown.",
+                     "parseClaudeTranscript extracts user and assistant messages")
     }
 
     private static func replyBlocks(_ suite: TestSuite) {
@@ -794,6 +819,14 @@ enum NexusAgentTests {
         let ollamaArgs = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil, planMode: true, worktreeMode: false)
         suite.expect(ollamaArgs.contains("launch") && ollamaArgs.contains("claude") && ollamaArgs.contains("--model") && ollamaArgs.contains("qwen2.5-coder:7b") && ollamaArgs.contains("--permission-mode"),
                      "ollama arguments launch claude with model and inner flags")
+
+        // Provider switching triggers session refresh with selected provider
+        let serviceRig = Rig()
+        defer { serviceRig.tearDown() }
+        let service = NexusAgentService(environment: serviceRig.environment)
+        service.updateActiveProvider(.claude)
+        suite.expect(serviceRig.listedProviders.last?.id == NexusAgentCLIProvider.claude.id,
+                     "switching active provider refreshes sessions with the selected provider")
     }
 
     // MARK: - Parity: Metrics & Stream Parsing

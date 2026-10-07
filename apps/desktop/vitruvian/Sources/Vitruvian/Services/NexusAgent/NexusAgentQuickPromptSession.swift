@@ -127,19 +127,24 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         NexusAgentSessionSummary.filter(sessions, by: sessionFilter)
     }
 
-    /// Opens the drawer with a fresh list from agy, or closes it again.
+    /// Opens the drawer with a fresh list from the active provider, or closes it again.
     package func toggleSessions(configuration: NexusAgentConfiguration) {
         if mode == .sessions {
             mode = messages.isEmpty ? .compact : .chat
             return
         }
         sessionFilter = ""
-        sessions = environment.listSessions(sessionsDirectory(for: configuration))
+        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider)
         mode = .sessions
     }
 
-    /// Continues a past conversation: the next turn passes its id to agy.
-    package func resume(_ summary: NexusAgentSessionSummary) {
+    /// Refreshes the session list using the active provider.
+    package func refreshSessions(configuration: NexusAgentConfiguration) {
+        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider)
+    }
+
+    /// Continues a past conversation: the next turn passes its id to the active provider.
+    package func resume(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration = NexusAgentConfiguration()) {
         stop()
         turn += 1
         running = nil
@@ -153,7 +158,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         sessionTitle = effectiveTitle.isEmpty ? nil : effectiveTitle
         isResumed = true
 
-        if let loaded = environment.readTranscript(summary.id), !loaded.isEmpty {
+        if let loaded = environment.readTranscript(summary.id, configuration.activeProvider), !loaded.isEmpty {
             messages = loaded
         } else {
             var restored: [NexusAgentChatMessage] = []
@@ -164,7 +169,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
             let steps = summary.steps > 0 ? " (\(summary.steps) steps)" : ""
             restored.append(NexusAgentChatMessage(
                 role: .agent,
-                text: "Resumed “\(title)”\(steps). agy remembers earlier turns — send a message to continue."
+                text: "Resumed “\(title)”\(steps). \(configuration.activeProvider.name) remembers earlier turns — send a message to continue."
             ))
             messages = restored
         }

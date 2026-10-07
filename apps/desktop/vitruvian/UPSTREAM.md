@@ -2414,6 +2414,11 @@ is that notice. Add an entry for every change to upstream files.
     drop upstream's mark;
   - `Resources/Gifs/commandBar.gif` deleted;
   - `Tools/package-release.sh` and `publish.sh` added (new, not upstream).
+- **2026-10-07**: Provider-aware session history and Claude transcript restoration in Quick Prompt:
+  - `NexusAgentSessionSummary`: added `projectSlug(for:)` mapping path strings to Claude project directory slugs, and `parseClaudeSessions(home:directory:)` discovering and parsing JSONL sessions from `~/.claude/projects/`;
+  - `NexusAgentService`: updated `Environment.listSessions` and `Environment.readTranscript` to be provider-aware with `NexusAgentCLIProvider`, implemented `parseClaudeTranscript` extracting user turns and assistant text blocks, and wired `updateActiveProvider` to refresh sessions when switching providers;
+  - `NexusAgentQuickPromptSession`: updated `toggleSessions` and `resume` to pass active provider, added `refreshSessions(configuration:)`, and updated resumed message fallback to name the active provider;
+  - `NexusAgentTests`: added unit tests for `projectSlug(for:)`, `parseClaudeTranscript`, and provider-aware session refresh on active provider switch.
 - **2026-10-06**: Complete 100% Quick Prompt parity with upstream Nexus Agent:
   - Window pinning: `isPinned` state, `.floating` window level, outside-click dismissal suppression, animated 45° rotation toggle between `pin.circle` and `pin.circle.fill`;
   - Interactive CLI provider switching: `NexusAgentCLIProvider` (Antigravity CLI, Claude Code, Ollama), `ModularProviderButtonView` with `cpu` icon on hover input bar, `ChatProviderBadge` in header, dynamic placeholders;

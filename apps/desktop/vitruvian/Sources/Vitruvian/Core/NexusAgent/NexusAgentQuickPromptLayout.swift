@@ -126,6 +126,130 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
         }
     }
 
+    /// Converts a filesystem path to Claude Code's project directory slug by
+    /// replacing every non-alphanumeric character with `-`.
+    package static func projectSlug(for path: String) -> String {
+        let chars = path.map { char -> Character in
+            if char.isASCII && (char.isLetter || char.isNumber) {
+                return char
+            } else {
+                return "-"
+            }
+        }
+        return String(chars)
+    }
+
+    /// Discovers and parses Claude Code session JSONL files in `~/.claude/projects/`.
+    /// When `directory` is provided (and not home), checks `~/.claude/projects/<slug>`.
+    /// Otherwise scans all project directories under `~/.claude/projects/`.
+    package static func parseClaudeSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
+        let fileManager = FileManager.default
+        let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
+        guard fileManager.fileExists(atPath: claudeProjectsDir) else { return [] }
+
+        var targetDirs: [String] = []
+        let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedDir.isEmpty && trimmedDir != home {
+            let slug = projectSlug(for: normalizePath(trimmedDir))
+            let specificDir = (claudeProjectsDir as NSString).appendingPathComponent(slug)
+            if fileManager.fileExists(atPath: specificDir) {
+                targetDirs.append(specificDir)
+            }
+        }
+        if targetDirs.isEmpty {
+            if let subdirs = try? fileManager.contentsOfDirectory(atPath: claudeProjectsDir) {
+                targetDirs = subdirs.map { (claudeProjectsDir as NSString).appendingPathComponent($0) }
+            }
+        }
+
+        var candidateFiles: [(path: String, modDate: Date)] = []
+        for dir in targetDirs {
+            guard let files = try? fileManager.contentsOfDirectory(atPath: dir) else { continue }
+            for file in files where file.hasSuffix(".jsonl") {
+                let fullPath = (dir as NSString).appendingPathComponent(file)
+                let attrs = try? fileManager.attributesOfItem(atPath: fullPath)
+                let modDate = (attrs?[.modificationDate] as? Date) ?? Date.distantPast
+                candidateFiles.append((path: fullPath, modDate: modDate))
+            }
+        }
+
+        candidateFiles.sort { $0.modDate > $1.modDate }
+        let topCandidates = candidateFiles.prefix(100)
+
+        var summaries: [NexusAgentSessionSummary] = []
+        for candidate in topCandidates {
+            let fileURL = URL(fileURLWithPath: candidate.path)
+            let sessionID = fileURL.deletingPathExtension().lastPathComponent
+
+            guard let content = try? String(contentsOfFile: candidate.path, encoding: .utf8) else { continue }
+            let lines = content.components(separatedBy: "\n").prefix(60)
+
+            var title = ""
+            var preview = ""
+            var steps = 0
+
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty,
+                      let data = trimmed.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let type = json["type"] as? String else { continue }
+
+                if type == "ai-title", let aiTitle = json["aiTitle"] as? String, !aiTitle.isEmpty {
+                    if title.isEmpty { title = aiTitle }
+                } else if type == "queue-operation", let op = json["operation"] as? String, op == "enqueue",
+                          let opContent = json["content"] as? String, !opContent.isEmpty {
+                    if preview.isEmpty { preview = opContent }
+                } else if type == "user" {
+                    steps += 1
+                    if preview.isEmpty {
+                        if let msg = json["message"] as? [String: Any] {
+                            if let text = msg["content"] as? String, !text.isEmpty {
+                                preview = extractUserPrompt(text)
+                            } else if let blocks = msg["content"] as? [[String: Any]] {
+                                let texts = blocks.compactMap { $0["text"] as? String }
+                                if !texts.isEmpty { preview = extractUserPrompt(texts.joined(separator: "\n")) }
+                            }
+                        } else if let text = json["content"] as? String, !text.isEmpty {
+                            preview = extractUserPrompt(text)
+                        }
+                    }
+                } else if type == "assistant" {
+                    steps += 1
+                }
+            }
+
+            if title.isEmpty {
+                let firstLine = preview.split(separator: "\n").first.map(String.init) ?? ""
+                let trimmedFirstLine = firstLine.trimmingCharacters(in: .whitespaces)
+                if !trimmedFirstLine.isEmpty {
+                    title = String(trimmedFirstLine.prefix(100))
+                } else {
+                    title = "Untitled Claude Session"
+                }
+            }
+
+            summaries.append(NexusAgentSessionSummary(
+                id: sessionID,
+                title: title,
+                preview: preview,
+                steps: steps,
+                modified: candidate.modDate == Date.distantPast ? nil : candidate.modDate
+            ))
+        }
+
+        summaries.sort { ($0.modified ?? Date.distantPast) > ($1.modified ?? Date.distantPast) }
+        return summaries
+    }
+
+    package static func extractUserPrompt(_ raw: String) -> String {
+        if let start = raw.range(of: "<USER_REQUEST>"),
+           let end = raw.range(of: "</USER_REQUEST>", range: start.upperBound..<raw.endIndex) {
+            return String(raw[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private static func normalizePath(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("file://") {
