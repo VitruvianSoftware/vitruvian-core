@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.23.1...vitruvian-v3.24.0) (2026-10-07)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 17, edge snapping across displays and launch at login off the main thread ([#2852](https://github.com/VitruvianSoftware/vitruvian-core/issues/2852)) ([3154e14](https://github.com/VitruvianSoftware/vitruvian-core/commit/3154e14c2826250137126164f0a82a5566d6384e))
+
 ## [3.23.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.23.0...vitruvian-v3.23.1) (2026-10-07)
 
 
