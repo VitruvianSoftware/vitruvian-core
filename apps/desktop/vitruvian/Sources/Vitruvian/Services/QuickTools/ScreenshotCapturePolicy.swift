@@ -173,13 +173,13 @@ package enum ScreenshotCapturePolicy {
 
     /// How the clicked window's layer of a composite is taken, which fixes
     /// the scale every layer, the canvas and the reported capture share.
-    enum CompositeTargetCapture: Equatable {
+    package enum CompositeTargetCapture: Equatable {
         /// Its window-server buffer already covers its frame at this scale.
         case buffer(scale: CGFloat)
         /// Recapture it through its own filter at this scale.
         case recapture(scale: CGFloat)
 
-        var scale: CGFloat {
+        package var scale: CGFloat {
             switch self {
             case .buffer(let scale), .recapture(let scale): return scale
             }
