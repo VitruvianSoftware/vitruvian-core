@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.25.0...vitruvian-v3.26.0) (2026-10-07)
+
+
+### Features
+
+* **desktop:** integrate Nexus Agent prompt and live activity into MacBook Notch ([#2877](https://github.com/VitruvianSoftware/vitruvian-core/issues/2877)) ([dd9862d](https://github.com/VitruvianSoftware/vitruvian-core/commit/dd9862d15ee271a363545185eb9918ce1a545dc1))
+
 ## [3.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.24.0...vitruvian-v3.25.0) (2026-10-07)
 
 
