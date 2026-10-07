@@ -64,11 +64,14 @@ package enum ScreenshotCaptureEngine {
         }
     }
 
+    /// `keepsIslandOut` leaves the island out even where it normally shows in
+    /// captures, for a reading that must not see the island itself change.
     package static func prepareDisplayRegion(displayID: CGDirectDisplayID,
                                      pixelRect: CGRect,
                                      includePointer: Bool,
                                      hideVitruvianWindows: Bool,
-                                     protectedWindowIDs: Set<CGWindowID>) async -> RegionCapture? {
+                                     protectedWindowIDs: Set<CGWindowID>,
+                                     keepsIslandOut: Bool = false) async -> RegionCapture? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true),
             let display = content.displays.first(where: { $0.displayID == displayID })
@@ -81,7 +84,8 @@ package enum ScreenshotCaptureEngine {
         guard !clamped.isEmpty else { return nil }
         let ownWindows = await excludedOwnWindows(in: content,
                                             hideVitruvianWindows: hideVitruvianWindows,
-                                            protectedWindowIDs: protectedWindowIDs)
+                                            protectedWindowIDs: protectedWindowIDs,
+                                            keepsIslandOut: keepsIslandOut)
         let filter = SCContentFilter(display: display, excludingWindows: ownWindows)
         let configuration = SCStreamConfiguration()
         configuration.sourceRect = CGRect(x: clamped.minX / scale,
@@ -126,7 +130,8 @@ package enum ScreenshotCaptureEngine {
     /// against the same shareable-content snapshot the capture will use.
     private static func excludedOwnWindows(in content: SCShareableContent,
                                            hideVitruvianWindows: Bool,
-                                           protectedWindowIDs: Set<CGWindowID>) async -> [SCWindow] {
+                                           protectedWindowIDs: Set<CGWindowID>,
+                                           keepsIslandOut: Bool = false) async -> [SCWindow] {
         let ownWindowIDs = Set(content.windows.compactMap { window in
             window.owningApplication?.processID == getpid() ? window.windowID : nil
         })
@@ -149,7 +154,7 @@ package enum ScreenshotCaptureEngine {
         // of hiding the app's ordinary windows and capture tools. During an
         // active on-screen selection it stays excluded regardless, since it is
         // then part of the capture interface and what sits behind it is wanted.
-        if NotchSupport.isEnabled(), !ScreenshotSelectionController.isSessionOnScreen {
+        if !keepsIslandOut, NotchSupport.isEnabled(), !ScreenshotSelectionController.isSessionOnScreen {
             excludedIDs.subtract(NotchService.shared.captureVisibleWindowIDs)
         }
         return excludedIDs
