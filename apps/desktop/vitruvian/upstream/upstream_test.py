@@ -307,6 +307,43 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual({k: loaded.rows[0][k] for k in upstream.COLUMNS}, rows[0])
 
 
+class PathMapTest(unittest.TestCase):
+    def path_map(self, current):
+        paths = upstream.PathMap.__new__(upstream.PathMap)
+        paths.renamed, paths.deleted, paths.at_import = {}, set(), set()
+        paths.current = set(current)
+        paths.by_name = {}
+        for p in current:
+            paths.by_name.setdefault(os.path.basename(p), []).append(p)
+        paths.dir_moves = {"Sources/Vorssaint/Services": "Sources/Vitruvian/Services"}
+        return paths
+
+    def test_a_file_added_since_the_import_lands_where_an_earlier_port_put_it(self):
+        paths = self.path_map(
+            [
+                "Sources/Vitruvian/Core/Notch/Support.swift",
+                "Sources/Vitruvian/Services/Notch/A.swift",
+            ]
+        )
+        self.assertEqual(
+            paths.map("Sources/Vorssaint/Services/Notch/Support.swift"),
+            (
+                "Sources/Vitruvian/Core/Notch/Support.swift",
+                "added upstream since the import, ported earlier",
+            ),
+        )
+
+    def test_a_file_new_to_the_fork_goes_beside_its_siblings(self):
+        paths = self.path_map(["Sources/Vitruvian/Services/Notch/A.swift"])
+        self.assertEqual(
+            paths.map("Sources/Vorssaint/Services/Notch/Fresh.swift"),
+            (
+                "Sources/Vitruvian/Services/Notch/Fresh.swift",
+                "new upstream file, placed beside its siblings",
+            ),
+        )
+
+
 class PackageTest(unittest.TestCase):
     def restore(self, merged, ours):
         return upstream.restore_package(merged.encode(), ours.encode()).decode()

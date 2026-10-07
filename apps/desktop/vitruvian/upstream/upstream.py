@@ -551,7 +551,9 @@ class PathMap:
     Upstream path p was `APP_DIR/p` at the import. Renames since are read from
     git (similarity >= 50%). A file the refactor rewrote past that, or split,
     shows up as removed; a file with the same name elsewhere is offered as a
-    guess. New upstream files go where most of their upstream siblings went.
+    guess. A file upstream added since the import goes to the file of its
+    name an earlier port made, wherever the fork put it, and otherwise where
+    most of its upstream siblings went.
     """
 
     def __init__(self, root, import_commit=IMPORT_COMMIT):
@@ -612,6 +614,9 @@ class PathMap:
             if len(matches) == 1:
                 return matches[0], "guess: same file name"
             return None, "removed or split by the refactor"
+        ported = self.by_name.get(to_fork_line(os.path.basename(upath)), [])
+        if len(ported) == 1:
+            return ported[0], "added upstream since the import, ported earlier"
         return self._new_path(upath), "new upstream file, placed beside its siblings"
 
     def _new_path(self, upath):
