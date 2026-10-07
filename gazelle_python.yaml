@@ -7,7 +7,6 @@
 manifest:
   modules_mapping:
     Crypto: pycryptodome
-    Cryptodome: pycryptodomex
     PIL: pillow
     aiohappyeyeballs: aiohappyeyeballs
     aiohttp: aiohttp
