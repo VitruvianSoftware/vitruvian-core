@@ -642,8 +642,8 @@ importers:
         specifier: ^0.7.3
         version: 0.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/plugin-catalog-backend':
-        specifier: ^3.8.1
-        version: 3.8.1(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(openapi-types@12.1.3)(pg@8.22.0)
+        specifier: ^3.9.1
+        version: 3.9.1(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/plugin-catalog-backend-module-github':
         specifier: ^0.13.4
         version: 0.13.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
@@ -2462,8 +2462,8 @@ packages:
   '@backstage/plugin-catalog-backend-module-scaffolder-entity-model@0.2.22':
     resolution: {integrity: sha512-dU7j3G3UxtaWousVcTPwWsQlFBcTP+ia4MTjzkwAh/khfYK7Nc1nFcEx4o73ch2XtMYn9SYl/0Op1eq5rrl6zw==}
 
-  '@backstage/plugin-catalog-backend@3.8.1':
-    resolution: {integrity: sha512-9IaoX09xAiC113gcGA5j+3sDTTzJVw2nlc6zhqschpXvc/ZHrvhPOHIHr65nOthIsatcu2OcRxSpNlNCmC2FIQ==}
+  '@backstage/plugin-catalog-backend@3.9.1':
+    resolution: {integrity: sha512-CzT0w9fDgQxSB8q0hV6wt7ZOsDuGx8DksRNPDnnA8SBbWwsqedtQQ4Ql6SSyyCTzeKxfl/eYFjmPEhG5zFUsyw==}
 
   '@backstage/plugin-catalog-common@1.1.10':
     resolution: {integrity: sha512-EAKg+wEoqwcb/NhCMgIULHyTYva6bVXXWsf42SqxHOBsBxQyuHcJPiJA/oeRqhO0teT/lR6PkdokfzV+qcr8nA==}
@@ -20448,9 +20448,9 @@ snapshots:
       '@types/express': 4.17.25
       '@types/express-serve-static-core': 4.19.8
       ajv: 8.20.0
-      express: 4.22.2
-      express-openapi-validator: 5.6.2(@types/json-schema@7.0.15)(express@4.22.2)
-      express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.2)
+      express: 4.22.3
+      express-openapi-validator: 5.6.2(@types/json-schema@7.0.15)(express@4.22.3)
+      express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       get-port: 5.1.1
       json-schema-to-ts: 3.1.1
       lodash: 4.18.1
@@ -22163,30 +22163,30 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend@3.8.1(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(openapi-types@12.1.3)(pg@8.22.0)':
+  '@backstage/plugin-catalog-backend@3.9.1(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(openapi-types@12.1.3)(pg@8.22.0)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/backend-plugin-api': 1.9.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
-      '@backstage/catalog-client': 1.16.1(encoding@0.1.13)
-      '@backstage/catalog-model': 1.10.0
-      '@backstage/config': 1.3.8
+      '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
+      '@backstage/catalog-model': 1.10.1
+      '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/filter-predicates': 0.1.4
-      '@backstage/integration': 2.1.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-common': 1.1.10(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
-      '@backstage/plugin-events-node': 0.4.25(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
-      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/filter-predicates': 0.1.5
+      '@backstage/integration': 2.1.2(encoding@0.1.13)
+      '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/types': 1.2.2
       '@opentelemetry/api': 1.9.1
       ajv: 8.20.0
       ajv-errors: 3.0.0(ajv@8.20.0)
       codeowners-utils: 1.0.2
       core-js: 3.50.0
-      express: 4.22.2
+      express: 4.22.3
       fast-json-stable-stringify: 2.1.0
-      fs-extra: 11.4.0
+      fs-extra: 11.4.1
       git-url-parse: 15.0.0
       glob: 13.0.6
       knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.22.0)
@@ -22195,10 +22195,10 @@ snapshots:
       minimatch: 10.2.6
       p-limit: 3.1.0
       prom-client: 15.1.3
-      yaml: 2.9.0
+      yaml: 2.9.1
       yn: 4.0.0
-      zod: 4.4.3
-      zod-validation-error: 5.0.0(zod@4.4.3)
+      zod: 4.6.5
+      zod-validation-error: 5.0.0(zod@4.6.5)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
       - '@types/json-schema'
@@ -22208,7 +22208,6 @@ snapshots:
       - mariadb
       - mysql
       - mysql2
-      - openapi-types
       - pg
       - pg-native
       - pg-query-stream
@@ -22313,7 +22312,7 @@ snapshots:
       '@backstage/catalog-client': 1.16.1(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.0
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-catalog-common': 1.1.10(encoding@0.1.13)
+      '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
       '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
       '@backstage/plugin-permission-node': 0.11.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/types': 1.2.2
@@ -22660,7 +22659,7 @@ snapshots:
   '@backstage/plugin-kubernetes-node@0.4.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
     dependencies:
       '@backstage/backend-plugin-api': 1.9.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
-      '@backstage/catalog-model': 1.10.0
+      '@backstage/catalog-model': 1.10.1
       '@backstage/plugin-kubernetes-common': 0.9.12(encoding@0.1.13)
       '@backstage/types': 1.2.2
       '@kubernetes/client-node': 1.4.0(encoding@0.1.13)
@@ -24706,7 +24705,7 @@ snapshots:
 
   '@httptoolkit/httpolyglot@2.2.2':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 26.6.4
 
   '@httptoolkit/subscriptions-transport-ws@0.11.2(graphql@15.10.3)':
     dependencies:
@@ -26719,7 +26718,7 @@ snapshots:
       '@gar/promise-retry': 1.0.3
       '@npmcli/promise-spawn': 9.0.1
       ini: 6.0.0
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
       npm-pick-manifest: 11.0.3
       proc-log: 6.1.0
       semver: 7.8.5
@@ -33471,7 +33470,7 @@ snapshots:
 
   destroyable-server@1.1.1:
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 26.6.4
 
   detect-libc@2.1.2: {}
 
@@ -34421,26 +34420,6 @@ snapshots:
   exponential-backoff@3.1.3: {}
 
   expr-eval-fork@3.0.3: {}
-
-  express-openapi-validator@5.6.2(@types/json-schema@7.0.15)(express@4.22.2):
-    dependencies:
-      '@apidevtools/json-schema-ref-parser': 14.2.1(@types/json-schema@7.0.15)
-      '@types/multer': 2.3.0
-      ajv: 8.20.0
-      ajv-draft-04: 1.0.0(ajv@8.20.0)
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      content-type: 1.0.5
-      express: 4.22.2
-      json-schema-traverse: 1.0.0
-      lodash.clonedeep: 4.5.0
-      lodash.get: 4.4.2
-      media-typer: 1.1.1
-      multer: 2.4.0
-      ono: 7.1.3
-      path-to-regexp: 8.4.2
-      qs: 6.16.0
-    transitivePeerDependencies:
-      - '@types/json-schema'
 
   express-openapi-validator@5.6.2(@types/json-schema@7.0.15)(express@4.22.3):
     dependencies:
@@ -41499,7 +41478,7 @@ snapshots:
 
   read-tls-client-hello@1.1.0:
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 26.6.4
 
   read-yaml-file@1.1.0:
     dependencies:
