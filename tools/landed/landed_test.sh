@@ -136,8 +136,28 @@ out="$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" PATH="${bin}:${PATH}"
 check "no argument -> usage error" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 rm -rf "${repo}" "${bin}"
 
+# --- 7. fallback when gh fails but squashed commit exists on origin/main -----
+repo="$(new_repo)"; bin="$(mktemp -d)"
+(
+  cd "${repo}" || exit 1
+  echo change > f.txt
+  git add -A
+  git commit -qm "the change (#42)"
+  git update-ref refs/remotes/origin/main refs/heads/main
+) >/dev/null 2>&1
+cat > "${bin}/gh" << 'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "${bin}/gh"
+run "${repo}" "${bin}" 42
+check "fallback: squashed commit on origin/main reports LANDED when gh fails" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+case "${out}" in *commit\ log*) check "...and notes it was resolved via commit log" 0 ;; *) check "...and notes it was resolved via commit log" 1 ;; esac
+rm -rf "${repo}" "${bin}"
+
 echo
 if [ "${FAIL}" -ne 0 ]; then
   printf '\033[31mFAIL\033[0m — %d passed, %d failed\n' "${PASS}" "${FAIL}"; exit 1
 fi
 printf '\033[32mPASS\033[0m — %d passed\n' "${PASS}"
+
