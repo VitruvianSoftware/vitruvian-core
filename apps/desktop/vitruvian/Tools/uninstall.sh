@@ -50,7 +50,49 @@ read_sleep_disabled() {
     pmset -g 2>/dev/null | awk '/SleepDisabled/ { print $2 }'
 }
 
-# What fixed Space order leaves behind once the app is gone, from the restore
+# A readable domain with a missing key is different from a failed read. Export
+# the whole domain first, including an empty dictionary when it does not exist.
+spaces_read_domain() {
+    local snapshot
+    snapshot="$(defaults export "$1" - 2>/dev/null)" || return 1
+    /usr/bin/plutil -lint -s - <<< "$snapshot" >/dev/null 2>&1 || return 1
+    print -r -- "$snapshot"
+}
+
+spaces_recovery_value() {
+    local snapshot=$1 key=$2 kind value
+    kind="$(/usr/bin/plutil -type "$key" - <<< "$snapshot" 2>/dev/null)" || return 0
+    [[ "$kind" == string ]] || return 1
+    value="$(/usr/bin/plutil -extract "$key" raw -o - - <<< "$snapshot" 2>/dev/null)" || return 1
+    [[ -n "$value" ]] || return 1
+    print -r -- "$value"
+}
+
+spaces_dock_preference() {
+    local snapshot kind value
+    snapshot="$(spaces_read_domain com.apple.dock)" || { print unknown; return; }
+    kind="$(/usr/bin/plutil -type mru-spaces - <<< "$snapshot" 2>/dev/null)" || return 0
+    value="$(/usr/bin/plutil -extract mru-spaces raw -o - - <<< "$snapshot" 2>/dev/null)" \
+        || { print unknown; return; }
+    case "$kind:$value" in
+        bool:false|integer:0) print 0 ;;
+        bool:true|integer:1) print 1 ;;
+        *) print unknown ;;
+    esac
+}
+
+spaces_dock_pid() {
+    local pids result
+    if pids="$(pgrep -x -U "$UID" Dock 2>/dev/null)"; then
+        [[ -n "$pids" ]] && print -r -- "${pids%%$'\n'*}" || print unknown
+    else
+        result=$?
+        [[ "$result" == 1 ]] || print unknown
+    fi
+    return 0
+}
+
+# What fixed Space order still owes, from the restore
 # marker, the journal of a restart the Dock still owes, the Dock's mru-spaces
 # value and the running Dock's process: "stuck" while rearranging is still off,
 # "unloaded" while it is back on but the Dock keeps a fixed order until it
@@ -59,15 +101,39 @@ read_sleep_disabled() {
 # while the same Dock process runs and the preference still reads as written:
 # a Dock that restarted since has read it, and any other value is a later
 # change the Dock applied itself. An "off" marker owes nothing: rearranging was
-# already off when the feature turned on, so it is the user's own.
+# already off when the feature turned on, so it is the user's own. An
+# inconclusive read is unknown while recovery is recorded, never absent.
 spaces_leftover() {
     local owed=$1 journal=$2 preference=$3 dock_pid=$4
-    local journal_pid journal_runs journal_wrote reads
+    local journal_pid journal_runs journal_wrote reads=""
+    [[ ( -z "$owed" || "$owed" == off ) && -z "$journal" ]] && return 0
+    case "$owed" in
+        ""|absent|on|off) ;;
+        *) print unknown; return ;;
+    esac
+    if [[ "$preference" == unknown || ( -n "$journal" && "$dock_pid" == unknown ) ]]; then
+        print unknown
+        return
+    fi
     read -r journal_pid journal_runs journal_wrote <<< "$journal"
+    if [[ -n "$journal" ]]; then
+        if [[ "$journal_pid" != <-> || "$journal_runs" != (fixed|rearranging) || -z "$journal_wrote" ]]; then
+            print unknown
+            return
+        fi
+        local written
+        for written in ${=journal_wrote}; do
+            case "$written" in
+                absent|on|off) ;;
+                *) print unknown; return ;;
+            esac
+        done
+    fi
     case "$preference" in
         0) reads=off ;;
         1) reads=on ;;
         "") reads=absent ;;
+        *) print unknown; return ;;
     esac
     if [[ -n "$owed" && "$owed" != off && "$preference" == "0" ]]; then
         print stuck
@@ -75,6 +141,12 @@ spaces_leftover() {
             && " $journal_wrote " == *" $reads "* ]]; then
         print unloaded
     fi
+}
+
+spaces_removal_state() {
+    local owed=$1 journal=$2
+    [[ ( -z "$owed" || "$owed" == off ) && -z "$journal" ]] && return 0
+    spaces_leftover "$owed" "$journal" "$(spaces_dock_preference)" "$(spaces_dock_pid)"
 }
 
 echo "▸ Quitting…"
@@ -119,10 +191,23 @@ sleep_was_ours=0
 # marker once the setting is back, so one still here means that restore failed
 # or never ran (an app trashed by hand). It is read here for the same reason
 # as the sleep flag above.
-spaces_owed="$(defaults read "$BUNDLE" spacesOrderRestore 2>/dev/null)"
-# The journal of a restart the Dock still owes. Kept apart from the marker,
-# which is gone once the setting is back.
-spaces_journal="$(defaults read "$BUNDLE" spacesOrderRestartPending 2>/dev/null)"
+if ! spaces_snapshot="$(spaces_read_domain "$BUNDLE")" \
+    || ! spaces_owed="$(spaces_recovery_value "$spaces_snapshot" spacesOrderRestore)" \
+    || ! spaces_journal="$(spaces_recovery_value "$spaces_snapshot" spacesOrderRestartPending)"; then
+    print -u2 "Could not read Space arrangement recovery. The app and its preferences were kept."
+    print -u2 "Try uninstalling again when the preferences can be read."
+    exit 1
+fi
+spaces_before_removal="$(spaces_removal_state "$spaces_owed" "$spaces_journal")"
+if [[ -n "$spaces_before_removal" ]]; then
+    case "$spaces_before_removal" in
+        stuck) print -u2 "Space rearranging has not been restored." ;;
+        unloaded) print -u2 "The Dock has not loaded the restored Space arrangement yet." ;;
+        *) print -u2 "Could not confirm that Space rearranging was restored." ;;
+    esac
+    print -u2 "The app and its recovery preferences were kept. Try uninstalling again."
+    exit 1
+fi
 
 echo "▸ Resetting permissions (Accessibility, Screen Recording)…"
 tccutil reset All "$BUNDLE" >/dev/null 2>&1 || true
@@ -164,13 +249,14 @@ fi
 # Dock's preference; changing it is left to the user.
 spaces_stuck=0
 spaces_unloaded=0
-case "$(spaces_leftover "$spaces_owed" "$spaces_journal" \
-            "$(defaults read com.apple.dock mru-spaces 2>/dev/null)" "$(pgrep -x -U "$UID" Dock | head -1)")" in
+spaces_unknown=0
+case "$(spaces_removal_state "$spaces_owed" "$spaces_journal")" in
     stuck) spaces_stuck=1 ;;
     unloaded) spaces_unloaded=1 ;;
+    unknown) spaces_unknown=1 ;;
 esac
 
-if (( detached == 0 && sleep_stuck == 0 && sleep_unknown == 0 && spaces_stuck == 0 && spaces_unloaded == 0 )); then
+if (( detached == 0 && sleep_stuck == 0 && sleep_unknown == 0 && spaces_stuck == 0 && spaces_unloaded == 0 && spaces_unknown == 0 )); then
     echo "✓ Vitruvian fully removed."
     exit 0
 fi
@@ -198,5 +284,9 @@ if (( spaces_unloaded )); then
     echo "⚠ Vitruvian removed, but the Dock still keeps Spaces in a fixed order." >&2
     echo "  Space rearranging was put back on, and the Dock reads it when it restarts." >&2
     echo "  Log out and back in to finish." >&2
+fi
+if (( spaces_unknown )); then
+    print -u2 "Vitruvian removed, but whether Space rearranging was restored could not be confirmed."
+    print -u2 "Check Automatically rearrange Spaces based on most recent use in System Settings."
 fi
 exit 1

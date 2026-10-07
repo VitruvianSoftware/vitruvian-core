@@ -14,15 +14,15 @@ enum SpacesOrderTests {
     /// signal, so it is `@unchecked Sendable`.
     nonisolated final class FakeDock: @unchecked Sendable {
         var value: SpacesRearrangeSetting
-        var liveAvailable = true
-        var liveApplies = true
         var writable = true
+        var writeAppliesOnFailure = false
+        var unreadableAfterWriteFailure = false
+        var readable = true
         var restartSucceeds = true
         /// The running Dock's process; a restart that succeeds replaces it.
         var dockPID: pid_t? = 500
         var events: [String] = []
         var reads = 0
-        var pauses = 0
         /// The user's own change in System Settings, landing right after the
         /// first read, on the same thread as that read.
         var changeAfterFirstRead: SpacesRearrangeSetting?
@@ -59,32 +59,27 @@ enum SpacesOrderTests {
             SpacesOrderSystem(
                 read: {
                     if self.reads == 0, self.firstReadDelay > 0 { usleep(self.firstReadDelay) }
-                    let current = self.value
+                    let current: SpacesRearrangeSetting = self.readable ? self.value : .unreadable
                     if self.reads == 0, let change = self.changeAfterFirstRead { self.value = change }
                     self.reads += 1
                     self.readSignals.signal()
                     return current
                 },
-                setLive: { rearranging in
-                    guard self.liveAvailable else { return false }
-                    self.record("live(\(rearranging))")
-                    if self.liveApplies { self.value = rearranging ? .on : .off }
-                    return true
-                },
                 write: { rearranging in
                     self.record("write(\(rearranging.map { String($0) } ?? "nil"))")
                     self.journalAtWrites.append(self.defaults.string(forKey: DefaultsKey.spacesOrderRestartPending))
-                    guard self.writable else { return false }
-                    self.value = rearranging.map { $0 ? .on : .off } ?? .absent
-                    return true
+                    if self.writable || self.writeAppliesOnFailure {
+                        self.value = rearranging.map { $0 ? .on : .off } ?? .absent
+                    }
+                    if !self.writable, self.unreadableAfterWriteFailure { self.readable = false }
+                    return self.writable
                 },
                 restartDock: {
                     self.record("restart")
                     if self.restartSucceeds { self.dockPID = (self.dockPID ?? 0) + 1 }
                     return self.restartSucceeds
                 },
-                dockPID: { self.dockPID },
-                pause: { self.pauses += 1 }
+                dockPID: { self.dockPID }
             )
         }
     }
@@ -104,6 +99,17 @@ enum SpacesOrderTests {
         let absent = SpacesOrderSupport.restoreAbsent
         let on = SpacesOrderSupport.restoreOn
         let off = SpacesOrderSupport.restoreOff
+
+        // Publication runs on main and recovery cleanup returns to the service
+        // queue. Wait for both without blocking a main-queue defaults observer.
+        func finishLetGo(_ result: Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(3)
+            while (defaults.bool(forKey: DefaultsKey.spacesOrderEnabled)
+                   || defaults.object(forKey: marker) != nil), Date() < deadline {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+            return result
+        }
 
         func setMarker(_ value: String?) {
             if let value {
@@ -206,9 +212,9 @@ enum SpacesOrderTests {
         // MARK: Turning rearranging off
 
         var (hold, dock) = make(.absent)
-        suite.expect(hold.reconcile(wanted: true) && dock.events == ["live(false)"]
+        suite.expect(hold.reconcile(wanted: true) && dock.events == ["write(false)", "restart"]
                      && dock.value == .off && defaults.string(forKey: marker) == absent,
-                     "the Dock's own call turns rearranging off without a write or a restart")
+                     "a persisted write turns rearranging off with one Dock restart")
         suite.expect(dock.markerAtFirstCall == absent,
                      "the state to put back is saved before the system setting changes")
 
@@ -226,27 +232,16 @@ enum SpacesOrderTests {
                      "a relaunch with the setting already applied never touches or restarts the Dock")
 
         (hold, dock) = make(.absent)
-        dock.liveAvailable = false
         suite.expect(hold.reconcile(wanted: true) && dock.events == ["write(false)", "restart"]
                      && dock.value == .off && defaults.string(forKey: marker) == absent,
-                     "without the Dock's call the preference is written and the Dock restarts once")
+                     "an ordinary hold writes its preference and restarts the Dock once")
 
         (hold, dock) = make(.absent)
-        dock.liveApplies = false
-        suite.expect(hold.reconcile(wanted: true)
-                     && dock.events == ["live(false)", "write(false)", "restart"]
-                     && dock.reads == 1 + SpacesOrderSupport.confirmAttempts
-                     && dock.pauses == SpacesOrderSupport.confirmAttempts,
-                     "an unconfirmed live call waits out its checks, then writes and restarts exactly once")
-
-        (hold, dock) = make(.absent)
-        dock.liveAvailable = false
         dock.writable = false
         suite.expect(!hold.reconcile(wanted: true) && dock.events == ["write(false)"]
                      && defaults.object(forKey: marker) == nil && owed() == nil,
                      "a hold that changed nothing removes the marker it created and never restarts the Dock")
         (hold, dock) = make(.absent)
-        dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.reconcile(wanted: true) && dock.value == .off
                      && defaults.string(forKey: marker) == absent && owed() == .rearranging,
@@ -265,48 +260,70 @@ enum SpacesOrderTests {
                      && dock.value == .off && defaults.string(forKey: marker) == absent && owed() == nil,
                      "a restart that finally runs finishes the hold and keeps what to put back")
 
-        // A live call the Dock accepted can still land after its checks ran
-        // out, so a failed hold that made one still owes the user's setting.
-        for start in [SpacesRearrangeSetting.absent, .on] {
-            (hold, dock) = make(start)
-            dock.liveApplies = false
-            dock.writable = false
-            suite.expect(!hold.reconcile(wanted: true) && dock.events == ["live(false)", "write(false)"]
-                         && dock.value == start
-                         && defaults.string(forKey: marker) == (start == .absent ? absent : on),
-                         "an accepted but unconfirmed live call whose write also failed keeps its marker (from: \(start))")
-        }
-        dock.value = .off
-        dock.liveApplies = true
+        // A failed write can have landed even when its synchronization reports
+        // failure. Keep both recovery records until the Dock catches up.
+        (hold, dock) = make(.on)
+        dock.writable = false
+        dock.writeAppliesOnFailure = true
+        suite.expect(!hold.reconcile(wanted: true) && dock.value == .off
+                     && defaults.string(forKey: marker) == on && owed() == .rearranging,
+                     "a partially applied hold keeps recovery when write reports failure")
+        dock.writable = true
         dock.events = []
-        suite.expect(hold.reconcile(wanted: false) && dock.events == ["live(true)"]
-                     && dock.value == .on && defaults.object(forKey: marker) == nil,
-                     "a live change that lands after a failed hold is still put back by the kept marker")
+        suite.expect(hold.restoreForRemoval() && dock.value == .on
+                     && defaults.object(forKey: marker) == nil && owed() == nil,
+                     "removal restores a hold whose write reported failure after changing the value")
+
+        (hold, dock) = make(.off, marker: on)
+        dock.writable = false
+        dock.writeAppliesOnFailure = true
+        suite.expect(!hold.restoreForRemoval() && dock.value == .on && owed() == .fixed,
+                     "a partially applied restore does not report removal complete before the restart")
+        dock.restartSucceeds = false
+        suite.expect(!hold.restoreForRemoval() && owed() == .fixed,
+                     "a failed restart after a partial write retains its recovery")
+        dock.restartSucceeds = true
+        suite.expect(hold.restoreForRemoval() && dock.value == .on && owed() == nil,
+                     "a partial restore finishes only after its restart succeeds")
+
+        (hold, dock) = make(.on)
+        dock.writable = false
+        dock.writeAppliesOnFailure = true
+        dock.unreadableAfterWriteFailure = true
+        suite.expect(!hold.reconcile(wanted: true) && defaults.string(forKey: marker) == on
+                     && journal() == owedBy500(.rearranging, .off),
+                     "an unreadable result after a failed write keeps both recovery records")
+        suite.expect(!hold.restoreForRemoval() && defaults.string(forKey: marker) == on
+                     && journal() == owedBy500(.rearranging, .off),
+                     "removal cannot forget recovery while the system preference cannot be read")
+        dock.readable = true
+        dock.writable = true
+        let recovered = SpacesOrderHold(defaults: defaults, system: dock.system)
+        suite.expect(recovered.restoreForRemoval() && dock.value == .on
+                     && defaults.object(forKey: marker) == nil && owed() == nil,
+                     "a new service restores the recorded partial write once the preference is readable")
 
         // MARK: Putting the user's setting back
 
         (hold, dock) = make(.off, marker: absent)
-        suite.expect(hold.reconcile(wanted: false) && dock.events == ["live(true)", "write(nil)"]
+        suite.expect(hold.reconcile(wanted: false) && dock.events == ["write(nil)", "restart"]
                      && dock.value == .absent && defaults.object(forKey: marker) == nil,
-                     "a setting that started missing is turned back on and its key removed, without a restart")
+                     "a setting that started missing is removed and loaded with one restart")
         (hold, dock) = make(.off, marker: on)
-        suite.expect(hold.reconcile(wanted: false) && dock.events == ["live(true)"]
+        suite.expect(hold.reconcile(wanted: false) && dock.events == ["write(true)", "restart"]
                      && dock.value == .on && defaults.object(forKey: marker) == nil,
                      "a setting that started on is turned back on and left explicit")
 
         (hold, dock) = make(.off, marker: absent)
-        dock.liveAvailable = false
         suite.expect(hold.reconcile(wanted: false) && dock.events == ["write(nil)", "restart"]
                      && dock.value == .absent && defaults.object(forKey: marker) == nil,
-                     "without the Dock's call a missing key is restored with one restart")
+                     "a missing key is restored with one restart")
         (hold, dock) = make(.off, marker: on)
-        dock.liveAvailable = false
         suite.expect(hold.reconcile(wanted: false) && dock.events == ["write(true)", "restart"]
                      && dock.value == .on,
-                     "without the Dock's call an explicit on is restored with one restart")
+                     "an explicit on is restored with one restart")
 
         (hold, dock) = make(.off, marker: absent)
-        dock.liveAvailable = false
         dock.writable = false
         suite.expect(!hold.reconcile(wanted: false) && dock.value == .off
                      && defaults.string(forKey: marker) == absent,
@@ -319,7 +336,6 @@ enum SpacesOrderTests {
         // A restore whose restart failed already reads back on, which alone
         // would pass for a setting the Dock already runs.
         (hold, dock) = make(.off, marker: absent)
-        dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.reconcile(wanted: false) && dock.events == ["write(nil)", "restart"]
                      && dock.value == .absent && defaults.object(forKey: marker) == nil && owed() == .fixed,
@@ -341,7 +357,6 @@ enum SpacesOrderTests {
         defaults.set(true, forKey: DefaultsKey.spacesOrderEnabled)
         defaults.set(true, forKey: AppFeature.spacesOrder.availabilityKey)
         (hold, dock) = make(.off, marker: absent)
-        dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.reconcile(wanted: false) && owed() == .fixed
                      && !hold.letGoIfRearrangingReturned() && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
@@ -356,16 +371,15 @@ enum SpacesOrderTests {
                      && defaults.string(forKey: marker) == absent && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
                      "a later sync finds nothing left to change")
         (hold, dock) = make(.absent, journal: owedBy500(.fixed, .absent))
-        suite.expect(hold.reconcile(wanted: true) && dock.events == ["live(false)"]
+        suite.expect(hold.reconcile(wanted: true) && dock.events == ["write(false)"]
                      && dock.value == .off && defaults.string(forKey: marker) == absent && owed() == nil
                      && defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
-                     "the Dock's own call applies the latest toggle over an owed restore")
+                     "the latest toggle writes over an owed restore without restarting a Dock already fixed")
 
         // A restart owed by one Dock process is not owed by the next: after a
         // hold's restart failed, the Dock can restart on its own, read the
         // preference and keep a fixed order.
         (hold, dock) = make(.absent)
-        dock.liveAvailable = false
         dock.restartSucceeds = false
         _ = hold.reconcile(wanted: true)
         dock.dockPID = 900
@@ -387,12 +401,11 @@ enum SpacesOrderTests {
         for check in ["watch", "sync"] {
             defaults.set(true, forKey: DefaultsKey.spacesOrderEnabled)
             (hold, dock) = make(.absent)
-            dock.liveAvailable = false
-            dock.restartSucceeds = false
+                dock.restartSucceeds = false
             _ = hold.reconcile(wanted: true)
             dock.value = .on
             dock.events = []
-            let letGo = check == "watch" ? hold.letGoIfRearrangingReturned() : hold.reconcile(wanted: true)
+            let letGo = finishLetGo(check == "watch" ? hold.letGoIfRearrangingReturned() : hold.reconcile(wanted: true))
             suite.expect(letGo && dock.events.isEmpty && dock.value == .on
                          && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
                          "a change made in System Settings after a failed restart lets go instead of holding again (\(check))")
@@ -404,7 +417,7 @@ enum SpacesOrderTests {
         // the preference is written, or right after that write, before the
         // restart. Either way the next launch finishes the change.
         (hold, dock) = make(.off, marker: absent, journal: owedBy500(.fixed, .absent))
-        suite.expect(hold.reconcile(wanted: false) && dock.events == ["live(true)", "write(nil)"]
+        suite.expect(hold.reconcile(wanted: false) && dock.events == ["write(nil)", "restart"]
                      && dock.value == .absent && defaults.object(forKey: marker) == nil && owed() == nil,
                      "a restore stopped before its write is written again at the next launch")
         (hold, dock) = make(.absent, marker: absent, journal: owedBy500(.fixed, .absent))
@@ -414,7 +427,7 @@ enum SpacesOrderTests {
         // Nothing shows that a hold's write never landed rather than being
         // undone in System Settings, so the user's choice wins.
         (hold, dock) = make(.absent, marker: absent, journal: owedBy500(.rearranging, .off))
-        suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty && dock.value == .absent
+        suite.expect(finishLetGo(hold.reconcile(wanted: true)) && dock.events.isEmpty && dock.value == .absent
                      && defaults.object(forKey: marker) == nil && owed() == nil
                      && !defaults.bool(forKey: DefaultsKey.spacesOrderEnabled),
                      "a hold stopped before its write lets go like any rearranging found back on")
@@ -454,21 +467,19 @@ enum SpacesOrderTests {
                          "removal over a hold that found rearranging off succeeds without touching the Dock (reads: \(start))")
         }
         (hold, dock) = make(.off, marker: absent)
-        suite.expect(hold.restoreForRemoval() && dock.events == ["live(true)", "write(nil)"]
+        suite.expect(hold.restoreForRemoval() && dock.events == ["write(nil)", "restart"]
                      && dock.value == .absent && defaults.object(forKey: marker) == nil,
                      "removal turns rearranging back on, removes a key that started missing and clears the marker")
         (hold, dock) = make(.off, marker: on)
-        suite.expect(hold.restoreForRemoval() && dock.events == ["live(true)"]
+        suite.expect(hold.restoreForRemoval() && dock.events == ["write(true)", "restart"]
                      && dock.value == .on && defaults.object(forKey: marker) == nil,
                      "removal turns rearranging back on as an explicit on and clears the marker")
         (hold, dock) = make(.off, marker: absent)
-        dock.liveAvailable = false
         dock.writable = false
         suite.expect(!hold.restoreForRemoval() && dock.events == ["write(nil)"]
                      && dock.value == .off && defaults.string(forKey: marker) == absent,
                      "a removal whose restore failed reports it and keeps the marker")
         (hold, dock) = make(.off, marker: absent)
-        dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.restoreForRemoval() && !hold.restoreForRemoval()
                      && dock.events == ["write(nil)", "restart", "restart"]
@@ -499,9 +510,10 @@ enum SpacesOrderTests {
         (hold, dock) = make(.absent)
         dock.firstReadDelay = 200_000
         hold.syncWithPreferences()
-        suite.expect(hold.restoreForRemoval() && dock.events == ["live(false)", "live(true)", "write(nil)"]
+        suite.expect(hold.restoreForRemoval()
+                     && (dock.events.isEmpty || dock.events == ["write(false)", "restart", "write(nil)", "restart"])
                      && dock.value == .absent && defaults.object(forKey: marker) == nil,
-                     "removal waits for a sync still on the hold's queue and puts back what it held")
+                     "removal cancels a stale queued hold or restores one already applied")
         defaults.removeObject(forKey: DefaultsKey.spacesOrderEnabled)
         defaults.removeObject(forKey: AppFeature.spacesOrder.availabilityKey)
 
@@ -510,12 +522,12 @@ enum SpacesOrderTests {
         let enabled = DefaultsKey.spacesOrderEnabled
         defaults.set(true, forKey: enabled)
         (hold, dock) = make(.on, marker: absent)
-        suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty && dock.value == .on
+        suite.expect(finishLetGo(hold.reconcile(wanted: true)) && dock.events.isEmpty && dock.value == .on
                      && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled),
                      "a sync that finds rearranging back on keeps it and turns the feature off to match")
         defaults.set(true, forKey: enabled)
         (hold, dock) = make(.absent, marker: on)
-        suite.expect(hold.reconcile(wanted: true) && dock.events.isEmpty && dock.value == .absent
+        suite.expect(finishLetGo(hold.reconcile(wanted: true)) && dock.events.isEmpty && dock.value == .absent
                      && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled),
                      "a key removed while the feature was on is never turned off again")
 
@@ -527,7 +539,7 @@ enum SpacesOrderTests {
                      && defaults.string(forKey: marker) == absent && defaults.bool(forKey: enabled),
                      "the check leaves a setting still held off alone")
         dock.value = .on
-        suite.expect(hold.letGoIfRearrangingReturned() && dock.events.isEmpty
+        suite.expect(finishLetGo(hold.letGoIfRearrangingReturned()) && dock.events.isEmpty
                      && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled),
                      "the check notices rearranging turned back on and turns the feature off")
         defaults.set(true, forKey: enabled)
@@ -545,7 +557,7 @@ enum SpacesOrderTests {
                          && defaults.string(forKey: marker) == off && defaults.bool(forKey: enabled),
                          "fixed order over rearranging already off holds it without changing the Dock (\(check))")
             dock.value = .on
-            let letGo = check == "watch" ? hold.letGoIfRearrangingReturned() : hold.reconcile(wanted: true)
+            let letGo = finishLetGo(check == "watch" ? hold.letGoIfRearrangingReturned() : hold.reconcile(wanted: true))
             suite.expect(letGo && dock.events.isEmpty && dock.value == .on
                          && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled),
                          "rearranging turned back on over a hold that found it off lets go (\(check))")
@@ -578,11 +590,13 @@ enum SpacesOrderTests {
                      && dock.events.isEmpty && dock.value == .on && dock.reads == 2,
                      "a Space change after rearranging is turned back on turns the feature off")
 
-        // Letting go hands the marker and the toggle back on the main thread.
+        // Letting go publishes the toggle on main and clears recovery on the service queue.
         // Starts a let-go with `trigger`, checks that nothing changed while the
         // main run loop is not running, then runs it until the marker is gone
         // and the toggle reads off. Reports, for each of those two changes,
-        // whether it was made on the main thread; nil when it never came.
+        // whether its expected thread delivered a notification. The marker
+        // cleanup and toggle publication can overlap, so either notification
+        // may already see both values changed.
         func letGoOnMain(_ dock: FakeDock, _ trigger: () -> Void)
             -> (heldUntilMain: Bool, markerOnMain: Bool?, toggleOnMain: Bool?) {
             let lock = NSLock()
@@ -594,8 +608,8 @@ enum SpacesOrderTests {
                 let markerGone = defaults.object(forKey: marker) == nil
                 let toggleOff = !defaults.bool(forKey: enabled)
                 lock.withLock {
-                    if markerGone, markerOnMain.value == nil { markerOnMain.value = onMain }
-                    if toggleOff, toggleOnMain.value == nil { toggleOnMain.value = onMain }
+                    if markerGone, !onMain, markerOnMain.value == nil { markerOnMain.value = false }
+                    if toggleOff, onMain, toggleOnMain.value == nil { toggleOnMain.value = true }
                 }
             }
             defer { NotificationCenter.default.removeObserver(token) }
@@ -618,10 +632,10 @@ enum SpacesOrderTests {
         let syncLetGo = letGoOnMain(dock) { hold.syncWithPreferences() }
         suite.expect(syncLetGo.heldUntilMain,
                      "a sync that finds rearranging back on leaves the marker and the toggle until the main thread lets go")
-        suite.expect(syncLetGo.markerOnMain == true && syncLetGo.toggleOnMain == true
+        suite.expect(syncLetGo.markerOnMain == false && syncLetGo.toggleOnMain == true
                      && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled)
                      && dock.events.isEmpty && dock.value == .on,
-                     "a sync that finds rearranging back on clears the marker and turns the feature off on the main thread")
+                     "a sync that finds rearranging back on clears recovery on the service queue and publishes the toggle on main")
 
         defaults.set(true, forKey: enabled)
         (hold, dock) = make(.off, marker: absent)
@@ -638,10 +652,92 @@ enum SpacesOrderTests {
         suite.expect(checkLetGoResult.heldUntilMain,
                      "the check run off the main thread leaves the marker and the toggle until the main thread lets go")
         suite.expect(checkDone.wait(timeout: .now() + 3) == .success && checkLetGo.value
-                     && checkLetGoResult.markerOnMain == true && checkLetGoResult.toggleOnMain == true
+                     && checkLetGoResult.markerOnMain == false && checkLetGoResult.toggleOnMain == true
                      && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled)
                      && dock.events.isEmpty && dock.value == .on,
-                     "the check run off the main thread clears the marker and turns the feature off on the main thread")
+                     "the check run off the main thread clears recovery on the service queue and publishes the toggle on main")
+        defaults.removeObject(forKey: enabled)
+        defaults.removeObject(forKey: available)
+
+        // A reply queued before an off/on cycle cannot erase the new hold,
+        // even when the new marker has exactly the same string value.
+        defaults.set(true, forKey: available)
+        defaults.set(true, forKey: enabled)
+        (hold, dock) = make(.on, marker: on)
+        let staleHold = hold
+        let staleQueued = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            _ = staleHold.letGoIfRearrangingReturned()
+            staleQueued.signal()
+        }
+        suite.expect(staleQueued.wait(timeout: .now() + 3) == .success,
+                     "the previous hold queued its main-thread reply")
+        defaults.set(false, forKey: enabled)
+        suite.expect(hold.reconcile(wanted: false), "the previous hold releases before a new one starts")
+        defaults.set(true, forKey: enabled)
+        suite.expect(hold.reconcile(wanted: true) && dock.value == .off,
+                     "a new hold is applied before the old reply reaches main")
+        let oldReplyPassed = Box(false)
+        DispatchQueue.main.async { oldReplyPassed.value = true }
+        let replyDeadline = Date().addingTimeInterval(3)
+        while !oldReplyPassed.value, Date() < replyDeadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        suite.expect(oldReplyPassed.value && defaults.bool(forKey: enabled)
+                     && defaults.string(forKey: marker) == on && dock.value == .off,
+                     "a stale reply preserves the newer toggle and its recovery marker")
+        suite.expect(hold.restoreForRemoval() && dock.value == .on,
+                     "the preserved newer hold still restores the original setting")
+
+        // Production removal runs in the background. Defaults notifications
+        // delivered to main must be able to finish while removal waits.
+        (hold, dock) = make(.off, marker: on)
+        let removalHold = hold
+        let removalNoticesOnMain = Box(true)
+        let removalNoticeCount = Box(0)
+        let removalObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: defaults, queue: .main) { _ in
+                removalNoticesOnMain.value = removalNoticesOnMain.value && Thread.isMainThread
+                removalNoticeCount.value += 1
+            }
+        let removalDone = DispatchSemaphore(value: 0)
+        let removalSucceeded = Box(false)
+        DispatchQueue.global().async {
+            removalSucceeded.value = removalHold.restoreForRemoval()
+            removalDone.signal()
+        }
+        let removalDeadline = Date().addingTimeInterval(3)
+        var removalFinished = false
+        while !removalFinished, Date() < removalDeadline {
+            removalFinished = removalDone.wait(timeout: .now()) == .success
+            if !removalFinished {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+        }
+        NotificationCenter.default.removeObserver(removalObserver)
+        suite.expect(removalFinished && removalSucceeded.value && removalNoticesOnMain.value && removalNoticeCount.value > 0
+                     && dock.value == .on && defaults.object(forKey: marker) == nil,
+                     "background removal completes with a main-queue defaults observer")
+
+        // A preference observer may synchronously request another sync while
+        // the main-thread toggle publication still owns the generation guard.
+        defaults.set(true, forKey: available)
+        defaults.set(true, forKey: enabled)
+        (hold, dock) = make(.on, marker: on)
+        let reentrantHold = hold
+        let requestedDuringPublication = Box(false)
+        let publicationObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: defaults, queue: .main) { _ in
+                if !defaults.bool(forKey: enabled), !requestedDuringPublication.value {
+                    requestedDuringPublication.value = true
+                    reentrantHold.syncWithPreferences()
+                }
+            }
+        let publicationResult = finishLetGo(hold.letGoIfRearrangingReturned())
+        NotificationCenter.default.removeObserver(publicationObserver)
+        suite.expect(publicationResult && requestedDuringPublication.value && !defaults.bool(forKey: enabled)
+                     && defaults.object(forKey: marker) == nil && dock.events.isEmpty,
+                     "toggle publication allows a reentrant sync without losing recovery ownership or deadlocking")
         defaults.removeObject(forKey: enabled)
         defaults.removeObject(forKey: available)
 
@@ -668,7 +764,8 @@ enum SpacesOrderTests {
         (hold, dock) = make(.absent)
         hold.syncWithPreferences()
         suite.expect(dock.signals.wait(timeout: .now() + 3) == .success
-                     && dock.events == ["live(false)"] && defaults.string(forKey: marker) == absent,
+                     && dock.signals.wait(timeout: .now() + 3) == .success
+                     && dock.events == ["write(false)", "restart"] && defaults.string(forKey: marker) == absent,
                      "an installed feature with its toggle on keeps Spaces in place")
         defaults.set(false, forKey: available)
         (hold, dock) = make(.off, marker: absent)
@@ -676,10 +773,11 @@ enum SpacesOrderTests {
         suite.expect(dock.signals.wait(timeout: .now() + 3) == .success
                      && dock.signals.wait(timeout: .now() + 3) == .success
                      && waitForMarker(nil)
-                     && dock.events == ["live(true)", "write(nil)"],
+                     && dock.events == ["write(nil)", "restart"],
                      "uninstalling the feature restores the setting even with its toggle still on")
         defaults.removeObject(forKey: DefaultsKey.spacesOrderEnabled)
         defaults.removeObject(forKey: available)
+
 
         // MARK: Catalog
 
