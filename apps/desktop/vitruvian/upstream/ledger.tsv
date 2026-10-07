@@ -144,7 +144,7 @@ cff4777452fefcd1a1bc006655d9297bb7e9e2bd	44c80f6ed40dd803ea2e0aca1e28733ec51974d
 f1ed98781fa039b3bba47b25701bbbb77e142c68	f0c44a6c14b838fca524b7ac3b1932d8cbc08dd2	2026-10-05	pending	-	fix(command-bar): carry the companion's figure through the drop
 0ebe7b0d2fddea9d4287d7463e866320086aa71d	d3f4f11e746315681f7bb2900dec7115a8dbd332	2026-10-05	ported	#2827	fix(notch): restore the island's Liquid Glass as 3.4.1-beta.1 drew it
 906646178553325e76107af78ff04bf352c10adf	e4a856f100c1b4b23bd231996ede1517894094f2	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the centred capsule and its fit sliders
-66f5f6362502a331f8c2c5be2881c69e2815b2a6	82e055954da19301800ac8c395380616cecf182c	2026-10-05	pending	-	Prepare 3.4.1-beta.2
+66f5f6362502a331f8c2c5be2881c69e2815b2a6	82e055954da19301800ac8c395380616cecf182c	2026-10-05	skipped	upstream's own version bump; this fork versions through release-please	Prepare 3.4.1-beta.2
 5eece7dcc09fe2521425c08aa8416999ee03c19e	e2b61afb85fb9f5210a3ecaaef1463624fe86852	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): tighten the 3.4.1-beta.2 notes
 0b7bad284385bafdcf3f0b79d9335a24b26d4253	f1e43a742aee2870c0c24e946aa6197be820eeb9	2026-10-05	pending	-	fix(window-layout): keep window snapping off the dragged app's main thread (#2697)
 adde26e1f03a8476ebf09da458d3b97c7665366d	bf0d1798077c1cbb64e8fe618700e168105ad4d4	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record smoother in-app drags with window snapping on
@@ -159,3 +159,7 @@ aee448c08b47f860219d62dfb2c10672f7fe5813	377ccc88d171801e8488c0b7ab8be1e9b992123
 0a6bb2e35cfcb6558e5bc71134409e4e4908c543	e6fd3af06de031e4ae3ae6aa002068de5677feca	2026-10-06	ported	#2827	fix(clipboard): keep the selection and confirm what clear recent removes (#2720)
 e6d443d2443a986abefa8a7652c627c4eccb2618	6d6979b597cf06c4b60759b73e7cfa1f279a746f	2026-10-06	skipped	touches only upstream-only paths	Credit #2720 and #2731 in the changelog
 0c67b46dd3626cdc6f6e97ae1210a7338bd12571	e9a603f25f1b6faa584b4a07a5ce243e1a60d805	2026-10-06	skipped	touches only upstream-only paths	Show the Trendshift monthly ranking badge in the README
+50cd15d57e551020606af7b44416489e107c7cfb	034fe60885ff59d9735eae9bbad32782042ff2e8	2026-10-06	pending	-	fix(notch): show a finished timer while its countdown is hidden (#2766)
+db5659db4f44a201ffa5feb88bc501203fe62cdb	6027d09b4705d9b5bcf03bca0a225f3954a43d95	2026-10-06	skipped	touches only upstream-only paths	docs(changelog): record the finished timer under a hidden countdown (#2766)
+992f2cb8efba784db776804eb12821f621e9ee7f	02d9fc4f5d1df1203f6593321e5015ecf452514e	2026-10-07	pending	-	feat(notch): add a keyboard light level to the island controls (#2702)
+8f386857734e0c702a7f39388625f60aeb080596	5a031a819ef1fdc2b5077cdaaae23fb7c71d7e4b	2026-10-06	skipped	touches only upstream-only paths	Credit #2702 in the changelog
