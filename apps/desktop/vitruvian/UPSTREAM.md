@@ -2500,6 +2500,13 @@ after the import. This fork keeps up with a ledger, a tool and a daily watch.
   - `skipped`: its ref says why.
 
   Its `# base` line is the upstream commit the import matches, with its tree.
+
+  A merge commit is listed only when it changed something of its own beyond
+  joining its parents: a conflict resolution, or a fix made in the merge itself.
+  Upstream sometimes lands a fix that way (`848b6042` reworked the fixed Space
+  order inside a merge), and those changes are in no other commit. A merge that
+  only resolved conflicts between two sides this fork ports anyway is `skipped`
+  with that reason.
 - **The tool**, run as `bazel run //apps/desktop/vitruvian:track_upstream -- <command>`:
   - `status` lists the upstream commits not yet in the ledger, and how many are
     pending.
@@ -2563,7 +2570,11 @@ Run `triage` and commit the ledger, then decide each pending commit:
      the test it feeds can be ported as a behavioural test;
    - does not merge upstream's `Core/Defaults.swift`, which this fork split into
      `DefaultsKey.swift`, `Preferences.swift` and `Defaults.swift`. It reports
-     the change with the upstream patch, to apply where each part now lives.
+     the change with the upstream patch, to apply where each part now lives;
+   - does not merge a merge commit's own changes: they are a diff against what
+     git would have merged (`git show --remerge-diff`, git 2.36 or later), and
+     never apply to this tree as they are. It writes them to a patch, to apply
+     by hand.
 
    It never rewrites upstream's domains, repository or services. Any line that
    still names upstream is reported for brand review. Its `report.md` lists what
