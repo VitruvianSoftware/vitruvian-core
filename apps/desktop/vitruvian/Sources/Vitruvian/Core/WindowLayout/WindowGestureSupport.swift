@@ -748,15 +748,14 @@ extension GlobalShortcutModifiers {
 /// while the main queue looks up or places a window.
 package enum WindowDirectionalModifierTapSupport {
     package static let options: CGEventTapOptions = .listenOnly
-    package static let eventMask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-        | CGEventMask(1 << CGEventType.keyDown.rawValue)
-        | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
-        | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
-        | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
-        | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
-        | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
-        | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
-        | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+    package static let eventMask: CGEventMask = {
+        let events: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .leftMouseUp,
+                                     .rightMouseDown, .rightMouseUp, .otherMouseDown,
+                                     .otherMouseUp, .scrollWheel]
+        return events.reduce(CGEventMask(0)) { mask, event in
+            mask | (CGEventMask(1) << event.rawValue)
+        }
+    }()
 
     package static func afterCallback(_ work: @escaping () -> Void) {
         DispatchQueue.main.async { work() }

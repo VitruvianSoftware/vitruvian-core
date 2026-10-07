@@ -143,17 +143,13 @@ enum WindowLayoutFeatureTests {
         suite.expect(pendingShortcutHold.update([.control, .command]) == .begin,
             "late session cleanup preserves completed releases so the next fresh chord starts")
 
+        let observedTypes: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .leftMouseUp,
+                                            .rightMouseDown, .rightMouseUp, .otherMouseDown,
+                                            .otherMouseUp, .scrollWheel]
+        let passiveMask = WindowDirectionalModifierTapSupport.eventMask
         suite.expect(WindowDirectionalModifierTapSupport.options == .listenOnly
-                && WindowDirectionalModifierTapSupport.eventMask
-                    == CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-                        | CGEventMask(1 << CGEventType.keyDown.rawValue)
-                        | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
-                        | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
-                        | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
-                        | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
-                        | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
-                        | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
-                        | CGEventMask(1 << CGEventType.scrollWheel.rawValue),
+                && passiveMask.nonzeroBitCount == observedTypes.count
+                && observedTypes.allSatisfy { passiveMask & (CGEventMask(1) << $0.rawValue) != 0 },
             "idle modifier observation retains ordered cancellation without filtering input or observing movement")
         suite.expect(!WindowDirectionalModifierInputPolicy.canBegin(
                 mouseButtonPressed: true, pointerInputSinceArm: false)
