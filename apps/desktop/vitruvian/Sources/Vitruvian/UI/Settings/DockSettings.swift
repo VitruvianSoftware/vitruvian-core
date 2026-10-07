@@ -185,7 +185,7 @@ package struct DockSettings: View {
 
     private var spacesOrderCard: some View {
         SettingsCard {
-            SettingsRow(symbol: "rectangle.split.3x1", title: l10n.s.spacesOrderName,
+            SettingsRow(symbol: AppFeature.spacesOrder.symbolName, title: l10n.s.spacesOrderName,
                         caption: l10n.s.spacesOrderCaption) {
                 Toggle(l10n.s.spacesOrderName, isOn: $spacesOrderEnabled)
                     .labelsHidden()
