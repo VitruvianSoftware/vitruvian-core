@@ -6,7 +6,8 @@
 # (Tests/SwiftTesting/UnitTests.swift):
 #   1. run the binary from the app root, because the tests open repository
 #      files (sources, Resources/, build.sh) by app-relative paths;
-#   2. on a full run, run Tests/PreferenceCleanupTests.sh;
+#   2. on a full run, run Tests/PreferenceCleanupTests.sh and
+#      Tests/UninstallSpacesTests.sh;
 #   3. always sweep the throwaway UserDefaults suites the tests created;
 #   4. fail unless every suite asked for reported its result;
 #   5. end the log with TESTS OK or TESTS FAILED, which mutation_checks.py
@@ -107,6 +108,7 @@ else
 fi
 if [[ -z "$selection" ]]; then
 	/bin/zsh Tests/PreferenceCleanupTests.sh || status=1
+	/bin/zsh Tests/UninstallSpacesTests.sh || status=1
 fi
 discard_test_preferences || status=1
 exit "$status"

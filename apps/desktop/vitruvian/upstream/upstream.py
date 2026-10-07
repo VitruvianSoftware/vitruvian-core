@@ -111,6 +111,7 @@ PROTECTED_RE = re.compile(
 )
 BRAND_SUBSTITUTIONS = (
     ("com.vorssaint.utils", "com.vitruviansoftware.vitruvian"),
+    ("com.vorssaint.", "com.vitruviansoftware.vitruvian."),
     ("Vorssaint", "Vitruvian"),
     ("vorssaint", "vitruvian"),
     ("VORSSAINT", "VITRUVIAN"),
@@ -347,22 +348,47 @@ class Upstream:
         )
 
     def commits_since(self, base):
-        """Non-merge commits after base, oldest first: (sha, date, subject)."""
-        fmt = "%H%x00%as%x00%s"
+        """Commits after base, oldest first: (sha, date, subject).
+
+        A merge is listed only when it changed something of its own, beyond
+        joining its parents: a conflict resolution, or a fix made in the merge
+        itself. Those changes are in no other commit, so leaving merges out
+        would lose them.
+        """
+        fmt = "%H%x00%as%x00%P%x00%s"
         result = []
         for line in self.run(
             [
                 "log",
-                "--no-merges",
                 "--reverse",
                 "--topo-order",
                 f"--format={fmt}",
                 f"{base}..{self.ref}",
             ]
         ).splitlines():
-            sha, date, subject = line.split("\x00", 2)
+            sha, date, parents, subject = line.split("\x00", 3)
+            if len(parents.split()) > 1 and not self.merge_paths(sha):
+                continue
             result.append((sha, date, subject))
         return result
+
+    def is_merge(self, commit):
+        return len(self.run(["rev-list", "--parents", "-n", "1", commit]).split()) > 2
+
+    def merge_diff(self, commit, paths=()):
+        """What a merge changed beyond its parents, against what git merges on
+        its own (`--remerge-diff`, git 2.36 or later)."""
+        args = ["show", "--remerge-diff", "--format=", commit]
+        return self.run(args + (["--", *paths] if paths else []))
+
+    def merge_paths(self, commit):
+        return [
+            p
+            for p in self.run(
+                ["show", "--remerge-diff", "--format=", "--name-only", "-z", commit]
+            ).split("\0")
+            if p
+        ]
 
     def patch_ids(self, base):
         diff = git(
@@ -380,6 +406,8 @@ class Upstream:
         return ids
 
     def paths(self, commit):
+        if self.is_merge(commit):
+            return self.merge_paths(commit)
         return [
             p
             for p in self.run(
@@ -920,6 +948,24 @@ def port_commit(
     ]
     clean = True
     parent = upstream.run(["rev-list", "--parents", "-n", "1", sha]).split()
+    if len(parent) > 2:
+        # A merge's own changes are a diff against what git would have merged,
+        # with that merge's conflict markers on its old side, so they never
+        # apply to this tree as they are. Hand them over as a patch.
+        ported = [p for p in upstream.merge_paths(sha) if not upstream_only(p)]
+        if not ported:
+            lines.append(
+                "- merge commit: changes only upstream-only paths, nothing to port"
+            )
+            return lines, True
+        saved = report_dir / f"{short}.merge.patch"
+        saved.write_text(upstream.merge_diff(sha, ported))
+        lines.append(
+            "- merge commit: its own changes, beyond joining its parents, touch "
+            + ", ".join(f"`{p}`" for p in ported)
+            + f"; apply them by hand (upstream patch: `{saved}`)"
+        )
+        return lines, False
     parent = parent[1] if len(parent) > 1 else None
     labels = ("vitruvian", f"upstream {short}^", f"upstream {short}")
 

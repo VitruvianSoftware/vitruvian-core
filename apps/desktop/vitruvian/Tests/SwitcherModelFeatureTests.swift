@@ -2215,6 +2215,11 @@ enum SwitcherModelFeatureTests {
                     == ScrollWheelSupport.defaultLinesPerNotch
                 && registeredDefaults[DefaultsKey.panelControlLinearScroll] as? Bool == true,
                "linear scrolling is opt-in, starts at the default notch and shows in the panel when installed")
+        suite.expect(registeredDefaults[DefaultsKey.spacesOrderEnabled] as? Bool == false
+                && registeredDefaults[DefaultsKey.panelControlSpacesOrder] as? Bool == true
+                && registeredDefaults[DefaultsKey.spacesOrderRestore] == nil
+                && registeredDefaults[DefaultsKey.spacesOrderRestartPending] == nil,
+               "fixed Space order is opt-in, visible in the panel when installed, and its restore state is never registered")
         suite.expect(registeredDefaults[DefaultsKey.mouseClickDebounceEnabled] as? Bool == false,
                "mouse click debounce is opt-in")
         suite.expect(registeredDefaults[DefaultsKey.mouseClickDebounceWindowMs] as? Int

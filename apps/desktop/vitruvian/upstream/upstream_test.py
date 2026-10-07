@@ -200,6 +200,11 @@ class BrandTest(unittest.TestCase):
             f('id = "com.vorssaint.utils.dev"\n'),
             'id = "com.vitruviansoftware.vitruvian.dev"\n',
         )
+        # Upstream's other reverse-DNS names go under the app's identifier too.
+        self.assertEqual(
+            f('DispatchQueue(label: "com.vorssaint.spaces-order")\n'),
+            'DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")\n',
+        )
         self.assertEqual(
             f("hideVorssaintWindows VORSSAINT_DEVELOPMENT vorssaint\n"),
             "hideVitruvianWindows VITRUVIAN_DEVELOPMENT vitruvian\n",
@@ -572,6 +577,48 @@ class TriageTest(Base):
             (ledger.rows[0]["status"], ledger.rows[0]["ref"]), ("ported", "#42")
         )
 
+    def test_a_merge_with_changes_of_its_own_is_listed(self):
+        fx = self.fx
+        side = fx.edit(
+            "Sources/Vorssaint/Core/Other.swift", OTHER + "// side\n", "fix: side"
+        )
+        run(fx.up, "checkout", "-q", "-b", "topic", f"{side}^")
+        write(
+            fx.up, "Sources/Vorssaint/NewArea/Topic.swift", HEADER + "struct Topic {}\n"
+        )
+        topic = commit(fx.up, "feat: topic")
+        run(fx.up, "checkout", "-q", "main")
+        # A clean merge adds nothing of its own; this one also fixes the topic.
+        run(fx.up, "merge", "-q", "--no-ff", "--no-commit", topic)
+        write(
+            fx.up,
+            "Sources/Vorssaint/NewArea/Topic.swift",
+            HEADER + "struct Topic { let fixed = true }\n",
+        )
+        evil = commit(fx.up, "fix: topic, in its merge")
+        run(fx.up, "checkout", "-q", "-b", "second", f"{evil}^")
+        write(
+            fx.up,
+            "Sources/Vorssaint/NewArea/Second.swift",
+            HEADER + "struct Second {}\n",
+        )
+        second = commit(fx.up, "feat: second")
+        run(fx.up, "checkout", "-q", "main")
+        run(fx.up, "merge", "-q", "--no-ff", "-m", "merge second", second)
+        clean = run(fx.up, "rev-parse", "HEAD")
+
+        rc, _, err = fx.tool("triage")
+        self.assertEqual(rc, 0, err)
+        shas = [r["sha"] for r in fx.ledger().rows]
+        self.assertIn(evil, shas)
+        self.assertNotIn(clean, shas)
+        self.assertEqual(set(shas[-4:]), {side, topic, evil, second})
+        self.assertGreater(shas.index(evil), max(shas.index(side), shas.index(topic)))
+        row = next(r for r in fx.ledger().rows if r["sha"] == evil)
+        self.assertEqual(
+            (row["status"], row["subject"]), ("pending", "fix: topic, in its merge")
+        )
+
     def test_markdown_counts_commits_the_issue_did_not_list(self):
         fx = self.fx
         previous = fx.tmp / "body.md"
@@ -652,6 +699,33 @@ class PortTest(Base):
             (self.fx.mono / APP / "Tests/generate_sources.py").read_text(),
             "# upstream extraction\n",
         )
+
+    def test_a_merges_own_changes_are_reported_with_their_patch(self):
+        fx = self.fx
+        run(fx.up, "checkout", "-q", "-b", "topic")
+        foo = (fx.up / "Sources/Vorssaint/Core/Foo.swift").read_text()
+        write(
+            fx.up, "Sources/Vorssaint/Core/Foo.swift", foo.replace("{ 30 }", "{ 31 }")
+        )
+        topic = commit(fx.up, "fix: topic")
+        run(fx.up, "checkout", "-q", "main")
+        write(fx.up, "README.md", "upstream readme, edited\n")
+        commit(fx.up, "docs: readme")
+        run(fx.up, "merge", "-q", "--no-ff", "--no-commit", topic)
+        write(
+            fx.up, "Sources/Vorssaint/Core/Foo.swift", foo.replace("{ 30 }", "{ 32 }")
+        )
+        evil = commit(fx.up, "fix: topic, settled in its merge")
+        before = fx.foo()
+
+        rc, out, _ = fx.tool("port", evil, "--report-dir", str(fx.tmp / "r"))
+        self.assertEqual(rc, 1)
+        self.assertIn("merge commit: its own changes", out)
+        self.assertIn("`Sources/Vorssaint/Core/Foo.swift`", out)
+        self.assertEqual(fx.foo(), before)
+        patch = (fx.tmp / "r" / f"{evil[:10]}.merge.patch").read_text()
+        self.assertIn("+func gamma() -> Int { 32 }", patch)
+        self.assertNotIn("README", patch)
 
     def test_split_files_are_reported_with_their_patch(self):
         sha = self.fx.edit(
