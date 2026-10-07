@@ -164,7 +164,9 @@ class RoborockVacuum:
             raise DeviceError("This Roborock account has no devices.")
         if len(vacuums) > 1:
             names = ", ".join(d.name for d in vacuums)
-            _LOGGER.warning("Several vacuums found (%s); using %s. Set %s to choose.", names, vacuums[0].name, config.DEVICE_ENV)
+            _LOGGER.warning(
+                "Several vacuums found (%s); using %s. Set %s to choose.", names, vacuums[0].name, config.DEVICE_ENV
+            )
         return vacuums[0]
 
     def _on_unauthorized(self) -> None:

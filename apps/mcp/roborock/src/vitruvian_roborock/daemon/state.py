@@ -233,7 +233,9 @@ class VacuumService:
             except DeviceError as err:
                 # python-roborock reconnects underneath us, so keep polling rather than tearing down.
                 _LOGGER.info("Poll failed: %s", err)
-                self._store.set_status({**self._store.status, "connected": False, "error": str(err), "updated_at": time.time()})
+                self._store.set_status(
+                    {**self._store.status, "connected": False, "error": str(err), "updated_at": time.time()}
+                )
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), self._poll_active if active else self._poll_parked)
 

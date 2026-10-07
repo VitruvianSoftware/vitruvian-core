@@ -91,7 +91,13 @@ def test_the_agreed_tools_and_resources_are_exposed(server):
 
     tools, resources = asyncio.run(listing())
     assert {tool.name for tool in tools} == {
-        "get_status", "start_clean", "control", "return_to_dock", "wash_mop", "get_map", "setup_login",
+        "get_status",
+        "start_clean",
+        "control",
+        "return_to_dock",
+        "wash_mop",
+        "get_map",
+        "setup_login",
     }
     assert {str(resource.uri): resource.mime_type for resource in resources} == {
         "roborock://status": "application/json",
@@ -118,7 +124,12 @@ def test_unauthenticated_status_is_an_answer_not_an_error(server, daemon):
 
 def test_commands_while_logged_out_explain_what_to_do(server, daemon):
     daemon.refuse = DaemonRequestError(409, {"ok": False, "error": "not_authenticated", "message": "Not logged in."})
-    for name, arguments in [("start_clean", {}), ("control", {"action": "pause"}), ("return_to_dock", {}), ("wash_mop", {})]:
+    for name, arguments in [
+        ("start_clean", {}),
+        ("control", {"action": "pause"}),
+        ("return_to_dock", {}),
+        ("wash_mop", {}),
+    ]:
         result = call(server, name, **arguments)
         assert not result.is_error, name
         assert result.structured_content["error"] == "not_authenticated"
@@ -132,7 +143,9 @@ def test_a_daemon_that_will_not_start_is_reported_plainly(daemon):
 
     server = build_server(Bridge(client_factory=cannot_start))
     assert call(server, "get_status").structured_content == {
-        "ok": False, "error": "daemon_unavailable", "message": "The daemon did not start on port 8765.",
+        "ok": False,
+        "error": "daemon_unavailable",
+        "message": "The daemon did not start on port 8765.",
     }
     assert "did not start" in call(server, "get_map").content[0].text
 

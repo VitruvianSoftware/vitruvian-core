@@ -42,7 +42,9 @@ def test_xdg_config_home_is_honoured(tmp_path, monkeypatch):
 
 
 def test_saved_credentials_are_private_and_round_trip():
-    path = config.save_credentials(config.Credentials(email="me@example.com", user_data=USER_DATA, base_url="https://usiot"))
+    path = config.save_credentials(
+        config.Credentials(email="me@example.com", user_data=USER_DATA, base_url="https://usiot")
+    )
     assert mode(path) == 0o600
     assert mode(path.parent) == 0o700
     loaded = config.load_credentials()
@@ -84,7 +86,12 @@ def test_existing_credentials_win_over_legacy_file(logged_in):
 
 @pytest.mark.parametrize(
     "content",
-    ["not json", "[]", json.dumps({"email": "me@example.com"}), json.dumps({"userData": {"token": "x"}, "email": "me@example.com"})],
+    [
+        "not json",
+        "[]",
+        json.dumps({"email": "me@example.com"}),
+        json.dumps({"userData": {"token": "x"}, "email": "me@example.com"}),
+    ],
 )
 def test_unusable_legacy_file_is_ignored(content):
     config.legacy_credentials_path().write_text(content)

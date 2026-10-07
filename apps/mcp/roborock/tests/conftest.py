@@ -27,7 +27,13 @@ from vitruvian_roborock.core import config
 from vitruvian_roborock.core.device import DeviceError, UnknownActionError
 
 USER_DATA = {
-    "rriot": {"u": "user", "s": "secret", "h": "hmac", "k": "key", "r": {"r": "US", "a": "https://a", "m": "ssl://m", "l": "https://l"}},
+    "rriot": {
+        "u": "user",
+        "s": "secret",
+        "h": "hmac",
+        "k": "key",
+        "r": {"r": "US", "a": "https://a", "m": "ssl://m", "l": "https://l"},
+    },
     "uid": 1,
     "token": "tok",
     "rruid": "rr1",

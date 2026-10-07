@@ -32,7 +32,9 @@ from vitruvian_roborock.cli import commands
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rrctl", description="Control a Roborock vacuum from this machine.")
     parser.add_argument("--version", action="version", version=f"rrctl {__version__}")
-    parser.add_argument("--port", type=int, default=None, help="daemon port (default 8765, or $VITRUVIAN_ROBOROCK_PORT)")
+    parser.add_argument(
+        "--port", type=int, default=None, help="daemon port (default 8765, or $VITRUVIAN_ROBOROCK_PORT)"
+    )
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
     setup = sub.add_parser("setup", help="log in to Roborock with an emailed code")

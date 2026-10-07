@@ -177,7 +177,9 @@ async def _shutdown(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
-def create_app(store: StateStore, service: VacuumService, token: str, stop: asyncio.Event | None = None) -> web.Application:
+def create_app(
+    store: StateStore, service: VacuumService, token: str, stop: asyncio.Event | None = None
+) -> web.Application:
     app = web.Application(middlewares=[_guard(token)], client_max_size=64 * 1024)
     app[STORE] = store
     app[SERVICE] = service

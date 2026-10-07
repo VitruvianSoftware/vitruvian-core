@@ -147,7 +147,9 @@ def test_map_is_404_until_one_arrives(logged_in, vacuum):
 
 def test_command_round_trip_and_its_refusals(logged_in, vacuum):
     async def scenario(client, store, stop):
-        ok = await client.post("/command", json={"command": "clean_rooms", "params": {"rooms": ["Kitchen"]}}, headers=AUTH)
+        ok = await client.post(
+            "/command", json={"command": "clean_rooms", "params": {"rooms": ["Kitchen"]}}, headers=AUTH
+        )
         assert ok.status == 200
         assert await ok.json() == {"ok": True, "command": "clean_rooms", "result": ["ok"]}
         assert vacuum.commands == [("clean_rooms", {"rooms": ["Kitchen"]})]
@@ -161,7 +163,11 @@ def test_command_round_trip_and_its_refusals(logged_in, vacuum):
             ({"data": "{", "headers": {"Content-Type": "application/json"}}, 400, "bad_request"),
             # A cross-site <form> can only send these content types; refusing them blocks form CSRF.
             ({"data": {"command": "pause"}}, 415, "unsupported_media_type"),
-            ({"data": '{"command": "pause"}', "headers": {"Content-Type": "text/plain"}}, 415, "unsupported_media_type"),
+            (
+                {"data": '{"command": "pause"}', "headers": {"Content-Type": "text/plain"}},
+                415,
+                "unsupported_media_type",
+            ),
         ]
         for kwargs, status, code in cases:
             headers = {**AUTH, **kwargs.pop("headers", {})}

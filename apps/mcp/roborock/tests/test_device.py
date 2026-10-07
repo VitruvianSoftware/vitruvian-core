@@ -33,14 +33,26 @@ ROOMS = [{"id": 16, "name": "Kitchen"}, {"id": 17, "name": "Living Room"}]
 def make(in_cleaning=0, **status):
     vacuum = RoborockVacuum(config.Credentials(email="me@example.com", user_data=USER_DATA))
     fields = dict(
-        state=SimpleNamespace(value=8), state_name="charging", battery=87, error_code=SimpleNamespace(value=0),
-        error_code_name="none", dock_error_status=None, clean_time=600, square_meter_clean_area=12.5,
-        clean_percent=None, in_cleaning=in_cleaning, in_returning=0, fan_speed_name="balanced",
-        water_mode_name=None, mop_route_name=None,
+        state=SimpleNamespace(value=8),
+        state_name="charging",
+        battery=87,
+        error_code=SimpleNamespace(value=0),
+        error_code_name="none",
+        dock_error_status=None,
+        clean_time=600,
+        square_meter_clean_area=12.5,
+        clean_percent=None,
+        in_cleaning=in_cleaning,
+        in_returning=0,
+        fan_speed_name="balanced",
+        water_mode_name=None,
+        mop_route_name=None,
     )
     fields.update(status)
     vacuum._props = SimpleNamespace(status=SimpleNamespace(**fields))
-    vacuum._device = SimpleNamespace(duid="duid-1", name="Rocky", product=SimpleNamespace(model="a70"), is_local_connected=True)
+    vacuum._device = SimpleNamespace(
+        duid="duid-1", name="Rocky", product=SimpleNamespace(model="a70"), is_local_connected=True
+    )
     vacuum._rooms = list(ROOMS)
     return vacuum
 
@@ -63,14 +75,23 @@ def test_no_rooms_is_an_error_not_a_whole_home_clean():
 
 @pytest.mark.parametrize(
     ("action", "raw"),
-    [("start", "app_start"), ("pause", "app_pause"), ("stop", "app_stop"), ("dock", "app_charge"),
-     ("find", "find_me"), ("wash_start", "app_start_wash"), ("wash_stop", "app_stop_wash")],
+    [
+        ("start", "app_start"),
+        ("pause", "app_pause"),
+        ("stop", "app_stop"),
+        ("dock", "app_charge"),
+        ("find", "find_me"),
+        ("wash_start", "app_start_wash"),
+        ("wash_stop", "app_stop_wash"),
+    ],
 )
 def test_simple_actions_map_to_roborock_commands(action, raw):
     assert make()._resolve(action, {}) == (raw, None)
 
 
-@pytest.mark.parametrize(("in_cleaning", "raw"), [(0, "app_start"), (1, "app_start"), (2, "resume_zoned_clean"), (3, "resume_segment_clean")])
+@pytest.mark.parametrize(
+    ("in_cleaning", "raw"), [(0, "app_start"), (1, "app_start"), (2, "resume_zoned_clean"), (3, "resume_segment_clean")]
+)
 def test_resume_continues_the_kind_of_clean_that_was_paused(in_cleaning, raw):
     assert make(in_cleaning=in_cleaning)._resolve("resume", {}) == (raw, None)
     assert make(in_cleaning=SimpleNamespace(value=in_cleaning))._resolve("resume", {}) == (raw, None)
