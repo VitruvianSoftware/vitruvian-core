@@ -228,7 +228,7 @@ package final class SpacesOrderHold: @unchecked Sendable {
     private let defaults: UserDefaults
     private let system: SpacesOrderSystem
     /// Serial, so preference writes and a restart never overlap.
-    private let queue = DispatchQueue(label: "com.vitruvian.spaces-order")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")
     private let queueKey = DispatchSpecificKey<Bool>()
     /// A newer request invalidates a reply before its queued work starts. The
     /// main-thread toggle write can notify observers that request another sync.

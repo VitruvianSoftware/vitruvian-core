@@ -200,6 +200,11 @@ class BrandTest(unittest.TestCase):
             f('id = "com.vorssaint.utils.dev"\n'),
             'id = "com.vitruviansoftware.vitruvian.dev"\n',
         )
+        # Upstream's other reverse-DNS names go under the app's identifier too.
+        self.assertEqual(
+            f('DispatchQueue(label: "com.vorssaint.spaces-order")\n'),
+            'DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")\n',
+        )
         self.assertEqual(
             f("hideVorssaintWindows VORSSAINT_DEVELOPMENT vorssaint\n"),
             "hideVitruvianWindows VITRUVIAN_DEVELOPMENT vitruvian\n",

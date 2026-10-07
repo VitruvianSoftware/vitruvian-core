@@ -111,6 +111,7 @@ PROTECTED_RE = re.compile(
 )
 BRAND_SUBSTITUTIONS = (
     ("com.vorssaint.utils", "com.vitruviansoftware.vitruvian"),
+    ("com.vorssaint.", "com.vitruviansoftware.vitruvian."),
     ("Vorssaint", "Vitruvian"),
     ("vorssaint", "vitruvian"),
     ("VORSSAINT", "VITRUVIAN"),

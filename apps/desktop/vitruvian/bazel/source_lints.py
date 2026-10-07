@@ -1266,6 +1266,45 @@ def source_reads(path, text):
     return found
 
 
+# The app's reverse-DNS names (queue labels, preference suites) start with
+# its own identifier. Upstream's `com.vorssaint.` rebranded word by word gives
+# `com.vitruvian.`, a domain this fork does not own, and the test run's
+# preference sweep only clears suites under the app's identifier. A bare
+# `"com.vitruvian"` prefix match (it covers the identifier too) is fine.
+SHORT_DOMAIN_RE = re.compile(r'"com\.vitruvian\.')
+
+
+def short_domain_names(path, text):
+    """Each line of `text` whose string literal names `com.vitruvian`."""
+    return [
+        f"{path}:{number}"
+        for number, line in enumerate(text.split("\n"), start=1)
+        if SHORT_DOMAIN_RE.search(line) and not is_comment(line)
+    ]
+
+
+def names_use_the_apps_identifier(repo):
+    """Reverse-DNS names in sources and tests start with
+    `com.vitruviansoftware.vitruvian`, never the bare `com.vitruvian`."""
+    problems = []
+    sample = "\n".join(
+        [
+            'let a = DispatchQueue(label: "com.vitruvian.spaces")',
+            'let b = DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces")',
+            'let own = id.hasPrefix("com.vitruvian")',
+        ]
+    )
+    if short_domain_names("sample", sample) != ["sample:1"]:
+        problems.append("the self-check no longer tells the two domains apart")
+    for path in repo.swift_paths:
+        problems.extend(short_domain_names(path, repo.source(path)))
+    for path in repo.test_paths:
+        problems.extend(short_domain_names(path, repo.tests[path]))
+    if problems:
+        return [f"name them under com.vitruviansoftware.vitruvian: {problems}"]
+    return []
+
+
 def test_group_lists(text):
     """The suite names `TestGroups.names` spells, and the names `all(_:)`
     runs, each in order."""
@@ -1930,6 +1969,7 @@ RULES = [
     release_scripts_have_no_case_twins,
     test_types_do_not_shadow_real_ones,
     test_groups_list_what_they_run,
+    names_use_the_apps_identifier,
     unit_tests_read_no_source_text,
     preferences_are_reached_through_their_type,
     package_signatures_name_no_internal_type,
