@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.21.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.20.0...vitruvian-v3.21.0) (2026-10-07)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 11, the hover-focus series ([#2834](https://github.com/VitruvianSoftware/vitruvian-core/issues/2834)) ([e4d82f7](https://github.com/VitruvianSoftware/vitruvian-core/commit/e4d82f7f19392273c5a3a44212884f5f65b1cbf6))
+
 ## [3.20.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.19.0...vitruvian-v3.20.0) (2026-10-07)
 
 
