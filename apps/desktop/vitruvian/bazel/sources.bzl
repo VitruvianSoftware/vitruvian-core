@@ -38,6 +38,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Services/Notch/NotchLockScreenSupport.swift",
     "Sources/Vitruvian/Core/AgentUsage/AgentUsageModels.swift",
     "Sources/Vitruvian/Core/AgentUsage/AgentPricing.swift",
+    "Sources/Vitruvian/Services/AgentUsage/AgentLogObject.swift",
     "Sources/Vitruvian/Services/AgentUsage/AgentLogParser.swift",
     "Sources/Vitruvian/Core/AgentUsage/AgentUsageSummary.swift",
     "Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift",

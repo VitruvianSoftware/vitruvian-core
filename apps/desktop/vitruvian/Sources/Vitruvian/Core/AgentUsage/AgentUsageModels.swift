@@ -6,7 +6,7 @@ import Foundation
 /// The coding agents whose session logs the island reads. Their names are
 /// product names and stay untranslated.
 package enum AgentProvider: String, CaseIterable, Identifiable, Codable {
-    case claude, codex, opencode
+    case claude, codex, opencode, copilot
 
     package var id: String { rawValue }
 
@@ -15,6 +15,7 @@ package enum AgentProvider: String, CaseIterable, Identifiable, Codable {
         case .claude: return "Claude"
         case .codex: return "Codex"
         case .opencode: return "OpenCode"
+        case .copilot: return "GitHub Copilot"
         }
     }
 
@@ -23,8 +24,12 @@ package enum AgentProvider: String, CaseIterable, Identifiable, Codable {
         case .claude: return "sparkle"
         case .codex: return "chevron.left.forwardslash.chevron.right"
         case .opencode: return "terminal"
+        case .copilot: return "infinity"
         }
     }
+
+    /// Whether the provider records a plan allowance in its local logs.
+    package var reportsLimits: Bool { self != .copilot }
 }
 
 /// Token counts in the shape both logs can be reduced to. `input` excludes
@@ -74,6 +79,8 @@ package struct AgentUsageRecord: Equatable {
     package let model: String
     package let project: String
     package let session: String
+    /// Model requests represented by this record; checkpoints may hold several.
+    package let requests: Int
     package var tokens: AgentTokens
     /// What the response would cost at API list prices, in US dollars. Nil
     /// when the model has no known price.
@@ -84,12 +91,14 @@ package struct AgentUsageRecord: Equatable {
     package var reportedCost: Bool = false
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(provider: AgentProvider, date: Date, model: String, project: String, session: String, tokens: AgentTokens, cost: Double? = nil, savings: Double, reportedCost: Bool = false) {
+    package init(provider: AgentProvider, date: Date, model: String, project: String, session: String,
+                 requests: Int = 1, tokens: AgentTokens, cost: Double? = nil, savings: Double, reportedCost: Bool = false) {
         self.provider = provider
         self.date = date
         self.model = model
         self.project = project
         self.session = session
+        self.requests = requests
         self.tokens = tokens
         self.cost = cost
         self.savings = savings

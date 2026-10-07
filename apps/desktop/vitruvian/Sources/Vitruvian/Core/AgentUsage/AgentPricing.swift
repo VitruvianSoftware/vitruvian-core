@@ -49,6 +49,9 @@ package struct AgentLongContext: Equatable {
 /// What one response bills, beyond its model.
 package struct AgentBillable: Equatable {
     package var tokens = AgentTokens()
+    /// Session totals do not reveal individual prompt sizes. Price these at
+    /// base rates instead of inferring a long-context request from their sum.
+    package var isAggregate = false
     /// The part of `tokens.cacheWrite` kept for an hour.
     package var longCacheWrite = 0
     package var fast = false
@@ -57,8 +60,9 @@ package struct AgentBillable: Equatable {
     package var webSearches = 0
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(tokens: AgentTokens = AgentTokens(), longCacheWrite: Int = 0, fast: Bool = false, domestic: Bool = false, webSearches: Int = 0) {
+    package init(tokens: AgentTokens = AgentTokens(), isAggregate: Bool = false, longCacheWrite: Int = 0, fast: Bool = false, domestic: Bool = false, webSearches: Int = 0) {
         self.tokens = tokens
+        self.isAggregate = isAggregate
         self.longCacheWrite = longCacheWrite
         self.fast = fast
         self.domestic = domestic
@@ -246,6 +250,9 @@ package enum AgentPricing {
     package static func normalized(_ model: String) -> String {
         var id = model.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if let range = id.range(of: "claude-") { id = String(id[range.lowerBound...]) }
+        // Copilot names Claude point releases with a dot where Anthropic's
+        // own logs and the public price list use a dash.
+        if id.hasPrefix("claude-") { id = id.replacingOccurrences(of: ".", with: "-") }
         if let slash = id.lastIndex(of: "/") { id = String(id[id.index(after: slash)...]) }
         for marker in ["@", "["] {
             if let index = id.firstIndex(of: Character(marker)) { id = String(id[..<index]) }
@@ -285,6 +292,8 @@ package enum AgentPricing {
     }
 
     package static func cost(_ billable: AgentBillable, model: String) -> (cost: Double?, savings: Double) {
+        // Activity-only records establish a date, not unpriced token usage.
+        if billable.isAggregate && billable.tokens.total == 0 { return (0, 0) }
         let list = self.list
         guard let price = price(for: model, in: list) else { return (nil, 0) }
         let tokens = billable.tokens
@@ -293,7 +302,7 @@ package enum AgentPricing {
         if billable.domestic { multiplier *= list.usOnlyMultiplier }
         var inputRate = multiplier
         var outputRate = multiplier
-        if let long = price.longContext, tokens.prompt > long.above {
+        if !billable.isAggregate, let long = price.longContext, tokens.prompt > long.above {
             inputRate *= long.input
             outputRate *= long.output
         }

@@ -142,6 +142,7 @@ package enum Preferences {
     package static let notchAgentsClaude = Preference(DefaultsKey.notchAgentsClaude, default: true)
     package static let notchAgentsCodex = Preference(DefaultsKey.notchAgentsCodex, default: true)
     package static let notchAgentsOpenCode = Preference(DefaultsKey.notchAgentsOpenCode, default: true)
+    package static let notchAgentsCopilot = Preference(DefaultsKey.notchAgentsCopilot, default: true)
     package static let notchAgentsLiveActivity = Preference(DefaultsKey.notchAgentsLiveActivity, default: true)
     package static let notchAgentsFinishAlert = Preference(DefaultsKey.notchAgentsFinishAlert, default: true)
     package static let notchAgentsLimitAlert = Preference(DefaultsKey.notchAgentsLimitAlert, default: true)

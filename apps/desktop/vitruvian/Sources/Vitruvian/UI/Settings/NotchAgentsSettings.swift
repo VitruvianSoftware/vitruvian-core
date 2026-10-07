@@ -14,6 +14,7 @@ package struct NotchAgentsSettingsControls: View {
     @AppStorage(Preferences.notchAgentsClaude) private var claude: Bool
     @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
+    @AppStorage(Preferences.notchAgentsCopilot) private var copilot: Bool
     @AppStorage(Preferences.notchAgentsCardOrder) private var cardOrder: String
     @AppStorage(Preferences.notchAgentsHiddenCards) private var hiddenCards: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var limitDisplay: String
@@ -50,6 +51,7 @@ package struct NotchAgentsSettingsControls: View {
             providerRow(.claude, isOn: $claude)
             providerRow(.codex, isOn: $codex)
             providerRow(.opencode, isOn: $opencode)
+            providerRow(.copilot, isOn: $copilot)
 
             Divider()
             Text(text.cardsTitle).font(.subheadline.weight(.medium))
@@ -87,7 +89,7 @@ package struct NotchAgentsSettingsControls: View {
                 NotchAgentStripSample(readout: NotchAgentReadout(rawValue: readout) ?? .elapsed,
                                       display: NotchAgentLimitDisplay(rawValue: limitDisplay) ?? .remaining,
                                       focus: NotchAgentLimitFocus(rawValue: limitFocus) ?? .mostUsed,
-                                      provider: claude ? .claude : (codex ? .codex : .opencode))
+                                      provider: claude ? .claude : codex ? .codex : opencode ? .opencode : .copilot)
                     .padding(.leading, settingsRowTextInset)
             }
 
@@ -129,7 +131,7 @@ package struct NotchAgentsSettingsControls: View {
         .onChange(of: claude) { _, on in if on { findClaudeApp() } }
         // Cards and agents set the page's height, and the live reading the
         // closed island's width, which the island follows.
-        .onChange(of: [cardOrder, hiddenCards, String(claude), String(codex),
+        .onChange(of: [cardOrder, hiddenCards, String(claude), String(codex), String(opencode), String(copilot),
                        String(liveActivity), readout, limitDisplay, limitFocus]) { _, _ in
             NotchService.shared.syncWithPreferences()
         }
@@ -202,7 +204,7 @@ package struct NotchAgentsSettingsControls: View {
             Spacer(minLength: 12)
             // One agent stays on; turning the section off stops all.
             Toggle(provider.displayName, isOn: isOn).labelsHidden().toggleStyle(.switch)
-                .disabled(isOn.wrappedValue && [claude, codex, opencode].filter { $0 }.count <= 1)
+                .disabled(isOn.wrappedValue && [claude, codex, opencode, copilot].filter { $0 }.count <= 1)
         }
     }
 
@@ -283,4 +285,3 @@ private struct NotchAgentStripSample: View {
         return NotchAgentSupport.stripReading(snapshot, readout: readout, display: display, focus: focus, now: now)
     }
 }
-
