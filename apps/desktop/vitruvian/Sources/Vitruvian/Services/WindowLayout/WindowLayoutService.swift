@@ -917,22 +917,35 @@ package final class WindowLayoutService: ObservableObject {
         guard directionalSession == nil, registeredDirectionalTrigger != nil,
               !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted()
         else { return }
-        if directionalModifierHold != nil {
-            let pointerInputSinceArm = pointerSnapshot.map {
-                WindowDirectionalModifierPointerSnapshot.current().hasPointerInput(since: $0)
-            } ?? false
-            guard WindowDirectionalModifierInputPolicy.canBegin(
-                mouseButtonPressed: isAnyMouseButtonPressed(),
-                pointerInputSinceArm: pointerInputSinceArm
-            ) else {
+        let hasModifierTrigger = directionalModifierHold != nil
+        if hasModifierTrigger {
+            guard canBeginDirectionalModifierGesture(pointerSnapshot: pointerSnapshot) else {
+                cancelDirectionalGesture()
+                return
+            }
+            guard startDirectionalTap() else {
+                directionalShortcutRegistrationFailed = true
+                cancelDirectionalGesture()
+                return
+            }
+            guard canBeginDirectionalModifierGesture(pointerSnapshot: pointerSnapshot) else {
                 cancelDirectionalGesture()
                 return
             }
         }
-        guard
-              let target = focusedTarget(for: .leftHalf),
-              let screen = bestScreen(for: target.frame) else { return }
-        guard startDirectionalTap() else {
+        guard let target = focusedTarget(for: .leftHalf),
+              let screen = bestScreen(for: target.frame) else {
+            if hasModifierTrigger {
+                cancelDirectionalGesture(modifierCancellation: .preserveHold)
+            }
+            return
+        }
+        if hasModifierTrigger {
+            guard canBeginDirectionalModifierGesture(pointerSnapshot: pointerSnapshot) else {
+                cancelDirectionalGesture()
+                return
+            }
+        } else if !startDirectionalTap() {
             directionalShortcutRegistrationFailed = true
             return
         }
@@ -1088,7 +1101,6 @@ package final class WindowLayoutService: ObservableObject {
             unregisterDirectionalHotkey()
             return Unmanaged.passUnretained(event)
         }
-        guard var session = directionalSession else { return Unmanaged.passUnretained(event) }
 
         if directionalModifierHold != nil,
            WindowDirectionalModifierInputPolicy.cancelsAndPassesThrough(type) {
@@ -1097,6 +1109,7 @@ package final class WindowLayoutService: ObservableObject {
             cancelDirectionalGesture()
             return Unmanaged.passUnretained(event)
         }
+        guard var session = directionalSession else { return Unmanaged.passUnretained(event) }
 
         if type == .scrollWheel {
             let deltaY = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
@@ -1174,6 +1187,17 @@ package final class WindowLayoutService: ObservableObject {
             guard let button = CGMouseButton(rawValue: UInt32(index)) else { return false }
             return CGEventSource.buttonState(.combinedSessionState, button: button)
         }
+    }
+
+    private func canBeginDirectionalModifierGesture(
+        pointerSnapshot: WindowDirectionalModifierPointerSnapshot?
+    ) -> Bool {
+        let pointerInputSinceArm = pointerSnapshot.map {
+            WindowDirectionalModifierPointerSnapshot.current().hasPointerInput(since: $0)
+        } ?? false
+        return WindowDirectionalModifierInputPolicy.canBegin(
+            mouseButtonPressed: isAnyMouseButtonPressed(),
+            pointerInputSinceArm: pointerInputSinceArm)
     }
 
     private func updateDirectionalGesture() {
