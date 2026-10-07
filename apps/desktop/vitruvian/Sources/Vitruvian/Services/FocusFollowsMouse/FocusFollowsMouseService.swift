@@ -177,7 +177,8 @@ package final class FocusFollowsMouseService {
                 guard let self else { return }
                 let targetAppIsFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
                     == target.processID
-                let isCurrent = { [weak self] in
+                // Also checked by the focus hand-off, after its pause on the main queue.
+                let isCurrent: @MainActor @Sendable () -> Bool = { [weak self] in
                     guard let self else { return false }
                     return self.isRunning && self.nothingIsHeldDown
                         && self.state.isCurrent(evaluation)
@@ -193,10 +194,11 @@ package final class FocusFollowsMouseService {
                           isParkedOnHiddenSpace: { SpaceWindowBridge.isParkedOnHiddenSpace($0) })
                 else { return }
                 guard UserDefaults.standard[Preferences.focusFollowsMouseRaise] else {
+                    let activation = WindowActivator.supersedePendingActivations(for: target.processID)
                     SpaceWindowBridge.focusWithoutRaise(
                         target.windowID, ownerPID: target.processID,
                         replacing: targetAppIsFrontmost ? target.focusedWindowID : nil,
-                        while: isCurrent)
+                        while: { isCurrent() && WindowActivator.isCurrentActivation(activation) })
                     return
                 }
                 WindowActivator.activate(pid: target.processID,

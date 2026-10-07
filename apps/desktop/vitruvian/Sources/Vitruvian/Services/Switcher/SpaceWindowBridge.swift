@@ -333,7 +333,7 @@ package enum SpaceWindowBridge {
     }
 
     /// Hands the keyboard to a window and leaves the stacking order alone,
-    /// after yabai's window_manager_focus_window_without_raise. Within the app
+    /// with the focus handoff window managers use for this. Within the app
     /// already in front, the window server moves focus only once the old
     /// window hears it lost focus and the new one that it gained it. Some apps
     /// miss the pair when it arrives at once, so the second half waits 40 ms
