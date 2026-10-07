@@ -110,7 +110,11 @@ struct NotchMascotActivityVisit: ViewModifier {
     func body(content: Content) -> some View {
         // A lap or a homecoming ends where it rests, which an activity's
         // strip has no place for, so only what ends out of sight comes over it.
-        let visit = track == nil ? nil : service.mascotVisit.flatMap { $0.kind.endsOutOfSight ? $0 : nil }
+        // A countdown is watched from beside a camera; a capsule copy has
+        // none, and stepping its timer aside there would only blank it.
+        let visit = track == nil ? nil : service.mascotVisit.flatMap {
+            $0.kind.endsOutOfSight && !($0.kind.watchesTimer && track?.hidden == nil) ? $0 : nil
+        }
         // Reacting or watching a countdown beside a camera, it covers only
         // the wing it stands in, as the black of the closed island, and the
         // other side stays in view. A capsule has no wings, so what it shows
