@@ -93,6 +93,32 @@ enum MixerOutputAdjustmentContract {
         }
 
         var mixer = make()
+        hardware.volume = 0.02
+        var zeroResult: Bool?
+        mixer.requestStep(level: { $0 - 0.1 }) { zeroResult = $0 }
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0, muted: nil),
+                                         .init(device: 1, volume: nil, muted: true)]
+                     && mixer.volume == 0 && mixer.muted == true && zeroResult == true,
+                     "a volume key that reaches or crosses zero mutes the output")
+        hardware.volume = 0
+        hardware.muted = true
+        hardware.writes = []
+        mixer.requestStep(level: { $0 + 0.1 })
+        finish(mixer)
+        suite.expect(hardware.writes.last?.muted == false
+                     && mixer.volume == 0.1 && mixer.muted == false,
+                     "the next positive volume key unmutes an output muted at zero")
+
+        mixer = make()
+        hardware.muted = nil
+        select(mixer, 1, volume: 0.2, muted: nil)
+        mixer.requestAdjustment(volume: 0)
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0, muted: nil)],
+                     "zero volume on an output without mute writes only the volume")
+
+        mixer = make()
         var completions: [Bool] = []
         mixer.requestAdjustment(volume: 0.3) { completions.append($0) }
         mixer.requestAdjustment(volume: 0.5) { completions.append($0) }
