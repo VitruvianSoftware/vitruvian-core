@@ -52,6 +52,167 @@ enum DisplayRestorationTests {
         taps(suite)
         headless(suite)
         lidReads(suite)
+        identities(suite)
+        relaunch(suite)
+    }
+
+    private static func savedIdentities(_ desk: Rig.Desk) -> [String: String] {
+        desk.defaults.dictionary(forKey: DefaultsKey.displaysSwitchedOffFingerprints) as? [String: String] ?? [:]
+    }
+
+    /// Before a display is switched off, the monitor behind its number is
+    /// written down beside it. A number macOS later hands to another monitor
+    /// is never switched on for the one that left (upstream #2677).
+    private static func identities(_ suite: TestSuite) {
+        var (desk, service) = desk()
+        tap(desk, service, 2)
+        tap(desk, service, 3)
+        suite.expect(switchedOff(desk) == [2, 3]
+                     && savedIdentities(desk) == ["2": "monitor-2", "3": "monitor-3"],
+                     "switching displays off saves the monitor behind each number")
+        tap(desk, service, 2)
+        suite.expect(switchedOff(desk) == [3] && savedIdentities(desk) == ["3": "monitor-3"],
+                     "switching one back on forgets only its record and identity")
+        tap(desk, service, 3)
+        suite.expect(switchedOff(desk).isEmpty && savedIdentities(desk).isEmpty,
+                     "the last switch-on clears both repair records")
+        desk.tearDown()
+
+        // Sleep or an input change can read the switched-off monitor as
+        // active for a moment; its row and its recovery stay.
+        (desk, service) = Self.desk()
+        tap(desk, service, 2)
+        plug(desk, 2, in: true)
+        plug(desk, 2, in: false)
+        desk.configurations = []
+        service.restoreDisplaysBeforeTermination()
+        desk.drain()
+        suite.expect(desk.configurations == ["on:2"] && switchedOff(desk).isEmpty,
+                     "a switched-off monitor briefly read as active is still switched back on at the end")
+        desk.tearDown()
+
+        // The number comes back behind another monitor.
+        (desk, service) = Self.desk()
+        tap(desk, service, 2)
+        desk.display(2).fingerprint = "monitor-9"
+        desk.configurations = []
+        service.restoreDisplaysBeforeTermination()
+        desk.drain()
+        suite.expect(desk.configurations.isEmpty && switchedOff(desk).isEmpty && savedIdentities(desk).isEmpty
+                     && !service.displays.contains { $0.id == 2 },
+                     "a monitor that inherits a switched-off display's number is never switched on for it")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 2)
+        desk.display(2).fingerprint = "monitor-9"
+        plug(desk, 2, in: true)
+        suite.expect(switchedOff(desk).isEmpty && savedIdentities(desk).isEmpty,
+                     "a rebuild that finds another monitor behind the number retires the switched-off row")
+        desk.tearDown()
+
+        (desk, service) = Self.desk()
+        tap(desk, service, 2)
+        desk.display(2).fingerprint = "monitor-9"
+        desk.configurations = []
+        tap(desk, service, 2)
+        suite.expect(desk.configurations.isEmpty && service.displayControlFailure == .failed
+                     && switchedOff(desk).isEmpty,
+                     "a tap to switch on a number now behind another monitor switches nothing on")
+        desk.tearDown()
+
+        // CoreGraphics answers zeroes for a connection with nothing on it,
+        // all ones for a number no display uses, and the unknown vendor for
+        // a monitor IOKit cannot identify. None names another monitor.
+        for unknown in ["0:0:0", "4294967295:4294967295:4294967295", "1970170734:0:0"] {
+            (desk, service) = Self.desk()
+            tap(desk, service, 2)
+            desk.display(2).fingerprint = unknown
+            desk.configureSucceeds = false
+            service.restoreDisplaysBeforeTermination()
+            desk.drain()
+            suite.expect(desk.configurations.last == "on:2" && switchedOff(desk) == [2]
+                         && savedIdentities(desk) == ["2": "monitor-2"],
+                         "a number that reads \(unknown) is still switched on, and keeps its row when that fails")
+            desk.tearDown()
+        }
+
+        // The built-in's number never passes to another monitor.
+        (desk, service) = Self.desk()
+        tap(desk, service, 1)
+        suite.expect(switchedOff(desk) == [1] && savedIdentities(desk).isEmpty,
+                     "the built-in panel saves no identity")
+        desk.display(1).fingerprint = "monitor-9"
+        service.restoreDisplaysBeforeTermination()
+        desk.drain()
+        suite.expect(desk.configurations == ["off:1", "on:1"] && switchedOff(desk).isEmpty,
+                     "the built-in panel comes back even when it reads as another monitor while off")
+        desk.tearDown()
+    }
+
+    /// A relaunch that finds a display a previous run left off, with display
+    /// control itself off: the service was never started.
+    private static func relaunch(_ suite: TestSuite) {
+        func idle(saved identity: String?) -> (Rig.Desk, BrightnessService) {
+            let desk = Rig.Desk()
+            let panel = Rig.Display(id: 1, systemLevel: 0.5)
+            panel.builtIn = true
+            let external = Rig.Display(id: 2)
+            external.online = false
+            external.active = false
+            desk.displays = [panel, external]
+            desk.defaults.set([2], forKey: DefaultsKey.displaysSwitchedOff)
+            if let identity {
+                desk.defaults.set(["2": identity], forKey: DefaultsKey.displaysSwitchedOffFingerprints)
+            }
+            desk.configureSucceeds = false
+            let service = BrightnessService(environment: desk.environment)
+            service.restoreDisplaysLeftOff()
+            desk.drain()
+            return (desk, service)
+        }
+        func wake(_ desk: Rig.Desk) {
+            desk.workspace.post(name: NSWorkspace.didWakeNotification, object: nil)
+            desk.workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+            desk.drain()
+        }
+
+        var (desk, service) = idle(saved: "monitor-2")
+        let attempts = desk.configurations.count
+        suite.expect(attempts > 0 && switchedOff(desk) == [2] && savedIdentities(desk) == ["2": "monitor-2"],
+                     "a startup restore that fails keeps the record and the monitor's identity")
+        wake(desk)
+        suite.expect(desk.configurations.count == attempts, "waking waits for the connections to settle")
+        desk.runDelayed()
+        suite.expect(desk.configurations.count == attempts + 1 && switchedOff(desk) == [2],
+                     "the two wake notifications make one retry, and a failed one keeps the recovery")
+        desk.configureSucceeds = true
+        wake(desk)
+        desk.runDelayed()
+        suite.expect(desk.configurations.last == "on:2" && switchedOff(desk).isEmpty && savedIdentities(desk).isEmpty,
+                     "a later wake brings the monitor back while display control stays off")
+        wake(desk)
+        suite.expect(desk.delayed.isEmpty, "with nothing left to restore, a wake schedules nothing")
+        withExtendedLifetime(service) {}
+        desk.tearDown()
+
+        (desk, service) = idle(saved: "monitor-2")
+        let before = desk.configurations.count
+        desk.display(2).fingerprint = "monitor-9"
+        desk.configureSucceeds = true
+        wake(desk)
+        desk.runDelayed()
+        suite.expect(desk.configurations.count == before && switchedOff(desk).isEmpty && savedIdentities(desk).isEmpty,
+                     "a number that wakes behind another monitor is retired, not switched on")
+        withExtendedLifetime(service) {}
+        desk.tearDown()
+
+        // A record from before identities were saved is switched on by number.
+        (desk, service) = idle(saved: nil)
+        suite.expect(desk.configurations.first == "on:2" && switchedOff(desk) == [2],
+                     "a record without an identity is still switched on by number, and kept when that fails")
+        withExtendedLifetime(service) {}
+        desk.tearDown()
     }
 
     private static func startup(_ suite: TestSuite) {

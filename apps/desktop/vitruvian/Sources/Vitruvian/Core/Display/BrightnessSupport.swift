@@ -200,10 +200,10 @@ package enum BrightnessSupport {
         case success, closedLid, failed
     }
 
-    /// An enable the closed lid denied waits here until the lid opens. A
-    /// request a person tapped for, or one a restore-all owes, is kept when a
-    /// headless recovery brings another display back instead; a request only
-    /// that recovery made is dropped then.
+    /// An enable the closed lid denied waits here until the lid opens. Failed
+    /// restore-all requests also wait for a later wake. A request a person
+    /// tapped for, or one a restore-all owes, is kept when a headless recovery
+    /// brings another display back instead.
     package struct DeferredDisplayRestoration {
         package private(set) var ids = Set<UInt32>()
         private var headlessIDs = Set<UInt32>()
@@ -214,6 +214,9 @@ package enum BrightnessSupport {
             if result == .closedLid {
                 ids.insert(id)
                 lastLidClosed = true
+            }
+            if result == .failed, keptIDs.contains(id) {
+                ids.insert(id)
             }
             if result == .success {
                 ids.remove(id)
@@ -239,10 +242,10 @@ package enum BrightnessSupport {
             headlessIDs.removeAll()
         }
 
-        package mutating func candidates(lidClosed: Bool?) -> Set<UInt32> {
+        package mutating func candidates(lidClosed: Bool?, retryFailures: Bool = false) -> Set<UInt32> {
             let opened = lidClosed == false && lastLidClosed != false
             if let lidClosed { lastLidClosed = lidClosed }
-            return opened ? ids : []
+            return opened || retryFailures ? ids : []
         }
 
         // Spelled out because a default initializer never leaves its module.
