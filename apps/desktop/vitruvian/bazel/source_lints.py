@@ -1427,12 +1427,17 @@ _MODIFIERS = (
 )
 _ATTRIBUTES = r"(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
 DECLARED_TYPE_RE = re.compile(
-    r"^([ \t]*)" + _ATTRIBUTES
+    r"^([ \t]*)"
+    + _ATTRIBUTES
     + r"((?:(?:public|open|package|internal|private|fileprivate|final|indirect|nonisolated)[ \t]+)*)"
     r"(struct|class|enum|actor|protocol|typealias)[ \t]+([A-Za-z_]\w*)"
 )
 PACKAGE_MEMBER_RE = re.compile(
-    r"^[ \t]*" + _ATTRIBUTES + _MODIFIERS + r"package[ \t]+" + _MODIFIERS
+    r"^[ \t]*"
+    + _ATTRIBUTES
+    + _MODIFIERS
+    + r"package[ \t]+"
+    + _MODIFIERS
     + r"(func|var|let|init|subscript|typealias)\b[ \t]*([A-Za-z_]\w*)?"
 )
 _ACCESS_WORDS = {"public", "open", "package", "private", "fileprivate"}
@@ -1449,7 +1454,11 @@ def _enclosing_is_type(lines, index):
         line = lines[back]
         if line.strip() and len(line) - len(line.lstrip(" \t")) < depth:
             match = DECLARED_TYPE_RE.match(line)
-            return bool(match) or bool(re.match(r"[ \t]*(?:" + _ATTRIBUTES + r")?(?:\w+[ \t]+)*extension\b", line))
+            return bool(match) or bool(
+                re.match(
+                    r"[ \t]*(?:" + _ATTRIBUTES + r")?(?:\w+[ \t]+)*extension\b", line
+                )
+            )
     return False
 
 
@@ -1484,7 +1493,11 @@ def _signature(lines, index, kind):
     if kind in ("var", "let"):
         text = text.split("=", 1)[0]
     generics = re.search(r"^[^(]*?<([^>]*)>", text)
-    names = set(re.findall(r"([A-Za-z_]\w*)\s*(?:[:,]|$)", generics.group(1))) if generics else set()
+    names = (
+        set(re.findall(r"([A-Za-z_]\w*)\s*(?:[:,]|$)", generics.group(1)))
+        if generics
+        else set()
+    )
     return text, names
 
 
@@ -1503,7 +1516,9 @@ def internal_types_named_by_package_signatures(paths, lines_of):
                 continue
             explicit = bool(set(match.group(2).split()) & _ACCESS_WORDS)
             declared[match.group(4)].append(
-                explicit or not _enclosing_is_type(lines, index) or _inside_private_type(lines, index)
+                explicit
+                or not _enclosing_is_type(lines, index)
+                or _inside_private_type(lines, index)
             )
     internal = {name for name, kinds in declared.items() if kinds == [False]}
     for path in paths:
@@ -1534,7 +1549,7 @@ def package_signatures_name_no_internal_type(repo):
             "    package static func capture() -> Capture? { nil }",
             "    package static func shared(_ value: Shared) {}",
             "    package static func each<Capture>(_ value: Capture) {}",
-            "    package var label: String { \"Capture\" }",
+            '    package var label: String { "Capture" }',
             "    package enum CodingKeys {}",
             "}",
         ],
@@ -1561,8 +1576,12 @@ def package_signatures_name_no_internal_type(repo):
     for module in MODULE_DIRS:
         prefix = APP_PREFIX + module + "/"
         paths = [p for p in repo.app_sources() if p.startswith(prefix)]
-        for path, line, name in internal_types_named_by_package_signatures(paths, repo.lines_at):
-            problems.append(f"{path}:{line}: a package signature names internal `{name}`")
+        for path, line, name in internal_types_named_by_package_signatures(
+            paths, repo.lines_at
+        ):
+            problems.append(
+                f"{path}:{line}: a package signature names internal `{name}`"
+            )
     return problems
 
 
