@@ -752,6 +752,50 @@ package enum WindowDirectionalModifierTapSupport {
     }
 }
 
+/// Native modifier-click, scroll and keyboard input always wins over a
+/// modifier-only pointer layout. Kept pure so input custody stays covered
+/// without manufacturing system-wide events in tests.
+package enum WindowDirectionalModifierInputPolicy {
+    package static func canBegin(mouseButtonPressed: Bool,
+                                 pointerInputSinceArm: Bool) -> Bool {
+        !mouseButtonPressed && !pointerInputSinceArm
+    }
+
+    package static func cancelsAndPassesThrough(_ type: CGEventType) -> Bool {
+        switch type {
+        case .scrollWheel, .leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown: return true
+        default: return false
+        }
+    }
+}
+
+/// Event-source counters catch a quick click or scroll that completes while
+/// the main queue is still waiting to start the deferred gesture. Reading the
+/// counters does not subscribe the idle tap to pointer events.
+package struct WindowDirectionalModifierPointerSnapshot: Equatable {
+    package let leftMouseDown: UInt32
+    package let rightMouseDown: UInt32
+    package let otherMouseDown: UInt32
+    package let scrollWheel: UInt32
+
+    package static func current() -> Self {
+        Self(
+            leftMouseDown: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .leftMouseDown),
+            rightMouseDown: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .rightMouseDown),
+            otherMouseDown: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .otherMouseDown),
+            scrollWheel: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .scrollWheel)
+        )
+    }
+
+    package func hasPointerInput(since earlier: Self) -> Bool {
+        self != earlier
+    }
+}
+
 /// A modifier chord starts once, finishes on its first required-key release,
 /// and cannot restart until all its keys are up. Extra modifiers cancel it.
 package struct WindowDirectionalModifierHold {

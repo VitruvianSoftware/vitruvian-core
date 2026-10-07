@@ -148,6 +148,28 @@ enum WindowLayoutFeatureTests {
                     == CGEventMask(1 << CGEventType.flagsChanged.rawValue)
                         | CGEventMask(1 << CGEventType.keyDown.rawValue),
             "idle modifier observation passively retains key cancellation without watching pointer input")
+        suite.expect(!WindowDirectionalModifierInputPolicy.canBegin(
+                mouseButtonPressed: true, pointerInputSinceArm: false)
+                && !WindowDirectionalModifierInputPolicy.canBegin(
+                    mouseButtonPressed: false, pointerInputSinceArm: true)
+                && WindowDirectionalModifierInputPolicy.canBegin(
+                    mouseButtonPressed: false, pointerInputSinceArm: false),
+            "a modifier trigger never begins after an app-owned mouse press, click or scroll")
+        for type in [CGEventType.scrollWheel, .leftMouseDown, .rightMouseDown,
+                     .otherMouseDown, .keyDown] {
+            suite.expect(WindowDirectionalModifierInputPolicy.cancelsAndPassesThrough(type),
+                "modifier trigger cancels and passes through native input type \(type.rawValue)")
+        }
+        suite.expect(!WindowDirectionalModifierInputPolicy.cancelsAndPassesThrough(.mouseMoved)
+                && !WindowDirectionalModifierInputPolicy.cancelsAndPassesThrough(.flagsChanged),
+            "pointer aiming and modifier releases remain part of the layout gesture")
+        let pointerSnapshot = WindowDirectionalModifierPointerSnapshot(
+            leftMouseDown: 1, rightMouseDown: 2, otherMouseDown: 3, scrollWheel: 4)
+        suite.expect(!pointerSnapshot.hasPointerInput(since: pointerSnapshot)
+                && WindowDirectionalModifierPointerSnapshot(
+                    leftMouseDown: 1, rightMouseDown: 2, otherMouseDown: 3, scrollWheel: 5
+                ).hasPointerInput(since: pointerSnapshot),
+            "pointer counters invalidate a deferred modifier start after quick input completes")
         let deferredModifierWork = DispatchSemaphore(value: 0)
         WindowDirectionalModifierTapSupport.afterCallback { deferredModifierWork.signal() }
         let modifierWorkWasDeferred = deferredModifierWork.wait(timeout: .now()) == .timedOut

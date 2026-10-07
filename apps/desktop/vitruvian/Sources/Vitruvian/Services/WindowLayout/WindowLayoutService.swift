@@ -911,13 +911,23 @@ package final class WindowLayoutService: ObservableObject {
         directionalModifierHold = nil
     }
 
-    private func beginDirectionalGesture() {
+    private func beginDirectionalGesture(
+        pointerSnapshot: WindowDirectionalModifierPointerSnapshot? = nil
+    ) {
         guard directionalSession == nil, registeredDirectionalTrigger != nil,
               !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted()
         else { return }
-        if directionalModifierHold != nil, isAnyMouseButtonPressed() {
-            cancelDirectionalGesture()
-            return
+        if directionalModifierHold != nil {
+            let pointerInputSinceArm = pointerSnapshot.map {
+                WindowDirectionalModifierPointerSnapshot.current().hasPointerInput(since: $0)
+            } ?? false
+            guard WindowDirectionalModifierInputPolicy.canBegin(
+                mouseButtonPressed: isAnyMouseButtonPressed(),
+                pointerInputSinceArm: pointerInputSinceArm
+            ) else {
+                cancelDirectionalGesture()
+                return
+            }
         }
         guard
               let target = focusedTarget(for: .leftHalf),
@@ -1010,6 +1020,8 @@ package final class WindowLayoutService: ObservableObject {
         guard type == .flagsChanged else { return Unmanaged.passUnretained(event) }
         let decision = hold.update(GlobalShortcutModifiers(cgFlags: event.flags))
         let generation = hold.generation
+        let pointerSnapshot: WindowDirectionalModifierPointerSnapshot? = decision == .begin
+            ? .current() : nil
         directionalModifierHold = hold
         if case .none = decision { return Unmanaged.passUnretained(event) }
         WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
@@ -1020,7 +1032,7 @@ package final class WindowLayoutService: ObservableObject {
                 return
             }
             switch decision {
-            case .begin: self.beginDirectionalGesture()
+            case .begin: self.beginDirectionalGesture(pointerSnapshot: pointerSnapshot)
             case .finish:
                 self.updateDirectionalGesture()
                 self.finishDirectionalGesture()
@@ -1038,6 +1050,7 @@ package final class WindowLayoutService: ObservableObject {
         let mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
             | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.keyDown.rawValue)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -1078,9 +1091,9 @@ package final class WindowLayoutService: ObservableObject {
         guard var session = directionalSession else { return Unmanaged.passUnretained(event) }
 
         if directionalModifierHold != nil,
-           type == .scrollWheel || type == .leftMouseDown || type == .rightMouseDown {
-            // Modifier-only triggers prefix native modifier-click and scroll
-            // gestures. Let the input reach its app and abandon this layout.
+           WindowDirectionalModifierInputPolicy.cancelsAndPassesThrough(type) {
+            // Modifier-only triggers prefix native clicks, scrolls and keys.
+            // Let the input reach its app and abandon this layout.
             cancelDirectionalGesture()
             return Unmanaged.passUnretained(event)
         }
@@ -1126,13 +1139,6 @@ package final class WindowLayoutService: ObservableObject {
 
         if type == .keyDown {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            // A modifier trigger is also the prefix of ordinary shortcuts
-            // such as ⌃⌘Space. Cancel before interpreting manual overrides so
-            // those keys reach their app without placing a window on release.
-            if directionalModifierHold != nil {
-                cancelDirectionalGesture()
-                return Unmanaged.passUnretained(event)
-            }
             let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             let allowManual = WindowDirectionalGestureSupport.shouldApplyKeyboardManualOverride(
                 isAutorepeat: isAutorepeat)
