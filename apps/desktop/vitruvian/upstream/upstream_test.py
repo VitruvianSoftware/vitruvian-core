@@ -485,6 +485,14 @@ class InitReviewTest(unittest.TestCase):
         ).replace("fast: Bool = false)", "aggregate: Bool = false, fast: Bool = false)")
         self.assertEqual(upstream.init_review(merged, self.OURS), [])
 
+    def test_private_properties_are_not_the_initializers_to_take(self):
+        merged = self.OURS.replace(
+            "    package var fast = false\n",
+            "    package var fast = false\n    @State private var shown = false\n"
+            "    @Environment(\\.isEnabled) private var isEnabled\n",
+        )
+        self.assertEqual(upstream.init_review(merged, self.OURS), [])
+
     def test_types_without_a_spelled_out_initializer_are_not_reviewed(self):
         ours = "struct Local {\n    var a = 0\n}\n"
         merged = "struct Local {\n    var a = 0\n    var b = 0\n}\n"

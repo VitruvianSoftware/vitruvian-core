@@ -793,6 +793,9 @@ def _spelled_out_inits(lines):
                 m
                 and _indent(lines[k]) == depth
                 and not re.search(r"\bstatic\b", lines[k])
+                # Another module cannot set a private property, so no
+                # initializer it calls has to take one.
+                and not re.search(r"\b(?:private|fileprivate)\b(?!\(set\))", lines[k])
                 and m.group(2) != "{"
             ):
                 stored[m.group(1)] = k + 1
