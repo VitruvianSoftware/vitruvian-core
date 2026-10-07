@@ -365,6 +365,45 @@ enum RepositoryFeatureTests {
             .flatMap(\.entries).map(\.name).filter { $0 != $0.lowercased() }
         suite.expect(upperCaseBuiltIns.isEmpty,
                "built-in names are lowercase, since matching and switched off names are: \(upperCaseBuiltIns)")
+        // The rules list's site switch and name removal, on the stored lists
+        // Settings writes back.
+        var siteSwitch = URLCleaning.StoredRules(siteNames: "weibo.com|sudaref", disabledNames: "youtube.com|si")
+        func switchedRules() -> URLCleaning.Rules { siteSwitch.rules }
+        func switchedGroup(_ site: String) -> URLCleaning.RuleGroup? {
+            URLCleaning.ruleGroups(rules: switchedRules()).first { $0.site == site }
+        }
+        let youtubeLink = "https://www.youtube.com/watch?v=a&si=x&feature=y"
+        for site in ["weibo.com", "youtube.com"] {
+            switchedGroup(site).map { siteSwitch.setSite($0, enabled: false) }
+        }
+        suite.expect(switchedGroup("weibo.com")?.entries.map(\.name) == ["sudaref"]
+                && switchedGroup("weibo.com")?.enabledCount == 0
+                && URLCleaning.clean("https://weibo.com/a?sudaref=x", rules: switchedRules())?.removed == [],
+               "switching a site off keeps the name the user added to it, switched off")
+        suite.expect(switchedGroup("youtube.com")?.enabledCount == 0
+                && URLCleaning.clean(youtubeLink, rules: switchedRules())?.removed == [],
+               "switching a built-in site off switches off every built-in name: \(siteSwitch.disabledNames)")
+        for site in ["weibo.com", "youtube.com"] {
+            switchedGroup(site).map { siteSwitch.setSite($0, enabled: true) }
+        }
+        let youtubeAllOn = switchedGroup("youtube.com")
+            .map { !$0.entries.isEmpty && $0.enabledCount == $0.entries.count } ?? false
+        suite.expect(siteSwitch.disabledNames.isEmpty && youtubeAllOn
+                && URLCleaning.clean("https://weibo.com/a?sudaref=x", rules: switchedRules())?.removed == ["sudaref"]
+                && URLCleaning.clean(youtubeLink, rules: switchedRules())?.removed == ["si", "feature"],
+               "switching a site back on turns on every name it lists, one off before included: \(siteSwitch.disabledNames)")
+        // A name deleted while its row is off goes from the switched off
+        // names too, or adding it again later would bring it back off.
+        siteSwitch.globalNames = "keep"
+        for site in ["weibo.com", URLCleaning.allSites] {
+            switchedGroup(site).map { siteSwitch.setSite($0, enabled: false) }
+        }
+        siteSwitch.remove("sudaref", from: "weibo.com")
+        siteSwitch.remove("keep", from: URLCleaning.allSites)
+        let leftOff = URLCleaning.tokens(from: siteSwitch.disabledNames)
+        suite.expect(siteSwitch.siteNames.isEmpty && siteSwitch.globalNames.isEmpty
+                && leftOff["weibo.com"] == nil && leftOff[URLCleaning.allSites]?.contains("keep") != true,
+               "deleting a name the user added drops it from the switched off names too: \(siteSwitch.disabledNames)")
         expectEqual(URLCleaning.siteKey(from: " https://WWW.Weibo.com/path?x=1 ") ?? "",
                     "weibo.com", "the site field takes a pasted link and keeps the host")
         suite.expect(URLCleaning.siteKey(from: "not a host") == nil,

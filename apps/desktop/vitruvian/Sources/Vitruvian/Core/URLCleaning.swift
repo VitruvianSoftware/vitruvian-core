@@ -212,6 +212,53 @@ package enum URLCleaning {
         return groups.filter { !$0.entries.isEmpty }
     }
 
+    /// The three stored lists the rules come from, as the Settings rules list
+    /// edits them: as a difference from the built-in tables, each edit
+    /// touching only the names it is about.
+    package struct StoredRules: Equatable {
+        package var globalNames: String
+        package var siteNames: String
+        package var disabledNames: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(globalNames: String = "", siteNames: String = "", disabledNames: String = "") {
+            self.globalNames = globalNames
+            self.siteNames = siteNames
+            self.disabledNames = disabledNames
+        }
+
+        package var rules: Rules {
+            URLCleaning.rules(globalNames: globalNames, siteNames: siteNames, disabledNames: disabledNames)
+        }
+
+        /// Off switches off every name the row lists, the user's own included,
+        /// so on can clear the row's record and turn every name it lists on
+        /// again, one switched off by hand before included.
+        package mutating func setSite(_ group: RuleGroup, enabled: Bool) {
+            var disabled = URLCleaning.tokens(from: disabledNames)
+            disabled[group.site] = enabled ? nil : Set(group.entries.map(\.name))
+            disabledNames = URLCleaning.storageValue(forTokens: disabled)
+        }
+
+        /// Deletes a name the user added. It takes its switched off record
+        /// with it, so adding it again later brings it back on, as typing it
+        /// back in already does.
+        package mutating func remove(_ name: String, from site: String) {
+            var disabled = URLCleaning.tokens(from: disabledNames)
+            disabled[site]?.remove(name)
+            disabledNames = URLCleaning.storageValue(forTokens: disabled)
+            if site == URLCleaning.allSites {
+                var names = URLCleaning.customParameters(from: globalNames)
+                names.remove(name)
+                globalNames = URLCleaning.storageValue(forNames: names)
+            } else {
+                var added = URLCleaning.tokens(from: siteNames)
+                added[site]?.remove(name)
+                siteNames = URLCleaning.storageValue(forTokens: added)
+            }
+        }
+    }
+
     /// Comma-separated names, the format the global custom list has always
     /// been stored in.
     package static func customParameters(from storedValue: String?) -> Set<String> {
