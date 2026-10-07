@@ -151,6 +151,19 @@ jobs:
           esac
           echo "diff base: ${sha:-unresolved}"
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          # The map for a commit appears 16-39 min after it lands, later than
+          # the next queue entry needs it (#2841). Offer the base's recent
+          # ancestors as fallbacks, nearest first; affected-targets.sh decides
+          # whether an older map is safe to use and compares against its commit.
+          keys=""
+          if [ -n "$sha" ] && git rev-parse --verify --quiet "${sha}^{commit}" >/dev/null; then
+            keys="$(git rev-list --first-parent -n 21 "$sha" | tail -n +2 | sed 's/^/pipeline-rdeps-map-v1-/')"
+          fi
+          {
+            echo "fallback_keys<<FALLBACK_KEYS_EOF"
+            echo "$keys"
+            echo "FALLBACK_KEYS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Restore the dependency map for the diff base
         if: steps.base.outputs.sha != ''
@@ -158,6 +171,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/pipeline-rdeps-map.json
           key: pipeline-rdeps-map-v1-${{ steps.base.outputs.sha }}
+          restore-keys: ${{ steps.base.outputs.fallback_keys }}
 
       # Build the planner with plain Go, as Presubmit's plan job does. Running
       # it through `bazel run` costs about two minutes of Bazel startup before

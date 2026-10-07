@@ -49,6 +49,8 @@
 #   FORCED_PUSH         "true" on a forced push -> full sweep (push lane only).
 #   RDEPS_MAP           optional path to the dependency map for the diff base
 #                       (#2841); a missing file just means "no map".
+#   MAP_MAX_BEHIND      optional; how many commits behind the diff base a
+#                       dependency map may be and still be used (default 20).
 #   PLAN_BIN            optional path to a prebuilt //tools/pipeline/plan
 #                       binary; used instead of `bazel run` when executable.
 #   PLAN_BUDGET_SEC     optional; warn when a map-sourced plan takes longer
@@ -199,8 +201,13 @@ fi
 # image/zip artifacts, not `:deploy`), so the tabula delivery() units carry
 # `tools/deploy/` in EXTRA_PATH_REGEX to keep that gate firing -- narrowing the
 # TEST sweep here must never silently narrow the fail-open deploy gate.
-if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
-   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
+# is_global_impact <newline-separated file list>: true when any file is one of
+# the global-impact files described above.
+is_global_impact() {
+  echo "$1" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
+    echo "$1" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1
+}
+if is_global_impact "${CHANGED_FILES}"; then
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 
@@ -214,7 +221,42 @@ fi
 RDEPS_MAP="${RDEPS_MAP:-}"
 PLAN_BUDGET_SEC="${PLAN_BUDGET_SEC:-120}"
 PLAN_ERR="$(mktemp)"
-PLAN_ARGS=(--base="${BEFORE_REV}" --head=HEAD --format=json)
+
+# The map for the exact diff base is often not there yet: it is computed after
+# a commit lands and took 16-39 min to appear, while the next merge-queue entry
+# needs it within minutes (#2841). So the workflow may hand us the map of a
+# slightly OLDER main commit instead. That map is usable if we also compare
+# against that older commit: everything main changed since then is simply
+# treated as changed too, so the plan can only grow. Conditions, all required:
+#   - the map's commit is an ancestor of the diff base;
+#   - it is at most MAP_MAX_BEHIND commits back (bounds how much it can grow);
+#   - nothing global-impact changed in between -- otherwise the widened plan
+#     would be a full sweep, and the live query against the real base is the
+#     cheaper correct answer.
+# If any fails, the base stays as it is and the planner, which checks the map
+# against the base itself, falls back to the live query exactly as before.
+PLAN_BASE="${BEFORE_REV}"
+MAP_MAX_BEHIND="${MAP_MAX_BEHIND:-20}"
+if [ -n "${RDEPS_MAP}" ] && [ -f "${RDEPS_MAP}" ]; then
+  map_commit="$(jq -r '.commit // ""' "${RDEPS_MAP}" 2>/dev/null || true)"
+  base_sha="$(git rev-parse --verify --quiet "${BEFORE_REV}^{commit}" || true)"
+  if [[ "${map_commit}" =~ ^[0-9a-f]{40}$ ]] && [ -n "${base_sha}" ] && [ "${map_commit}" != "${base_sha}" ]; then
+    if ! git merge-base --is-ancestor "${map_commit}" "${base_sha}" 2>/dev/null; then
+      echo "affected-targets: dependency map is for ${map_commit:0:12}, not an ancestor of the diff base -- not used"
+    else
+      behind="$(git rev-list --count "${map_commit}..${base_sha}")"
+      if [ "${behind}" -gt "${MAP_MAX_BEHIND}" ]; then
+        echo "affected-targets: dependency map is ${behind} commits behind the diff base (limit ${MAP_MAX_BEHIND}) -- not used"
+      elif is_global_impact "$(git diff --name-only "${map_commit}" "${base_sha}" -- || true)"; then
+        echo "affected-targets: a global-impact file changed since the dependency map at ${map_commit:0:12} -- not used"
+      else
+        PLAN_BASE="${map_commit}"
+        echo "affected-targets: no dependency map for the diff base yet; using the one from ${behind} commit(s) back (${map_commit:0:12}) and treating everything changed since then as changed"
+      fi
+    fi
+  fi
+fi
+PLAN_ARGS=(--base="${PLAN_BASE}" --head=HEAD --format=json)
 if [ -n "${RDEPS_MAP}" ]; then
   PLAN_ARGS+=(--rdeps-map="${RDEPS_MAP}")
 fi
