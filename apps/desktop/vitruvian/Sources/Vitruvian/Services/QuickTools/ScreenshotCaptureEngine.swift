@@ -138,14 +138,16 @@ package enum ScreenshotCaptureEngine {
         // Only window ids cross to the main actor; the snapshot stays here.
         let excludedIDs = await excludedWindowIDs(ownWindowIDs: ownWindowIDs,
                                                   hideVitruvianWindows: hideVitruvianWindows,
-                                                  protectedWindowIDs: protectedWindowIDs)
+                                                  protectedWindowIDs: protectedWindowIDs,
+                                                  keepsIslandOut: keepsIslandOut)
         return content.windows.filter { excludedIDs.contains($0.windowID) }
     }
 
     @MainActor
     private static func excludedWindowIDs(ownWindowIDs: Set<CGWindowID>,
                                           hideVitruvianWindows: Bool,
-                                          protectedWindowIDs: Set<CGWindowID>) -> Set<CGWindowID> {
+                                          protectedWindowIDs: Set<CGWindowID>,
+                                          keepsIslandOut: Bool) -> Set<CGWindowID> {
         var excludedIDs = ScreenshotCapturePolicy.excludedWindowIDs(
             hideVitruvianWindows: hideVitruvianWindows,
             ownWindowIDs: ownWindowIDs,
