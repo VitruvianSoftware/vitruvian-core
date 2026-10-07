@@ -223,7 +223,7 @@ package enum MenuBarSpacingSupport {
     /// - `separateMetrics` keeps the glyph when metrics live in their own
     ///   status items and the main one would otherwise be empty.
     /// - `mustShowForSignal` brings the glyph back while it carries a signal
-    ///   (update available, mic muted indicator).
+    ///   (update available, a running Keep Awake, mic muted indicator).
     package static func shouldHideStatusIcon(optionEnabled: Bool,
                                      separateMetrics: Bool,
                                      metricsEnabled: Bool,
@@ -234,6 +234,13 @@ package enum MenuBarSpacingSupport {
             && metricsEnabled
             && renderedTitleLength > 0
             && !mustShowForSignal
+    }
+
+    /// Whether a running Keep Awake session needs the glyph that metrics
+    /// hide: the tinted or swapped glyph is the session's only mark there.
+    /// Untinted, the app's own mark looks the same idle and active.
+    package static func keepAwakeSignals(active: Bool, tint: KeepAwakeIconTint, style: KeepAwakeActiveIcon) -> Bool {
+        active && (tint != .none || style != .vitruvian)
     }
 
     /// Whether the whole main status item may hide in the separate-items
