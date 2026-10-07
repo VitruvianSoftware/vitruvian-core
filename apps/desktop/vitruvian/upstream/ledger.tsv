@@ -107,34 +107,34 @@ e2acd9d8d36cb87055d799aef3f7e61854bfdd35	17bab7bc37b197ba12718a3deb9d99758d89bdc
 d9d34214723f175ae8bb0c31207d0a0819b586b9	4c3a57a64887a49d0f3da95583f2aa58d5cc0a80	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record clipboard, timer, menu bar and Settings changes
 b34a495e7b2dd58964ff215af88755ef0d665212	b02a5447f02587fe7e50eed3bdd3ad983b926130	2026-10-05	ported	#2816	fix(notch): follow each player's own play and pause state (#2601)
 519a83a402eefd0b08e9d2a492662a529a69eb48	6263e7c02639965bf442de50a51316cd7a7d42b4	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the island's play and pause state fix
-2e699657e5c8225a020bbca7fa5f856f909f12fa	1c95a2ad3c7b05def748dd84ba0ba6dc95d4b6d2	2026-10-05	pending	-	fix(menu-bar): keep the icon updating when the panel closes while it moves (#2667)
-8d8f69421a2687ce898a4e424e29bd9214da6336	202975306a18564f69580c41b1f0f668671069c9	2026-10-05	pending	-	fix(dock-preview): keep previews in place when the Dock hides (#2669)
-91b6a52a4ea39d1fe3998f6ff9f1e8a7d3a01ff7	5deca38145e663df24aa1b2bc6a416e109d02cbf	2026-10-06	pending	-	fix(command-bar): show the Actions rows that open another category (#2564)
-56c40e644338f5b5351799b46797461b1d631d5a	782c5c6d5f50e54d20ae0b631f8ba66e7ff5c9c6	2026-10-05	pending	-	fix(notch): clear the Lock Screen on unlock and hide the header's buttons again (#2668)
-773a726d6e045dc66df650bf09890c7db4c957f2	93aa7c9d229ebef3a9e53659d848f167a7848a97	2026-10-05	pending	-	fix(notch): scroll the calendar page to the countdown's event (#2508)
+2e699657e5c8225a020bbca7fa5f856f909f12fa	1c95a2ad3c7b05def748dd84ba0ba6dc95d4b6d2	2026-10-05	ported	#2824	fix(menu-bar): keep the icon updating when the panel closes while it moves (#2667)
+8d8f69421a2687ce898a4e424e29bd9214da6336	202975306a18564f69580c41b1f0f668671069c9	2026-10-05	ported	#2824	fix(dock-preview): keep previews in place when the Dock hides (#2669)
+91b6a52a4ea39d1fe3998f6ff9f1e8a7d3a01ff7	5deca38145e663df24aa1b2bc6a416e109d02cbf	2026-10-06	ported	#2824	fix(command-bar): show the Actions rows that open another category (#2564)
+56c40e644338f5b5351799b46797461b1d631d5a	782c5c6d5f50e54d20ae0b631f8ba66e7ff5c9c6	2026-10-05	ported	#2824	fix(notch): clear the Lock Screen on unlock and hide the header's buttons again (#2668)
+773a726d6e045dc66df650bf09890c7db4c957f2	93aa7c9d229ebef3a9e53659d848f167a7848a97	2026-10-05	ported	#2824	fix(notch): scroll the calendar page to the countdown's event (#2508)
 1c5bcb59130c97a482d8481850424ec82838886c	57e55acce85af40089353c5c809638f8eb12c3d5	2026-10-05	pending	-	feat(notch): simplify the Now Playing page and its empty states (#2672)
 9295f4651b9d4663ef9baa01de97e3d126cc3897	2a8d03c1155fc3eca209d846fd47c010cf68ac06	2026-10-05	pending	-	fix(display): preserve disabled monitors through sleep and relaunch (#2677)
-02886345b6c0ef8e34d5edd2f3aa88167049b409	74b8b9aa4a0756f3bffe533476fd689a0698a4f0	2026-10-05	pending	-	fix(notch): open directly on hover without losing its delay (#2671)
+02886345b6c0ef8e34d5edd2f3aa88167049b409	74b8b9aa4a0756f3bffe533476fd689a0698a4f0	2026-10-05	ported	#2824	fix(notch): open directly on hover without losing its delay (#2671)
 abc32722b47b75d08b3cf5dd6efcc90365caee4c	4bd3bcce58aa448d7abfd2b84c13eab0adc39c39	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the Now Playing, calendar, Command Bar, Dock and menu bar changes
-88f2e4417e1ac14235829c8a7ee0a93842febae0	795e73935e7138430920f745b31e1b7e7fd21302	2026-10-05	pending	-	fix(notch): end a claude turn at a tool that ends it (#2680)
+88f2e4417e1ac14235829c8a7ee0a93842febae0	795e73935e7138430920f745b31e1b7e7fd21302	2026-10-05	ported	#2824	fix(notch): end a claude turn at a tool that ends it (#2680)
 e8a53b9f899c473c3efdb99e4f52588bd0996a79	2fd75600ea0ace60fcf14b1af45e445786f4eabc	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the AI Agents turn ending fix
-8b924ad356778fb1e5e2290e447c784297257786	2b31fe3f0725c33be5e2c1e404b56f9a8acf7ee7	2026-10-06	pending	-	fix(monitor): return nil for a peripheral battery no Int can hold (#2661)
-d6fa8f3a464a02f43e0dc7e5f4bac2e826738a11	47dd7b678bfdd55f00dc07f6f4b265ad5dcd9c6e	2026-10-05	pending	-	fix(monitor): show external power when the battery is not charging (#2655)
+8b924ad356778fb1e5e2290e447c784297257786	2b31fe3f0725c33be5e2c1e404b56f9a8acf7ee7	2026-10-06	ported	#2824	fix(monitor): return nil for a peripheral battery no Int can hold (#2661)
+d6fa8f3a464a02f43e0dc7e5f4bac2e826738a11	47dd7b678bfdd55f00dc07f6f4b265ad5dcd9c6e	2026-10-05	ported	#2824	fix(monitor): show external power when the battery is not charging (#2655)
 32f4a67c9c9d8e5a85ed35db7a5de313e9a3ff9a	73752625ef3ee0cc2d278906b848dba1b232cd22	2026-10-06	pending	-	fix(notch): match the lock screen island to the music strip (#2662)
 04abae3e59cc90b899a5aad6147fb860257a6280	67f3479efa8a519b4e83bd2d8f116c4da5ce3bc2	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the lock screen island, external power and accessory battery fixes
-a4a01b8cf2ab7d6bc323a168863560e29d19e6ed	8fabd1b443edbcb68b549a54af5df61301595740	2026-10-05	pending	-	fix(settings): route sidebar picks after the view update
-fdbd69cd062054173bf4bae99624de79872bca59	dd2e79b64994d766aaa238007a266d83621fec90	2026-10-05	pending	-	fix(command-bar): index Settings titles without publishing app rows
+a4a01b8cf2ab7d6bc323a168863560e29d19e6ed	8fabd1b443edbcb68b549a54af5df61301595740	2026-10-05	ported	#2824	fix(settings): route sidebar picks after the view update
+fdbd69cd062054173bf4bae99624de79872bca59	dd2e79b64994d766aaa238007a266d83621fec90	2026-10-05	ported	#2824	fix(command-bar): index Settings titles without publishing app rows
 37fefdf0ddc41b0824e1df019315916839f98d28	2a46e24c671d85b9494872dafe905739af35c414	2026-10-05	pending	-	fix(notch): pause the companion's sleep animation while Settings is out of sight
-8d2fac16971116700f35ab4db245175322007d95	35ab57c02d66d0713f17debd2aa9da16c5852d76	2026-10-05	pending	-	fix(screenshot): keep a discarded or edited capture from the upload shortcut after a relaunch
+8d2fac16971116700f35ab4db245175322007d95	35ab57c02d66d0713f17debd2aa9da16c5852d76	2026-10-05	ported	#2824	fix(screenshot): keep a discarded or edited capture from the upload shortcut after a relaunch
 b2e9101211435e8f479b8059d08fa0e066f70987	540b20159a628f520693a708229ce76e305eb6f4	2026-10-05	pending	-	fix(uninstall): finish the script's removal when the app was trashed first
-dad1a3af6b95fb3238c89f688b34428d2f5f28d1	f4c8b18788fabc5bdacadde10703113ff2304cb8	2026-10-05	pending	-	fix(settings): let a login item that awaits approval be switched off
+dad1a3af6b95fb3238c89f688b34428d2f5f28d1	f4c8b18788fabc5bdacadde10703113ff2304cb8	2026-10-05	ported	#2824	fix(settings): let a login item that awaits approval be switched off
 9352307b6c80b27e225d5762f1e16a94b814527a	f8741133a628463cc10d7498f71a0e38e686a2d8	2026-10-05	pending	-	fix(notch): install the beta companion only for island users
 945fd9c09cd2e90c495ec682f5676e1be0c4a8ef	f40808cccac408d2f08df5ca3708267c1ccaba9b	2026-10-05	pending	-	fix(watch): leave the island out of area readings and skip partial window captures
 97e7f6894bfed9112c18de3c381f15613f590ed3	554f516c53628202271ce579de2c188047cbc614	2026-10-05	pending	-	fix(scratchpad): undo a line move with its selection in place
 fdb28f7390bc0dc0f37fc21fd4ae29efa10a881c	037e2db934e3113cc5ef3b606fadb670ecdccf5d	2026-10-05	pending	-	fix(notch): keep a capsule copy's timer visible during the companion's countdown
-b877b974a103c71db2c7ff7f73ad1f1f78eebbc0	04637c7e8f3d867c3d6d6f70c22fe735d475ff4e	2026-10-05	pending	-	fix(notch): compose the OpenCode cache share through its translated phrase
+b877b974a103c71db2c7ff7f73ad1f1f78eebbc0	04637c7e8f3d867c3d6d6f70c22fe735d475ff4e	2026-10-05	ported	#2824	fix(notch): compose the OpenCode cache share through its translated phrase
 af419bde793fdc12ce623f37d6be9d5c408b61e4	6caa7105a62fd10e4ba1857a0ce7a2602cf3289a	2026-10-05	pending	-	fix(command-bar): count the screen's top row when the island presents the bar
-550633fa0b2ebd5ebe31b5e56db1293435b88b00	529be550e798659ccfcef5c92e5bb44ad4b0ac9f	2026-10-05	pending	-	fix(panel): let Escape cancel the panel's Force Kill confirmation in every language
+550633fa0b2ebd5ebe31b5e56db1293435b88b00	529be550e798659ccfcef5c92e5bb44ad4b0ac9f	2026-10-05	ported	#2824	fix(panel): let Escape cancel the panel's Force Kill confirmation in every language
 ff8e24679bc7f36e59666e26b5704da381f1567b	9a1354aaca54a143e4a98606d489ca2358d958f1	2026-10-05	pending	-	test(notch): use a fictional sender in the banner width check
 5c176af38a1fa42ae112b9e2112a330395bdc59e	4498bfc0a2154983b03f14ada8d989b4c05fd187	2026-10-05	pending	-	docs(privacy): describe the Copilot logs the AI Agents section reads
 03a04a45a639435e4b2ef44fd7b1592abbf2d1f5	45e08259a98882d08ef4c2afc94fd4d3bc5a0c4c	2026-10-05	skipped	touches only upstream-only paths	chore(issues): list the current Settings groups in the issue templates
@@ -148,7 +148,7 @@ f1ed98781fa039b3bba47b25701bbbb77e142c68	f0c44a6c14b838fca524b7ac3b1932d8cbc08dd
 5eece7dcc09fe2521425c08aa8416999ee03c19e	e2b61afb85fb9f5210a3ecaaef1463624fe86852	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): tighten the 3.4.1-beta.2 notes
 0b7bad284385bafdcf3f0b79d9335a24b26d4253	f1e43a742aee2870c0c24e946aa6197be820eeb9	2026-10-05	pending	-	fix(window-layout): keep window snapping off the dragged app's main thread (#2697)
 adde26e1f03a8476ebf09da458d3b97c7665366d	bf0d1798077c1cbb64e8fe618700e168105ad4d4	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record smoother in-app drags with window snapping on
-2efe612c4d059d8fb52113d3dc610a3c2f873fee	14c526ba212068a057cff2a8b69a1e299e889103	2026-10-05	pending	-	test(mutation): follow the edited capture withhold into its new helper
+2efe612c4d059d8fb52113d3dc610a3c2f873fee	14c526ba212068a057cff2a8b69a1e299e889103	2026-10-05	ported	#2824	test(mutation): follow the edited capture withhold into its new helper
 14e5ec75ea0728e32d428ba2ea5c763905037eca	6cf46f58b25f750a90f2bb51e616ab39cb75f17c	2026-10-05	skipped	touches only upstream-only paths	Release 3.4.1-beta.2
 aee448c08b47f860219d62dfb2c10672f7fe5813	377ccc88d171801e8488c0b7ab8be1e9b9921232	2026-10-06	skipped	touches only upstream-only paths	Reopen Unreleased after tagging 3.4.1-beta.2
 46eda2a74e8f0154d0cf516eac53c5058d00b516	129fec48f03afc9349907df09c96c586821b88e5	2026-10-06	pending	-	fix(command-bar): show the bar at the first key and send the drop back cleanly
