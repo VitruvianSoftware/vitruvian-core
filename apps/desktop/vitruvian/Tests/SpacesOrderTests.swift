@@ -579,9 +579,10 @@ enum SpacesOrderTests {
         dock.changeAfterFirstRead = .on
         hold.syncWithPreferences()
         let noticeDeadline = Date().addingTimeInterval(3)
-        // The toggle is the last write of a let-go and may land on the main
-        // thread, so wait for it with the main run loop running.
-        while defaults.bool(forKey: enabled), Date() < noticeDeadline {
+        // Publication and recovery cleanup run on different queues. Wait for
+        // both before the next case reuses these preferences.
+        while (defaults.bool(forKey: enabled) || defaults.object(forKey: marker) != nil),
+              Date() < noticeDeadline {
             NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification,
                                                        object: nil)
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
