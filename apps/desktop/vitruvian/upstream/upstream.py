@@ -66,6 +66,12 @@ UPSTREAM_ONLY = (
     "Resources/Brand/",
 )
 
+# Upstream files this fork keeps but no longer runs as upstream does: its
+# generated test copies are retired (REFACTOR.md step 4b), so an upstream
+# change to their extraction script is never merged. The test it feeds is
+# ported as a behavioural test instead.
+FORK_RETIRED = ("Tests/generate_sources.py",)
+
 STATUSES = ("pending", "ported", "skipped")
 COLUMNS = ("sha", "patch_id", "date", "status", "ref", "subject")
 LEDGER_PREAMBLE = """\
@@ -726,6 +732,16 @@ def port_commit(
     for status, old, new in upstream.changes(sha):
         if upstream_only(new) and upstream_only(old):
             lines.append(f"- `{new}`: upstream-only path, not ported")
+            continue
+        if new in FORK_RETIRED or old in FORK_RETIRED:
+            clean = False
+            patch = upstream.run(["diff", f"{parent or sha}", sha, "--", old, new])
+            saved = report_dir / (new.replace("/", "__") + ".patch")
+            saved.write_text(patch)
+            lines.append(
+                f"- `{new}`: retired in this fork, not merged; port the test it feeds "
+                f"as a behavioural test (upstream patch: `{saved}`)"
+            )
             continue
         target_rel, how = pathmap.map(old)
         if status == "A":

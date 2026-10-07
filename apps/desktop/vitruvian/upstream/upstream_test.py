@@ -88,11 +88,13 @@ class Fixture:
         write(up, "Sources/Vorssaint/Core/Foo.swift", FOO_UPSTREAM)
         write(up, "README.md", "upstream readme\n")
         write(up, ".github/ci.yml", "on: push\n")
+        write(up, "Tests/generate_sources.py", "# upstream extraction\n")
         self.a = commit(up, "base")
         self.a_tree = run(up, "rev-parse", "HEAD^{tree}")
 
         write(self.mono, f"{APP}/Sources/Vorssaint/Core/Foo.swift", FOO_UPSTREAM)
         write(self.mono, f"{APP}/README.md", "upstream readme\n")
+        write(self.mono, f"{APP}/Tests/generate_sources.py", "# upstream extraction\n")
         self.import_commit = commit(self.mono, "import")
         run(self.mono, "mv", f"{APP}/Sources/Vorssaint", f"{APP}/Sources/Vitruvian")
         write(self.mono, f"{APP}/Sources/Vitruvian/Core/Foo.swift", FOO_FORK)
@@ -127,6 +129,11 @@ class Fixture:
             "Sources/Vorssaint/Core/Foo.swift",
             foo + 'let feed = URL(string: "https://updates.vorssaint.com/feed")!\n',
             "feat: feed",
+        )
+        self.h = self.edit(
+            "Tests/generate_sources.py",
+            "# upstream extraction\nwrite('Copy.swift')\n",
+            "test: a generated copy",
         )
 
     def edit(self, rel, text, message):
@@ -357,12 +364,13 @@ class TriageTest(Base):
         fx = self.fx
         rc, out, _ = fx.tool("status", "--check")
         self.assertEqual(rc, 1, out)
-        self.assertIn("6 untriaged, 0 pending", out)
+        self.assertIn("7 untriaged, 0 pending", out)
         rc, _, err = fx.tool("--no-fetch", "triage")
         self.assertEqual(rc, 0, err)
         rows = {r["sha"]: r for r in fx.ledger().rows}
         self.assertEqual(
-            [r["sha"] for r in fx.ledger().rows], [fx.b, fx.c, fx.d, fx.e, fx.f, fx.g]
+            [r["sha"] for r in fx.ledger().rows],
+            [fx.b, fx.c, fx.d, fx.e, fx.f, fx.g, fx.h],
         )
         self.assertEqual(rows[fx.c]["status"], "skipped")
         self.assertEqual(rows[fx.c]["ref"], "touches only upstream-only paths")
@@ -387,7 +395,7 @@ class TriageTest(Base):
         rc, out, _ = fx.tool("status", "--check")
         self.assertEqual(rc, 0, out)
         self.assertIn(f"re-anchored by tree from {fx.a[:10]}", out)
-        self.assertIn("6 ledger row(s) re-keyed by patch id", out)
+        self.assertIn("7 ledger row(s) re-keyed by patch id", out)
         fx.tool("--no-fetch", "triage")
         ledger = fx.ledger()
         self.assertEqual(ledger.base, new_shas[0])
@@ -402,7 +410,7 @@ class TriageTest(Base):
         previous.write_text(f"<!-- untriaged-shas: {fx.b[:12]} {fx.c[:12]} -->\n")
         rc, out, _ = fx.tool("status", "--markdown", "--previous-body", str(previous))
         self.assertEqual(rc, 0)
-        self.assertIn("<!-- upstream-watch untriaged: 6 pending: 0 new: 4 -->", out)
+        self.assertIn("<!-- upstream-watch untriaged: 7 pending: 0 new: 5 -->", out)
         self.assertIn(f"[`{fx.d[:10]}`]", out)
 
 
@@ -465,6 +473,17 @@ class PortTest(Base):
         )
         self.assertEqual(rc, 0, out)
         self.assertNotIn("brand review", out)
+
+    def test_retired_files_are_reported_not_merged(self):
+        rc, out, _ = self.fx.tool(
+            "--no-fetch", "port", self.fx.h, "--report-dir", str(self.fx.tmp / "r")
+        )
+        self.assertEqual(rc, 1)
+        self.assertIn("retired in this fork, not merged", out)
+        self.assertEqual(
+            (self.fx.mono / APP / "Tests/generate_sources.py").read_text(),
+            "# upstream extraction\n",
+        )
 
     def test_dry_run_changes_nothing(self):
         before = self.fx.foo()
