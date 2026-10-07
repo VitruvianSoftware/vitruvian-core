@@ -25,6 +25,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchCalendarEnabled) private var calendarEnabled: Bool
     @AppStorage(Preferences.notchCalendarCountdown) private var calendarCountdown: Bool
     @AppStorage(Preferences.notchCalendarTimeLeft) private var calendarTimeLeft: Bool
+    @AppStorage(Preferences.notchCalendarWeekNumbers) private var calendarWeekNumbers: Bool
     @AppStorage(Preferences.notchAgentsEnabled) private var agentsEnabled: Bool
     @AppStorage(Preferences.notchWatchEnabled) private var watchEnabled: Bool
     @AppStorage(Preferences.notchLyricsEnabled) private var lyricsEnabled: Bool
@@ -424,6 +425,7 @@ package struct NotchSettings: View {
             switchRow("calendar.badge.clock", calendar.countdown, caption: calendar.countdownHint,
                       isOn: $calendarCountdown)
             switchRow("hourglass", calendar.timeLeft, caption: calendar.timeLeftHint, isOn: $calendarTimeLeft)
+            switchRow("number", calendar.weekNumbers, isOn: $calendarWeekNumbers)
             if permissions.calendarAccess == .fullAccess { NotchCalendarSelection() }
         case .timer:
             let activities = FeatureStrings.notchActivities(l10n.language)

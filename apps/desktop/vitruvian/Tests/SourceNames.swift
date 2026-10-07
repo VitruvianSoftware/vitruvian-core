@@ -323,5 +323,6 @@ enum SourceNames {
         "urlCleanerRemovedFormat",
         "urlCleanerRulesCountPluralFormat",
         "usedByFormat",
+        "weekNumber",
     ]
 }

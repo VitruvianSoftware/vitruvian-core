@@ -494,6 +494,7 @@ package enum Defaults {
         DefaultsKey.notchCalendarEnabled: Preferences.notchCalendarEnabled.defaultValue,
         DefaultsKey.notchCalendarCountdown: Preferences.notchCalendarCountdown.defaultValue,
         DefaultsKey.notchCalendarTimeLeft: Preferences.notchCalendarTimeLeft.defaultValue,
+        DefaultsKey.notchCalendarWeekNumbers: Preferences.notchCalendarWeekNumbers.defaultValue,
         DefaultsKey.notchCalendarExcluded: Preferences.notchCalendarExcluded.defaultValue,
         DefaultsKey.notchAgentsEnabled: Preferences.notchAgentsEnabled.defaultValue,
         DefaultsKey.notchAgentsClaude: Preferences.notchAgentsClaude.defaultValue,
