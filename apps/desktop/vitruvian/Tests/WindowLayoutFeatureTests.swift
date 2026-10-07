@@ -106,10 +106,20 @@ enum WindowLayoutFeatureTests {
             && releasedHold.update([.control, .command]) == .begin,
             "a finished gesture needs a fresh chord before starting again")
 
+        var pendingShortcutHold = WindowDirectionalModifierHold(expected: [.control, .command])
+        let pendingBegin = pendingShortcutHold.update([.control, .command])
+        let pendingGeneration = pendingShortcutHold.generation
+        suite.expect(pendingBegin == .begin
+            && pendingShortcutHold.cancelForKeyPress()
+            && pendingShortcutHold.generation != pendingGeneration
+            && pendingShortcutHold.update(.command) == .none,
+            "a normal shortcut cancels a deferred modifier start before release can place a window")
+
         suite.expect(WindowDirectionalModifierTapSupport.options == .listenOnly
                 && WindowDirectionalModifierTapSupport.eventMask
-                    == CGEventMask(1 << CGEventType.flagsChanged.rawValue),
-            "idle modifier observation is passive and never subscribes to ordinary pointer or key input")
+                    == CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+                        | CGEventMask(1 << CGEventType.keyDown.rawValue),
+            "idle modifier observation passively retains key cancellation without watching pointer input")
         let deferredModifierWork = DispatchSemaphore(value: 0)
         WindowDirectionalModifierTapSupport.afterCallback { deferredModifierWork.signal() }
         let modifierWorkWasDeferred = deferredModifierWork.wait(timeout: .now()) == .timedOut

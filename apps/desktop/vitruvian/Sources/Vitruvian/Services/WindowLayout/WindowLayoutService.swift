@@ -934,9 +934,9 @@ package final class WindowLayoutService: ObservableObject {
         }
     }
 
-    /// The idle observer can never delay input: it only listens for modifier
-    /// changes, cannot alter them, and defers all state and Accessibility work
-    /// until after its callback has returned.
+    /// The idle observer can never delay input: it passively watches modifier
+    /// changes and key presses, cannot alter them, and defers all UI and
+    /// Accessibility work until after its callback has returned.
     @discardableResult
     private func startDirectionalModifierTap() -> Bool {
         guard directionalModifierTap == nil else { return true }
@@ -976,6 +976,7 @@ package final class WindowLayoutService: ObservableObject {
     private func observeDirectionalModifierEvent(type: CGEventType,
                                                   event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            directionalModifierHold?.cancel()
             WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
                 self?.cancelDirectionalGesture()
                 if SessionActivity.shared.isActive, AXIsProcessTrusted(), !ShortcutCapture.isCapturing,
@@ -987,17 +988,31 @@ package final class WindowLayoutService: ObservableObject {
             }
             return Unmanaged.passUnretained(event)
         }
+
+        guard var hold = directionalModifierHold else { return Unmanaged.passUnretained(event) }
+        if type == .keyDown {
+            guard hold.cancelForKeyPress() else { return Unmanaged.passUnretained(event) }
+            let generation = hold.generation
+            directionalModifierHold = hold
+            WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
+                guard let self, self.directionalModifierHold?.generation == generation else { return }
+                self.cancelDirectionalGesture()
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         guard type == .flagsChanged else { return Unmanaged.passUnretained(event) }
-        let held = GlobalShortcutModifiers(cgFlags: event.flags)
+        let decision = hold.update(GlobalShortcutModifiers(cgFlags: event.flags))
+        let generation = hold.generation
+        directionalModifierHold = hold
+        if case .none = decision { return Unmanaged.passUnretained(event) }
         WindowDirectionalModifierTapSupport.afterCallback { [weak self] in
-            guard let self else { return }
-            guard !ShortcutCapture.isCapturing, SessionActivity.shared.isActive, AXIsProcessTrusted() else {
+            guard let self, self.directionalModifierHold?.generation == generation else { return }
+            guard !ShortcutCapture.isCapturing, SessionActivity.shared.isActive,
+                  AXIsProcessTrusted() else {
                 self.unregisterDirectionalHotkey()
                 return
             }
-            guard var hold = self.directionalModifierHold else { return }
-            let decision = hold.update(held)
-            self.directionalModifierHold = hold
             switch decision {
             case .begin: self.beginDirectionalGesture()
             case .finish:
