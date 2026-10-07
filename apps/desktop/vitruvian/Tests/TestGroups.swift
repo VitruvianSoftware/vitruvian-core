@@ -51,6 +51,7 @@ enum TestGroups {
         "localization",
         "cleaner",
         "uninstaller",
+        "force-quit",
         "launcher",
         "dock-autohide",
         "switcher",
