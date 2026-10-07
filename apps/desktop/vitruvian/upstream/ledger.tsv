@@ -188,3 +188,4 @@ f7cd8db08884c3b951ac7d962cc11d667394a693	a484f2c08e7b633354d08d4a4e971c29d03f5d6
 d2d95cd985bb8f45f8f286b421db94d3f590dd59	b4c4c0b907aa94c526beaa4d4e33680167b740f8	2026-10-07	ported	#2840	feat(clipboard): show history as a card shelf with source apps (#2721)
 1e9caecb99c87f99a89a142ca24d015ebc4a8244	31f0f0baacd9e76fab6402b5feabefd482a421cd	2026-10-07	ported	#2840	feat(screenshot): blur, pixelate or erase a whole area or only its text (#2767)
 9d762890e7a92489ea602b1835ecd0221cbcaba5	a5a6dff69970086ca439b78f3e8a5579591836d3	2026-10-07	skipped	touches only upstream-only paths	Record and credit the October 7 batch in the changelog
+8c6dd0a70b28c0abfa3dc162713aff2ece55c773	d1c9154b49de0ebdef11fe54e5dbdf023e877235	2026-10-07	ported	#2847	fix(radial-menu): follow extra-button drag movement (#2531)
