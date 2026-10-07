@@ -234,16 +234,16 @@ package enum SelfUninstall {
                 return
             }
             steps.background {
+                // The Space arrangement marker is deleted with the preferences
+                // below, so the system setting has to be put back before they go.
+                guard steps.restoreSpacesBeforeRemoval() else {
+                    stop(L10n.shared.s.advancedUninstallFailedBody)
+                    return
+                }
                 // Sleep may still be restored through the rule, and a refused
                 // rule removal must stop before anything else is removed.
                 guard steps.restoreSleepBeforeRemoval() else {
                     stop(L10n.shared.s.advancedUninstallFailedBody)
-                    return
-                }
-                // The Space arrangement marker is deleted with the preferences
-                // below, so the system setting has to be put back before they go.
-                guard steps.restoreSpacesBeforeRemoval() else {
-                    stop(L10n.shared.s.advancedUninstallFailedBody, sleepRestored: true)
                     return
                 }
                 steps.removeSudoersRule { ruleRemoved in
