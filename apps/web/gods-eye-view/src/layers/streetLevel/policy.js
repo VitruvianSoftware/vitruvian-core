@@ -1,0 +1,59 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/** Identity and shared tuning for the provider-neutral Street Level layer. */
+export const STREET_LEVEL_LAYER_ID = 'street-level';
+
+/** Pick id of the viewer position marker; the core owns it, not a provider. */
+export const POSITION_PICK_ID = 'sl:pos';
+
+/** One colour per imagery source: chip, coverage lines, points, cones and legend. */
+export const PROVIDER_COLORS = Object.freeze({
+  mapillary: '#05cb63',
+});
+
+/** Colours every provider shares: the selection highlight and the marker. */
+export const COLORS = Object.freeze({
+  selected: '#00d4ff',
+  position: '#ffb300',
+});
+
+/** Panorama modes the imagery filter understands. */
+export const PANO_MODES = Object.freeze(['all', 'pano', 'flat']);
+
+/** Longest "captured since" window the filter accepts, in days (~100 years). */
+export const MAX_SINCE_DAYS = 36_500;
+
+/** Filter every provider starts with: all imagery, any date. */
+export const FILTER_DEFAULT = Object.freeze({ pano: 'all', sinceDays: 0 });
+
+/** Nearest-image search radius in metres (Mapillary's graph API caps it at 50 m). */
+export const NEAREST_RADIUS_M = 50;
+
+/**
+ * The only map stack camera follow is offered on: elsewhere a camera at eye
+ * height looks at a smeared texture.
+ */
+export const FOLLOW_MAP_STACK_ID = 'photoreal';
+
+/** Eye height above the sampled ground when the globe camera follows the viewer. */
+export const FOLLOW_EYE_HEIGHT_M = 2.4;

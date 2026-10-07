@@ -73,6 +73,8 @@ js_test(
         ["*"],
         exclude = ["BUILD.bazel"],
     ) + [
+        # src/tooling/streetLevelQa.test.mjs reads upstream's CI workflow.
+        ".github/workflows/ci.yml",
         ":node_modules",
     ],
     entry_point = "scripts/bazel-unit-tests.mjs",
