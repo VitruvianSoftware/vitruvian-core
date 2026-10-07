@@ -3407,6 +3407,7 @@ enum ScreenshotFeatureTests {
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.radialMenuEnabled] as? Bool == false,
                "the radial menu ships off by default")
+        RadialMenuProfileDeletionContract.run(suite)
         suite.expect(Defaults.registeredDefaults[DefaultsKey.radialMenuShortcut] as? String
                 == "control+option+command:49",
                "the default radial menu shortcut is control option command space")
@@ -3489,5 +3490,24 @@ enum ScreenshotFeatureTests {
                 == [.screenshot, .colorPicker],
                "capture roles are reordered for display and other roles fall away")
         GlobalShortcut.refreshLayoutLabels()
+    }
+}
+
+/// Upstream #1979: Settings deletes the profile the user confirmed, through
+/// RadialMenuProfile.deleting(_:from:).
+enum RadialMenuProfileDeletionContract {
+    static func run(_ suite: TestSuite) {
+        let first = RadialMenuProfile(name: "First")
+        let second = RadialMenuProfile(name: "Second")
+        let third = RadialMenuProfile(name: "Third")
+        let afterFirst = RadialMenuProfile.deleting(first.id, from: [first, second, third])
+        suite.expect(afterFirst?.profiles.map(\.id) == [second.id, third.id],
+                     "the confirmed profile is deleted even after the selection moved to another one")
+        suite.expect(RadialMenuProfile.deleting(first.id, from: [second, third]) == nil,
+                     "a confirmation for a profile that is already gone deletes nothing")
+        let afterSecond = RadialMenuProfile.deleting(second.id, from: [second, third])
+        suite.expect(afterSecond?.profiles.map(\.id) == [third.id] && afterSecond?.selected == third.id
+                     && RadialMenuProfile.deleting(third.id, from: [third]) == nil,
+                     "the last profile is never deleted and stays selected")
     }
 }
