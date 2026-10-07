@@ -49,6 +49,14 @@ package enum NotchAgentLimitFocus: String, CaseIterable, Identifiable {
     package var id: String { rawValue }
 }
 
+/// Which view the Notch AI Agents page shows: an interactive chat/prompt surface, or usage telemetry cards.
+package enum NotchAgentTab: String, CaseIterable, Identifiable {
+    case chat
+    case telemetry
+
+    package var id: String { rawValue }
+}
+
 package struct NotchAgentTile: Identifiable, Equatable {
     package let card: NotchAgentCard
     /// The account a limits card belongs to.

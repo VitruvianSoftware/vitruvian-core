@@ -300,6 +300,7 @@ package final class NotchService: ObservableObject {
     package var captureControlsCollapsed: Bool { captureState.collapsed }
     package var captureSelectionInProgress: Bool { captureState.selectionInProgress }
     @Published package var pinned = false
+    @Published package var agentTab: NotchAgentTab = .chat
     @Published package private(set) var selected: NotchModule = .controls
     @Published package private(set) var showingAppPanel = false
     @Published package private(set) var showingSections = false

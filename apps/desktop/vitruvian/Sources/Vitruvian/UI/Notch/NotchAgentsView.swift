@@ -10,6 +10,7 @@ import VitruvianServices
 package struct NotchAgentsView: View {
     package let size: CGSize
     @ObservedObject private var usage = AgentUsageService.shared
+    @ObservedObject private var notchService = NotchService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsPeriod) private var period: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
@@ -37,32 +38,49 @@ package struct NotchAgentsView: View {
     }
 
     package var body: some View {
-        Group {
-            if !usage.snapshot.loaded {
-                VStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text(text.loading).font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if providers.isEmpty {
-                NotchEmptyView(symbol: "sparkles", message: text.empty)
-            } else if rows.isEmpty {
-                NotchEmptyView(symbol: "square.grid.2x2", message: text.noCards)
+        VStack(spacing: 8) {
+            Picker("Mode", selection: $notchService.agentTab) {
+                Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
+                Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 220)
+            .padding(.top, 4)
+
+            if notchService.agentTab == .chat {
+                NexusAgentQuickPromptView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                let rows = rows
-                TimelineView(.periodic(from: .now, by: 15)) { context in
-                    if NotchAgentSupport.contentHeight(rows) > size.height + 0.5 {
-                        ScrollView { grid(rows, now: context.date) }
-                            .scrollIndicators(.automatic)
-                    } else {
-                        grid(rows, now: context.date)
-                    }
-                }
+                telemetryContent
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .environment(\.locale, l10n.language.formattingLocale())
         .onAppear { usage.pageDidAppear() }
+    }
+
+    @ViewBuilder private var telemetryContent: some View {
+        if !usage.snapshot.loaded {
+            VStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text(text.loading).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if providers.isEmpty {
+            NotchEmptyView(symbol: "sparkles", message: text.empty)
+        } else if rows.isEmpty {
+            NotchEmptyView(symbol: "square.grid.2x2", message: text.noCards)
+        } else {
+            let rows = rows
+            TimelineView(.periodic(from: .now, by: 15)) { context in
+                if NotchAgentSupport.contentHeight(rows) > size.height + 0.5 {
+                    ScrollView { grid(rows, now: context.date) }
+                        .scrollIndicators(.automatic)
+                } else {
+                    grid(rows, now: context.date)
+                }
+            }
+        }
     }
 
     private func grid(_ rows: [[NotchAgentTile]], now: Date) -> some View {

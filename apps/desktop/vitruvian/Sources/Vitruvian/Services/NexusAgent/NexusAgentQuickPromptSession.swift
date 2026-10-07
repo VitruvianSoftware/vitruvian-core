@@ -423,6 +423,12 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
                 messages.append(msg)
                 replyID = msg.id
             }
+            _ = NotchService.shared.show(NotchNotice(
+                event: .agents,
+                title: "\(service?.configuration.activeProvider.name ?? "Agent") — Approval Required",
+                detail: "\(req.toolName): \(req.commandOrPath)",
+                symbol: "hand.raised.fill"
+            ))
         case .finished(let status, let response, let error, let id, let metrics):
             activity = nil
             if let id { conversationID = id }
@@ -463,6 +469,15 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         elapsedSeconds = 0
         let completedReply = currentReplyText
         let hadError = reportedError || (status != 0 && completedReply.isEmpty)
+        let providerName = service?.configuration.activeProvider.name ?? "Agent"
+        let noticeTitle = hadError ? "\(providerName) — Failed" : "\(providerName) — Done"
+        let firstLine = completedReply.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? completedReply
+        _ = NotchService.shared.show(NotchNotice(
+            event: .agents,
+            title: noticeTitle,
+            detail: String(firstLine.prefix(80)),
+            symbol: hadError ? "exclamationmark.triangle.fill" : "sparkles"
+        ))
         if stoppedByUser {
             if currentReplyText.isEmpty { replace(reply: strings.replyStopped, isError: false) }
         } else if currentReplyText.isEmpty {
