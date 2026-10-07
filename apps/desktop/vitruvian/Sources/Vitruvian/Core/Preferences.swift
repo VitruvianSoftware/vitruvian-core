@@ -611,6 +611,8 @@ package enum Preferences {
 
     package static let keepAwakeIconTint = Preference(DefaultsKey.keepAwakeIconTint, default: KeepAwakeIconTint.orange.rawValue)
     package static let keepAwakeActiveIcon = Preference(DefaultsKey.keepAwakeActiveIcon, default: KeepAwakeActiveIcon.vitruvian.rawValue)
+    package static let focusFollowsMouseRaise = Preference(DefaultsKey.focusFollowsMouseRaise, default: true)
+    package static let focusFollowsMouseWaitForStop = Preference(DefaultsKey.focusFollowsMouseWaitForStop, default: true)
     package static let focusFollowsMouseDelay = Preference(DefaultsKey.focusFollowsMouseDelay, default: FocusFollowsMouseSupport.defaultDelayMilliseconds)
     package static let linearScrollLines = Preference(DefaultsKey.linearScrollLines, default: ScrollWheelSupport.defaultLinesPerNotch)
     package static let smoothScrollResponse = Preference(DefaultsKey.smoothScrollResponse, default: SmoothScrollSupport.defaultResponse)

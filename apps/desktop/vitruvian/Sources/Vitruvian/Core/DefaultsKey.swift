@@ -53,6 +53,8 @@ package enum DefaultsKey {
     package static let scrollHorizontalEnabled = "scrollHorizontalEnabled"
     package static let scrollHorizontalModifier = "scrollHorizontalModifier"
     package static let focusFollowsMouseEnabled = "focusFollowsMouseEnabled"
+    package static let focusFollowsMouseRaise = "focusFollowsMouseRaise"
+    package static let focusFollowsMouseWaitForStop = "focusFollowsMouseWaitForStop"
     package static let focusFollowsMouseDelay = "focusFollowsMouseDelayMilliseconds"
     package static let focusFollowsMouseExceptions = "focusFollowsMouseExceptions"
     package static let smoothScrollEnabled = "smoothScrollEnabled"

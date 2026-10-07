@@ -88,9 +88,7 @@ package enum WindowActivator {
                                                                steps: ActivationSteps<App>) {
         let sourceWasFullscreen = sources.sourceWasFullscreen
         let sourcePID = sources.sourcePID
-        let generation = beginActivation(for: item.pid)
-        cancelPendingMinimizeRestore()
-        SpaceHop.cancelPending()
+        let generation = supersedePendingActivations(for: item.pid)
 
         if item.pid == ProcessInfo.processInfo.processIdentifier {
             activateOwnWindow(item)
@@ -683,6 +681,13 @@ package enum WindowActivator {
         }
     }
 
+    static func supersedePendingActivations(for pid: pid_t) -> UInt64 {
+        let generation = beginActivation(for: pid)
+        cancelPendingMinimizeRestore()
+        SpaceHop.cancelPending()
+        return generation
+    }
+
     private static func beginActivation(for pid: pid_t) -> UInt64 {
         activationLock.withLock {
             activationGeneration &+= 1
@@ -695,7 +700,7 @@ package enum WindowActivator {
         activationLock.withLock { activationGenerationsByPID[pid] ?? 0 }
     }
 
-    private static func isCurrentActivation(_ generation: UInt64) -> Bool {
+    static func isCurrentActivation(_ generation: UInt64) -> Bool {
         activationLock.withLock {
             SwitcherSupport.isCurrentActivationGeneration(
                 generation,
