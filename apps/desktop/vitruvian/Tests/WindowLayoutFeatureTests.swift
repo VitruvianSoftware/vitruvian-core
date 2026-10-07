@@ -112,8 +112,10 @@ enum WindowLayoutFeatureTests {
         suite.expect(pendingBegin == .begin
             && pendingShortcutHold.cancelForKeyPress()
             && pendingShortcutHold.generation != pendingGeneration
-            && pendingShortcutHold.update(.command) == .none,
-            "a normal shortcut cancels a deferred modifier start before release can place a window")
+            && pendingShortcutHold.update(.command) == .none
+            && pendingShortcutHold.update([]) == .none
+            && pendingShortcutHold.update([.control, .command]) == .begin,
+            "a normal shortcut cancels a deferred start without blocking the next fresh chord")
 
         suite.expect(WindowDirectionalModifierTapSupport.options == .listenOnly
                 && WindowDirectionalModifierTapSupport.eventMask
