@@ -337,15 +337,22 @@ package enum SpaceWindowBridge {
     /// already in front, the window server moves focus only once the old
     /// window hears it lost focus and the new one that it gained it. Some apps
     /// miss the pair when it arrives at once, so the second half waits 40 ms
-    /// without blocking the main thread.
+    /// without blocking the main thread. If the hover is no longer current
+    /// when it ends, the old window gets its focus back instead.
     package static func focusWithoutRaise(_ windowID: CGWindowID, ownerPID: pid_t,
-                                          replacing focusedWindowID: CGWindowID?) {
+                                          replacing focusedWindowID: CGWindowID?,
+                                          while isCurrent: @escaping @MainActor @Sendable () -> Bool) {
         guard let focusedWindowID else {
             frontWindow(windowID, ownerPID: ownerPID)
             return
         }
         postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: false)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+            // Scheduled on the main queue, where the hover state lives.
+            guard MainActor.assumeIsolated({ isCurrent() }) else {
+                postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: true)
+                return
+            }
             postFocusRecord(windowID, ownerPID: ownerPID, gained: true)
             frontWindow(windowID, ownerPID: ownerPID)
         }
