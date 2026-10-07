@@ -88,6 +88,19 @@ run_case "$live_plan"
 grep -F 'run //tools/pipeline:plan' "$CALLS" | grep -qF -- '--rdeps-map' \
   && fail "--rdeps-map passed without RDEPS_MAP" || pass "no --rdeps-map when RDEPS_MAP is unset"
 
+echo "prebuilt planner"
+cat > "$work/bin/plan" <<'FAKE'
+#!/usr/bin/env bash
+echo "plan-bin $*" >> "$CALLS"
+printf '%s' "${FAKE_PLAN:-}"
+FAKE
+chmod +x "$work/bin/plan"
+run_case "$live_plan" PLAN_BIN="$work/bin/plan" RDEPS_MAP="$work/map.json"
+{ called "plan-bin --base=$base --head=HEAD --format=json --rdeps-map=$work/map.json --repo-root=" && ! called 'run //tools/pipeline:plan'; } \
+  && pass "PLAN_BIN is used instead of bazel run" || fail "calls: $(cat "$CALLS")"
+run_case "$live_plan" PLAN_BIN="$work/bin/missing"
+called 'run //tools/pipeline:plan' && pass "missing PLAN_BIN falls back to bazel run" || fail "calls: $(cat "$CALLS")"
+
 echo "map-sourced plan"
 run_case "$map_plan" RDEPS_MAP="$work/map.json"
 t="$(grep '^test ' "$CALLS")"

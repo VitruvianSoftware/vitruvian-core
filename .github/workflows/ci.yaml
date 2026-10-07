@@ -148,6 +148,25 @@ jobs:
           path: ${{ runner.temp }}/pipeline-rdeps-map.json
           key: pipeline-rdeps-map-v1-${{ steps.base.outputs.sha }}
 
+      # Build the planner with plain Go, as Presubmit's plan job does. Running
+      # it through `bazel run` costs about two minutes of Bazel startup before
+      # it answers (134s measured here with the map restored). If this build
+      # fails the script falls back to `bazel run`, so it can only cost time.
+      - name: Set up Go
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build the planner
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
+        run: |
+          if ! GOWORK=off CGO_ENABLED=0 go build -o "$RUNNER_TEMP/pipeline-plan" ./tools/pipeline/plan; then
+            echo "::warning::Could not build the planner with go; affected-targets.sh will use bazel run instead."
+            rm -f "$RUNNER_TEMP/pipeline-plan"
+          fi
+
       # --- ALL LANES: AFFECTED targets, fall back to //... on any doubt. ------
       # Every lane runs tools/ci/affected-targets.sh; only the diff BASE differs:
       #   pull_request  merge-base vs origin/${{ github.base_ref }}
@@ -175,6 +194,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
+          PLAN_BIN: ${{ runner.temp }}/pipeline-plan
         run: bash tools/ci/affected-targets.sh
 
       # MERGE QUEUE (merge_group). base_sha is reachable because the checkout
@@ -184,6 +204,7 @@ jobs:
         env:
           BEFORE_REV: ${{ github.event.merge_group.base_sha }}
           RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
+          PLAN_BIN: ${{ runner.temp }}/pipeline-plan
         run: bash tools/ci/affected-targets.sh
 
       # POSTSUBMIT (push to main). Verifies the landed commit; queue-merged
@@ -198,6 +219,7 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
+          PLAN_BIN: ${{ runner.temp }}/pipeline-plan
         run: bash tools/ci/affected-targets.sh
 
   # macOS build, split so a premium macOS runner is claimed ONLY when a macOS-

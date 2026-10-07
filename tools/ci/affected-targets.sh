@@ -49,6 +49,8 @@
 #   FORCED_PUSH         "true" on a forced push -> full sweep (push lane only).
 #   RDEPS_MAP           optional path to the dependency map for the diff base
 #                       (#2841); a missing file just means "no map".
+#   PLAN_BIN            optional path to a prebuilt //tools/pipeline/plan
+#                       binary; used instead of `bazel run` when executable.
 #   PLAN_BUDGET_SEC     optional; warn when a map-sourced plan takes longer
 #                       (default 120).
 #
@@ -216,8 +218,17 @@ PLAN_ARGS=(--base="${BEFORE_REV}" --head=HEAD --format=json)
 if [ -n "${RDEPS_MAP}" ]; then
   PLAN_ARGS+=(--rdeps-map="${RDEPS_MAP}")
 fi
+# PLAN_BIN is the planner prebuilt by the workflow with plain `go build`, the
+# way Presubmit builds it. `bazel run` gives the same answer but spends about
+# two minutes starting Bazel and building the planner first (134s measured on
+# this job with the map already in hand), so it is only the fallback.
+PLAN_BIN="${PLAN_BIN:-}"
 plan_start="${SECONDS}"
-PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- "${PLAN_ARGS[@]}" 2>"${PLAN_ERR}" || true)"
+if [ -n "${PLAN_BIN}" ] && [ -x "${PLAN_BIN}" ]; then
+  PLAN_OUTPUT="$("${PLAN_BIN}" "${PLAN_ARGS[@]}" --repo-root="${PWD}" 2>"${PLAN_ERR}" || true)"
+else
+  PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- "${PLAN_ARGS[@]}" 2>"${PLAN_ERR}" || true)"
+fi
 plan_secs=$((SECONDS - plan_start))
 
 if [ -z "${PLAN_OUTPUT}" ]; then
