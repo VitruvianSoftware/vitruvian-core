@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.18.2...vitruvian-v3.19.0) (2026-10-07)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 9, the Spaces order series ([#2829](https://github.com/VitruvianSoftware/vitruvian-core/issues/2829)) ([2b6605d](https://github.com/VitruvianSoftware/vitruvian-core/commit/2b6605d8375933a13c376bbc9222cf3af3fadb3b))
+
 ## [3.18.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.18.1...vitruvian-v3.18.2) (2026-10-07)
 
 
