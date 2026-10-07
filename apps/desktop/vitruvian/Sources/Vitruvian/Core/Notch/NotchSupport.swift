@@ -487,7 +487,7 @@ package enum NotchLayout {
     package static let musicCardPadding: CGFloat = 12
     package static let musicCardSpacing: CGFloat = 12
     /// The three compact transport buttons.
-    package static let musicCardTransportWidth: CGFloat = 120
+    package static let musicCardTransportWidth: CGFloat = 132
 
     /// The card's square artwork, never smaller than 40pt.
     package static func musicCardArtworkSide(height: CGFloat) -> CGFloat {
@@ -556,17 +556,6 @@ package enum NotchLayout {
     /// volume and the lyrics or queue toggles.
     package static func musicPlayerHeight(layout: NotchSize, height: CGFloat) -> CGFloat {
         min(layout == .spacious ? 148 : 120, max(musicPlayerMinimumHeight, height - musicControlsRowHeight - rowSpacing))
-    }
-
-    /// The lyrics and queue cards: their padding, the space below their
-    /// title row, and that row.
-    package static let musicExtraPadding: CGFloat = 12
-    package static let musicExtraSpacing: CGFloat = 10
-    package static let musicExtraTitleHeight: CGFloat = 18
-
-    /// The room a lyrics or queue card `height` tall leaves for its list.
-    package static func musicExtraListHeight(_ height: CGFloat) -> CGFloat {
-        height - musicExtraPadding * 2 - musicExtraSpacing - musicExtraTitleHeight
     }
 
     /// The smallest player the music page draws. Lyrics or the queue take

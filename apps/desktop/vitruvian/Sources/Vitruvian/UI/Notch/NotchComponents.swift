@@ -101,19 +101,25 @@ package struct NotchIconButton: View {
 }
 
 /// A short island puts the glyph beside its message; taller ones stack them.
-package struct NotchEmptyView: View {
+/// Actions, when a page has a next step to offer, follow the message.
+package struct NotchEmptyView<Actions: View>: View {
     package let symbol: String
     package let message: String
+    @ViewBuilder package var actions: () -> Actions
 
     package var body: some View {
         ViewThatFits(in: .vertical) {
             VStack(spacing: 12) {
                 glyph
-                label.frame(maxWidth: 250)
+                label.multilineTextAlignment(.center).frame(maxWidth: 250)
+                actions()
             }
             HStack(spacing: 14) {
                 glyph
-                label.frame(maxWidth: 260, alignment: .leading)
+                VStack(alignment: .leading, spacing: 10) {
+                    label.frame(maxWidth: 260, alignment: .leading)
+                    actions()
+                }
             }
         }
         .padding(12)
@@ -140,6 +146,34 @@ package struct NotchEmptyView: View {
     package init(symbol: String, message: String) {
         self.symbol = symbol
         self.message = message
+    }
+}
+
+extension NotchEmptyView where Actions == EmptyView {
+    package init(symbol: String, message: String) {
+        self.init(symbol: symbol, message: message) { EmptyView() }
+    }
+}
+
+/// An empty page's next step, as a word on a pill. The step the page leads
+/// to is filled, and any other stays plain beside it.
+package struct NotchPillButton: View {
+    package let title: String
+    package var prominent = false
+    package let action: () -> Void
+
+    package var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: prominent ? .semibold : .medium))
+                .foregroundStyle(.white.opacity(prominent ? 1 : 0.7))
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background(.white.opacity(prominent ? 0.14 : 0), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(NotchButtonStyle(cornerRadius: 14))
     }
 }
 
