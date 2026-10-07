@@ -316,6 +316,10 @@ package enum WindowDirectionalAction: Equatable {
 package enum WindowDirectionalGestureSupport {
     package static let activationDistance: CGFloat = 28
 
+    package static func appKitPoint(fromQuartz point: CGPoint, menuBarScreenTopY: CGFloat) -> CGPoint {
+        CGPoint(x: point.x, y: menuBarScreenTopY - point.y)
+    }
+
     package static func action(from origin: CGPoint,
                        to point: CGPoint,
                        activationDistance: CGFloat = activationDistance) -> WindowDirectionalAction? {
@@ -366,7 +370,7 @@ package struct WindowEdgeSnapScreen: Equatable {
 
 /// The eight visible drop areas around the screen. Raw values are persisted,
 /// so they stay stable even if the visual arrangement changes later.
-package enum WindowEdgeSnapZone: String, CaseIterable {
+package enum WindowEdgeSnapZone: String, CaseIterable, Sendable {
     case topLeft, top, topRight
     case left, right
     case bottomLeft, bottom, bottomRight
@@ -685,5 +689,281 @@ package enum WindowEdgeSnapSupport {
         let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
         let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
         return dx * dx + dy * dy
+    }
+}
+
+/// The pointer layout mode also accepts a held modifier chord. Ordinary global
+/// shortcuts retain their key requirement and their existing storage format.
+package enum WindowDirectionalTrigger: Equatable {
+    case key(GlobalShortcut)
+    case modifiers(GlobalShortcutModifiers)
+
+    package init?(storageValue: String) {
+        if storageValue.hasPrefix("modifiers:") {
+            let tokens = storageValue.dropFirst("modifiers:".count).split(separator: "+", omittingEmptySubsequences: false)
+            var modifiers: GlobalShortcutModifiers = []
+            for token in tokens {
+                switch token {
+                case "control": modifiers.insert(.control)
+                case "option": modifiers.insert(.option)
+                case "shift": modifiers.insert(.shift)
+                case "command": modifiers.insert(.command)
+                default: return nil
+                }
+            }
+            guard modifiers.isValidWindowDirectionalTrigger else { return nil }
+            self = .modifiers(modifiers)
+        } else {
+            guard let shortcut = GlobalShortcut(storageValue: storageValue) else { return nil }
+            self = .key(shortcut)
+        }
+    }
+
+    package var storageValue: String {
+        switch self {
+        case .key(let shortcut): return shortcut.storageValue
+        case .modifiers(let modifiers): return "modifiers:" + modifiers.storageTokens.joined(separator: "+")
+        }
+    }
+
+    package var displayString: String {
+        switch self {
+        case .key(let shortcut): return shortcut.displayString
+        case .modifiers(let modifiers): return modifiers.keyCaps.joined()
+        }
+    }
+}
+
+extension GlobalShortcutModifiers {
+    /// A bare Command, Option or Control chord collides with ordinary app
+    /// shortcuts and modifier-clicks. Shift may join a trigger, but it does
+    /// not make a single primary modifier safe on its own.
+    package var isValidWindowDirectionalTrigger: Bool {
+        intersection([.control, .option, .command]).rawValue.nonzeroBitCount >= 2
+    }
+}
+
+/// Passive policy for the modifier chord that arms pointer layout. Modifier
+/// changes and shortcut-cancelling keys are observed without holding the event
+/// while the main queue looks up or places a window.
+package enum WindowDirectionalModifierTapSupport {
+    package static let options: CGEventTapOptions = .listenOnly
+    package static let eventMask: CGEventMask = {
+        let events: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .leftMouseUp,
+                                     .rightMouseDown, .rightMouseUp, .otherMouseDown,
+                                     .otherMouseUp, .scrollWheel]
+        return events.reduce(CGEventMask(0)) { mask, event in
+            mask | (CGEventMask(1) << event.rawValue)
+        }
+    }()
+
+    package static func afterCallback(_ work: @escaping @MainActor @Sendable () -> Void) {
+        DispatchQueue.main.async { work() }
+    }
+}
+
+/// Native modifier-click, scroll and keyboard input always wins over a
+/// modifier-only pointer layout. Kept pure so input custody stays covered
+/// without manufacturing system-wide events in tests.
+package enum WindowDirectionalModifierInputPolicy {
+    package static func canBegin(mouseButtonPressed: Bool,
+                                 pointerInputSinceArm: Bool) -> Bool {
+        !mouseButtonPressed && !pointerInputSinceArm
+    }
+
+    package static func cancelsAndPassesThrough(_ type: CGEventType) -> Bool {
+        switch type {
+        case .scrollWheel, .leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown: return true
+        default: return false
+        }
+    }
+}
+
+/// Button history follows the same passive stream as the chord. A button
+/// released before a delayed callback still counts as held at the chord's press.
+package struct WindowDirectionalModifierButtons {
+    package private(set) var mask: UInt32 = 0
+    package var isPressed: Bool { mask != 0 }
+
+    package init() {}
+
+    package static func current() -> Self {
+        var state = Self()
+        for index in 0..<32 {
+            if let button = CGMouseButton(rawValue: UInt32(index)),
+               CGEventSource.buttonState(.combinedSessionState, button: button) {
+                state.mask |= UInt32(1) << index
+            }
+        }
+        return state
+    }
+
+    package mutating func observe(_ type: CGEventType, buttonNumber: Int64) {
+        let button: Int64
+        let isDown: Bool
+        switch type {
+        case .leftMouseDown: (button, isDown) = (0, true)
+        case .leftMouseUp: (button, isDown) = (0, false)
+        case .rightMouseDown: (button, isDown) = (1, true)
+        case .rightMouseUp: (button, isDown) = (1, false)
+        case .otherMouseDown: (button, isDown) = (buttonNumber, true)
+        case .otherMouseUp: (button, isDown) = (buttonNumber, false)
+        default: return
+        }
+        guard (0..<32).contains(button) else { return }
+        let bit = UInt32(1) << Int(button)
+        if isDown { mask |= bit } else { mask &= ~bit }
+    }
+}
+
+/// Event-source counters catch a quick click or scroll that completes while
+/// the main queue is still waiting to start the deferred gesture. Reading the
+/// counters also catches input that arrives during synchronous target lookup.
+package struct WindowDirectionalModifierPointerSnapshot: Equatable, Sendable {
+    package let leftMouseDown: UInt32
+    package let rightMouseDown: UInt32
+    package let otherMouseDown: UInt32
+    package let scrollWheel: UInt32
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(leftMouseDown: UInt32, rightMouseDown: UInt32, otherMouseDown: UInt32, scrollWheel: UInt32) {
+        self.leftMouseDown = leftMouseDown
+        self.rightMouseDown = rightMouseDown
+        self.otherMouseDown = otherMouseDown
+        self.scrollWheel = scrollWheel
+    }
+
+    package static func current() -> Self {
+        Self(
+            leftMouseDown: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .leftMouseDown),
+            rightMouseDown: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .rightMouseDown),
+            otherMouseDown: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .otherMouseDown),
+            scrollWheel: CGEventSource.counterForEventType(
+                .combinedSessionState, eventType: .scrollWheel)
+        )
+    }
+
+    package func hasPointerInput(since earlier: Self) -> Bool {
+        self != earlier
+    }
+}
+
+package enum WindowDirectionalModifierStartupOutcome<Value> {
+    case ready(Value)
+    case cancelled
+    case observationFailed
+    case targetUnavailable
+}
+
+/// Orders the active observation and custody checks around target lookup. The
+/// injected seams let tests introduce pointer input at either race boundary
+/// without posting real system events.
+package enum WindowDirectionalModifierStartupGuard {
+    package static func resolve<Value>(
+        armedAt: WindowDirectionalModifierPointerSnapshot?,
+        currentSnapshot: () -> WindowDirectionalModifierPointerSnapshot,
+        mouseButtonPressed: () -> Bool,
+        startObserving: () -> Bool,
+        isCurrent: () -> Bool = { true },
+        lookupTarget: () -> Value?
+    ) -> WindowDirectionalModifierStartupOutcome<Value> {
+        func canContinue() -> Bool {
+            guard isCurrent() else { return false }
+            let pointerInputSinceArm = armedAt.map {
+                currentSnapshot().hasPointerInput(since: $0)
+            } ?? false
+            return WindowDirectionalModifierInputPolicy.canBegin(
+                mouseButtonPressed: mouseButtonPressed(),
+                pointerInputSinceArm: pointerInputSinceArm)
+        }
+
+        guard canContinue() else { return .cancelled }
+        guard startObserving() else { return .observationFailed }
+        guard canContinue() else { return .cancelled }
+        guard let target = lookupTarget() else { return .targetUnavailable }
+        guard canContinue() else { return .cancelled }
+        return .ready(target)
+    }
+}
+
+/// A modifier chord starts once, finishes on its first required-key release,
+/// and cannot restart until all its keys are up. Extra modifiers cancel it.
+package struct WindowDirectionalModifierOwnership: Equatable, Sendable {
+    package let registrationID: UUID
+    package let generation: UInt64
+}
+
+package struct WindowDirectionalModifierHold {
+    package enum Decision: Sendable { case none, begin, finish, cancel }
+    package let expected: GlobalShortcutModifiers
+    private let registrationID = UUID()
+    package var ownership: WindowDirectionalModifierOwnership {
+        WindowDirectionalModifierOwnership(registrationID: registrationID, generation: generation)
+    }
+    package private(set) var generation: UInt64 = 0
+    private var active = false
+    private var waitingForRelease: Bool
+    private var held: GlobalShortcutModifiers
+
+    package init(expected: GlobalShortcutModifiers, initiallyHeld: GlobalShortcutModifiers = []) {
+        self.expected = expected
+        held = initiallyHeld
+        waitingForRelease = !initiallyHeld.isEmpty
+    }
+
+    package mutating func cancel() {
+        generation &+= 1
+        active = false
+        waitingForRelease = true
+    }
+
+    package mutating func cancelForKeyPress() -> Bool {
+        cancelForInput()
+    }
+
+    package mutating func cancelForInput() -> Bool {
+        guard active || !held.isEmpty else { return false }
+        cancel()
+        return true
+    }
+
+    package mutating func update(_ held: GlobalShortcutModifiers) -> Decision {
+        self.held = held
+        if active {
+            guard held == expected else {
+                let released = !held.isSuperset(of: expected)
+                cancel()
+                waitingForRelease = !held.isEmpty
+                return released ? .finish : .cancel
+            }
+        } else if waitingForRelease {
+            waitingForRelease = !held.isEmpty
+        } else if !held.subtracting(expected).isEmpty {
+            // Once an unrelated modifier joins this physical hold, releasing
+            // it must not turn the remainder into a fresh trigger chord.
+            cancel()
+            waitingForRelease = !held.isEmpty
+            return .cancel
+        } else if held == expected {
+            generation &+= 1
+            active = true
+            return .begin
+        }
+        return .none
+    }
+}
+
+package enum WindowDirectionalModifierCancellation {
+    case cancelHold
+    case preserveHold
+
+    package func applied(to hold: WindowDirectionalModifierHold) -> WindowDirectionalModifierHold {
+        guard self == .cancelHold else { return hold }
+        var cancelled = hold
+        cancelled.cancel()
+        return cancelled
     }
 }

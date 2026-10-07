@@ -21,7 +21,7 @@ package struct TrafficLightCandidate {
     }
 }
 
-package struct WindowServerWindowCandidate {
+package struct WindowServerWindowCandidate: Sendable {
     package let pid: pid_t
     package let windowID: CGWindowID
     package let frame: CGRect
@@ -62,6 +62,30 @@ package enum WindowServerSupport {
               let width = (raw["Width"] as? NSNumber)?.doubleValue,
               let height = (raw["Height"] as? NSNumber)?.doubleValue else { return nil }
         return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// One window's rectangle, straight from the window server.
+    ///
+    /// The window server composites this window every frame, so it already
+    /// holds the answer. Asking the owning application the same question over
+    /// Accessibility means waiting on that application's main thread, which is
+    /// exactly the thread that is busy while the user drags something inside
+    /// it. Nothing on an input path should wait on another process.
+    package static func frame(ofWindowID windowID: CGWindowID) -> CGRect? {
+        guard let infos = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID)
+                as? [[String: Any]] else { return nil }
+        return frame(ofWindowID: windowID, in: infos)
+    }
+
+    /// The scan itself, over a list the caller supplies. The window server can
+    /// answer for a window that has gone, so the identifier is matched rather
+    /// than trusting the first entry back.
+    package static func frame(ofWindowID windowID: CGWindowID, in windows: [[String: Any]]) -> CGRect? {
+        for window in windows
+        where (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value == windowID {
+            return bounds(from: window)
+        }
+        return nil
     }
 
     /// The frontmost window that answers for a click, with the edges compared

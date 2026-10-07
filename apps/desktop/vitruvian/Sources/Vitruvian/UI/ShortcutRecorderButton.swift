@@ -29,6 +29,8 @@ package struct ShortcutRecorderButton: NSViewRepresentable {
     /// For local shortcuts whose typed character also depends on Caps Lock.
     /// When supplied, this handles capture instead of the ordinary callback.
     package var captureWithFlagsAction: ((GlobalShortcut, CGEventFlags) -> Void)? = nil
+    /// Only hold-trigger fields opt into recording a chord without a key.
+    package var captureModifiersAction: ((GlobalShortcutModifiers) -> Void)? = nil
     package let invalidAction: () -> Void
     package let captureAction: (GlobalShortcut) -> Void
 
@@ -81,6 +83,7 @@ package struct ShortcutRecorderButton: NSViewRepresentable {
         button.notCapturedAction = notCapturedAction
         button.recordingChanged = recordingChanged
         button.captureWithFlagsAction = captureWithFlagsAction
+        button.captureModifiersAction = captureModifiersAction
         button.invalidAction = invalidAction
         button.captureAction = captureAction
         button.isEnabled = isEnabled
@@ -97,6 +100,8 @@ package final class RecorderButton: NSButton {
     package var notCapturedAction: (() -> Void)?
     package var recordingChanged: ((Bool) -> Void)?
     package var captureWithFlagsAction: ((GlobalShortcut, CGEventFlags) -> Void)?
+    package var captureModifiersAction: ((GlobalShortcutModifiers) -> Void)?
+    private var modifierRecording = ModifierShortcutRecording()
     package var invalidAction: (() -> Void)?
     package var captureAction: ((GlobalShortcut) -> Void)?
     private var isRecording = false
@@ -137,6 +142,7 @@ package final class RecorderButton: NSButton {
         }
         isRecording = true
         awaitingKeyForHeldModifiers = false
+        modifierRecording = ModifierShortcutRecording()
         // The tap keeps the typed combination to the field: without it, a
         // combination the system or another app answers to performs that
         // action while being recorded. When the tap cannot exist (no
@@ -192,6 +198,23 @@ package final class RecorderButton: NSButton {
             return
         }
         let modifiers = GlobalShortcutModifiers(eventFlags: event.modifierFlags)
+        if let captureModifiersAction {
+            let unsupported = event.modifierFlags.contains(.function)
+            let captured = modifierRecording.flagsChanged(modifiers, hasUnsupportedModifier: unsupported)
+            if unsupported {
+                invalidAction?()
+                return
+            }
+            if let captured {
+                guard captured.isValidWindowDirectionalTrigger else {
+                    invalidAction?()
+                    return
+                }
+                stopRecording()
+                captureModifiersAction(captured)
+            }
+            return
+        }
         if modifiers.hasPrimaryModifier {
             awaitingKeyForHeldModifiers = true
         } else if modifiers.isEmpty, awaitingKeyForHeldModifiers {
@@ -222,6 +245,7 @@ package final class RecorderButton: NSButton {
                                     flags: CGEventFlags) {
         // A key arrived, so the modifiers being held did produce something.
         awaitingKeyForHeldModifiers = false
+        modifierRecording.keyPressed()
 
         if keyCode == Int64(kVK_Escape), !modifiers.hasPrimaryModifier {
             stopRecording()
