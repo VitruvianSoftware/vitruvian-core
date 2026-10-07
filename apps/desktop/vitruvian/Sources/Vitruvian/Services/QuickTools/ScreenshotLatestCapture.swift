@@ -23,6 +23,10 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
         package var stored: () -> Capture?
         package var store: (Capture) -> Void
         package var forget: () -> Void
+        /// Whether the kept capture was discarded or edited, which the store
+        /// remembers for the next launch, and marking it so.
+        package var storedWithheld: () -> Bool
+        package var withholdStored: () -> Void
         package var share: (Capture, ScreenshotShareDuration,
                             @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void
         package var links: ScreenshotLinkActions
@@ -32,6 +36,7 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
         package init(defaults: UserDefaults, isAvailable: @escaping () -> Bool,
                      sharePreview: @escaping () -> Bool, stored: @escaping () -> Capture?,
                      store: @escaping (Capture) -> Void, forget: @escaping () -> Void,
+                     storedWithheld: @escaping () -> Bool, withholdStored: @escaping () -> Void,
                      share: @escaping (Capture, ScreenshotShareDuration,
                                        @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
                      links: ScreenshotLinkActions, strings: @escaping () -> ScreenshotFeatureStrings) {
@@ -41,6 +46,8 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
             self.stored = stored
             self.store = store
             self.forget = forget
+            self.storedWithheld = storedWithheld
+            self.withholdStored = withholdStored
             self.share = share
             self.links = links
             self.strings = strings
@@ -48,11 +55,16 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
     }
 
     package private(set) var editors: [Editor] = []
-    /// Names the latest capture. A pending upload keeps the one it began for.
+    /// Names the latest capture's claim on the upload shortcut. A pending
+    /// upload keeps the one it began for.
     package private(set) var id = UUID()
+    /// Names the latest capture itself. Turning the shortcut off renews `id`
+    /// but not this, so a later Discard still finds it.
+    package private(set) var token = UUID()
     package private(set) var uploadingID: UUID?
     /// Set once the latest capture went through an editor or was discarded:
-    /// the stored original is then no longer what the person kept.
+    /// the stored original is then no longer what the person kept. The store
+    /// keeps the same answer for the next launch.
     private var withheld = false
     private var copyRetry = ScreenshotLinkCopyRetry()
     private let host: Host
@@ -66,6 +78,7 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
     /// for the shortcuts that reopen or upload it.
     package func begin(_ capture: Capture) {
         invalidate()
+        token = UUID()
         withheld = false
         if ScreenshotSharingSupport.retainsLatestCapture(in: host.defaults) {
             host.store(capture)
@@ -75,8 +88,13 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
     /// Thrown away, the latest capture is no longer one the upload shortcut
     /// may publish. A capture reopened from history makes no such claim.
     package func discard(_ latestCapture: UUID?) {
-        guard let latestCapture, latestCapture == id else { return }
+        guard let latestCapture, latestCapture == token else { return }
+        withhold()
+    }
+
+    private func withhold() {
         withheld = true
+        host.withholdStored()
     }
 
     /// A newer capture or turning the feature off ends the claim a pending
@@ -121,7 +139,7 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
     /// no longer the stored original, so the shortcut keeps that original
     /// back until a newer capture arrives.
     package func editorOpened(_ editor: Editor) {
-        withheld = true
+        withhold()
         editors.append(editor)
     }
 
@@ -144,7 +162,7 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
         guard host.isAvailable(),
               ScreenshotSharingSupport.uploadShortcutEnabled(in: host.defaults) else { return }
         if host.sharePreview() { return }
-        guard editors.isEmpty, !withheld else {
+        guard editors.isEmpty, !withheld, !host.storedWithheld() else {
             host.links.beep()
             return
         }

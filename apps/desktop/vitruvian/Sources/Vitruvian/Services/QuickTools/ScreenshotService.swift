@@ -34,6 +34,8 @@ package final class ScreenshotService: ObservableObject {
         stored: { ScreenshotLastCaptureStore.load() },
         store: { ScreenshotLastCaptureStore.save($0) },
         forget: { ScreenshotLastCaptureStore.clear() },
+        storedWithheld: { ScreenshotLastCaptureStore.isWithheld },
+        withholdStored: { ScreenshotLastCaptureStore.withhold() },
         share: { [weak self] capture, duration, completion in
             self?.shareDirect(capture, duration: duration, completion: completion)
         },
@@ -474,7 +476,7 @@ package final class ScreenshotService: ObservableObject {
     private var previewRoute: PreviewRoute<ScreenshotSelectionController.Capture, SaveOutcome> {
         PreviewRoute(
             beginLatest: { self.latest.begin($0) },
-            latestID: { self.latest.id },
+            latestID: { self.latest.token },
             closePreview: { self.preview?.close() },
             record: { RecentCaptureService.shared.recordScreenshot($0) },
             autoCopy: { self.autoCopy($0) },
@@ -1082,8 +1084,28 @@ package enum ScreenshotLastCaptureStore {
             .appendingPathComponent("LatestScreenshot.png")
     }
 
+    /// Present while the stored capture was discarded or went through an
+    /// editor, so the upload shortcut keeps it back after a relaunch too.
+    private static var withheldURL: URL? {
+        fileURL?.deletingLastPathComponent().appendingPathComponent("LatestScreenshot.withheld")
+    }
+
+    package static var isWithheld: Bool {
+        guard let withheldURL else { return false }
+        return FileManager.default.fileExists(atPath: withheldURL.path)
+    }
+
+    package static func withhold() {
+        guard let withheldURL else { return }
+        try? FileManager.default.createDirectory(at: withheldURL.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: withheldURL.path, contents: nil)
+    }
+
     package static func save(_ capture: ScreenshotSelectionController.Capture) {
         guard let fileURL else { return }
+        // A new capture starts out as the one the person kept.
+        if let withheldURL { try? FileManager.default.removeItem(at: withheldURL) }
         stateLock.lock()
         generation += 1
         let operation = generation
@@ -1137,6 +1159,7 @@ package enum ScreenshotLastCaptureStore {
         generation += 1
         pendingCapture = nil
         stateLock.unlock()
+        if let withheldURL { try? FileManager.default.removeItem(at: withheldURL) }
         guard let fileURL else { return }
         try? FileManager.default.removeItem(at: fileURL)
     }

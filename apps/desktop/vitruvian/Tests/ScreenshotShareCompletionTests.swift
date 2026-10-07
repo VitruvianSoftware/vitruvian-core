@@ -103,6 +103,8 @@ enum ScreenshotShareCompletionTests {
         let defaultsName = "vitru.tests.screenshot-shortcut.\(UUID().uuidString)"
         let defaults: UserDefaults
         var stored: Int? = 1
+        /// What the store kept back for the next launch.
+        var storedWithheld = false
         var preview: ScreenshotQuickPreviewController?
         var completion: (@MainActor (ScreenshotShareRecord?) -> Void)?
         var uploads = 0
@@ -116,8 +118,16 @@ enum ScreenshotShareCompletionTests {
                 return true
             },
             stored: { [unowned self] in stored },
-            store: { [unowned self] in stored = $0 },
-            forget: { [unowned self] in stored = nil },
+            store: { [unowned self] in
+                stored = $0
+                storedWithheld = false
+            },
+            forget: { [unowned self] in
+                stored = nil
+                storedWithheld = false
+            },
+            storedWithheld: { [unowned self] in storedWithheld },
+            withholdStored: { [unowned self] in storedWithheld = true },
             share: { [unowned self] capture, _, completion in shareDirect(capture, completion: completion) },
             links: links.actions,
             strings: { .enUS }))
@@ -485,10 +495,34 @@ enum ScreenshotShareCompletionTests {
                      "discarding an older capture or one reopened from history leaves the latest one shareable")
         let discardedLatest = Uploader(links)
         discardedLatest.latest.begin(7)
-        discardedLatest.latest.discard(discardedLatest.latest.id)
+        discardedLatest.latest.discard(discardedLatest.latest.token)
         discardedLatest.latest.upload()
         suite.expect(discardedLatest.uploads == 0 && links.beeps == 4,
                      "a discarded latest capture is not published")
+        suite.expect(discardedLatest.storedWithheld,
+                     "a discarded latest capture stays withheld in the store for the next launch")
+        // Turning the shortcut off renews the upload claim, not the capture's
+        // identity, so the preview's later Discard still holds it back.
+        let switchedOff = Uploader(links)
+        switchedOff.latest.begin(12)
+        let shown = switchedOff.latest.token
+        switchedOff.latest.invalidate()
+        switchedOff.latest.discard(shown)
+        switchedOff.latest.upload()
+        suite.expect(switchedOff.uploads == 0 && links.beeps == 5,
+                     "a capture discarded after the shortcut was switched off is not published once it is back on")
+        // A relaunch starts with nothing in memory; what the store kept back
+        // is still not published, and a newer capture lifts it.
+        let relaunched = Uploader(links)
+        relaunched.stored = 13
+        relaunched.storedWithheld = true
+        relaunched.latest.upload()
+        suite.expect(relaunched.uploads == 0 && links.beeps == 6,
+                     "a capture withheld before a relaunch is not published after it")
+        relaunched.latest.begin(14)
+        relaunched.latest.upload()
+        suite.expect(relaunched.uploads == 1 && relaunched.uploadedCaptures == [14],
+                     "a capture taken after the relaunch uploads")
         let emptied = Uploader(links)
         _ = emptied.openEditor()
         emptied.latest.removeAllEditors()
