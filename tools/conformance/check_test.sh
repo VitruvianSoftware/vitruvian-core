@@ -240,6 +240,66 @@ case_renovate_config_missing() {
   rm -rf "$root"
 }
 
+# --- whole-day packageRule schedule (2026-10-06) -----------------------------
+# The cron went daily, and one rolling-digest dependency is held to Mondays by a
+# packageRule schedule. The guard must let exactly that shape through without
+# reopening the original hole.
+
+# Allowed: nested, cron form, minute and hour both `*`.
+case_renovate_whole_day_package_schedule() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  packageRules: [\n    {\n      matchPackageNames: ["x"],\n      schedule: ["* * * * 1"],\n    },\n  ],\n}\n' \
+    > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a packageRule whole-day cron schedule passes" \
+    "$(renovate_line "$out")" "whole-day only"
+  rm -rf "$root"
+}
+
+# Still the original bug, just moved inside a packageRule.
+case_renovate_time_of_day_package_schedule() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  packageRules: [\n    {\n      matchPackageNames: ["x"],\n      schedule: ["before 6am on monday"],\n    },\n  ],\n}\n' \
+    > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a packageRule time-of-day schedule still fails" \
+    "$(renovate_line "$out")" "✗"
+  rm -rf "$root"
+}
+
+# A cron with an hour field is a time-of-day window in cron clothing.
+case_renovate_cron_with_hour_package_schedule() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  packageRules: [\n    {\n      matchPackageNames: ["x"],\n      schedule: ["* 0-5 * * 1"],\n    },\n  ],\n}\n' \
+    > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a packageRule cron that names an hour still fails" \
+    "$(renovate_line "$out")" "✗"
+  rm -rf "$root"
+}
+
+# Top level stays schedule-free even for a whole-day window: there it would
+# gate EVERY update and quietly turn six of seven daily runs into no-ops.
+case_renovate_whole_day_top_level_schedule() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  schedule: ["* * * * 1"],\n}\n' > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a top-level whole-day schedule still fails" \
+    "$(renovate_line "$out")" "✗"
+  rm -rf "$root"
+}
+
+# One allowed schedule must not launder a bad one elsewhere in the file.
+case_renovate_mixed_package_schedules() {
+  root="$(new_root)"
+  printf '{\n  packageRules: [\n    {\n      schedule: ["* * * * 1"],\n    },\n    {\n      schedule: ["after 10pm"],\n    },\n  ],\n}\n' \
+    > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a good and a bad packageRule schedule together fail" \
+    "$(renovate_line "$out")" "✗"
+  rm -rf "$root"
+}
+
 # --- pnpm build pin: promoted from advisory to FAILING (#1501) ---------------
 #
 # As an advisory this rule named the exact defect that then occurred (#1500: the
@@ -764,6 +824,11 @@ case_renovate_schedule_present
 case_renovate_no_schedule
 case_renovate_schedule_in_comment
 case_renovate_config_missing
+case_renovate_whole_day_package_schedule
+case_renovate_time_of_day_package_schedule
+case_renovate_cron_with_hour_package_schedule
+case_renovate_whole_day_top_level_schedule
+case_renovate_mixed_package_schedules
 case_pnpm_pin_own_manifest
 case_pnpm_pin_corepack_prepare
 case_pnpm_pin_root_copy

@@ -57,13 +57,21 @@ on:
   workflow_dispatch: {}
   schedule:
     # THIS CRON IS THE ONLY CADENCE CONTROL. renovate.json5 deliberately carries
-    # no `schedule:` — see the comment there. A config-side time-of-day window
+    # no time-of-day `schedule:` — see the comment there. A config-side time-of-day window
     # cannot "line up" with a cron, because GitHub delivers scheduled runs
     # 30-180 minutes late under load; a window narrower than that drift silently
     # turns every delivered run into a no-op. That is exactly what the previous
     # pairing (this cron + "before 6am on monday") did, for its entire life.
     # Guarded by //tools/conformance:check (check_renovate_schedule).
-    - cron: "0 5 * * 1" # 05:00 UTC Monday
+    #
+    # DAILY, not weekly (2026-10-06). Review load is bounded by renovate.json5's
+    # prConcurrentLimit of 3 OPEN PRs, not by how often this runs. Weekly made
+    # that cap a throughput ceiling of 3 updates a week: the PRs merged within
+    # two hours of each Monday run and the freed slots then sat empty for six
+    # days, while upstream shipped more than three. The zitadel chart bump that
+    # carried the fix for GHSA-jh92-5mrj-p2w2 (account takeover, high) waited
+    # two Mondays behind patch bumps that way.
+    - cron: "0 5 * * *" # 05:00 UTC daily
 
 permissions:
   contents: read

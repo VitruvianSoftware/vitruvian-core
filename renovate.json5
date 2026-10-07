@@ -122,6 +122,21 @@
       dependencyDashboardApproval: true,
       labels: ["dependencies", "gitops", "cluster-critical"],
     },
+    // The mc CLIENT image is a rolling `latest-dev` tag whose digest moves
+    // almost daily. It only runs in a post-sync job, so a week-old build is
+    // fine -- but on a daily cadence it would open a PR every day, and under
+    // the weekly one it took one of the three PR slots on every single run
+    // (2026-09-28, 2026-10-05) ahead of real chart updates. Mondays only.
+    //
+    // This is the one `schedule` in the file, and it is a whole-DAY window in
+    // cron form (minute and hour both `*`), which GitHub's 30-180 minute
+    // delivery drift cannot miss. //tools/conformance:check allows exactly that
+    // shape, inside a packageRule, and nothing else.
+    {
+      matchManagers: ["custom.regex"],
+      matchPackageNames: ["cgr.dev/chainguard/minio-client"],
+      schedule: ["* * * * 1"],
+    },
     // Major versions anywhere: read the upgrade notes before a PR exists.
     {
       matchManagers: ["argocd"],
@@ -134,7 +149,8 @@
   // 2026-09-24 nineteen chart updates sat unseen behind the rate limit below.
   dependencyDashboard: true,
   dependencyDashboardTitle: "Dependency Dashboard (Helm chart pins)",
-  // NO `schedule`. The workflow's own cron is the SINGLE cadence authority.
+  // NO top-level `schedule`. The workflow's own cron is the SINGLE cadence
+  // authority. (One packageRule above carries a whole-day window; see there.)
   //
   // This previously read `schedule: ["before 6am on monday"]`, paired with the
   // workflow's `cron: "0 5 * * 1"`, on the assumption that the two "line up".
@@ -153,9 +169,8 @@
   // 1.15.0 against upstream 1.21.1 (both measured 2026-08-08).
   //
   // Dropping `schedule` makes every DELIVERED run do its work, whenever GitHub
-  // gets round to delivering it. Cadence is still weekly, because the cron is
-  // weekly; a mid-week `workflow_dispatch` is now an explicit human asking for
-  // updates, which is the only time that happens.
+  // gets round to delivering it. Cadence is whatever the cron says: weekly
+  // until 2026-10-06, daily since (see the workflow for why).
   //
   // `timezone` went with it: it exists only to interpret `schedule`.
   //
@@ -168,7 +183,7 @@
   // both slots, and by 2026-09-24 nineteen updates were starved -- including
   // argocd-image-updater 1.2.4 -> 1.3.1, three weeks old. The concurrency cap
   // alone does the trickling: at most 3 chart PRs await review at once, and
-  // each merge frees a slot for the next run.
+  // each merge frees a slot for the next run -- which is now the next day.
   prConcurrentLimit: 3,
   prHourlyLimit: 0,
 }
