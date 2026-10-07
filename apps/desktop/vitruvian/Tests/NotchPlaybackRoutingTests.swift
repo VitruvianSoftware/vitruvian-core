@@ -709,12 +709,12 @@ enum NotchPlaybackRoutingTests {
         Adapter.sourceMetadata[10]?["kMRMediaRemoteNowPlayingInfoPlaybackRate"] = 0
         Adapter.systemPID = 20
         suite.expect(Playback.select()?.pid == 10,
-                     "automatic playback keeps paused music instead of showing the active video by default")
+                     "music-only automatic playback keeps paused music instead of showing the active video")
         suite.expect((Playback.sourceReply["sources"] as? [[String: Any]])?.compactMap { $0["pid"] as? Int32 } == [10, 20, 30],
                      "the chooser's rows arrive in a stable order")
         Playback.includeOtherPlayers = true
         suite.expect(Playback.select()?.requiresCurrentPlayer == true && Playback.select()?.allowsDirectCommands == true,
-                     "opted-in video playback exposes native controls without Automation")
+                     "video playback with other players included exposes native controls without Automation")
         Playback.includeOtherPlayers = false
         Adapter.systemPID = 10
         Playback.choose(browser)
@@ -846,6 +846,6 @@ enum NotchPlaybackRoutingTests {
                      "a video discovered at the end of a crowded list stays out of music-only playback")
         Playback.includeOtherPlayers = true
         suite.expect(Playback.select()?.pid == 115,
-                     "opted-in playback still finds the system's current player at the end of the bound")
+                     "playback with other players included still finds the system's current player at the end of the bound")
     }
 }
