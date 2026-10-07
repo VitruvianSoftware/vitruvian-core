@@ -2905,7 +2905,7 @@ check_root_directories() {
 }
 
 # ---------------------------------------------------------------------------
-# CHECK: renovate.json5 must not carry a `schedule:` of its own.
+# CHECK: renovate.json5 must not carry a time-of-day `schedule:` of its own.
 #
 # Renovate's config-level `schedule` gates BRANCH CREATION against the
 # wall-clock at the instant the run executes. The workflow's cron decides when
@@ -2927,6 +2927,14 @@ check_root_directories() {
 # Textual and deliberately loose -- ANY top-level `schedule:` key fails,
 # including a `["at any time"]` that happens to be harmless, because the point
 # is that cadence lives in exactly one place.
+#
+# One shape is allowed, and only nested inside a packageRule: a whole-DAY window
+# in cron form with minute and hour both `*`, e.g. `schedule: ["* * * * 1"]`.
+# It holds one noisy dependency to one day a week once the cron runs daily, and
+# it cannot reproduce the bug above: a window 24 hours wide is not one a run
+# delivered 30-180 minutes late can miss. Cron form is required because it is
+# machine-checkable; `["on monday"]` means the same but so, to a regex, does
+# `["before 6am on monday"]`.
 # ---------------------------------------------------------------------------
 check_chart_owned_crds() {
   # Charts whose CRDs back live objects must keep installing those CRDs.
@@ -3116,10 +3124,19 @@ check_renovate_schedule() {
   # Top-level only: a `schedule` nested inside a packageRule is indented, and
   # would be the same bug, so match any indentation but require it to be a KEY
   # (`schedule:` at the start of the stripped line's content).
-  if sed 's|//.*||' "$cfg" | grep -qE '^[[:space:]]*schedule[[:space:]]*:'; then
+  #
+  # Allowed: a nested (indented past the top level's 2 spaces) single-line
+  # whole-day cron, minute and hour both `*`. Everything else fails.
+  sched_lines="$(sed 's|//.*||' "$cfg" | grep -E '^[[:space:]]*schedule[[:space:]]*:' || true)"
+  sched_bad="$(printf '%s\n' "$sched_lines" | grep -vE '^[[:space:]]{3,}schedule[[:space:]]*:[[:space:]]*\[[[:space:]]*"\* \* [^" ]+ [^" ]+ [^" ]+"[[:space:]]*\],?[[:space:]]*$' || true)"
+  if [ -n "$sched_lines" ] && [ -z "$sched_bad" ]; then
+    emit "renovate" "$GLYPH_OK" "$C_GREEN" "$cfg_rel" "whole-day only" "no schedule window" \
+      "the only schedule is a per-package whole-day cron — too wide for a late-delivered run to miss" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  elif [ -n "$sched_bad" ]; then
     emit "renovate" "$GLYPH_FAIL" "$C_RED" "$cfg_rel" "schedule:" "no schedule" \
       "a config-side time window silently no-ops every run GitHub delivers late (30-180min drift is normal) — the lane stays green and opens nothing" \
-      "delete the schedule/timezone keys; .github/workflows/renovate.yaml's cron is the only cadence control"
+      "delete the schedule/timezone keys (a packageRule may keep a whole-day cron like [\"* * * * 1\"]); .github/workflows/renovate.yaml's cron is the only cadence control"
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
   else
     emit "renovate" "$GLYPH_OK" "$C_GREEN" "$cfg_rel" "no schedule" "no schedule" \
