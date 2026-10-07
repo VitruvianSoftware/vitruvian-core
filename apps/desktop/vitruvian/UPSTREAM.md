@@ -2508,7 +2508,8 @@ is that notice. Add an entry for every change to upstream files.
 ## Tracking and porting upstream
 
 Upstream ships fixes and features most days: 150 commits landed in the four days
-after the import. This fork keeps up with a ledger, a tool and a daily watch.
+after the import. This fork keeps up with a ledger, a tool, a daily watch and a
+weekly sync.
 
 - **The ledger**, [`upstream/ledger.tsv`](upstream/ledger.tsv), lists every
   upstream commit since the import, oldest first, and what this fork did with it:
@@ -2541,6 +2542,11 @@ after the import. This fork keeps up with a ledger, a tool and a daily watch.
   keeps one issue, "Upstream vorssaint-utils: commits to triage and port", that
   lists the untriaged and pending commits. It comments when new upstream commits
   appear, and closes the issue when nothing is left.
+- **The weekly sync**, [`upstream/SYNC.md`](upstream/SYNC.md), is what an agent
+  follows to port everything pending and land it. A Claude Code routine runs it
+  every Monday morning (Pacific). The routine holds only the schedule and a
+  pointer to that file, so the steps change through pull requests like any
+  other file here.
 
 Upstream rewrites its history now and then: the import's commit `aa6ddcb9` was
 replaced by `e80abdb1`, with the same tree, after the import. The tool follows
