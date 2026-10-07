@@ -129,6 +129,7 @@ package enum DefaultsKey {
     package static let dockClickCycleWindows = "dockClickCycleWindows" // click the active app's Dock icon to cycle through its windows
     package static let spacesOrderEnabled = "spacesOrderEnabled" // keeps macOS from rearranging Spaces by recent use (Dock mru-spaces)
     package static let spacesOrderRestore = "spacesOrderRestore" // local recovery; never backed up: "absent" or "on", the mru-spaces state to put back
+    package static let spacesOrderRestartPending = "spacesOrderRestartPending" // local recovery; never backed up: true while a written mru-spaces waits for the Dock restart that reads it
     package static let middleClickEnabled = "middleClickEnabled"  // three-finger PHYSICAL click on the trackpad acts as a middle click
     package static let middleClickTapFingers = "middleClickTapFingers"  // 0 = off (default); 3 or 4 = a light tap with that many fingers also middle-clicks (issue #161)
     package static let previewSize = "previewSize"                // dock preview thumbnail size (once shared with the app switcher)

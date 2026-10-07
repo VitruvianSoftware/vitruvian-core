@@ -160,9 +160,13 @@ package final class SpacesOrderHold: @unchecked Sendable {
         watchTokens.forEach { $0.center.removeObserver($0.token) }
     }
 
-    /// True while a changed setting is still owed back to the user.
-    package static var hasPendingRestore: Bool {
-        UserDefaults.standard.string(forKey: DefaultsKey.spacesOrderRestore) != nil
+    /// True while a changed setting is still owed back to the user, or a
+    /// written one still waits for the Dock restart that reads it.
+    package static var hasPendingRestore: Bool { isOwed(in: .standard) }
+
+    private static func isOwed(in defaults: UserDefaults) -> Bool {
+        defaults.string(forKey: DefaultsKey.spacesOrderRestore) != nil
+            || defaults.bool(forKey: DefaultsKey.spacesOrderRestartPending)
     }
 
     private var isWanted: Bool {
@@ -242,15 +246,22 @@ package final class SpacesOrderHold: @unchecked Sendable {
         // Checked on the queue, behind any sync still waiting to hold, so a
         // marker that sync is about to write is seen and put back too.
         queue.sync {
-            guard defaults.string(forKey: DefaultsKey.spacesOrderRestore) != nil else { return true }
+            guard Self.isOwed(in: defaults) else { return true }
             return reconcile(wanted: false)
         }
     }
 
     /// Takes one step toward the wanted state. False when a system change
-    /// failed; the marker then still describes what is owed.
+    /// failed; the marker and a pending restart then still describe what is
+    /// owed.
     @discardableResult
     package func reconcile(wanted: Bool) -> Bool {
+        // A preference written without its Dock restart no longer says what
+        // the Dock does, so nothing is decided from it until that restart ran.
+        if defaults.bool(forKey: DefaultsKey.spacesOrderRestartPending) {
+            guard system.restartDock() else { return false }
+            setRestartPending(false)
+        }
         let marker = defaults.string(forKey: DefaultsKey.spacesOrderRestore)
         switch SpacesOrderSupport.step(wanted: wanted, current: system.read(), marker: marker) {
         case .none:
@@ -318,7 +329,13 @@ package final class SpacesOrderHold: @unchecked Sendable {
             return (true, true)
         }
         guard system.write(removeKey ? nil : rearranging) else { return (false, liveAccepted) }
-        return (system.restartDock(), liveAccepted)
+        // Saved before the restart, so a failed one, or a crash before it, is
+        // retried by the next sync instead of the written preference passing
+        // for what the Dock does.
+        setRestartPending(true)
+        guard system.restartDock() else { return (false, liveAccepted) }
+        setRestartPending(false)
+        return (true, liveAccepted)
     }
 
     private func confirm(_ rearranging: Bool) -> Bool {
@@ -332,6 +349,15 @@ package final class SpacesOrderHold: @unchecked Sendable {
 
     private func clearMarker() {
         defaults.removeObject(forKey: DefaultsKey.spacesOrderRestore)
+        defaults.synchronize()
+    }
+
+    private func setRestartPending(_ pending: Bool) {
+        if pending {
+            defaults.set(true, forKey: DefaultsKey.spacesOrderRestartPending)
+        } else {
+            defaults.removeObject(forKey: DefaultsKey.spacesOrderRestartPending)
+        }
         defaults.synchronize()
     }
 }

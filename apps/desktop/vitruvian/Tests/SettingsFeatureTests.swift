@@ -258,8 +258,9 @@ enum SettingsFeatureTests {
                "linear scrolling preferences travel with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.spacesOrderEnabled)
                 && backupKeys.contains(DefaultsKey.panelControlSpacesOrder)
-                && !backupKeys.contains(DefaultsKey.spacesOrderRestore),
-               "fixed Space order preferences travel with the settings backup, but never the restore marker")
+                && !backupKeys.contains(DefaultsKey.spacesOrderRestore)
+                && !backupKeys.contains(DefaultsKey.spacesOrderRestartPending),
+               "fixed Space order preferences travel with the settings backup, but never the restore state")
         suite.expect(MouseExceptionScope.allCases.allSatisfy { backupKeys.contains($0.defaultsKey) },
                "the apps each mouse feature leaves alone travel with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.clipboardHistoryIgnoredApps),

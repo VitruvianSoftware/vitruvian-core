@@ -93,6 +93,7 @@ enum SpacesOrderTests {
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let marker = DefaultsKey.spacesOrderRestore
+        let restartPending = DefaultsKey.spacesOrderRestartPending
         let absent = SpacesOrderSupport.restoreAbsent
         let on = SpacesOrderSupport.restoreOn
 
@@ -105,6 +106,7 @@ enum SpacesOrderTests {
         }
         func make(_ value: SpacesRearrangeSetting, marker saved: String? = nil) -> (SpacesOrderHold, FakeDock) {
             setMarker(saved)
+            defaults.removeObject(forKey: restartPending)
             let dock = FakeDock(value, defaults: defaults)
             return (SpacesOrderHold(defaults: defaults, system: dock.system), dock)
         }
@@ -192,8 +194,20 @@ enum SpacesOrderTests {
         dock.liveAvailable = false
         dock.restartSucceeds = false
         suite.expect(!hold.reconcile(wanted: true) && dock.value == .off
-                     && defaults.string(forKey: marker) == absent,
-                     "a written preference whose restart failed keeps its marker, so it can still return")
+                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     "a written preference whose restart failed keeps its marker and the owed restart")
+        // The preference already reads off, so only the owed restart keeps the
+        // next sync from taking it for what the Dock does.
+        dock.events = []
+        suite.expect(!hold.reconcile(wanted: true) && dock.events == ["restart"]
+                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     "the next sync retries a failed restart instead of trusting the written preference")
+        dock.restartSucceeds = true
+        dock.events = []
+        suite.expect(hold.reconcile(wanted: true) && dock.events == ["restart"]
+                     && dock.value == .off && defaults.string(forKey: marker) == absent
+                     && !defaults.bool(forKey: restartPending),
+                     "a restart that finally runs finishes the hold and keeps what to put back")
 
         // A live call the Dock accepted can still land after its checks ran
         // out, so a failed hold that made one still owes the user's setting.
@@ -246,6 +260,26 @@ enum SpacesOrderTests {
                      && defaults.object(forKey: marker) == nil,
                      "the next sync finishes an interrupted restore")
 
+        // A restore whose restart failed already reads back on, which alone
+        // would pass for the user's own choice and forget the marker.
+        (hold, dock) = make(.off, marker: absent)
+        dock.liveAvailable = false
+        dock.restartSucceeds = false
+        suite.expect(!hold.reconcile(wanted: false) && dock.events == ["write(nil)", "restart"]
+                     && dock.value == .absent && defaults.string(forKey: marker) == absent
+                     && defaults.bool(forKey: restartPending),
+                     "a restored preference whose restart failed keeps its marker and the owed restart")
+        dock.events = []
+        suite.expect(!hold.reconcile(wanted: false) && dock.events == ["restart"]
+                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     "the next sync retries the restart instead of forgetting the marker")
+        dock.restartSucceeds = true
+        dock.events = []
+        suite.expect(hold.reconcile(wanted: false) && dock.events == ["restart"]
+                     && dock.value == .absent && defaults.object(forKey: marker) == nil
+                     && !defaults.bool(forKey: restartPending),
+                     "a restart that finally runs finishes the restore and clears the marker")
+
         (hold, dock) = make(.on, marker: absent)
         suite.expect(hold.reconcile(wanted: false) && dock.events.isEmpty
                      && dock.value == .on && defaults.object(forKey: marker) == nil,
@@ -274,6 +308,23 @@ enum SpacesOrderTests {
         suite.expect(!hold.restoreForRemoval() && dock.events == ["write(nil)"]
                      && dock.value == .off && defaults.string(forKey: marker) == absent,
                      "a removal whose restore failed reports it and keeps the marker")
+        (hold, dock) = make(.off, marker: absent)
+        dock.liveAvailable = false
+        dock.restartSucceeds = false
+        suite.expect(!hold.restoreForRemoval() && !hold.restoreForRemoval()
+                     && dock.events == ["write(nil)", "restart", "restart"]
+                     && defaults.string(forKey: marker) == absent && defaults.bool(forKey: restartPending),
+                     "a removal whose restart keeps failing never reports the restore as done")
+        dock.restartSucceeds = true
+        suite.expect(hold.restoreForRemoval() && dock.events == ["write(nil)", "restart", "restart", "restart"]
+                     && defaults.object(forKey: marker) == nil && !defaults.bool(forKey: restartPending),
+                     "a removal finishes once the owed restart runs")
+        // A let-go clears the marker, but not a restart still owed.
+        (hold, dock) = make(.on)
+        defaults.set(true, forKey: restartPending)
+        suite.expect(hold.restoreForRemoval() && dock.events == ["restart"]
+                     && !defaults.bool(forKey: restartPending),
+                     "removal runs an owed restart even without a marker")
 
         // Removal runs on the hold's queue, behind a sync still holding, so
         // the marker that sync writes is put back before removal returns.
@@ -459,8 +510,8 @@ enum SpacesOrderTests {
                              && !$0.enableKeys.contains(DefaultsKey.spacesOrderEnabled)
                      },
                      "no preset installs or turns on a feature that can restart the Dock")
-        suite.expect(SettingsBackupSupport.machineStateKeys.contains(marker)
-                     && !SettingsBackupSupport.exportKeys().contains(marker),
-                     "the restore marker belongs to this Mac and never travels in a backup")
+        suite.expect(SettingsBackupSupport.machineStateKeys.isSuperset(of: [marker, restartPending])
+                     && SettingsBackupSupport.exportKeys().isDisjoint(with: [marker, restartPending]),
+                     "the restore marker and an owed restart belong to this Mac and never travel in a backup")
     }
 }

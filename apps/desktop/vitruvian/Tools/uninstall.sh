@@ -94,6 +94,10 @@ sleep_was_ours=0
 # as the sleep flag above.
 spaces_owed=0
 [[ -n "$(defaults read "$BUNDLE" spacesOrderRestore 2>/dev/null)" ]] && spaces_owed=1
+# A preference written back without the Dock restart that reads it: the Dock
+# still keeps the order it had until it restarts.
+spaces_restart_owed=0
+[[ "$(defaults read "$BUNDLE" spacesOrderRestartPending 2>/dev/null)" == "1" ]] && spaces_restart_owed=1
 
 echo "▸ Resetting permissions (Accessibility, Screen Recording)…"
 tccutil reset All "$BUNDLE" >/dev/null 2>&1 || true
@@ -133,12 +137,19 @@ fi
 # is the only warning anyone will get. Only a 0 proves it is still off: a
 # missing key is the system default, which rearranges. This only reads the
 # Dock's preference; changing it is left to the user.
+# A preference already back on still leaves the Dock in a fixed order while
+# its restart is owed, so that is not a finished restore either.
 spaces_stuck=0
-if (( spaces_owed )) && [[ "$(defaults read com.apple.dock mru-spaces 2>/dev/null)" == "0" ]]; then
-    spaces_stuck=1
+spaces_unloaded=0
+if (( spaces_owed )); then
+    if [[ "$(defaults read com.apple.dock mru-spaces 2>/dev/null)" == "0" ]]; then
+        spaces_stuck=1
+    elif (( spaces_restart_owed )); then
+        spaces_unloaded=1
+    fi
 fi
 
-if (( detached == 0 && sleep_stuck == 0 && sleep_unknown == 0 && spaces_stuck == 0 )); then
+if (( detached == 0 && sleep_stuck == 0 && sleep_unknown == 0 && spaces_stuck == 0 && spaces_unloaded == 0 )); then
     echo "✓ Vitruvian fully removed."
     exit 0
 fi
@@ -161,5 +172,10 @@ if (( spaces_stuck )); then
     echo "  Fixed Space order had turned rearranging off, and it was not put back." >&2
     echo "  Turn it back on in System Settings › Desktop & Dock with" >&2
     echo "  \"Automatically rearrange Spaces based on most recent use\"." >&2
+fi
+if (( spaces_unloaded )); then
+    echo "⚠ Vitruvian removed, but the Dock still keeps Spaces in a fixed order." >&2
+    echo "  Space rearranging was put back on, and the Dock reads it when it restarts." >&2
+    echo "  Log out and back in to finish." >&2
 fi
 exit 1
