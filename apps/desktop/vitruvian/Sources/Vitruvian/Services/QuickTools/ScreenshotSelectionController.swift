@@ -78,7 +78,8 @@ package final class ScreenshotSelectionController {
         /// Window ids with their bounds in window-server coordinates.
         package var pickableWindows: @MainActor (_ hideVitruvianWindows: Bool,
                                                  _ protectedWindowIDs: Set<CGWindowID>) -> [(id: CGWindowID, bounds: CGRect)]
-        package var captureWindow: @MainActor (_ id: CGWindowID, _ scale: CGFloat) async -> CGImage?
+        package var captureWindow: @MainActor (_ id: CGWindowID, _ scale: CGFloat) async
+            -> (image: CGImage, scale: CGFloat)?
         package var captureDisplay: @MainActor (_ id: CGDirectDisplayID, _ includePointer: Bool,
                                                 _ hideVitruvianWindows: Bool,
                                                 _ protectedWindowIDs: Set<CGWindowID>) async -> CGImage?
@@ -90,7 +91,8 @@ package final class ScreenshotSelectionController {
                      pointer: @escaping @MainActor () -> CGPoint,
                      captureAllDisplays: @escaping @MainActor (Bool, Bool, Set<CGWindowID>) async -> [CGDirectDisplayID: CGImage],
                      pickableWindows: @escaping @MainActor (Bool, Set<CGWindowID>) -> [(id: CGWindowID, bounds: CGRect)],
-                     captureWindow: @escaping @MainActor (CGWindowID, CGFloat) async -> CGImage?,
+                     captureWindow: @escaping @MainActor (CGWindowID, CGFloat) async
+                         -> (image: CGImage, scale: CGFloat)?,
                      captureDisplay: @escaping @MainActor (CGDirectDisplayID, Bool, Bool, Set<CGWindowID>) async -> CGImage?,
                      show: @escaping @MainActor ([NSPanel], NSPanel?) -> Void) {
             self.defaults = defaults
@@ -139,7 +141,8 @@ package final class ScreenshotSelectionController {
                                                     protectedWindowIDs: protectedWindowIDs)
         }
 
-        @MainActor private static func liveCaptureWindow(_ id: CGWindowID, _ scale: CGFloat) async -> CGImage? {
+        @MainActor private static func liveCaptureWindow(_ id: CGWindowID,
+                                                         _ scale: CGFloat) async -> (image: CGImage, scale: CGFloat)? {
             await ScreenshotCaptureEngine.captureWindow(id, scale: scale)
         }
 
@@ -718,13 +721,15 @@ package final class ScreenshotSelectionController {
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard let image = await self.environment.captureWindow(windowID, panel.pixelScale) else {
+            // A composite with an attached dialog may be captured at another
+            // display's scale than this panel's; record the one it has.
+            guard let capture = await self.environment.captureWindow(windowID, panel.pixelScale) else {
                 self.finish(.failed)
                 return
             }
             self.finish(.captured(Capture(
-                image: image,
-                scale: panel.pixelScale,
+                image: capture.image,
+                scale: capture.scale,
                 anchorRect: ScreenshotSupport.cocoaRect(
                     fromFlippedView: frame,
                     screenFrame: panel.screenFrame))))
@@ -873,7 +878,7 @@ package final class ScreenshotOverlayPanel: OverlayPanel {
     /// full-screen action stays below it even when there is no notch surface.
     let topChromeHeight: CGFloat
     package private(set) var frozenImage: CGImage?
-    let pixelScale: CGFloat
+    package let pixelScale: CGFloat
     private(set) var overlayViewStorage: ScreenshotOverlayView!
     private var backdropView: NSImageView!
 

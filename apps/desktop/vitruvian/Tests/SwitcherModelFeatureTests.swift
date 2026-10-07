@@ -877,6 +877,85 @@ enum SwitcherModelFeatureTests {
         }
         DockPreviewScopeTests.run(suite)
 
+        // MARK: Windows whose Accessibility reads time out
+
+        suite.expect(SwitcherSupport.isUnansweredAccessibilityRead(.cannotComplete),
+               "a timed-out Accessibility read counts as no answer")
+        for error: AXError in [.noValue, .attributeUnsupported, .invalidUIElement, .success] {
+            suite.expect(!SwitcherSupport.isUnansweredAccessibilityRead(error),
+                   "an app that reports a missing attribute has still answered")
+        }
+        suite.expect(SwitcherSupport.emptyAccessibilityAnswer(
+            acceptsUndescribedSubroles: false, unansweredWindowCount: 0, resolvedUnansweredIDCount: 0) == .perWindow,
+               "an app that described every window and kept none still vetoes its ghosts")
+        suite.expect(SwitcherSupport.emptyAccessibilityAnswer(
+            acceptsUndescribedSubroles: false, unansweredWindowCount: 1, resolvedUnansweredIDCount: 1) == .perWindow,
+               "a timed-out window does not discard the app's verdicts on its other windows")
+        suite.expect(SwitcherSupport.emptyAccessibilityAnswer(
+            acceptsUndescribedSubroles: false, unansweredWindowCount: 2, resolvedUnansweredIDCount: 1)
+                == .everyWindowUnanswered,
+               "a timed-out window with no window server id makes every surface count as timed out")
+        suite.expect(SwitcherSupport.emptyAccessibilityAnswer(
+            acceptsUndescribedSubroles: true, unansweredWindowCount: 1, resolvedUnansweredIDCount: 0) == .noAnswer,
+               "compatibility-hosted apps keep the path for owners that never answered")
+        suite.expect(SwitcherSupport.accessibilityWitness(isDescribed: true, isUnanswered: false) == .described
+               && SwitcherSupport.accessibilityWitness(isDescribed: false, isUnanswered: true) == .unanswered
+               && SwitcherSupport.accessibilityWitness(isDescribed: false, isUnanswered: false) == .rejected,
+               "each window gets its own Accessibility verdict")
+        // A busy app with a timed-out workspace, a rejected helper and a
+        // timed-out helper. Both helpers sit at the normal window level and are
+        // kept out of window cycling. Every surface is on screen on the current
+        // desktop.
+        let keepsMixed = { (witness: SwitcherSupport.AccessibilityWitness?, excluded: Bool) in
+            SwitcherSupport.keepsSurface(
+                witness: witness,
+                keepsUnmatched: {
+                    SwitcherSupport.keepsUnmatchedWindow(
+                        isOnHiddenSpace: false, isConfirmedHiddenAppWindow: false,
+                        isExcludedFromWindowCycle: excluded, isOrderedIn: nil,
+                        allowsUnverifiedHiddenSpace: true)
+                },
+                isExcludedFromWindowCycle: { excluded },
+                isLeftover: {
+                    SwitcherSupport.unwitnessedSurfaceIsLeftover(
+                        isOnScreen: true, canResolveSpaces: true, windowSpacesCount: 1)
+                })
+        }
+        suite.expect(keepsMixed(.unanswered, false),
+               "the timed-out workspace stays in the switcher")
+        suite.expect(!keepsMixed(.rejected, true),
+               "the rejected helper beside it stays out")
+        suite.expect(!keepsMixed(.unanswered, true),
+               "a timed-out helper kept out of window cycling stays out")
+        suite.expect(keepsMixed(nil, true),
+               "an owner that never answered keeps the leftover check alone")
+        suite.expect(!SwitcherSupport.keepsSurface(witness: nil, keepsUnmatched: { true },
+                                                   isExcludedFromWindowCycle: { false },
+                                                   isLeftover: { true }),
+               "an owner that never answered still loses its leftover surfaces")
+        let helperID: CGWindowID = 7
+        let workspaceID: CGWindowID = 8
+        let flagged = { (id: CGWindowID) in id == helperID }
+        suite.expect(SwitcherSupport.accessibilityAnswerShowsNoWindow(
+            describedWindowCount: 0, unansweredIDs: [helperID], everyWindowUnanswered: false,
+            isExcludedFromWindowCycle: flagged),
+               "a busy app whose only timed-out windows are hidden helpers keeps its app entry")
+        suite.expect(!SwitcherSupport.accessibilityAnswerShowsNoWindow(
+            describedWindowCount: 0, unansweredIDs: [helperID, workspaceID], everyWindowUnanswered: false,
+            isExcludedFromWindowCycle: flagged),
+               "a timed-out window that could be real blocks the app entry")
+        suite.expect(!SwitcherSupport.accessibilityAnswerShowsNoWindow(
+            describedWindowCount: 0, unansweredIDs: [helperID], everyWindowUnanswered: true,
+            isExcludedFromWindowCycle: flagged),
+               "a timed-out window with no window server id blocks the app entry")
+        suite.expect(SwitcherSupport.accessibilityAnswerShowsNoWindow(
+            describedWindowCount: 0, unansweredIDs: [], everyWindowUnanswered: false,
+            isExcludedFromWindowCycle: flagged)
+               && !SwitcherSupport.accessibilityAnswerShowsNoWindow(
+                   describedWindowCount: 1, unansweredIDs: [], everyWindowUnanswered: false,
+                   isExcludedFromWindowCycle: flagged),
+               "an app that answered in full keeps the earlier windowless rule")
+
         // MARK: Stale surfaces without an Accessibility witness (issue #807)
 
         suite.expect(!SwitcherSupport.unwitnessedSurfaceIsLeftover(isOnScreen: true,
@@ -2172,6 +2251,20 @@ enum SwitcherModelFeatureTests {
                 && !WindowMaximizerSupport.excludes(bundleIdentifier: nil,
                                                     excludedBundleIdentifiers: ["com.example.game"]),
                "only apps on the exception list keep the native green button")
+        let dockRightTarget = CGSize(width: 1871, height: 1049)
+        suite.expect(WindowMaximizerSupport.overshoots(CGSize(width: 1920, height: 1049), target: dockRightTarget)
+                && WindowMaximizerSupport.overshoots(CGSize(width: 1873, height: 1049), target: dockRightTarget)
+                && WindowMaximizerSupport.overshoots(CGSize(width: 1871, height: 1080), target: dockRightTarget),
+               "a window left partly under the Dock is larger than the target, even within the frame tolerance")
+        suite.expect(!WindowMaximizerSupport.overshoots(CGSize(width: 1871, height: 1049), target: dockRightTarget)
+                && !WindowMaximizerSupport.overshoots(CGSize(width: 1870, height: 1049), target: dockRightTarget)
+                && !WindowMaximizerSupport.overshoots(CGSize(width: 936, height: 1049), target: dockRightTarget),
+               "an exact frame, or one the app kept smaller, is not treated as left under the Dock")
+        let approach = WindowMaximizerSupport.approachOrigin(for: CGPoint(x: 0, y: 31), tolerance: 4)
+        suite.expect(approach.x + dockRightTarget.width < 1870
+                && approach.y + dockRightTarget.height < 1080
+                && abs(approach.x) <= 4 && abs(approach.y - 31) <= 4,
+               "the approach keeps the full target size clear of the Dock edge, a tolerance from the target")
         suite.expect(registeredDefaults[DefaultsKey.keyboardDebounceEnabled] as? Bool == false,
                "keyboard debounce is opt-in")
         suite.expect(registeredDefaults[DefaultsKey.keyboardDebounceWindowMs] as? Int == 5,
@@ -4572,7 +4665,19 @@ enum SwitcherModelFeatureTests {
         suite.expect(MiddleClickSupport.actionForClick(fingerCount: 3, frameAge: 0.05, settledFor: 0.2,
                                                  sinceLastTransformEnd: nil,
                                                  systemDragGestureEnabled: true) == .passThrough,
-               "middle click stands down while the system three-finger drag owns the gesture")
+               "middle click leaves three-finger clicks to the system three-finger drag")
+        suite.expect(MiddleClickSupport.actionForClick(fingerCount: 4, frameAge: 0.05, settledFor: 0.2,
+                                                 sinceLastTransformEnd: nil,
+                                                 systemDragGestureEnabled: true) == .transform,
+               "middle click moves to a settled four-finger press while three-finger drag is on")
+        suite.expect(MiddleClickSupport.actionForClick(fingerCount: 4, frameAge: 0.05, settledFor: 0.01,
+                                                 sinceLastTransformEnd: nil,
+                                                 systemDragGestureEnabled: true) == .passThrough,
+               "middle click rejects a four-finger click arriving with the fourth finger's touchdown")
+        suite.expect(MiddleClickSupport.actionForClick(fingerCount: 4, frameAge: 0.05, settledFor: 0.2,
+                                                 sinceLastTransformEnd: 0.1,
+                                                 systemDragGestureEnabled: true) == .swallow,
+               "middle click drops the bounce after a four-finger transform")
 
         expectEqual(ColorValue.string(red: 1, green: 0, blue: 0, format: .hex), "#FF0000",
                     "color picker formats pure red as hex")

@@ -274,7 +274,7 @@ package final class NotchWatchService: ObservableObject {
             guard let windowID = target.windowID, let info = window else { return await regionCapture?.image() }
             var captured = await WindowPreviewProvider.captureViaWindowServer(windowID)
             if captured == nil, info.onScreen {
-                captured = await ScreenshotCaptureEngine.captureWindow(windowID, scale: 2)
+                captured = await ScreenshotCaptureEngine.captureWindow(windowID, scale: 2)?.image
             }
             return captured.flatMap { full in
                 NotchWatchSupport.pixelCrop(target.crop, windowSize: info.bounds.size,

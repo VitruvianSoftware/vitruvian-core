@@ -118,7 +118,7 @@ ATTRIBUTES_RE = re.compile(r"[ \t]*(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*")
 # `package` back: (indent, kind, name).
 DECL_RE = re.compile(
     r"([ \t]*)(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
-    r"(?:(?:static|class|final|override|private\(set\)|fileprivate\(set\)|mutating|nonmutating"
+    r"(?:(?:package|static|class|final|override|private\(set\)|fileprivate\(set\)|mutating|nonmutating"
     r"|nonisolated(?:\(unsafe\))?|convenience|required|lazy|weak|unowned|indirect|dynamic)[ \t]+)*"
     r"(func|var|let|struct|class|enum|protocol|typealias|init|subscript|extension|actor)\b[ \t]*([A-Za-z_`][\w`]*)?"
 )
@@ -620,13 +620,20 @@ def _indent(line):
     return len(line) - len(line.lstrip(" \t"))
 
 
-def _in_protocol(lines, i):
-    """Whether line i sits directly in a protocol body (no modifiers there)."""
+TYPE_KINDS = ("struct", "class", "enum", "extension", "actor")
+
+
+def _takes_modifiers(lines, i):
+    """Whether line i is a declaration that can carry an access modifier:
+    top level, or directly in a type's body. Not a protocol requirement, and
+    not a local declaration inside a function, closure or accessor."""
     depth = _indent(lines[i])
+    if depth == 0:
+        return True
     for j in range(i - 1, -1, -1):
         if lines[j].strip() and _indent(lines[j]) < depth:
             key = _decl_key(lines[j])
-            return bool(key) and key[1] == "protocol"
+            return bool(key) and key[1] in TYPE_KINDS
     return False
 
 
@@ -668,7 +675,7 @@ def restore_package(merged, ours):
                 and key[1] != "extension"
                 and not ACCESS_RE.search(line[: line.find(key[1])])
                 and level[True] > level[False]
-                and not _in_protocol(lines, i)
+                and _takes_modifiers(lines, i)
             ):
                 at = ATTRIBUTES_RE.match(line).end()
                 line = line[:at] + "package " + line[at:]
@@ -683,7 +690,52 @@ def restore_package(merged, ours):
                     balance += nxt.count("(") - nxt.count(")")
                     shift_from += 1
         result.append(line)
+    _publish_used_types(result, kept)
     return "".join(result).encode("utf-8", "surrogateescape")
+
+
+NAMED_TYPE_KINDS = ("struct", "class", "enum", "actor", "protocol", "typealias")
+
+
+def _signature(lines, i):
+    """The text of declaration i's signature: its parameters, result and type,
+    not its body or initial value."""
+    key = _decl_key(lines[i])
+    text, balance, j = "", 0, i
+    while j < len(lines):
+        text += lines[j]
+        balance += lines[j].count("(") - lines[j].count(")")
+        if balance <= 0:
+            break
+        j += 1
+    text = text.split("{", 1)[0]
+    if key and key[1] in ("var", "let"):
+        text = text.split("=", 1)[0]
+    return text
+
+
+def _publish_used_types(lines, kept):
+    """A new type that a `package` declaration's signature names must be
+    `package` too, whatever its neighbours are, or the module does not
+    compile."""
+    used = " ".join(
+        _signature(lines, i)
+        for i, line in enumerate(lines)
+        if _decl_key(line) and PACKAGE_RE.match(line)
+    )
+    for i, line in enumerate(lines):
+        key = _decl_key(line)
+        if (
+            i not in kept
+            and key
+            and key[1] in NAMED_TYPE_KINDS
+            and key[2]
+            and not ACCESS_RE.search(line[: line.find(key[1])])
+            and _takes_modifiers(lines, i)
+            and re.search(rf"\b{re.escape(key[2])}\b", used)
+        ):
+            at = ATTRIBUTES_RE.match(line).end()
+            lines[i] = line[:at] + "package " + line[at:]
 
 
 def _merge_file(ours, base, theirs, labels):
@@ -731,6 +783,30 @@ def port_commit(
     parent = upstream.run(["rev-list", "--parents", "-n", "1", sha]).split()
     parent = parent[1] if len(parent) > 1 else None
     labels = ("vitruvian", f"upstream {short}^", f"upstream {short}")
+
+    # Refuse before writing anything: a refusal halfway through would leave
+    # some of the commit applied and the rest not.
+    if not (allow_dirty or dry_run):
+        dirty = []
+        for status, old, new in upstream.changes(sha):
+            if (
+                (upstream_only(new) and upstream_only(old))
+                or new in FORK_RETIRED
+                or old in FORK_RETIRED
+            ):
+                continue
+            target_rel, _ = pathmap.map(new if status == "A" else old)
+            if target_rel is None:
+                continue
+            rel = f"{APP_DIR}/{target_rel}"
+            if (root / rel).exists() and out(
+                ["status", "--porcelain", "--", rel], cwd=root
+            ).strip():
+                dirty.append(rel)
+        if dirty:
+            raise ToolError(
+                f"{', '.join(dirty)} has uncommitted changes; commit or stash them, or pass --allow-dirty"
+            )
 
     for status, old, new in upstream.changes(sha):
         if upstream_only(new) and upstream_only(old):

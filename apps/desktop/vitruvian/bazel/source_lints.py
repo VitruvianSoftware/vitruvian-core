@@ -20,6 +20,7 @@ RepositoryFeatureTests checks each listed name on the Mac the tests run on.
 """
 
 import argparse
+import collections
 import os
 import re
 import sys
@@ -1417,6 +1418,173 @@ def preferences_are_reached_through_their_type(repo):
     return problems
 
 
+# --- Access -----------------------------------------------------------------------
+
+MODULE_DIRS = ("Core", "Design", "Services", "UI")
+_MODIFIERS = (
+    r"(?:(?:static|class|final|override|nonisolated(?:\(unsafe\))?|mutating|convenience"
+    r"|required|lazy|indirect|private\(set\)|fileprivate\(set\))[ \t]+)*"
+)
+_ATTRIBUTES = r"(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+DECLARED_TYPE_RE = re.compile(
+    r"^([ \t]*)"
+    + _ATTRIBUTES
+    + r"((?:(?:public|open|package|internal|private|fileprivate|final|indirect|nonisolated)[ \t]+)*)"
+    r"(struct|class|enum|actor|protocol|typealias)[ \t]+([A-Za-z_]\w*)"
+)
+PACKAGE_MEMBER_RE = re.compile(
+    r"^[ \t]*"
+    + _ATTRIBUTES
+    + _MODIFIERS
+    + r"package[ \t]+"
+    + _MODIFIERS
+    + r"(func|var|let|init|subscript|typealias)\b[ \t]*([A-Za-z_]\w*)?"
+)
+_ACCESS_WORDS = {"public", "open", "package", "private", "fileprivate"}
+_NOT_TYPE_NAMES = {"func", "var", "let", "subscript", "init"}
+
+
+def _enclosing_is_type(lines, index):
+    """Whether line `index` sits at the top level or directly in a type's
+    body, where an access modifier means something."""
+    depth = len(lines[index]) - len(lines[index].lstrip(" \t"))
+    if depth == 0:
+        return True
+    for back in range(index - 1, -1, -1):
+        line = lines[back]
+        if line.strip() and len(line) - len(line.lstrip(" \t")) < depth:
+            match = DECLARED_TYPE_RE.match(line)
+            return bool(match) or bool(
+                re.match(
+                    r"[ \t]*(?:" + _ATTRIBUTES + r")?(?:\w+[ \t]+)*extension\b", line
+                )
+            )
+    return False
+
+
+def _inside_private_type(lines, index):
+    """Whether any type around line `index` is private or fileprivate, which
+    caps everything in it, package members included."""
+    depth = len(lines[index]) - len(lines[index].lstrip(" \t"))
+    for back in range(index - 1, -1, -1):
+        line = lines[back]
+        indent = len(line) - len(line.lstrip(" \t"))
+        if line.strip() and indent < depth:
+            match = DECLARED_TYPE_RE.match(line)
+            if match and set(match.group(2).split()) & {"private", "fileprivate"}:
+                return True
+            depth = indent
+            if depth == 0:
+                break
+    return False
+
+
+def _signature(lines, index, kind):
+    """A package member's signature: its parameters, result and type, not its
+    body or initial value, and without generic parameter names."""
+    text, balance = "", 0
+    for line in lines[index:]:
+        code = line.split("//", 1)[0]
+        text += code + "\n"
+        balance += code.count("(") - code.count(")")
+        if balance <= 0:
+            break
+    text = text.split("{", 1)[0]
+    if kind in ("var", "let"):
+        text = text.split("=", 1)[0]
+    generics = re.search(r"^[^(]*?<([^>]*)>", text)
+    names = (
+        set(re.findall(r"([A-Za-z_]\w*)\s*(?:[:,]|$)", generics.group(1)))
+        if generics
+        else set()
+    )
+    return text, names
+
+
+def internal_types_named_by_package_signatures(paths, lines_of):
+    """(path, line, type) for each package member whose signature names a
+    type its module declares without an access modifier. Names declared more
+    than once in a module are left out, since the scan cannot tell which one
+    a signature means."""
+    found = []
+    declared = collections.defaultdict(list)
+    for path in paths:
+        lines = lines_of(path)
+        for index, line in enumerate(lines):
+            match = DECLARED_TYPE_RE.match(line)
+            if not match or match.group(4) in _NOT_TYPE_NAMES:
+                continue
+            explicit = bool(set(match.group(2).split()) & _ACCESS_WORDS)
+            declared[match.group(4)].append(
+                explicit
+                or not _enclosing_is_type(lines, index)
+                or _inside_private_type(lines, index)
+            )
+    internal = {name for name, kinds in declared.items() if kinds == [False]}
+    for path in paths:
+        lines = lines_of(path)
+        for index, line in enumerate(lines):
+            match = PACKAGE_MEMBER_RE.match(line)
+            if not match or _inside_private_type(lines, index):
+                continue
+            signature, generics = _signature(lines, index, match.group(1))
+            for name in sorted(internal - generics - {match.group(2)}):
+                if re.search(r"(?<![\w.])" + re.escape(name) + r"\b", signature):
+                    found.append((path, index + 1, name))
+    return found
+
+
+def package_signatures_name_no_internal_type(repo):
+    """A package member names no internal type of its module in its
+    signature. The compiler refuses one ("cannot be declared package because
+    its result uses an internal type"), but only the macOS build compiles, so
+    this says it on Linux first. Upstream ports bring such types in: a new
+    nested enum that a new package function returns."""
+    problems = []
+    sample = {
+        "S/A.swift": [
+            "package enum Policy {",
+            "    enum Capture: Equatable { case buffer }",
+            "    package enum Shared {}",
+            "    package static func capture() -> Capture? { nil }",
+            "    package static func shared(_ value: Shared) {}",
+            "    package static func each<Capture>(_ value: Capture) {}",
+            '    package var label: String { "Capture" }',
+            "    package enum CodingKeys {}",
+            "}",
+        ],
+        "S/B.swift": [
+            "struct Other {",
+            "    enum CodingKeys {}",
+            "}",
+            "private struct Undo {",
+            "    enum Kind { case move }",
+            "    struct Action {",
+            "        package init(kind: Kind) {}",
+            "    }",
+            "}",
+        ],
+    }
+    if internal_types_named_by_package_signatures(sorted(sample), sample.get) != [
+        ("S/A.swift", 4, "Capture")
+    ]:
+        problems.append(
+            "the scan finds an internal nested type in a package result, and not "
+            "package types, generic parameters, string text, a declaration's own "
+            "name or anything inside a private type"
+        )
+    for module in MODULE_DIRS:
+        prefix = APP_PREFIX + module + "/"
+        paths = [p for p in repo.app_sources() if p.startswith(prefix)]
+        for path, line, name in internal_types_named_by_package_signatures(
+            paths, repo.lines_at
+        ):
+            problems.append(
+                f"{path}:{line}: a package signature names internal `{name}`"
+            )
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -1453,6 +1621,7 @@ RULES = [
     test_types_do_not_shadow_real_ones,
     unit_tests_read_no_source_text,
     preferences_are_reached_through_their_type,
+    package_signatures_name_no_internal_type,
 ]
 
 

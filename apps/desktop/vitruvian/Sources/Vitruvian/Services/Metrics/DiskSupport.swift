@@ -194,7 +194,7 @@ package enum DiskSupport {
 
     package static func healthPercent(fromPercentageUsed used: UInt64?) -> Int? {
         guard let used else { return nil }
-        return max(0, min(100, 100 - Int(used)))
+        return max(0, min(100, 100 - Int(clamping: used)))
     }
 
     package static func smartReading(status: String?, vendorKeys: [String: Any]?) -> DiskSMARTReading? {

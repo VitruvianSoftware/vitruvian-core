@@ -36,18 +36,18 @@ c36c58fc1f2029bc6968be368647ab44ace7983e	e74dc569eab81e6e530d9ff12511d69303d43a6
 36b25b8caf1f8b21ad03abbfe18d2ab5a4d02445	35692ec4d56961997617a0235fbc110eb7a7e204	2026-10-05	ported	#2801	fix(radial-menu): confirm before deleting a profile (#1979)
 0cc684f2aa2d103e79ffd0f3217b178300317fc2	cb38929c13b3342bd1b5e501e336705b3973bbc2	2026-10-05	ported	#2801	fix(features): name middle click after the trackpad (#1990)
 df6c9b01a226ed28fcc3c23208a22c2561cee179	f2f4f0598e90b49b18d04e576cfca673bf3e134f	2026-10-05	ported	#2801	fix(mouse): say when middle click cannot read trackpad touches (#1980)
-9e84e292f85a052ae455e8528ee9c6f94708f0c5	6a033ee1d31baf0eaa8969922ba1f718aa7aa1e5	2026-10-04	pending	-	fix(capture): keep the dialog when a window spans two displays (#1962)
+9e84e292f85a052ae455e8528ee9c6f94708f0c5	6a033ee1d31baf0eaa8969922ba1f718aa7aa1e5	2026-10-04	ported	#2804	fix(capture): keep the dialog when a window spans two displays (#1962)
 c2284750ec7022980ed5a1d57cafacc0ab15078e	2a5e7700e78cfa74260441f0950fa72a572b3be8	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record capture and usability fixes
-7c9dd7d0dab049875458f9031f4214c0339e65cb	9261e50a1c0a96275690b22a8c34457071bb311d	2026-10-04	pending	-	fix(agents): stop resets checks from fetching codex plugin marketplaces (#2426)
-26ca5bfbe84cdaedf2fd61d779a894bc46a03f58	fd783013481e5eb5f4bd293ef17bfd5b1b65157d	2026-10-04	pending	-	fix(ui): improve `donateThanks` visibility in dark mode (#2451)
-642fac5f7eb3fa0b10edbb6f0803daf2fbe9d30d	e89407470451545ccd0584ed90f2eb811955bb2f	2026-10-05	pending	-	fix(settings): keep chosen folder paths out of a settings backup (#2443)
-f025ff844c8fe33d45fcab67385c4283ce63c801	b78deebdaec562d5cd774ecabd3b5d1918b039f4	2026-10-05	pending	-	fix(monitor): promote a byte rate that only rounds into the next unit (#2441)
-8468a41bb53e3f3b26c8d57943f8028601ec35da	487d14afa2c1a819608e7a9372127875b2871d01	2026-10-05	pending	-	fix(monitor): clamp SMART percentage-used instead of trapping (#2435)
+7c9dd7d0dab049875458f9031f4214c0339e65cb	9261e50a1c0a96275690b22a8c34457071bb311d	2026-10-04	ported	#2804	fix(agents): stop resets checks from fetching codex plugin marketplaces (#2426)
+26ca5bfbe84cdaedf2fd61d779a894bc46a03f58	fd783013481e5eb5f4bd293ef17bfd5b1b65157d	2026-10-04	skipped	donation UI never shown in this fork (AppInfo.hasCommunityChannels)	fix(ui): improve `donateThanks` visibility in dark mode (#2451)
+642fac5f7eb3fa0b10edbb6f0803daf2fbe9d30d	e89407470451545ccd0584ed90f2eb811955bb2f	2026-10-05	ported	#2804	fix(settings): keep chosen folder paths out of a settings backup (#2443)
+f025ff844c8fe33d45fcab67385c4283ce63c801	b78deebdaec562d5cd774ecabd3b5d1918b039f4	2026-10-05	ported	#2804	fix(monitor): promote a byte rate that only rounds into the next unit (#2441)
+8468a41bb53e3f3b26c8d57943f8028601ec35da	487d14afa2c1a819608e7a9372127875b2871d01	2026-10-05	ported	#2804	fix(monitor): clamp SMART percentage-used instead of trapping (#2435)
 cfd932f0d8a3cc11d5840e8008a939d12fb41ba1	b28bfb6ead04d68c19a0994fdb9f7e79c329ac94	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record backup and monitor fixes
-61efea8ccc56b3dad91c36d1b251e24d0235a5ca	d5dd0a1442d2510346a5230af3a908b15674e24c	2026-10-04	pending	-	fix(window-maximizer): recover windows oversized near the Dock
-e8b0c267b13602dfc409b0057877ba8290ec4cb9	3a5d1a57f1a4c15a65875e2b30c995ddf8f02815	2026-10-04	pending	-	fix(quit-protection): forward the confirmed quit shortcut to Steam
-e85985dc57be2a0d250711530b69260bee031372	c03fa5ba2931a6aba9dd66623f5c042382a2dd43	2026-10-04	pending	-	fix(middle-click): use four fingers while three-finger drag is enabled
-826a7fa39d1055bd3289795815b372c71674d6a2	490de0c2425db23005ed9a318a876029f4a16203	2026-10-05	pending	-	fix(switcher): preserve windows whose Accessibility reads time out
+61efea8ccc56b3dad91c36d1b251e24d0235a5ca	d5dd0a1442d2510346a5230af3a908b15674e24c	2026-10-04	ported	#2804	fix(window-maximizer): recover windows oversized near the Dock
+e8b0c267b13602dfc409b0057877ba8290ec4cb9	3a5d1a57f1a4c15a65875e2b30c995ddf8f02815	2026-10-04	ported	#2804	fix(quit-protection): forward the confirmed quit shortcut to Steam
+e85985dc57be2a0d250711530b69260bee031372	c03fa5ba2931a6aba9dd66623f5c042382a2dd43	2026-10-04	ported	#2804	fix(middle-click): use four fingers while three-finger drag is enabled
+826a7fa39d1055bd3289795815b372c71674d6a2	490de0c2425db23005ed9a318a876029f4a16203	2026-10-05	ported	#2804	fix(switcher): preserve windows whose Accessibility reads time out
 88dee4c4fb541ff4fbfdf7931c2f4083b6b72baa	5055cd2d76277f28be28af4d37372e886fa77ab5	2026-10-05	skipped	touches only upstream-only paths	fix(issues): align feature areas with Settings groups
 4560456b7389d7ccb9d7b10a31c2988e45e911fc	5a6973e01630f718f81777096ab7e65049f61f53	2026-10-04	pending	-	feat(agents): track GitHub Copilot usage and resume its history
 7f5967f5bf59d9f318ee84d9d9ae9d8d6af903e0	d2da0dd7442d329807a83f82d14ee4b9c9e1f104	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record Copilot and input fixes with contributor credits

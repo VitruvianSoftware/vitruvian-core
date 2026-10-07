@@ -26,6 +26,7 @@ APP = upstream.APP_DIR
 HEADER = (
     "// SPDX-License-Identifier: GPL-3.0-or-later\n// Copyright (C) 2026 Vorssaint\n\n"
 )
+OTHER = HEADER + "".join(f"let other{n} = {n}\n" for n in range(10))
 # Enough shared lines for git to see the fork's copy as a rename (>= 50% similar).
 BODY = "".join(f"// unchanged line {n}\n" for n in range(20))
 FOO_UPSTREAM = (
@@ -86,6 +87,7 @@ class Fixture:
             run(repo, "init", "-q", "-b", "main")
         up = self.up
         write(up, "Sources/Vorssaint/Core/Foo.swift", FOO_UPSTREAM)
+        write(up, "Sources/Vorssaint/Core/Other.swift", OTHER)
         write(up, "README.md", "upstream readme\n")
         write(up, ".github/ci.yml", "on: push\n")
         write(up, "Tests/generate_sources.py", "# upstream extraction\n")
@@ -93,6 +95,7 @@ class Fixture:
         self.a_tree = run(up, "rev-parse", "HEAD^{tree}")
 
         write(self.mono, f"{APP}/Sources/Vorssaint/Core/Foo.swift", FOO_UPSTREAM)
+        write(self.mono, f"{APP}/Sources/Vorssaint/Core/Other.swift", OTHER)
         write(self.mono, f"{APP}/README.md", "upstream readme\n")
         write(self.mono, f"{APP}/Tests/generate_sources.py", "# upstream extraction\n")
         self.import_commit = commit(self.mono, "import")
@@ -364,6 +367,40 @@ class PackageTest(unittest.TestCase):
             self.restore(merged, ours),
         )
 
+    def test_local_functions_get_no_modifier(self):
+        # A nested type's members make `package` the norm at that depth too.
+        inner = "    package enum Inner {\n        package func x() {}\n        package func y() {}\n    }\n"
+        ours = "package enum E {\n    package static func a() {}\n" + inner + "}\n"
+        merged = (
+            "enum E {\n    static func a() {}\n"
+            + inner.replace("package ", "")
+            + "    static func c() {\n        func local() {}\n        local()\n    }\n}\n"
+        )
+        out = self.restore(merged, ours)
+        self.assertIn("    package static func c() {\n        func local() {}\n", out)
+        self.assertIn("        package func y() {}\n", out)
+
+    def test_a_new_type_a_package_signature_uses_gets_package(self):
+        # Nested types here are mostly internal, so neighbours alone would
+        # leave the new enums internal, and the compiler rejects a `package`
+        # function that returns or takes them.
+        ours = (
+            "package enum Support {\n    enum Old {}\n    enum Older {}\n"
+            "    package static func a() {}\n}\n"
+        )
+        merged = (
+            "enum Support {\n    enum Old {}\n    enum Older {}\n"
+            "    enum Witness {}\n    enum Answer {}\n    enum Unused {}\n"
+            "    static func a() {}\n"
+            "    static func b(x: Int,\n                  y: Answer) -> Witness {\n"
+            "        let u = Unused()\n    }\n}\n"
+        )
+        out = self.restore(merged, ours)
+        self.assertIn("\n    package enum Witness {}\n", out)
+        self.assertIn("\n    package enum Answer {}\n", out)
+        self.assertIn("\n    enum Unused {}\n", out)
+        self.assertIn("\n    enum Old {}\n", out)
+
     def test_a_file_without_package_gets_none(self):
         ours = "final class A {\n    func a() {}\n}\n"
         merged = "final class A {\n    func a() {}\n    func b() {}\n}\n"
@@ -518,6 +555,24 @@ class PortTest(Base):
         )
         self.assertEqual(rc, 2)
         self.assertIn("has uncommitted changes", err)
+
+    def test_refusal_writes_nothing(self):
+        # One upstream commit changes Foo (clean here) and Other (dirty here).
+        fx = self.fx
+        write(
+            fx.up,
+            "Sources/Vorssaint/Core/Foo.swift",
+            (fx.up / "Sources/Vorssaint/Core/Foo.swift").read_text() + "// more\n",
+        )
+        write(fx.up, "Sources/Vorssaint/Core/Other.swift", OTHER + "// more\n")
+        both = commit(fx.up, "two files")
+        fx.tool("triage")
+        other = fx.mono / APP / "Sources/Vitruvian/Core/Other.swift"
+        other.write_text(other.read_text() + "// fork's uncommitted edit\n")
+        before = fx.foo()
+        rc, _, err = fx.tool("port", both, "--report-dir", str(fx.tmp / "r"))
+        self.assertEqual(rc, 2, err)
+        self.assertEqual(fx.foo(), before)
 
     def test_upstream_only_paths_are_not_ported(self):
         rc, out, _ = self.fx.tool(
