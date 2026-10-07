@@ -574,17 +574,29 @@ class TriageTest(Base):
 
     def test_a_merge_with_changes_of_its_own_is_listed(self):
         fx = self.fx
-        side = fx.edit("Sources/Vorssaint/Core/Other.swift", OTHER + "// side\n", "fix: side")
+        side = fx.edit(
+            "Sources/Vorssaint/Core/Other.swift", OTHER + "// side\n", "fix: side"
+        )
         run(fx.up, "checkout", "-q", "-b", "topic", f"{side}^")
-        write(fx.up, "Sources/Vorssaint/NewArea/Topic.swift", HEADER + "struct Topic {}\n")
+        write(
+            fx.up, "Sources/Vorssaint/NewArea/Topic.swift", HEADER + "struct Topic {}\n"
+        )
         topic = commit(fx.up, "feat: topic")
         run(fx.up, "checkout", "-q", "main")
         # A clean merge adds nothing of its own; this one also fixes the topic.
         run(fx.up, "merge", "-q", "--no-ff", "--no-commit", topic)
-        write(fx.up, "Sources/Vorssaint/NewArea/Topic.swift", HEADER + "struct Topic { let fixed = true }\n")
+        write(
+            fx.up,
+            "Sources/Vorssaint/NewArea/Topic.swift",
+            HEADER + "struct Topic { let fixed = true }\n",
+        )
         evil = commit(fx.up, "fix: topic, in its merge")
         run(fx.up, "checkout", "-q", "-b", "second", f"{evil}^")
-        write(fx.up, "Sources/Vorssaint/NewArea/Second.swift", HEADER + "struct Second {}\n")
+        write(
+            fx.up,
+            "Sources/Vorssaint/NewArea/Second.swift",
+            HEADER + "struct Second {}\n",
+        )
         second = commit(fx.up, "feat: second")
         run(fx.up, "checkout", "-q", "main")
         run(fx.up, "merge", "-q", "--no-ff", "-m", "merge second", second)
@@ -598,7 +610,9 @@ class TriageTest(Base):
         self.assertEqual(set(shas[-4:]), {side, topic, evil, second})
         self.assertGreater(shas.index(evil), max(shas.index(side), shas.index(topic)))
         row = next(r for r in fx.ledger().rows if r["sha"] == evil)
-        self.assertEqual((row["status"], row["subject"]), ("pending", "fix: topic, in its merge"))
+        self.assertEqual(
+            (row["status"], row["subject"]), ("pending", "fix: topic, in its merge")
+        )
 
     def test_markdown_counts_commits_the_issue_did_not_list(self):
         fx = self.fx
@@ -685,13 +699,17 @@ class PortTest(Base):
         fx = self.fx
         run(fx.up, "checkout", "-q", "-b", "topic")
         foo = (fx.up / "Sources/Vorssaint/Core/Foo.swift").read_text()
-        write(fx.up, "Sources/Vorssaint/Core/Foo.swift", foo.replace("{ 30 }", "{ 31 }"))
+        write(
+            fx.up, "Sources/Vorssaint/Core/Foo.swift", foo.replace("{ 30 }", "{ 31 }")
+        )
         topic = commit(fx.up, "fix: topic")
         run(fx.up, "checkout", "-q", "main")
         write(fx.up, "README.md", "upstream readme, edited\n")
         commit(fx.up, "docs: readme")
         run(fx.up, "merge", "-q", "--no-ff", "--no-commit", topic)
-        write(fx.up, "Sources/Vorssaint/Core/Foo.swift", foo.replace("{ 30 }", "{ 32 }"))
+        write(
+            fx.up, "Sources/Vorssaint/Core/Foo.swift", foo.replace("{ 30 }", "{ 32 }")
+        )
         evil = commit(fx.up, "fix: topic, settled in its merge")
         before = fx.foo()
 

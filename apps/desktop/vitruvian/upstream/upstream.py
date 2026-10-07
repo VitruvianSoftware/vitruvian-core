@@ -953,7 +953,9 @@ def port_commit(
         # apply to this tree as they are. Hand them over as a patch.
         ported = [p for p in upstream.merge_paths(sha) if not upstream_only(p)]
         if not ported:
-            lines.append("- merge commit: changes only upstream-only paths, nothing to port")
+            lines.append(
+                "- merge commit: changes only upstream-only paths, nothing to port"
+            )
             return lines, True
         saved = report_dir / f"{short}.merge.patch"
         saved.write_text(upstream.merge_diff(sha, ported))
