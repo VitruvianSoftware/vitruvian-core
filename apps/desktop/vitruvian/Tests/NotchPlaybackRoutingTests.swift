@@ -35,6 +35,10 @@ enum NotchPlaybackRoutingContract {
     static var registeredPIDs: [Int32] = []
     static var systemPID: Int32 = 10
     static var sourceMetadata: [Int32: [String: Any]] = [:]
+    /// What the state read answers: for the followed player, and by process
+    /// while discovering. 0 is unknown.
+    static var playbackState: UInt32 = 0
+    static var sourceStates: [Int32: UInt32] = [:]
     static var silentPIDs: Set<Int32> = []
     static var lateReads: [() -> Void] = []
     static var queueRequest: UUID?
@@ -82,6 +86,8 @@ enum NotchPlaybackRoutingContract {
         reset()
         metadata = [:]
         artwork = nil
+        playbackState = 0
+        sourceStates = [:]
         missingConstants = []
         clientNames = [:]
         parents = [:]
@@ -137,6 +143,7 @@ enum NotchPlaybackRoutingContract {
     typealias PID = @convention(c) (AnyObject) -> Int32
     typealias ClientString = @convention(c) (AnyObject) -> Unmanaged<CFString>?
     typealias CopyArtwork = @convention(c) (UnsafeRawPointer) -> Unmanaged<CFData>?
+    typealias State = @convention(c) (AnyObject, DispatchQueue, @escaping @convention(block) (UInt32) -> Void) -> Void
 
     static func symbol(_ name: String) -> UnsafeMutableRawPointer? {
         switch name {
@@ -196,6 +203,16 @@ enum NotchPlaybackRoutingContract {
                 return true
             }
             return unsafeBitCast(send, to: UnsafeMutableRawPointer.self)
+        case "MRMediaRemoteGetPlaybackStateForPlayer":
+            let read: State = { path, _, completion in
+                if NotchPlaybackRoutingContract.discovering {
+                    completion(NotchPlaybackRoutingContract.sourceStates[NotchPlaybackRoutingContract.clientPID(path)] ?? 0)
+                    return
+                }
+                NotchPlaybackRoutingContract.destination = path
+                completion(NotchPlaybackRoutingContract.playbackState)
+            }
+            return unsafeBitCast(read, to: UnsafeMutableRawPointer.self)
         case "MRMediaRemoteGetSupportedCommandsForPlayer":
             let commands: Commands = { path, _, completion in
                 NotchPlaybackRoutingContract.destination = path
@@ -299,8 +316,10 @@ enum NotchPlaybackRoutingTests {
         Adapter.systemPID = 10
         replyEncoding(suite)
         radioPlayback(suite)
+        lateRate(suite)
         recordingContext(suite)
         sourceDiscovery(suite)
+        lateSourceRate(suite)
     }
 
     private static func radioPlayback(_ suite: TestSuite) {
@@ -378,6 +397,81 @@ enum NotchPlaybackRoutingTests {
         suite.expect(Adapter.reply["sent"] as? Bool == true && Adapter.command == 2,
                      "an old capability reply cannot change a newly selected path")
         Adapter.metadata[ObjectIdentifier(replacement.path)] = nil
+    }
+
+    /// Some players update their rate a step after play or pause. Their own
+    /// state decides what the island shows and which command a tap sends.
+    private static func lateRate(_ suite: TestSuite) {
+        let path = NSObject()
+        var player = Adapter.target(path: path)
+        player.requiresCurrentPlayer = true
+        var states: [Bool?] = []
+        for state: UInt32 in 0...5 {
+            Adapter.playbackState = state
+            Playback.readPlaybackState(player, queue: Adapter.callbacks) { states.append($0) }
+        }
+        suite.expect(states == [nil, true, false, false, false, nil] && Adapter.destination === path,
+                     "the selected player's playing, paused, stopped and interrupted states are read; unknown and seeking leave the rate")
+        Adapter.available = false
+        var unavailable: Bool?? = .none
+        Playback.readPlaybackState(player, queue: Adapter.callbacks) { unavailable = $0 }
+        Adapter.available = true
+        suite.expect(unavailable == .some(nil), "a missing state reader answers at once and leaves the rate")
+
+        var info: [String: Any] = ["kMRMediaRemoteNowPlayingInfoTitle": "Late rate",
+                                   "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1,
+                                   "canPlay": true, "canPause": true, "isPlaying": false]
+        defer { Adapter.metadata[ObjectIdentifier(path)] = nil; Playback.publish(nil) }
+        Adapter.metadata[ObjectIdentifier(path)] = info
+        let paused = Playback.publish(player, info: info)!
+        Playback.perform(NotchPlaybackRequest(command: .toggle, context: paused))
+        suite.expect(Adapter.reply["sent"] as? Bool == true && Adapter.command == 0,
+                     "a paused player that still reports its old rate receives Play")
+        info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] = 0
+        info["isPlaying"] = true
+        Adapter.metadata[ObjectIdentifier(path)] = info
+        let playing = Playback.publish(player, info: info)!
+        Playback.perform(NotchPlaybackRequest(command: .toggle, context: playing))
+        suite.expect(Adapter.reply["sent"] as? Bool == true && Adapter.command == 1,
+                     "a playing player that still reports no rate receives Pause")
+
+        let stopped = playbackPosition(elapsed: 57, age: 3, rate: 1, isPlaying: false)
+        suite.expect(stopped.elapsed == 57 && stopped.rate == 0,
+                     "a paused song stays where it was sampled although its rate still says playing")
+        let started = playbackPosition(elapsed: 57, age: 120, rate: 0, isPlaying: true)
+        suite.expect(started.elapsed == 57 && started.rate == 0,
+                     "a playing song without a rate, such as a buffering one, stays at its sample and never counts from its old timestamp")
+        let unknown = playbackPosition(elapsed: 57, age: 3, rate: 1, isPlaying: nil)
+        suite.expect(unknown.elapsed == 60 && unknown.rate == 1, "without a state the reported rate moves the song")
+
+        let song = UUID(), start = Date(timeIntervalSince1970: 1_000)
+        func settle(_ elapsed: Double, sampled: TimeInterval, rate: Double, playing: Bool,
+                    at now: TimeInterval, revision: UUID? = nil) -> Double? {
+            var reply: [String: Any] = ["kMRMediaRemoteNowPlayingInfoPlaybackRate": rate, "isPlaying": playing]
+            settlePosition(&reply, sample: (elapsed, start.addingTimeInterval(sampled)),
+                                   revision: revision ?? song, now: start.addingTimeInterval(now))
+            return reply["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double
+        }
+        /// A reply with no recording leaves nothing to continue from.
+        func forget() {
+            var reply: [String: Any] = [:]
+            settlePosition(&reply, sample: (0, nil), revision: nil)
+        }
+        defer { forget() }
+        forget()
+        _ = settle(57, sampled: 0, rate: 0, playing: true, at: 0)
+        suite.expect(settle(57, sampled: 0, rate: 0, playing: true, at: 30) == 57,
+                     "a refresh that finds the same sample leaves a stalled song where it was")
+        suite.expect(settle(20, sampled: 31, rate: 0, playing: true, at: 31) == 20,
+                     "a new sample from the player, such as a seek, places the song again")
+        suite.expect(settle(20, sampled: 31, rate: 0, playing: true, at: 41, revision: UUID()) == 20,
+                     "another recording never continues from this one")
+        forget()
+        _ = settle(100, sampled: 0, rate: 1, playing: true, at: 0)
+        suite.expect(settle(100, sampled: 0, rate: 1, playing: false, at: 10) == 110,
+                     "a pause that leaves the sample and its rate in place stops where the island had the song")
+        suite.expect(settle(100, sampled: 0, rate: 1, playing: false, at: 40) == 110,
+                     "and the song stays there on later refreshes")
     }
 
     /// JSONSerialization raises an exception `try?` cannot catch on NaN or
@@ -552,6 +646,38 @@ enum NotchPlaybackRoutingTests {
         Playback.perform(NotchPlaybackRequest(command: .source(nil)))
         suite.expect(Adapter.isAutomatic && Adapter.chosenPID == nil && Adapter.refreshes == refreshesBefore + 2,
                      "automatic source selection can be restored without sending a transport command")
+    }
+
+    /// A player that keeps its rate after a pause counts as paused in the
+    /// scan when it says so, so it cannot take the island from paused music.
+    private static func lateSourceRate(_ suite: TestSuite) {
+        Adapter.reset()
+        Adapter.discovering = true
+        Playback.includeOtherPlayers = true
+        Adapter.available = true
+        Adapter.applications = [10, 20].map { Adapter.application($0, "test.player.\($0)") }
+        Adapter.registeredPIDs = [10, 20]
+        Adapter.systemPID = 20
+        Adapter.sourceMetadata = [
+            10: ["kMRMediaRemoteNowPlayingInfoTitle": "Paused song", "kMRMediaRemoteNowPlayingInfoPlaybackRate": 0],
+            20: ["kMRMediaRemoteNowPlayingInfoTitle": "Paused video", "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1],
+        ]
+        defer {
+            Adapter.discovering = false
+            Adapter.sourceStates = [:]
+            Playback.includeOtherPlayers = false
+            Adapter.systemPID = 10
+            Adapter.reset()
+        }
+        suite.expect(Playback.select()?.pid == 20, "without a state the other player's rate still reads as playing")
+        Playback.publish(nil)
+        Adapter.sourceStates = [10: 2, 20: 2]
+        suite.expect(Playback.select()?.pid == 10 && Adapter.sources.first(where: { $0.pid == 20 })?.isPlaying == false,
+                     "a player that says it is paused while its rate stays above zero leaves paused music in place")
+        Playback.publish(nil)
+        Adapter.sourceStates = [10: 2, 20: 1]
+        Adapter.sourceMetadata[20]?["kMRMediaRemoteNowPlayingInfoPlaybackRate"] = 0
+        suite.expect(Playback.select()?.pid == 20, "a player that says it plays before its rate catches up is followed")
     }
 
     private static func sourceDiscovery(_ suite: TestSuite) {
