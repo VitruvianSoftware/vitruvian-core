@@ -63,11 +63,28 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: List recent ancestors of the diff base
+        id: mapkeys
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          keys=""
+          if [ -n "$BASE_SHA" ] && git rev-parse --verify --quiet "${BASE_SHA}^{commit}" >/dev/null; then
+            keys="$(git rev-list --first-parent -n 10 "$BASE_SHA" | tail -n +2 | sed 's/^/pipeline-rdeps-map-v1-/')"
+          fi
+          {
+            echo "fallback_keys<<FALLBACK_KEYS_EOF"
+            echo "$keys"
+            echo "FALLBACK_KEYS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Restore the dependency map for the diff base
+        continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/pipeline-rdeps-map.json
           key: pipeline-rdeps-map-v1-${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          restore-keys: ${{ steps.mapkeys.outputs.fallback_keys }}
 
       - name: Work out which units this change affects
         id: plan
@@ -97,7 +114,7 @@ jobs:
             fi
             out="$("$planner" \
                      --base="$base" --head=HEAD --event="$EVENT_NAME" --timeout-sec=900 \
-                     --rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" \
+                     --rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --rdeps-map-max-behind=9 \
                      --format=github-matrix --repo-root="$PWD" 2>/tmp/plan.err)"
             rc=$?
             if [ "$rc" -ne 0 ]; then

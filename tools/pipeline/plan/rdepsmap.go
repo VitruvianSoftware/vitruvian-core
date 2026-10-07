@@ -43,6 +43,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -197,4 +198,75 @@ func LoadRdepsMap(path, wantCommit string) (*RdepsMap, error) {
 		return nil, fmt.Errorf("map lists no packages")
 	}
 	return &m, nil
+}
+
+// PeekRdepsMapCommit returns the commit a map file was computed at, or "" if
+// the file is missing or unreadable. LoadRdepsMap still does the real checks.
+func PeekRdepsMapCommit(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var m struct {
+		Commit string `json:"commit"`
+	}
+	if json.Unmarshal(data, &m) != nil {
+		return ""
+	}
+	return m.Commit
+}
+
+// RevGraph is the little bit of git history EarlierMapBase needs. It is an
+// interface so the rule can be tested without a repository.
+type RevGraph interface {
+	// IsAncestor reports whether older is an ancestor of newer.
+	IsAncestor(ctx context.Context, older, newer string) bool
+	// CommitsBetween counts the commits in older..newer.
+	CommitsBetween(ctx context.Context, older, newer string) (int, error)
+	// ChangedFiles lists the files that differ between the two commits.
+	ChangedFiles(ctx context.Context, older, newer string) ([]string, error)
+}
+
+// EarlierMapBase decides whether a map computed at mapCommit may stand in for
+// the missing map of baseCommit (#2841).
+//
+// The map for a commit is saved well after it lands (16-39 min measured),
+// while the next merge-queue entry needs it within minutes, so the exact map
+// is usually not there yet. A map from a slightly older main commit is still
+// usable if the plan is ALSO diffed against that older commit: everything main
+// changed since then is treated as changed too, so the plan can only grow, and
+// the argument in the comment at the top of this file holds with the older
+// commit as the base.
+//
+// It is refused, and the caller keeps the real base and the live query, when:
+//   - the map's commit is not an ancestor of the base;
+//   - it is more than maxBehind commits back, which bounds how far the plan
+//     can grow;
+//   - a global-impact file changed in between: the widened plan would be a
+//     full sweep, and the live query against the real base is cheaper.
+//
+// The returned string says what was decided, for the log.
+func EarlierMapBase(ctx context.Context, g RevGraph, mapCommit, baseCommit string, maxBehind int) (bool, string) {
+	short := mapCommit
+	if len(short) > 12 {
+		short = short[:12]
+	}
+	if !g.IsAncestor(ctx, mapCommit, baseCommit) {
+		return false, fmt.Sprintf("dependency map not used (it is for %s, which is not an ancestor of the diff base)", short)
+	}
+	behind, err := g.CommitsBetween(ctx, mapCommit, baseCommit)
+	if err != nil {
+		return false, fmt.Sprintf("dependency map not used (cannot count commits since %s: %v)", short, err)
+	}
+	if behind > maxBehind {
+		return false, fmt.Sprintf("dependency map not used (it is %d commits behind the diff base, limit %d)", behind, maxBehind)
+	}
+	between, err := g.ChangedFiles(ctx, mapCommit, baseCommit)
+	if err != nil {
+		return false, fmt.Sprintf("dependency map not used (cannot list changes since %s: %v)", short, err)
+	}
+	if global, reason := CheckGlobalImpact(between); global {
+		return false, fmt.Sprintf("dependency map not used (since %s, %s)", short, reason)
+	}
+	return true, fmt.Sprintf("note: dependency map is from %d commit(s) back (%s); planning against that commit, so everything changed since then counts as changed", behind, short)
 }

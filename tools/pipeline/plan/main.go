@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -53,6 +54,8 @@ func main() {
 		// The dependency map (#2465): see rdepsmap.go.
 		rdepsMapFlag     = flag.String("rdeps-map", "", "Dependency map for the diff base; used instead of a live query when valid (missing file = no map)")
 		emitRdepsMapFlag = flag.String("emit-rdeps-map", "", "Compute the dependency map for HEAD, write it to this path, and exit")
+		// 0 keeps the old behaviour: only a map for the exact diff base is used.
+		rdepsMapMaxBehindFlag = flag.Int("rdeps-map-max-behind", 0, "Accept a dependency map from an ancestor of the diff base up to this many commits back, and plan against that ancestor instead (see EarlierMapBase)")
 	)
 	flag.Parse()
 
@@ -93,6 +96,28 @@ func main() {
 		// Fail-closed fallback
 		changedFiles = []string{"MODULE.bazel"}
 		baseRev = "unknown"
+	}
+
+	// No map for the exact base yet? An earlier one may do (#2841). Skipped
+	// when the change is docs-only or global on its own: those never consult
+	// the map, and widening the diff would turn a docs-only change into a build.
+	if err == nil && *rdepsMapFlag != "" && *rdepsMapMaxBehindFlag > 0 && !IsDocsOnly(changedFiles) {
+		if global, _ := CheckGlobalImpact(changedFiles); !global {
+			mapCommit, baseCommit := PeekRdepsMapCommit(*rdepsMapFlag), revParse(ctx, repoRoot, baseRev)
+			if mapCommit != "" && baseCommit != "" && mapCommit != baseCommit {
+				ok, why := EarlierMapBase(ctx, gitRevGraph{repoRoot}, mapCommit, baseCommit, *rdepsMapMaxBehindFlag)
+				if ok {
+					widened := diffOpts
+					widened.Base = mapCommit
+					if files, rev, werr := ExtractChangedFiles(ctx, widened); werr == nil {
+						changedFiles, baseRev = files, rev
+					} else {
+						ok, why = false, fmt.Sprintf("dependency map not used (cannot diff against %s: %v)", mapCommit, werr)
+					}
+				}
+				fmt.Fprintln(os.Stderr, why)
+			}
+		}
 	}
 
 	runner := &BazelQueryRunner{}
@@ -241,6 +266,37 @@ func revParse(ctx context.Context, repoRoot, rev string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// gitRevGraph answers RevGraph from the repository at root.
+type gitRevGraph struct{ root string }
+
+func (g gitRevGraph) git(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = g.root
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
+}
+
+func (g gitRevGraph) IsAncestor(ctx context.Context, older, newer string) bool {
+	_, err := g.git(ctx, "merge-base", "--is-ancestor", older, newer)
+	return err == nil
+}
+
+func (g gitRevGraph) CommitsBetween(ctx context.Context, older, newer string) (int, error) {
+	out, err := g.git(ctx, "rev-list", "--count", older+".."+newer)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(out)
+}
+
+func (g gitRevGraph) ChangedFiles(ctx context.Context, older, newer string) ([]string, error) {
+	out, err := g.git(ctx, "diff", "--name-only", older, newer, "--")
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(out), nil
 }
 
 // emitRdepsMap builds the dependency map for HEAD and writes it to path.

@@ -219,3 +219,87 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+// fakeRevGraph is a linear history: commits[0] is the oldest. files[i] is what
+// commit i changed.
+type fakeRevGraph struct {
+	commits []string
+	files   map[string][]string
+}
+
+func (f fakeRevGraph) index(c string) int {
+	for i, x := range f.commits {
+		if x == c {
+			return i
+		}
+	}
+	return -1
+}
+
+func (f fakeRevGraph) IsAncestor(_ context.Context, older, newer string) bool {
+	o, n := f.index(older), f.index(newer)
+	return o >= 0 && n >= 0 && o <= n
+}
+
+func (f fakeRevGraph) CommitsBetween(_ context.Context, older, newer string) (int, error) {
+	return f.index(newer) - f.index(older), nil
+}
+
+func (f fakeRevGraph) ChangedFiles(_ context.Context, older, newer string) ([]string, error) {
+	var out []string
+	for i := f.index(older) + 1; i <= f.index(newer); i++ {
+		out = append(out, f.files[f.commits[i]]...)
+	}
+	return out, nil
+}
+
+func TestEarlierMapBase(t *testing.T) {
+	g := fakeRevGraph{
+		commits: []string{"a", "b", "c", "d"},
+		files: map[string][]string{
+			"b": {"MODULE.bazel"},
+			"c": {"apps/x/main.go"},
+			"d": {"apps/y/main.go"},
+		},
+	}
+	cases := []struct {
+		name            string
+		mapCommit, base string
+		maxBehind       int
+		wantOK          bool
+		wantInReason    string
+	}{
+		{"one behind, ordinary change", "c", "d", 9, true, "1 commit(s) back"},
+		{"two behind, ordinary changes", "b", "d", 9, true, "2 commit(s) back"},
+		{"past the limit", "b", "d", 1, false, "2 commits behind"},
+		{"global-impact change in between", "a", "d", 9, false, "MODULE.bazel"},
+		{"map is newer than the base", "d", "c", 9, false, "not an ancestor"},
+		{"map from an unrelated commit", "zzz", "d", 9, false, "not an ancestor"},
+	}
+	for _, tc := range cases {
+		ok, why := EarlierMapBase(context.Background(), g, tc.mapCommit, tc.base, tc.maxBehind)
+		if ok != tc.wantOK || !strings.Contains(why, tc.wantInReason) {
+			t.Errorf("%s: got (%v, %q), want ok=%v and a reason containing %q", tc.name, ok, why, tc.wantOK, tc.wantInReason)
+		}
+	}
+}
+
+func TestPeekRdepsMapCommit(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.json")
+	if err := os.WriteFile(good, []byte(`{"schema":1,"commit":"abc"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := PeekRdepsMapCommit(good); got != "abc" {
+		t.Errorf("good map: got %q, want abc", got)
+	}
+	for _, p := range []string{bad, filepath.Join(dir, "missing.json")} {
+		if got := PeekRdepsMapCommit(p); got != "" {
+			t.Errorf("%s: got %q, want empty", p, got)
+		}
+	}
+}
