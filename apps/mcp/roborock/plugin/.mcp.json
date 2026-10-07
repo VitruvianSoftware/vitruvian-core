@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "roborock": {
+      "command": "uvx",
+      "args": ["vitruvian-roborock", "mcp"]
+    }
+  }
+}

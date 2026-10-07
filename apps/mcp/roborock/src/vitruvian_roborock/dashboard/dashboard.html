@@ -1,0 +1,469 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 VitruvianSoftware
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+
+<!--
+  Roborock dashboard. One file, no network dependencies.
+
+  It runs in two places and picks its transport at load:
+    - served by the daemon on loopback: talks HTTP to the daemon (SSE, then polling);
+    - embedded by an MCP host as the ui://dashboard app: talks to the host over
+      postMessage and reaches the vacuum through the MCP tools.
+-->
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roborock</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --s: 1;
+    --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3e8; --text: #16191d; --muted: #5d6673;
+    --accent: #2563eb; --accent-text: #ffffff; --canvas: #eceff3;
+    --ok: #15803d; --wait: #b45309; --bad: #b91c1c; --flight: #2563eb;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1216; --panel: #181c22; --line: #2a303a; --text: #e8ebef; --muted: #98a2b0;
+    --accent: #5b8def; --accent-text: #0b0d10; --canvas: #11151a;
+    --ok: #4ade80; --wait: #fbbf24; --bad: #f87171; --flight: #7aa7ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="system"] {
+      --bg: #0f1216; --panel: #181c22; --line: #2a303a; --text: #e8ebef; --muted: #98a2b0;
+      --accent: #5b8def; --accent-text: #0b0d10; --canvas: #11151a;
+      --ok: #4ade80; --wait: #fbbf24; --bad: #f87171; --flight: #7aa7ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }  /* or an id rule's display wins over the attribute */
+  html { font-size: calc(16px * var(--s)); }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--text);
+    font: 0.9375rem/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+    padding: 0.625rem 1rem; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem;
+    padding: 0.125rem 0.625rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+  }
+  .pill::before { content: ""; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; }
+  .pill[data-tone="ok"] { color: var(--ok); }
+  .pill[data-tone="wait"] { color: var(--wait); }
+  .pill[data-tone="bad"] { color: var(--bad); }
+  .pill[data-tone="flight"] { color: var(--flight); }
+  .spacer { flex: 1; }
+  .group { display: inline-flex; border: 1px solid var(--line); border-radius: 0.5rem; overflow: hidden; }
+  button {
+    font: inherit; font-size: 0.8125rem; color: var(--text); background: var(--panel);
+    border: 0; padding: 0.375rem 0.625rem; cursor: pointer;
+  }
+  .group button + button, .group output { border-left: 1px solid var(--line); }
+  .group output { font-size: 0.8125rem; padding: 0.375rem 0.5rem; color: var(--muted); min-width: 3.25rem; text-align: center; }
+  button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 19rem; gap: 1rem; padding: 1rem; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; grid-template-rows: minmax(16rem, 1fr) auto; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 0.75rem; }
+  #map-card { position: relative; overflow: hidden; min-height: 14rem; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; background: var(--canvas); }
+  canvas.dragging { cursor: grabbing; }
+  #map-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 1rem; text-align: center; pointer-events: none; }
+  #zoom { position: absolute; right: 0.75rem; bottom: 0.75rem; }
+  aside { padding: 1rem; display: flex; flex-direction: column; gap: 1rem; overflow: auto; }
+  #state { font-size: 1.375rem; font-weight: 600; margin: 0; }
+  #device { color: var(--muted); font-size: 0.8125rem; margin: 0.125rem 0 0; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 0.375rem 0.75rem; margin: 0; }
+  dt { color: var(--muted); } dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  #notice { margin: 0; padding: 0.625rem 0.75rem; border-radius: 0.5rem; border: 1px solid var(--line); color: var(--muted); font-size: 0.8125rem; }
+  #notice[data-tone="bad"] { color: var(--bad); border-color: currentColor; }
+  #notice[data-tone="wait"] { color: var(--wait); border-color: currentColor; }
+  #notice:empty { display: none; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .actions button { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.5rem; }
+  .actions button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Roborock</h1>
+  <span id="link" class="pill" data-tone="wait">connecting</span>
+  <span class="spacer"></span>
+  <div class="group" role="group" aria-label="Theme">
+    <button type="button" data-theme-choice="system">System</button>
+    <button type="button" data-theme-choice="light">Light</button>
+    <button type="button" data-theme-choice="dark">Dark</button>
+  </div>
+  <div class="group" role="group" aria-label="Text size">
+    <button type="button" id="font-down" aria-label="Smaller text">A&minus;</button>
+    <output id="font-pct">100%</output>
+    <button type="button" id="font-up" aria-label="Larger text">A+</button>
+  </div>
+</header>
+<main>
+  <section id="map-card" class="card" aria-label="Map">
+    <canvas id="map"></canvas>
+    <div id="map-empty">Waiting for the map&hellip;</div>
+    <div id="zoom" class="group" role="group" aria-label="Zoom">
+      <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
+      <button type="button" id="zoom-fit">Fit</button>
+      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+    </div>
+  </section>
+  <aside class="card">
+    <div>
+      <p id="state">&mdash;</p>
+      <p id="device"></p>
+    </div>
+    <p id="notice" role="status"></p>
+    <dl>
+      <dt>Battery</dt><dd id="battery">&mdash;</dd>
+      <dt>Cleaned</dt><dd id="area">&mdash;</dd>
+      <dt>Time</dt><dd id="time">&mdash;</dd>
+      <dt>Suction</dt><dd id="fan">&mdash;</dd>
+      <dt>Water</dt><dd id="water">&mdash;</dd>
+      <dt>Updated</dt><dd id="updated">&mdash;</dd>
+    </dl>
+    <div class="actions">
+      <button type="button" class="primary" data-command="start">Start</button>
+      <button type="button" data-command="pause">Pause</button>
+      <button type="button" data-command="resume">Resume</button>
+      <button type="button" data-command="dock">Dock</button>
+      <button type="button" data-command="stop">Stop</button>
+      <button type="button" data-command="find">Find</button>
+    </div>
+  </aside>
+</main>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const root = document.documentElement;
+
+  // ---- preferences: theme and text size, remembered across reloads ----------
+  const store = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch { /* sandboxed frame */ } },
+  };
+  const THEME_KEY = "cowork-artifact-theme", SCALE_KEY = "cowork-artifact-fontscale";
+  let scale = Math.min(1.4, Math.max(0.8, parseFloat(store.get(SCALE_KEY)) || 1));
+
+  function applyTheme(choice) {
+    root.dataset.theme = choice;
+    store.set(THEME_KEY, choice);
+    for (const button of document.querySelectorAll("[data-theme-choice]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice));
+    }
+    draw();
+  }
+  function applyScale(next) {
+    scale = Math.round(Math.min(1.4, Math.max(0.8, next)) * 10) / 10;
+    root.style.setProperty("--s", scale);
+    store.set(SCALE_KEY, String(scale));
+    $("font-pct").textContent = Math.round(scale * 100) + "%";
+    $("font-down").disabled = scale <= 0.8;
+    $("font-up").disabled = scale >= 1.4;
+  }
+  for (const button of document.querySelectorAll("[data-theme-choice]")) {
+    button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
+  }
+  $("font-down").addEventListener("click", () => applyScale(scale - 0.1));
+  $("font-up").addEventListener("click", () => applyScale(scale + 0.1));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw());
+
+  // ---- map canvas: pan with drag, zoom with wheel, pinch or the buttons ------
+  const canvas = $("map"), ctx = canvas.getContext("2d");
+  const view = { scale: 1, x: 0, y: 0, fitted: true };
+  let image = null;
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const box = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(box.width * dpr));
+    canvas.height = Math.max(1, Math.round(box.height * dpr));
+    if (view.fitted) fit(); else draw();
+  }
+  function fit() {
+    if (image) {
+      const box = canvas.getBoundingClientRect();
+      view.scale = Math.min(box.width / image.width, box.height / image.height) * 0.94;
+      view.x = (box.width - image.width * view.scale) / 2;
+      view.y = (box.height - image.height * view.scale) / 2;
+    }
+    view.fitted = true;
+    draw();
+  }
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = getComputedStyle(root).getPropertyValue("--canvas").trim() || "#eee";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!image) return;
+    ctx.setTransform(view.scale * dpr, 0, 0, view.scale * dpr, view.x * dpr, view.y * dpr);
+    ctx.imageSmoothingEnabled = false;  // the map is pixel art; keep cell edges crisp
+    ctx.drawImage(image, 0, 0);
+  }
+  function zoomAt(px, py, factor) {
+    const next = Math.min(40, Math.max(0.2, view.scale * factor));
+    view.x = px - (px - view.x) * (next / view.scale);
+    view.y = py - (py - view.y) * (next / view.scale);
+    view.scale = next;
+    view.fitted = false;
+    draw();
+  }
+  function centre() { const box = canvas.getBoundingClientRect(); return [box.width / 2, box.height / 2]; }
+  $("zoom-in").addEventListener("click", () => zoomAt(...centre(), 1.4));
+  $("zoom-out").addEventListener("click", () => zoomAt(...centre(), 1 / 1.4));
+  $("zoom-fit").addEventListener("click", fit);
+  canvas.addEventListener("dblclick", fit);
+  canvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const box = canvas.getBoundingClientRect();
+    zoomAt(event.clientX - box.left, event.clientY - box.top, Math.exp(-event.deltaY * 0.0015));
+  }, { passive: false });
+
+  const pointers = new Map();
+  let pinch = 0;
+  canvas.addEventListener("pointerdown", (event) => {
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* pointer already gone */ }
+    pointers.set(event.pointerId, [event.clientX, event.clientY]);
+    canvas.classList.add("dragging");
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    const last = pointers.get(event.pointerId);
+    if (!last) return;
+    pointers.set(event.pointerId, [event.clientX, event.clientY]);
+    if (pointers.size === 1) {
+      view.x += event.clientX - last[0];
+      view.y += event.clientY - last[1];
+      view.fitted = false;
+      draw();
+      return;
+    }
+    const [a, b] = [...pointers.values()];
+    const distance = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (pinch) {
+      const box = canvas.getBoundingClientRect();
+      zoomAt((a[0] + b[0]) / 2 - box.left, (a[1] + b[1]) / 2 - box.top, distance / pinch);
+    }
+    pinch = distance;
+  });
+  for (const type of ["pointerup", "pointercancel"]) {
+    canvas.addEventListener(type, (event) => {
+      pointers.delete(event.pointerId);
+      pinch = 0;
+      if (!pointers.size) canvas.classList.remove("dragging");
+    });
+  }
+  new ResizeObserver(resize).observe(canvas);
+
+  async function showMap(blob) {
+    image = await createImageBitmap(blob);
+    $("map-empty").hidden = true;
+    if (view.fitted) fit(); else draw();
+  }
+
+  // ---- status panel ---------------------------------------------------------
+  let mapVersion = -1;
+  function setLink(tone, text) { const pill = $("link"); pill.dataset.tone = tone; pill.textContent = text; }
+  function setNotice(tone, text) { const note = $("notice"); note.dataset.tone = tone; note.textContent = text || ""; }
+  const dash = "—";
+
+  function render(status) {
+    const usable = Boolean(status.authenticated && status.connected);
+    for (const button of document.querySelectorAll("[data-command]")) button.disabled = !usable;
+    if (!status.authenticated) {
+      setLink("wait", "not logged in");
+      setNotice("wait", status.hint || "Run rrctl setup to log in to Roborock.");
+    } else if (!status.connected) {
+      setLink("bad", "vacuum unreachable");
+      setNotice("bad", status.error || "Trying to reach the vacuum.");
+    } else if (status.error) {
+      setLink("bad", "needs attention");
+      setNotice("bad", status.error);
+    } else {
+      setLink(status.in_cleaning || status.in_returning ? "flight" : "ok", "live");
+      setNotice("", "");
+    }
+    const device = status.device || {};
+    $("state").textContent = status.state || (status.authenticated ? "Unknown" : "Not set up");
+    $("device").textContent = [device.name, device.model].filter(Boolean).join(" · ");
+    $("battery").textContent = status.battery == null ? dash : status.battery + "%";
+    $("area").textContent = status.clean_area_m2 == null ? dash : status.clean_area_m2 + " m²";
+    $("time").textContent = status.clean_time_s == null ? dash : Math.floor(status.clean_time_s / 60) + " min";
+    $("fan").textContent = status.fan_speed || dash;
+    $("water").textContent = status.water_mode || dash;
+    $("updated").textContent = status.updated_at ? new Date(status.updated_at * 1000).toLocaleTimeString() : dash;
+    if (usable && status.map_version !== mapVersion && status.map_version > 0) {
+      mapVersion = status.map_version;
+      transport.loadMap().catch(() => { mapVersion = -1; });
+    }
+  }
+
+  // ---- transport: the daemon over HTTP --------------------------------------
+  function daemonTransport() {
+    const fragment = new URLSearchParams(location.hash.slice(1));
+    let token = fragment.get("token");
+    try {
+      if (token) { sessionStorage.setItem("rr-token", token); history.replaceState(null, "", location.pathname); }
+      else token = sessionStorage.getItem("rr-token");
+    } catch { /* storage blocked: the token still works for this page load */ }
+    const auth = { Authorization: "Bearer " + token };
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, { ...options, headers: { ...auth, ...(options.headers || {}) } });
+      if (response.status === 401) throw Object.assign(new Error("unauthorized"), { unauthorized: true });
+      return response;
+    }
+    async function poll() { render(await (await api("/status")).json()); }
+
+    // EventSource cannot send an Authorization header, so read the stream by hand.
+    async function stream() {
+      const response = await api("/events", { headers: { Accept: "text/event-stream" } });
+      if (!response.ok || !response.body) throw new Error("no stream");
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) throw new Error("stream closed");
+        buffer += value;
+        let end;
+        while ((end = buffer.indexOf("\n\n")) >= 0) {
+          const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+          let event = "message", data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (event === "status" && data) render(JSON.parse(data));
+          else if (event === "map" && data) { mapVersion = JSON.parse(data).version; transport.loadMap().catch(() => {}); }
+        }
+      }
+    }
+    async function run() {
+      if (!token) {
+        setLink("wait", "no token");
+        setNotice("wait", "Open this page with: rrctl dashboard");
+        return;
+      }
+      for (;;) {
+        try { await stream(); }
+        catch (error) {
+          if (error.unauthorized) { setLink("bad", "token rejected"); setNotice("bad", "Reopen with: rrctl dashboard"); return; }
+        }
+        // The stream dropped or never started: poll until it is worth trying again.
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try { await poll(); } catch { setLink("bad", "daemon unreachable"); }
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+    }
+    return {
+      run,
+      async loadMap() { const r = await api("/map.png"); if (r.ok) await showMap(await r.blob()); else throw new Error("no map"); },
+      async command(name) {
+        const r = await api("/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: name }) });
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.message || "The vacuum refused that.");
+      },
+    };
+  }
+
+  // ---- transport: an MCP host, when embedded as the ui://dashboard app ------
+  function hostTransport() {
+    const pending = new Map();
+    let nextId = 1;
+    const post = (message) => window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
+    const request = (method, params) => new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, { resolve, reject });
+      post({ id, method, params });
+    });
+    const callTool = (name, args = {}) => request("tools/call", { name, arguments: args });
+    const statusFrom = (result) => result && (result.structuredContent || JSON.parse(((result.content || [])[0] || {}).text || "null"));
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+      if (message.id != null && pending.has(message.id)) {
+        const { resolve, reject } = pending.get(message.id);
+        pending.delete(message.id);
+        if (message.error) reject(new Error(message.error.message || "host error")); else resolve(message.result);
+      } else if (message.method === "ui/notifications/tool-result") {
+        const status = statusFrom(message.params);
+        if (status && "authenticated" in status) render(status);
+      }
+    });
+    async function run() {
+      await request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "vitruvian-roborock", version: "0.1.0" }, appCapabilities: {} });
+      post({ method: "ui/notifications/initialized", params: {} });
+      for (;;) {
+        try { const status = statusFrom(await callTool("get_status")); if (status) render(status); }
+        catch { setLink("bad", "host unreachable"); }
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    }
+    return {
+      run,
+      async loadMap() {
+        const picture = ((await callTool("get_map")).content || []).find((part) => part.type === "image");
+        if (!picture) throw new Error("no map");
+        const bytes = Uint8Array.from(atob(picture.data), (c) => c.charCodeAt(0));
+        await showMap(new Blob([bytes], { type: picture.mimeType || "image/png" }));
+      },
+      async command(name) {
+        const result = statusFrom(name === "start" ? await callTool("start_clean")
+          : name === "dock" ? await callTool("return_to_dock")
+          : await callTool("control", { action: name }));
+        if (result && result.ok === false) throw new Error(result.message || "The vacuum refused that.");
+      },
+    };
+  }
+
+  const onDaemon = /^https?:$/.test(location.protocol) && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+  const transport = onDaemon || window.parent === window ? daemonTransport() : hostTransport();
+
+  for (const button of document.querySelectorAll("[data-command]")) {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try { await transport.command(button.dataset.command); setNotice("", ""); }
+      catch (error) { setNotice("bad", error.message); }
+      finally { button.disabled = false; }
+    });
+  }
+
+  const savedTheme = store.get(THEME_KEY);
+  applyTheme(["system", "light", "dark"].includes(savedTheme) ? savedTheme : "system");
+  applyScale(scale);
+  for (const button of document.querySelectorAll("[data-command]")) button.disabled = true;
+  transport.run();
+})();
+</script>
+</body>
+</html>

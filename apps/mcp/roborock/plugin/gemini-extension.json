@@ -1,0 +1,11 @@
+{
+  "name": "vitruvian-roborock",
+  "version": "0.1.0",
+  "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
+  "mcpServers": {
+    "roborock": {
+      "command": "uvx",
+      "args": ["vitruvian-roborock", "mcp"]
+    }
+  }
+}

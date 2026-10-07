@@ -4,6 +4,7 @@ pip_compile(
     name = "runtime",
     requirements_in = "//:pyproject.toml",
     requirements_txt = "runtime.txt",
+    universal = True,
 )
 
 pip_compile(
@@ -14,4 +15,5 @@ pip_compile(
     ]),
     requirements_in = "all.in",
     requirements_txt = "all.txt",
+    universal = True,
 )

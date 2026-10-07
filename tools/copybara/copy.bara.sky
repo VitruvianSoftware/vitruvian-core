@@ -344,6 +344,14 @@ def _ts_example_export_transforms():
 #                                pair, unchanged from the verified baseline.
 COMPONENTS = [
     {
+        "name": "mcp-roborock",
+        "repo": "mcp-roborock",
+        "subtree": "apps/mcp/roborock",
+        "standalone_rev_id": "MCP_ROBOROCK_REV_ID",
+        "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
+        "is_one_way": True,
+    },
+    {
         "name": "mcp-slack",
         "repo": "mcp-slack",
         "subtree": "apps/mcp/slack",

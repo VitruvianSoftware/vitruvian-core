@@ -18,26 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-[project]
-name = "scaffold_test_1245"
-classifiers = ["Private :: Do Not Upload"]
-version = "0"
+"""Local control plane for Roborock vacuums: daemon, CLI (rrctl), and MCP server."""
 
-# Dependencies should NOT use "Version Matching clauses" (matching operator `==`)
-# https://packaging.python.org/en/latest/specifications/version-specifiers/#version-matching
-# This project uses 'uv pip compile' from https://github.com/astral-sh/uv
-# which will ensure the resolved versions of both direct and indirect dependencies are pinned.
-# Therefore we only need to constrain versions when some ranges 
-# of dependency versions are not compatible.
-dependencies = [
-    # apps/mcp/roborock (vitruvian-roborock). Bounds mirror apps/mcp/roborock/pyproject.toml.
-    "aiohttp>=3.11",
-    "mcp>=2.3,<3",
-    "python-roborock>=7.12,<8",
-]
-
-# See https://docs.astral.sh/ruff/configuration/
-[tool.ruff]
-
-# See https://docs.astral.sh/ty/reference/configuration/
-[tool.ty.rules]
+__version__ = "0.1.0"
