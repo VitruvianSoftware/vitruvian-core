@@ -341,6 +341,7 @@ package final class FeatureRuntime: ObservableObject {
         case .windowMaximizer: return [.windowMaximizer]
         case .windowLayout: return [.windowUseTracker, .windowLayout, .pointerDisplay]
         case .autoQuit: return [.autoQuit]
+        case .spacesOrder: return [.spacesOrder]
         case .scrollInverter, .scrollHorizontal, .linearScroll: return [.scrollInverter]
         case .focusFollowsMouse: return [.focusFollowsMouse]
         case .smoothScroll: return [.smoothScroll]
@@ -438,6 +439,7 @@ package final class FeatureRuntime: ObservableObject {
         case .windowLayout: WindowLayoutService.shared.syncWithPreferences()
         case .pointerDisplay: PointerDisplayService.shared.syncWithPreferences()
         case .autoQuit: AutoQuitService.shared.syncWithPreferences()
+        case .spacesOrder: SpacesOrderHold.shared.syncWithPreferences()
         case .scrollInverter: ScrollInverter.shared.syncWithPreferences()
         case .focusFollowsMouse: FocusFollowsMouseService.shared.syncWithPreferences()
         case .smoothScroll: SmoothScrollService.shared.syncWithPreferences()
@@ -516,7 +518,7 @@ package final class FeatureRuntime: ObservableObject {
 /// `reset…` ones tear down what an uninstalled feature left running.
 package enum FeatureBindingAction: Hashable, CaseIterable {
     case windowUseTracker, appSwitcher, dockPreview, dockClick, windowMaximizer, windowLayout, pointerDisplay
-    case autoQuit, scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration, mouseNavigation
+    case autoQuit, spacesOrder, scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration, mouseNavigation
     case mouseButtonShortcuts, middleClick, mouseClickDebounce, keyboardDebounce, quitProtection, superKey
     case textSnippets, snippetLibrary, clipboardHistory, clipboardAutoClear
     case fileTools, cancelMedia, closeMediaEditors

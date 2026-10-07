@@ -127,6 +127,8 @@ package enum DefaultsKey {
     package static let dockClickMinimize = "dockClickMinimize"    // click the active app's Dock icon to minimize its windows
     package static let dockClickHide = "dockClickHide"            // click the active app's Dock icon to hide the app
     package static let dockClickCycleWindows = "dockClickCycleWindows" // click the active app's Dock icon to cycle through its windows
+    package static let spacesOrderEnabled = "spacesOrderEnabled" // keeps macOS from rearranging Spaces by recent use (Dock mru-spaces)
+    package static let spacesOrderRestore = "spacesOrderRestore" // local recovery; never backed up: "absent" or "on", the mru-spaces state to put back
     package static let middleClickEnabled = "middleClickEnabled"  // three-finger PHYSICAL click on the trackpad acts as a middle click
     package static let middleClickTapFingers = "middleClickTapFingers"  // 0 = off (default); 3 or 4 = a light tap with that many fingers also middle-clicks (issue #161)
     package static let previewSize = "previewSize"                // dock preview thumbnail size (once shared with the app switcher)
@@ -332,6 +334,7 @@ package enum DefaultsKey {
     package static let panelControlMouseAcceleration = "panelControlMouseAcceleration"
     package static let panelControlLinearScroll = "panelControlLinearScroll"
     package static let panelControlMouseClickDebounce = "panelControlMouseClickDebounce"
+    package static let panelControlSpacesOrder = "panelControlSpacesOrder"
     // Quick-control categories start collapsed and remember being opened.
     package static let panelControlWindowsExpanded = "panelControlWindowsExpanded"
     package static let panelControlInputExpanded = "panelControlInputExpanded"

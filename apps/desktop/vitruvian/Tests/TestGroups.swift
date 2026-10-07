@@ -54,6 +54,7 @@ enum TestGroups {
         "force-quit",
         "launcher",
         "dock-autohide",
+        "spaces-order",
         "switcher",
         "keep-awake",
         "wallpaper",
@@ -223,6 +224,7 @@ enum TestGroups {
                 DockAutohideHoldTests.run(suite)
                 DockPreviewFrameRestorationTests.run(suite)
             }),
+            ("spaces-order", { SpacesOrderTests.run(suite) }),
             ("switcher", {
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)

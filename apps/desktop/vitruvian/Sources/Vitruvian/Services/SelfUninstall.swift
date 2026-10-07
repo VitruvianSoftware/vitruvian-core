@@ -23,6 +23,8 @@ package enum SelfUninstall {
     package struct Steps: Sendable {
         package var suspendInputInterceptors: @MainActor @Sendable () -> Bool
         package var restoreSleepBeforeRemoval: @Sendable () -> Bool
+        /// Puts the Space arrangement setting back, waiting for the change.
+        package var restoreSpacesBeforeRemoval: @Sendable () -> Bool
         package var detachFanControl: @Sendable () -> Bool
         package var detachLoginItem: @Sendable () -> Void
         /// Removes the closed-lid sudoers rule if present, which may ask for
@@ -42,6 +44,7 @@ package enum SelfUninstall {
 
         package init(suspendInputInterceptors: @escaping @MainActor @Sendable () -> Bool,
                      restoreSleepBeforeRemoval: @escaping @Sendable () -> Bool,
+                     restoreSpacesBeforeRemoval: @escaping @Sendable () -> Bool,
                      detachFanControl: @escaping @Sendable () -> Bool,
                      detachLoginItem: @escaping @Sendable () -> Void,
                      removeSudoersRule: @escaping @Sendable (@escaping @Sendable (Bool) -> Void) -> Void,
@@ -58,6 +61,7 @@ package enum SelfUninstall {
                      background: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void) {
             self.suspendInputInterceptors = suspendInputInterceptors
             self.restoreSleepBeforeRemoval = restoreSleepBeforeRemoval
+            self.restoreSpacesBeforeRemoval = restoreSpacesBeforeRemoval
             self.detachFanControl = detachFanControl
             self.detachLoginItem = detachLoginItem
             self.removeSudoersRule = removeSudoersRule
@@ -83,6 +87,7 @@ package enum SelfUninstall {
             Steps(
                 suspendInputInterceptors: { SelfUninstall.suspendInputInterceptors(calls) },
                 restoreSleepBeforeRemoval: { SelfUninstall.restoreSleepBeforeRemoval(calls) },
+                restoreSpacesBeforeRemoval: { SpacesOrderHold.restoreForRemoval() },
                 detachFanControl: { calls.detachFanHelper() },
                 detachLoginItem: { SelfUninstall.detachLoginItem() },
                 removeSudoersRule: { SelfUninstall.removeSudoersRuleIfPresent(then: $0) },
@@ -233,6 +238,12 @@ package enum SelfUninstall {
                 // rule removal must stop before anything else is removed.
                 guard steps.restoreSleepBeforeRemoval() else {
                     stop(L10n.shared.s.advancedUninstallFailedBody)
+                    return
+                }
+                // The Space arrangement marker is deleted with the preferences
+                // below, so the system setting has to be put back before they go.
+                guard steps.restoreSpacesBeforeRemoval() else {
+                    stop(L10n.shared.s.advancedUninstallFailedBody, sleepRestored: true)
                     return
                 }
                 steps.removeSudoersRule { ruleRemoved in

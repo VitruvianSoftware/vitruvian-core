@@ -26,6 +26,7 @@ package struct DockSettings: View {
     @AppStorage(Preferences.dockClickMinimize) private var dockClickMinimize: Bool
     @AppStorage(Preferences.dockClickHide) private var dockClickHide: Bool
     @AppStorage(Preferences.dockClickCycleWindows) private var dockClickCycleWindows: Bool
+    @AppStorage(Preferences.spacesOrderEnabled) private var spacesOrderEnabled: Bool
 
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var dockPreviewEngaged: Bool { dockPreviewEnabled && AppFeature.dockPreview.isAvailable }
@@ -49,6 +50,10 @@ package struct DockSettings: View {
                 if AppFeature.dockClick.isAvailable {
                     dockClickCard
                         .settingsSectionAnchor(.dockClick, cornerRadius: 16)
+                }
+                if AppFeature.spacesOrder.isAvailable {
+                    spacesOrderCard
+                        .settingsSectionAnchor(.spacesOrder, cornerRadius: 16)
                 }
                 if AppFeature.dockPreview.isAvailable {
                     WindowPreviewsCard(sizeKey: DefaultsKey.previewSize,
@@ -173,6 +178,19 @@ package struct DockSettings: View {
                     .labelsHidden()
                     .onChange(of: dockClickCycleWindows) { _, _ in
                         DockClickService.shared.syncWithPreferences()
+                    }
+            }
+        }
+    }
+
+    private var spacesOrderCard: some View {
+        SettingsCard {
+            SettingsRow(symbol: "rectangle.split.3x1", title: l10n.s.spacesOrderName,
+                        caption: l10n.s.spacesOrderCaption) {
+                Toggle(l10n.s.spacesOrderName, isOn: $spacesOrderEnabled)
+                    .labelsHidden()
+                    .onChange(of: spacesOrderEnabled) { _, _ in
+                        SpacesOrderHold.shared.syncWithPreferences()
                     }
             }
         }

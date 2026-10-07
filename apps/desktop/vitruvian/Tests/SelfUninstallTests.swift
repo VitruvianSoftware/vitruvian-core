@@ -16,6 +16,7 @@ enum SelfUninstallContract {
         var events: [String] = []
         var suspensionAllowed = true
         var sleepRestoreAllowed = true
+        var spacesRestoreAllowed = true
         var detachAllowed = true
         var ruleRemovalAllowed = true
         var tccResetAllowed = true
@@ -30,6 +31,7 @@ enum SelfUninstallContract {
     static func steps(_ record: Record) -> SelfUninstall.Steps {
         .init(suspendInputInterceptors: { record.events.append("suspend"); return record.suspensionAllowed },
               restoreSleepBeforeRemoval: { record.events.append("sleep"); return record.sleepRestoreAllowed },
+              restoreSpacesBeforeRemoval: { record.events.append("spaces"); return record.spacesRestoreAllowed },
               detachFanControl: { record.events.append("fan"); return record.detachAllowed },
               detachLoginItem: { record.events.append("login") },
               removeSudoersRule: { then in
@@ -117,7 +119,7 @@ enum SelfUninstallContract {
         SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
         record.flush()
         suite.expect(failure == ruleKept
-                        && record.events == ["suspend", "sleep", "rule", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                        && record.events == ["suspend", "sleep", "spaces", "rule", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
                      "a refused password request stops a full uninstall before anything is removed, found \(record.events)")
 
         reset(allowRule: true)
@@ -130,12 +132,21 @@ enum SelfUninstallContract {
                      "failed sleep restoration does not reset the closed-lid session, found \(record.events)")
 
         reset(allowRule: true)
+        record.spacesRestoreAllowed = false
+        failure = nil
+        SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
+        record.flush()
+        suite.expect(failure == stopped
+                        && record.events == ["suspend", "sleep", "spaces", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                     "Space rearranging still off stops a full uninstall before its marker is deleted, found \(record.events)")
+
+        reset(allowRule: true)
         record.tccResetAllowed = false
         failure = nil
         SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
         record.flush()
         suite.expect(failure == ruleKept
-                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                        && record.events == ["suspend", "sleep", "spaces", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
                      "a failed permission reset restores the prior fan helper and keeps login, found \(record.events)")
 
         reset(allowRule: true)
@@ -145,7 +156,7 @@ enum SelfUninstallContract {
         SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
         record.flush()
         suite.expect(failure == "\(ruleKept)\n\(fanUnavailable)"
-                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                        && record.events == ["suspend", "sleep", "spaces", "rule", "fan registration", "fan", "tccutil", "restore fan registration", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
                      "failed fan registration tells the user the helper is unavailable, found \(record.events)")
 
         reset(allowRule: true)
@@ -155,7 +166,7 @@ enum SelfUninstallContract {
         SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
         record.flush()
         suite.expect(failure == ruleKept
-                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                        && record.events == ["suspend", "sleep", "spaces", "rule", "fan registration", "fan", "tccutil", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
                      "a failed reset does not register a helper the user never had, found \(record.events)")
 
         reset(allowRule: true)
@@ -164,7 +175,7 @@ enum SelfUninstallContract {
         SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
         record.flush()
         suite.expect(failure == stopped
-                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
+                        && record.events == ["suspend", "sleep", "spaces", "rule", "fan registration", "fan", "restore keep awake", "refresh permissions", "resume features", "resume brightness"],
                      "a failed fan-helper detach keeps permissions and login intact, found \(record.events)")
 
         reset(allowRule: true)
@@ -172,7 +183,7 @@ enum SelfUninstallContract {
         SelfUninstall.uninstallCompletely(steps: steps(record)) { failure = $0 }
         record.flush()
         suite.expect(failure == nil
-                        && record.events == ["suspend", "sleep", "rule", "fan registration", "fan", "tccutil", "login", "preferences", "trash"],
+                        && record.events == ["suspend", "sleep", "spaces", "rule", "fan registration", "fan", "tccutil", "login", "preferences", "trash"],
                      "a full uninstall detaches the fan helper before permission reset and login afterward, found \(record.events)")
 
         reset(allowRule: true)

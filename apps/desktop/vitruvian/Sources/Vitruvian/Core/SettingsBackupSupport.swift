@@ -100,6 +100,8 @@ package enum SettingsBackupSupport {
     /// when they would otherwise slip in through the registered set.
     package static let machineStateKeys: Set<String> = [
         DefaultsKey.dockPreviewRestoreAutohide,
+        // The Space arrangement setting to put back belongs to this Mac's Dock.
+        DefaultsKey.spacesOrderRestore,
         // A Bluetooth restore owed by one sleeping Mac means nothing on another.
         DefaultsKey.bluetoothSleepRestorePending,
         DefaultsKey.micMuteActive,

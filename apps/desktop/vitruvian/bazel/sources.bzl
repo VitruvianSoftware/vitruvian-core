@@ -161,6 +161,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Services/Audio/PreciseVolumeRollerSupport.swift",
     "Sources/Vitruvian/Core/DockPreview/DockPreviewSupport.swift",
     "Sources/Vitruvian/Services/DockPreview/DockAutohideHold.swift",
+    "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
     "Sources/Vitruvian/Core/Homebrew/HomebrewSupport.swift",
     "Sources/Vitruvian/Services/Homebrew/HomebrewEnvironment.swift",
     "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",

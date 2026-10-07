@@ -1125,7 +1125,7 @@ package struct UtilitiesSection: View {
 private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
     case mouseScroll, linearScroll, focusFollowsMouse, mouseAcceleration, mouseNavigation, switcher, cutPaste, autoQuit, shelf, windowMaximize, dockPreview, keyDebounce,
          dockClick, dockClickHide, dockClickCycle, middleClick, textSnippets, radialMenu, mouseButtonShortcuts, superKey,
-         mouseClickDebounce, notch
+         mouseClickDebounce, notch, spacesOrder
 
     var id: String { rawValue }
 
@@ -1149,6 +1149,7 @@ private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
         case .middleClick: return .middleClick
         case .textSnippets: return .textSnippets
         case .notch: return .notch
+        case .spacesOrder: return .spacesOrder
         case .radialMenu: return .radialMenu
         case .mouseButtonShortcuts: return .mouseButtonShortcuts
         case .superKey: return .superKey
@@ -1166,7 +1167,8 @@ private enum ControlCategory: String, CaseIterable, Identifiable {
 
     static func category(for item: ControlPanelItem) -> ControlCategory {
         switch item {
-        case .switcher, .dockPreview, .dockClick, .dockClickHide, .dockClickCycle, .windowMaximize, .autoQuit, .notch:
+        case .switcher, .dockPreview, .dockClick, .dockClickHide, .dockClickCycle, .windowMaximize, .autoQuit, .notch,
+             .spacesOrder:
             return .windows
         case .mouseScroll, .linearScroll, .focusFollowsMouse, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts, .middleClick, .keyDebounce,
              .textSnippets, .radialMenu, .superKey, .mouseClickDebounce:
@@ -1208,6 +1210,7 @@ package struct QuickControlsSection: View {
     @AppStorage(Preferences.dockClickMinimize) private var dockClickEnabled: Bool
     @AppStorage(Preferences.dockClickHide) private var dockClickHideEnabled: Bool
     @AppStorage(Preferences.dockClickCycleWindows) private var dockClickCycleEnabled: Bool
+    @AppStorage(Preferences.spacesOrderEnabled) private var spacesOrderEnabled: Bool
     @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled: Bool
     @AppStorage(Preferences.textSnippetsEnabled) private var textSnippetsEnabled: Bool
     @AppStorage(Preferences.notchEnabled) private var notchEnabled: Bool
@@ -1235,6 +1238,7 @@ package struct QuickControlsSection: View {
     @AppStorage(Preferences.panelControlDockClick) private var showDockClick: Bool
     @AppStorage(Preferences.panelControlDockClickHide) private var showDockClickHide: Bool
     @AppStorage(Preferences.panelControlDockClickCycle) private var showDockClickCycle: Bool
+    @AppStorage(Preferences.panelControlSpacesOrder) private var showSpacesOrder: Bool
     @AppStorage(Preferences.panelControlMiddleClick) private var showMiddleClick: Bool
     @AppStorage(Preferences.panelControlTextSnippets) private var showTextSnippets: Bool
     @AppStorage(Preferences.panelControlRadialMenu) private var showRadialMenu: Bool
@@ -1357,6 +1361,7 @@ package struct QuickControlsSection: View {
         case .dockClick: return dockClickEnabled
         case .dockClickHide: return dockClickHideEnabled
         case .dockClickCycle: return dockClickCycleEnabled
+        case .spacesOrder: return spacesOrderEnabled
         case .middleClick: return middleClickEnabled
         case .textSnippets: return textSnippetsEnabled
         case .notch: return notchEnabled
@@ -1437,6 +1442,7 @@ package struct QuickControlsSection: View {
         case .dockClick: return showDockClick
         case .dockClickHide: return showDockClickHide
         case .dockClickCycle: return showDockClickCycle
+        case .spacesOrder: return showSpacesOrder
         case .middleClick: return showMiddleClick
         case .textSnippets: return showTextSnippets
         case .notch: return showNotch
@@ -1842,6 +1848,17 @@ package struct QuickControlsSection: View {
                 .onChange(of: mouseAccelerationDisabled) { _, _ in
                     MouseAccelerationService.shared.syncWithPreferences()
                 }
+        case .spacesOrder:
+            PanelToggleRow(title: l10n.s.spacesOrderName,
+                           caption: l10n.s.spacesOrderCaption,
+                           systemImage: "rectangle.split.3x1",
+                           isOn: $spacesOrderEnabled,
+                           isEditing: editing,
+                           showsDragHandle: true,
+                           visibility: $showSpacesOrder)
+                .onChange(of: spacesOrderEnabled) { _, _ in
+                    SpacesOrderHold.shared.syncWithPreferences()
+                }
         case .mouseClickDebounce:
             let debounceStrings = FeatureStrings.mouseClickDebounce(l10n.language)
             PanelToggleRow(title: debounceStrings.title,
@@ -1887,6 +1904,7 @@ package struct QuickControlsSection: View {
         showDockClick = true
         showDockClickHide = true
         showDockClickCycle = true
+        showSpacesOrder = true
         showMiddleClick = true
         showTextSnippets = true
         showRadialMenu = true
