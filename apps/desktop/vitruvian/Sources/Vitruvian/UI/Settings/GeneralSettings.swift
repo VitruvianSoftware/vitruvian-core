@@ -47,7 +47,7 @@ package struct GeneralSettings: View {
             SettingsRow(symbol: "laptopcomputer", title: l10n.s.launchAtLogin,
                         caption: text.launchAtLoginCaption) {
                 Toggle(l10n.s.launchAtLogin, isOn: Binding(
-                    get: { login.registration == .enabled },
+                    get: { login.isOn },
                     set: { login.setEnabled($0) }
                 ))
                     .labelsHidden()
