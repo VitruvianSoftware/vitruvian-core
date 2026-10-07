@@ -1496,7 +1496,7 @@ enum ClipboardPreviewContract {
 
         // Text that leaves the history leaves the search cache with it, so a
         // cleared item's content is not kept folded until the next search.
-        service.clearRecent()
+        service.clearRecent(Set(service.entries.filter { !$0.isPinned }.map(\.id)))
         let kept = service.entries.map(\.id)
         suite.expect(kept == [pinned.id] && service.searchCache.cachedEntryCount == 1
                      && service.searchCache.isCached(id: pinned.id) && service.searchCache.candidateCount == 0,
