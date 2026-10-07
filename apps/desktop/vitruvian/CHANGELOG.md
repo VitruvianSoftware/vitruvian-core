@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.14.0...vitruvian-v3.15.0) (2026-10-07)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 3, nine changes from 4–5 October ([#2808](https://github.com/VitruvianSoftware/vitruvian-core/issues/2808)) ([155ead9](https://github.com/VitruvianSoftware/vitruvian-core/commit/155ead94732309bd3b433a1f7c3080918f34621d))
+
 ## [3.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.13.0...vitruvian-v3.14.0) (2026-10-07)
 
 
