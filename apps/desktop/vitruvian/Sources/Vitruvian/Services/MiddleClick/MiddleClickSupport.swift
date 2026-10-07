@@ -22,8 +22,8 @@ package enum MiddleClickSupport {
     /// trackpad, so anything older means the fingers already lifted.
     package static let fingerFreshness: TimeInterval = 0.25
 
-    /// The three fingers must have been resting this long before the press:
-    /// a click that arrives together with the third finger's touchdown is a
+    /// The fingers must have been resting this long before the press: a
+    /// click that arrives together with the last finger's touchdown is a
     /// synthesized tap-to-click, not a press (a real press needs the fingers
     /// on the pad before the force builds up).
     package static let minimumSettle: TimeInterval = 0.04
@@ -37,14 +37,16 @@ package enum MiddleClickSupport {
     /// and while the system's own three-finger drag gesture is enabled it
     /// owns three-finger touches: it synthesizes clicks from unpressed
     /// contact that are indistinguishable from real presses here, so the
-    /// feature stands down entirely rather than firing falsely.
+    /// press moves to four fingers, as the tap does (issue #2061).
     package static func actionForClick(fingerCount: Int,
                                frameAge: TimeInterval,
                                settledFor: TimeInterval,
                                sinceLastTransformEnd: TimeInterval?,
                                systemDragGestureEnabled: Bool) -> MiddleClickClickAction {
-        guard !systemDragGestureEnabled else { return .passThrough }
-        guard fingerCount == 3, frameAge >= 0, frameAge <= fingerFreshness else { return .passThrough }
+        let pressFingers = systemDragGestureEnabled ? 4 : 3
+        guard fingerCount == pressFingers, frameAge >= 0, frameAge <= fingerFreshness else {
+            return .passThrough
+        }
         if let sinceLastTransformEnd, sinceLastTransformEnd >= 0,
            sinceLastTransformEnd < repeatGuard {
             return .swallow

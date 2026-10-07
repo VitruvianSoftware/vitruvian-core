@@ -9,8 +9,9 @@ import IOKit
 import VitruvianCore
 import VitruvianDesign
 
-/// Middle-click emulation for trackpads: a three-finger PHYSICAL click
-/// becomes a middle click (mouse wheel click), and an opt-in tap mode fires
+/// Middle-click emulation for trackpads: a three-finger PHYSICAL click (four
+/// while macOS three-finger drag owns three fingers) becomes a middle click
+/// (mouse wheel click), and an opt-in tap mode fires
 /// it from a light three or four finger tap (issue #161). By default taps,
 /// swipes and resting fingers never click. Contact data comes from the
 /// MultitouchSupport private framework (the only source; every middle-click
@@ -27,7 +28,7 @@ package final class MiddleClickService: ObservableObject {
     @Published package private(set) var isRunning = false
     /// The system's own three-finger drag gesture (Accessibility) is enabled:
     /// it owns three-finger touches and synthesizes clicks from unpressed
-    /// contact, so the middle click stands down and Settings shows why.
+    /// contact, so the press moves to four fingers and Settings shows why.
     @Published package private(set) var systemDragGestureConflict = false
     /// Middle click started but MultitouchSupport gave it no touch device, so
     /// no contact can ever arrive. A pause or session switch clears it.
@@ -76,8 +77,8 @@ package final class MiddleClickService: ObservableObject {
     private let stateLock = NSLock()
     nonisolated(unsafe) private var fingerCount = 0
     nonisolated(unsafe) private var lastFrameUptime: TimeInterval = 0
-    /// When the contact count last became exactly three.
-    nonisolated(unsafe) private var threeFingersSince: TimeInterval?
+    /// When the contact count last changed, for the press settle guard.
+    nonisolated(unsafe) private var fingerCountSince: TimeInterval = 0
 
     // Tap-to-middle-click (issue #161), all under `stateLock`. A candidate
     // starts when the chosen finger count lands, collects movement, and is
@@ -248,7 +249,7 @@ package final class MiddleClickService: ObservableObject {
         stateLock.lock()
         fingerCount = 0
         lastFrameUptime = 0
-        threeFingersSince = nil
+        fingerCountSince = 0
         resetTapCandidateLocked()
         stateLock.unlock()
         isRunning = false
@@ -364,11 +365,7 @@ package final class MiddleClickService: ObservableObject {
         let now = ProcessInfo.processInfo.systemUptime
         var firedFingers: Int?
         stateLock.lock()
-        if count == 3 {
-            if fingerCount != 3 { threeFingersSince = now }
-        } else {
-            threeFingersSince = nil
-        }
+        if count != fingerCount { fingerCountSince = now }
         fingerCount = count
         lastFrameUptime = now
         if tapFingers > 0 || radialMenuTapFingers > 0 {
@@ -565,7 +562,7 @@ package final class MiddleClickService: ObservableObject {
             stateLock.lock()
             let count = fingerCount
             let age = now - lastFrameUptime
-            let settledFor = threeFingersSince.map { now - $0 } ?? 0
+            let settledFor = now - fingerCountSince
             stateLock.unlock()
             let sinceLastTransformEnd = tapStateLock.withLock { lastTransformEnd }
             let action = MiddleClickSupport.actionForClick(

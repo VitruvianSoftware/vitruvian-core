@@ -1698,8 +1698,7 @@ package struct QuickControlsSection: View {
                            showsDragHandle: true,
                            visibility: $showMiddleClick,
                            needsAttention: middleClickEnabled
-                               && (!permissions.accessibility || middleClick.touchDeviceMissing
-                                   || middleClick.systemDragGestureConflict),
+                               && (!permissions.accessibility || middleClick.touchDeviceMissing),
                            permissionButtonTitle: l10n.s.permissionRequest,
                            permissionAction: accessibilityPermissionAction(middleClickEnabled))
                 .onChange(of: middleClickEnabled) { _, enabled in
