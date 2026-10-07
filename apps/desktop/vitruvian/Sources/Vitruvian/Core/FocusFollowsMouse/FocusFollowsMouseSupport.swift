@@ -91,6 +91,15 @@ package enum FocusFollowsMouseSupport {
     package static func hitTestProcess(_ processID: pid_t, ownProcessID: pid_t) -> pid_t? {
         processID > 0 && processID != ownProcessID ? processID : nil
     }
+
+    /// A canceled focus handoff gives focus back to the window it took it
+    /// from only while that app is in front and still reports that window.
+    /// A read that fails or finds no window is unknown, so it restores nothing.
+    package static func shouldRestoreFocus(to previousWindowID: CGWindowID,
+                                           reportedFocusedWindowID: CGWindowID?,
+                                           appIsFrontmost: Bool) -> Bool {
+        appIsFrontmost && reportedFocusedWindowID == previousWindowID
+    }
 }
 
 package struct FocusFollowsMouseEvaluation: Equatable {

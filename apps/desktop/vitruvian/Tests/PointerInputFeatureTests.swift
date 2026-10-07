@@ -1033,6 +1033,18 @@ enum PointerInputFeatureTests {
                 targetWindowID: 42, focusedWindowID: focusedWindowID, targetAppIsFrontmost: false),
                    "hover can activate a background app regardless of its last focused window")
         }
+        suite.expect(FocusFollowsMouseSupport.shouldRestoreFocus(
+            to: 42, reportedFocusedWindowID: 42, appIsFrontmost: true),
+               "a canceled handoff gives focus back to the window that still holds it")
+        suite.expect(!FocusFollowsMouseSupport.shouldRestoreFocus(
+            to: 42, reportedFocusedWindowID: nil, appIsFrontmost: true),
+               "a canceled handoff restores nothing when the focused window cannot be read")
+        suite.expect(!FocusFollowsMouseSupport.shouldRestoreFocus(
+            to: 42, reportedFocusedWindowID: 43, appIsFrontmost: true),
+               "a canceled handoff leaves focus on a window the user clicked")
+        suite.expect(!FocusFollowsMouseSupport.shouldRestoreFocus(
+            to: 42, reportedFocusedWindowID: 42, appIsFrontmost: false),
+               "a canceled handoff leaves focus alone once another app is in front")
         var focusFollowsMouseState = FocusFollowsMouseState()
         suite.expect(!focusFollowsMouseState.hasPendingEvaluation,
                "focus follows mouse starts without work to poll")
