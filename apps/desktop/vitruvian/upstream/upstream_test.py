@@ -445,10 +445,12 @@ class PreferenceReviewTest(unittest.TestCase):
     def test_lines_inside_an_unresolved_conflict_are_left_to_the_porter(self):
         merged = (
             "struct V {\n<<<<<<< vitruvian\n    @AppStorage(Preferences.beta) private var b: String\n"
-            "||||||| upstream\n    @AppStorage(DefaultsKey.beta) private var b = \"\"\n=======\n"
-            "    @AppStorage(DefaultsKey.beta) private var b = \"x\"\n>>>>>>> upstream\n}\n"
+            '||||||| upstream\n    @AppStorage(DefaultsKey.beta) private var b = ""\n=======\n'
+            '    @AppStorage(DefaultsKey.beta) private var b = "x"\n>>>>>>> upstream\n}\n'
         )
-        self.assertEqual(upstream.preference_review(merged, "struct V {\n}\n", self.PREFERENCES), [])
+        self.assertEqual(
+            upstream.preference_review(merged, "struct V {\n}\n", self.PREFERENCES), []
+        )
 
 
 class InitReviewTest(unittest.TestCase):
@@ -616,12 +618,16 @@ class PortTest(Base):
         )
 
     def test_split_files_are_reported_with_their_patch(self):
-        sha = self.fx.edit("Sources/Vorssaint/Core/Other.swift", OTHER + "// more\n", "fix: other")
+        sha = self.fx.edit(
+            "Sources/Vorssaint/Core/Other.swift", OTHER + "// more\n", "fix: other"
+        )
         other = self.fx.mono / APP / "Sources/Vitruvian/Core/Other.swift"
         before = other.read_text()
         split = {"Sources/Vorssaint/Core/Other.swift": "OtherA.swift and OtherB.swift"}
         with mock.patch.dict(upstream.FORK_SPLIT, split):
-            rc, out, _ = self.fx.tool("port", sha, "--report-dir", str(self.fx.tmp / "r"))
+            rc, out, _ = self.fx.tool(
+                "port", sha, "--report-dir", str(self.fx.tmp / "r")
+            )
         self.assertEqual(rc, 1)
         self.assertIn("split in this fork into OtherA.swift and OtherB.swift", out)
         self.assertEqual(other.read_text(), before)
