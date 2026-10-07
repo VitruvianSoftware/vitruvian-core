@@ -30,7 +30,9 @@
  *  - Inbound WebSocket server streaming live vessel positions to connected clients.
  *  - 26 backend API proxy endpoints brokering external APIs (OpenSky, CelesTrak, FIRMS,
  *    CCTV, TomTom, Overpass, GBFS, adsb.lol, OpenAI Realtime token minting, Google Places).
- *  - Rate limiting guards honoring GEV_RATELIMIT, GEV_RATELIMIT_OPENAI_PER_MIN, GEV_RATELIMIT_GOOGLE_PER_MIN.
+ *  - Street Level tile proxy (/api/mapillary/*) on upstream's own tile engine.
+ *  - Rate limiting guards honoring GEV_RATELIMIT, GEV_RATELIMIT_OPENAI_PER_MIN, GEV_RATELIMIT_GOOGLE_PER_MIN,
+ *    GEV_RATELIMIT_MAPILLARY_PER_MIN.
  *
  * @module server.mjs
  */
@@ -42,6 +44,11 @@ import path from 'node:path';
 import dns from 'node:dns';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
+// Upstream's Street Level tile engine: cache, trimming and Mapillary error
+// handling. The Dockerfile copies these files into the image, and
+// tests/server checks that the image layout boots.
+import { fetchTile, TileRequestError, TileUpstreamError } from './server/providers/mapillary/tiles.js';
+import { mapillaryToken, TILE_ROUTE_MAX_PER_MIN } from './server/providers/mapillary/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,7 +58,8 @@ const PORT = parseInt(process.env.PORT || '8080', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
 // ---------------------------------------------------------------------------
-// Rate Limiting (GEV_RATELIMIT, GEV_RATELIMIT_OPENAI_PER_MIN, GEV_RATELIMIT_GOOGLE_PER_MIN)
+// Rate Limiting (GEV_RATELIMIT, GEV_RATELIMIT_OPENAI_PER_MIN, GEV_RATELIMIT_GOOGLE_PER_MIN,
+// GEV_RATELIMIT_MAPILLARY_PER_MIN)
 // ---------------------------------------------------------------------------
 const _rateLimitHits = new Map();
 
@@ -91,12 +99,14 @@ function getClientIp(req) {
   return String(req.socket?.remoteAddress || '127.0.0.1');
 }
 
-function enforceRateLimit(req, res, envLimitName, defaultLimit = 0) {
+// `bucket` keeps a route's count apart: Street Level tiles come by the dozen,
+// and must not use up a client's OpenAI or Google allowance.
+function enforceRateLimit(req, res, envLimitName, defaultLimit = 0, bucket = '') {
   const envVal = process.env[envLimitName] || process.env.GEV_RATELIMIT;
   const limit = envVal ? parseInt(envVal, 10) : defaultLimit;
   if (!limit || limit <= 0) return true;
   const ip = (process.env.TRUST_PROXY === 'true') ? getClientIp(req) : String(req.socket?.remoteAddress || getClientIp(req));
-  if (!checkRateLimit(ip, limit)) {
+  if (!checkRateLimit(`${bucket}${ip}`, limit)) {
     res.writeHead(429, {
       'Content-Type': 'application/json',
       'Retry-After': '10',
@@ -630,6 +640,69 @@ function parseFirmsCsvText(csvText) {
 let _openskyCacheBody = null;
 let _openskyCacheTime = 0;
 const OPENSKY_CACHE_MS = 10000;
+
+// ---------------------------------------------------------------------------
+// Street Level (Mapillary) tile proxy
+// ---------------------------------------------------------------------------
+// Upstream serves these from its dev server (server/providers/mapillary/
+// routes.js) behind a same-site gate that refuses any request carrying proxy
+// headers, which is every request behind the ingress. Here they sit behind this
+// server's rate limit instead; the answers otherwise match upstream's.
+function sendMapillaryJson(res, status, payload, headers = {}) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...headers,
+  });
+  res.end(JSON.stringify(payload));
+}
+
+const MAPILLARY_TILE_PATH = /^\/api\/mapillary\/tiles\/(coverage)\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})$/;
+
+async function handleMapillaryTile(req, res, pathname) {
+  if (req.method !== 'GET') return sendMapillaryJson(res, 405, { error: 'Method not allowed' });
+  if (!enforceRateLimit(req, res, 'GEV_RATELIMIT_MAPILLARY_PER_MIN', TILE_ROUTE_MAX_PER_MIN, 'mapillary:')) return;
+  const match = MAPILLARY_TILE_PATH.exec(pathname);
+  if (!match) return sendMapillaryJson(res, 400, { error: 'Tile path must be /coverage/{z}/{x}/{y}' });
+  if (!mapillaryToken()) return sendMapillaryJson(res, 503, { error: 'no_key', keyRequired: true });
+  const abandoned = new AbortController();
+  req.on('aborted', () => abandoned.abort());
+  res.on('close', () => abandoned.abort());
+  try {
+    const { bytes, source } = await fetchTile(
+      { layer: match[1], z: match[2], x: match[3], y: match[4] },
+      { signal: abandoned.signal },
+    );
+    if (res.writableEnded) return;
+    res.writeHead(bytes.length ? 200 : 204, {
+      'Content-Type': 'application/x-protobuf',
+      'Cache-Control': 'public, max-age=3600',
+      'X-Gev-Cache': source,
+    });
+    res.end(bytes.length ? bytes : undefined);
+  } catch (error) {
+    if (res.writableEnded || abandoned.signal.aborted) return;
+    if (error instanceof TileRequestError) return sendMapillaryJson(res, error.status, { error: error.message });
+    if (error instanceof TileUpstreamError) {
+      // A rejected token is a key problem the panel can name, not a fault.
+      if (error.keyRejected) {
+        return sendMapillaryJson(res, 403, { error: 'Mapillary rejected the access token', keyRejected: true });
+      }
+      if (error.status === 429) {
+        const retryAfter = error.retryAfterSec || 60;
+        return sendMapillaryJson(
+          res,
+          429,
+          { error: 'Mapillary is rate-limiting tile requests', retryAfter },
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+      // An upstream 400 must not read as a malformed request to this proxy.
+      return sendMapillaryJson(res, 502, { error: error.message });
+    }
+    sendMapillaryJson(res, 502, { error: error?.message || 'Tile fetch failed' });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Request Handler
@@ -1245,6 +1318,21 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(405, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Method not allowed' }));
       }
+      return;
+    }
+
+    // 2.22: /api/mapillary/status & /api/mapillary/tiles (Street Level)
+    if (pathname === '/api/mapillary/status') {
+      if (req.method !== 'GET') {
+        sendMapillaryJson(res, 405, { error: 'Method not allowed' });
+        return;
+      }
+      sendMapillaryJson(res, 200, { configured: Boolean(mapillaryToken()) });
+      return;
+    }
+
+    if (pathname === '/api/mapillary/tiles' || pathname.startsWith('/api/mapillary/tiles/')) {
+      await handleMapillaryTile(req, res, pathname);
       return;
     }
 

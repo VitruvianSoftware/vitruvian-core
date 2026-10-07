@@ -80,6 +80,24 @@ js_test(
     entry_point = "scripts/bazel-unit-tests.mjs",
 )
 
+# Boots server.mjs from the Dockerfile's runtime-stage layout and checks the
+# Street Level routes, so an upstream file the image lacks fails here first.
+js_test(
+    name = "server_test",
+    size = "small",
+    chdir = package_name(),
+    data = [
+        "Dockerfile",
+        "package.json",
+        "server.mjs",
+        ":node_modules",
+    ] + glob([
+        "server/**",
+        "src/**",
+    ]),
+    entry_point = "tests/server/image.test.mjs",
+)
+
 sh_test(
     name = "cesium_assets_test",
     size = "small",
@@ -129,6 +147,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":unit_tests",
+        ":server_test",
         ":cesium_assets_test",
         ":upstream_test",
         ":build",

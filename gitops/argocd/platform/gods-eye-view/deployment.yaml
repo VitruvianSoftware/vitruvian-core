@@ -89,6 +89,15 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # The Street Level tile cache (upstream's tile engine, run by
+            # server.mjs) writes under the working directory; the root
+            # filesystem is read-only.
+            - name: gev-cache
+              mountPath: /app/.gev-cache
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: gev-cache
+          emptyDir:
+            # The cache sweeps itself down to 1 GiB every 15 minutes.
+            sizeLimit: 2Gi
