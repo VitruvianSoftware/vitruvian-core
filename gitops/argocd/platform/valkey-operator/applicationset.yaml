@@ -41,7 +41,7 @@ spec:
       source:
         repoURL: https://keiailab.github.io/valkey-operator
         chart: valkey-operator
-        targetRevision: 1.5.2
+        targetRevision: 1.5.4
         helm:
           releaseName: valkey-operator
           values: |
