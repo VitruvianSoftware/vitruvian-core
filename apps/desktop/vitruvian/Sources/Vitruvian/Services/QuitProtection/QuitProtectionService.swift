@@ -623,7 +623,10 @@ package final class QuitProtectionService: ObservableObject {
             swallowShortcut = nil
             return
         }
-        if QuitProtectionSupport.usesNativeQuitRequest(for: shortcut),
+        let targetApp = targetProcessIdentifier.flatMap(NSRunningApplication.init(processIdentifier:))
+        let targetBundleIdentifier = targetApp?.bundleIdentifier ?? frontmostBundleIdentifier
+        if QuitProtectionSupport.usesNativeQuitRequest(for: shortcut,
+                                                      bundleIdentifier: targetBundleIdentifier),
            requestQuit(targetProcessIdentifier: targetProcessIdentifier) {
             return
         }
