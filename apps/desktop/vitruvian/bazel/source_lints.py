@@ -1590,6 +1590,120 @@ def missing_module_imports(sources):
     return found
 
 
+# An initializer one level into a top-level type, open to other modules.
+PACKAGE_INIT_RE = re.compile(
+    r"^    " + _ATTRIBUTES + r"(?:package|public|open)[ \t]+"
+    r"(?:(?:convenience|required|override|nonisolated)[ \t]+)*init\b"
+)
+
+
+def unbuildable_package_types(sources, others):
+    """Each (path, name, module) where code outside `module` builds a package
+    struct, or a package class with no superclass, that `module` declares
+    with no package or public initializer. A memberwise or default
+    initializer is internal, so only the macOS build would report it.
+    `sources` maps a path under Sources/Vitruvian to its text; `others` maps
+    the paths of the app target and the tests to theirs."""
+    owners = collections.defaultdict(set)
+    for path, text in sources.items():
+        module = path.split("/")[0]
+        if module not in MODULE_DIRS:
+            continue
+        lines = text.split("\n")
+        for index, line in enumerate(lines):
+            match = DECLARED_TYPE_RE.match(line)
+            # Top-level types only: a nested one is built as Outer.Inner(...),
+            # and nested names (Snapshot, Coordinator) repeat across modules.
+            if not match or match.group(1) or "package" not in match.group(2).split():
+                continue
+            kind, name = match.group(3), match.group(4)
+            if kind not in ("struct", "class"):
+                continue
+            # A class with an inheritance clause may inherit its superclass's
+            # public initializers, so it is left alone.
+            if kind == "class" and ":" in line[match.end() :].split("{", 1)[0]:
+                continue
+            depth, opened, has_init = 0, False, False
+            for body_line in lines[index:]:
+                if PACKAGE_INIT_RE.match(body_line):
+                    has_init = True
+                depth += body_line.count("{") - body_line.count("}")
+                opened = opened or "{" in body_line
+                if opened and depth <= 0:
+                    break
+            if not has_init:
+                owners[name].add(module)
+    # An extension can give the type its package initializer instead.
+    for text in sources.values():
+        lines = text.split("\n")
+        for index, line in enumerate(lines):
+            extended = re.match(r"extension[ \t]+([A-Za-z_]\w*)\b", line)
+            if not extended:
+                continue
+            depth, opened = 0, False
+            for body_line in lines[index:]:
+                if PACKAGE_INIT_RE.match(body_line):
+                    owners.pop(extended.group(1), None)
+                depth += body_line.count("{") - body_line.count("}")
+                opened = opened or "{" in body_line
+                if opened and depth <= 0:
+                    break
+    owner = {name: next(iter(mods)) for name, mods in owners.items() if len(mods) == 1}
+    found = []
+    every = [(path, path.split("/")[0], text) for path, text in sources.items()]
+    every += [(path, None, text) for path, text in others.items()]
+    for path, module, text in sorted(every):
+        code = "\n".join(
+            re.sub(r'"(?:\\.|[^"\\])*"', '""', line).split("//", 1)[0]
+            for line in text.split("\n")
+        )
+        for name in sorted(set(re.findall(r"(?<![\w.])([A-Z]\w*)\(", code))):
+            declared_in = owner.get(name)
+            if declared_in and declared_in != module:
+                found.append((path, name, declared_in))
+    return found
+
+
+def package_types_built_elsewhere_have_package_inits(repo):
+    """A package type that another module or the tests build declares a
+    package initializer. Swift's memberwise and default initializers are
+    internal, and only the Mac's build would say so."""
+    problems = []
+    sample = unbuildable_package_types(
+        {
+            "Core/Hold.swift": "package struct Hold {\n    package var mask: UInt32 = 0\n}\n",
+            "Core/Made.swift": "package struct Made {\n    package init() {}\n}\n",
+            "Core/Later.swift": "package struct Later {}\nextension Later {\n    package init() {}\n}\n",
+            "Core/View.swift": "package final class Host: NSObject {}\n",
+            "Services/Use.swift": "let a = Hold()\nlet b = Made()\nlet c = Host()\nlet g = Later()\n"
+            + 'let d = "Hold()" // Hold()\n',
+            "Core/Own.swift": "let e = Hold()\n",
+        },
+        {"Tests/HoldTests.swift": "let f = Hold(mask: 1)\n"},
+    )
+    expected = [
+        ("Services/Use.swift", "Hold", "Core"),
+        ("Tests/HoldTests.swift", "Hold", "Core"),
+    ]
+    if sample != expected:
+        problems.append(
+            f"the scan finds a type built outside its module with no package initializer: {sample}"
+        )
+    prefix = APP_PREFIX
+    sources, others = {}, {}
+    for path in repo.app_sources():
+        relative = path[len(prefix) :]
+        if relative.split("/")[0] in MODULE_DIRS:
+            sources[relative] = repo.source(path)
+        else:
+            others[path] = repo.source(path)
+    others.update(repo.tests)
+    for path, name, module in unbuildable_package_types(sources, others):
+        shown = path if path.startswith(("Tests/", prefix)) else prefix + path
+        problems.append(f"{shown} builds {name}, which {module} gives no package init")
+    return problems
+
+
 def modules_import_what_they_name(repo):
     """A file in one of the app's modules imports every other module whose
     package types it names. Only the macOS build reports a missing import,
@@ -1993,6 +2107,7 @@ RULES = [
     preferences_are_reached_through_their_type,
     package_signatures_name_no_internal_type,
     modules_import_what_they_name,
+    package_types_built_elsewhere_have_package_inits,
     package_views_publish_their_body,
     later_layers_reach_only_package_statics,
 ]

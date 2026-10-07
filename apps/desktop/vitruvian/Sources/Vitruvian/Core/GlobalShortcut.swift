@@ -1194,6 +1194,8 @@ package struct ModifierShortcutRecording {
     private var candidate: GlobalShortcutModifiers = []
     private var waitingForRelease = false
 
+    package init() {}
+
     package mutating func keyPressed() {
         candidate = []
         waitingForRelease = true

@@ -785,6 +785,8 @@ package struct WindowDirectionalModifierButtons {
     package private(set) var mask: UInt32 = 0
     package var isPressed: Bool { mask != 0 }
 
+    package init() {}
+
     package static func current() -> Self {
         var state = Self()
         for index in 0..<32 {
@@ -822,6 +824,14 @@ package struct WindowDirectionalModifierPointerSnapshot: Equatable, Sendable {
     package let rightMouseDown: UInt32
     package let otherMouseDown: UInt32
     package let scrollWheel: UInt32
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(leftMouseDown: UInt32, rightMouseDown: UInt32, otherMouseDown: UInt32, scrollWheel: UInt32) {
+        self.leftMouseDown = leftMouseDown
+        self.rightMouseDown = rightMouseDown
+        self.otherMouseDown = otherMouseDown
+        self.scrollWheel = scrollWheel
+    }
 
     package static func current() -> Self {
         Self(
