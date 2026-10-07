@@ -78,8 +78,8 @@ ea338cfaeb8303904d142ceb9bee29a3cec8029a	939c457fb0a063be40abe4be89825145a8feea3
 ceb515925791d33fb6e054ff8ed166ddc154f95c	5122cda0a5b5b21637d077e38b15189f9782ae96	2026-10-05	ported	#2812	fix(settings): group sidebar rows like the features page (#2077)
 a52102f3f4c5ba303109717af3b94b66a1230b19	beae90f7d0ca5bd9bbe37738978981b19baa1564	2026-10-05	ported	#2812	feat(port-manager): add copy and browser row actions (#2076)
 1c9dfb3750f6980e589924cd7a26ac95808c7b4b	b3ec23a5f272da475655a463c8d1b4927e765335	2026-10-04	ported	#2814	feat(panel): force quit apps from the usage lists (#1889)
-3a5e107340ef2c2a270a5be7fb5581a43dab3f65	2655ff28b7e537abf9b0f72940a9e84d9c9f97b4	2026-10-04	pending	-	feat(color-picker): copy the selected color and close with enter (#2191)
-6d02e14437880a2fb3e33bfbef5fd293d28d4c39	d09e2762e7e8a7436aaee69c5acd56aa8a570909	2026-10-05	pending	-	fix(clipboard): cache folded search candidates across keystrokes (#1885) (#2156)
+3a5e107340ef2c2a270a5be7fb5581a43dab3f65	2655ff28b7e537abf9b0f72940a9e84d9c9f97b4	2026-10-04	ported	#2816	feat(color-picker): copy the selected color and close with enter (#2191)
+6d02e14437880a2fb3e33bfbef5fd293d28d4c39	d09e2762e7e8a7436aaee69c5acd56aa8a570909	2026-10-05	ported	#2816	fix(clipboard): cache folded search candidates across keystrokes (#1885) (#2156)
 5fb87aa29072f7daa63faf3007ce696b9d8317f2	3d4f38759f22e1fb1663997e4a702fd3db50c148	2026-10-04	pending	-	fix(window-layout): simplify the event mask for Swift 6.0
 db5d9caea24389bc603c917aa588fefc2e7225de	e3dba92f348e39f2e54fabca2f61d430e39bfe18	2026-10-04	pending	-	fix(spaces): honor reactivation after failed preference persistence
 a15a3af53ceba289a6d3b52801555e3d93e7a2a6	fcbd040e525b4b78b495381529aa0c33b0906868	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record clipboard and window improvements
@@ -88,24 +88,24 @@ f74e9c4628a71268edd948e784cd76909b250b89	c121598651cd06cd6dd982f834abc22936ea227
 0cf7529b5090953c977a420a4a5ad86fe7c2c908	f637aafcdc3b7d5b466ece75a535d0783d71d23d	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record lyrics and mixer improvements
 f574f7619baeedcfb9c36bf991a9c43d95ce3a98	aee13122e0ec4281a9ec563eb47edc3450bb168c	2026-10-05	ported	#2814	fix(i18n): name displays and the window switcher consistently (#1972)
 01b2538d56a25f10366d0f95ce9cd76660a8454c	69b46d52b10d75afb5c363dc81bd08767276a912	2026-10-05	ported	#2814	feat(homebrew): keep dependency updates under their parents (#2161)
-5d9ded8abb8794c48f994da7587978a3a31cf0d2	c34e727d652b90d63f365f07f57132e52cd9cdc7	2026-10-05	pending	-	feat(notch): add clear all to the island's notifications (#2361)
+5d9ded8abb8794c48f994da7587978a3a31cf0d2	c34e727d652b90d63f365f07f57132e52cd9cdc7	2026-10-05	ported	#2816	feat(notch): add clear all to the island's notifications (#2361)
 39f981277c31a96486bab4d81d21810009c7798a	1a6deb7c5a258cecd2cb9bc86fc5f98cc658a0df	2026-10-04	ported	#2814	fix(audio): mute the output when volume keys reach zero (#2552)
 30a2b6e57d20f20d2039af6d40be30835ca6ca7c	8ffab1fe5c62c194445edcce30942f96ea3fc072	2026-10-05	ported	#2814	fix(app-updates): stop a case-folded version tie ranking above itself (#2562)
 029ea5fe9afd0c66b26d949339c6278d8bc0accc	29fe9e9561ed58e47cd68d1433a145f0db7ec806	2026-10-05	pending	-	feat(focus): allow hover delays up to three seconds (#2571)
-28df7ee351ee8add30f0876fce7542119cbf91ac	0272f737b35d3ddc2c2a55dda103aae3f4e276b0	2026-10-05	pending	-	feat(notch): allow hiding the timer countdown (#2572)
-ea25aab1e846258e0f60c2aaae4bf7ad8fcd51a8	7ff081c0cff53d1fe2f74c6f9bb0b97c449f1d50	2026-10-04	pending	-	fix(shelf): keep an edge peek open when a promised file is dropped (#2573)
+28df7ee351ee8add30f0876fce7542119cbf91ac	0272f737b35d3ddc2c2a55dda103aae3f4e276b0	2026-10-05	ported	#2816	feat(notch): allow hiding the timer countdown (#2572)
+ea25aab1e846258e0f60c2aaae4bf7ad8fcd51a8	7ff081c0cff53d1fe2f74c6f9bb0b97c449f1d50	2026-10-04	ported	#2816	fix(shelf): keep an edge peek open when a promised file is dropped (#2573)
 4134172e198912ddec59b3aa9121a9f35423eef8	cc6b253857ffab57ce836195bf0af6739a6f76ad	2026-10-05	ported	#2814	fix(clipboard): keep a multi-line copy of links out of the single-URL path (#2434)
 56a55a77fca785e5d09291998c6ef1df6325542c	b2442fa108bf9740475da037e2b68af8612f5e29	2026-10-05	ported	#2814	fix(url-cleaner): delete tracking parameters without respelling the link (#2440)
 a9877251fb45eb9338997c5df1043a8bcd372ec4	c16388a4c1194a926a8cb74125ca6d867621dab9	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record island, clipboard and utility improvements
 c96c918ee0963f3ec70b23f96ab13053fe484174	d9a1d8d786114ee5c60e1f5cb240feef7929ac7c	2026-10-05	ported	#2814	fix(monitor): return nil for a battery time no clock can hold (#2627)
-0149a407b4b1147af555a4adb28c32ac245d2a67	96b33d5030757333909425e74def74756246a465	2026-10-05	pending	-	feat(notch): remember the timer's last duration (#2610)
+0149a407b4b1147af555a4adb28c32ac245d2a67	96b33d5030757333909425e74def74756246a465	2026-10-05	ported	#2816	feat(notch): remember the timer's last duration (#2610)
 b299c5899b8de62d997caa9b4626bd8eb39ff247	1b3c5a2aaf1b40ab07276fecba319f418e6daeee	2026-10-04	ported	#2814	feat(notch): show a hovered trend bar's tokens beside its cost (#2624)
-739368bebb2feaf53653e1ba289b11f0195ffb8e	eb36cec852e9a1d38e08ecf4a4930ac1119b4ee3	2026-10-05	pending	-	fix(radial-menu): say when the profile being edited has nothing that opens it (#2633)
-e2acd9d8d36cb87055d799aef3f7e61854bfdd35	17bab7bc37b197ba12718a3deb9d99758d89bdc2	2026-10-05	pending	-	feat(clipboard): move a pasted entry to the top (#2613)
-40a94b9018ccfa3d0593fe3f6fe6ae08b4a74036	48ea664d54fae74a921cf8cf2e099b581f607c63	2026-10-05	pending	-	fix(menu-bar): show Keep Awake when metrics hide the icon (#2611)
-1fb32928433a0e6bc8ae478364aaec8953ba95ce	6fc2cbe4aca009f0426eeb647863ba32eb14f611	2026-10-05	pending	-	fix(settings): clarify login item approval and refresh its status (#2605)
+739368bebb2feaf53653e1ba289b11f0195ffb8e	eb36cec852e9a1d38e08ecf4a4930ac1119b4ee3	2026-10-05	ported	#2816	fix(radial-menu): say when the profile being edited has nothing that opens it (#2633)
+e2acd9d8d36cb87055d799aef3f7e61854bfdd35	17bab7bc37b197ba12718a3deb9d99758d89bdc2	2026-10-05	ported	#2816	feat(clipboard): move a pasted entry to the top (#2613)
+40a94b9018ccfa3d0593fe3f6fe6ae08b4a74036	48ea664d54fae74a921cf8cf2e099b581f607c63	2026-10-05	ported	#2816	fix(menu-bar): show Keep Awake when metrics hide the icon (#2611)
+1fb32928433a0e6bc8ae478364aaec8953ba95ce	6fc2cbe4aca009f0426eeb647863ba32eb14f611	2026-10-05	ported	#2816	fix(settings): clarify login item approval and refresh its status (#2605)
 d9d34214723f175ae8bb0c31207d0a0819b586b9	4c3a57a64887a49d0f3da95583f2aa58d5cc0a80	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record clipboard, timer, menu bar and Settings changes
-b34a495e7b2dd58964ff215af88755ef0d665212	b02a5447f02587fe7e50eed3bdd3ad983b926130	2026-10-05	pending	-	fix(notch): follow each player's own play and pause state (#2601)
+b34a495e7b2dd58964ff215af88755ef0d665212	b02a5447f02587fe7e50eed3bdd3ad983b926130	2026-10-05	ported	#2816	fix(notch): follow each player's own play and pause state (#2601)
 519a83a402eefd0b08e9d2a492662a529a69eb48	6263e7c02639965bf442de50a51316cd7a7d42b4	2026-10-05	skipped	touches only upstream-only paths	docs(changelog): record the island's play and pause state fix
 2e699657e5c8225a020bbca7fa5f856f909f12fa	1c95a2ad3c7b05def748dd84ba0ba6dc95d4b6d2	2026-10-05	pending	-	fix(menu-bar): keep the icon updating when the panel closes while it moves (#2667)
 8d8f69421a2687ce898a4e424e29bd9214da6336	202975306a18564f69580c41b1f0f668671069c9	2026-10-05	pending	-	fix(dock-preview): keep previews in place when the Dock hides (#2669)
