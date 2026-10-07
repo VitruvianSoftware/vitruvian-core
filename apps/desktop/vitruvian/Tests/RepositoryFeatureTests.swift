@@ -564,6 +564,66 @@ enum RepositoryFeatureTests {
             "public.utf8-plain-text", "org.nspasteboard.TransientType",
         ]), "a concealed or transient copy is never rewritten")
 
+        // Automatic cleaning replaces the whole copy, so it only does so when
+        // the copy's HTML adds nothing to the link but formatting. A title
+        // over the same link, an href the browser resolved and a head or text
+        // that is never shown all go with the rewrite. Shown text beyond the
+        // link, another address, a picture, or far more markup than a link
+        // copy needs, stays.
+        let pollLink = "https://x.com/a/status/1?s=20&t=x"
+        let escapedPollLink = pollLink.replacingOccurrences(of: "&", with: "&amp;")
+        let unicodeLink = "https://example.com/wiki/北京?utm_source=x"
+        let titledCopy = "<meta charset='utf-8'><a href=\"\(escapedPollLink)\">Example page title</a>"
+        let encodedCopy = "<meta charset='utf-8'><a href=\"https://example.com/wiki/%E5%8C%97%E4%BA%AC?utm_source=x\">"
+            + "\(unicodeLink)</a>"
+        let documentCopy = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\">\n<html><head>"
+            + "<meta charset=\"utf-8\" /><title>Untitled</title><style type=\"text/css\">\n"
+            + "p, li { white-space: pre-wrap; }\n</style></head><body style=\" font-family:sans-serif;\">\n"
+            + "<!--StartFragment-->\(escapedPollLink)<!--EndFragment--></body></html>"
+        let linkedDocumentCopy = "<html><head><meta http-equiv=Content-Type content=\"text/html; charset=utf-8\">"
+            + "<link rel=File-List href=\"file:///tmp/clip_filelist.xml\"><style>p { margin: 0; }</style></head>"
+            + "<body><p><a href=\"\(escapedPollLink)\">\(escapedPollLink)</a></p></body></html>"
+        let oversizedCopy = "<meta charset='utf-8'><a href=\"\(escapedPollLink)\">\(escapedPollLink)</a>"
+            + String(repeating: " ", count: 64 * 1024)
+        let markupCases: [(text: String, html: String, rewrites: Bool, copy: String)] = [
+            (pollLink, "<meta charset='utf-8'><a href=\"\(escapedPollLink)\">\(pollLink)</a>", true,
+             "a Chromium app's link copy (#1643)"),
+            (pollLink, "<meta charset='utf-8'><img src=\"\(pollLink)\">", false,
+             "a picture's markup with its address as the text"),
+            (pollLink, "<a href=\"\(pollLink)\">A post</a>", true, "a link under a title"),
+            (pollLink, "<a href=\"https://example.com/\">\(pollLink)</a>", false, "a link pointing somewhere else"),
+            (pollLink, titledCopy, true, "an address bar copy that writes the link under the page title"),
+            (unicodeLink, encodedCopy, true, "a selected non-ASCII link whose href the browser wrote percent-encoded"),
+            ("https://example.com?utm_source=x",
+             "<a href=\"https://example.com/?utm_source=x\">https://example.com?utm_source=x</a>", true,
+             "a link to a site's root whose href the browser wrote with a slash"),
+            (pollLink, documentCopy, true, "a rich-text document copy whose title and stylesheet are not shown"),
+            (pollLink, "<meta charset='utf-8'><style>p { margin: 0; }</style><p>\(escapedPollLink)</p>", true,
+             "a fragment copy that carries its stylesheet"),
+            (pollLink, linkedDocumentCopy, true, "a document copy whose head links the document's own files"),
+            (pollLink, "<meta charset='utf-8'><p>Read this: \(escapedPollLink)</p>", false,
+             "formatted text that shows more than the link"),
+            (pollLink, oversizedCopy, false, "a link copy with far more markup than one link needs"),
+        ]
+        for markupCase in markupCases {
+            suite.expect(URLCleaning.markupAddsOnlyFormatting(markupCase.html, to: markupCase.text) == markupCase.rewrites,
+                   "automatic cleaning \(markupCase.rewrites ? "rewrites" : "leaves alone") \(markupCase.copy)")
+        }
+        suite.expect(URLCleaning.clean(pollLink)?.url == "https://x.com/a/status/1"
+                && URLCleaning.clean(unicodeLink)?.url == "https://example.com/wiki/北京"
+                && URLCleaning.clean("https://example.com?utm_source=x")?.url == "https://example.com",
+               "the links those copies carry clean to the address the rewrite writes")
+
+        // The poll holds the queue every pasteboard feature shares, so markup
+        // that never closes is read once rather than once per '<'.
+        for (html, shape) in [(String(repeating: "<", count: 20_000), "unclosed tags"),
+                              (String(repeating: "<style>", count: 6_000), "unclosed elements")] {
+            let started = Date()
+            _ = URLCleaning.markupAddsOnlyFormatting(html, to: pollLink)
+            let elapsed = Date().timeIntervalSince(started)
+            suite.expect(elapsed < 0.25, "automatic cleaning reads a copy of \(shape) in one pass: \(elapsed) s")
+        }
+
         // MARK: Homebrew command building and parsing
 
         // An operation waits for brew on a semaphore bounded by silence, never

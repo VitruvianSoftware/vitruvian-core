@@ -162,11 +162,25 @@ package final class URLCleanerService: ObservableObject {
         // because writing to the pasteboard discards whatever else the copy
         // carried, and a link the cleaner did not need to touch is the one
         // most likely to come back spelled differently.
-        guard URLCleaning.canRewritePasteboard(types: (pasteboard.types ?? []).map(\.rawValue)),
+        let types = (pasteboard.types ?? []).map(\.rawValue)
+        guard URLCleaning.canRewritePasteboard(types: types),
+              // The rewrite writes one item, so a copy of several is left alone.
+              pasteboard.pasteboardItems?.count == 1,
               let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: urlType),
               let cleaned = URLCleaning.clean(text, rules: rules),
               !cleaned.removed.isEmpty,
               !token.isCancelled else {
+            return PollResult(changeCount: changeCount, cleaned: nil)
+        }
+        // The rewrite drops the HTML, which is only right when the HTML adds
+        // nothing to the link but formatting.
+        if types.contains("public.html"),
+           !URLCleaning.markupAddsOnlyFormatting(pasteboard.string(forType: .html) ?? "", to: text) {
+            return PollResult(changeCount: changeCount, cleaned: nil)
+        }
+        // Another app may have copied since the read. Nothing compares and
+        // swaps across processes, so this narrows the window, not closes it.
+        guard pasteboard.changeCount == changeCount else {
             return PollResult(changeCount: changeCount, cleaned: nil)
         }
 
