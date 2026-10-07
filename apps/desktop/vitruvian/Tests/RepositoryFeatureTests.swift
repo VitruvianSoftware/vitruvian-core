@@ -365,6 +365,45 @@ enum RepositoryFeatureTests {
             .flatMap(\.entries).map(\.name).filter { $0 != $0.lowercased() }
         suite.expect(upperCaseBuiltIns.isEmpty,
                "built-in names are lowercase, since matching and switched off names are: \(upperCaseBuiltIns)")
+        // The rules list's site switch and name removal, on the stored lists
+        // Settings writes back.
+        var siteSwitch = URLCleaning.StoredRules(siteNames: "weibo.com|sudaref", disabledNames: "youtube.com|si")
+        func switchedRules() -> URLCleaning.Rules { siteSwitch.rules }
+        func switchedGroup(_ site: String) -> URLCleaning.RuleGroup? {
+            URLCleaning.ruleGroups(rules: switchedRules()).first { $0.site == site }
+        }
+        let youtubeLink = "https://www.youtube.com/watch?v=a&si=x&feature=y"
+        for site in ["weibo.com", "youtube.com"] {
+            switchedGroup(site).map { siteSwitch.setSite($0, enabled: false) }
+        }
+        suite.expect(switchedGroup("weibo.com")?.entries.map(\.name) == ["sudaref"]
+                && switchedGroup("weibo.com")?.enabledCount == 0
+                && URLCleaning.clean("https://weibo.com/a?sudaref=x", rules: switchedRules())?.removed == [],
+               "switching a site off keeps the name the user added to it, switched off")
+        suite.expect(switchedGroup("youtube.com")?.enabledCount == 0
+                && URLCleaning.clean(youtubeLink, rules: switchedRules())?.removed == [],
+               "switching a built-in site off switches off every built-in name: \(siteSwitch.disabledNames)")
+        for site in ["weibo.com", "youtube.com"] {
+            switchedGroup(site).map { siteSwitch.setSite($0, enabled: true) }
+        }
+        let youtubeAllOn = switchedGroup("youtube.com")
+            .map { !$0.entries.isEmpty && $0.enabledCount == $0.entries.count } ?? false
+        suite.expect(siteSwitch.disabledNames.isEmpty && youtubeAllOn
+                && URLCleaning.clean("https://weibo.com/a?sudaref=x", rules: switchedRules())?.removed == ["sudaref"]
+                && URLCleaning.clean(youtubeLink, rules: switchedRules())?.removed == ["si", "feature"],
+               "switching a site back on turns on every name it lists, one off before included: \(siteSwitch.disabledNames)")
+        // A name deleted while its row is off goes from the switched off
+        // names too, or adding it again later would bring it back off.
+        siteSwitch.globalNames = "keep"
+        for site in ["weibo.com", URLCleaning.allSites] {
+            switchedGroup(site).map { siteSwitch.setSite($0, enabled: false) }
+        }
+        siteSwitch.remove("sudaref", from: "weibo.com")
+        siteSwitch.remove("keep", from: URLCleaning.allSites)
+        let leftOff = URLCleaning.tokens(from: siteSwitch.disabledNames)
+        suite.expect(siteSwitch.siteNames.isEmpty && siteSwitch.globalNames.isEmpty
+                && leftOff["weibo.com"] == nil && leftOff[URLCleaning.allSites]?.contains("keep") != true,
+               "deleting a name the user added drops it from the switched off names too: \(siteSwitch.disabledNames)")
         expectEqual(URLCleaning.siteKey(from: " https://WWW.Weibo.com/path?x=1 ") ?? "",
                     "weibo.com", "the site field takes a pasted link and keeps the host")
         suite.expect(URLCleaning.siteKey(from: "not a host") == nil,
@@ -524,6 +563,66 @@ enum RepositoryFeatureTests {
         ]) && !URLCleaning.canRewritePasteboard(types: [
             "public.utf8-plain-text", "org.nspasteboard.TransientType",
         ]), "a concealed or transient copy is never rewritten")
+
+        // Automatic cleaning replaces the whole copy, so it only does so when
+        // the copy's HTML adds nothing to the link but formatting. A title
+        // over the same link, an href the browser resolved and a head or text
+        // that is never shown all go with the rewrite. Shown text beyond the
+        // link, another address, a picture, or far more markup than a link
+        // copy needs, stays.
+        let pollLink = "https://x.com/a/status/1?s=20&t=x"
+        let escapedPollLink = pollLink.replacingOccurrences(of: "&", with: "&amp;")
+        let unicodeLink = "https://example.com/wiki/北京?utm_source=x"
+        let titledCopy = "<meta charset='utf-8'><a href=\"\(escapedPollLink)\">Example page title</a>"
+        let encodedCopy = "<meta charset='utf-8'><a href=\"https://example.com/wiki/%E5%8C%97%E4%BA%AC?utm_source=x\">"
+            + "\(unicodeLink)</a>"
+        let documentCopy = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\">\n<html><head>"
+            + "<meta charset=\"utf-8\" /><title>Untitled</title><style type=\"text/css\">\n"
+            + "p, li { white-space: pre-wrap; }\n</style></head><body style=\" font-family:sans-serif;\">\n"
+            + "<!--StartFragment-->\(escapedPollLink)<!--EndFragment--></body></html>"
+        let linkedDocumentCopy = "<html><head><meta http-equiv=Content-Type content=\"text/html; charset=utf-8\">"
+            + "<link rel=File-List href=\"file:///tmp/clip_filelist.xml\"><style>p { margin: 0; }</style></head>"
+            + "<body><p><a href=\"\(escapedPollLink)\">\(escapedPollLink)</a></p></body></html>"
+        let oversizedCopy = "<meta charset='utf-8'><a href=\"\(escapedPollLink)\">\(escapedPollLink)</a>"
+            + String(repeating: " ", count: 64 * 1024)
+        let markupCases: [(text: String, html: String, rewrites: Bool, copy: String)] = [
+            (pollLink, "<meta charset='utf-8'><a href=\"\(escapedPollLink)\">\(pollLink)</a>", true,
+             "a Chromium app's link copy (#1643)"),
+            (pollLink, "<meta charset='utf-8'><img src=\"\(pollLink)\">", false,
+             "a picture's markup with its address as the text"),
+            (pollLink, "<a href=\"\(pollLink)\">A post</a>", true, "a link under a title"),
+            (pollLink, "<a href=\"https://example.com/\">\(pollLink)</a>", false, "a link pointing somewhere else"),
+            (pollLink, titledCopy, true, "an address bar copy that writes the link under the page title"),
+            (unicodeLink, encodedCopy, true, "a selected non-ASCII link whose href the browser wrote percent-encoded"),
+            ("https://example.com?utm_source=x",
+             "<a href=\"https://example.com/?utm_source=x\">https://example.com?utm_source=x</a>", true,
+             "a link to a site's root whose href the browser wrote with a slash"),
+            (pollLink, documentCopy, true, "a rich-text document copy whose title and stylesheet are not shown"),
+            (pollLink, "<meta charset='utf-8'><style>p { margin: 0; }</style><p>\(escapedPollLink)</p>", true,
+             "a fragment copy that carries its stylesheet"),
+            (pollLink, linkedDocumentCopy, true, "a document copy whose head links the document's own files"),
+            (pollLink, "<meta charset='utf-8'><p>Read this: \(escapedPollLink)</p>", false,
+             "formatted text that shows more than the link"),
+            (pollLink, oversizedCopy, false, "a link copy with far more markup than one link needs"),
+        ]
+        for markupCase in markupCases {
+            suite.expect(URLCleaning.markupAddsOnlyFormatting(markupCase.html, to: markupCase.text) == markupCase.rewrites,
+                   "automatic cleaning \(markupCase.rewrites ? "rewrites" : "leaves alone") \(markupCase.copy)")
+        }
+        suite.expect(URLCleaning.clean(pollLink)?.url == "https://x.com/a/status/1"
+                && URLCleaning.clean(unicodeLink)?.url == "https://example.com/wiki/北京"
+                && URLCleaning.clean("https://example.com?utm_source=x")?.url == "https://example.com",
+               "the links those copies carry clean to the address the rewrite writes")
+
+        // The poll holds the queue every pasteboard feature shares, so markup
+        // that never closes is read once rather than once per '<'.
+        for (html, shape) in [(String(repeating: "<", count: 20_000), "unclosed tags"),
+                              (String(repeating: "<style>", count: 6_000), "unclosed elements")] {
+            let started = Date()
+            _ = URLCleaning.markupAddsOnlyFormatting(html, to: pollLink)
+            let elapsed = Date().timeIntervalSince(started)
+            suite.expect(elapsed < 0.25, "automatic cleaning reads a copy of \(shape) in one pass: \(elapsed) s")
+        }
 
         // MARK: Homebrew command building and parsing
 

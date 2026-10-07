@@ -177,6 +177,7 @@ package final class ScreenshotShareService: ObservableObject {
     package func copy(_ url: URL) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
+        pasteboard.declareVitruvianSource()
         return pasteboard.setString(url.absoluteString, forType: .string)
     }
 

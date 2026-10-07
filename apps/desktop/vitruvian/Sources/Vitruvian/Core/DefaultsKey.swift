@@ -544,8 +544,6 @@ package enum DefaultsKey {
     package static let clipboardHistoryIncludeImagesFiles = "clipboardHistoryIncludeImagesFiles" // capture copied images and files too
     package static let clipboardHistoryIgnoredApps = "clipboardHistoryIgnoredApps" // apps whose copies are never saved
     package static let clipboardHistoryQuickPreview = "clipboardHistoryQuickPreview"
-    package static let clipboardHistoryWindowWidth = "clipboardHistoryWindowWidth"
-    package static let clipboardHistoryWindowHeight = "clipboardHistoryWindowHeight"
     package static let clipboardHistoryMenuBarPreview = "clipboardHistoryMenuBarPreview" // show latest copy next to the menu bar icon
     package static let clipboardHistoryMenuBarPreviewLength = "clipboardHistoryMenuBarPreviewLength" // characters shown before truncating
 
@@ -668,6 +666,8 @@ package enum DefaultsKey {
     package static let screenshotLastStroke = "screenshotLastStroke"
     package static let screenshotLastTextSize = "screenshotLastTextSize"
     package static let screenshotLastBlurLevel = "screenshotLastBlurLevel"
+    package static let screenshotLastBlurStyle = "screenshotLastBlurStyle"
+    package static let screenshotLastBlurTextOnly = "screenshotLastBlurTextOnly"
     package static let screenshotLastArrowStyle = "screenshotLastArrowStyle"
     package static let screenshotLastSticker = "screenshotLastSticker"
     package static let screenshotAnnotationShadows = "screenshotAnnotationShadows"
@@ -846,6 +846,7 @@ package enum DefaultsKey {
     package static let notchCalendarEnabled = "notchCalendarEnabled"
     package static let notchCalendarCountdown = "notchCalendarCountdown"
     package static let notchCalendarTimeLeft = "notchCalendarTimeLeft" // the event under way counts down to its end
+    package static let notchCalendarWeekNumbers = "notchCalendarWeekNumbers" // the month grid numbers its weeks
     package static let notchCalendarExcluded = "notchCalendarExcluded" // [EKCalendar.calendarIdentifier] left out of the island
     // [countdown key: event end] chosen from an event's menu; unregistered, so it stays out of backups
     package static let notchCalendarChosenCountdowns = "notchCalendarChosenCountdowns"

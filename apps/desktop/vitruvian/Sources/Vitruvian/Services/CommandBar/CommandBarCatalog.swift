@@ -1421,6 +1421,7 @@ package enum CommandBarCatalog {
         copyAnswer(value, copy: { value, then in
             GeneralPasteboardAccess.shared.async({
                 NSPasteboard.general.clearContents()
+                NSPasteboard.general.declareVitruvianSource()
                 return NSPasteboard.general.setString(value, forType: .string)
             }, then: then)
         }, show: { QuickToolHUD.show(icon: $0, message: $1) })

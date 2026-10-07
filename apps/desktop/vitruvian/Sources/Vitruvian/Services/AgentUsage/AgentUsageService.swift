@@ -3,6 +3,7 @@
 
 import Combine
 import Foundation
+import Network
 import VitruvianCore
 import VitruvianDesign
 
@@ -78,6 +79,10 @@ package final class AgentUsageService: ObservableObject {
     nonisolated(unsafe) private var watcher: AgentLogWatcher?
     nonisolated(unsafe) private var watchedRoots: [AgentLogRoot] = []
     nonisolated(unsafe) private var poller: DispatchSourceTimer?
+    nonisolated(unsafe) private var network: NWPathMonitor?
+    /// When the Mac lost its network, and the uptime then, which leaves out
+    /// sleep; nil while it has one.
+    nonisolated(unsafe) private var offlineSince: (date: Date, uptime: TimeInterval)?
     nonisolated(unsafe) private var publishScheduled = false
     /// The last snapshot handed over, to tell when time alone changes it.
     nonisolated(unsafe) private var published = AgentUsageSnapshot()
@@ -174,6 +179,9 @@ package final class AgentUsageService: ObservableObject {
             watcher?.stop()
             watcher = nil
             watchedRoots = []
+            network?.cancel()
+            network = nil
+            offlineSince = nil
             store = AgentUsageStore()
             cursors.removeAll()
             published = AgentUsageSnapshot()
@@ -269,6 +277,7 @@ package final class AgentUsageService: ObservableObject {
             }
             watch(roots)
             startPolling()
+            watchNetwork()
             publish()
             saveProgress()
         }
@@ -336,7 +345,15 @@ package final class AgentUsageService: ObservableObject {
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             let read = self.pollOpenLogs(within: Self.pollWindow)
-            let stopped = self.store.closeSettledTurns(now: Date())
+            var stopped = self.store.closeSettledTurns(now: Date())
+            // After the logs too, which can hold a reply or a command's
+            // result written meanwhile.
+            if let offline = self.offlineSince,
+               self.store.closeOfflineTurns(since: offline.date,
+                                            lasting: ProcessInfo.processInfo.systemUptime - offline.uptime,
+                                            keeping: self.runningCommands) {
+                stopped = true
+            }
             // After the logs, so a turn its last lines ended ends as usual.
             guard self.closeEndedTurns(self.watchedRoots) || read || stopped else { return }
             self.checkLimits()
@@ -375,6 +392,32 @@ package final class AgentUsageService: ObservableObject {
             if read(path, provider: cursor.provider) { changed = true }
         }
         return changed
+    }
+
+    /// Claude Code retries for minutes without a word while the Mac is
+    /// offline, then gives up; until it does, its turn would count on.
+    /// Only notes when the network went: the poller, which reads the logs
+    /// first and waits while the island is away, ends the turns once the
+    /// Mac stays offline. Runs on `queue`.
+    nonisolated private func watchNetwork() {
+        guard network == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self, self.readerSession >= 0 else { return }
+            if path.status == .satisfied {
+                self.offlineSince = nil
+            } else if self.offlineSince == nil {
+                self.offlineSince = (Date(), ProcessInfo.processInfo.systemUptime)
+            }
+        }
+        monitor.start(queue: queue)
+        network = monitor
+    }
+
+    /// The logs whose turn waits on a shell command of its own; a subagent's
+    /// commands are not counted. Runs on `queue`.
+    nonisolated private var runningCommands: Set<String> {
+        Set(cursors.filter { !$0.value.state.runningCommands.isEmpty }.keys)
     }
 
     /// Ends the Claude turns whose process is gone. True when one was showing.

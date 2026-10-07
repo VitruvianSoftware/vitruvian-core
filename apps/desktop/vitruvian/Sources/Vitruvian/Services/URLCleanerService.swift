@@ -19,26 +19,28 @@ package final class URLCleanerService: ObservableObject {
     @Published package private(set) var lastRemoved: [String] = []
 
     /// `cancelled` sits under `lock`, so it is `@unchecked Sendable`.
-    private final class PollToken: @unchecked Sendable {
+    package final class PollToken: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
 
-        func cancel() {
+        package init() {}
+
+        package func cancel() {
             lock.lock()
             cancelled = true
             lock.unlock()
         }
 
-        var isCancelled: Bool {
+        package var isCancelled: Bool {
             lock.lock()
             defer { lock.unlock() }
             return cancelled
         }
     }
 
-    private struct PollResult {
-        let changeCount: Int
-        let cleaned: URLCleaning.Result?
+    package struct PollResult {
+        package let changeCount: Int
+        package let cleaned: URLCleaning.Result?
     }
 
     private var timer: Timer?
@@ -68,7 +70,10 @@ package final class URLCleanerService: ObservableObject {
         cancelPoll()
         lastCleaned = urlString
         GeneralPasteboardAccess.shared.async({
-            Self.writeToPasteboard(urlString)
+            let changeCount = Self.writeToPasteboard(urlString)
+            // Unlike a rewrite of what another app copied, this link is ours.
+            NSPasteboard.general.declareVitruvianSource()
+            return changeCount
         }, then: { [weak self] changeCount in
             guard let self else { return }
             self.lastChangeCount = max(self.lastChangeCount, changeCount)
@@ -144,8 +149,11 @@ package final class URLCleanerService: ObservableObject {
 
     /// Runs only on GeneralPasteboardAccess. Reading the change count, types
     /// and payload plus any rewrite is one serialized transaction.
-    nonisolated private static func pollPasteboard(sinceChangeCount: Int, token: PollToken) -> PollResult? {
-        let pasteboard = NSPasteboard.general
+    /// `pasteboard` and `rules` are the general pasteboard and the stored
+    /// rules, except in the tests, which pass a private pasteboard.
+    nonisolated package static func pollPasteboard(sinceChangeCount: Int, token: PollToken,
+                                                   pasteboard: NSPasteboard = .general,
+                                                   rules: URLCleaning.Rules? = nil) -> PollResult? {
         let changeCount = pasteboard.changeCount
         guard !token.isCancelled else { return nil }
         guard changeCount != sinceChangeCount else {
@@ -162,15 +170,34 @@ package final class URLCleanerService: ObservableObject {
         // because writing to the pasteboard discards whatever else the copy
         // carried, and a link the cleaner did not need to touch is the one
         // most likely to come back spelled differently.
-        guard URLCleaning.canRewritePasteboard(types: (pasteboard.types ?? []).map(\.rawValue)),
+        let types = (pasteboard.types ?? []).map(\.rawValue)
+        guard URLCleaning.canRewritePasteboard(types: types),
+              // The rewrite writes one item, so a copy of several is left alone.
+              pasteboard.pasteboardItems?.count == 1,
               let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: urlType),
-              let cleaned = URLCleaning.clean(text, rules: rules),
+              let cleaned = URLCleaning.clean(text, rules: rules ?? Self.rules),
               !cleaned.removed.isEmpty,
               !token.isCancelled else {
             return PollResult(changeCount: changeCount, cleaned: nil)
         }
+        // The rewrite drops the HTML, which is only right when the HTML adds
+        // nothing to the link but formatting.
+        if types.contains("public.html"),
+           !URLCleaning.markupAddsOnlyFormatting(pasteboard.string(forType: .html) ?? "", to: text) {
+            return PollResult(changeCount: changeCount, cleaned: nil)
+        }
+        // Another app may have copied since the read. Nothing compares and
+        // swaps across processes, so this narrows the window, not closes it.
+        guard pasteboard.changeCount == changeCount else {
+            return PollResult(changeCount: changeCount, cleaned: nil)
+        }
 
-        let rewrittenChangeCount = writeToPasteboard(cleaned.url)
+        // The app the copy named as its source stays named, and a copy from
+        // another device stays marked as one, so the clipboard history does
+        // not credit the cleaned link to the app in front.
+        let rewrittenChangeCount = writeToPasteboard(cleaned.url, source: pasteboard.string(forType: .source),
+                                                     remote: types.contains("com.apple.is-remote-clipboard"),
+                                                     to: pasteboard)
         return PollResult(changeCount: rewrittenChangeCount, cleaned: cleaned)
     }
 
@@ -183,11 +210,13 @@ package final class URLCleanerService: ObservableObject {
     }
 
     @discardableResult
-    nonisolated private static func writeToPasteboard(_ urlString: String) -> Int {
-        let pasteboard = NSPasteboard.general
+    nonisolated private static func writeToPasteboard(_ urlString: String, source: String? = nil, remote: Bool = false,
+                                                      to pasteboard: NSPasteboard = .general) -> Int {
         pasteboard.clearContents()
         pasteboard.setString(urlString, forType: .string)
         pasteboard.setString(urlString, forType: urlType)
+        if let source { pasteboard.setString(source, forType: .source) }
+        if remote { pasteboard.setData(Data(), forType: .remoteClipboard) }
         return pasteboard.changeCount
     }
 
