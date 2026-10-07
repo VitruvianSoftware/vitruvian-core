@@ -532,6 +532,7 @@ package final class ScreenshotSelectionController {
             case .consume: break
             case .cancel: self.finish(.cancelled)
             case .captureDisplay: self.captureFullDisplayUnderMouse()
+            case .confirmColor: self.confirmColorUnderPointer()
             case .startMovingSelection: self.spaceIsDown = true
             case .stopMovingSelection: self.spaceIsDown = false
             case .repeatRegion: self.repeatLastRegion()
@@ -563,7 +564,8 @@ package final class ScreenshotSelectionController {
             dragging: panelUnderMouse()?.overlayView.isDragging == true,
             acceptsWindowClick: acceptsWindowClick,
             availableTools: screenCaptureOptions?.availableTools ?? [],
-            loupeAcceptsKeys: loupeAcceptsKeyboardActions)
+            loupeAcceptsKeys: loupeAcceptsKeyboardActions,
+            pickingColor: isPickingColor)
     }
 
     package func toggleScrollingCapture() {
@@ -634,6 +636,17 @@ package final class ScreenshotSelectionController {
     }
 
     // MARK: - Confirmations (called by the views)
+
+    /// Return in the color picker: the pixel under the pointer, as a click
+    /// there would pick it.
+    package func confirmColorUnderPointer() {
+        guard isPickingColor, acceptsCaptureInput, !panels.contains(where: { $0.overlayView.isDragging }),
+              let panel = panelUnderMouse() else { return }
+        let location = pointerLocation
+        let point = CGPoint(x: location.x - panel.screenFrame.minX,
+                            y: panel.screenFrame.maxY - location.y)
+        confirmColor(at: point, on: panel)
+    }
 
     /// The surfaces stop answering the pointer the instant a picture starts
     /// being taken. They are either about to leave the screen or already gone,
