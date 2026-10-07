@@ -91,7 +91,7 @@ enum SpacesOrderTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let name = "com.vitruvian.tests.spaces-order.\(UUID().uuidString)"
+        let name = "com.vitruviansoftware.vitruvian.tests.spaces-order.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let marker = DefaultsKey.spacesOrderRestore
@@ -763,19 +763,30 @@ enum SpacesOrderTests {
         defaults.set(true, forKey: DefaultsKey.spacesOrderEnabled)
         defaults.set(true, forKey: available)
         (hold, dock) = make(.absent)
+        // What the hold and the shared preferences show, for a failed check.
+        func state(_ dock: FakeDock, signalled: Int) -> String {
+            "signals \(signalled)/2, events \(dock.events), reads \(dock.reads), "
+                + "marker \(defaults.string(forKey: marker) ?? "nil"), "
+                + "journal \(defaults.string(forKey: restartPending) ?? "nil"), "
+                + "toggle \(defaults.bool(forKey: DefaultsKey.spacesOrderEnabled)), "
+                + "available \(defaults.bool(forKey: available))"
+        }
+        func signalled(_ dock: FakeDock) -> Int {
+            (0..<2).filter { _ in dock.signals.wait(timeout: .now() + 3) == .success }.count
+        }
         hold.syncWithPreferences()
-        suite.expect(dock.signals.wait(timeout: .now() + 3) == .success
-                     && dock.signals.wait(timeout: .now() + 3) == .success
+        let installedSignals = signalled(dock)
+        suite.expect(installedSignals == 2
                      && dock.events == ["write(false)", "restart"] && defaults.string(forKey: marker) == absent,
-                     "an installed feature with its toggle on keeps Spaces in place")
+                     "an installed feature with its toggle on keeps Spaces in place (\(state(dock, signalled: installedSignals)))")
         defaults.set(false, forKey: available)
         (hold, dock) = make(.off, marker: absent)
         hold.syncWithPreferences()
-        suite.expect(dock.signals.wait(timeout: .now() + 3) == .success
-                     && dock.signals.wait(timeout: .now() + 3) == .success
+        let uninstalledSignals = signalled(dock)
+        suite.expect(uninstalledSignals == 2
                      && waitForMarker(nil)
                      && dock.events == ["write(nil)", "restart"],
-                     "uninstalling the feature restores the setting even with its toggle still on")
+                     "uninstalling the feature restores the setting even with its toggle still on (\(state(dock, signalled: uninstalledSignals)))")
         defaults.removeObject(forKey: DefaultsKey.spacesOrderEnabled)
         defaults.removeObject(forKey: available)
 
