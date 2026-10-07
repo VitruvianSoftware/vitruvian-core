@@ -3760,7 +3760,8 @@ extension NotchService {
     package func commandBarDropSource() -> CGRect? {
         guard acceptsSystemFeedback, !hiddenUntilHover, !fullscreenCompact, !expanded, captureControls == nil,
               panel?.isVisible == true, let frame = windowHost?.visibleFrame, !frame.isEmpty,
-              geometry.screen.contains(pointer()) else { return nil }
+              // The top pixel row is the screen's too, where CGRect.contains says no.
+              NSMouseInRect(pointer(), geometry.screen, false) else { return nil }
         let gap = geometry.floatingGap ?? 0
         return frame.insetBy(dx: 0, dy: min(gap, frame.height / 2 - 1))
     }
@@ -3769,7 +3770,7 @@ extension NotchService {
     /// which then holds the keyboard. Nil when the island cannot open here.
     package func presentCommandBar() -> NSPanel? {
         guard NotchSupport.isEnabled(in: defaults), acceptsUserInteraction, !hiddenInFullscreen, captureControls == nil,
-              !heldDrag, geometry.screen.contains(pointer()), let panel else { return nil }
+              !heldDrag, NSMouseInRect(pointer(), geometry.screen, false), let panel else { return nil }
         // The keyboard first, before the island changes shape, so keys typed
         // right after the shortcut wait here for the bar's field.
         panel.acceptsKeyFocus = true

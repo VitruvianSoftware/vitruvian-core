@@ -337,5 +337,12 @@ enum NotchMusicVisibilityTests {
         let pageReads = bar.services.musicRunning
         _ = bar.island.presentCommandBar()
         suite.expect(pageReads && !bar.services.musicRunning, "the bar covering a page keeps that page's readers stopped")
+        // Right after hovering the island the pointer can rest on the
+        // screen's top pixel row, which CGRect.contains leaves out.
+        let topRow = island(playing: true)
+        let screen = topRow.island.geometry.screen
+        topRow.pointer = CGPoint(x: screen.midX, y: screen.maxY)
+        suite.expect(!screen.contains(topRow.pointer) && topRow.island.presentCommandBar() != nil,
+                     "the island presents the Command Bar with the pointer on the screen's top row")
     }
 }
