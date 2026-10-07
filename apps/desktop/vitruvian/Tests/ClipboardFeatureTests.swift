@@ -1210,6 +1210,7 @@ enum ClipboardPreviewContract {
         savedFileLimit(suite)
         saving(suite)
         searchFolding(suite)
+        reuseOrder(suite)
     }
 
     private static func preview(_ suite: TestSuite) {
@@ -1365,6 +1366,56 @@ enum ClipboardPreviewContract {
         let swept = History([image, first])
         suite.expect(swept.recorder.sweeps == [["kept.png"]],
                      "launch sweeps the stored images no entry keeps")
+    }
+
+    /// An entry pasted or copied from the history moves to the top of the
+    /// recent ones, as a fresh copy of the same content would.
+    private static func reuseOrder(_ suite: TestSuite) {
+        let a = ClipboardHistoryEntry(text: "A"), b = ClipboardHistoryEntry(text: "B")
+        let c = ClipboardHistoryEntry(text: "C"), d = ClipboardHistoryEntry(text: "D")
+        /// Reuses `entries` from a fresh history of `start`, and gives the
+        /// order the copy's completion saw.
+        func reuse(_ entries: [ClipboardHistoryEntry], from start: [ClipboardHistoryEntry],
+                   copied: Bool = true) -> (history: History, seen: [String]) {
+            let history = History(start)
+            var seen: [String] = []
+            let done: (Bool) -> Void = { _ in seen = history.service.entries.map(\.text) }
+            if entries.count == 1 {
+                history.service.copy(entries[0], completion: done)
+            } else {
+                history.service.copy(entries, completion: done)
+            }
+            history.recorder.finish(succeeded: copied)
+            return (history, seen)
+        }
+        let pasted = reuse([c], from: [a, b, c, d])
+        suite.expect(pasted.history.service.entries.map(\.text) == ["C", "A", "B", "D"],
+                     "an entry pasted from the history moves to the top, as copying it again elsewhere does")
+        suite.expect(pasted.seen == ["C", "A", "B", "D"],
+                     "the copy's completion already sees the new order, so an open list can scroll to the entry")
+        suite.expect(reuse([c], from: [a, b, c, d], copied: false).history.service.entries.map(\.text)
+                     == ["A", "B", "C", "D"], "a write that failed leaves the order alone")
+
+        let batch = History([a, b, c, d])
+        var updates = 0
+        let watch = batch.service.$entries.dropFirst().sink { _ in updates += 1 }
+        batch.service.copy([d, b]) { _ in }
+        batch.recorder.finish()
+        watch.cancel()
+        suite.expect(batch.service.entries.map(\.text) == ["D", "B", "A", "C"],
+                     "a pasted selection moves to the top in the order it was pasted")
+        suite.expect(updates == 1, "a pasted selection reorders the history in one update")
+
+        var p = ClipboardHistoryEntry(text: "P")
+        p.pinnedAt = Date()
+        suite.expect(reuse([b], from: [p, a, b]).history.service.entries.map(\.text) == ["P", "B", "A"],
+                     "a pasted recent entry tops the recent ones and stays below the pinned")
+        let q = ClipboardHistoryEntry(text: "Q", copiedAt: Date(timeIntervalSinceNow: -60), pinnedAt: Date())
+        let r = ClipboardHistoryEntry(text: "R", pinnedAt: Date())
+        let kept = reuse([q, b], from: [p, q, r, a, b]).history.service.entries
+        suite.expect(kept.map(\.text) == ["P", "Q", "R", "B", "A"]
+                     && kept[1].copiedAt > Date(timeIntervalSinceNow: -30),
+                     "a pasted pinned entry keeps its place and its shortcut, and only its time changes")
     }
 
     /// #1885: typing searches the history once per keystroke, so the folded

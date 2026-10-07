@@ -106,11 +106,10 @@ package final class ClipboardHistoryService: ObservableObject {
         }
     }
     /// The entry most recently put on the system pasteboard, whether from a
-    /// fresh external copy or from reusing an existing entry. `touch()`
-    /// deliberately leaves `entries`' own order alone when reusing one, so
-    /// this is what the optional "show latest copy" menu bar item follows
-    /// instead of `entries.first` (which is also wrong on its own whenever
-    /// anything is pinned, since pinned entries always sort first there).
+    /// fresh external copy or from reusing an existing entry. This is what
+    /// the optional "show latest copy" menu bar item follows instead of
+    /// `entries.first`, which is wrong whenever anything is pinned, since
+    /// pinned entries always sort first there.
     @Published package private(set) var latestPasteboardEntry: ClipboardHistoryEntry?
     package let capturedEntry = PassthroughSubject<ClipboardHistoryEntry, Never>()
     @Published package private(set) var isRunning = false
@@ -325,22 +324,39 @@ package final class ClipboardHistoryService: ObservableObject {
         return result.length > 0 ? result : nil
     }
 
+    /// A reused recent entry moves to the top of the recent ones, the way a
+    /// fresh copy of the same content does, and a selection keeps the order
+    /// it was pasted in. A pinned entry keeps its place: pinned entries hold
+    /// an order set by hand and the first ⌘1 to ⌘9 shortcuts.
     private func touch(_ entryIDs: [UUID]) {
-        // One assignment for the whole batch: each element write fires the
-        // entries observer, which a large selection copy must not pay per item.
-        var updated = entries
-        var didUpdate = false
+        var pasteOrder: [UUID: Int] = [:]
+        for id in entryIDs where pasteOrder[id] == nil { pasteOrder[id] = pasteOrder.count }
         let now = Date()
-        for entryID in entryIDs {
-            if let index = updated.firstIndex(where: { $0.id == entryID }) {
-                updated[index].copiedAt = now
+        var didUpdate = false
+        var pinned: [ClipboardHistoryEntry] = []
+        var reused: [ClipboardHistoryEntry] = []
+        var others: [ClipboardHistoryEntry] = []
+        // One pass and one assignment for the whole batch: each element write
+        // fires the entries observer, which a large selection copy must not
+        // pay per item, and moving entries one at a time would be quadratic.
+        for var entry in entries {
+            let isReused = pasteOrder[entry.id] != nil
+            if isReused {
+                entry.copiedAt = now
                 didUpdate = true
             }
+            if entry.isPinned {
+                pinned.append(entry)
+            } else if isReused {
+                reused.append(entry)
+            } else {
+                others.append(entry)
+            }
         }
-        if didUpdate {
-            entries = updated
-            save()
-        }
+        guard didUpdate else { return }
+        reused.sort { pasteOrder[$0.id, default: 0] < pasteOrder[$1.id, default: 0] }
+        entries = pinned + reused + others
+        save()
     }
 
     package func togglePin(_ entry: ClipboardHistoryEntry) {
