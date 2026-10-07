@@ -1069,6 +1069,9 @@ enum PointerInputFeatureTests {
                "focus follows mouse ships off with a safe delay")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.focusFollowsMouseDelay),
                "focus follows mouse preferences follow settings backups")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.focusFollowsMouseRaise] as? Bool == true
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.focusFollowsMouseRaise),
+               "focus follows mouse keeps raising by default and backs up the choice")
         // Hover follows drags as well as plain moves, and holds off while any
         // button or modifier is down, the middle and side buttons included.
         let hoverMovement = FocusFollowsMouseService.movementEvents
