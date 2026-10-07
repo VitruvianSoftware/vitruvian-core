@@ -540,8 +540,10 @@ package struct NexusAgentQuickPromptView: View {
                             .padding(.top, 20)
                         }
                         ForEach(session.messages) { message in
-                            if !(message.role == .agent && message.text.isEmpty) {
-                                NexusAgentMessageBubble(message: message)
+                            if !(message.role == .agent && message.text.isEmpty && message.approvalRequest == nil && (message.toolSteps ?? []).isEmpty) {
+                                NexusAgentMessageBubble(message: message, onDecision: { decision in
+                                    session.decideApproval(messageID: message.id, decision: decision)
+                                })
                             }
                         }
                         if session.isRunning { progress }
@@ -769,9 +771,150 @@ package struct NexusAgentQuickPromptView: View {
     }
 }
 
+/// An interactive tool execution approval card shown within a message bubble.
+private struct NexusAgentApprovalCardView: View {
+    let request: NexusAgentApprovalRequest
+    let onDecision: ((NexusAgentApprovalRequest.Status) -> Void)?
+    @State private var hoveredButton: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(request.status == .pending ? Color.orange : Color.secondary)
+                Text("Permission Request")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                Text(request.toolName)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+                Spacer()
+                switch request.status {
+                case .pending:
+                    Text("Awaiting confirmation")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.orange)
+                case .approved:
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.green)
+                        Text("Approved")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.green)
+                    }
+                case .denied:
+                    HStack(spacing: 3) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red)
+                        Text("Denied")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.red)
+                    }
+                case .sessionAllowed:
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.blue)
+                        Text("Allowed for Session")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+
+            if !request.commandOrPath.isEmpty {
+                Text(request.commandOrPath)
+                    .font(.system(size: 11, design: .monospaced))
+                    .lineLimit(4)
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+            }
+
+            if request.status == .pending {
+                HStack(spacing: 8) {
+                    Button {
+                        onDecision?(.approved)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Allow")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.green.opacity(hoveredButton == "allow" ? 0.25 : 0.15)))
+                        .foregroundStyle(Color.green)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hoveredButton = $0 ? "allow" : nil }
+
+                    Button {
+                        onDecision?(.denied)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Deny")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.red.opacity(hoveredButton == "deny" ? 0.25 : 0.15)))
+                        .foregroundStyle(Color.red)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hoveredButton = $0 ? "deny" : nil }
+
+                    Button {
+                        onDecision?(.sessionAllowed)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9))
+                            Text("Allow for Session")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(hoveredButton == "session" ? 0.25 : 0.15)))
+                        .foregroundStyle(Color.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hoveredButton = $0 ? "session" : nil }
+
+                    Spacer()
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(request.status == .pending ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
 /// One chat bubble: rich Markdown blocks (headings, lists, quotes, dividers) and interactive code/diagram cards.
 private struct NexusAgentMessageBubble: View {
     let message: NexusAgentChatMessage
+    var onDecision: ((NexusAgentApprovalRequest.Status) -> Void)? = nil
     @State private var copied = false
     @State private var copyBounce = false
     @State private var hovering = false
@@ -808,6 +951,9 @@ private struct NexusAgentMessageBubble: View {
         }
         if let cached = message.cachedTokens, cached > 0 {
             parts.append("\(formatTokenCount(cached)) cached")
+        }
+        if let cost = message.totalCostUSD, cost > 0 {
+            parts.append(String(format: "$%.4f", locale: Locale.current, cost))
         }
         if let tools = message.toolCalls, tools > 0 {
             parts.append("\(tools) tool\(tools == 1 ? "" : "s")")
@@ -922,74 +1068,80 @@ private struct NexusAgentMessageBubble: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(NexusAgentReplyBlock.parse(message.text).enumerated()), id: \.offset) { _, block in
-                        switch block {
-                        case .text(let text):
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(Array(NexusAgentMarkdownBlock.parse(text).enumerated()), id: \.offset) { _, mdBlock in
-                                    switch mdBlock {
-                                    case .heading(let level, let headingText):
-                                        Text(Self.markdown(headingText))
-                                            .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
-                                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                if !isUser, let req = message.approvalRequest {
+                    NexusAgentApprovalCardView(request: req, onDecision: onDecision)
+                }
+
+                if !message.text.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(NexusAgentReplyBlock.parse(message.text).enumerated()), id: \.offset) { _, block in
+                            switch block {
+                            case .text(let text):
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(Array(NexusAgentMarkdownBlock.parse(text).enumerated()), id: \.offset) { _, mdBlock in
+                                        switch mdBlock {
+                                        case .heading(let level, let headingText):
+                                            Text(Self.markdown(headingText))
+                                                .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
+                                                .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                                .padding(.vertical, 2)
+                                        case .bulletItem(let bulletText):
+                                            HStack(alignment: .top, spacing: 6) {
+                                                Image(systemName: "circle.fill")
+                                                    .font(.system(size: 4))
+                                                    .foregroundStyle(Color.accentColor)
+                                                    .padding(.top, 6)
+                                                Text(Self.markdown(bulletText))
+                                                    .font(.system(size: 13))
+                                                    .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                            }
+                                        case .numberedItem(let number, let itemText):
+                                            HStack(alignment: .top, spacing: 6) {
+                                                Text("\(number).")
+                                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                    .foregroundStyle(.secondary)
+                                                    .padding(.top, 1)
+                                                Text(Self.markdown(itemText))
+                                                    .font(.system(size: 13))
+                                                    .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                            }
+                                        case .blockquote(let quoteText):
+                                            HStack(alignment: .top, spacing: 8) {
+                                                RoundedRectangle(cornerRadius: 1.5)
+                                                    .fill(Color.accentColor.opacity(0.6))
+                                                    .frame(width: 3)
+                                                Text(Self.markdown(quoteText))
+                                                    .font(.system(size: 13))
+                                                    .italic()
+                                                    .foregroundStyle(.secondary)
+                                            }
                                             .padding(.vertical, 2)
-                                    case .bulletItem(let bulletText):
-                                        HStack(alignment: .top, spacing: 6) {
-                                            Image(systemName: "circle.fill")
-                                                .font(.system(size: 4))
-                                                .foregroundStyle(Color.accentColor)
-                                                .padding(.top, 6)
-                                            Text(Self.markdown(bulletText))
+                                        case .divider:
+                                            Divider()
+                                                .opacity(0.4)
+                                                .padding(.vertical, 4)
+                                        case .paragraph(let paragraphText):
+                                            Text(Self.markdown(paragraphText))
                                                 .font(.system(size: 13))
                                                 .foregroundStyle(message.isError ? Color.orange : Color.primary)
                                         }
-                                    case .numberedItem(let number, let itemText):
-                                        HStack(alignment: .top, spacing: 6) {
-                                            Text("\(number).")
-                                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                                .foregroundStyle(.secondary)
-                                                .padding(.top, 1)
-                                            Text(Self.markdown(itemText))
-                                                .font(.system(size: 13))
-                                                .foregroundStyle(message.isError ? Color.orange : Color.primary)
-                                        }
-                                    case .blockquote(let quoteText):
-                                        HStack(alignment: .top, spacing: 8) {
-                                            RoundedRectangle(cornerRadius: 1.5)
-                                                .fill(Color.accentColor.opacity(0.6))
-                                                .frame(width: 3)
-                                            Text(Self.markdown(quoteText))
-                                                .font(.system(size: 13))
-                                                .italic()
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding(.vertical, 2)
-                                    case .divider:
-                                        Divider()
-                                            .opacity(0.4)
-                                            .padding(.vertical, 4)
-                                    case .paragraph(let paragraphText):
-                                        Text(Self.markdown(paragraphText))
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(message.isError ? Color.orange : Color.primary)
                                     }
                                 }
-                            }
-                        case .code(let language, let body):
-                            if let lang = language?.lowercased(), lang == "mermaid" {
-                                NexusAgentMermaidCard(source: body)
-                            } else {
-                                NexusAgentCodeBlockView(language: language, bodyText: body)
+                            case .code(let language, let body):
+                                if let lang = language?.lowercased(), lang == "mermaid" {
+                                    NexusAgentMermaidCard(source: body)
+                                } else {
+                                    NexusAgentCodeBlockView(language: language, bodyText: body)
+                                }
                             }
                         }
                     }
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isUser ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
                 }
-                .textSelection(.enabled)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isUser ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
 
                 Button(action: copyContent) {
                     HStack(spacing: 4) {
@@ -1033,6 +1185,7 @@ private struct NexusAgentMessageBubble: View {
                                 if let input = message.inputTokens { statsRow("Input", "\(formatTokenCount(input)) tokens") }
                                 if let output = message.outputTokens { statsRow("Output", "\(formatTokenCount(output)) tokens") }
                                 if let cached = message.cachedTokens, cached > 0 { statsRow("Cached", "\(formatTokenCount(cached)) tokens") }
+                                if let cost = message.totalCostUSD, cost > 0 { statsRow("Cost", String(format: "$%.4f", locale: Locale.current, cost)) }
                                 if let tools = message.toolCalls, tools > 0 { statsRow("Tool calls", "\(tools)") }
                                 if let turns = message.numTurns, turns > 0 { statsRow("Turns", "\(turns)") }
                                 if let reason = message.stopReason { statsRow("Status", reason) }

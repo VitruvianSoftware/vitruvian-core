@@ -33,6 +33,7 @@ enum NexusAgentTests {
         liveTranscriptAndSubagents(suite)
         sessionArchiving(suite)
         claudeSessionTitles(suite)
+        claudeEnhancementsAndApprovals(suite)
     }
 
     // MARK: - .env
@@ -1126,5 +1127,61 @@ enum NexusAgentTests {
                      "Session D preview is sanitized to exclude scheduled-task XML tags")
         suite.expect(summaryE?.title == "Regular user question without title",
                      "Session E falls back to first line of preview")
+    }
+
+    // MARK: - Claude Enhancements & Interactive Approvals
+
+    private static func claudeEnhancementsAndApprovals(_ suite: TestSuite) {
+        // Option A: Plan mode uses --append-system-prompt and --permission-mode plan
+        var config = NexusAgentConfiguration()
+        config.activeProvider = NexusAgentCLIProvider.claude
+        let claudePlanArgs = NexusAgentSupport.agentArguments(prompt: "Review architecture", configuration: config, conversationID: "c1", planMode: true)
+        suite.expect(claudePlanArgs.contains("--append-system-prompt"), "Claude plan mode uses --append-system-prompt")
+        suite.expect(!claudePlanArgs.contains("--system-prompt"), "Claude plan mode does not overwrite system prompt")
+        suite.expect(claudePlanArgs.contains("--permission-mode") && claudePlanArgs.contains("plan"), "Claude plan mode passes permission-mode plan")
+        suite.expect(claudePlanArgs.contains("--output-format") && claudePlanArgs.contains("stream-json") && claudePlanArgs.contains("--include-partial-messages"), "Claude includes partial messages for real-time streaming")
+
+        // Option B: Real-time token streaming and result metrics parsing
+        let deltaJson = #"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Streaming token"}}}"#
+        let deltaEvent = NexusAgentStreamEvent.parse(deltaJson)
+        suite.expect(deltaEvent == .text("Streaming token"), "Claude content_block_delta parses into .text stream event")
+
+        let toolUseJson = #"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","id":"tool_call_1","name":"Bash","input":{"command":"git status"}}}}"#
+        let toolEvent = NexusAgentStreamEvent.parse(toolUseJson)
+        if case .approval(let req) = toolEvent {
+            suite.expect(req.id == "tool_call_1" && req.toolName == "Bash" && req.commandOrPath == "git status" && req.status == .pending,
+                         "Claude tool_use parses into pending approval request")
+        } else {
+            suite.expect(false, "Expected .approval event from tool_use block")
+        }
+
+        let resultJson = """
+        {"type":"result","duration_ms":2200,"total_cost_usd":0.045,"usage":{"input_tokens":850,"output_tokens":320,"cache_read_input_tokens":120},"num_turns":1,"stop_reason":"end_turn","result":"Task completed successfully."}
+        """
+        let resultEvent = NexusAgentStreamEvent.parse(resultJson)
+        if case .finished(let status, let response, _, _, let metrics) = resultEvent {
+            suite.expect(status == "end_turn" && response == "Task completed successfully.", "Claude result event parsed correctly")
+            suite.expect(metrics?.durationMs == 2200 && metrics?.inputTokens == 850 && metrics?.outputTokens == 320 && metrics?.cachedTokens == 120 && metrics?.totalCostUSD == 0.045,
+                         "Claude result metrics parse duration, tokens, and USD cost")
+        } else {
+            suite.expect(false, "Expected .finished event with metrics from Claude result JSON")
+        }
+
+        // Option C: Interactive approval state transitions
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        let initialReq = NexusAgentApprovalRequest(id: "req_1", toolName: "Bash", commandOrPath: "rm -rf /tmp/cache", status: .pending)
+        let msg = NexusAgentChatMessage(role: .agent, text: "", approvalRequest: initialReq)
+        service.session.messages = [msg]
+
+        service.session.decideApproval(messageID: msg.id, decision: .approved)
+        suite.expect(service.session.messages.first?.approvalRequest?.status == .approved, "decideApproval updates status to approved")
+
+        service.session.decideApproval(messageID: msg.id, decision: .denied)
+        suite.expect(service.session.messages.first?.approvalRequest?.status == .denied, "decideApproval updates status to denied")
+
+        service.session.decideApproval(messageID: msg.id, decision: .sessionAllowed)
+        suite.expect(service.session.messages.first?.approvalRequest?.status == .sessionAllowed, "decideApproval updates status to sessionAllowed")
     }
 }

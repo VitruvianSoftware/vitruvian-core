@@ -2411,6 +2411,11 @@ is that notice. Add an entry for every change to upstream files.
     directly.
 - **2026-10-06**: First release:
   - `Resources/Gifs/highlights-notch.gif` cropped by 8 pixels on the left, to
+- **2026-10-07**: Token streaming, plan mode append, and approval cards for Nexus Agent:
+  - `NexusAgentSupport`: added `claudePermissionMode` mapping to `NexusAgentApprovalMode` (`bypassPermissions`, `acceptEdits`, `plan`, `default`), added `NexusAgentApprovalRequest` data model, added `totalCostUSD: Double?` to `NexusAgentTurnMetrics`, updated agent arguments to use `--append-system-prompt` instead of `--system-prompt` to prevent clobbering Claude Code internal tools, added `--output-format stream-json --include-partial-messages --verbose` for live token streaming, and extended `NexusAgentStreamEvent` to emit `.approval` and parse cost and token usage from `result` events;
+  - `NexusAgentQuickPromptSession`: added `approvalRequest` and `totalCostUSD` properties to `NexusAgentChatMessage`, handled `.approval` stream events, added `decideApproval(messageID:decision:)` state machine, and captured turn cost;
+  - `NexusAgentQuickPromptView`: added `NexusAgentApprovalCardView` rendering tool name, parameter preview, Allow / Deny / Allow for Session actions, and interactive status badges; updated `NexusAgentMessageBubble` to render approval cards and display cost metrics;
+  - `NexusAgentTests`: added `claudeEnhancementsAndApprovals` unit test suite covering `--append-system-prompt`, `--include-partial-messages`, Claude token deltas, tool_use approval parsing, `result` metrics, and `decideApproval` status transitions.
 - **2026-10-07**: Claude Code session titles and scheduled task parity in Quick Prompt:
   - `NexusAgentQuickPromptLayout`: updated `parseClaudeSessions` to check companion `custom-title.json` (`~/.claude/projects/<slug>/<sessionID>/custom-title.json`), parse in-stream `custom-title`, `agent-name`, and `ai-title` events, added `formatTaskName` and `extractScheduledTaskName` to extract and format task names from `<scheduled-task name="...">`, and enhanced `extractUserPrompt` to strip `<system-reminder>` and `<scheduled-task>` XML wrappers;
   - `NexusAgentTests`: added `claudeSessionTitles` unit test suite verifying task name formatting, XML tag extraction, prompt sanitization, and companion file / in-stream title resolution.
