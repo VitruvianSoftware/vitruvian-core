@@ -1936,8 +1936,8 @@ enum FeatureCatalogTests {
         UserDefaults.standard.set(true, forKey: DefaultsKey.windowDirectionalEnabled)
         UserDefaults.standard.set("modifiers:control+command",
                                   forKey: DefaultsKey.windowDirectionalShortcut)
-        suite.expect(AppFeature.windowLayout.energyProfile == .keyboard,
-               "a modifier-only pointer layout trigger reports its idle keyboard tap")
+        suite.expect(AppFeature.windowLayout.energyProfile == .inputs,
+               "a modifier-only pointer layout trigger passively observes keyboard and pointer input")
         UserDefaults.standard.set(true, forKey: DefaultsKey.windowGestureEnabled)
         suite.expect(AppFeature.windowLayout.energyProfile == .inputs,
                "window layout reports mouse and keyboard when pointer and modifier taps both run")

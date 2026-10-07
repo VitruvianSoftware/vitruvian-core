@@ -146,8 +146,15 @@ enum WindowLayoutFeatureTests {
         suite.expect(WindowDirectionalModifierTapSupport.options == .listenOnly
                 && WindowDirectionalModifierTapSupport.eventMask
                     == CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-                        | CGEventMask(1 << CGEventType.keyDown.rawValue),
-            "idle modifier observation passively retains key cancellation without watching pointer input")
+                        | CGEventMask(1 << CGEventType.keyDown.rawValue)
+                        | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+                        | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
+                        | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+                        | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
+                        | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+                        | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
+                        | CGEventMask(1 << CGEventType.scrollWheel.rawValue),
+            "idle modifier observation retains ordered cancellation without filtering input or observing movement")
         suite.expect(!WindowDirectionalModifierInputPolicy.canBegin(
                 mouseButtonPressed: true, pointerInputSinceArm: false)
                 && !WindowDirectionalModifierInputPolicy.canBegin(

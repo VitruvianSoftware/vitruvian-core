@@ -764,6 +764,22 @@ POINTER_THREAD_TAP_OWNERS = [
 ]
 
 
+def first_block(code):
+    """The first braced block in `code`, braces included: a clause's body,
+    whatever early exits its nested closures take."""
+    block, depth = [], 0
+    for character in code:
+        if character == "{":
+            depth += 1
+        if depth:
+            block.append(character)
+        if character == "}" and depth:
+            depth -= 1
+            if not depth:
+                break
+    return "".join(block)
+
+
 def tap_owners_follow_the_session(repo):
     """Comments are stripped so prose naming the API cannot answer for it."""
     problems = []
@@ -775,8 +791,7 @@ def tap_owners_follow_the_session(repo):
         code = code_without_comments(source.split("\n"))
         if "SessionActivity.shared.onChange" not in code:
             problems.append(f"{owner} rebuilds its tap when the session comes back")
-        rearm = code.split("tapDisabledByTimeout")
-        rearm = rearm[1].split("return")[0] if len(rearm) > 1 else ""
+        rearm = first_block(code.split("tapDisabledByTimeout", 1)[1]) if "tapDisabledByTimeout" in code else ""
         if "SessionActivity.shared.isActive" not in rearm:
             problems.append(
                 f"{owner} does not re-arm a disabled tap into a switched-away session"

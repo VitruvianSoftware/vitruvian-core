@@ -110,8 +110,8 @@ extension AppFeature {
                 && WindowDirectionalTrigger(
                     storageValue: UserDefaults.standard[Preferences.windowDirectionalShortcut])
                     .map { if case .modifiers = $0 { return true }; return false } == true
-            if pointerTapRuns { return modifierTapRuns ? .inputs : .pointer }
-            return modifierTapRuns ? .keyboard : .idle
+            if modifierTapRuns { return .inputs }
+            return pointerTapRuns ? .pointer : .idle
         case .radialMenu:
             // A side button or the trackpad tap on any wheel keeps an input
             // tap running; shortcut-only costs nothing at rest.
