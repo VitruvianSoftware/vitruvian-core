@@ -71,6 +71,10 @@ package struct NotchNotificationInbox {
 
     // Spelled out because a default initializer never leaves its module.
     package init() {}
+
+    /// Banners still on screen stay seen, so the next layout pass cannot
+    /// bring back what was just cleared; later arrivals are mirrored as usual.
+    package mutating func clear() { items.removeAll() }
 }
 
 /// Only labelled notification text belongs in the mirror. Controls, widgets
