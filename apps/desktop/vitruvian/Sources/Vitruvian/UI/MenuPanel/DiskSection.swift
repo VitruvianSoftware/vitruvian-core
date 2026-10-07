@@ -281,7 +281,7 @@ package struct DiskSection: View {
     private var graph: some View {
         let read = monitor.snapshot.diskReadHistory
         let write = monitor.snapshot.diskWriteHistory
-        let peak = max(read.max() ?? 0, write.max() ?? 0, 1)
+        let peak = MetricFormat.graphCeiling(max(read.max() ?? 0, write.max() ?? 0, 1), unitStep: 1024)
         return ZStack {
             Sparkline(values: read, color: .accentColor, maxValue: peak, showsZeroBaseline: true)
             Sparkline(values: write,
@@ -290,6 +290,7 @@ package struct DiskSection: View {
                       fillOpacity: 0.08)
         }
         .frame(height: 30)
+        .graphCeilingLabel(MetricFormat.bytesPerSec(peak))
     }
 
     private func rateColumn(icon: String, label: String, value: Double?, color: Color) -> some View {

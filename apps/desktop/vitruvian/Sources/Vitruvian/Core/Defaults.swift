@@ -650,6 +650,7 @@ package enum Defaults {
         DefaultsKey.windowLayoutHiddenActions: Preferences.windowLayoutHiddenActions.defaultValue,
         DefaultsKey.windowLayoutWindowGap: Preferences.windowLayoutWindowGap.defaultValue,
         DefaultsKey.windowLayoutScreenGap: Preferences.windowLayoutScreenGap.defaultValue,
+        DefaultsKey.windowLayoutMarginPercent: Preferences.windowLayoutMarginPercent.defaultValue,
         DefaultsKey.windowLayoutSideRepeatCyclesThirds: Preferences.windowLayoutSideRepeatCyclesThirds.defaultValue,
         DefaultsKey.menuBarMetricOrder: Preferences.menuBarMetricOrder.defaultValue,
         DefaultsKey.menuBarCombineTemperatures: Preferences.menuBarCombineTemperatures.defaultValue,
@@ -680,6 +681,7 @@ package enum Defaults {
         DefaultsKey.monitorGraphDisk: Preferences.monitorGraphDisk.defaultValue,
         DefaultsKey.monitorGraphPower: Preferences.monitorGraphPower.defaultValue,
         DefaultsKey.monitorGraphBattery: Preferences.monitorGraphBattery.defaultValue,
+        DefaultsKey.monitorGraphScale: Preferences.monitorGraphScale.defaultValue,
         // Every per-item block shows by default; users hide what they don't want.
         DefaultsKey.monitorSysTemps: Preferences.monitorSysTemps.defaultValue,
         DefaultsKey.monitorSysCPU: Preferences.monitorSysCPU.defaultValue,

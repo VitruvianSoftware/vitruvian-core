@@ -141,6 +141,37 @@ package struct PortManagerView: View {
             }
         }
         .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .contextMenu {
+            PortManagerRowActions(entry: entry, language: l10n.language)
+        }
+    }
+}
+
+package struct PortManagerRowActions: View {
+    package let entry: PortManagerEntry
+    package let language: AppLanguage
+
+    package var body: some View {
+        let strings = FeatureStrings.portManager(language)
+        Button(strings.copyPort) { copy(String(entry.port)) }
+        Button(FeatureStrings.killProcess(language).copyPID) { copy(String(entry.pid)) }
+        Button(strings.copyAddress) { copy(entry.address) }
+        if let url = PortManagerSupport.browserURL(for: entry) {
+            Divider()
+            Button(FeatureStrings.commandBar(language).openInBrowser) {
+                if !NSWorkspace.shared.open(url) { NSSound.beep() }
+            }
+        }
+    }
+
+    private func copy(_ value: String) {
+        GeneralPasteboardAccess.shared.async({
+            NSPasteboard.general.clearContents()
+            return NSPasteboard.general.setString(value, forType: .string)
+        }, then: { copied in
+            if !copied { NSSound.beep() }
+        })
     }
 }
 

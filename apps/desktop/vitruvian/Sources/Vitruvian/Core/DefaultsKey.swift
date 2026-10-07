@@ -422,6 +422,7 @@ package enum DefaultsKey {
     package static let monitorGraphDisk = "monitorGraphDisk"
     package static let monitorGraphPower = "monitorGraphPower"
     package static let monitorGraphBattery = "monitorGraphBattery"
+    package static let monitorGraphScale = "monitorGraphScale"
     // System monitor — per-item visibility inside each panel section.
     package static let monitorSysTemps = "monitorSysTemps"
     package static let monitorSysCPU = "monitorSysCPU"
@@ -475,6 +476,7 @@ package enum DefaultsKey {
     package static let windowLayoutHiddenActions = "windowLayoutHiddenActions" // comma-separated action ids hidden from the grid
     package static let windowLayoutWindowGap = "windowLayoutWindowGap" // px between adjacent snapped windows
     package static let windowLayoutScreenGap = "windowLayoutScreenGap" // px between a snapped window and the visible frame edge
+    package static let windowLayoutMarginPercent = "windowLayoutMarginPercent" // per-edge percentage for margin maximize
     package static let windowLayoutSideRepeatCyclesThirds = "windowLayoutSideRepeatCyclesThirds" // repeated Left/Right cycles half, 2/3, 1/3 on the same display
     package static let windowLayoutIgnoredApps = "windowLayoutIgnoredApps" // apps that temporarily disable window layout while focused
     package static let panelCollapsedSections = "panelCollapsedSections"

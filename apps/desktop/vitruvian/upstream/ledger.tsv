@@ -67,16 +67,16 @@ deede64a06940245435d48969362731249223100	d638adafff5c98c8f16f01ec973a6943b5512d7
 69ff10e8d1f6170f962ac57ee95b5ef136228239	f2ab4a8d81862e2c8b6a165177e6219248ee74ba	2026-09-29	pending	-	fix(focus): cancel pending activation passes before a hover handoff
 1251ac0383eb0c0316dae7c9a9837395550faa58	d63511d1ced41dca9975c51b63864be7389d8ff4	2026-10-04	pending	-	fix(focus): retry canceled hover attempts after movement
 be1ed4f6ac9379fe74bc28ece3ce1174dc3ff20f	9e60a16a4999b6813e397488593b7afdd50e79af	2026-10-04	skipped	touches only upstream-only paths	docs(changelog): record monitor and input improvements
-df3d4c36f7f2ca191afb0fd73b57c114e10d9ea4	74aacd178af652221502c86de6461e5b829a6c10	2026-10-04	pending	-	feat(clipboard): return the history window to the top when reopened (#2320)
-e3fc7350a12424cf3382ee7b9009652944ed4f7e	c06ddab775cb0287db3f387cb6b8ea0d3588190f	2026-09-28	pending	-	fix(keep-awake): allow helper apps as running-app triggers (#1468)
-ab28a963c113e6fcdc2e472ff96b341d724a9552	caf0859d3920066f0b134af10495034c5d6f7438	2026-09-28	pending	-	Clarify comments in setRunningAppsMonitoringEnabled
-9b8e2a52e96dbf627dad87ab7b385962fbfeaf10	4ee48388392468a21cd3c1693d483e724579f846	2026-10-05	pending	-	feat(monitor): show the scale of history graphs (#2175)
-3767981075c0bc2af08aac2f4e5840ee20e44ed4	a87be891bd94950b44274139973459537acf1dd7	2026-10-05	pending	-	fix(settings): drop the Clipboard overview row from the sidebar (#2160)
-62d4917ef14aabbc89dd794c486816979890f9e9	b9cd28ed01f04f90a3b029a5a194ca868050bbde	2026-10-05	pending	-	refactor(sounds): organize localized alert sound names (#2087)
-ea338cfaeb8303904d142ceb9bee29a3cec8029a	939c457fb0a063be40abe4be89825145a8feea39	2026-10-05	pending	-	feat(window-layout): make the maximize margin configurable (#2086)
-3001f136346b33daeee59de3529a0d9ca3d9a18f	63045b768c6365c3dca9b95861984596353008bd	2026-10-04	pending	-	fix(switcher): capture warm previews off the main thread (#2083)
-ceb515925791d33fb6e054ff8ed166ddc154f95c	5122cda0a5b5b21637d077e38b15189f9782ae96	2026-10-05	pending	-	fix(settings): group sidebar rows like the features page (#2077)
-a52102f3f4c5ba303109717af3b94b66a1230b19	beae90f7d0ca5bd9bbe37738978981b19baa1564	2026-10-05	pending	-	feat(port-manager): add copy and browser row actions (#2076)
+df3d4c36f7f2ca191afb0fd73b57c114e10d9ea4	74aacd178af652221502c86de6461e5b829a6c10	2026-10-04	ported	#2812	feat(clipboard): return the history window to the top when reopened (#2320)
+e3fc7350a12424cf3382ee7b9009652944ed4f7e	c06ddab775cb0287db3f387cb6b8ea0d3588190f	2026-09-28	ported	#2812	fix(keep-awake): allow helper apps as running-app triggers (#1468)
+ab28a963c113e6fcdc2e472ff96b341d724a9552	caf0859d3920066f0b134af10495034c5d6f7438	2026-09-28	ported	#2812	Clarify comments in setRunningAppsMonitoringEnabled
+9b8e2a52e96dbf627dad87ab7b385962fbfeaf10	4ee48388392468a21cd3c1693d483e724579f846	2026-10-05	ported	#2812	feat(monitor): show the scale of history graphs (#2175)
+3767981075c0bc2af08aac2f4e5840ee20e44ed4	a87be891bd94950b44274139973459537acf1dd7	2026-10-05	ported	#2812	fix(settings): drop the Clipboard overview row from the sidebar (#2160)
+62d4917ef14aabbc89dd794c486816979890f9e9	b9cd28ed01f04f90a3b029a5a194ca868050bbde	2026-10-05	ported	#2812	refactor(sounds): organize localized alert sound names (#2087)
+ea338cfaeb8303904d142ceb9bee29a3cec8029a	939c457fb0a063be40abe4be89825145a8feea39	2026-10-05	ported	#2812	feat(window-layout): make the maximize margin configurable (#2086)
+3001f136346b33daeee59de3529a0d9ca3d9a18f	63045b768c6365c3dca9b95861984596353008bd	2026-10-04	ported	#2812	fix(switcher): capture warm previews off the main thread (#2083)
+ceb515925791d33fb6e054ff8ed166ddc154f95c	5122cda0a5b5b21637d077e38b15189f9782ae96	2026-10-05	ported	#2812	fix(settings): group sidebar rows like the features page (#2077)
+a52102f3f4c5ba303109717af3b94b66a1230b19	beae90f7d0ca5bd9bbe37738978981b19baa1564	2026-10-05	ported	#2812	feat(port-manager): add copy and browser row actions (#2076)
 1c9dfb3750f6980e589924cd7a26ac95808c7b4b	b3ec23a5f272da475655a463c8d1b4927e765335	2026-10-04	pending	-	feat(panel): force quit apps from the usage lists (#1889)
 3a5e107340ef2c2a270a5be7fb5581a43dab3f65	2655ff28b7e537abf9b0f72940a9e84d9c9f97b4	2026-10-04	pending	-	feat(color-picker): copy the selected color and close with enter (#2191)
 6d02e14437880a2fb3e33bfbef5fd293d28d4c39	d09e2762e7e8a7436aaee69c5acd56aa8a570909	2026-10-05	pending	-	fix(clipboard): cache folded search candidates across keystrokes (#1885) (#2156)

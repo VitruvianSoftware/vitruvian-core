@@ -72,6 +72,16 @@ UPSTREAM_ONLY = (
 # ported as a behavioural test instead.
 FORK_RETIRED = ("Tests/generate_sources.py",)
 
+# Upstream files this fork split into several. A three-way merge into the one
+# that kept the name conflicts with the whole file, so the change is reported
+# with its patch, to apply by hand where each part now lives.
+FORK_SPLIT = {
+    "Sources/Vorssaint/Core/Defaults.swift": (
+        "Core/DefaultsKey.swift (the keys), Core/Preferences.swift (each "
+        "setting's type and default) and Core/Defaults.swift (registration)"
+    ),
+}
+
 STATUSES = ("pending", "ported", "skipped")
 COLUMNS = ("sha", "patch_id", "date", "status", "ref", "subject")
 LEDGER_PREAMBLE = """\
@@ -682,7 +692,10 @@ def restore_package(merged, ours):
                 shift_from = i + 1
                 balance = line.count("(") - line.count(")")
                 # Parameters aligned under the opening parenthesis move with it.
-                while balance > 0 and shift_from < len(lines):
+                # A list that starts on the next line hangs from the indent
+                # instead, which the modifier does not move.
+                hanging = line.rstrip().endswith("(")
+                while balance > 0 and not hanging and shift_from < len(lines):
                     nxt = lines[shift_from]
                     if _indent(nxt) <= _indent(line):
                         break
@@ -821,13 +834,18 @@ def preference_review(merged, ours, preferences):
     (line, key) pairs, line 1-based in `merged`."""
     declared = set(DECLARED_PREFERENCE_RE.findall(preferences))
     before = set(ours.splitlines())
-    return [
-        (n, m.group(1))
-        for n, line in enumerate(merged.splitlines(), 1)
-        if line not in before
-        for m in [KEYED_STORAGE_RE.search(line)]
-        if m and m.group(1) in declared
-    ]
+    found, in_conflict = [], False
+    for n, line in enumerate(merged.splitlines(), 1):
+        # A conflict is the porter's to resolve; its sides are not the port's.
+        if line.startswith("<<<<<<< "):
+            in_conflict = True
+        elif line.startswith(">>>>>>> "):
+            in_conflict = False
+        elif not in_conflict and line not in before:
+            m = KEYED_STORAGE_RE.search(line)
+            if m and m.group(1) in declared:
+                found.append((n, m.group(1)))
+    return found
 
 
 def _merge_file(ours, base, theirs, labels):
@@ -885,6 +903,8 @@ def port_commit(
                 (upstream_only(new) and upstream_only(old))
                 or new in FORK_RETIRED
                 or old in FORK_RETIRED
+                or new in FORK_SPLIT
+                or old in FORK_SPLIT
             ):
                 continue
             target_rel, _ = pathmap.map(new if status == "A" else old)
@@ -912,6 +932,17 @@ def port_commit(
             lines.append(
                 f"- `{new}`: retired in this fork, not merged; port the test it feeds "
                 f"as a behavioural test (upstream patch: `{saved}`)"
+            )
+            continue
+        split = FORK_SPLIT.get(new) or FORK_SPLIT.get(old)
+        if split:
+            clean = False
+            patch = upstream.run(["diff", f"{parent or sha}", sha, "--", old, new])
+            saved = report_dir / (new.replace("/", "__") + ".patch")
+            saved.write_text(patch)
+            lines.append(
+                f"- `{new}`: split in this fork into {split}; apply by hand "
+                f"(upstream patch: `{saved}`)"
             )
             continue
         target_rel, how = pathmap.map(old)

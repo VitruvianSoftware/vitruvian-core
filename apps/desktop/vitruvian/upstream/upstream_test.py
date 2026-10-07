@@ -14,6 +14,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
@@ -344,6 +345,18 @@ class PackageTest(unittest.TestCase):
             self.restore(merged, ours),
         )
 
+    def test_hanging_parameters_stay_where_they_are(self):
+        ours = "package enum E {\n    package static func a() {}\n}\n"
+        merged = (
+            "enum E {\n    static func a() {}\n"
+            "    static func b(\n        _ x: Int,\n        y: Int\n    ) -> Int {\n"
+            "        x + y\n    }\n}\n"
+        )
+        self.assertIn(
+            "    package static func b(\n        _ x: Int,\n        y: Int\n    ) -> Int {\n",
+            self.restore(merged, ours),
+        )
+
     def test_unchanged_lines_keep_exactly_what_they_had(self):
         ours = (
             "package struct A: View {\n    package let text: String\n"
@@ -427,6 +440,16 @@ class PreferenceReviewTest(unittest.TestCase):
         )
         self.assertEqual(
             upstream.preference_review(merged, ours, self.PREFERENCES), [(3, "beta")]
+        )
+
+    def test_lines_inside_an_unresolved_conflict_are_left_to_the_porter(self):
+        merged = (
+            "struct V {\n<<<<<<< vitruvian\n    @AppStorage(Preferences.beta) private var b: String\n"
+            '||||||| upstream\n    @AppStorage(DefaultsKey.beta) private var b = ""\n=======\n'
+            '    @AppStorage(DefaultsKey.beta) private var b = "x"\n>>>>>>> upstream\n}\n'
+        )
+        self.assertEqual(
+            upstream.preference_review(merged, "struct V {\n}\n", self.PREFERENCES), []
         )
 
 
@@ -593,6 +616,22 @@ class PortTest(Base):
             (self.fx.mono / APP / "Tests/generate_sources.py").read_text(),
             "# upstream extraction\n",
         )
+
+    def test_split_files_are_reported_with_their_patch(self):
+        sha = self.fx.edit(
+            "Sources/Vorssaint/Core/Other.swift", OTHER + "// more\n", "fix: other"
+        )
+        other = self.fx.mono / APP / "Sources/Vitruvian/Core/Other.swift"
+        before = other.read_text()
+        split = {"Sources/Vorssaint/Core/Other.swift": "OtherA.swift and OtherB.swift"}
+        with mock.patch.dict(upstream.FORK_SPLIT, split):
+            rc, out, _ = self.fx.tool(
+                "port", sha, "--report-dir", str(self.fx.tmp / "r")
+            )
+        self.assertEqual(rc, 1)
+        self.assertIn("split in this fork into OtherA.swift and OtherB.swift", out)
+        self.assertEqual(other.read_text(), before)
+        self.assertEqual(len(list((self.fx.tmp / "r").glob("*Other.swift.patch"))), 1)
 
     def test_dry_run_changes_nothing(self):
         before = self.fx.foo()

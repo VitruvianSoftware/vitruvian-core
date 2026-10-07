@@ -266,6 +266,7 @@ package enum Preferences {
     package static let monitorGraphDisk = Preference(DefaultsKey.monitorGraphDisk, default: true)
     package static let monitorGraphPower = Preference(DefaultsKey.monitorGraphPower, default: true)
     package static let monitorGraphBattery = Preference(DefaultsKey.monitorGraphBattery, default: true)
+    package static let monitorGraphScale = Preference(DefaultsKey.monitorGraphScale, default: true)
     package static let monitorSysTemps = Preference(DefaultsKey.monitorSysTemps, default: true)
     package static let monitorSysCPU = Preference(DefaultsKey.monitorSysCPU, default: true)
     package static let monitorSysGPU = Preference(DefaultsKey.monitorSysGPU, default: true)
@@ -430,6 +431,8 @@ package enum Preferences {
     package static let monitorInterval = Preference(DefaultsKey.monitorInterval, default: 2)
     package static let windowLayoutWindowGap = Preference(DefaultsKey.windowLayoutWindowGap, default: 0)
     package static let windowLayoutScreenGap = Preference(DefaultsKey.windowLayoutScreenGap, default: 0)
+    package static let windowLayoutMarginPercent = Preference(DefaultsKey.windowLayoutMarginPercent,
+                                                              default: WindowLayoutMargin.defaultPercent)
     package static let monitorAlertCPUThreshold = Preference(DefaultsKey.monitorAlertCPUThreshold, default: 90)
     package static let monitorAlertCPUTemperatureThreshold = Preference(DefaultsKey.monitorAlertCPUTemperatureThreshold, default: 90)
     package static let monitorAlertBatteryTemperatureThreshold = Preference(DefaultsKey.monitorAlertBatteryTemperatureThreshold, default: 40)

@@ -171,7 +171,7 @@ package final class KeepAwakeManager: ObservableObject {
     private var screenParametersObserver: NSObjectProtocol?
     private var endLockWatch: (() -> Void)?
     private var powerSourceRunLoopSource: CFRunLoopSource?
-    private var runningAppsObservers: [NSObjectProtocol] = []
+    private var runningAppsObservation: NSKeyValueObservation?
     private var automationEvaluationWorkItem: DispatchWorkItem?
     private var lastExternalDisplayConnected: Bool?
     private var screenLocked = false
@@ -548,23 +548,22 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     private func setRunningAppsMonitoringEnabled(_ enabled: Bool) {
-        let center = NSWorkspace.shared.notificationCenter
         if enabled {
-            guard runningAppsObservers.isEmpty else { return }
-            let handler: @Sendable (Notification) -> Void = { [weak self] _ in
-                // Delivered on the main queue.
-                MainActor.assumeIsolated { self?.scheduleAutomationEvaluation(after: 0.1) }
+            guard runningAppsObservation == nil else { return }
+            // The running-apps list rather than launch and terminate
+            // notifications: macOS posts neither for some background helper
+            // apps nested in another app's bundle, while the list still gains
+            // and loses them (#1468).
+            // KVO reports on whichever thread changed the list, so the handler
+            // stays off the main actor and hops to it.
+            runningAppsObservation = NSWorkspace.shared.observe(\.runningApplications) { @Sendable [weak self] _, _ in
+                DispatchQueue.main.async {
+                    self?.scheduleAutomationEvaluation(after: 0.1)
+                }
             }
-            runningAppsObservers = [
-                center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
-                                   object: nil, queue: .main, using: handler),
-                center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
-                                   object: nil, queue: .main, using: handler),
-            ]
         } else {
-            guard !runningAppsObservers.isEmpty else { return }
-            for observer in runningAppsObservers { center.removeObserver(observer) }
-            runningAppsObservers.removeAll()
+            runningAppsObservation?.invalidate()
+            runningAppsObservation = nil
         }
     }
 

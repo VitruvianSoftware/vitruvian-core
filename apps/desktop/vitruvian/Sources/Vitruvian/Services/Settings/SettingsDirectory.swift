@@ -39,7 +39,7 @@ package struct SettingsDirectoryItem: Identifiable {
 package enum SettingsDirectory {
     /// Shared pages whose tools cover the page without a separate overview row.
     private static let toolOnlyPages: Set<SettingsPage> = [
-        .energy, .mouse, .switcher, .dock, .cutPaste, .quickTools, .screenshot,
+        .energy, .mouse, .switcher, .dock, .clipboard, .cutPaste, .quickTools, .screenshot,
     ]
 
     /// Keep the directory's destinations, but show the most useful groups
@@ -106,18 +106,23 @@ package enum SettingsDirectory {
         let energy: [SettingsSidebarItem] = essentials.items.filter {
             $0.destination.page == .energy
         }
+        func rows(_ id: Int) -> [SettingsSidebarItem] {
+            grouped.first(where: { $0.id == id })?.items ?? []
+        }
+        let byGroup = SettingsSidebarSupport.featureGroupRows(
+            windowsControls: rows(1), utilities: rows(4).filter { $0.id != .page(.notch) })
         let featured = [
             SettingsSidebarSection(id: 0, title: categories.essentials,
                                    items: Array(core.prefix(3)) + island + Array(core.dropFirst(3))),
-            SettingsSidebarSection(id: 6, title: hub.groupSound, items: sound),
+            SettingsSidebarSection(id: 4, title: categories.utilities, items: byGroup.utilities),
+            SettingsSidebarSection(id: 6, title: hub.groupSound, items: sound + byGroup.sound),
             SettingsSidebarSection(id: 7, title: hub.groupEnergyDisplay, items: energy),
+            SettingsSidebarSection(id: 1, title: hub.groupWindowsDock, items: byGroup.windowsDock),
+            SettingsSidebarSection(id: 8, title: hub.groupMouseKeyboard, items: byGroup.mouseKeyboard),
+            SettingsSidebarSection(id: 2, title: categories.files, items: rows(2) + byGroup.files),
         ]
-        let utilities = grouped.filter { $0.id == 4 }.map { section in
-            SettingsSidebarSection(id: section.id, title: section.title,
-                                   items: section.items.filter { $0.id != .page(.notch) })
-        }
-        let remaining = grouped.filter { $0.id != 0 && $0.id != 4 }
-        return [featured[0]] + utilities + featured.dropFirst().filter { !$0.items.isEmpty } + remaining
+        let remaining = grouped.filter { ![0, 1, 2, 4].contains($0.id) }
+        return [featured[0]] + featured.dropFirst().filter { !$0.items.isEmpty } + remaining
     }
 
     @MainActor
