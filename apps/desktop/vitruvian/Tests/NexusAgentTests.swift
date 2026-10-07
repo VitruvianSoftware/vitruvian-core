@@ -31,6 +31,7 @@ enum NexusAgentTests {
         turnMetrics(suite)
         pinningAndRetry(suite)
         liveTranscriptAndSubagents(suite)
+        sessionArchiving(suite)
     }
 
     // MARK: - .env
@@ -963,5 +964,65 @@ enum NexusAgentTests {
         let clearedClaude = NexusAgentService.parseActiveSubagents(from: claudeSubagentCompleted)
         suite.expect(clearedClaude.isEmpty,
                      "Claude subagent is cleared when matching tool_result arrives")
+    }
+
+    // MARK: - Session Archiving Parity
+
+    private static func sessionArchiving(_ suite: TestSuite) {
+        // 1. Antigravity parse with killed flag
+        let rows = """
+        [
+          {"conversation_id":"active-1","title":"Active task","preview":"Working on bug","step_count":3,"last_modified_time":"2026-10-06T10:00:00Z","killed":0},
+          {"conversation_id":"archived-1","title":"Old task","preview":"Old completed work","step_count":10,"last_modified_time":"2026-10-05T08:00:00Z","killed":1},
+          {"conversation_id":"default-1","title":"Default task","preview":"Fresh task","step_count":1,"last_modified_time":"2026-10-06T12:00:00Z"}
+        ]
+        """
+        let parsed = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "")
+        suite.expect(parsed.count == 3, "parses all 3 sessions regardless of archive status")
+
+        let activeSession = parsed.first { $0.id == "active-1" }
+        let archivedSession = parsed.first { $0.id == "archived-1" }
+        let defaultSession = parsed.first { $0.id == "default-1" }
+
+        suite.expect(activeSession?.isArchived == false, "killed = 0 sets isArchived to false")
+        suite.expect(archivedSession?.isArchived == true, "killed = 1 sets isArchived to true")
+        suite.expect(defaultSession?.isArchived == false, "missing killed sets isArchived to false by default")
+
+        // 2. Active vs Archived partitioning
+        let activeList = parsed.filter { !$0.isArchived }
+        let archivedList = parsed.filter { $0.isArchived }
+        suite.expect(activeList.map(\.id) == ["active-1", "default-1"], "active list filters out archived sessions")
+        suite.expect(archivedList.map(\.id) == ["archived-1"], "archived list contains only archived sessions")
+
+        // 3. Claude Code hidden session IDs discovery via UserDefaults
+        let testClaudeID = "test-claude-session-\(UUID().uuidString)"
+        var initialHidden = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
+        initialHidden.append(testClaudeID)
+        UserDefaults.standard.set(initialHidden, forKey: "vitruvian.claude.hiddenSessionIds")
+
+        let detectedHidden = NexusAgentSessionSummary.claudeHiddenSessionIds(home: "/nonexistent-home")
+        suite.expect(detectedHidden.contains(testClaudeID), "claudeHiddenSessionIds includes IDs stored in UserDefaults")
+
+        // 4. Claude Code archiving & unarchiving via service
+        let newSessionID = "claude-archive-test-\(UUID().uuidString)"
+        NexusAgentService.archiveSession(home: "/nonexistent-home", id: newSessionID, provider: .claude)
+        let hiddenAfterArchive = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
+        suite.expect(hiddenAfterArchive.contains(newSessionID), "archiveSession adds ID to UserDefaults hiddenSessionIds for claude")
+
+        NexusAgentService.unarchiveSession(home: "/nonexistent-home", id: newSessionID, provider: .claude)
+        let hiddenAfterUnarchive = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
+        suite.expect(!hiddenAfterUnarchive.contains(newSessionID), "unarchiveSession removes ID from UserDefaults hiddenSessionIds for claude")
+
+        // Clean up test key
+        initialHidden.removeAll { $0 == testClaudeID }
+        UserDefaults.standard.set(initialHidden, forKey: "vitruvian.claude.hiddenSessionIds")
+
+        // 5. Session summary struct init
+        let explicitArchived = NexusAgentSessionSummary(id: "s-archived", title: "T", preview: "P", steps: 1, modified: nil, isArchived: true)
+        let explicitActive = NexusAgentSessionSummary(id: "s-active", title: "T", preview: "P", steps: 1, modified: nil, isArchived: false)
+        let defaultActive = NexusAgentSessionSummary(id: "s-default", title: "T", preview: "P", steps: 1, modified: nil)
+        suite.expect(explicitArchived.isArchived, "explicitly archived summary has isArchived = true")
+        suite.expect(!explicitActive.isArchived, "explicitly active summary has isArchived = false")
+        suite.expect(!defaultActive.isArchived, "default summary has isArchived = false")
     }
 }
