@@ -51,171 +51,6 @@ package enum DockPreviewActions {
     }
 }
 
-/// A hover preview over an auto-hiding Dock, once the pointer has reached
-/// it. A watcher follows the Dock's own window as the window server lists it
-/// on screen: when the Dock slides away, the panel moves to the screen edge
-/// it vacated, clamped to the screen and without animating, because the
-/// preview's event tap is served by the main run loop and an animated move
-/// would queue every mouse event behind the slide. The frame it left keeps
-/// counting as the panel until the pointer reaches the new one or travels
-/// on. `DockPreviewService` owns one and supplies the panel and the system
-/// through `Host`; tests pass doubles.
-@MainActor
-package final class DockPreviewReattachment {
-    /// What the reattachment asks of the preview and the system.
-    @MainActor
-    package struct Host {
-        /// Whether the preview is up and the pointer has reached it.
-        package var isEngaged: () -> Bool
-        package var dockPID: () -> pid_t?
-        /// The windows on screen now; nil when the list cannot be read.
-        package var onScreenWindows: () -> [[String: Any]]?
-        /// The panel's frame and the Dock it opened from; nil without a panel.
-        package var panelFrame: () -> CGRect?
-        package var preferences: () -> DockPreviewPreferences?
-        package var visibleFrame: (CGRect) -> CGRect
-        package var clamp: (CGRect) -> CGRect
-        package var pointer: () -> CGPoint?
-        package var setPanelFrame: (_ frame: CGRect, _ animate: Bool) -> Void
-        /// Calls `tick` repeatedly until it answers true; the call it returns
-        /// stops it sooner.
-        package var startWatcher: (_ tick: @escaping @MainActor @Sendable () -> Bool) -> () -> Void
-
-        // Spelled out because a memberwise initializer never leaves its module.
-        package init(isEngaged: @escaping () -> Bool, dockPID: @escaping () -> pid_t?,
-                     onScreenWindows: @escaping () -> [[String: Any]]?,
-                     panelFrame: @escaping () -> CGRect?, preferences: @escaping () -> DockPreviewPreferences?,
-                     visibleFrame: @escaping (CGRect) -> CGRect, clamp: @escaping (CGRect) -> CGRect,
-                     pointer: @escaping () -> CGPoint?,
-                     setPanelFrame: @escaping (_ frame: CGRect, _ animate: Bool) -> Void,
-                     startWatcher: @escaping (_ tick: @escaping @MainActor @Sendable () -> Bool) -> () -> Void) {
-            self.isEngaged = isEngaged
-            self.dockPID = dockPID
-            self.onScreenWindows = onScreenWindows
-            self.panelFrame = panelFrame
-            self.preferences = preferences
-            self.visibleFrame = visibleFrame
-            self.clamp = clamp
-            self.pointer = pointer
-            self.setPanelFrame = setPanelFrame
-            self.startWatcher = startWatcher
-        }
-    }
-
-    /// The list the watcher reads: windows on screen only, which the Dock's
-    /// strip leaves once an auto-hide slide-out completes.
-    package static let windowListOption: CGWindowListOption = .optionOnScreenOnly
-
-    /// Whether the Dock's layer-20 strip is in the list. A list that could
-    /// not be read counts as revealed, so the panel never moves on a failed
-    /// read.
-    package static func dockIsRevealed(in windows: [[String: Any]]?, dockPID: pid_t) -> Bool {
-        guard let windows else { return true }
-        let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
-        return windows.contains { window in
-            (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == dockPID
-                && (window[kCGWindowLayer as String] as? Int) == dockLevel
-        }
-    }
-
-    /// True once this session's panel moved to the vacated edge.
-    package private(set) var didReattach = false
-    private var graceFrame: CGRect?
-    /// Where the pointer was when the panel moved out from under it. The grace
-    /// region covers a pointer that has not moved; once this one genuinely
-    /// travels, it is judged against the panel where the panel actually is.
-    private var graceOrigin: CGPoint?
-    private var stopWatcher: (() -> Void)?
-    private let host: Host
-
-    package init(host: Host) {
-        self.host = host
-    }
-
-    /// The pointer reached the panel. Keep the original fallback even during
-    /// an experimental hold: if macOS ignores the request or the user
-    /// re-enables auto-hide, follow the Dock's actual visibility rather than
-    /// leaving the preview floating in mid-air.
-    package func panelEntered() {
-        guard DockPreviewSupport.shouldStartDockVisibilityTimer(
-            hasActiveTimer: stopWatcher != nil,
-            didReattachForSession: didReattach,
-            autohide: host.preferences()?.autohide == true
-        )
-        else { return }
-        stopWatcher = host.startWatcher { [weak self] in
-            guard let self else { return true }
-            return self.tick()
-        }
-    }
-
-    /// Whether the pointer counts as on the panel: within the panel's margin,
-    /// or still resting where the panel was before it moved. Moving away is
-    /// an answer: the region the panel vacated stops standing in for it, so
-    /// leaving does not have to clear a rectangle with no panel in it.
-    package func countsAsPanel(_ point: CGPoint, panelFrame: CGRect?) -> Bool {
-        let margin = DockPreviewSupport.panelStayMargin
-        if panelFrame?.insetBy(dx: -margin, dy: -margin).contains(point) == true {
-            graceFrame = nil
-            return true
-        }
-        if graceFrame?.insetBy(dx: -margin, dy: -margin).contains(point) == true,
-           let origin = graceOrigin,
-           hypot(point.x - origin.x, point.y - origin.y) <= DockPreviewSupport.reattachGraceTravel {
-            return true
-        }
-        graceFrame = nil
-        graceOrigin = nil
-        return false
-    }
-
-    package func stopWatching() {
-        stopWatcher?()
-        stopWatcher = nil
-    }
-
-    /// A new session, or none: unattached, with no grace and no watcher.
-    package func reset() {
-        didReattach = false
-        graceFrame = nil
-        graceOrigin = nil
-        stopWatching()
-    }
-
-    /// One look at the Dock; true once the watcher is done.
-    private func tick() -> Bool {
-        guard host.isEngaged(), let dockPID = host.dockPID() else {
-            stopWatcher = nil
-            return true
-        }
-        guard !Self.dockIsRevealed(in: host.onScreenWindows(), dockPID: dockPID) else { return false }
-        reattach()
-        stopWatcher = nil
-        return true
-    }
-
-    private func reattach() {
-        guard let frame = host.panelFrame(),
-              let preferences = host.preferences()
-        else { return }
-        didReattach = true
-        let edgeFrame = host.clamp(DockPreviewSupport.panelFrameWhenDockHidden(
-            frame,
-            screenVisibleFrame: host.visibleFrame(frame),
-            orientation: preferences.orientation
-        ))
-        // The pointer is resting on the panel and has not moved, but the panel
-        // is about to slide out from under it by the Dock's thickness — far
-        // more than panelStayMargin. The frame it was resting on keeps counting
-        // as the panel until the pointer reaches the new one, so the preview
-        // this repositioning exists to keep usable does not dismiss itself.
-        graceFrame = frame
-        graceOrigin = host.pointer()
-        // Never animated: the tap is served by the main run loop.
-        host.setPanelFrame(edgeFrame, false)
-    }
-}
-
 @MainActor
 package final class DockPreviewService: ObservableObject {
     package static let shared = DockPreviewService()
@@ -257,39 +92,6 @@ package final class DockPreviewService: ObservableObject {
         notificationCenter: NSWorkspace.shared.notificationCenter))
     private var dockHoldInputTap: CFMachPort?
     private var dockHoldInputSource: CFRunLoopSource?
-    private lazy var reattachment = DockPreviewReattachment(host: .init(
-        isEngaged: { [weak self] in self?.isVisible == true && self?.hasEnteredPanel == true },
-        dockPID: { [weak self] in self?.dockProcessID() },
-        onScreenWindows: {
-            CGWindowListCopyWindowInfo(DockPreviewReattachment.windowListOption, kCGNullWindowID)
-                as? [[String: Any]]
-        },
-        panelFrame: { [weak self] in
-            guard let self, self.panel != nil else { return nil }
-            return self.activePanelFrame
-        },
-        preferences: { [weak self] in self?.activeDockPreferences },
-        visibleFrame: { [weak self] in self?.visibleFrameForScreen(containing: $0) ?? NSScreen.pointerVisibleFrame },
-        clamp: { [weak self] in self?.clampedPanelFrame($0) ?? $0 },
-        pointer: { [weak self] in self?.lastAppKitMousePoint },
-        setPanelFrame: { [weak self] frame, animate in
-            guard let self else { return }
-            self.activePanelFrame = frame
-            self.panel?.setFrame(frame, display: true, animate: animate)
-        },
-        startWatcher: { tick in
-            let timer = Timer(timeInterval: 0.1, repeats: true) { timer in
-                // Added to the main run loop below, so it fires on the main
-                // thread and the timer never leaves it.
-                nonisolated(unsafe) let timer = timer
-                MainActor.assumeIsolated {
-                    if tick() { timer.invalidate() }
-                }
-            }
-            timer.tolerance = 0.02
-            RunLoop.main.add(timer, forMode: .common)
-            return { timer.invalidate() }
-        }))
     private var pendingHover: PendingHover?
     private var pendingHide: DispatchWorkItem?
     private var lastMoveSampledAt: TimeInterval = 0
@@ -744,7 +546,6 @@ package final class DockPreviewService: ObservableObject {
             switch currentZone(point: point, axPoint: axPoint) {
             case .panel:
                 hasEnteredPanel = true
-                reattachment.panelEntered()
                 cancelPendingHide()
                 cancelPendingHover()
             case .openingPath:
@@ -805,9 +606,8 @@ package final class DockPreviewService: ObservableObject {
     /// counts before the cursor has reached the panel (`hasEnteredPanel`); after
     /// that, only the panel itself keeps the session alive.
     private func currentZone(point: CGPoint, axPoint: CGPoint) -> Zone {
-        // The panel itself, or, after it moved out from under a pointer that
-        // never left it, where it used to be until the pointer reaches it.
-        if reattachment.countsAsPanel(point, panelFrame: activePanelFrame) {
+        if activePanelFrame?.insetBy(dx: -DockPreviewSupport.panelStayMargin,
+                                     dy: -DockPreviewSupport.panelStayMargin).contains(point) == true {
             return .panel
         }
         // Hit-test the Dock before the corridor so landing on a neighbouring icon
@@ -993,7 +793,6 @@ package final class DockPreviewService: ObservableObject {
         cancelPendingHover()
         cancelPendingHide()
         WindowPreviewProvider.shared.cancel()
-        reattachment.stopWatching()
         // Remove the surface before publishing empty content. During a Space
         // transition, an animated dismissal can otherwise carry a blank panel.
         panel?.orderOut(nil)
@@ -1014,7 +813,6 @@ package final class DockPreviewService: ObservableObject {
         currentSessionPID = nil
         isPinned = false
         activePanelFrame = nil
-        reattachment.reset()
         activeCorridor = nil
         activeIconFrame = nil
         activeDockPreferences = nil
@@ -1159,6 +957,7 @@ package final class DockPreviewService: ObservableObject {
             panelFrame: frame,
             orientation: hit.preferences.orientation
         )
+        // Resizing keeps the opening anchor even after the Dock auto-hides.
         activeIconFrame = hit.iconFrame
         activeDockPreferences = hit.preferences
         orientation = hit.preferences.orientation
@@ -1181,17 +980,11 @@ package final class DockPreviewService: ObservableObject {
                                                 isPinned: false,
                                                 orientation: preferences.orientation)
         let gap = preferences.autohide ? DockPreviewSupport.autohidePanelGap : DockPreviewSupport.panelGap
-        let dockAnchoredFrame = DockPreviewSupport.panelFrame(anchor: iconFrame,
-                                                              panelSize: size,
-                                                              screenVisibleFrame: screenVisibleFrame,
-                                                              orientation: preferences.orientation,
-                                                              gap: gap)
-        let frame = DockPreviewSupport.resizedPanelFrame(
-            dockAnchoredFrame,
-            didReattachForSession: reattachment.didReattach,
-            screenVisibleFrame: screenVisibleFrame,
-            orientation: preferences.orientation
-        )
+        // The Dock's work area can expand after it hides. Keep the panel's
+        // Dock-facing edge where it opened, while still fitting the screen.
+        let frame = clampedPanelFrame(DockPreviewSupport.resizedPanelFrame(
+            anchor: iconFrame, panelSize: size, screenVisibleFrame: screenVisibleFrame,
+            orientation: preferences.orientation, gap: gap, openedAt: panel.frame))
         activePanelFrame = frame
         activeCorridor = DockPreviewSupport.hoverCorridor(
             iconFrame: iconFrame,

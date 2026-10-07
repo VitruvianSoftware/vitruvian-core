@@ -72,6 +72,7 @@ enum NotchDestinationContract {
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
         scratchpadContracts(defaults: defaults, suite: suite)
         reopeningContracts(defaults: defaults, suite: suite)
+        countdownContracts(defaults: defaults, suite: suite)
         stepBackContracts(suite)
         for resting in [NotchIdleContent.none, .music] {
             defaults.set(resting.rawValue, forKey: DefaultsKey.notchIdleContent)
@@ -461,6 +462,34 @@ enum NotchDestinationContract {
         }
     }
 
+    /// A click on the closed island's countdown opens Calendar on its event;
+    /// a page that opens in Calendar's place keeps no event for a later visit.
+    private static func countdownContracts(defaults: UserDefaults, suite: TestSuite) {
+        let keys = [DefaultsKey.notchCalendarTimeLeft, DefaultsKey.notchOpensActivity,
+                    DefaultsKey.notchReturnHome, DefaultsKey.notchHomeModule]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        defaults.set(true, forKey: DefaultsKey.notchCalendarTimeLeft)
+        defaults.set(true, forKey: DefaultsKey.notchOpensActivity)
+        let fixture = island()
+        let service = fixture.island
+        show(.calendar, on: fixture)
+        let event = fixture.services.calendarCountdown?.event.id
+        service.openCountdownEvent()
+        suite.expect(event != nil && service.expanded && service.selected == .calendar
+                     && fixture.services.revealedCalendarEvent == event,
+                     "a click on the event countdown opens Calendar on its event")
+        service.collapse()
+        // With activities turned off the island reopens its home page instead.
+        defaults.set(false, forKey: DefaultsKey.notchOpensActivity)
+        defaults.set(true, forKey: DefaultsKey.notchReturnHome)
+        defaults.set(NotchModule.controls.rawValue, forKey: DefaultsKey.notchHomeModule)
+        service.openCountdownEvent()
+        suite.expect(service.expanded && service.selected != .calendar
+                     && fixture.services.revealedCalendarEvent == nil,
+                     "a page opened in Calendar's place keeps no event for later")
+    }
+
     /// What the closed island is already showing is what opening it shows,
     /// unless the user turned that off for activities.
     private static func activityContracts(defaults: UserDefaults, expect: (Bool, String) -> Void) {
@@ -584,9 +613,10 @@ enum NotchDestinationContract {
         }
     }
 
-    /// The lock screen follows the island's own teardown and return, so what
-    /// it starts is never stopped under it, and the padlock plays only for a
-    /// lock or unlock made at the Mac.
+    /// The lock screen follows the island's own teardown, so what it starts is
+    /// never stopped under it. On unlock it starts leaving before the island
+    /// returns and stops nothing the island takes back. The padlock plays only
+    /// for a lock or unlock made at the Mac.
     private static func lockScreenContracts(defaults: UserDefaults, suite: TestSuite) {
         defer { defaults.set(false, forKey: DefaultsKey.notchLockSounds) }
         let fixture = island()
@@ -601,8 +631,13 @@ enum NotchDestinationContract {
         suite.expect(order == ["sync after 1 teardowns, 0 returns"] && services.lockScreenSyncs.last?.showsLockScreen == true,
                      "the lock screen takes over after the island has stopped its own sources")
         announce(.unlock, to: fixture)
-        suite.expect(order.last == "sync after 1 teardowns, 1 returns" && services.lockScreenSyncs.last?.canPresent == true,
-                     "on unlock the island takes its sources back before the lock screen leaves")
+        // The first sync is the scene leaving: canPresent tells it to stop
+        // none of the sources the island is about to take back.
+        suite.expect(order == ["sync after 1 teardowns, 0 returns", "sync after 1 teardowns, 0 returns",
+                               "sync after 1 teardowns, 1 returns"]
+                     && services.lockScreenSyncs.count == 3
+                     && services.lockScreenSyncs.dropFirst().allSatisfy { !$0.locked && $0.canPresent },
+                     "on unlock the lock screen starts leaving before the island returns and stops nothing it takes back")
         suite.expect(services.lockSounds == [true, false], "locking and unlocking at the Mac each play their padlock")
         announce(.displaysSleep, to: fixture)
         announce(.lock, to: fixture)

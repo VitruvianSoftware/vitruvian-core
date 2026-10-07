@@ -257,7 +257,7 @@ MUTATIONS = [
      "with confirmations off a successful action shows nothing"),
     ("upload shortcut publishes an edited capture's original", "screenshots",
      "Sources/Vitruvian/Services/QuickTools/ScreenshotLatestCapture.swift",
-     "        withheld = true\n        editors.append(editor)",
+     "        withhold()\n        editors.append(editor)",
      "        editors.append(editor)",
      "a capture that went through an editor is not published"),
     ("island link click publishes at once", "screenshots",

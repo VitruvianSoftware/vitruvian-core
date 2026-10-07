@@ -101,5 +101,12 @@ enum LaunchAtLoginSettingsTests {
                      "an older approval snapshot cannot overwrite a newer refresh")
         suite.expect(system.writes == [true, true, true, false],
                      "only explicit toggle actions write to the system service")
+
+        refresh(to: .needsApproval)
+        suite.expect(model.isOn, "an item awaiting approval is still registered, so its switch reads on")
+        system.result = .off
+        model.setEnabled(false)
+        suite.expect(!model.isOn && model.registration == .off && model.errorText == nil && system.writes.last == false,
+                     "switching off an item awaiting approval unregisters it and clears the note")
     }
 }

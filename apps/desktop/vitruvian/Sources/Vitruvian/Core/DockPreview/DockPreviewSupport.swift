@@ -239,11 +239,6 @@ package enum DockPreviewSupport {
     /// A little slack around the panel so the cursor grazing its edge doesn't
     /// flicker the session between "inside" and "leaving".
     package static let panelStayMargin: CGFloat = 6
-    /// How far the pointer may drift and still count as the one the panel moved
-    /// out from under when an auto-hidden Dock leaves. Wide enough for the jitter
-    /// of a hand resting on a mouse, far short of a deliberate move away — tune
-    /// here if a real desk proves either end of that wrong.
-    package static let reattachGraceTravel: CGFloat = 24
     package static let edgePadding: CGFloat = 8
     package static let panelGap: CGFloat = 6
     package static let autohidePanelGap: CGFloat = 0
@@ -430,6 +425,26 @@ package enum DockPreviewSupport {
         return DockPreviewAvailability(canRun: true, blockedReason: nil)
     }
 
+    /// A shown panel's frame for a new size: built from the icon like the
+    /// opening frame, with its Dock-facing edge put back where the panel
+    /// opened. The Dock's work area can expand after an auto-hiding Dock
+    /// hides, and a panel rebuilt from that would jump toward the edge.
+    package static func resizedPanelFrame(anchor: CGRect,
+                                          panelSize: CGSize,
+                                          screenVisibleFrame: CGRect,
+                                          orientation: DockPreviewOrientation,
+                                          gap: CGFloat = panelGap,
+                                          openedAt opened: CGRect) -> CGRect {
+        var frame = panelFrame(anchor: anchor, panelSize: panelSize, screenVisibleFrame: screenVisibleFrame,
+                               orientation: orientation, gap: gap)
+        switch orientation {
+        case .bottom: frame.origin.y = opened.minY
+        case .left: frame.origin.x = opened.minX
+        case .right: frame.origin.x = opened.maxX - frame.width
+        }
+        return frame
+    }
+
     package static func panelFrame(anchor: CGRect,
                            panelSize: CGSize,
                            screenVisibleFrame: CGRect,
@@ -470,48 +485,6 @@ package enum DockPreviewSupport {
         }
 
         return CGRect(x: x, y: y, width: width, height: height)
-    }
-
-    /// Pulls a preview back to the screen edge after an auto-hidden Dock slides
-    /// away. The other axis stays put so the panel does not jump away from the
-    /// app icon the user chose.
-    package static func panelFrameWhenDockHidden(_ panelFrame: CGRect,
-                                         screenVisibleFrame: CGRect,
-                                         orientation: DockPreviewOrientation,
-                                         padding: CGFloat = edgePadding) -> CGRect {
-        var frame = panelFrame
-        switch orientation {
-        case .bottom:
-            frame.origin.y = screenVisibleFrame.minY + padding
-        case .left:
-            frame.origin.x = screenVisibleFrame.minX + padding
-        case .right:
-            frame.origin.x = screenVisibleFrame.maxX - panelFrame.width - padding
-        }
-        return frame
-    }
-
-    /// A panel already pulled into the space an auto-hidden Dock left keeps
-    /// that attachment when its cards change size. Rebuilding from the icon is
-    /// still useful for the new dimensions; only its Dock-facing axis is put
-    /// back at the screen edge.
-    package static func resizedPanelFrame(_ dockAnchoredFrame: CGRect,
-                                  didReattachForSession: Bool,
-                                  screenVisibleFrame: CGRect,
-                                  orientation: DockPreviewOrientation) -> CGRect {
-        guard didReattachForSession else { return dockAnchoredFrame }
-        return panelFrameWhenDockHidden(dockAnchoredFrame,
-                                        screenVisibleFrame: screenVisibleFrame,
-                                        orientation: orientation)
-    }
-
-    /// The Dock window only needs watching until it disappears once. The
-    /// timer itself covers repeated mouse moves before that happens; the
-    /// session flag covers the moves after it has.
-    package static func shouldStartDockVisibilityTimer(hasActiveTimer: Bool,
-                                               didReattachForSession: Bool,
-                                               autohide: Bool) -> Bool {
-        !hasActiveTimer && !didReattachForSession && autohide
     }
 
     /// Whether the panel draws a header row. A hovered panel has no use for

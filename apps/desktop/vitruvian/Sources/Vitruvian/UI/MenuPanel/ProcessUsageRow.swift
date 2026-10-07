@@ -54,8 +54,9 @@ package struct ProcessUsageRow: View {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = title
-        alert.addButton(withTitle: strings.forceKillButton)
-        alert.addButton(withTitle: cancel)
+        alert.addButton(withTitle: strings.forceKillButton).hasDestructiveAction = true
+        // Escape cancels in every language, as in the island's confirmation.
+        alert.addButton(withTitle: cancel).keyEquivalent = "\u{1b}"
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         service.forceQuit(row, startedAt: startedAt)

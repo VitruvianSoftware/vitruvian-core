@@ -184,6 +184,10 @@ package final class LaunchAtLoginSettingsModel: ObservableObject {
     /// Why the last toggle did not take, when it says something the
     /// approval guidance does not.
     @Published package private(set) var errorText: String?
+    /// What the switch shows. Waiting on approval the item is still
+    /// registered, so it reads on, and switching it off unregisters it, which
+    /// also clears the note.
+    package var isOn: Bool { registration != .off }
     private var refreshID = UUID()
     private let environment: Environment
 

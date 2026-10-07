@@ -28,6 +28,8 @@ package protocol NotchIslandServices: AnyObject {
     var calendarCountdown: NotchCalendarCountdown? { get }
     /// The person chose to count down to this event.
     func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool
+    /// The event the Calendar page scrolls to once it next shows, or nil.
+    func revealCalendarEvent(_ id: String?)
     var importingLyrics: Bool { get }
     var scratchpadModal: Bool { get }
     var canCreatePad: Bool { get }
@@ -131,6 +133,7 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var keepAwakeEndDate: Date? { KeepAwakeManager.shared.endDate }
     package var calendarCountdown: NotchCalendarCountdown? { NotchCalendarService.shared.countdown }
     package func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool { NotchCalendarService.shared.isChosen(event) }
+    package func revealCalendarEvent(_ id: String?) { NotchCalendarService.shared.revealing = id }
     package var importingLyrics: Bool { NotchLyricsService.shared.isImporting }
     package var scratchpadModal: Bool { ScratchpadService.shared.modalInteractionActive }
     package var canCreatePad: Bool { ScratchpadService.shared.canCreatePad }

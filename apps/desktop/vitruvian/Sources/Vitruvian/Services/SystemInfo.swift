@@ -11,12 +11,16 @@ package struct BatteryInfo: Equatable {
     package let percent: Int
     package let isCharging: Bool
     package let isOnBattery: Bool
+    /// Read from the power source state rather than taken as the opposite of
+    /// `isOnBattery`: a description that omits the key answers neither.
+    package let isOnExternalPower: Bool
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(percent: Int, isCharging: Bool, isOnBattery: Bool) {
+    package init(percent: Int, isCharging: Bool, isOnBattery: Bool, isOnExternalPower: Bool) {
         self.percent = percent
         self.isCharging = isCharging
         self.isOnBattery = isOnBattery
+        self.isOnExternalPower = isOnExternalPower
     }
 }
 
@@ -54,7 +58,8 @@ package enum SystemInfo {
         let state = desc["Power Source State"] as? String ?? ""
         return BatteryInfo(percent: percent,
                            isCharging: charging,
-                           isOnBattery: state == "Battery Power")
+                           isOnBattery: state == "Battery Power",
+                           isOnExternalPower: state == "AC Power")
     }
 
     package static func memoryUsage() -> (used: UInt64, appUsed: UInt64, total: UInt64, compressed: UInt64, cached: UInt64, swapUsed: UInt64?)? {

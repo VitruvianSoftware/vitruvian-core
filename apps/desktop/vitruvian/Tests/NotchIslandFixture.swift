@@ -477,6 +477,9 @@ final class RecordingIslandServices: NotchIslandServices {
     var calendarCountdown: NotchCalendarCountdown?
     var chosenCalendarEvent = false
     func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool { chosenCalendarEvent }
+    /// The event the island last asked the Calendar page to scroll to.
+    private(set) var revealedCalendarEvent: String?
+    func revealCalendarEvent(_ id: String?) { revealedCalendarEvent = id }
     var importingLyrics = false
     var scratchpadModal = false
     var canCreatePad = true
