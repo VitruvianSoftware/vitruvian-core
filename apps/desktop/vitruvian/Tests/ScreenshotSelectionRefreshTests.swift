@@ -405,11 +405,13 @@ enum ScreenshotSelectionRefreshContract {
         for reported: CGFloat? in [nil, 2] {
             desk.windowCaptureScale = reported
             guard let window = await started(.screenshot) else { return }
-            window.controller.confirmWindow(11, frame: CGRect(x: 0, y: 0, width: 50, height: 50),
-                                            on: window.panels[0])
+            // A finished chooser closes its panels, so read the scale first.
+            let panel = window.panels[0]
+            let panelScale = panel.pixelScale
+            window.controller.confirmWindow(11, frame: CGRect(x: 0, y: 0, width: 50, height: 50), on: panel)
             await drain()
             if case .captured(let capture)? = window.outcome {
-                expect(capture.scale == (reported ?? window.panels[0].pixelScale),
+                expect(capture.scale == (reported ?? panelScale),
                        "a window capture records the scale the engine captured it at")
             } else {
                 expect(false, "a window capture records the scale the engine captured it at")
