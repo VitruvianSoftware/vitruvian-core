@@ -434,7 +434,7 @@ enum NotchTests {
         }
         // Issue: a one-word reply beside a long sender left a band of empty
         // black after the word; each side now takes only what it shows.
-        let reply = banner(app: "WhatsApp", "+55 11 98945-8910", "Oi")
+        let reply = banner("+55 11 90000-0000", "Oi")
         suite.expect(reply.preferredWings.trailing == max(layout.wingRange.lowerBound,
                                                           width("Oi", layout.messageFont).rounded(.up) + layout.inset + layout.air)
                      && reply.preferredWings.trailing < reply.preferredWings.leading
