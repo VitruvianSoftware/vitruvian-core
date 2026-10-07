@@ -492,8 +492,6 @@ package enum Preferences {
     package static let mediaImageQuality = Preference(DefaultsKey.mediaImageQuality, default: 0.72)
     package static let mediaImageWatermarkOpacity = Preference(DefaultsKey.mediaImageWatermarkOpacity, default: 0.45)
     package static let mediaImageWatermarkScale = Preference(DefaultsKey.mediaImageWatermarkScale, default: 0.18)
-    package static let clipboardHistoryWindowWidth = Preference(DefaultsKey.clipboardHistoryWindowWidth, default: 0.0)
-    package static let clipboardHistoryWindowHeight = Preference(DefaultsKey.clipboardHistoryWindowHeight, default: 0.0)
     package static let scratchpadBackgroundOpacity = Preference(DefaultsKey.scratchpadBackgroundOpacity, default: 0.0)
     package static let micMuteSavedVolume = Preference(DefaultsKey.micMuteSavedVolume, default: 0.75)
     package static let screenshotLoupeDefaultZoom = Preference(DefaultsKey.screenshotLoupeDefaultZoom, default: 1.0)

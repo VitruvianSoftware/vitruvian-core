@@ -544,8 +544,6 @@ package enum DefaultsKey {
     package static let clipboardHistoryIncludeImagesFiles = "clipboardHistoryIncludeImagesFiles" // capture copied images and files too
     package static let clipboardHistoryIgnoredApps = "clipboardHistoryIgnoredApps" // apps whose copies are never saved
     package static let clipboardHistoryQuickPreview = "clipboardHistoryQuickPreview"
-    package static let clipboardHistoryWindowWidth = "clipboardHistoryWindowWidth"
-    package static let clipboardHistoryWindowHeight = "clipboardHistoryWindowHeight"
     package static let clipboardHistoryMenuBarPreview = "clipboardHistoryMenuBarPreview" // show latest copy next to the menu bar icon
     package static let clipboardHistoryMenuBarPreviewLength = "clipboardHistoryMenuBarPreviewLength" // characters shown before truncating
 

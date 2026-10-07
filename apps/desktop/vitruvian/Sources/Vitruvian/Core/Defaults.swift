@@ -784,8 +784,6 @@ package enum Defaults {
         DefaultsKey.clipboardHistoryIgnoredApps: Preferences.clipboardHistoryIgnoredApps.defaultValue,
         DefaultsKey.windowLayoutIgnoredApps: Preferences.windowLayoutIgnoredApps.defaultValue,
         DefaultsKey.clipboardHistoryQuickPreview: Preferences.clipboardHistoryQuickPreview.defaultValue,
-        DefaultsKey.clipboardHistoryWindowWidth: Preferences.clipboardHistoryWindowWidth.defaultValue,
-        DefaultsKey.clipboardHistoryWindowHeight: Preferences.clipboardHistoryWindowHeight.defaultValue,
         DefaultsKey.clipboardHistoryMenuBarPreview: Preferences.clipboardHistoryMenuBarPreview.defaultValue,
         DefaultsKey.clipboardHistoryMenuBarPreviewLength: Preferences.clipboardHistoryMenuBarPreviewLength.defaultValue,
         DefaultsKey.clipboardAutoClearOnDelay: Preferences.clipboardAutoClearOnDelay.defaultValue,
