@@ -909,6 +909,8 @@ package enum Defaults {
         DefaultsKey.screenshotLastStroke: Preferences.screenshotLastStroke.defaultValue,
         DefaultsKey.screenshotLastTextSize: Preferences.screenshotLastTextSize.defaultValue,
         DefaultsKey.screenshotLastBlurLevel: Preferences.screenshotLastBlurLevel.defaultValue,
+        DefaultsKey.screenshotLastBlurStyle: Preferences.screenshotLastBlurStyle.defaultValue,
+        DefaultsKey.screenshotLastBlurTextOnly: Preferences.screenshotLastBlurTextOnly.defaultValue,
         DefaultsKey.screenshotLastArrowStyle: Preferences.screenshotLastArrowStyle.defaultValue,
         DefaultsKey.screenshotLastSticker: Preferences.screenshotLastSticker.defaultValue,
         DefaultsKey.screenshotAnnotationShadows: Preferences.screenshotAnnotationShadows.defaultValue,

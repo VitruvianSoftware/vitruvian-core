@@ -666,6 +666,8 @@ package enum DefaultsKey {
     package static let screenshotLastStroke = "screenshotLastStroke"
     package static let screenshotLastTextSize = "screenshotLastTextSize"
     package static let screenshotLastBlurLevel = "screenshotLastBlurLevel"
+    package static let screenshotLastBlurStyle = "screenshotLastBlurStyle"
+    package static let screenshotLastBlurTextOnly = "screenshotLastBlurTextOnly"
     package static let screenshotLastArrowStyle = "screenshotLastArrowStyle"
     package static let screenshotLastSticker = "screenshotLastSticker"
     package static let screenshotAnnotationShadows = "screenshotAnnotationShadows"

@@ -48,6 +48,7 @@ enum SourceNames {
         "calendar.badge.checkmark",
         "calendar.badge.clock",
         "camera.viewfinder",
+        "character.textbox",
         "checkmark",
         "checkmark.circle.fill",
         "checkmark.seal",

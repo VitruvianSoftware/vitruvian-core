@@ -768,6 +768,9 @@ package enum Preferences {
         DefaultsKey.screenshotLastTextSize, default: ScreenshotSupport.defaultTextSize)
     package static let screenshotLastBlurLevel = Preference(
         DefaultsKey.screenshotLastBlurLevel, default: ScreenshotSupport.BlurStrength.defaultLevel)
+    package static let screenshotLastBlurStyle = Preference(
+        DefaultsKey.screenshotLastBlurStyle, default: ScreenshotSupport.BlurStyleID.pixelate.rawValue)
+    package static let screenshotLastBlurTextOnly = Preference(DefaultsKey.screenshotLastBlurTextOnly, default: false)
     package static let screenshotUploadShortcut = Preference(
         DefaultsKey.screenshotUploadShortcut, default: GlobalShortcut.screenshotUploadDefault.storageValue)
     package static let screenshotPreviewDuration = Preference(
