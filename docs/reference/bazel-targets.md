@@ -125,6 +125,7 @@ Additional tooling:
 | `//tools/gitops:seal-alert-ntfy` | Encrypt and seal the alert delivery endpoint for Alertmanager |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |
+| `//tools/gitops:seal-zitadel-login-cookie-secret` | Generate and seal the Zitadel Login UI session-cookie signing secret (re-running signs everyone out) |
 | `//tools/gitops/appset-render:appset-render` | Offline local rendering of ArgoCD ApplicationSets for syntax and generator validation |
 | `//tools/cluster:{kubectl,cordon,uncordon,drain,delete-node,label-node}` | Live-node operations |
 | `//tools/cluster:{balance,placement,minio-status}` | Read-only cluster diagnostics |

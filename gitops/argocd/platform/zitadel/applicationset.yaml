@@ -257,6 +257,14 @@ spec:
             # Zitadel v4 split login (separate Next.js Deployment).
             login:
               enabled: true
+              # Signing key for the Login UI's session cookie (Login UI >= v4.19.2,
+              # which fixed GHSA-jh92-5mrj-p2w2 by signing that cookie). Without
+              # it the Login UI derives the key from its API credential and warns
+              # at every start; rotating that credential would sign everyone out.
+              # SealedSecret zitadel-login-session-cookie (sealed-secrets-manifests),
+              # key ZITADEL_SESSION_COOKIE_SECRET. Generate/rotate with
+              # `bazel run //tools/gitops:seal-zitadel-login-cookie-secret`.
+              sessionCookieSecretName: zitadel-login-session-cookie
               # 2 login replicas across distinct nodes.
               replicaCount: 2
               pdb:
