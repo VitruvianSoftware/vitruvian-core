@@ -1732,6 +1732,20 @@ enum SessionFileReader {
 
 // MARK: - Chat Conversation View
 
+struct ApprovalRequest: Identifiable, Equatable {
+    let id: String
+    let toolName: String
+    let commandOrPath: String
+    var status: Status
+
+    enum Status: String, Equatable {
+        case pending
+        case approved
+        case denied
+        case sessionAllowed = "session_allowed"
+    }
+}
+
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: String
@@ -1745,6 +1759,7 @@ struct ChatMessage: Identifiable, Equatable {
     var toolCalls: Int? = nil
     var numTurns: Int? = nil
     var stopReason: String? = nil
+    var approvalRequest: ApprovalRequest? = nil
 }
 
 struct QuickPromptChatView: View {
@@ -1939,7 +1954,9 @@ struct QuickPromptChatView: View {
                             }
 
                             ForEach(messages) { msg in
-                                MessageBubble(message: msg)
+                                MessageBubble(message: msg, onDecision: { decision in
+                                    decideApproval(messageID: msg.id, decision: decision)
+                                })
                                     .id(msg.id)
                                     .transition(.asymmetric(
                                         insertion: .opacity.combined(with: .offset(y: 12)),
@@ -2649,31 +2666,39 @@ struct QuickPromptChatView: View {
         process.executableURL = URL(fileURLWithPath: resolvedBin)
 
         if viaOllama {
-            // ollama launch claude --model <model> -- -p <prompt> --output-format stream-json --verbose --permission-mode bypassPermissions
+            // ollama launch claude --model <model> -- -p <prompt> --output-format stream-json --include-partial-messages --verbose --permission-mode <mode>
             let model = ConfigManager.shared?.model ?? ""
             var args = ["launch", "claude"]
             // --model is required in headless mode; use configured model or first available
             let effectiveModel = model.isEmpty ? await ollamaDefaultModel() : model
             args += ["--model", effectiveModel]
             // Everything after "--" is passed to Claude Code
-            let permMode = planMode ? "plan" : "bypassPermissions"
-            args += ["--", "-p", prompt, "--output-format", "stream-json", "--verbose",
-                      "--permission-mode", permMode]
+            let configuredMode = ConfigManager.shared?.approvalMode ?? "yolo"
+            let permMode = planMode ? "plan" : (configuredMode == "accept-edits" ? "acceptEdits" : (configuredMode == "default" ? "default" : "bypassPermissions"))
+            var innerArgs = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose",
+                             "--permission-mode", permMode]
+            if configuredMode == "yolo" && !planMode {
+                innerArgs += ["--dangerously-skip-permissions"]
+            }
             if planMode {
-                args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+                innerArgs += ["--append-system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
             }
-            if worktreeMode { args += ["-w"] }
+            if worktreeMode { innerArgs += ["-w"] }
             if let sessionId = activeSessionUUID ?? resumeUUID {
-                args += ["--resume", sessionId]
+                innerArgs += ["--resume", sessionId]
             }
-            process.arguments = args
+            process.arguments = args + ["--"] + innerArgs
         } else {
             // Direct Claude Code invocation
-            let permMode = planMode ? "plan" : "bypassPermissions"
-            var args = ["-p", prompt, "--output-format", "stream-json", "--verbose",
+            let configuredMode = ConfigManager.shared?.approvalMode ?? "yolo"
+            let permMode = planMode ? "plan" : (configuredMode == "accept-edits" ? "acceptEdits" : (configuredMode == "default" ? "default" : "bypassPermissions"))
+            var args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose",
                         "--permission-mode", permMode]
+            if configuredMode == "yolo" && !planMode {
+                args += ["--dangerously-skip-permissions"]
+            }
             if planMode {
-                args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+                args += ["--append-system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
             }
             if worktreeMode { args += ["-w"] }
             if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
@@ -2739,6 +2764,61 @@ struct QuickPromptChatView: View {
                                     // Claude assistant events carry model in message.model
                                     streamingStatus = "Connected…"
 
+                                case "stream_event":
+                                    guard let event = json["event"] as? [String: Any],
+                                          let eventType = event["type"] as? String else { break }
+                                    switch eventType {
+                                    case "content_block_delta":
+                                        if let delta = event["delta"] as? [String: Any],
+                                           let deltaType = delta["type"] as? String,
+                                           deltaType == "text_delta",
+                                           let text = delta["text"] as? String, !text.isEmpty {
+                                            if let idx = streamingMessageIndex {
+                                                messages[idx].content += text
+                                            } else {
+                                                messages.append(ChatMessage(role: "assistant", content: text))
+                                                streamingMessageIndex = messages.count - 1
+                                            }
+                                            streamingStatus = "Generating…"
+                                        }
+                                    case "content_block_start":
+                                        if let block = event["content_block"] as? [String: Any],
+                                           let blockType = block["type"] as? String,
+                                           blockType == "tool_use",
+                                           let name = block["name"] as? String {
+                                            streamingStatus = "Using \(name)…"
+                                            if let idx = streamingMessageIndex {
+                                                messages[idx].toolCalls = (messages[idx].toolCalls ?? 0) + 1
+                                            }
+                                            let toolInput = block["input"] as? [String: Any]
+                                            let toolId = block["id"] as? String ?? UUID().uuidString
+                                            let preview: String
+                                            if name == "Bash" {
+                                                preview = toolInput?["command"] as? String ?? ""
+                                            } else if name == "Edit" || name == "Write" || name == "Read" {
+                                                preview = toolInput?["file_path"] as? String ?? ""
+                                            } else {
+                                                preview = toolInput?["description"] as? String ?? ""
+                                            }
+                                            let configuredMode = ConfigManager.shared?.approvalMode ?? "yolo"
+                                            let isAuto = (configuredMode == "yolo") || (configuredMode == "accept-edits" && (name == "Edit" || name == "Write" || name == "Read"))
+                                            if !isAuto {
+                                                let req = ApprovalRequest(id: toolId, toolName: name, commandOrPath: preview, status: .pending)
+                                                if let idx = streamingMessageIndex {
+                                                    messages[idx].approvalRequest = req
+                                                } else {
+                                                    var msg = ChatMessage(role: "assistant", content: "")
+                                                    msg.approvalRequest = req
+                                                    msg.toolCalls = 1
+                                                    messages.append(msg)
+                                                    streamingMessageIndex = messages.count - 1
+                                                }
+                                            }
+                                        }
+                                    default:
+                                        break
+                                    }
+
                                 case "assistant":
                                     // Extract text from message.content array
                                     if let message = json["message"] as? [String: Any],
@@ -2749,9 +2829,9 @@ struct QuickPromptChatView: View {
                                                let text = block["text"] as? String,
                                                !text.isEmpty {
                                                 if let idx = streamingMessageIndex {
-                                                    // Claude sends the full accumulated text on each assistant event
-                                                    // (not deltas like agy), so we replace rather than append.
-                                                    messages[idx].content = text
+                                                    if messages[idx].content.isEmpty {
+                                                        messages[idx].content = text
+                                                    }
                                                 } else {
                                                     messages.append(ChatMessage(role: "assistant", content: text))
                                                     streamingMessageIndex = messages.count - 1
@@ -3166,12 +3246,160 @@ struct QuickPromptChatView: View {
         }
         return nil
     }
+
+    /// Resolves an interactive tool execution approval request.
+    private func decideApproval(messageID: UUID, decision: ApprovalRequest.Status) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        messages[idx].approvalRequest?.status = decision
+    }
+}
+
+// MARK: - Approval Card View
+
+struct ApprovalCardView: View {
+    let request: ApprovalRequest
+    let onDecision: ((ApprovalRequest.Status) -> Void)?
+    @State private var hoveredButton: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(request.status == .pending ? Color.orange : Color.secondary)
+                Text("Permission Request")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                Text(request.toolName)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+                Spacer()
+                switch request.status {
+                case .pending:
+                    Text("Awaiting confirmation")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.orange)
+                case .approved:
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.green)
+                        Text("Approved")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.green)
+                    }
+                case .denied:
+                    HStack(spacing: 3) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red)
+                        Text("Denied")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.red)
+                    }
+                case .sessionAllowed:
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.blue)
+                        Text("Allowed for Session")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+
+            if !request.commandOrPath.isEmpty {
+                Text(request.commandOrPath)
+                    .font(.system(size: 11, design: .monospaced))
+                    .lineLimit(4)
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+            }
+
+            if request.status == .pending {
+                HStack(spacing: 8) {
+                    Button {
+                        onDecision?(.approved)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Allow")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.green.opacity(hoveredButton == "allow" ? 0.25 : 0.15)))
+                        .foregroundStyle(Color.green)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hoveredButton = $0 ? "allow" : nil }
+
+                    Button {
+                        onDecision?(.denied)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Deny")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.red.opacity(hoveredButton == "deny" ? 0.25 : 0.15)))
+                        .foregroundStyle(Color.red)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hoveredButton = $0 ? "deny" : nil }
+
+                    Button {
+                        onDecision?(.sessionAllowed)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9))
+                            Text("Allow for Session")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(hoveredButton == "session" ? 0.25 : 0.15)))
+                        .foregroundStyle(Color.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hoveredButton = $0 ? "session" : nil }
+
+                    Spacer()
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(request.status == .pending ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
 }
 
 // MARK: - Message Bubble
 
 struct MessageBubble: View {
     let message: ChatMessage
+    var onDecision: ((ApprovalRequest.Status) -> Void)? = nil
     @State private var copied = false
     @State private var hovering = false
     @State private var copyBounce = false
@@ -3246,50 +3474,56 @@ struct MessageBubble: View {
             }
             
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                let parts = splitCodeBlocks(message.content)
-                let hasCode = !isUser && parts.contains(where: { $0.isCode })
-                
-                // #5: Enhanced visual hierarchy
-                if hasCode {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                            if part.isCode {
-                                CodeBlockView(code: part.content, language: part.language)
-                            } else if !part.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                markdownText(part.content)
+                if !isUser, let req = message.approvalRequest {
+                    ApprovalCardView(request: req, onDecision: onDecision)
+                }
+
+                if !message.content.isEmpty {
+                    let parts = splitCodeBlocks(message.content)
+                    let hasCode = !isUser && parts.contains(where: { $0.isCode })
+                    
+                    // #5: Enhanced visual hierarchy
+                    if hasCode {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                                if part.isCode {
+                                    CodeBlockView(code: part.content, language: part.language)
+                                } else if !part.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    markdownText(part.content)
+                                }
                             }
                         }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.secondary.opacity(0.08))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .strokeBorder(Color.blue.opacity(0.12), lineWidth: 1)
-                            )
-                    )
-                } else {
-                    markdownText(message.content)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: isUser ? 18 : 14)
-                                .fill(
-                                    isUser
-                                        ? AnyShapeStyle(.linearGradient(
-                                            colors: [Color.blue.opacity(0.22), Color.indigo.opacity(0.18)],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        : AnyShapeStyle(Color.secondary.opacity(0.08))
-                                )
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.secondary.opacity(0.08))
                                 .overlay(
-                                    !isUser
-                                        ? AnyView(RoundedRectangle(cornerRadius: 14)
-                                            .strokeBorder(Color.blue.opacity(0.08), lineWidth: 0.5))
-                                        : AnyView(EmptyView())
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(Color.blue.opacity(0.12), lineWidth: 1)
                                 )
                         )
+                    } else {
+                        markdownText(message.content)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: isUser ? 18 : 14)
+                                    .fill(
+                                        isUser
+                                            ? AnyShapeStyle(.linearGradient(
+                                                colors: [Color.blue.opacity(0.22), Color.indigo.opacity(0.18)],
+                                                startPoint: .topLeading, endPoint: .bottomTrailing))
+                                            : AnyShapeStyle(Color.secondary.opacity(0.08))
+                                    )
+                                    .overlay(
+                                        !isUser
+                                            ? AnyView(RoundedRectangle(cornerRadius: 14)
+                                                .strokeBorder(Color.blue.opacity(0.08), lineWidth: 0.5))
+                                            : AnyView(EmptyView())
+                                    )
+                            )
+                    }
                 }
                 
                 // #14: Copy button — visible on hover for any message

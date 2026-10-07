@@ -39,6 +39,16 @@ package enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
         case .standard: return []
         }
     }
+
+    /// The Claude Code permission mode corresponding to this approval mode.
+    package var claudePermissionMode: String {
+        switch self {
+        case .yolo: return "bypassPermissions"
+        case .acceptEdits: return "acceptEdits"
+        case .plan: return "plan"
+        case .standard: return "default"
+        }
+    }
 }
 
 /// agy's `--effort`; `automatic` leaves the choice to agy.
@@ -384,14 +394,21 @@ package enum NexusAgentSupport {
                                        planMode: Bool = false,
                                        worktreeMode: Bool = false) -> [String] {
         if configuration.activeProvider.id == NexusAgentCLIProvider.claude.id {
-            var args = ["-p", prompt]
+            var args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
                 args += ["--permission-mode", "plan",
-                         "--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+                         "--append-system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+            } else {
+                args += ["--permission-mode", configuration.approvalMode.claudePermissionMode]
+                if configuration.approvalMode == .yolo {
+                    args += ["--dangerously-skip-permissions"]
+                }
             }
             if worktreeMode {
                 args += ["-w"]
             }
+            let model = configuration.model.trimmingCharacters(in: .whitespaces)
+            if !model.isEmpty { args += ["--model", model] }
             if let conversationID, !conversationID.isEmpty {
                 args += ["--resume", conversationID]
             }
@@ -400,9 +417,15 @@ package enum NexusAgentSupport {
         if configuration.activeProvider.id == NexusAgentCLIProvider.ollama.id {
             let model = configuration.model.trimmingCharacters(in: .whitespaces)
             let args = ["launch", "claude", "--model", model.isEmpty ? "default" : model]
-            var innerArgs = ["-p", prompt]
+            var innerArgs = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
-                innerArgs += ["--permission-mode", "plan"]
+                innerArgs += ["--permission-mode", "plan",
+                              "--append-system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+            } else {
+                innerArgs += ["--permission-mode", configuration.approvalMode.claudePermissionMode]
+                if configuration.approvalMode == .yolo {
+                    innerArgs += ["--dangerously-skip-permissions"]
+                }
             }
             if worktreeMode {
                 innerArgs += ["-w"]
@@ -449,6 +472,33 @@ package enum NexusAgentSupport {
     }
 }
 
+/// An interactive tool execution approval request.
+package struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
+    package let id: String
+    package let toolName: String
+    package let commandOrPath: String
+    package var status: Status
+
+    package enum Status: String, Sendable, Equatable {
+        case pending
+        case approved
+        case denied
+        case sessionAllowed = "session_allowed"
+    }
+
+    package init(
+        id: String = UUID().uuidString,
+        toolName: String,
+        commandOrPath: String,
+        status: Status = .pending
+    ) {
+        self.id = id
+        self.toolName = toolName
+        self.commandOrPath = commandOrPath
+        self.status = status
+    }
+}
+
 package struct NexusAgentTurnMetrics: Equatable {
     package var durationMs: Int?
     package var inputTokens: Int?
@@ -456,6 +506,7 @@ package struct NexusAgentTurnMetrics: Equatable {
     package var cachedTokens: Int?
     package var numTurns: Int?
     package var toolCalls: Int?
+    package var totalCostUSD: Double?
 
     package init(
         durationMs: Int? = nil,
@@ -463,7 +514,8 @@ package struct NexusAgentTurnMetrics: Equatable {
         outputTokens: Int? = nil,
         cachedTokens: Int? = nil,
         numTurns: Int? = nil,
-        toolCalls: Int? = nil
+        toolCalls: Int? = nil,
+        totalCostUSD: Double? = nil
     ) {
         self.durationMs = durationMs
         self.inputTokens = inputTokens
@@ -471,65 +523,136 @@ package struct NexusAgentTurnMetrics: Equatable {
         self.cachedTokens = cachedTokens
         self.numTurns = numTurns
         self.toolCalls = toolCalls
+        self.totalCostUSD = totalCostUSD
     }
 }
 
-/// One line of `agy --output-format stream-json`, reduced to what the Quick
+/// One line of `agy --output-format stream-json` or Claude Code stream-json, reduced to what the Quick
 /// Prompt shows.
 package enum NexusAgentStreamEvent: Equatable {
     case started(conversationID: String?)
     case text(String)
     case tool(name: String, finished: Bool)
+    case approval(NexusAgentApprovalRequest)
     case finished(status: String, response: String?, error: String?, conversationID: String?, metrics: NexusAgentTurnMetrics? = nil)
 
     /// Nil for blank lines, non-JSON noise and events the prompt ignores.
     package static func parse(_ line: String) -> NexusAgentStreamEvent? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8),
-              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let event = json["event"] as? String
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return nil }
-        switch event {
-        case "init":
-            return .started(conversationID: nonEmpty(json["conversation_id"]))
-        case "step_update":
-            guard let step = json["step_update"] as? [String: Any] else { return nil }
-            switch step["step_type"] as? String {
-            case "agent_response":
-                guard let delta = step["text_delta"] as? String, !delta.isEmpty else { return nil }
-                return .text(delta)
-            case "tool":
-                let name = nonEmpty(step["tool_name"]) ?? "tool"
-                return .tool(name: name, finished: (step["state"] as? String)?.uppercased() == "DONE")
+
+        // Format 1: Antigravity stream-json (keyed by "event")
+        if let event = json["event"] as? String {
+            switch event {
+            case "init":
+                return .started(conversationID: nonEmpty(json["conversation_id"]))
+            case "step_update":
+                guard let step = json["step_update"] as? [String: Any] else { return nil }
+                switch step["step_type"] as? String {
+                case "agent_response":
+                    guard let delta = step["text_delta"] as? String, !delta.isEmpty else { return nil }
+                    return .text(delta)
+                case "tool":
+                    let name = nonEmpty(step["tool_name"]) ?? "tool"
+                    return .tool(name: name, finished: (step["state"] as? String)?.uppercased() == "DONE")
+                default:
+                    return nil
+                }
+            case "result":
+                guard let result = json["result"] as? [String: Any] else { return nil }
+                var m = NexusAgentTurnMetrics()
+                var hasMetrics = false
+                if let secs = result["duration_seconds"] as? NSNumber {
+                    m.durationMs = Int(secs.doubleValue * 1000)
+                    hasMetrics = true
+                } else if let ms = result["duration_ms"] as? NSNumber {
+                    m.durationMs = ms.intValue
+                    hasMetrics = true
+                }
+                if let usage = result["usage"] as? [String: Any] {
+                    if let t = usage["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+                    if let t = usage["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+                    if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+                }
+                if let t = result["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+                if let t = result["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+                if let t = result["cached_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+                if let turns = result["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
+                if let tools = result["tool_calls"] as? NSNumber { m.toolCalls = tools.intValue; hasMetrics = true }
+                return .finished(status: (result["status"] as? String) ?? "",
+                                 response: nonEmpty(result["response"]),
+                                 error: nonEmpty(result["error"]),
+                                 conversationID: nonEmpty(result["conversation_id"]),
+                                 metrics: hasMetrics ? m : nil)
+            default:
+                return nil
+            }
+        }
+
+        // Format 2: Claude Code stream-json (keyed by "type")
+        guard let type = json["type"] as? String else { return nil }
+        switch type {
+        case "system":
+            if let sid = nonEmpty(json["session_id"]) {
+                return .started(conversationID: sid)
+            }
+            return nil
+        case "stream_event":
+            guard let innerEvent = json["event"] as? [String: Any],
+                  let innerType = innerEvent["type"] as? String else { return nil }
+            switch innerType {
+            case "content_block_delta":
+                guard let delta = innerEvent["delta"] as? [String: Any],
+                      let deltaType = delta["type"] as? String, deltaType == "text_delta",
+                      let text = delta["text"] as? String, !text.isEmpty else { return nil }
+                return .text(text)
+            case "content_block_start":
+                guard let block = innerEvent["content_block"] as? [String: Any],
+                      let blockType = block["type"] as? String, blockType == "tool_use",
+                      let name = nonEmpty(block["name"]) else { return nil }
+                let toolInput = block["input"] as? [String: Any]
+                let toolId = (block["id"] as? String) ?? UUID().uuidString
+                let preview: String
+                if name == "Bash" {
+                    preview = (toolInput?["command"] as? String) ?? ""
+                } else if name == "Edit" || name == "Write" || name == "Read" {
+                    preview = (toolInput?["file_path"] as? String) ?? ""
+                } else {
+                    preview = (toolInput?["description"] as? String) ?? ""
+                }
+                return .approval(NexusAgentApprovalRequest(id: toolId, toolName: name, commandOrPath: preview, status: .pending))
             default:
                 return nil
             }
         case "result":
-            guard let result = json["result"] as? [String: Any] else { return nil }
             var m = NexusAgentTurnMetrics()
             var hasMetrics = false
-            if let secs = result["duration_seconds"] as? NSNumber {
-                m.durationMs = Int(secs.doubleValue * 1000)
-                hasMetrics = true
-            } else if let ms = result["duration_ms"] as? NSNumber {
+            if let ms = json["duration_ms"] as? NSNumber {
                 m.durationMs = ms.intValue
                 hasMetrics = true
             }
-            if let usage = result["usage"] as? [String: Any] {
+            if let cost = json["total_cost_usd"] as? NSNumber {
+                m.totalCostUSD = cost.doubleValue
+                hasMetrics = true
+            }
+            if let usage = json["usage"] as? [String: Any] {
                 if let t = usage["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
                 if let t = usage["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
-                if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+                if let t = usage["cache_read_input_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+                else if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
             }
-            if let t = result["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
-            if let t = result["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
-            if let t = result["cached_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
-            if let turns = result["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
-            if let tools = result["tool_calls"] as? NSNumber { m.toolCalls = tools.intValue; hasMetrics = true }
-            return .finished(status: (result["status"] as? String) ?? "",
-                             response: nonEmpty(result["response"]),
-                             error: nonEmpty(result["error"]),
-                             conversationID: nonEmpty(result["conversation_id"]),
-                             metrics: hasMetrics ? m : nil)
+            if let turns = json["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
+            let isError = (json["is_error"] as? Bool) ?? false
+            let resultText = json["result"] as? String
+            return .finished(
+                status: (json["stop_reason"] as? String) ?? (isError ? "error" : "completed"),
+                response: resultText,
+                error: isError ? (resultText ?? "Error") : nil,
+                conversationID: nonEmpty(json["session_id"]),
+                metrics: hasMetrics ? m : nil
+            )
         default:
             return nil
         }

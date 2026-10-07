@@ -27,6 +27,8 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
     package var stopReason: String?
     package var toolSteps: [NexusAgentToolStep]?
     package var thinkingText: String?
+    package var totalCostUSD: Double?
+    package var approvalRequest: NexusAgentApprovalRequest?
 
     package init(
         id: UUID = UUID(),
@@ -42,7 +44,9 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
         modelName: String? = nil,
         stopReason: String? = nil,
         toolSteps: [NexusAgentToolStep]? = nil,
-        thinkingText: String? = nil
+        thinkingText: String? = nil,
+        totalCostUSD: Double? = nil,
+        approvalRequest: NexusAgentApprovalRequest? = nil
     ) {
         self.id = id
         self.role = role
@@ -58,6 +62,8 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
         self.stopReason = stopReason
         self.toolSteps = toolSteps
         self.thinkingText = thinkingText
+        self.totalCostUSD = totalCostUSD
+        self.approvalRequest = approvalRequest
     }
 }
 
@@ -75,7 +81,7 @@ package struct NexusAgentRunningAgent {
 /// agent keeps the context until New chat.
 @MainActor
 package final class NexusAgentQuickPromptSession: ObservableObject {
-    @Published package private(set) var messages: [NexusAgentChatMessage] = []
+    @Published package var messages: [NexusAgentChatMessage] = []
     @Published package private(set) var isRunning = false
     /// The tool the agent is using right now, if any.
     @Published package private(set) var activity: String?
@@ -406,6 +412,17 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
                 messages[idx].toolCalls = currentToolCalls
             }
+        case .approval(let req):
+            activity = "Using \(req.toolName)…"
+            currentToolCalls += 1
+            if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
+                messages[idx].approvalRequest = req
+                messages[idx].toolCalls = currentToolCalls
+            } else {
+                let msg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls, approvalRequest: req)
+                messages.append(msg)
+                replyID = msg.id
+            }
         case .finished(let status, let response, let error, let id, let metrics):
             activity = nil
             if let id { conversationID = id }
@@ -417,6 +434,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
                     messages[idx].outputTokens = metrics.outputTokens
                     messages[idx].cachedTokens = metrics.cachedTokens
                     messages[idx].numTurns = metrics.numTurns
+                    messages[idx].totalCostUSD = metrics.totalCostUSD
                 }
                 messages[idx].toolCalls = currentToolCalls
                 messages[idx].stopReason = status
@@ -426,6 +444,12 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
                 messages.append(NexusAgentChatMessage(role: .agent, text: error, isError: true))
             }
         }
+    }
+
+    /// Resolves an interactive tool execution approval request.
+    package func decideApproval(messageID: UUID, decision: NexusAgentApprovalRequest.Status) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        messages[idx].approvalRequest?.status = decision
     }
 
     private func agentDidExit(_ status: Int32, turn current: Int) {
