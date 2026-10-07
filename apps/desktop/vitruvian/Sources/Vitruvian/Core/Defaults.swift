@@ -265,6 +265,7 @@ package enum Defaults {
         DefaultsKey.scrollHorizontalModifier: Preferences.scrollHorizontalModifier.defaultValue,
         DefaultsKey.focusFollowsMouseEnabled: Preferences.focusFollowsMouseEnabled.defaultValue,
         DefaultsKey.focusFollowsMouseRaise: Preferences.focusFollowsMouseRaise.defaultValue,
+        DefaultsKey.focusFollowsMouseWaitForStop: Preferences.focusFollowsMouseWaitForStop.defaultValue,
         DefaultsKey.focusFollowsMouseDelay: Preferences.focusFollowsMouseDelay.defaultValue,
         DefaultsKey.smoothScrollEnabled: Preferences.smoothScrollEnabled.defaultValue,
         DefaultsKey.smoothScrollStep: Preferences.smoothScrollStep.defaultValue,

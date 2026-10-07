@@ -109,13 +109,19 @@ package struct FocusFollowsMouseState: Equatable {
     package private(set) var movedAt: TimeInterval = 0
     package private(set) var generation: UInt64 = 0
     private var evaluatedGeneration: UInt64?
+    private var windowID: CGWindowID?
 
     package var hasPendingEvaluation: Bool {
         point != nil && evaluatedGeneration != generation
     }
 
-    package mutating func recordMovement(to point: CGPoint, at time: TimeInterval) {
-        self.point = point
+    /// With a window ID, the delay counts time over that window, so moving
+    /// within it neither restarts the delay nor asks for another evaluation.
+    /// Without one, every movement restarts the delay.
+    package mutating func recordMovement(to point: CGPoint, at time: TimeInterval, windowID: CGWindowID? = nil) {
+        defer { self.point = point }
+        if let windowID, windowID == self.windowID, self.point != nil { return }
+        self.windowID = windowID
         movedAt = time
         generation &+= 1
         evaluatedGeneration = nil

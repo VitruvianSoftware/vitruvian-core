@@ -23,6 +23,7 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.scrollHorizontalModifier) private var horizontalScrollModifier: ScrollHorizontalModifier
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
     @AppStorage(Preferences.focusFollowsMouseRaise) private var focusFollowsMouseRaise: Bool
+    @AppStorage(Preferences.focusFollowsMouseWaitForStop) private var focusFollowsMouseWaitForStop: Bool
     @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay: Int
     @AppStorage(Preferences.smoothScrollEnabled) private var smoothScrollEnabled: Bool
     @AppStorage(Preferences.smoothScrollStep) private var smoothScrollStep: Int
@@ -288,6 +289,9 @@ package struct MouseSettings: View {
                               step: 50,
                               readout: "\(focusFollowsMouseDelay) ms")
                     Toggle(l10n.s.focusFollowsMouseRaise, isOn: $focusFollowsMouseRaise)
+                    if !focusFollowsMouseRaise {
+                        Toggle(l10n.s.focusFollowsMouseWaitForStop, isOn: $focusFollowsMouseWaitForStop)
+                    }
                     MouseExceptionsList(scope: .focusFollowsMouse)
                 }
                 .padding(.leading, settingsRowTextInset)

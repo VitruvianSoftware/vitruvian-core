@@ -101,8 +101,14 @@ package final class FocusFollowsMouseService {
             return
         }
         guard isRunning else { return }
-        state.recordMovement(to: point, at: ProcessInfo.processInfo.systemUptime)
-        guard timer == nil else { return }
+        // Raising always waits for the pointer to stop, so windows passed on
+        // the way are not reshuffled. Without a raise, the user may instead
+        // have the delay count time over a window while the pointer moves.
+        let waitsForStop = UserDefaults.standard[Preferences.focusFollowsMouseRaise]
+            || UserDefaults.standard[Preferences.focusFollowsMouseWaitForStop]
+        state.recordMovement(to: point, at: ProcessInfo.processInfo.systemUptime,
+                             windowID: waitsForStop ? nil : Self.receivingWindow(at: point))
+        guard timer == nil, state.hasPendingEvaluation else { return }
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             // Added to the main run loop below, so it fires on the main thread.
             MainActor.assumeIsolated { self?.evaluateIfSettled() }
