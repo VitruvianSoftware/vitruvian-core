@@ -136,6 +136,17 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// first; the planner (--rdeps-map-max-behind) decides whether an older map
 	// is safe and plans against its commit. actions/cache allows 10 keys in
 	// all: the exact one plus 9 here.
+	// First choice: the map kept under a git ref (tools/ci/rdeps-map-ref.sh).
+	// The Actions cache below evicts maps within the hour while the repo is
+	// over its 10 GiB budget (#2841); a ref is never evicted. The cache steps
+	// stay as the fallback, so nothing is lost if the ref is not there.
+	b.WriteString("      - name: Fetch the dependency map kept under a git ref\n")
+	b.WriteString("        id: mapref\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
+	b.WriteString("          GH_TOKEN: ${{ github.token }}\n")
+	b.WriteString("        run: bash tools/ci/rdeps-map-ref.sh fetch \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$BASE_SHA\"\n\n")
 	b.WriteString("      - name: List recent ancestors of the diff base\n")
 	b.WriteString("        id: mapkeys\n")
 	b.WriteString("        env:\n")
@@ -153,6 +164,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// continue-on-error: the map is only ever a speed-up, so a cache problem
 	// must not fail the plan; the planner copes with having no map.
 	b.WriteString("      - name: Restore the dependency map for the diff base\n")
+	b.WriteString("        if: steps.mapref.outputs.commit == ''\n")
 	b.WriteString("        continue-on-error: true\n")
 	b.WriteString("        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
 	b.WriteString("        with:\n")
@@ -459,6 +471,10 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}\n")
 	b.WriteString("    runs-on: ubuntu-26.04\n")
 	b.WriteString("    timeout-minutes: 45\n")
+	// contents: write, for this job only: it pushes the map to
+	// refs/rdeps-map/<sha> (see the save step). It runs on push to main only.
+	b.WriteString("    permissions:\n")
+	b.WriteString("      contents: write\n")
 	b.WriteString("    env:\n")
 	b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 	b.WriteString("    steps:\n")
@@ -482,6 +498,15 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("        run: |\n")
 	b.WriteString("          GOWORK=off CGO_ENABLED=0 go build -o \"$RUNNER_TEMP/pipeline-plan\" ./tools/pipeline/plan\n")
 	b.WriteString("          \"$RUNNER_TEMP/pipeline-plan\" --emit-rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --repo-root=\"$PWD\" --timeout-sec=2100\n\n")
+	// The copy that is never evicted (#2841). continue-on-error: the cache
+	// save below still happens, so a failed push only costs the speed-up.
+	b.WriteString("      - name: Keep it under a git ref\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          GH_TOKEN: ${{ github.token }}\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          bash tools/ci/rdeps-map-ref.sh save \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$GITHUB_SHA\"\n")
+	b.WriteString("          bash tools/ci/rdeps-map-ref.sh prune\n\n")
 	b.WriteString("      - name: Save it for PRs based on this commit\n")
 	b.WriteString("        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
 	b.WriteString("        with:\n")
