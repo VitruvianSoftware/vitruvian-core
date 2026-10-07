@@ -1534,6 +1534,38 @@ enum PointerInputFeatureTests {
                 && copiedWheel.items == shortcutTapWheel.items
                 && copiedWheel.shortcut.isEmpty && !copiedWheel.trackpadTap,
                "a duplicated wheel keeps the actions but leaves the shortcut and the trackpad tap to the original")
+        // #2614: a wheel picked in Settings opens only from its own triggers.
+        suite.expect(RadialMenuSupport.hasTrigger(shortcutTapWheel)
+                && RadialMenuSupport.hasTrigger(RadialMenuProfile(shortcut: GlobalShortcut.radialMenuDefault.storageValue))
+                && RadialMenuSupport.hasTrigger(RadialMenuProfile(mouseButton: RadialMenuMouseTrigger.button(4).rawValue))
+                && RadialMenuSupport.hasTrigger(tapWheel),
+               "a shortcut, a mouse button or the trackpad tap each open a wheel")
+        suite.expect(!RadialMenuSupport.hasTrigger(copiedWheel)
+                && !RadialMenuSupport.hasTrigger(RadialMenuProfile(shortcut: "not a shortcut",
+                                                                   mouseButton: RadialMenuMouseTrigger.off.rawValue)),
+               "a wheel without a shortcut, a mouse button or the tap has nothing that opens it")
+        // A button opens only the first wheel that has it, so a second wheel
+        // on the same button would hide the caption and still never open.
+        let forwardWheel = RadialMenuProfile(name: "Forward", mouseButton: RadialMenuMouseTrigger.forward.rawValue)
+        let copiedForwardWheel = forwardWheel.duplicate(named: "Forward 2")
+        suite.expect(RadialMenuMouseTrigger.sanitized(copiedForwardWheel.mouseButton) == .off
+                && !RadialMenuSupport.hasTrigger(copiedForwardWheel),
+               "a duplicated wheel leaves the mouse button to the original, the only wheel it opens")
+        let movedButton = RadialMenuSupport.assigning(mouseButton: RadialMenuMouseTrigger.forward.rawValue,
+                                                      to: copiedWheel.id, in: [forwardWheel, copiedWheel])
+        suite.expect(movedButton.map(\.mouseButton)
+                == [RadialMenuMouseTrigger.off.rawValue, RadialMenuMouseTrigger.forward.rawValue],
+               "giving a wheel a mouse button takes it off the wheel that opened with it")
+        let otherButton = RadialMenuSupport.assigning(mouseButton: RadialMenuMouseTrigger.button(5).rawValue,
+                                                      to: copiedWheel.id, in: [forwardWheel, copiedWheel])
+        suite.expect(otherButton.map(\.mouseButton)
+                == [RadialMenuMouseTrigger.forward.rawValue, RadialMenuMouseTrigger.button(5).rawValue],
+               "a different button leaves the other wheels as they are")
+        var savedCopy = forwardWheel
+        savedCopy.id = UUID()
+        suite.expect(RadialMenuSupport.sanitizedProfiles([forwardWheel, savedCopy]).map(\.mouseButton)
+                == [RadialMenuMouseTrigger.forward.rawValue, RadialMenuMouseTrigger.off.rawValue],
+               "a button saved on two wheels stays on the first, the only one it ever opened")
         suite.expect(MiddleClickSupport.tapShouldFire(duration: 0.15, maxMovement: 0.01, maxSpreadChange: 0.01,
                                                 exceededFingerCount: false, buttonPressedDuring: false,
                                                 positionUnavailable: false, systemDragGestureEnabled: true,

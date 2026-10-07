@@ -105,6 +105,7 @@ package struct RadialMenuFeatureStrings {
     package let hideListButton: String
     package let trackpadTapLabel: String
     package let trackpadTapConflict: String
+    package let profileNoTrigger: String
 }
 
 extension FeatureStrings {
@@ -231,7 +232,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Show as list",
         hideListButton: "Hide list",
         trackpadTapLabel: "Open with a four-finger tap",
-        trackpadTapConflict: "Middle click already uses the four-finger tap, so the tap does not open this wheel."
+        trackpadTapConflict: "Middle click already uses the four-finger tap, so the tap does not open this wheel.",
+        profileNoTrigger: "Picking a profile here only edits it. Give this one a shortcut, a mouse button or the four-finger tap below to open it."
     )
 
     package static let ptBR = RadialMenuFeatureStrings(
@@ -335,7 +337,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Mostrar em lista",
         hideListButton: "Ocultar lista",
         trackpadTapLabel: "Abrir com um toque de quatro dedos",
-        trackpadTapConflict: "O botão do meio já usa o toque de quatro dedos, então o toque não abre esta roda."
+        trackpadTapConflict: "O botão do meio já usa o toque de quatro dedos, então o toque não abre esta roda.",
+        profileNoTrigger: "Escolher um perfil aqui serve só para editá-lo. Para abrir este perfil, dê a ele um atalho, um botão do mouse ou o toque de quatro dedos abaixo."
     )
 
     package static let tr = RadialMenuFeatureStrings(
@@ -439,7 +442,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Liste olarak göster",
         hideListButton: "Listeyi gizle",
         trackpadTapLabel: "Dört parmakla dokunarak aç",
-        trackpadTapConflict: "Dört parmakla dokunma zaten orta tıklamaya ayrılmış, bu yüzden dokunma bu çarkı açmaz."
+        trackpadTapConflict: "Dört parmakla dokunma zaten orta tıklamaya ayrılmış, bu yüzden dokunma bu çarkı açmaz.",
+        profileNoTrigger: "Burada bir profil seçmek yalnızca onu düzenlemenizi sağlar. Açmak için bu profile aşağıdan bir kısayol, bir fare düğmesi veya dört parmakla dokunma verin."
     )
 
     package static let ru = RadialMenuFeatureStrings(
@@ -543,7 +547,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Показать списком",
         hideListButton: "Скрыть список",
         trackpadTapLabel: "Открывать касанием четырьмя пальцами",
-        trackpadTapConflict: "Касание четырьмя пальцами уже занято средней кнопкой, поэтому оно не открывает это колесо."
+        trackpadTapConflict: "Касание четырьмя пальцами уже занято средней кнопкой, поэтому оно не открывает это колесо.",
+        profileNoTrigger: "Выбор профиля здесь только открывает его для правки. Чтобы этот профиль открывался, задайте ему ниже сочетание клавиш, кнопку мыши или касание четырьмя пальцами."
     )
 
     package static let es = RadialMenuFeatureStrings(
@@ -647,7 +652,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Mostrar como lista",
         hideListButton: "Ocultar lista",
         trackpadTapLabel: "Abrir con un toque de cuatro dedos",
-        trackpadTapConflict: "El clic central ya usa el toque de cuatro dedos, así que el toque no abre esta rueda."
+        trackpadTapConflict: "El clic central ya usa el toque de cuatro dedos, así que el toque no abre esta rueda.",
+        profileNoTrigger: "Elegir un perfil aquí solo sirve para editarlo. Dale a este un atajo, un botón del ratón o el toque de cuatro dedos de abajo para abrirlo."
     )
 
     package static let sk = RadialMenuFeatureStrings(
@@ -751,7 +757,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Zobraziť ako zoznam",
         hideListButton: "Skryť zoznam",
         trackpadTapLabel: "Otvoriť ťuknutím štyrmi prstami",
-        trackpadTapConflict: "Stredné kliknutie už používa ťuknutie štyrmi prstami, takže toto ťuknutie koleso neotvorí."
+        trackpadTapConflict: "Stredné kliknutie už používa ťuknutie štyrmi prstami, takže toto ťuknutie koleso neotvorí.",
+        profileNoTrigger: "Tu iba vyberáte profil, ktorý upravujete. Aby sa tento profil otváral, priraďte mu nižšie skratku, tlačidlo myši alebo ťuknutie štyrmi prstami."
     )
 
     package static let de = RadialMenuFeatureStrings(
@@ -855,7 +862,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Als Liste anzeigen",
         hideListButton: "Liste ausblenden",
         trackpadTapLabel: "Mit Vier-Finger-Tippen öffnen",
-        trackpadTapConflict: "Der Mittelklick nutzt bereits das Vier-Finger-Tippen, daher öffnet das Tippen dieses Rad nicht."
+        trackpadTapConflict: "Der Mittelklick nutzt bereits das Vier-Finger-Tippen, daher öffnet das Tippen dieses Rad nicht.",
+        profileNoTrigger: "Hier wählst du nur das Profil aus, das du bearbeitest. Damit es sich öffnet, gib ihm unten einen Kurzbefehl, eine Maustaste oder das Vier-Finger-Tippen."
     )
 
     package static let fr = RadialMenuFeatureStrings(
@@ -959,7 +967,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Afficher sous forme de liste",
         hideListButton: "Masquer la liste",
         trackpadTapLabel: "Ouvrir d’un toucher à quatre doigts",
-        trackpadTapConflict: "Le clic du milieu utilise déjà le toucher à quatre doigts, donc ce toucher n’ouvre pas cette roue."
+        trackpadTapConflict: "Le clic du milieu utilise déjà le toucher à quatre doigts, donc ce toucher n’ouvre pas cette roue.",
+        profileNoTrigger: "Choisir un profil ici sert seulement à le modifier. Donnez à celui-ci un raccourci, un bouton de la souris ou le toucher à quatre doigts ci-dessous pour l’ouvrir."
     )
 
     package static let it = RadialMenuFeatureStrings(
@@ -1063,7 +1072,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "Mostra come elenco",
         hideListButton: "Nascondi elenco",
         trackpadTapLabel: "Apri con un tocco a quattro dita",
-        trackpadTapConflict: "Il clic centrale usa già il tocco a quattro dita, quindi il tocco non apre questa ruota."
+        trackpadTapConflict: "Il clic centrale usa già il tocco a quattro dita, quindi il tocco non apre questa ruota.",
+        profileNoTrigger: "Scegliere un profilo qui serve solo a modificarlo. Assegna a questo un’abbreviazione, un pulsante del mouse o il tocco a quattro dita qui sotto per aprirlo."
     )
 
     package static let ja = RadialMenuFeatureStrings(
@@ -1167,7 +1177,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "リストとして表示",
         hideListButton: "リストを非表示",
         trackpadTapLabel: "4本指のタップで開く",
-        trackpadTapConflict: "4本指のタップは中クリックで使用中のため、このホイールは開きません。"
+        trackpadTapConflict: "4本指のタップは中クリックで使用中のため、このホイールは開きません。",
+        profileNoTrigger: "ここでプロファイルを選んでも編集するだけです。このプロファイルを開くには、下でショートカット、マウスボタン、または4本指のタップを設定してください。"
     )
 
     package static let ko = RadialMenuFeatureStrings(
@@ -1271,7 +1282,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "목록으로 표시",
         hideListButton: "목록 숨기기",
         trackpadTapLabel: "네 손가락 탭으로 열기",
-        trackpadTapConflict: "네 손가락 탭은 이미 가운데 클릭에 사용 중이므로 이 휠을 열지 않습니다."
+        trackpadTapConflict: "네 손가락 탭은 이미 가운데 클릭에 사용 중이므로 이 휠을 열지 않습니다.",
+        profileNoTrigger: "여기서 프로필을 고르면 편집만 됩니다. 이 프로필을 열려면 아래에서 단축키, 마우스 버튼 또는 네 손가락 탭을 지정하세요."
     )
 
     package static let zhHans = RadialMenuFeatureStrings(
@@ -1375,7 +1387,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "显示为列表",
         hideListButton: "隐藏列表",
         trackpadTapLabel: "用四指轻点打开",
-        trackpadTapConflict: "四指轻点已用于中键点按，因此不会打开这个转盘。"
+        trackpadTapConflict: "四指轻点已用于中键点按，因此不会打开这个转盘。",
+        profileNoTrigger: "在这里选择配置只是为了编辑它。要打开这个配置，请在下方为它设置快捷键、鼠标按钮或四指轻点。"
     )
 
     package static let zhTW = RadialMenuFeatureStrings(
@@ -1479,7 +1492,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "顯示為列表",
         hideListButton: "隱藏列表",
         trackpadTapLabel: "用四指輕點打開",
-        trackpadTapConflict: "四指輕點已用於中鍵點按，因此不會打開這個轉盤。"
+        trackpadTapConflict: "四指輕點已用於中鍵點按，因此不會打開這個轉盤。",
+        profileNoTrigger: "在這裡選擇設定檔只是為了編輯它。若要打開這個設定檔，請在下方為它設定快速鍵、滑鼠按鈕或四指輕點。"
     )
 
     package static let zhHK = RadialMenuFeatureStrings(
@@ -1583,7 +1597,8 @@ extension RadialMenuFeatureStrings {
         showListButton: "顯示為列表",
         hideListButton: "隱藏列表",
         trackpadTapLabel: "用四指輕點打開",
-        trackpadTapConflict: "四指輕點已用於中鍵點按，因此不會打開這個轉盤。"
+        trackpadTapConflict: "四指輕點已用於中鍵點按，因此不會打開這個轉盤。",
+        profileNoTrigger: "在這裡選擇設定檔只是為了編輯它。若要打開這個設定檔，請在下方為它設定快捷鍵、滑鼠按鈕或四指輕點。"
     )
     package static let uk = RadialMenuFeatureStrings(
         pageTitle: "Радіальне меню",
@@ -1686,6 +1701,7 @@ extension RadialMenuFeatureStrings {
         showListButton: "Показати списком",
         hideListButton: "Сховати список",
         trackpadTapLabel: "Відкривати дотиком чотирма пальцями",
-        trackpadTapConflict: "Дотик чотирма пальцями вже зайнятий середньою кнопкою, тому він не відкриває це колесо."
+        trackpadTapConflict: "Дотик чотирма пальцями вже зайнятий середньою кнопкою, тому він не відкриває це колесо.",
+        profileNoTrigger: "Вибір профілю тут лише відкриває його для редагування. Щоб цей профіль відкривався, задайте йому нижче клавіатурне скорочення, кнопку миші або дотик чотирма пальцями."
     )
 }
