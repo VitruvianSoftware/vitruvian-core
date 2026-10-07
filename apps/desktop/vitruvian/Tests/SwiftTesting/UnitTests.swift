@@ -5,6 +5,19 @@ import CoreFoundation
 import Foundation
 import Testing
 
+/// The suite running now, for `reportEarlyExit`.
+nonisolated(unsafe) private var runningSuite: String?
+
+/// A suite that ends the process, by `exit` or `NSApp.terminate`, prints
+/// nothing of its own, and the process can end with status 0. So an exit
+/// while a suite runs becomes an abort: the Swift backtracer then prints the
+/// stack, which still holds whatever called `exit`.
+nonisolated private func reportEarlyExit() {
+    guard let name = runningSuite else { return }
+    print("the process exited while the \(name) suite was running")
+    abort()
+}
+
 /// Every suite in `TestGroups` as a Swift Testing case. They run one at a time
 /// on the main thread, from the app's directory, since they read repository
 /// files by app-relative paths. Each prints its line (`notch: OK (…)`) and its
@@ -16,8 +29,11 @@ struct UnitTests {
         // Line-buffered, so a suite that crashes the run still leaves the
         // names of the suites that finished before it in the test log.
         setvbuf(stdout, nil, _IOLBF, 0)
+        _ = Self.exitReport
         Self.enterAppDirectory()
     }
+
+    private static let exitReport = atexit(reportEarlyExit)
 
     @Test(arguments: TestGroups.selected)
     func runs(_ name: String) async {
@@ -44,7 +60,9 @@ struct UnitTests {
         guard let body = TestGroups.all(suite).first(where: { $0.0 == name })?.1 else {
             return ["no suite named \(name); the suites are \(TestGroups.names)"]
         }
+        runningSuite = name
         suite.run(name, body)
+        runningSuite = nil
         for failure in suite.failures {
             print("  - \(failure)")
         }

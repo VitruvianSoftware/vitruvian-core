@@ -14,6 +14,7 @@ enum MonitorTokenTests {
         @Published var included = false
         @Published var available = true
         @Published var disabled = false
+        @Published var shown = true
         var switches = 0
         var selections = 0
         var optionsPresented = 0
@@ -36,12 +37,14 @@ enum MonitorTokenTests {
         }
 
         var body: some View {
-            MonitorToken(symbol: "cpu", title: "CPU", included: state.binding,
-                         available: state.available,
-                         options: variant == .options
-                            ? AnyView(Text("Graphs").onAppear { state.optionsPresented += 1 }) : nil,
-                         optionsSummary: "Graphs", large: variant == .block, select: select)
-                .disabled(state.disabled)
+            if state.shown {
+                MonitorToken(symbol: "cpu", title: "CPU", included: state.binding,
+                             available: state.available,
+                             options: variant == .options
+                                ? AnyView(Text("Graphs").onAppear { state.optionsPresented += 1 }) : nil,
+                             optionsSummary: "Graphs", large: variant == .block, select: select)
+                    .disabled(state.disabled)
+            }
         }
     }
 
@@ -61,6 +64,10 @@ enum MonitorTokenTests {
         window.contentView = host
         window.orderFrontRegardless()
         defer {
+            // The control goes first, so SwiftUI dismisses the popover it
+            // opened and no popover outlives its window into the next suite.
+            state.shown = false
+            settle()
             window.orderOut(nil)
             window.contentView = nil
             window.close()
