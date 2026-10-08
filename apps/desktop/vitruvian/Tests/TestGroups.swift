@@ -59,6 +59,7 @@ enum TestGroups {
         "keep-awake",
         "wallpaper",
         "emoji",
+        "github",
     ]
 
     /// The suites a run asks for, or all of them. `bazel/run_unit_tests.sh`
@@ -237,6 +238,7 @@ enum TestGroups {
             }),
             ("wallpaper", { WallpaperContract.run(suite) }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
+            ("github", { GitHubCoreTests.run(suite) }),
         ]
     }
 }

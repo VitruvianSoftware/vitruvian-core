@@ -997,6 +997,9 @@ package enum Defaults {
         DefaultsKey.onboardingStep: Preferences.onboardingStep.defaultValue,
         DefaultsKey.commandBarLinks: Preferences.commandBarLinks.defaultValue,
         DefaultsKey.commandBarRowShortcuts: Preferences.commandBarRowShortcuts.defaultValue,
+        DefaultsKey.githubWatchedRepositories: Preferences.githubWatchedRepositories.defaultValue,
+        DefaultsKey.githubRelayURL: Preferences.githubRelayURL.defaultValue,
+        DefaultsKey.githubMouseIndicator: Preferences.githubMouseIndicator.defaultValue,
     ]
 
     package static func register() {

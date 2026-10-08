@@ -934,6 +934,11 @@ package enum DefaultsKey {
     package static let simulateUpdate = "simulateUpdate"
     package static let simulateBetaUI = "simulateBetaUI"
 
+    // GitHub in the notch
+    package static let githubWatchedRepositories = "githubWatchedRepositories"
+    package static let githubRelayURL = "githubRelayURL"
+    package static let githubMouseIndicator = "githubMouseIndicator"
+
     /// Features hub availability layer, one key per AppFeature raw value.
     /// Registered true: unavailable features vanish from every surface and
     /// hold no resources, without ever touching their own enable keys.

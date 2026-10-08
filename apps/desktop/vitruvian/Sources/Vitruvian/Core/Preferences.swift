@@ -892,4 +892,12 @@ package enum Preferences {
     package static let onboardingStep = Preference(DefaultsKey.onboardingStep, default: 0)
     package static let commandBarLinks = Preference(DefaultsKey.commandBarLinks, default: Data())
     package static let commandBarRowShortcuts = Preference(DefaultsKey.commandBarRowShortcuts, default: "")
+
+    // GitHub in the notch
+    package static let githubWatchedRepositories = Preference(
+        DefaultsKey.githubWatchedRepositories, default: GitHubWatchlist.defaultEncoded)
+    package static let githubRelayURL = Preference(
+        DefaultsKey.githubRelayURL, default: "https://github-relay.ipv1337.dev")
+    package static let githubMouseIndicator = Preference(
+        DefaultsKey.githubMouseIndicator, default: true)
 }
