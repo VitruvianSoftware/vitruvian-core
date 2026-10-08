@@ -59,8 +59,12 @@ UPSTREAM_URL = "https://github.com/bilawalsidhu/gods-eye-view"
 UPSTREAM_BRANCH = "main"
 KINDS = ("added", "modified", "deleted")
 # Upstream's server side: its /api routes run inside its Vite dev server. The
-# production image runs this copy's server.mjs instead, which re-implements them.
+# production image's server.mjs mounts upstream's provider plugins
+# (server/providers/) the way `vite preview` does, so changes there reach
+# production with the sync. The rest is the dev server's own wiring, which
+# production does not run.
 SERVER_PATHS = ("server/", "build/")
+PRODUCTION_SERVER_PATHS = ("server/providers/",)
 COLUMNS = ("path", "change", "why")
 
 # The MIT header //tools/license:add writes: an optional opening comment line,
@@ -446,7 +450,7 @@ class SyncReport:
     ignored: list = field(default_factory=list)
     server: list = field(
         default_factory=list
-    )  # upstream's server code, which production does not run
+    )  # upstream's dev-server wiring, which production does not run
     package_json: bool = False
     commits: int = 0
     line: list = field(default_factory=list)
@@ -515,7 +519,9 @@ def sync(root, changes, upstream, target, dry_run=False):
         dest = app / path
         if path == "package.json":
             report.package_json = True
-        if path.startswith(SERVER_PATHS):
+        if path.startswith(SERVER_PATHS) and not path.startswith(
+            PRODUCTION_SERVER_PATHS
+        ):
             report.server.append(path)
         if status == "A":
             if mine is None:
@@ -656,10 +662,12 @@ def report_markdown(r, dry_run=False):
         )
     if r.server:
         follow.append(
-            f"{len(r.server)} file(s) of upstream's server changed (under "
+            f"{len(r.server)} file(s) of upstream's dev-server wiring changed (under "
             + " and ".join(f"`{p}`" for p in SERVER_PATHS)
-            + "): production runs `server.mjs`, not upstream's dev server, so port any "
-            "new or changed `/api` route there: "
+            + ", outside "
+            + " and ".join(f"`{p}`" for p in PRODUCTION_SERVER_PATHS)
+            + "): production runs `server.mjs`, which mounts upstream's providers "
+            "but not this code, so decide whether `server.mjs` needs the change: "
             + ", ".join(f"`{p}`" for p in r.server)
         )
     if r.ignored:

@@ -355,7 +355,8 @@ class ToolTest(unittest.TestCase):
             up, "index.html", "<!doctype html>\n<html lang=en></html>\n"
         )  # header after doctype
         (up / "scripts/dev.sh").chmod(0o644)  # mode change
-        write(up, "server/routes.js", BODY + "route();\n")  # server code
+        write(up, "server/routes.js", BODY + "route();\n")  # dev-server wiring
+        write(up, "server/providers/flights.js", "flights();\n")  # production runs it
         write(up, "maps/tiles.js", "tiles();\n")  # new top-level directory
         return commit(up, "B")
 
@@ -382,6 +383,8 @@ class ToolTest(unittest.TestCase):
         self.assertIn("`package-lock.json`: pnpm workspace", out)
         self.assertIn("run `bazel run //tools/license:add`", out)
         self.assertIn("`server/routes.js`", out)
+        # server.mjs mounts the providers itself, so they need no follow-up.
+        self.assertNotIn("server/providers/flights.js", out)
         self.assertIn("new top-level entries `maps`", out)
         # New files lack the header until //tools/license:add runs; the check
         # sets the header aside, so the copy already reads as the new base.

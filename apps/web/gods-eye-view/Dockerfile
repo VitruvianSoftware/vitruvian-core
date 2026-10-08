@@ -57,12 +57,13 @@ RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
 
 COPY --from=build /app/dist ./dist
 COPY server.mjs ./
-# Upstream's Street Level tile engine, which server.mjs imports. When an
-# upstream sync changes what it imports, :server_test fails until this list
-# carries the new files.
-COPY server/providers/common/http.js ./server/providers/common/
-COPY server/providers/mapillary/ ./server/providers/mapillary/
-COPY src/sources/httpBody.js ./src/sources/
+# Upstream's route handlers, which server.mjs mounts, and the files they read
+# at run time: config/ and src/data/local_data/ (CCTV sources, regions).
+# Whole trees, so a file an upstream sync adds is already in the image.
+COPY server/ ./server/
+COPY src/ ./src/
+COPY config/ ./config/
+COPY scripts/ ./scripts/
 
 RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs \
     && chown -R nodejs:nodejs /app

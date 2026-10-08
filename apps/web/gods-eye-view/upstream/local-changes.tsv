@@ -14,16 +14,16 @@
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
 Dockerfile	added	The production image, published to GHCR and deployed by gitops/argocd.
 OWNERS	added	Monorepo code ownership.
-server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and re-implements those routes, apart from Street Level's, which run on upstream's own tile engine. An upstream route reaches production only once it is added here.
+server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
 scripts/verify-cesium-assets.sh	added	:cesium_assets_test, which checks the bundle carries Cesium's static assets.
 src/camera.test.mjs	added	Pins HOME_VIEW, the landing view src/camera.js adds.
 tests/e2e/	added	The monorepo's end-to-end suite against the production server.
-tests/server/	added	:server_test, which boots server.mjs from the Dockerfile's runtime layout and checks the Street Level routes.
+tests/server/	added	:server_test, which boots server.mjs from the Dockerfile's runtime layout and checks it serves every route upstream mounts for `vite preview`, none of the dev-only ones, and the same-site gate on the paid ones.
 upstream/	added	This tracking: the tool, its tests, this list and the sync brief.
 package-lock.json	deleted	The monorepo is one pnpm workspace; pnpm-lock.yaml at the repository root is the lockfile.
 .github/workflows/ci.yml	modified	Upstream's CI, which never runs here; Dependabot bumps its action pins with the rest of the repository's.
-package.json	modified	Dependencies at the monorepo's one version (cesium, sharp); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency of server.mjs; `start` runs server.mjs.
+package.json	modified	Dependencies at the monorepo's one version (cesium, sharp); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; `start` runs server.mjs.
 src/app/controls.js	modified	Lands on HOME_VIEW (Irvine, CA) instead of Austin, TX.
 src/app/startupCamera.test.mjs	modified	Follows flyToAustin's rename to flyToHome.
 src/camera.js	modified	HOME_VIEW, one constant for the landing view, and flyToHome in place of flyToAustin.

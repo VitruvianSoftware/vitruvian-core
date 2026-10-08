@@ -617,11 +617,13 @@ src = d["spec"]["source"]
 
 assert src.get("path") == "gitops/argocd/platform/gods-eye-view", "source.path mismatch"
 assert src.get("targetRevision") == "HEAD", "targetRevision must be HEAD"
-direc = src.get("directory", {})
-assert direc.get("recurse") is True, "directory.recurse must be true"
-assert "secrets.template.yaml" in direc.get("exclude", ""), "directory.exclude must exclude secrets.template.yaml to prevent secret destruction"
+# A Kustomize source: ArgoCD renders only what kustomization.yaml lists, so
+# leaving the template out of resources keeps it from overwriting the secret.
+assert "directory" not in src, "a directory block would render every file, the template included"
+k = yaml.safe_load(open("gitops/argocd/platform/gods-eye-view/kustomization.yaml"))
+assert "secrets.template.yaml" not in k.get("resources", []), "kustomization must not list secrets.template.yaml"
 ' 2>/dev/null; then
-		pass "ADV-27 (K8S-07): ArgoCD Application explicitly excludes secrets.template.yaml from automated reconciliation"
+		pass "ADV-27 (K8S-07): ArgoCD renders only the kustomization's resources, which leave out secrets.template.yaml"
 	else
 		fail "ADV-27 (K8S-07): ArgoCD Application secrets.template.yaml exclusion check failed"
 	fi

@@ -234,15 +234,37 @@ fi
 
 # 3.2: Verify ws in dependencies
 if [ -f "apps/web/gods-eye-view/package.json" ]; then
-	has_ws=$(python3 -c '
-import json
-deps = json.load(open("apps/web/gods-eye-view/package.json")).get("dependencies", {})
-print("1" if "ws" in deps else "0")
+	# The image installs dependencies only, so every package server.mjs and the
+	# upstream handlers it mounts import must be one.
+	runtime_missing=$(python3 -c '
+import json, os, re
+app = "apps/web/gods-eye-view"
+deps = json.load(open(app + "/package.json")).get("dependencies", {})
+q = "[\"\\x27]"
+spec = re.compile("(?:^|[\\s;])(?:import|export)\\b[^\"\\x27`;]*?\\bfrom\\s*" + q + "([^\"\\x27]+)" + q
+    + "|(?:^|[\\s;(,=])import\\s*" + q + "([^\"\\x27]+)" + q
+    + "|import\\(\\s*" + q + "([^\"\\x27]+)" + q + "\\s*\\)", re.M)
+seen, todo, missing = set(), [app + "/server.mjs"], set()
+while todo:
+    f = os.path.normpath(todo.pop())
+    if f in seen:
+        continue
+    seen.add(f)
+    for groups in spec.findall(re.sub("/\\*.*?\\*/", "", open(f).read(), flags=re.S)):
+        s = "".join(groups)
+        if s.startswith("."):
+            p = os.path.normpath(os.path.join(os.path.dirname(f), s))
+            todo += [c for c in (p, p + ".js", p + ".mjs") if os.path.isfile(c)][:1]
+        elif not s.startswith("node:"):
+            name = "/".join(s.split("/")[:2]) if s.startswith("@") else s.split("/")[0]
+            if name not in deps:
+                missing.add(name)
+print(" ".join(sorted(missing)) or "-")
 ' 2>/dev/null)
-	if [ "$has_ws" = "1" ]; then
-		pass "F3.2: 'ws' is declared in runtime dependencies for backend AISStream proxy"
+	if [ "$runtime_missing" = "-" ]; then
+		pass "F3.2: every package the production server imports is a runtime dependency"
 	else
-		fail "F3.2: 'ws' not found in dependencies (required at runtime for WebSocket proxy)"
+		fail "F3.2: production server imports packages outside dependencies: ${runtime_missing:-unreadable}"
 	fi
 else
 	fail "F3.2: apps/web/gods-eye-view/package.json not found"
@@ -598,8 +620,9 @@ fi
 
 # 9.2: Verify proxy routes mounted in server.mjs
 if [ -f "apps/web/gods-eye-view/server.mjs" ]; then
-	if grep -q '/api/opensky' "apps/web/gods-eye-view/server.mjs" && grep -q '/api/celestrak' "apps/web/gods-eye-view/server.mjs"; then
-		pass "F9.2: server.mjs mounts third-party API proxy routes (/api/opensky, /api/celestrak, etc.)"
+	if grep -q 'localProviderPlugins' "apps/web/gods-eye-view/server.mjs" && grep -q 'configurePreviewServer' "apps/web/gods-eye-view/server.mjs" &&
+		grep -rq "'/api/flights'" "apps/web/gods-eye-view/server/providers" && grep -rq "'/api/celestrak'" "apps/web/gods-eye-view/server/providers"; then
+		pass "F9.2: server.mjs mounts upstream's provider routes (/api/flights, /api/celestrak, etc.)"
 	else
 		fail "F9.2: server.mjs missing expected proxy routes"
 	fi
@@ -609,8 +632,8 @@ fi
 
 # 9.3: Verify outbound AISStream WebSocket in server.mjs
 if [ -f "apps/web/gods-eye-view/server.mjs" ]; then
-	if grep -q 'stream.aisstream.io' "apps/web/gods-eye-view/server.mjs" || grep -q 'AISSTREAM_URL' "apps/web/gods-eye-view/server.mjs"; then
-		pass "F9.3: server.mjs handles outbound WebSocket to AISStream"
+	if grep -q 'localProviderPlugins' "apps/web/gods-eye-view/server.mjs" && grep -rqE 'stream.aisstream.io|AISSTREAM_URL' "apps/web/gods-eye-view/server/providers/vessels"; then
+		pass "F9.3: server.mjs mounts upstream's AISStream vessel provider"
 	else
 		fail "F9.3: server.mjs missing AISStream WebSocket handler"
 	fi
@@ -620,8 +643,8 @@ fi
 
 # 9.4: Verify OpenAI Realtime token endpoint in server.mjs
 if [ -f "apps/web/gods-eye-view/server.mjs" ]; then
-	if grep -q '/api/realtime/token' "apps/web/gods-eye-view/server.mjs"; then
-		pass "F9.4: server.mjs handles /api/realtime/token endpoint for voice control"
+	if grep -q 'localProviderPlugins' "apps/web/gods-eye-view/server.mjs" && grep -rq '/api/realtime/token' "apps/web/gods-eye-view/server/providers"; then
+		pass "F9.4: server.mjs mounts upstream's /api/realtime/token endpoint for voice control"
 	else
 		fail "F9.4: server.mjs missing /api/realtime/token endpoint"
 	fi
@@ -1189,7 +1212,7 @@ fi
 
 # 19.2: Verify WebSocket reconnect backoff handling
 if [ -f "apps/web/gods-eye-view/server.mjs" ] || [ -f "apps/web/gods-eye-view/vite.config.js" ]; then
-	if grep -q 'reconnect' "apps/web/gods-eye-view/server.mjs" 2>/dev/null || grep -q 'reconnect' "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
+	if grep -rq 'reconnect' "apps/web/gods-eye-view/server/providers/vessels" 2>/dev/null || grep -q 'reconnect' "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
 		pass "F19.2: AISStream WebSocket implements auto-reconnect with backoff"
 	else
 		skip "F19.2: WebSocket reconnect backoff audit" "Pending Milestone M5 review"
@@ -1200,8 +1223,8 @@ fi
 
 # 19.3: Verify error handling on WebSocket connection drop
 if [ -f "apps/web/gods-eye-view/server.mjs" ] || [ -f "apps/web/gods-eye-view/vite.config.js" ]; then
-	if grep -E -q "ws.*on\(['\"]error['\"]" "apps/web/gods-eye-view/server.mjs" 2>/dev/null || grep -E -q "ws.*on\(['\"]error['\"]" "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
-		pass "F19.3: WebSocket error event handlers prevent unhandled exception process crash"
+	if grep -rEq "\.on\(['\"]error['\"]" "apps/web/gods-eye-view/server/providers" 2>/dev/null || grep -E -q "ws.*on\(['\"]error['\"]" "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
+		pass "F19.3: Upstream providers handle stream error events, so a dropped connection cannot crash the process"
 	else
 		skip "F19.3: WebSocket error handling audit" "Pending Milestone M5 review"
 	fi
@@ -1211,7 +1234,7 @@ fi
 
 # 19.4: Verify ephemeral token generation isolates master API key
 if [ -f "apps/web/gods-eye-view/server.mjs" ] || [ -f "apps/web/gods-eye-view/vite.config.js" ]; then
-	if grep -q 'client_secrets' "apps/web/gods-eye-view/server.mjs" 2>/dev/null || grep -q 'client_secrets' "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
+	if grep -rq 'client_secrets' "apps/web/gods-eye-view/server/providers" 2>/dev/null || grep -q 'client_secrets' "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
 		pass "F19.4: OpenAI Realtime mints ephemeral client secrets; master key never sent to browser"
 	else
 		skip "F19.4: Realtime token audit" "Pending Milestone M5 review"
@@ -1222,7 +1245,7 @@ fi
 
 # 19.5: Verify rate limiting protection configuration
 if [ -f "apps/web/gods-eye-view/server.mjs" ] || [ -f "apps/web/gods-eye-view/vite.config.js" ]; then
-	if grep -q 'GEV_RATELIMIT' "apps/web/gods-eye-view/server.mjs" 2>/dev/null || grep -q 'GEV_RATELIMIT' "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
+	if grep -rq 'GEV_RATELIMIT' "apps/web/gods-eye-view/server/providers" 2>/dev/null || grep -q 'GEV_RATELIMIT' "apps/web/gods-eye-view/vite.config.js" 2>/dev/null; then
 		pass "F19.5: Rate-limiting guards supported for high-cost endpoints (OpenAI, Google Places)"
 	else
 		skip "F19.5: Rate limit audit" "Pending Milestone M5 review"

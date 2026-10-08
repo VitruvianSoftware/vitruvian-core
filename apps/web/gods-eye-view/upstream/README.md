@@ -76,17 +76,29 @@ Keep the list short. Each row is a merge to resolve in every sync from then on.
 
 ## The production server
 
-Upstream serves its `/api` routes from its Vite dev server (`server/` and
-`build/`). The production image runs `server.mjs`, which serves the built `dist/`
-and re-implements those routes. So a new or changed upstream route reaches
-production only once `server.mjs` has it. `sync` lists the server files upstream
-changed, so each sync can decide what production needs.
+Upstream serves its `/api` routes from its Vite dev server. The production image
+runs `server.mjs`, which serves the built `dist/` and mounts upstream's own route
+handlers: the provider plugins in `server/providers/local.js`, installed through
+each plugin's `configurePreviewServer` hook, as `vite preview` installs them. So
+a route upstream adds or changes under `server/providers/` reaches production
+with the sync that brings it; nothing re-implements it here.
 
-Street Level's routes (`/api/mapillary/status` and `/api/mapillary/tiles`) are
-the exception: `server.mjs` handles the requests but runs upstream's own tile
-engine (`server/providers/mapillary/`), so upstream's fixes to it arrive with
-each sync. Its requests sit behind `server.mjs`'s rate limit rather than
-upstream's same-site gate, which refuses every request a proxy forwards. The
-Dockerfile copies the files that engine imports, and `:server_test` boots
-`server.mjs` from the image's layout, so a file an upstream change adds fails
-the test until the Dockerfile copies it too.
+Running upstream's code the way `vite preview` does has two consequences:
+
+- Upstream's credential panel (`/api/setup/*`) installs in its dev server only,
+  so production never serves it.
+- Upstream's same-site gate stays on. Its paid routes (OpenAI, Google Places,
+  Street Level) refuse a request carrying reverse-proxy headers, which every
+  request through the cluster gateway does, so the public site never spends a
+  configured key.
+
+The Dockerfile copies `server/`, `src/`, `config/` and `scripts/` whole, since
+upstream's handlers import from all four and read `config/` and
+`src/data/local_data/` at run time. `:server_test` boots `server.mjs` from the
+image's layout, with outbound network stubbed, and checks that it serves every
+route upstream mounts for `vite preview` and none of the dev-only ones; a new
+dev-only route fails it until someone decides about it. `sync` still lists
+upstream's changes to its dev-server wiring (`server/` outside
+`server/providers/`, and `build/`), such as a plugin `vite.config.js` adds
+outside `localProviderPlugins` or a header `build/vite.js` sets, which
+production does not run.
