@@ -30,11 +30,19 @@
 #   2. runs `action_required`, blocked on the "Approve and run" gate, grouped
 #      by head branch (that gate blocks every workflow on a ref at once)
 #   3. push runs on main that concluded `failure`
+#   4. commits on main that the merge queue never tested (someone merged
+#      directly, past the queue). The queue tests the EXACT commit it lands,
+#      so a main commit with no merge_group run for its sha did not go through
+#      it. On 2026-10-07/08 five of forty merges did this, and one of them
+#      (#2881) was a change the queue had just rejected: main went red.
 #
 # Environment:
 #   REPO             owner/repo
 #   GH_TOKEN         token gh authenticates as (needs actions: read)
 #   NTFY_PASSWORD    ntfy basic-auth password for the github-actions user
+#   QUEUE_BYPASS_ALLOW  space-separated commit-author logins that may land
+#                    on main without the queue (default: the copybara sync app,
+#                    which is a bypass actor on the ruleset by design)
 #   CUTOFF_MINUTES   how far back "recently updated" reaches (default: 20,
 #                    comfortably wider than the 5-minute schedule since
 #                    schedule triggers are best-effort and can slip)
@@ -157,3 +165,27 @@ for repo in ${REPO} ${MIRRORS}; do
       fi
     done
 done
+
+# --- 4. commits on main the merge queue never tested --------------------------
+QUEUE_BYPASS_ALLOW="${QUEUE_BYPASS_ALLOW-vitruvian-copybara-sync[bot]}"
+echo "Checking for commits on main that skipped the merge queue, since ${cutoff}..."
+if ! commits="$(gh api "repos/${REPO}/commits?sha=main&since=${cutoff}&per_page=50" 2>&1)"; then
+  echo "WARN: cannot list ${REPO}'s recent commits -- NOT watching for queue bypasses: ${commits:0:200}" >&2
+else
+  printf '%s' "$commits" |
+    jq -r '.[] | [.sha, (.author.login // .commit.author.name // "unknown"), .html_url, (.commit.message | split("\n")[0])] | @tsv' |
+    while IFS=$'\t' read -r sha who url subject; do
+      case " ${QUEUE_BYPASS_ALLOW} " in *" ${who} "*) continue ;; esac
+      # Refuse to guess: an unreadable answer is not "never tested".
+      if ! tested="$(gh api "repos/${REPO}/actions/runs?event=merge_group&head_sha=${sha}&per_page=1" 2>/dev/null | jq -r '.total_count')" ||
+        ! [[ "${tested}" =~ ^[0-9]+$ ]]; then
+        echo "WARN: cannot tell whether ${sha:0:9} went through the merge queue" >&2
+        continue
+      fi
+      [ "${tested}" -eq 0 ] || continue
+      echo "  -> merged past the queue: ${sha:0:9} ${subject} ($url)"
+      notify "[ci] merged past the queue: ${sha:0:9}" \
+        "This commit is on main but the merge queue never tested it: ${subject} (author ${who}). It was merged directly. Check main's status. ${url}" \
+        4 '["warning","ci"]' "$url"
+    done
+fi

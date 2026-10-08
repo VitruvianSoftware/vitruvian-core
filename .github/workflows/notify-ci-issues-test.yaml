@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Regression guard for tools/ci/notify-ci-issues.sh — the three polling loops
+# Regression guard for tools/ci/notify-ci-issues.sh — the polling loops
 # (stuck approvals, stuck run-start approvals, main-branch failures) feeding
 # the shared ntfy notify() helper. Hermetic: fake `gh api` (canned JSON, real
 # jq does the actual filtering/grouping) and fake `curl` (captures the POST

@@ -50,6 +50,17 @@ if [ "${FOUND}" != "1" ]; then
 fi
 LICENSE_IGNORE_REGEX="$(grep -E "^\s+IGNORE_REGEX:" "${CI_YAML}" | sed -E "s/^[^']*'(.*)'[[:space:]]*$/\1/")"
 echo "relevant-paths_test: license-check IGNORE_REGEX from ci.yaml = '${LICENSE_IGNORE_REGEX}'"
+
+# tidy-check narrows it too, for a different reason: //:tidy formats files
+# wherever they live, so only the file types it cannot touch may be skipped.
+TIDY_YAML="${REPO_ROOT}/.github/workflows/tidy-check.yaml"
+FOUND="$(grep -cE "^\s+IGNORE_REGEX:" "${TIDY_YAML}" || true)"
+if [ "${FOUND}" != "1" ]; then
+  echo "relevant-paths_test: expected exactly 1 IGNORE_REGEX in tidy-check.yaml, found ${FOUND}." >&2
+  exit 1
+fi
+TIDY_IGNORE_REGEX="$(grep -E "^\s+IGNORE_REGEX:" "${TIDY_YAML}" | sed -E "s/^[^']*'(.*)'[[:space:]]*$/\1/")"
+echo "relevant-paths_test: tidy-check IGNORE_REGEX from tidy-check.yaml = '${TIDY_IGNORE_REGEX}'"
 echo
 
 PASS=0
@@ -130,6 +141,27 @@ run_case "markdown-only skips"                  false "${CONFORMANCE_IGNORE_REGE
 run_case "catalog-info RUNS"                    true  "${CONFORMANCE_IGNORE_REGEX}" catalog-info.yaml
 run_case "app catalog-info RUNS"                true  "${CONFORMANCE_IGNORE_REGEX}" apps/mobile/android-remote/catalog-info.yaml
 run_case "OWNERS RUNS"                          true  "${CONFORMANCE_IGNORE_REGEX}" OWNERS
+
+echo
+echo "relevant-paths_test: tidy-check ignore set (only what //:tidy cannot change)"
+run_case "docs markdown skips"                  false "${TIDY_IGNORE_REGEX}" docs/guide.md
+run_case "root markdown skips"                  false "${TIDY_IGNORE_REGEX}" README.md
+run_case "gitops yaml skips"                    false "${TIDY_IGNORE_REGEX}" gitops/argocd/platform/buzz/values.yaml
+run_case "docs html skips"                      false "${TIDY_IGNORE_REGEX}" docs/github-relay/register.html
+run_case "OWNERS skips"                         false "${TIDY_IGNORE_REGEX}" OWNERS
+# The case that reached main unformatted (#2886): JSON under docs/.
+run_case "docs JSON RUNS"                       true  "${TIDY_IGNORE_REGEX}" docs/github-relay/app-manifest.json
+run_case "docs JSON beside markdown RUNS"       true  "${TIDY_IGNORE_REGEX}" docs/github-relay/README.md docs/github-relay/app-manifest.json
+run_case "gitops JSON RUNS"                     true  "${TIDY_IGNORE_REGEX}" gitops/argocd/platform/grafana/dashboards/x.json
+run_case "docs shell script RUNS"               true  "${TIDY_IGNORE_REGEX}" docs/runbooks/fix.sh
+run_case "gitops Starlark RUNS"                 true  "${TIDY_IGNORE_REGEX}" gitops/defs.bzl
+run_case "gitops BUILD file RUNS"               true  "${TIDY_IGNORE_REGEX}" gitops/BUILD
+run_case "docs Python RUNS"                     true  "${TIDY_IGNORE_REGEX}" docs/tools/gen.py
+run_case ".agents TypeScript RUNS"              true  "${TIDY_IGNORE_REGEX}" .agents/skills/x/run.ts
+# YAML is only inert INSIDE those folders: a workflow or lockfile is not.
+run_case "workflow yaml RUNS"                   true  "${TIDY_IGNORE_REGEX}" .github/workflows/presubmit.yaml
+run_case "pnpm lockfile RUNS"                   true  "${TIDY_IGNORE_REGEX}" pnpm-lock.yaml
+run_case "source change runs"                   true  "${TIDY_IGNORE_REGEX}" tabula/api/src/index.ts
 
 echo
 echo "relevant-paths_test: fail-safe"

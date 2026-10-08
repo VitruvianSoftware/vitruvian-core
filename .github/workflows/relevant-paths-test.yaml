@@ -42,6 +42,7 @@ on:
       # The test asserts against the IGNORE_REGEX configured in ci.yaml, so a
       # change there must re-run it.
       - ".github/workflows/ci.yaml"
+      - ".github/workflows/tidy-check.yaml"
   push:
     branches: [main]
     paths:
@@ -49,6 +50,7 @@ on:
       - "tools/ci/relevant-paths_test.sh"
       - ".github/workflows/relevant-paths-test.yaml"
       - ".github/workflows/ci.yaml"
+      - ".github/workflows/tidy-check.yaml"
 
 permissions:
   contents: read
