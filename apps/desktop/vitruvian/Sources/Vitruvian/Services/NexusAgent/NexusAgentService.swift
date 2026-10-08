@@ -465,6 +465,12 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
         panel.orderOut(nil)
     }
 
+    package func dockToNotch() {
+        hideQuickPrompt()
+        NotchService.shared.agentTab = .chat
+        NotchService.shared.select(.agents)
+    }
+
     /// Borderless panels refuse key status by default; the prompt needs it
     /// so typing and Esc work without activating the app.
     private final class KeyablePromptPanel: OverlayPanel {

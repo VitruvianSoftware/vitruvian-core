@@ -26,6 +26,7 @@ package struct NexusAgentQuickPromptView: View {
     @State private var isHoveringInput = false
     @State private var sparklePulse = false
     @State private var hoveringPin = false
+    @State private var hoveringDock = false
     @State private var typingDotPhase = 0
     @State private var isNearBottom = true
     @State private var scrollViewHeight: CGFloat = 500
@@ -515,6 +516,19 @@ package struct NexusAgentQuickPromptView: View {
             .buttonStyle(.plain)
             .help(service.isPinned ? strings.unpinWindow : strings.pinWindow)
             .onHover { hoveringPin = $0 }
+
+            Button {
+                service.dockToNotch()
+            } label: {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.system(size: 15))
+                    .foregroundStyle(hoveringDock ? Color.primary : Color.secondary.opacity(0.5))
+                    .scaleEffect(hoveringDock ? 1.1 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: hoveringDock)
+            }
+            .buttonStyle(.plain)
+            .help("Dock into MacBook Notch (⌥⌘G)")
+            .onHover { hoveringDock = $0 }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -979,14 +993,14 @@ private struct NexusAgentMessageBubble: View {
             if isUser { Spacer(minLength: 40) }
 
             if !isUser {
-                Image(systemName: "bubble.left.fill")
-                    .font(.system(size: 10))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.linearGradient(
-                        colors: [.blue, .purple],
+                        colors: [Color(red: 0.92, green: 0.55, blue: 0.42), Color(red: 0.85, green: 0.47, blue: 0.34)],
                         startPoint: .top, endPoint: .bottom
                     ))
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.blue.opacity(0.15)))
+                    .background(Circle().fill(Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.18)))
                     .padding(.top, 4)
             }
 
@@ -1089,7 +1103,7 @@ private struct NexusAgentMessageBubble: View {
                                             HStack(alignment: .top, spacing: 6) {
                                                 Image(systemName: "circle.fill")
                                                     .font(.system(size: 4))
-                                                    .foregroundStyle(Color.accentColor)
+                                                    .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
                                                     .padding(.top, 6)
                                                 Text(Self.markdown(bulletText))
                                                     .font(.system(size: 13))
@@ -1108,7 +1122,7 @@ private struct NexusAgentMessageBubble: View {
                                         case .blockquote(let quoteText):
                                             HStack(alignment: .top, spacing: 8) {
                                                 RoundedRectangle(cornerRadius: 1.5)
-                                                    .fill(Color.accentColor.opacity(0.6))
+                                                    .fill(Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.7))
                                                     .frame(width: 3)
                                                 Text(Self.markdown(quoteText))
                                                     .font(.system(size: 13))
@@ -1137,10 +1151,16 @@ private struct NexusAgentMessageBubble: View {
                         }
                     }
                     .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isUser ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(isUser ? Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.25) : Color.white.opacity(0.065))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(isUser ? Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
+                            )
+                    )
                 }
 
                 Button(action: copyContent) {
@@ -1213,11 +1233,11 @@ private struct NexusAgentMessageBubble: View {
                 Text(String(NSFullUserName().prefix(1)).uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.linearGradient(
-                        colors: [.indigo, .purple],
+                        colors: [Color(red: 0.92, green: 0.55, blue: 0.42), Color(red: 0.85, green: 0.47, blue: 0.34)],
                         startPoint: .top, endPoint: .bottom
                     ))
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.indigo.opacity(0.15)))
+                    .background(Circle().fill(Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.18)))
                     .padding(.top, 4)
             }
 
