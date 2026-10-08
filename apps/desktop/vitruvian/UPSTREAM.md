@@ -107,6 +107,11 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
+  - `GitHubAuthService.swift`: `syncWithPreferences()` signs in with the GitHub CLI login (`~/.config/gh/hosts.yml`) when nobody is signed in and no token is saved, except after an explicit `disconnect()` this session or for a token GitHub already answered 401 to. `finishSignIn` keeps the token in memory when the Keychain refuses to save it (ad-hoc builds lack the entitlement) instead of failing the sign-in. The `hosts.yml` location is an initializer parameter (`cliHostsURL`) so tests use their own file.
+  - `GitHubPeripheralSink.swift`: `update(verdict:force:)` writes even an unchanged verdict when forced; an injectable `Executor` stands in for the mouse binary in tests.
+  - `GitHubService.swift`: the first completed poll after launch or sign-in forces the mouse LED write, since the mouse keeps its last LED state across app restarts.
+  - `Tests/GitHubCoreTests.swift`: behavioural tests for CLI auto-connect, its disconnect and 401 guards, Keychain-less sign-in and the forced LED write.
 - **2026-10-08**: Dedicated GitHub pipeline metrics tile in Notch Quick Access and resting wing:
   - Added `.github` module to `NotchModule` with symbol `"arrow.triangle.branch"`, shortcut `⌥⌘H`, feature availability mapping, and editor catalog descriptions.
   - Implemented `NotchGitHubView.swift` providing header bar (repo selector badge, branch & SHA pill, refresh action, web link) and metrics cards (Workflow Runs, Merge Queue, Open Pull Requests with check rollup progress).

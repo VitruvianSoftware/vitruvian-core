@@ -102,11 +102,14 @@ package final class GitHubService: ObservableObject {
 
         states = newStates
         summary = GitHubSummary(states: newStates, watched: watched)
+        // The first snapshot since launch or sign-in, read before it is stamped.
+        let firstSnapshot = lastRefreshedAt == nil
         lastRefreshedAt = Date()
 
-        // 3. Update peripheral LED if mouse indicator is enabled
+        // 3. Update peripheral LED if mouse indicator is enabled. The mouse
+        // keeps its LED across app restarts, so the first snapshot always writes.
         if defaults[Preferences.githubMouseIndicator] {
-            GitHubPeripheralSink.shared.update(verdict: summary.aggregate)
+            GitHubPeripheralSink.shared.update(verdict: summary.aggregate, force: firstSnapshot)
         }
     }
 
