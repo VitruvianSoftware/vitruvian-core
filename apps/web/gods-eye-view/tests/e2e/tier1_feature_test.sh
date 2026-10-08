@@ -240,10 +240,12 @@ if [ -f "apps/web/gods-eye-view/package.json" ]; then
 import json, os, re
 app = "apps/web/gods-eye-view"
 deps = json.load(open(app + "/package.json")).get("dependencies", {})
+builtins = {"assert", "buffer", "child_process", "crypto", "dns", "events", "fs", "http", "https", "module", "net", "os", "path", "stream", "url", "util", "worker_threads", "zlib"}
 q = "[\"\\x27]"
 spec = re.compile("(?:^|[\\s;])(?:import|export)\\b[^\"\\x27`;]*?\\bfrom\\s*" + q + "([^\"\\x27]+)" + q
     + "|(?:^|[\\s;(,=])import\\s*" + q + "([^\"\\x27]+)" + q
-    + "|import\\(\\s*" + q + "([^\"\\x27]+)" + q + "\\s*\\)", re.M)
+    + "|import\\(\\s*" + q + "([^\"\\x27]+)" + q + "\\s*\\)"
+    + "|(?:\\brequire|\\))\\(\\s*" + q + "([^\"\\x27]+)" + q + "\\s*\\)", re.M)
 seen, todo, missing = set(), [app + "/server.mjs"], set()
 while todo:
     f = os.path.normpath(todo.pop())
@@ -255,7 +257,7 @@ while todo:
         if s.startswith("."):
             p = os.path.normpath(os.path.join(os.path.dirname(f), s))
             todo += [c for c in (p, p + ".js", p + ".mjs") if os.path.isfile(c)][:1]
-        elif not s.startswith("node:"):
+        elif not s.startswith("node:") and s.split("/")[0] not in builtins:
             name = "/".join(s.split("/")[:2]) if s.startswith("@") else s.split("/")[0]
             if name not in deps:
                 missing.add(name)

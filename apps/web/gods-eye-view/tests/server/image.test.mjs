@@ -35,6 +35,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { builtinModules } from 'node:module';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -188,8 +189,9 @@ async function isUnknownApiRoute(response) {
 
 /**
  * The packages the server's import graph reaches from server.mjs: bare
- * specifiers of every static or literal dynamic import, following relative
- * ones through the image layout.
+ * specifiers of every static or literal dynamic import, and of every literal
+ * require(), createRequire(...)('x') included, following relative ones through
+ * the image layout.
  */
 function importedPackages(root) {
   const statement = new RegExp(
@@ -197,6 +199,8 @@ function importedPackages(root) {
       String.raw`(?:^|[\s;])(?:import|export)\b[^'"\x60;]*?\bfrom\s*['"]([^'"]+)['"]`,
       String.raw`(?:^|[\s;(,=])import\s*['"]([^'"]+)['"]`,
       String.raw`import\(\s*['"]([^'"]+)['"]\s*\)`,
+      // require('x'), and createRequire(import.meta.url)('x').
+      String.raw`(?:\brequire|\))\(\s*['"]([^'"]+)['"]\s*\)`,
     ].join('|'),
     'gm',
   );
@@ -209,14 +213,14 @@ function importedPackages(root) {
     seen.add(file);
     const source = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     for (const match of source.matchAll(statement)) {
-      const specifier = match[1] || match[2] || match[3];
+      const specifier = match[1] || match[2] || match[3] || match[4];
       if (specifier.startsWith('.')) {
         const target = path.resolve(path.dirname(file), specifier);
         const found = [target, `${target}.js`, `${target}.mjs`].find(
           (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
         );
         if (found) todo.push(found);
-      } else if (!specifier.startsWith('node:')) {
+      } else if (!specifier.startsWith('node:') && !builtinModules.includes(specifier.split('/')[0])) {
         const parts = specifier.split('/');
         packages.add(specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
       }

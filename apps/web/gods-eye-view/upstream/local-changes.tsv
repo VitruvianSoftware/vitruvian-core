@@ -23,7 +23,7 @@ tests/server/	added	:server_test, which boots server.mjs from the Dockerfile's r
 upstream/	added	This tracking: the tool, its tests, this list and the sync brief.
 package-lock.json	deleted	The monorepo is one pnpm workspace; pnpm-lock.yaml at the repository root is the lockfile.
 .github/workflows/ci.yml	modified	Upstream's CI, which never runs here; Dependabot bumps its action pins with the rest of the repository's.
-package.json	modified	Dependencies at the monorepo's one version (cesium, sharp); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; `start` runs server.mjs.
+package.json	modified	Dependencies at the monorepo's one version (cesium, sharp); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency, since upstream's AIS provider requires it at run time and the image installs dependencies only; `start` runs server.mjs.
 src/app/controls.js	modified	Lands on HOME_VIEW (Irvine, CA) instead of Austin, TX.
 src/app/startupCamera.test.mjs	modified	Follows flyToAustin's rename to flyToHome.
 src/camera.js	modified	HOME_VIEW, one constant for the landing view, and flyToHome in place of flyToAustin.
