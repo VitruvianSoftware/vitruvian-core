@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.17.0...nexus-agent-v1.18.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** match notch chat color scheme and card layout 1:1 to telemetry ([#2883](https://github.com/VitruvianSoftware/vitruvian-core/issues/2883)) ([e025883](https://github.com/VitruvianSoftware/vitruvian-core/commit/e02588369c882115dfe6e8e61b93f3cd5b69aaf0))
+
 ## [1.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.16.1...nexus-agent-v1.17.0) (2026-10-07)
 
 
