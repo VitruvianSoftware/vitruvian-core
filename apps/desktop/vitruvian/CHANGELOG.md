@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.33.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.32.0...vitruvian-v3.33.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** add zero-click github cli auto-connect and launch hardware reconciliation ([#2926](https://github.com/VitruvianSoftware/vitruvian-core/issues/2926)) ([c758031](https://github.com/VitruvianSoftware/vitruvian-core/commit/c758031a22593cf349bcd3dd4223a4d97b23a15c))
+
 ## [3.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.31.0...vitruvian-v3.32.0) (2026-10-08)
 
 
