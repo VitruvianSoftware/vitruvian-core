@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "vitruvian-roborock",
+  "description": "Roborock vacuum integration, local daemon, FastMCP server, and plugins",
+  "owner": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "plugins": [
+    {
+      "name": "vitruvian-roborock",
+      "source": "./plugin",
+      "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
+      "version": "0.1.0",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://github.com/VitruvianSoftware/mcp-roborock",
+      "repository": "https://github.com/VitruvianSoftware/mcp-roborock",
+      "license": "MIT",
+      "keywords": ["roborock", "vacuum", "home-automation", "mcp"]
+    }
+  ]
+}
