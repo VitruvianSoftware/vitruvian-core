@@ -3,7 +3,7 @@ module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula-
 go 1.26.6
 
 require (
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.37.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.37.1
 	github.com/pulumi/pulumi/sdk/v3 v3.267.0
 )
 
