@@ -1,0 +1,32 @@
+{
+  "name": "Vitruvian Desktop",
+  "url": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian",
+  "description": "Delivers GitHub check and pull-request events to the Vitruvian macOS notch via the homelab github-relay, and signs the desktop app in with GitHub.",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://github-relay.ipv1337.dev/webhook",
+    "active": true
+  },
+  "redirect_url": "https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/github-relay/README.md",
+  "callback_urls": [
+    "vitruvian://github/callback"
+  ],
+  "request_oauth_on_install": false,
+  "setup_on_update": false,
+  "default_permissions": {
+    "actions": "read",
+    "checks": "read",
+    "contents": "read",
+    "metadata": "read",
+    "pull_requests": "read"
+  },
+  "default_events": [
+    "check_run",
+    "check_suite",
+    "workflow_run",
+    "pull_request",
+    "pull_request_review",
+    "status",
+    "push"
+  ]
+}
