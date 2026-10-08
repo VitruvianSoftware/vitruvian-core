@@ -54,7 +54,7 @@ package struct NotchAgentsView: View {
                     } label: {
                         Image(systemName: "arrow.up.forward.app")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
                             .padding(4)
                             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                     }
@@ -69,7 +69,7 @@ package struct NotchAgentsView: View {
             .padding(.horizontal, 16)
 
             if notchService.agentTab == .chat {
-                NexusAgentQuickPromptView()
+                NexusAgentQuickPromptView(embeddedInNotch: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 telemetryContent
