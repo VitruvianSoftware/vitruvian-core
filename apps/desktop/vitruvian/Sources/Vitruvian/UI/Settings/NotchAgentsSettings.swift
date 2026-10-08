@@ -15,6 +15,7 @@ package struct NotchAgentsSettingsControls: View {
     @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
     @AppStorage(Preferences.notchAgentsCopilot) private var copilot: Bool
+    @AppStorage(Preferences.notchAgentsAntigravity) private var antigravity: Bool
     @AppStorage(Preferences.notchAgentsCardOrder) private var cardOrder: String
     @AppStorage(Preferences.notchAgentsHiddenCards) private var hiddenCards: String
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var limitDisplay: String
@@ -52,6 +53,7 @@ package struct NotchAgentsSettingsControls: View {
             providerRow(.codex, isOn: $codex)
             providerRow(.opencode, isOn: $opencode)
             providerRow(.copilot, isOn: $copilot)
+            providerRow(.antigravity, isOn: $antigravity)
 
             Divider()
             Text(text.cardsTitle).font(.subheadline.weight(.medium))

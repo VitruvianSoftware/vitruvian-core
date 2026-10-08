@@ -107,6 +107,12 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-08**: AI Agents title reversion and Antigravity telemetry integration:
+  - Reverted the Notch AI agent title from "Nexus Agent" back to "AI Agents" across `NotchAgentStrings.swift` and tests.
+  - Added `.antigravity` provider to `AgentProvider`, preferences (`notchAgentsAntigravity`), Notch UI, and settings.
+  - Added pricing support for Gemini models (`gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.5-flash`, `gemini-3-pro`, `gemini-3.5-pro`) and `Gemini` display name formatting in `AgentPricing.swift`.
+  - Added `AgentAntigravityReader.swift` reading `.telemetry_state.json` and `conversation_summaries.db`, plus live quota probing of the local `language_server` via `RetrieveUserQuotaSummary`.
+  - Integrated Antigravity reading and quota polling into `AgentUsageService` and `AgentLogRoot`.
 - **2026-10-02**: Imported. Added `BUILD`, `bazel/`, `UPSTREAM.md`,
   `README.md` and `AGENTS.md`. In `.gitignore`, dropped the `AGENTS.md` entry so
   the nested agent guide can be committed. Replaced the reserved brand artwork

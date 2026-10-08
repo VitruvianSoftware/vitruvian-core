@@ -35,6 +35,7 @@ enum NexusAgentTests {
         claudeSessionTitles(suite)
         claudeEnhancementsAndApprovals(suite)
         notchIntegration(suite)
+        antigravityTelemetry(suite)
     }
 
     // MARK: - .env
@@ -1228,8 +1229,99 @@ enum NexusAgentTests {
         service.dockToNotch()
         suite.expect(notchService.agentTab == .chat, "dockToNotch sets agentTab to chat")
 
-        // 6. Title is Nexus Agent
-        suite.expect(FeatureStrings.notchAgents(.enUS).title == "Nexus Agent", "enUS title is Nexus Agent")
+        // 6. Title is AI Agents
+        suite.expect(FeatureStrings.notchAgents(.enUS).title == "AI Agents", "enUS title is AI Agents")
+    }
+
+    // MARK: - Antigravity Telemetry & Quota
+
+    private static func antigravityTelemetry(_ suite: TestSuite) {
+        // 1. AgentProvider metadata
+        suite.expect(AgentProvider.antigravity.displayName == "Antigravity", "displayName is Antigravity")
+        suite.expect(AgentProvider.antigravity.symbol == "sparkles", "symbol is sparkles")
+        suite.expect(AgentProvider.antigravity.reportsLimits == true, "reportsLimits is true")
+
+        // 2. Pricing and model display names
+        suite.expect(AgentPricing.displayName("gemini-3.8-flash") == "Gemini 3.8 Flash", "gemini-3.8-flash formats correctly")
+        suite.expect(AgentPricing.displayName("gemini-3-pro") == "Gemini 3 Pro", "gemini-3-pro formats correctly")
+        suite.expect(AgentPricing.displayName("gemini-3.7-flash") == "Gemini 3.7 Flash", "gemini-3.7-flash formats correctly")
+        suite.expect(AgentPricing.price(for: "gemini-3.8-flash") != nil, "gemini-3.8-flash price exists")
+        suite.expect(AgentPricing.price(for: "gemini-3-pro") != nil, "gemini-3-pro price exists")
+
+        // 3. Telemetry State JSON Parsing
+        let telemetryJson = """
+        {
+          "/Users/james/.gemini/antigravity/brain/test-conv-123/.system_generated/logs/transcript.jsonl": {
+            "turns": 5,
+            "tokens": {
+              "input": 20000,
+              "output": 1000,
+              "cached": 50000,
+              "thinking": 100
+            },
+            "mtime": 1783527878.0,
+            "model": "gemini-3.7-flash"
+          }
+        }
+        """
+        let records = AgentAntigravityReader.parseTelemetryState(Data(telemetryJson.utf8), projects: ["test-conv-123": "vitruvian-core"])
+        suite.expect(records.count == 1, "parseTelemetryState produces 1 record")
+        if let r = records.first {
+            suite.expect(r.provider == .antigravity, "provider is antigravity")
+            suite.expect(r.model == "gemini-3.7-flash", "model matches")
+            suite.expect(r.project == "vitruvian-core", "project matches lookup")
+            suite.expect(r.session == "test-conv-123", "session is conversation id")
+            suite.expect(r.tokens.input == 20000 && r.tokens.output == 1000 && r.tokens.cacheRead == 50000 && r.tokens.reasoning == 100, "tokens match")
+            suite.expect(r.cost != nil && r.cost! > 0, "cost is computed from Gemini pricing")
+        }
+
+        // 4. Quota Response JSON Parsing
+        let quotaJson = """
+        {
+          "groups": [
+            {
+              "displayName": "Gemini Models",
+              "buckets": [
+                {
+                  "bucketId": "gemini-weekly",
+                  "remainingFraction": 0.85,
+                  "resetTime": "2026-10-15T00:00:00Z"
+                },
+                {
+                  "bucketId": "gemini-5h",
+                  "remainingFraction": 0.60,
+                  "resetTime": "2026-10-08T06:00:00Z"
+                }
+              ]
+            },
+            {
+              "displayName": "Claude and GPT models",
+              "buckets": [
+                {
+                  "bucketId": "3p-weekly",
+                  "remainingFraction": 0.50,
+                  "resetTime": "2026-10-15T00:00:00Z"
+                }
+              ]
+            }
+          ]
+        }
+        """
+        let limits = AgentAntigravityReader.parseQuotaResponse(Data(quotaJson.utf8), observed: Date())
+        suite.expect(limits != nil, "parseQuotaResponse succeeds")
+        suite.expect(limits?.provider == .antigravity, "provider is antigravity")
+        suite.expect(limits?.windows.count == 3, "parsed 3 limit windows")
+        if let weekly = limits?.windows.first(where: { $0.id == "gemini-weekly" }) {
+            suite.expect(weekly.kind == .weekly, "gemini-weekly kind is weekly")
+            suite.expect(weekly.minutes == 10080, "weekly minutes is 10080")
+            suite.expect(abs(weekly.usedPercent - 15.0) < 0.001, "usedPercent is 15%")
+            suite.expect(weekly.scope == "Gemini Models", "scope is Gemini Models")
+        }
+        if let session = limits?.windows.first(where: { $0.id == "gemini-5h" }) {
+            suite.expect(session.kind == .session, "gemini-5h kind is session")
+            suite.expect(session.minutes == 300, "session minutes is 300")
+            suite.expect(abs(session.usedPercent - 40.0) < 0.001, "usedPercent is 40%")
+        }
     }
 }
 

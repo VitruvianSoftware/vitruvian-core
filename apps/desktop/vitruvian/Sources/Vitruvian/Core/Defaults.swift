@@ -501,6 +501,7 @@ package enum Defaults {
         DefaultsKey.notchAgentsCodex: Preferences.notchAgentsCodex.defaultValue,
         DefaultsKey.notchAgentsOpenCode: Preferences.notchAgentsOpenCode.defaultValue,
         DefaultsKey.notchAgentsCopilot: Preferences.notchAgentsCopilot.defaultValue,
+        DefaultsKey.notchAgentsAntigravity: Preferences.notchAgentsAntigravity.defaultValue,
         DefaultsKey.notchAgentsCardOrder: Preferences.notchAgentsCardOrder.defaultValue,
         DefaultsKey.notchAgentsHiddenCards: Preferences.notchAgentsHiddenCards.defaultValue,
         DefaultsKey.notchAgentsPeriod: Preferences.notchAgentsPeriod.defaultValue,
