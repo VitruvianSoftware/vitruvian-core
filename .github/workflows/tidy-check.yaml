@@ -79,9 +79,20 @@ jobs:
       # FAILS SAFE (any diff it cannot compute -> relevant=true -> run), and the
       # job still runs + reports either way, so the required check never wedges.
       # Same base-resolution build-test already uses on merge_group (base_sha).
+      # IGNORE_REGEX is NARROWER than the script default, which ignores
+      # everything under docs/, gitops/ and .agents/. //:tidy formats JSON,
+      # JS/TS, Python, shell, Go, Starlark and more wherever they live, so a
+      # badly formatted docs/**/*.json skipped this check on its own PR and in
+      # the merge queue, then failed it on main once the push also carried a
+      # non-docs commit (#2886 -> #2887, 2026-10-08) -- and would have failed
+      # every later change the same way. Inside those folders only the file
+      # types no formatter here touches are ignored (measured: YAML, Markdown,
+      # HTML and CSS are left alone); anything else runs the check.
+      # tools/ci/relevant-paths_test.sh reads this value and pins it.
       - name: Gate on changed paths
         id: gate
         env:
+          IGNORE_REGEX: '^(gitops|docs|\.agents)/.*\.(md|mdx|png|jpg|jpeg|gif|svg|txt|yaml|yml|html|css)$|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$'
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
           BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: bash tools/ci/relevant-paths.sh
