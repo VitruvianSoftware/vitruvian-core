@@ -59,6 +59,9 @@ enum GitHubCoreTests {
         // Frictionless Auth & Peripherals
         frictionlessAuthParsing(suite)
         peripheralSignalMapping(suite)
+        // Notch Module & Quick Access
+        notchModuleProperties(suite)
+        notchContentEditorStyling(suite)
     }
 
     // MARK: - Fixtures
@@ -597,5 +600,23 @@ enum GitHubCoreTests {
                      "idle behavior off maps to off command")
         suite.expect(command(for: .grey, color: "", mode: "", idleBehavior: "restore") == ["restore"],
                      "idle behavior restore maps to restore command")
+    }
+
+    private static func notchModuleProperties(_ suite: TestSuite) {
+        let module = NotchModule.github
+        suite.expect(module.symbol == "arrow.triangle.branch", "github module uses arrow.triangle.branch symbol")
+        suite.expect(module.shortcutKey == "h", "github module uses shortcut key h (⌥⌘H)")
+        suite.expect(module.title(.enUS) == "GitHub", "github module title is GitHub in enUS")
+        let defaults = UserDefaults.standard
+        suite.expect(module.isAvailable(in: defaults) == AppFeature.notchGitHub.isAvailable(in: defaults),
+                     "github module availability maps to AppFeature.notchGitHub")
+        let strings = FeatureStrings.notchEditor(.enUS)
+        suite.expect(strings.summary(.github) == "GitHub workflow runs, presubmit checks, and merge queue status.",
+                     "editor summary describes github pipeline metrics")
+    }
+
+    private static func notchContentEditorStyling(_ suite: TestSuite) {
+        let module = NotchModule.github
+        suite.expect(module.settingsTint != nil, "github module has settingsTint defined")
     }
 }
