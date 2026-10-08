@@ -66,6 +66,7 @@ package struct NotchEditorStrings {
     package let scratchpadSummary: String
     package let agentsSummary: String
     package let watchSummary: String
+    package var githubSummary: String { "GitHub workflow runs, presubmit checks, and merge queue status." }
 
     package func enableFeature(_ title: String) -> String { String(format: enableFeatureFormat, title) }
     package func enableSetting(_ title: String) -> String { String(format: enableSettingFormat, title) }
@@ -90,6 +91,7 @@ package struct NotchEditorStrings {
         case .scratchpad: return scratchpadSummary
         case .agents: return agentsSummary
         case .watch: return watchSummary
+        case .github: return githubSummary
         }
     }
 }

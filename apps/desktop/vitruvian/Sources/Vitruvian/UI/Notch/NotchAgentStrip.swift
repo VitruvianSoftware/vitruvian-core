@@ -127,6 +127,7 @@ package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var nexusSession = NexusAgentService.shared.session
+    @ObservedObject private var gitHub = GitHubService.shared
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
@@ -136,8 +137,12 @@ package struct NotchAgentRestingWing: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            NotchService.shared.agentTab = .chat
-            NotchService.shared.select(.agents)
+            if gitHub.summary.aggregate == .red || gitHub.summary.aggregate == .amber {
+                NotchService.shared.select(.github)
+            } else {
+                NotchService.shared.agentTab = .chat
+                NotchService.shared.select(.agents)
+            }
         }
     }
 
@@ -191,7 +196,10 @@ package struct NotchAgentRestingWing: View {
             let (remaining, used) = remainingUsageFraction(for: provider, snapshot: snapshot, now: now)
             let tint = agentLimitTint(provider, usedFraction: used)
             if leading {
-                NotchAgentMark(provider: provider, size: 10, tint: tint)
+                HStack(spacing: 3) {
+                    NotchAgentMark(provider: provider, size: 10, tint: tint)
+                    NotchGitHubRestingIndicator()
+                }
             } else {
                 Text(AgentFormat.percent(remaining))
                     .font(.system(size: 9, weight: .medium))
@@ -199,6 +207,53 @@ package struct NotchAgentRestingWing: View {
                     .foregroundStyle(tint == provider.tint ? .white : tint)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+            }
+        }
+    }
+}
+
+package typealias NotchRestingWing = NotchAgentRestingWing
+
+/// Live activity indicator in the resting wing showing GitHub repository pipeline status:
+/// - Green checkmark when watched repo pipeline on `main` is clean.
+/// - Amber breathing spinner (`arrow.triangle.branch`) when presubmits are running.
+/// - Red alert glyph (`exclamationmark.triangle.fill`) when a check fails on watched branches.
+package struct NotchGitHubRestingIndicator: View {
+    @ObservedObject private var gitHub = GitHubService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathing = false
+
+    package init() {}
+
+    private var indicatorVerdict: Verdict? {
+        guard !gitHub.watchedRepositories.isEmpty else { return nil }
+        return gitHub.summary.aggregate
+    }
+
+    package var body: some View {
+        if let verdict = indicatorVerdict {
+            switch verdict {
+            case .green:
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.green)
+            case .amber:
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .scaleEffect(breathing && !reduceMotion ? 1.15 : 0.9)
+                    .opacity(breathing && !reduceMotion ? 1.0 : 0.65)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                            breathing = true
+                        }
+                    }
+            case .red:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.red)
+            case .grey:
+                EmptyView()
             }
         }
     }

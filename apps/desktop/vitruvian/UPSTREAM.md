@@ -107,6 +107,11 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-08**: Dedicated GitHub pipeline metrics tile in Notch Quick Access and resting wing:
+  - Added `.github` module to `NotchModule` with symbol `"arrow.triangle.branch"`, shortcut `⌥⌘H`, feature availability mapping, and editor catalog descriptions.
+  - Implemented `NotchGitHubView.swift` providing header bar (repo selector badge, branch & SHA pill, refresh action, web link) and metrics cards (Workflow Runs, Merge Queue, Open Pull Requests with check rollup progress).
+  - Routed `.github` in `NotchView.swift` and `NotchContentEditor.swift`.
+  - Added live pipeline activity indicators to `NotchRestingWing` in `NotchAgentStrip.swift` (green checkmark for clean `main`, amber breathing spinner during presubmits, red alert glyph on failing checks).
 - **2026-10-08**: Telemetry accuracy fixes: parse Connect-RPC Antigravity quota and plan-wide limits:
   - Fixed `AgentAntigravityReader.swift` to parse Connect-RPC `{"response": {"groups": [...]}}` responses from local `language_server`.
   - Set `gemini-weekly` and `gemini-5h` primary limit scopes to `nil` so plan-wide focus and `NotchAgentLimitsCard` correctly display both session and weekly quota.
