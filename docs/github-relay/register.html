@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  One-time helper: POSTs app-manifest.json to GitHub's "create from manifest"
+  endpoint for the VitruvianSoftware organisation. Open this file in a browser
+  that is signed in to GitHub as an org owner, then click the button.
+  See README.md in this directory for the full runbook.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Register the Vitruvian Desktop GitHub App</title>
+  <style>
+    body { font: 16px -apple-system, system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; color: #1d1d1f; }
+    pre { background: #f5f5f7; padding: 1rem; border-radius: 8px; overflow: auto; font-size: 0.85rem; }
+    button { font: inherit; padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #0969da; background: #0969da; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+  <h1>Register “Vitruvian Desktop”</h1>
+  <p>This submits <code>app-manifest.json</code> to GitHub. GitHub shows a confirmation page; after you click <strong>Create GitHub App</strong> it redirects to the README with a one-hour <code>?code=</code> in the address bar. Copy that code into step 3 of the README.</p>
+  <pre id="preview">loading app-manifest.json…</pre>
+  <form id="f" method="post" action="https://github.com/organizations/VitruvianSoftware/settings/apps/new">
+    <input type="hidden" name="manifest" id="manifest">
+    <button type="submit" id="go" disabled>Create the app on GitHub</button>
+  </form>
+  <script>
+    fetch('app-manifest.json').then(r => r.text()).then(text => {
+      JSON.parse(text); // fail loudly on a malformed manifest
+      document.getElementById('manifest').value = text;
+      document.getElementById('preview').textContent = text;
+      document.getElementById('go').disabled = false;
+    }).catch(err => {
+      document.getElementById('preview').textContent =
+        'Could not load app-manifest.json (' + err + '). Serve this directory over HTTP, e.g. `python3 -m http.server` here, then reload.';
+    });
+  </script>
+</body>
+</html>
