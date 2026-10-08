@@ -1,0 +1,12 @@
+{
+  "name": "vitruvian-roborock",
+  "version": "0.1.0",
+  "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/mcp-roborock",
+  "license": "MIT",
+  "keywords": ["roborock", "vacuum", "home-automation", "mcp"]
+}

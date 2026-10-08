@@ -1,76 +1,90 @@
 # vitruvian-roborock
 
-Check on and control a Roborock vacuum from this machine: from a terminal
-(`rrctl`), from an AI agent (an MCP server), or from a live map in the browser.
+![Vitruvian Roborock Banner](docs/assets/hero.jpg)
 
-One small background process, the **daemon**, holds the only connection to the
-vacuum. Everything else asks the daemon.
+> **Autonomous agent control and real-time telemetry for Roborock vacuums.**
+> Check on and control your vacuum from a terminal (`rrctl`), from an AI agent (**Antigravity** and **Claude Code**), or from a live map in your browser.
+
+---
+
+## Architecture
+
+One lightweight local process, the **daemon**, manages the single authenticated session with the vacuum (over local LAN or cloud MQTT), protecting device connection quotas. The CLI, MCP tools, and live dashboard communicate securely with the daemon over local loopback.
 
 ```mermaid
 flowchart LR
-    cli["rrctl (terminal)"] --> daemon
-    mcp["MCP server (Claude Code, Antigravity)"] --> daemon
-    web["Dashboard (browser)"] --> daemon
-    daemon["Daemon 127.0.0.1:8765"] -- "one MQTT / local session" --> vacuum["Roborock vacuum"]
+    cli["rrctl (CLI)"] --> daemon
+    mcp["FastMCP Server (Agents)"] --> daemon
+    web["Live Dashboard (Browser)"] --> daemon
+    daemon["Daemon 127.0.0.1:8765"] -- "Local LAN / Cloud Session" --> vacuum["Roborock Vacuum"]
 ```
 
-## Quick start
+---
 
-```sh
-rrctl setup        # log in: enter your Roborock email, then the code they email you
-rrctl status       # what the vacuum is doing
-rrctl dashboard    # live map in the browser
+## Quick Installation
+
+### Option 1: Claude Code Plugin (Zero-Checkout)
+```bash
+claude plugin marketplace add VitruvianSoftware/mcp-roborock
+claude plugin install vitruvian-roborock
 ```
 
-If you have used the upstream `roborock` CLI before, `rrctl setup` is not needed:
-the login in `~/.roborock` is copied over the first time it is wanted.
+### Option 2: Antigravity Plugin
+```bash
+git clone https://github.com/VitruvianSoftware/mcp-roborock.git ~/.config/plugins/mcp-roborock
+agy plugin install ~/.config/plugins/mcp-roborock/plugin
+```
 
-## Commands
+### Option 3: Standalone CLI (`rrctl`)
+```bash
+uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
+```
 
-| Command | What it does |
+---
+
+## Quick Start
+
+```bash
+rrctl setup        # Log in with your Roborock account (email verification code)
+rrctl status       # Display live vacuum state, battery, and rooms
+rrctl dashboard    # Open the real-time visual map in your browser
+```
+
+---
+
+## Command Reference
+
+| Command | Description |
 |---|---|
-| `rrctl setup` | Log in with an emailed verification code |
-| `rrctl status [--json]` | State, battery, errors, rooms |
-| `rrctl map [-o file.png]` | Save the current map |
-| `rrctl pause` / `resume` / `dock` | Control the current clean |
-| `rrctl daemon [run\|start\|stop\|status]` | Run in the foreground (default) or manage the background daemon |
-| `rrctl dashboard [--no-open]` | Open the live dashboard |
-| `rrctl mcp` | Serve the MCP tools over stdio |
+| `rrctl setup` | Log in with an emailed Roborock verification code |
+| `rrctl status [--json]` | View state, battery, room layout, and cleaning history |
+| `rrctl map [-o file.png]` | Save the current floor plan map as a high-res PNG |
+| `rrctl pause` / `resume` / `dock` | Control cleaning runs |
+| `rrctl daemon [status\|start\|stop]` | Manage the background connection daemon |
+| `rrctl dashboard [--no-open]` | Launch the live web dashboard |
+| `rrctl mcp` | Start the FastMCP server over stdio |
 
-Commands that need the daemon start it if it is not running.
+---
 
-## Use it from an agent
+## Agent Capabilities & Skills
 
-`plugin/` is both a Claude Code plugin and an Antigravity extension. Each launches
-the server with `uvx vitruvian-roborock mcp` and ships two skills, one for first-time
-setup and one for day-to-day control.
+When installed as a plugin, your AI agent automatically gains two specialized skills and seven FastMCP tools:
 
-> **Not on PyPI yet.** Until the package is published, that `uvx` line cannot
-> resolve. Run from this checkout instead:
-> `uvx --from /path/to/apps/mcp/roborock vitruvian-roborock mcp`.
+- **Skills**:
+  - `roborock-control`: Natural language cleaning, targeted room dispatch, docking, and mop washing.
+  - `roborock-setup`: First-time authentication flow directly inside the conversation.
+- **FastMCP Tools**:
+  - `get_status`: Live status, battery, active errors, and room names.
+  - `start_clean`: Start cleaning (full floor plan).
+  - `control`: Pause, resume, stop, or find the vacuum.
+  - `return_to_dock`: Return to the Ultra dock.
+  - `wash_mop`: Trigger automatic mop washing on Ultra docks.
+  - `get_map`: Fetch real-time rendered floor map with vacuum trajectory.
+  - `setup_login`: Authenticate with Roborock cloud.
 
-Tools: `get_status`, `start_clean`, `control`, `return_to_dock`, `wash_mop`,
-`get_map`, `setup_login`. Resources: `roborock://status`, `roborock://map.png`,
-`ui://dashboard`.
+---
 
-## Where things live
+## Documentation
 
-| Path | Contents |
-|---|---|
-| `~/.config/vitruvian/roborock/credentials.json` | Your Roborock login, mode `0600` |
-| `~/.config/vitruvian/roborock/daemon-token` | The secret local clients present to the daemon, mode `0600` |
-| `~/.config/vitruvian/roborock/cache/` | Device list cache, so restarts do not spend Roborock's small hourly quota |
-| `~/.config/vitruvian/roborock/daemon.log` | Log of a background daemon |
-
-`VITRUVIAN_ROBOROCK_PORT` changes the port; `VITRUVIAN_ROBOROCK_DEVICE` picks a
-vacuum by name or id when the account has more than one.
-
-## Development
-
-```sh
-uv run pytest              # from apps/mcp/roborock/
-bazel test //apps/mcp/roborock:roborock_test
-```
-
-See [docs/index.md](docs/index.md) for how it works, the security model, and what
-Phase 1 does not do yet.
+- [Detailed Installation & User Guide](docs/installation.md)
+- [Architecture & Security Model](docs/index.md)
