@@ -1315,13 +1315,22 @@ enum NexusAgentTests {
             suite.expect(weekly.kind == .weekly, "gemini-weekly kind is weekly")
             suite.expect(weekly.minutes == 10080, "weekly minutes is 10080")
             suite.expect(abs(weekly.usedPercent - 15.0) < 0.001, "usedPercent is 15%")
-            suite.expect(weekly.scope == "Gemini Models", "scope is Gemini Models")
+            suite.expect(weekly.scope == nil, "gemini-weekly scope is nil for plan-wide focus")
         }
         if let session = limits?.windows.first(where: { $0.id == "gemini-5h" }) {
             suite.expect(session.kind == .session, "gemini-5h kind is session")
             suite.expect(session.minutes == 300, "session minutes is 300")
             suite.expect(abs(session.usedPercent - 40.0) < 0.001, "usedPercent is 40%")
+            suite.expect(session.scope == nil, "gemini-5h scope is nil for plan-wide focus")
         }
+        if let tpWeekly = limits?.windows.first(where: { $0.id == "3p-weekly" }) {
+            suite.expect(tpWeekly.scope == "Claude and GPT models", "3p-weekly scope is preserved")
+        }
+
+        // Connect-RPC Response Wrapper
+        let wrappedJson = "{\"response\": \(quotaJson)}"
+        let wrappedLimits = AgentAntigravityReader.parseQuotaResponse(Data(wrappedJson.utf8), observed: Date())
+        suite.expect(wrappedLimits != nil && wrappedLimits?.windows.count == 3, "parseQuotaResponse parses Connect-RPC response wrapper")
 
         // 5. File Stat Caching & Incremental Reading
         AgentAntigravityReader.resetCache()
@@ -1350,6 +1359,26 @@ enum NexusAgentTests {
         store.updateLimits(sampleLimits)
         suite.expect(store.limits[.antigravity] == sampleLimits, "store retains applied limits")
         suite.expect(store.limits[.antigravity] == sampleLimits, "store limit equality matches")
+
+        // 8. Claude Code Weekly Limit Retention past reset moment
+        let now = Date()
+        let sampleOld = AgentClaudeAppUsage.Sample(
+            date: now.addingTimeInterval(-16 * 3600),
+            organization: "test-org",
+            used: ["fh": 50, "sd": 69]
+        )
+        let samplePrior = AgentClaudeAppUsage.Sample(
+            date: now.addingTimeInterval(-18 * 3600),
+            organization: "test-org",
+            used: ["fh": 40, "sd": 85]
+        )
+        let claudeLimits = AgentClaudeAppUsage.limits(from: [samplePrior, sampleOld], now: now, organization: "test-org")
+        suite.expect(claudeLimits != nil, "claudeLimits generated")
+        let claudeWeekly = claudeLimits?.windows.first { $0.kind == .weekly }
+        suite.expect(claudeWeekly != nil, "claude weekly window is never dropped when past reset moment")
+        if let cw = claudeWeekly {
+            suite.expect(cw.resetsAt != nil && cw.resetsAt! > now, "claude weekly renewal is always upcoming")
+        }
     }
 }
 

@@ -380,8 +380,11 @@ package enum AgentAntigravityReader {
 
     /// Parses RetrieveUserQuotaSummary JSON response payload into AgentLimits.
     package static func parseQuotaResponse(_ data: Data, observed: Date) -> AgentLimits? {
-        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let groups = json["groups"] as? [[String: Any]] else {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return nil
+        }
+        let container = (json["response"] as? [String: Any]) ?? json
+        guard let groups = container["groups"] as? [[String: Any]] else {
             return nil
         }
 
@@ -400,11 +403,16 @@ package enum AgentAntigravityReader {
                 let minutes = isWeekly ? 10080 : 300
                 let usedPercent = max(0.0, min(100.0, (1.0 - remainingFraction) * 100.0))
 
+                // gemini-weekly and gemini-5h are primary plan-wide limits (scope: nil)
+                // so NotchAgentLimitsCard and chosenLimit can directly display and focus them.
+                let isPrimary = bucketId == "gemini-weekly" || bucketId == "gemini-5h"
+                let scope = isPrimary ? nil : groupName
+
                 let window = AgentLimitWindow(
                     id: bucketId,
                     kind: kind,
                     minutes: minutes,
-                    scope: groupName,
+                    scope: scope,
                     usedPercent: usedPercent,
                     resetsAt: resetsAt
                 )
