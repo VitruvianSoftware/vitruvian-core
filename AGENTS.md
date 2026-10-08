@@ -138,6 +138,13 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
    to prevent spinning or infinite loops.
 3. **Land it.** Once approved, enable auto-merge (`gh pr merge <pr#> --auto --squash`) and let
    `watch-pr` monitor until it lands.
+   **Never merge past the merge queue.** No `gh pr merge --admin`, no direct merge through the
+   API, no push to `main`. If the queue removes your PR, a check failed on the queue's trial
+   commit (your change plus the latest `main`); that run is under Actions, not on the PR's Checks
+   tab. Fix what failed and queue it again. Skipping the queue is the human maintainer's
+   break-glass, not yours: on 2026-10-08 a PR the queue had just rejected was merged directly
+   and turned `main` red. Claude Code sessions are stopped by `.claude/block-queue-bypass.sh`;
+   every other agent is bound by this rule. A direct merge also raises an alert.
 4. **Clean up & verify post-merge health.** After `watch-pr` confirms the squash commit has landed
    and the post-merge pipeline is green, delete the branch/worktree and return to the latest `main`.
    **Verify it landed first**, and note that `git merge-base --is-ancestor <branch-sha>
