@@ -843,6 +843,7 @@ package enum DefaultsKey {
     package static let notchDownloadsFolderBookmark = "notchDownloadsFolderBookmark"
     // Watch: any part of any window read live in the island.
     package static let notchWatchEnabled = "notchWatchEnabled"
+    package static let notchGitHubEnabled = "notchGitHubEnabled"
     package static let notchWatchSound = "notchWatchSound"
     package static let notchWatchCondition = "notchWatchCondition"
     package static let notchCalendarEnabled = "notchCalendarEnabled"
@@ -872,6 +873,7 @@ package enum DefaultsKey {
     package static let notchAgentsLimitThreshold = "notchAgentsLimitThreshold"
     package static let notchAgentsDailyBudget = "notchAgentsDailyBudget"
     package static let notchAgentsPriceUpdates = "notchAgentsPriceUpdates"
+    package static let notchAgentsTelemetryFilter = "notchAgentsTelemetryFilter"
     package static let notchEnabled = "notchEnabled"
     package static let notchDisplay = "notchDisplay"
     // How the island looks on a display without a camera housing.
@@ -939,6 +941,16 @@ package enum DefaultsKey {
     package static let githubWatchedRepositories = "githubWatchedRepositories"
     package static let githubRelayURL = "githubRelayURL"
     package static let githubMouseIndicator = "githubMouseIndicator"
+    package static let githubClientID = "githubClientID"
+    package static let githubPollInterval = "githubPollInterval"
+    package static let githubPollActiveInterval = "githubPollActiveInterval"
+    package static let githubMouseSuccessColor = "githubMouseSuccessColor"
+    package static let githubMouseSuccessMode = "githubMouseSuccessMode"
+    package static let githubMouseRunningColor = "githubMouseRunningColor"
+    package static let githubMouseRunningMode = "githubMouseRunningMode"
+    package static let githubMouseFailureColor = "githubMouseFailureColor"
+    package static let githubMouseFailureMode = "githubMouseFailureMode"
+    package static let githubMouseIdleBehavior = "githubMouseIdleBehavior"
 
     /// Features hub availability layer, one key per AppFeature raw value.
     /// Registered true: unavailable features vanish from every surface and

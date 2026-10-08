@@ -21,15 +21,29 @@ package struct NotchAgentsView: View {
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
     @AppStorage(Preferences.notchAgentsCopilot) private var copilot: Bool
     @AppStorage(Preferences.notchAgentsAntigravity) private var antigravity: Bool
+    @AppStorage(Preferences.notchAgentsTelemetryFilter) private var telemetryFilterRaw: String
 
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
+    private var telemetryFilter: NotchTelemetryFilter {
+        NotchTelemetryFilter(rawValue: telemetryFilterRaw) ?? .antigravity
+    }
 
-    /// Only agents that left something on this Mac get cards.
+    /// Only agents that left something on this Mac get cards, filtered by provider tab.
     private var providers: [AgentProvider] {
         // The switches are read here so a change in Settings redraws the page.
         _ = (claude, codex, opencode, copilot, antigravity)
-        return NotchAgentSupport.pageProviders(seen: usage.snapshot.seen)
+        let all = NotchAgentSupport.pageProviders(seen: usage.snapshot.seen)
+        switch telemetryFilter {
+        case .antigravity:
+            let matches = all.filter { $0 == .antigravity }
+            return matches.isEmpty && antigravity ? [.antigravity] : matches
+        case .claude:
+            let matches = all.filter { $0 == .claude }
+            return matches.isEmpty && claude ? [.claude] : matches
+        case .all:
+            return all
+        }
     }
 
     private var rows: [[NotchAgentTile]] {
@@ -73,12 +87,29 @@ package struct NotchAgentsView: View {
                 NexusAgentQuickPromptView(embeddedInNotch: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                telemetryFilterBar
                 telemetryContent
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .environment(\.locale, l10n.language.formattingLocale())
         .onAppear { usage.pageDidAppear() }
+    }
+
+    private var telemetryFilterBar: some View {
+        HStack {
+            Spacer()
+            Picker("Provider", selection: $telemetryFilterRaw) {
+                ForEach(NotchTelemetryFilter.allCases) { filter in
+                    Text(filter.displayName).tag(filter.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 240)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 2)
     }
 
     @ViewBuilder private var telemetryContent: some View {
@@ -404,6 +435,12 @@ private struct NotchAgentSpendCard: View {
     let text: NotchAgentStrings
 
     private var chosen: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
+    private var scopedTotals: AgentTotals {
+        if providers.count == 1, let p = providers.first, let totals = snapshot.usage(chosen).byProvider[p] {
+            return totals
+        }
+        return snapshot.usage(chosen).total
+    }
 
     var body: some View {
         let usage = snapshot.usage(chosen)
@@ -411,7 +448,7 @@ private struct NotchAgentSpendCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) { periodMenu }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text((usage.fullyPriced ? "" : "≥ ") + AgentFormat.cost(usage.total.cost))
+                    Text((usage.fullyPriced ? "" : "≥ ") + AgentFormat.cost(scopedTotals.cost))
                         .font(.system(size: 22, weight: .medium, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
@@ -489,8 +526,8 @@ private struct NotchAgentSpendCard: View {
     }
 
     private func footer(_ usage: AgentPeriodUsage) -> String {
-        var parts = [text.tokens(AgentFormat.tokens(usage.total.tokens.total))]
-        if let rate = usage.total.tokens.cacheHitRate, rate > 0 { parts.append(text.cached(AgentFormat.percent(rate))) }
+        var parts = [text.tokens(AgentFormat.tokens(scopedTotals.tokens.total))]
+        if let rate = scopedTotals.tokens.cacheHitRate, rate > 0 { parts.append(text.cached(AgentFormat.percent(rate))) }
         return parts.joined(separator: " · ")
     }
 }

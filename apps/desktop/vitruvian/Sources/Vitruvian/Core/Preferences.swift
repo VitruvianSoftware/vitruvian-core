@@ -159,6 +159,9 @@ package enum Preferences {
     package static let notchDownloadsEnabled = Preference(DefaultsKey.notchDownloadsEnabled, default: true)
     package static let notchWatchEnabled = Preference(DefaultsKey.notchWatchEnabled, default: true)
     package static let notchWatchSound = Preference(DefaultsKey.notchWatchSound, default: true)
+    /// On once the feature is installed, like the other island extensions;
+    /// the feature itself is opt-in (`AppFeature.installedByDefault`).
+    package static let notchGitHubEnabled = Preference(DefaultsKey.notchGitHubEnabled, default: true)
     package static let notchEnabled = Preference(DefaultsKey.notchEnabled, default: false)
     package static let notchOpenOnHover = Preference(DefaultsKey.notchOpenOnHover, default: false)
     package static let notchHideInFullscreen = Preference(DefaultsKey.notchHideInFullscreen, default: false)
@@ -651,6 +654,7 @@ package enum Preferences {
     package static let notchAgentsReadout = Preference(DefaultsKey.notchAgentsReadout, default: NotchAgentReadout.elapsed.rawValue)
     package static let notchAgentsFinishMinimum = Preference(DefaultsKey.notchAgentsFinishMinimum, default: NotchAgentSupport.defaultFinishMinimum)
     package static let notchAgentsLimitThreshold = Preference(DefaultsKey.notchAgentsLimitThreshold, default: NotchAgentSupport.defaultLimitThreshold)
+    package static let notchAgentsTelemetryFilter = Preference(DefaultsKey.notchAgentsTelemetryFilter, default: "antigravity")
     package static let notchDisplay = Preference(DefaultsKey.notchDisplay, default: NotchDisplay.automatic.rawValue)
     package static let notchHoverDelay = Preference(DefaultsKey.notchHoverDelay, default: NotchSupport.defaultHoverDelay)
     package static let notchQuickAccessLayout = Preference(DefaultsKey.notchQuickAccessLayout, default: Data())
@@ -901,4 +905,26 @@ package enum Preferences {
         DefaultsKey.githubRelayURL, default: "https://github-relay.ipv1337.dev")
     package static let githubMouseIndicator = Preference(
         DefaultsKey.githubMouseIndicator, default: true)
+    /// The GitHub App's OAuth client ID. Empty until the App is registered
+    /// (design spec §4.3); while it is empty, Settings says so and Connect is
+    /// off. A client ID is public, so it travels in a backup like any setting.
+    package static let githubClientID = Preference(DefaultsKey.githubClientID, default: "")
+    package static let githubPollInterval = Preference(
+        DefaultsKey.githubPollInterval, default: 30)
+    package static let githubPollActiveInterval = Preference(
+        DefaultsKey.githubPollActiveInterval, default: 10)
+    package static let githubMouseSuccessColor = Preference(
+        DefaultsKey.githubMouseSuccessColor, default: "green")
+    package static let githubMouseSuccessMode = Preference(
+        DefaultsKey.githubMouseSuccessMode, default: "fixed")
+    package static let githubMouseRunningColor = Preference(
+        DefaultsKey.githubMouseRunningColor, default: "orange")
+    package static let githubMouseRunningMode = Preference(
+        DefaultsKey.githubMouseRunningMode, default: "breathe")
+    package static let githubMouseFailureColor = Preference(
+        DefaultsKey.githubMouseFailureColor, default: "red")
+    package static let githubMouseFailureMode = Preference(
+        DefaultsKey.githubMouseFailureMode, default: "breathe")
+    package static let githubMouseIdleBehavior = Preference(
+        DefaultsKey.githubMouseIdleBehavior, default: "restore")
 }

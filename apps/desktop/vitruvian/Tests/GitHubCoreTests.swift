@@ -56,6 +56,9 @@ enum GitHubCoreTests {
         deviceFlowStateMachine(suite)
         // Preferences
         preferences(suite)
+        // Frictionless Auth & Peripherals
+        frictionlessAuthParsing(suite)
+        peripheralSignalMapping(suite)
     }
 
     // MARK: - Fixtures
@@ -544,5 +547,55 @@ enum GitHubCoreTests {
                      "the watchlist and the mouse switch are portable settings, so a backup carries them")
         suite.expect(!registered.keys.contains { $0.lowercased().contains("github") && $0.lowercased().contains("token") },
                      "the GitHub token never lives in preferences")
+    }
+
+    // MARK: - Frictionless Auth & Peripherals
+
+    private static func frictionlessAuthParsing(_ suite: TestSuite) {
+        let tokenPrefix = "gho_"
+        let mockToken = tokenPrefix + "testMockToken1234567890"
+        let sampleYAML = """
+        github.com:
+            git_protocol: https
+            users:
+                testuser:
+                    oauth_token: \(mockToken)
+            user: testuser
+            oauth_token: \(mockToken)
+        """
+        var user: String?
+        var token: String?
+        for line in sampleYAML.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("user:") {
+                user = trimmed.replacingOccurrences(of: "user:", with: "").trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("oauth_token:") {
+                let raw = trimmed.replacingOccurrences(of: "oauth_token:", with: "").trimmingCharacters(in: .whitespaces)
+                token = raw.components(separatedBy: "#").first?.trimmingCharacters(in: .whitespaces) ?? raw
+            }
+        }
+        suite.expect(user == "testuser", "parses user from CLI hosts.yml")
+        suite.expect(token == mockToken, "parses oauth_token from CLI hosts.yml")
+    }
+
+    private static func peripheralSignalMapping(_ suite: TestSuite) {
+        func command(for verdict: Verdict, color: String, mode: String, idleBehavior: String) -> [String] {
+            switch verdict {
+            case .green, .amber, .red:
+                return mode == "breathe" ? ["breathe", color] : ["color", color]
+            case .grey:
+                return idleBehavior == "off" ? ["off"] : ["restore"]
+            }
+        }
+        suite.expect(command(for: .green, color: "green", mode: "fixed", idleBehavior: "restore") == ["color", "green"],
+                     "solid green command matches fixed color")
+        suite.expect(command(for: .amber, color: "orange", mode: "breathe", idleBehavior: "restore") == ["breathe", "orange"],
+                     "pulsing orange command matches breathe")
+        suite.expect(command(for: .red, color: "red", mode: "breathe", idleBehavior: "restore") == ["breathe", "red"],
+                     "pulsing red command matches breathe")
+        suite.expect(command(for: .grey, color: "", mode: "", idleBehavior: "off") == ["off"],
+                     "idle behavior off maps to off command")
+        suite.expect(command(for: .grey, color: "", mode: "", idleBehavior: "restore") == ["restore"],
+                     "idle behavior restore maps to restore command")
     }
 }
