@@ -21,7 +21,7 @@ catalogs:
       version: 9.34.0
     '@pulumi/pulumi':
       specifier: ^3.0.0
-      version: 3.250.0
+      version: 3.268.0
     '@pulumi/random':
       specifier: ^4.0.0
       version: 4.21.0
@@ -45,6 +45,7 @@ overrides:
   '@backstage/backend-plugin-api': 1.10.1
   '@cesium/widgets': 14.3.0
   '@grpc/grpc-js@1': ^1.14.5
+  '@prisma/config>deepmerge-ts': ^8.0.0
   adm-zip@0.6: ^0.6.1
   axios@1: ^1.20.0
   brace-expansion@1: ^1.1.21
@@ -52,9 +53,11 @@ overrides:
   brace-expansion@5: ^5.0.12
   colord@2: ^2.9.4
   compression@1: ^1.8.2
+  d3-interpolate@1>d3-color: ^3.1.0
   dompurify@3: ^3.4.16
   fast-copy@3: ^3.1.0
   fast-uri@3: ^3.1.8
+  get-uri>basic-ftp: ^6.2.2
   handlebars@4: ^4.7.10
   hono@4: ^4.12.34
   http-cache-semantics@4: ^4.3.0
@@ -63,10 +66,12 @@ overrides:
   js-yaml@4: ^4.3.2
   lodash@4: ^4.18.1
   markdown-it@14: ^14.3.2
+  mermaid>katex: ^0.18.2
   minimatch@3: ^3.1.5
   mysql2@3: ^3.24.2
   nanoid@3: ^3.3.20
   pbkdf2@3: ^3.1.7
+  postcss-selector-parser@6: ^7.1.6
   postcss-selector-parser@7: ^7.1.6
   postcss@8: ^8.5.23
   prismjs@1: ^1.30.0
@@ -78,6 +83,11 @@ overrides:
   undici@6: ^6.28.0
   undici@7: ^7.30.0
   urllib@4: ^4.9.1
+  uuid@10: ^11.1.1
+  uuid@3: ^11.1.1
+  uuid@8: ^11.1.1
+  uuid@9: ^11.1.1
+  yeoman-doctor>twig: ^3.0.0
 
 packageExtensionsChecksum: sha256-vXsQ6/SYHxFWlwxp8oDDTWVL9mnFZP2Q7x0Sk7xb/NQ=
 
@@ -594,7 +604,7 @@ importers:
     devDependencies:
       '@backstage/cli':
         specifier: ^0.36.6
-        version: 0.36.6(ad2c4d945faaf3f724d8347580b0efe0)
+        version: 0.36.6(6ac51df264349618dc8067eb173f60da)
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -721,7 +731,7 @@ importers:
     devDependencies:
       '@backstage/cli':
         specifier: ^0.36.6
-        version: 0.36.6(04fe481baedc6e1807aeebbdc81b23e9)
+        version: 0.36.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(@types/node@22.20.1)(encoding@0.1.13)(esbuild@0.28.2)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2))
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -960,7 +970,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/pulumi':
         specifier: ^3.261.0
-        version: 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/random':
         specifier: ^4.21.1
         version: 4.21.1(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
@@ -1072,7 +1082,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
@@ -1097,7 +1107,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1109,7 +1119,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1124,7 +1134,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1136,7 +1146,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
 
   packages/pulumi/library/ts/packages/cb-private-pool:
     dependencies:
@@ -1145,7 +1155,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1160,7 +1170,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1172,7 +1182,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1184,7 +1194,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1196,7 +1206,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1208,7 +1218,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1220,7 +1230,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1232,7 +1242,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1244,7 +1254,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1256,7 +1266,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1271,7 +1281,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1283,7 +1293,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1295,7 +1305,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1307,7 +1317,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1319,7 +1329,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1331,7 +1341,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1343,7 +1353,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1355,7 +1365,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1367,7 +1377,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1379,7 +1389,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1391,7 +1401,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1403,7 +1413,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1415,7 +1425,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1427,7 +1437,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1439,7 +1449,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -1451,7 +1461,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
 
   packages/pulumi/library/ts/packages/vpn-ha:
     dependencies:
@@ -1460,7 +1470,7 @@ importers:
         version: 9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
-        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+        version: 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/random':
         specifier: 'catalog:'
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
@@ -5237,29 +5247,13 @@ packages:
     resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
     engines: {node: '>=8.0.0'}
 
-  '@opentelemetry/api-logs@0.57.2':
-    resolution: {integrity: sha512-uIX52NnTM0iBh84MShlpouI7UKqkZ7MrUszTmaypHBu4r7NofznSnQRfJ+uUeDtQDj6w8eFGg5KBLDAwAPz1+A==}
-    engines: {node: '>=14'}
-
   '@opentelemetry/api@1.9.1':
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
     engines: {node: '>=8.0.0'}
 
-  '@opentelemetry/context-async-hooks@1.30.1':
-    resolution: {integrity: sha512-s5vvxXPVdjqS3kTLKMeBMvop9hbWkwzBpu+mUO2M7sZtlkyDJGwFe33wRKnbaYDo8ExRVBIIdwIGrqpxHuKttA==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
-
   '@opentelemetry/context-async-hooks@2.10.0':
     resolution: {integrity: sha512-bvyMcgLEkozzSzpEEEo1OMoeQ97bxj6Qs2uN3mPrSdDvObMI1myffD/BPqcLlzZO9//d1SqQA/WPw7Cz2AiqhA==}
     engines: {node: ^18.19.0 || >=20.6.0}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
-
-  '@opentelemetry/core@1.30.1':
-    resolution: {integrity: sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ==}
-    engines: {node: '>=14'}
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
@@ -5281,18 +5275,6 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
 
-  '@opentelemetry/exporter-trace-otlp-grpc@0.57.2':
-    resolution: {integrity: sha512-gHU1vA3JnHbNxEXg5iysqCWxN9j83d7/epTYBZflqQnTyCC4N7yZXn/dMM+bEmyhQPGjhCkNZLx4vZuChH1PYw==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
-  '@opentelemetry/exporter-zipkin@1.30.1':
-    resolution: {integrity: sha512-6S2QIMJahIquvFaaxmcwpvQQRD/YFaMTNoIxrfPIPOeITN+a8lfEcPDxNxn8JDAaxkg+4EnXhz8upVDYenoQjA==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.0.0
-
   '@opentelemetry/exporter-zipkin@2.10.0':
     resolution: {integrity: sha512-7gsvgf0UDoJ4l9ObrwBmz5G/ZogiPk+lq+g5GpLp24YQF/vPM/BSsnOfcLnfinast5ASUgLo78uSC/ObjlnXgg==}
     engines: {node: ^18.19.0 || >=20.6.0}
@@ -5305,21 +5287,9 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
 
-  '@opentelemetry/instrumentation-grpc@0.57.2':
-    resolution: {integrity: sha512-TR6YQA67cLSZzdxbf2SrbADJy2Y8eBW1+9mF15P0VK2MYcpdoUSmQTF1oMkBwa3B9NwqDFA2fq7wYTTutFQqaQ==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
   '@opentelemetry/instrumentation@0.220.0':
     resolution: {integrity: sha512-xQx3E2WxP1mDvKzxLxX+CTCtNLa560YJZ3087qYHerl2YmiKpv7AH+dAy7vmx+eVrZ5BwhfWUAVoKOoxCNHcpw==}
     engines: {node: ^18.19.0 || >=20.6.0}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
-  '@opentelemetry/instrumentation@0.57.2':
-    resolution: {integrity: sha512-BdBGhQBh8IjZ2oIIX6F2/Q3LKm/FDDKi6ccYKcBTeilh6SNdNKveDOLk73BkSJjQLJk6qe4Yh+hHw1UPhCDdrg==}
-    engines: {node: '>=14'}
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
 
@@ -5329,21 +5299,9 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
 
-  '@opentelemetry/otlp-exporter-base@0.57.2':
-    resolution: {integrity: sha512-XdxEzL23Urhidyebg5E6jZoaiW5ygP/mRjxLHixogbqwDy2Faduzb5N0o/Oi+XTIJu+iyxXdVORjXax+Qgfxag==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
   '@opentelemetry/otlp-grpc-exporter-base@0.220.0':
     resolution: {integrity: sha512-/eIkBPMBTIvM3x/0mDX4aJeSkYifYClnBPr68PL1h5LV4VQv4+SV6CGrpiZ4fIWDnobVmhTWCm1J/QRdAWUfvA==}
     engines: {node: ^18.19.0 || >=20.6.0}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
-  '@opentelemetry/otlp-grpc-exporter-base@0.57.2':
-    resolution: {integrity: sha512-USn173KTWy0saqqRB5yU9xUZ2xdgb1Rdu5IosJnm9aV4hMTuFFRTUsQxbgc24QxpCHeoKzzCSnS/JzdV0oM2iQ==}
-    engines: {node: '>=14'}
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
 
@@ -5352,30 +5310,6 @@ packages:
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
-
-  '@opentelemetry/otlp-transformer@0.57.2':
-    resolution: {integrity: sha512-48IIRj49gbQVK52jYsw70+Jv+JbahT8BqT2Th7C4H7RCM9d0gZ5sgNPoMpWldmfjvIsSgiGJtjfk9MeZvjhoig==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
-  '@opentelemetry/propagator-b3@1.30.1':
-    resolution: {integrity: sha512-oATwWWDIJzybAZ4pO76ATN5N6FFbOA1otibAVlS8v90B4S1wClnhRUk7K+2CHAwN1JKYuj4jh/lpCEG5BAqFuQ==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
-
-  '@opentelemetry/propagator-jaeger@1.30.1':
-    resolution: {integrity: sha512-Pj/BfnYEKIOImirH76M4hDaBSx6HyZ2CXUqk+Kj02m6BB80c/yo4BdWkn/1gDFfU+YPY+bPR2U0DKBfdxCKwmg==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
-
-  '@opentelemetry/resources@1.30.1':
-    resolution: {integrity: sha512-5UxZqiAgLYGFjS4s9qm5mBVo433u+dSPUFWVWXmLAD4wB65oMCoXaJP1KJa9DIYYMeHu3z4BZcStG3LC593cWA==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
   '@opentelemetry/resources@2.10.0':
     resolution: {integrity: sha512-q6MMm2zhggzsHVNbabYwut+a6nbuQQe3URUoxaojM/8K1IBfwwPzvxIjNi2/lI1TFe+fMHMW9MWhrtDLEXEnkA==}
@@ -5395,41 +5329,17 @@ packages:
     peerDependencies:
       '@opentelemetry/api': '>=1.4.0 <1.10.0'
 
-  '@opentelemetry/sdk-logs@0.57.2':
-    resolution: {integrity: sha512-TXFHJ5c+BKggWbdEQ/inpgIzEmS2BGQowLE9UhsMd7YYlUfBQJ4uax0VF/B5NYigdM/75OoJGhAV3upEhK+3gg==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.4.0 <1.10.0'
-
-  '@opentelemetry/sdk-metrics@1.30.1':
-    resolution: {integrity: sha512-q9zcZ0Okl8jRgmy7eNW3Ku1XSgg3sDLa5evHZpCwjspw7E8Is4K/haRPDJrBcX3YSn/Y7gUvFnByNYEKQNbNog==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.3.0 <1.10.0'
-
   '@opentelemetry/sdk-metrics@2.9.0':
     resolution: {integrity: sha512-Xx8RGS4H5XEBl01WuCreMIpiah9cCXMbSkeuIePPdD2cUpq/vUzYmj8E/MK1OsbOc93FuAD4jfn2WOacKwLn7Q==}
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': '>=1.9.0 <1.10.0'
 
-  '@opentelemetry/sdk-trace-base@1.30.1':
-    resolution: {integrity: sha512-jVPgBbH1gCy2Lb7X0AVQ8XAfgg0pJ4nvl8/IiQA6nxOsPvS+0zMJaFSs2ltXe0J6C8dqjcnpyqINDJmU30+uOg==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
-
   '@opentelemetry/sdk-trace-base@2.10.0':
     resolution: {integrity: sha512-GuYQQT7QD2EeO8lcZLRQzcbOyhqAzL+6WWTKTU9mSUBYBazkEDl+VrQcXQhbB08OWM9anD1aHleVadzulpOaUQ==}
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
-
-  '@opentelemetry/sdk-trace-node@1.30.1':
-    resolution: {integrity: sha512-cBjYOINt1JxXdpw1e5MlHmFRc5fgj4GW/86vsKFxJCJ8AL4PdVtYH41gWwl4qd4uQjqEL1oJVrXkSy5cnduAnQ==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-node@2.10.0':
     resolution: {integrity: sha512-GZK/G6oZyBLGlH1pUgeDch7D91KoHd2uotUGIkWCPi9GI5T9X0p4L7nNAMDR1BQjkRYoDqo+ddfVx9t5Uhys+Q==}
@@ -5448,10 +5358,6 @@ packages:
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
-
-  '@opentelemetry/semantic-conventions@1.28.0':
-    resolution: {integrity: sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA==}
-    engines: {node: '>=14'}
 
   '@opentelemetry/semantic-conventions@1.43.0':
     resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
@@ -5951,20 +5857,8 @@ packages:
   '@pulumi/gcp@9.34.0':
     resolution: {integrity: sha512-EwUlWC1aJeGp434tpBkKDIAUjxDJ+AVoNfvLXFM32buGqZWIByRL8O6Sjl6Z57XTfQfTZIXIyVinBrcARXHbIQ==}
 
-  '@pulumi/pulumi@3.250.0':
-    resolution: {integrity: sha512-/CaE4gWlOGNFt9eWxip2SscL1Nh1i9ZzzFSkjbrNQol5u9dOjGWNzWlOCerA6riH0603MkT9xNlRnJ4TGstXrw==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      ts-node: '>= 7.0.1 < 12'
-      typescript: '>= 3.8.3 < 7'
-    peerDependenciesMeta:
-      ts-node:
-        optional: true
-      typescript:
-        optional: true
-
-  '@pulumi/pulumi@3.262.0':
-    resolution: {integrity: sha512-fsYlQ5sr0g5DCxW25LTLwBsSkgkTMxXDfKdZGGvb880zXEQZd509uUSgUTX608fca9FAxjfflPNGYKgB9ps3ow==}
+  '@pulumi/pulumi@3.268.0':
+    resolution: {integrity: sha512-VtTIr44eC78BX4cAeh2MEqJqVFu5/UfrmsxjLdH73YIPr5igPEo9JB4g5yqncTHcXNxbkxJXndMOEm1CkpJA5Q==}
     engines: {node: '>=22'}
     peerDependencies:
       ts-node: '>= 7.0.1 < 12'
@@ -8054,9 +7948,6 @@ packages:
   '@types/serve-static@2.2.0':
     resolution: {integrity: sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==}
 
-  '@types/shimmer@1.2.0':
-    resolution: {integrity: sha512-UE7oxhQLLd9gub6JKIAhDq06T0F6FnztwMNRvYgjeQSBeMc1ZG/tA47EwfduvkuQS8apbkM/lpLpWsaCeYsXVg==}
-
   '@types/sockjs@0.3.36':
     resolution: {integrity: sha512-MK9V6NzAS1+Ud7JV9lJLFqW85VbC9dq3LmwZCuBe4wBDgKC0Kj/jd8Xl+nSviU+Qc3+m7umHHyHg//2KSa0a0Q==}
 
@@ -8797,11 +8688,6 @@ packages:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
 
-  acorn-import-attributes@1.9.5:
-    resolution: {integrity: sha512-n02Vykv5uA3eHGM/Z2dQrcD56kL8TyDb2p1+0P83PClMnC/nc+anbQRhIOWnSq4Ke/KvDPrY3C9hDtC/A3eHnQ==}
-    peerDependencies:
-      acorn: ^8
-
   acorn-import-phases@1.0.4:
     resolution: {integrity: sha512-wKmbr/DDiIXzEOiWrTTUcDm24kQ2vGfZQvM2fwg2vXqR5uW6aapr7ObPtj1th32b9u90/Pf4AItvdTh42fBmVQ==}
     engines: {node: '>=10.13.0'}
@@ -9346,8 +9232,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@5.3.1:
-    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+  basic-ftp@6.2.2:
+    resolution: {integrity: sha512-LIkJcf/F6bTTfvE3k2YcTxrJsLKKVXiEpHZYkQP6JoqTb7khng7c13ckRTDQbqRh5IkehVH3F00sSlAa2F6DwA==}
     engines: {node: '>=10.0.0'}
 
   batch@0.6.1:
@@ -9754,9 +9640,6 @@ packages:
   cipher-base@1.0.7:
     resolution: {integrity: sha512-Mz9QMT5fJe7bKI7MH31UilT5cEK5EHHRCccw/YRFsRY47AuNgaV6HY3rscp0/I4Q+tTW/5zoqpSeRRI54TkDWA==}
     engines: {node: '>= 0.10'}
-
-  cjs-module-lexer@1.4.3:
-    resolution: {integrity: sha512-9z8TZaGM1pfswYeXrUpzPrkx8UnWYdhJclsiYMm6x/w5+nN+8Tf/LnAgfLGQCm59qAOxU8WwHEq2vNwF6i4j+Q==}
 
   cjs-module-lexer@2.2.0:
     resolution: {integrity: sha512-4bHTS2YuzUvtoLjdy+98ykbNB5jS0+07EvFNXerqZQJ89F7DI6ET7OQo/HJuW6K0aVsKA9hj9/RVb2kQVOrPDQ==}
@@ -10396,9 +10279,6 @@ packages:
   d3-collection@1.0.7:
     resolution: {integrity: sha512-ii0/r5f4sjKNTfh84Di+DpztYwqKhEyUlKoPrzUFfeSkWxjW49xU2QzO9qrPrNkpdI0XJkfzvmTu8V2Zylln6A==}
 
-  d3-color@1.4.1:
-    resolution: {integrity: sha512-p2sTHSLCJI2QKunbGb7ocOh7DgTAn8IrLx21QRc/BSnodXM4sv6aLQlnfpvehFMLZEfBc6g9pH9SWQccFYfJ9Q==}
-
   d3-color@3.1.0:
     resolution: {integrity: sha512-zg/chbXyeBtMQ1LbD/WSoW2DpC3I0mpmPdW+ynRTj/x2DAWYrIY7qeZIHidozwV24m4iavr15lNwIwLxRmOxhA==}
     engines: {node: '>=12'}
@@ -10669,9 +10549,9 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
-  deepmerge-ts@7.1.5:
-    resolution: {integrity: sha512-HOJkrhaYsweh+W+e74Yn7YStZOilkoPb6fycpwNLKzSPtruFs48nYis0zy5yJz1+ktUhHxoRDJ27RQAWLIJVJw==}
-    engines: {node: '>=16.0.0'}
+  deepmerge-ts@8.0.2:
+    resolution: {integrity: sha512-uqbvqLUMrc6p0MO+WBRtTxY55hmyh94WRwI5a++PZe54X+bfVh59FSN7uWCBCW1CCVjzjnrwzfI8zidE2obMMw==}
+    engines: {node: '>=16.9.0'}
 
   deepmerge@4.3.1:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
@@ -12546,9 +12426,6 @@ packages:
     resolution: {integrity: sha512-CiuXOFFSzkU5x/CR0+z7T91Iht4CXgfCxVOFRhh2Zyhg5wOpWvvDLQUsWl+gcN+QscYBjez8hDCt85O7RLDttQ==}
     engines: {node: '>=8'}
 
-  import-in-the-middle@1.15.0:
-    resolution: {integrity: sha512-bpQy+CrsRmYmoPMAE/0G33iwRqwW4ouqdRg8jgbH3aKuCtOc8lxgmYXg2dMM92CRiGP660EtBcymH/eVUpCSaA==}
-
   import-in-the-middle@3.3.3:
     resolution: {integrity: sha512-AiohS3H80sXO6owEltjGX+glb7qXaDhBoJb9XcQVH4UI207xu/bDLUcadVKp7Qe576reg9yr/PXZjV5qx8gfbA==}
     engines: {node: '>=18'}
@@ -13620,8 +13497,8 @@ packages:
     resolution: {integrity: sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA==}
     engines: {node: '>=18'}
 
-  katex@0.16.47:
-    resolution: {integrity: sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg==}
+  katex@0.18.10:
+    resolution: {integrity: sha512-/B6p9eY9DX7aHBfpkHdpirDTZ5QH9xTwL9y837PWuzuv41O5jFdqNQwVQEQsimY0/iVNkwBY4+4hMfhQ7d4Dbw==}
     hasBin: true
 
   kdbush@4.1.0:
@@ -13952,9 +13829,9 @@ packages:
     resolution: {integrity: sha512-XT9ewWAC43tiAV7xDAPflMkG0qOPn2QjHqlgX8FOqmWa/rxnyYDulF9T0F7tRy1u+TVTmK/M//6VIOye+2zDXg==}
     engines: {node: '>=20'}
 
-  locutus@2.0.39:
-    resolution: {integrity: sha512-v2iub44UtGpbIv+pFkkYhZ+JsbIM0bJsQcQ1+VayUNGVA/YhM8+CkBiRACcpuuE9Q0xI1pgNzGNwzZDCp1MCww==}
-    engines: {node: '>= 10', yarn: '>= 1'}
+  locutus@3.0.36:
+    resolution: {integrity: sha512-ilsz33lqEd+KerV9JnSHM9EApVYOZ86/JTGKyafmWvhTFtjYauzT1WmZgdJ4JBGR3dY0N0PTfIq2uLvazw5QsQ==}
+    engines: {node: '>= 22', yarn: '>= 1'}
 
   lodash-es@4.18.1:
     resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
@@ -14067,10 +13944,6 @@ packages:
 
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
-
-  lru-cache@11.5.2:
-    resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
-    engines: {node: 20 || >=22}
 
   lru-cache@11.5.3:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
@@ -15869,10 +15742,6 @@ packages:
     peerDependencies:
       postcss: ^8.5.23
 
-  postcss-selector-parser@6.1.4:
-    resolution: {integrity: sha512-bIoJLOmjCO1S9XdY/DcnR5hJxvrDir1PbGChrzXG3vw0/FOliy/fA3dmdhQ441kah4gKv+TwckGzex6wNS5cnQ==}
-    engines: {node: '>=4'}
-
   postcss-selector-parser@7.1.6:
     resolution: {integrity: sha512-7qASPzhKF2l2KLboRZux8CCTRMdGiV08vWmyKzPz22qZ7ZjQBOeY7rNzNoCLSUiftJ7HUq0GERHmxw/t0dCdMw==}
     engines: {node: '>=4'}
@@ -16814,10 +16683,6 @@ packages:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
 
-  require-in-the-middle@7.5.2:
-    resolution: {integrity: sha512-gAZ+kLqBdHarXB64XpAe2VCjB7rIRv+mU8tfRWziHRJ5umKsIHN2tLLv6EtMw7WCdP19S0ERVMldNvxYCHnhSQ==}
-    engines: {node: '>=8.6.0'}
-
   require-in-the-middle@8.0.1:
     resolution: {integrity: sha512-QT7FVMXfWOYFbeRBF6nu+I6tr2Tf3u0q8RIEjNob/heKY/nh7drD/k7eeMFmSQgnTtCzLDcCu/XEnpW2wk4xCQ==}
     engines: {node: '>=9.3.0 || >=8.10.0 <9.0.0'}
@@ -17241,9 +17106,6 @@ packages:
   shell-quote@1.12.0:
     resolution: {integrity: sha512-PcByqNyT/38F2kDNi006HAMRJaULuBzq/FOsw3qdZvX/GA9W/jamDaRskgHjubHiftXK5sIFxLNkvrXUwcof6Q==}
     engines: {node: '>= 0.4'}
-
-  shimmer@1.2.1:
-    resolution: {integrity: sha512-sQTKC1Re/rM6XyFM6fIAGHRPVGvyXfgzIDvzoq608vM+jeyVD0Tu1E6Np0Kc2zAIFWIj963V2800iF/9LPieQw==}
 
   short-unique-id@5.3.2:
     resolution: {integrity: sha512-KRT/hufMSxXKEDSQujfVE0Faa/kZ51ihUcZQAcmP04t00DvPj7Ox5anHke1sJYUtzSuiT/Y5uyzg/W7bBEGhCg==}
@@ -18282,9 +18144,9 @@ packages:
   tweetnacl@0.14.5:
     resolution: {integrity: sha512-KXXFFdAbFXY4geFIwoyNK+f5Z1b7swfXABfL7HXCmoIWMKU3dmS26672A4EeQtDzLKy7SXmfBu51JolvEKwtGA==}
 
-  twig@1.17.1:
-    resolution: {integrity: sha512-atxccyr/BHtb1gPMA7Lvki0OuU17XBqHsNH9lzDHt9Rr1293EVZOosSZabEXz/DPVikIW8ZDqSkEddwyJnQN2w==}
-    engines: {node: '>=10'}
+  twig@3.0.0:
+    resolution: {integrity: sha512-cMfYLWAgdW15B7L5wmanmga113e4phQmo3rk5EFuUrQd99g7I3ncxgynS38P01m4ZXBDSdMYUTV1g3A66/Y56Q==}
+    engines: {node: '>=22'}
     hasBin: true
 
   typanion@3.14.0:
@@ -18605,28 +18467,12 @@ packages:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
     engines: {node: '>= 0.4.0'}
 
-  uuid@10.0.0:
-    resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+  uuid@11.1.1:
+    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
     hasBin: true
 
   uuid@14.0.2:
     resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
-    hasBin: true
-
-  uuid@3.4.0:
-    resolution: {integrity: sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
-    hasBin: true
-
-  uuid@8.3.2:
-    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
-    hasBin: true
-
-  uuid@9.0.1:
-    resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uvu@0.5.6:
@@ -20694,11 +20540,11 @@ snapshots:
       '@backstage/errors': 1.3.1
       cross-spawn: 7.0.6
 
-  '@backstage/cli-defaults@0.1.6(617c2b86fdd0503a40426bd695496e2d)':
+  '@backstage/cli-defaults@0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.15.47(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(@types/node@22.20.1)(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2))':
     dependencies:
       '@backstage/cli-module-actions': 0.1.3(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/cli-module-auth': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-config': 0.1.7(@swc/core@1.15.47(@swc/helpers@0.5.23))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2))
       '@backstage/cli-module-github': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2))
       '@backstage/cli-module-info': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
@@ -20706,7 +20552,7 @@ snapshots:
       '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.15.47(@swc/helpers@0.5.23))(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(typescript@5.8.3)
       '@backstage/cli-module-migrate': 0.2.1(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/cli-module-new': 0.1.7(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/react@18.3.31)(typanion@3.14.0)
+      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(typanion@3.14.0)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-module-translations': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
     transitivePeerDependencies:
@@ -20759,11 +20605,11 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli-defaults@0.1.6(dc0e9df223427f0a9f9c5c6f2a77f152)':
+  '@backstage/cli-defaults@0.1.6(b7fe711ec95c89e9aac2053cd5a54940)':
     dependencies:
       '@backstage/cli-module-actions': 0.1.3(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/cli-module-auth': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@swc/helpers@0.5.23)(@types/react@19.2.18)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-config': 0.1.7(@swc/core@1.15.47(@swc/helpers@0.5.23))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@backstage/cli-module-github': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@backstage/cli-module-info': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
@@ -20771,7 +20617,7 @@ snapshots:
       '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.15.47(@swc/helpers@0.5.23))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(typescript@5.8.3)
       '@backstage/cli-module-migrate': 0.2.1(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/cli-module-new': 0.1.7(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/react@19.2.18)(typanion@3.14.0)
+      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/react@18.3.31)(typanion@3.14.0)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-module-translations': 0.1.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
     transitivePeerDependencies:
@@ -20864,7 +20710,7 @@ snapshots:
       '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12(@swc/helpers@0.5.23))(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
-      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)))(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)))(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@rollup/plugin-commonjs': 26.0.3(rollup@4.62.2)
       '@rollup/plugin-json': 6.1.0(rollup@4.62.2)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.62.2)
@@ -20956,17 +20802,17 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli-module-build@0.1.8(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@swc/helpers@0.5.23)(@types/react@19.2.18)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
+  '@backstage/cli-module-build@0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/cli-node': 0.3.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
-      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)
+      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12(@swc/helpers@0.5.23))(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
-      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)))(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)))(webpack@5.105.4(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@rollup/plugin-commonjs': 26.0.3(rollup@4.62.2)
       '@rollup/plugin-json': 6.1.0(rollup@4.62.2)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.62.2)
@@ -21252,16 +21098,16 @@ snapshots:
       - typanion
       - utf-8-validate
 
-  '@backstage/cli-module-package-manager-yarn@0.1.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/react@19.2.18)(typanion@3.14.0)':
+  '@backstage/cli-module-package-manager-yarn@0.1.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(typanion@3.14.0)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/cli-node': 0.3.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/release-manifests': 0.0.14
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/parsers': 3.1.0
-      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       cleye: 2.6.0
     transitivePeerDependencies:
       - '@swc/core'
@@ -21323,11 +21169,11 @@ snapshots:
       '@swc/core': 1.15.47(@swc/helpers@0.5.23)
       keytar: 7.9.0
 
-  '@backstage/cli@0.36.6(04fe481baedc6e1807aeebbdc81b23e9)':
+  '@backstage/cli@0.36.6(6ac51df264349618dc8067eb173f60da)':
     dependencies:
       '@backstage/cli-common': 0.3.1
-      '@backstage/cli-defaults': 0.1.6(dc0e9df223427f0a9f9c5c6f2a77f152)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@swc/helpers@0.5.23)(@types/react@19.2.18)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-defaults': 0.1.6(b7fe711ec95c89e9aac2053cd5a54940)
+      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-node': 0.3.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/eslint-plugin': 0.3.2
@@ -21407,11 +21253,11 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli@0.36.6(ad2c4d945faaf3f724d8347580b0efe0)':
+  '@backstage/cli@0.36.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(@types/node@22.20.1)(encoding@0.1.13)(esbuild@0.28.2)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2))':
     dependencies:
       '@backstage/cli-common': 0.3.1
-      '@backstage/cli-defaults': 0.1.6(617c2b86fdd0503a40426bd695496e2d)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-defaults': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.15.47(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(@types/node@22.20.1)(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.109.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(esbuild@0.28.2))
+      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-node': 0.3.4(@swc/core@1.15.47(@swc/helpers@0.5.23))
       '@backstage/eslint-plugin': 0.3.2
@@ -21949,23 +21795,6 @@ snapshots:
       react-router-dom: 6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@backstage/module-federation-common@0.1.5(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@backstage/config': 1.3.9
-      '@backstage/errors': 1.3.1
-      '@backstage/types': 1.2.2
-      '@emotion/react': 11.14.0(@types/react@19.2.18)(react@19.2.8)
-      '@material-ui/core': 4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@material-ui/styles': 4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@module-federation/runtime': 2.8.2
-      '@mui/material': 5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-router: 6.30.6(react@19.2.8)
-      react-router-dom: 6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   '@backstage/plugin-api-docs@0.14.5(@codemirror/language@6.12.4)(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@noble/hashes@1.8.0)(@types/node@22.20.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -24214,22 +24043,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@emotion/babel-plugin': 11.13.5
-      '@emotion/cache': 11.14.0
-      '@emotion/serialize': 1.3.3
-      '@emotion/use-insertion-effect-with-fallbacks': 1.2.0(react@19.2.8)
-      '@emotion/utils': 1.4.2
-      '@emotion/weak-memoize': 0.4.0
-      hoist-non-react-statics: 3.3.2
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.2.18
-    transitivePeerDependencies:
-      - supports-color
-
   '@emotion/serialize@1.3.3':
     dependencies:
       '@emotion/hash': 0.9.2
@@ -24255,31 +24068,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@emotion/babel-plugin': 11.13.5
-      '@emotion/is-prop-valid': 1.4.0
-      '@emotion/react': 11.14.0(@types/react@19.2.18)(react@19.2.8)
-      '@emotion/serialize': 1.3.3
-      '@emotion/use-insertion-effect-with-fallbacks': 1.2.0(react@19.2.8)
-      '@emotion/utils': 1.4.2
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.2.18
-    transitivePeerDependencies:
-      - supports-color
-    optional: true
-
   '@emotion/unitless@0.10.0': {}
 
   '@emotion/use-insertion-effect-with-fallbacks@1.2.0(react@18.3.1)':
     dependencies:
       react: 18.3.1
-
-  '@emotion/use-insertion-effect-with-fallbacks@1.2.0(react@19.2.8)':
-    dependencies:
-      react: 19.2.8
 
   '@emotion/utils@1.4.2': {}
 
@@ -26196,7 +25989,7 @@ snapshots:
       react-beautiful-dnd: 13.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-dom: 18.3.1(react@18.3.1)
       react-double-scrollbar: 0.0.15(react@18.3.1)
-      uuid: 3.4.0
+      uuid: 11.1.1
     transitivePeerDependencies:
       - '@types/react'
       - react-native
@@ -26219,25 +26012,6 @@ snapshots:
       react-transition-group: 4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@material-ui/core@4.12.4(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@material-ui/styles': 4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@material-ui/system': 4.12.2(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@material-ui/types': 5.1.0(@types/react@19.2.18)
-      '@material-ui/utils': 4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/react-transition-group': 4.4.12(@types/react@19.2.18)
-      clsx: 1.2.1
-      hoist-non-react-statics: 3.3.2
-      popper.js: 1.16.1-lts
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-is: 17.0.2
-      react-transition-group: 4.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   '@material-ui/icons@4.11.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -26310,29 +26084,6 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@material-ui/styles@4.11.5(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@emotion/hash': 0.8.0
-      '@material-ui/types': 5.1.0(@types/react@19.2.18)
-      '@material-ui/utils': 4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      clsx: 1.2.1
-      csstype: 2.6.21
-      hoist-non-react-statics: 3.3.2
-      jss: 10.10.0
-      jss-plugin-camel-case: 10.10.0
-      jss-plugin-default-unit: 10.10.0
-      jss-plugin-global: 10.10.0
-      jss-plugin-nested: 10.10.0
-      jss-plugin-props-sort: 10.10.0
-      jss-plugin-rule-value-function: 10.10.0
-      jss-plugin-vendor-prefixer: 10.10.0
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.2.18
-
   '@material-ui/system@4.12.2(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.7
@@ -26344,24 +26095,9 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@material-ui/system@4.12.2(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@material-ui/utils': 4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      csstype: 2.6.21
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.2.18
-
   '@material-ui/types@5.1.0(@types/react@18.3.31)':
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@material-ui/types@5.1.0(@types/react@19.2.18)':
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   '@material-ui/utils@4.11.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -26369,14 +26105,6 @@ snapshots:
       prop-types: 15.8.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      react-is: 17.0.2
-
-  '@material-ui/utils@4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
       react-is: 17.0.2
 
   '@mdx-js/react@3.1.1(@types/react@19.2.18)(react@19.2.8)':
@@ -26617,27 +26345,6 @@ snapshots:
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
       '@types/react': 18.3.31
 
-  '@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@mui/core-downloads-tracker': 5.18.0
-      '@mui/system': 5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)
-      '@mui/types': 7.2.24(@types/react@19.2.18)
-      '@mui/utils': 5.17.1(@types/react@19.2.18)(react@19.2.8)
-      '@popperjs/core': 2.11.8
-      '@types/react-transition-group': 4.4.12(@types/react@19.2.18)
-      clsx: 2.1.1
-      csstype: 3.2.3
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-is: 19.3.0
-      react-transition-group: 4.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    optionalDependencies:
-      '@emotion/react': 11.14.0(@types/react@19.2.18)(react@19.2.8)
-      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)
-      '@types/react': 19.2.18
-
   '@mui/private-theming@5.17.1(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.10
@@ -26646,15 +26353,6 @@ snapshots:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@mui/private-theming@5.17.1(@types/react@19.2.18)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@mui/utils': 5.17.1(@types/react@19.2.18)(react@19.2.8)
-      prop-types: 15.8.1
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   '@mui/styled-engine@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -26667,18 +26365,6 @@ snapshots:
     optionalDependencies:
       '@emotion/react': 11.14.0(@types/react@18.3.31)(react@18.3.1)
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
-
-  '@mui/styled-engine@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@emotion/cache': 11.14.0
-      '@emotion/serialize': 1.3.3
-      csstype: 3.2.3
-      prop-types: 15.8.1
-      react: 19.2.8
-    optionalDependencies:
-      '@emotion/react': 11.14.0(@types/react@19.2.18)(react@19.2.8)
-      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)
 
   '@mui/system@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
@@ -26696,29 +26382,9 @@ snapshots:
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
       '@types/react': 18.3.31
 
-  '@mui/system@5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@mui/private-theming': 5.17.1(@types/react@19.2.18)(react@19.2.8)
-      '@mui/styled-engine': 5.18.0(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
-      '@mui/types': 7.2.24(@types/react@19.2.18)
-      '@mui/utils': 5.17.1(@types/react@19.2.18)(react@19.2.8)
-      clsx: 2.1.1
-      csstype: 3.2.3
-      prop-types: 15.8.1
-      react: 19.2.8
-    optionalDependencies:
-      '@emotion/react': 11.14.0(@types/react@19.2.18)(react@19.2.8)
-      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)
-      '@types/react': 19.2.18
-
   '@mui/types@7.2.24(@types/react@18.3.31)':
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@mui/types@7.2.24(@types/react@19.2.18)':
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   '@mui/utils@5.17.1(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
@@ -26731,18 +26397,6 @@ snapshots:
       react-is: 19.3.0
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@mui/utils@5.17.1(@types/react@19.2.18)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@mui/types': 7.2.24(@types/react@19.2.18)
-      '@types/prop-types': 15.7.15
-      clsx: 2.1.1
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-is: 19.3.0
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   '@n1ru4l/push-pull-async-iterable-iterator@3.2.0': {}
 
@@ -26847,7 +26501,7 @@ snapshots:
       common-ancestor-path: 2.0.0
       hosted-git-info: 9.0.3
       json-stringify-nice: 1.1.4
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
       minimatch: 10.2.6
       nopt: 9.0.0
       npm-install-checks: 8.0.0
@@ -27298,24 +26952,11 @@ snapshots:
     dependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@opentelemetry/api-logs@0.57.2':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-
   '@opentelemetry/api@1.9.1': {}
-
-  '@opentelemetry/context-async-hooks@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
 
   '@opentelemetry/context-async-hooks@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-
-  '@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/semantic-conventions': 1.28.0
 
   '@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -27336,25 +26977,6 @@ snapshots:
       '@opentelemetry/otlp-transformer': 0.220.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace': 2.9.0(@opentelemetry/api@1.9.1)
 
-  '@opentelemetry/exporter-trace-otlp-grpc@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@grpc/grpc-js': 1.14.5
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/otlp-exporter-base': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/otlp-grpc-exporter-base': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/otlp-transformer': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/exporter-zipkin@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.28.0
-
   '@opentelemetry/exporter-zipkin@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -27371,14 +26993,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@opentelemetry/instrumentation-grpc@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/instrumentation': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.28.0
-    transitivePeerDependencies:
-      - supports-color
-
   '@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -27388,29 +27002,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@opentelemetry/instrumentation@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/api-logs': 0.57.2
-      '@types/shimmer': 1.2.0
-      import-in-the-middle: 1.15.0
-      require-in-the-middle: 7.5.2
-      semver: 7.8.5
-      shimmer: 1.2.1
-    transitivePeerDependencies:
-      - supports-color
-
   '@opentelemetry/otlp-exporter-base@0.220.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/otlp-transformer': 0.220.0(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/otlp-exporter-base@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/otlp-transformer': 0.57.2(@opentelemetry/api@1.9.1)
 
   '@opentelemetry/otlp-grpc-exporter-base@0.220.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -27419,14 +27015,6 @@ snapshots:
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/otlp-exporter-base': 0.220.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/otlp-transformer': 0.220.0(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/otlp-grpc-exporter-base@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@grpc/grpc-js': 1.14.5
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/otlp-exporter-base': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/otlp-transformer': 0.57.2(@opentelemetry/api@1.9.1)
 
   '@opentelemetry/otlp-transformer@0.220.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -27437,33 +27025,6 @@ snapshots:
       '@opentelemetry/sdk-logs': 0.220.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-metrics': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace': 2.9.0(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/otlp-transformer@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/api-logs': 0.57.2
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-logs': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-metrics': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.1)
-      protobufjs: 7.6.6
-
-  '@opentelemetry/propagator-b3@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/propagator-jaeger@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.28.0
 
   '@opentelemetry/resources@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -27485,31 +27046,11 @@ snapshots:
       '@opentelemetry/resources': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.43.0
 
-  '@opentelemetry/sdk-logs@0.57.2(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/api-logs': 0.57.2
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-
   '@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources': 2.9.0(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.28.0
 
   '@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -27518,16 +27059,6 @@ snapshots:
       '@opentelemetry/resources': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.43.0
-
-  '@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/context-async-hooks': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/propagator-b3': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/propagator-jaeger': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.1)
-      semver: 7.8.5
 
   '@opentelemetry/sdk-trace-node@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -27549,8 +27080,6 @@ snapshots:
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.43.0
-
-  '@opentelemetry/semantic-conventions@1.28.0': {}
 
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
@@ -27916,7 +27445,7 @@ snapshots:
   '@prisma/config@7.9.1(magicast@0.5.3)':
     dependencies:
       c12: 3.3.4(magicast@0.5.3)
-      deepmerge-ts: 7.1.5
+      deepmerge-ts: 8.0.2
       effect: 3.20.0
       empathic: 2.0.0
     transitivePeerDependencies:
@@ -28023,7 +27552,7 @@ snapshots:
 
   '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -28031,7 +27560,7 @@ snapshots:
 
   '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -28040,7 +27569,7 @@ snapshots:
   '@pulumi/gcp@9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
       '@npmcli/package-json': 6.2.0
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
       '@types/express': 4.17.25
     transitivePeerDependencies:
       - supports-color
@@ -28050,76 +27579,14 @@ snapshots:
   '@pulumi/gcp@9.34.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@npmcli/package-json': 6.2.0
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
       '@types/express': 4.17.25
     transitivePeerDependencies:
       - supports-color
       - ts-node
       - typescript
 
-  '@pulumi/pulumi@3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
-    dependencies:
-      '@grpc/grpc-js': 1.14.5
-      '@logdna/tail-file': 2.2.0
-      '@npmcli/arborist': 9.9.1
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/exporter-trace-otlp-grpc': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/exporter-zipkin': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/instrumentation': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/instrumentation-grpc': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.1)
-      '@types/google-protobuf': 3.15.12
-      '@types/semver': 7.8.0
-      execa: 5.1.1
-      google-protobuf: 3.21.4
-      ini: 2.0.0
-      js-yaml: 4.3.2
-      minimist: 1.2.8
-      normalize-package-data: 6.0.2
-      require-from-string: 2.0.2
-      semver: 7.8.5
-      source-map-support: 0.5.21
-      upath: 1.2.0
-    optionalDependencies:
-      ts-node: 10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3)
-      typescript: 5.8.3
-    transitivePeerDependencies:
-      - supports-color
-
-  '@pulumi/pulumi@3.250.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@grpc/grpc-js': 1.14.5
-      '@logdna/tail-file': 2.2.0
-      '@npmcli/arborist': 9.9.1
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/exporter-trace-otlp-grpc': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/exporter-zipkin': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/instrumentation': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/instrumentation-grpc': 0.57.2(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.1)
-      '@types/google-protobuf': 3.15.12
-      '@types/semver': 7.8.0
-      execa: 5.1.1
-      google-protobuf: 3.21.4
-      ini: 2.0.0
-      js-yaml: 4.3.2
-      minimist: 1.2.8
-      normalize-package-data: 6.0.2
-      require-from-string: 2.0.2
-      semver: 7.8.5
-      source-map-support: 0.5.21
-      upath: 1.2.0
-    optionalDependencies:
-      ts-node: 10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3)
-      typescript: 6.0.3
-    transitivePeerDependencies:
-      - supports-color
-
-  '@pulumi/pulumi@3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
+  '@pulumi/pulumi@3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
       '@grpc/grpc-js': 1.14.5
       '@logdna/tail-file': 2.2.0
@@ -28152,7 +27619,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@pulumi/pulumi@3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)':
+  '@pulumi/pulumi@3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@grpc/grpc-js': 1.14.5
       '@logdna/tail-file': 2.2.0
@@ -28187,7 +27654,7 @@ snapshots:
 
   '@pulumi/random@4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -28195,7 +27662,7 @@ snapshots:
 
   '@pulumi/random@4.21.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.6.4)(typescript@6.0.3))(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -28203,7 +27670,7 @@ snapshots:
 
   '@pulumi/random@4.21.1(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -28211,7 +27678,7 @@ snapshots:
 
   '@pulumiverse/time@0.1.1(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
-      '@pulumi/pulumi': 3.262.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
+      '@pulumi/pulumi': 3.268.0(ts-node@10.9.2(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@26.2.0)(typescript@5.8.3))(typescript@5.8.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -30737,10 +30204,6 @@ snapshots:
     dependencies:
       '@types/react': 18.3.31
 
-  '@types/react-transition-group@4.4.12(@types/react@19.2.18)':
-    dependencies:
-      '@types/react': 19.2.18
-
   '@types/react@18.3.31':
     dependencies:
       '@types/prop-types': 15.7.15
@@ -30793,8 +30256,6 @@ snapshots:
     dependencies:
       '@types/http-errors': 2.0.5
       '@types/node': 26.2.0
-
-  '@types/shimmer@1.2.0': {}
 
   '@types/sockjs@0.3.36':
     dependencies:
@@ -31450,37 +30911,37 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))':
+  '@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/libzip': 3.2.2(@yarnpkg/fslib@3.1.5)
       '@yarnpkg/parsers': 3.1.0
-      '@yarnpkg/plugin-catalog': 1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-compat': 4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-constraints': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-dlx': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-catalog': 1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-compat': 4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-constraints': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-dlx': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       '@yarnpkg/plugin-exec': 3.1.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-file': 3.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       '@yarnpkg/plugin-github': 3.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       '@yarnpkg/plugin-http': 3.0.4(@yarnpkg/core@4.9.2(typanion@3.14.0))
-      '@yarnpkg/plugin-init': 4.1.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-interactive-tools': 4.1.1(@types/react@19.2.18)(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))
+      '@yarnpkg/plugin-init': 4.1.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-interactive-tools': 4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))
       '@yarnpkg/plugin-jsr': 1.1.2(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-link': 3.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))
-      '@yarnpkg/plugin-nm': 4.1.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-npm-cli': 4.5.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-pnpm': 2.3.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-typescript': 4.1.4(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)
-      '@yarnpkg/plugin-version': 4.3.0(@types/react@19.2.18)(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-workspace-tools': 4.1.8(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-nm': 4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-npm-cli': 4.5.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnpm': 2.3.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-typescript': 4.1.4(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)
+      '@yarnpkg/plugin-version': 4.3.0(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-workspace-tools': 4.1.8(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       '@yarnpkg/shell': 4.1.3(typanion@3.14.0)
       ci-info: 4.4.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31534,13 +30995,13 @@ snapshots:
 
   '@yarnpkg/libui@3.1.0(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2)':
     dependencies:
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       react: 17.0.2
       tslib: 2.8.1
 
-  '@yarnpkg/libui@3.1.0(ink@3.2.0(@types/react@19.2.18)(react@17.0.2))(react@17.0.2)':
+  '@yarnpkg/libui@3.1.0(ink@3.2.0(react@17.0.2))(react@17.0.2)':
     dependencies:
-      ink: 3.2.0(@types/react@19.2.18)(react@19.2.8)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       tslib: 2.8.1
 
@@ -31572,11 +31033,11 @@ snapshots:
       '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       tslib: 2.8.1
 
-  '@yarnpkg/plugin-catalog@1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-catalog@1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       tslib: 2.8.1
 
   '@yarnpkg/plugin-compat@4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
@@ -31585,11 +31046,11 @@ snapshots:
       '@yarnpkg/extensions': 2.0.7(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
 
-  '@yarnpkg/plugin-compat@4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-compat@4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/extensions': 2.0.7(@yarnpkg/core@4.9.2(typanion@3.14.0))
-      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
 
   '@yarnpkg/plugin-constraints@4.0.6(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
@@ -31603,9 +31064,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-constraints@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-constraints@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31625,9 +31086,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-dlx@4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-dlx@4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31651,9 +31112,9 @@ snapshots:
       tslib: 2.8.1
       typanion: 3.14.0
 
-  '@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/parsers': 3.1.0
@@ -31715,9 +31176,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-init@4.1.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-init@4.1.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31734,7 +31195,7 @@ snapshots:
       algoliasearch: 4.27.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       diff: 5.2.2
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       ink-text-input: 4.0.3(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2)
       react: 17.0.2
       semver: 7.8.5
@@ -31745,17 +31206,17 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@yarnpkg/plugin-interactive-tools@4.1.1(@types/react@19.2.18)(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))':
+  '@yarnpkg/plugin-interactive-tools@4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
-      '@yarnpkg/libui': 3.1.0(ink@3.2.0(@types/react@19.2.18)(react@17.0.2))(react@17.0.2)
-      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/libui': 3.1.0(ink@3.2.0(react@17.0.2))(react@17.0.2)
+      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       algoliasearch: 4.27.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       diff: 5.2.2
-      ink: 3.2.0(@types/react@19.2.18)(react@19.2.8)
-      ink-text-input: 4.0.3(ink@3.2.0(@types/react@19.2.18)(react@17.0.2))(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink-text-input: 4.0.3(ink@3.2.0(react@17.0.2))(react@17.0.2)
       react: 17.0.2
       semver: 7.8.5
       tslib: 2.8.1
@@ -31793,15 +31254,15 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-nm@4.1.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-nm@4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/libzip': 3.2.2(@yarnpkg/fslib@3.1.5)
       '@yarnpkg/nm': 4.1.1(typanion@3.14.0)
       '@yarnpkg/parsers': 3.1.0
-      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       '@yarnpkg/pnp': 4.1.7
       '@zkochan/cmd-shim': 5.4.1
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31823,13 +31284,13 @@ snapshots:
       tslib: 2.8.1
       typanion: 3.14.0
 
-  '@yarnpkg/plugin-npm-cli@4.5.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-npm-cli@4.5.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       enquirer: 2.4.1
       micromatch: 4.0.8
@@ -31852,11 +31313,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       enquirer: 2.4.1
       es-toolkit: 1.51.0
       micromatch: 4.0.8
@@ -31879,9 +31340,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31902,9 +31363,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/libzip': 3.2.2(@yarnpkg/fslib@3.1.5)
@@ -31926,12 +31387,12 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-pnp@4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-pnp@4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       '@yarnpkg/pnp': 4.1.7
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       micromatch: 4.0.8
@@ -31952,13 +31413,13 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-pnpm@2.3.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-pnpm@2.3.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       p-limit: 2.3.0
       tslib: 2.8.1
@@ -31975,9 +31436,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-stage@4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-stage@4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -31998,13 +31459,13 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-typescript@4.1.4(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)':
+  '@yarnpkg/plugin-typescript@4.1.4(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       algoliasearch: 4.27.0
       semver: 7.8.5
       tslib: 2.8.1
@@ -32031,17 +31492,17 @@ snapshots:
       - typanion
       - utf-8-validate
 
-  '@yarnpkg/plugin-version@4.3.0(@types/react@19.2.18)(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-version@4.3.0(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/libui': 3.1.0(ink@3.2.0(@types/react@19.2.18)(react@17.0.2))(react@17.0.2)
+      '@yarnpkg/libui': 3.1.0(ink@3.2.0(react@17.0.2))(react@17.0.2)
       '@yarnpkg/parsers': 3.1.0
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       es-toolkit: 1.51.0
-      ink: 3.2.0(@types/react@19.2.18)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       semver: 7.8.5
       tslib: 2.8.1
@@ -32064,9 +31525,9 @@ snapshots:
       tslib: 2.8.1
       typanion: 3.14.0
 
-  '@yarnpkg/plugin-workspace-tools@4.1.8(@yarnpkg/cli@4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-workspace-tools@4.1.8(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.2.18)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
@@ -32171,10 +31632,6 @@ snapshots:
     dependencies:
       mime-types: 3.0.2
       negotiator: 1.0.0
-
-  acorn-import-attributes@1.9.5(acorn@8.18.0):
-    dependencies:
-      acorn: 8.18.0
 
   acorn-import-phases@1.0.4(acorn@8.18.0):
     dependencies:
@@ -32792,7 +32249,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.27: {}
 
-  basic-ftp@5.3.1: {}
+  basic-ftp@6.2.2: {}
 
   batch@0.6.1: {}
 
@@ -33091,7 +32548,7 @@ snapshots:
       '@npmcli/fs': 5.0.0
       fs-minipass: 3.0.3
       glob: 13.0.6
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
       minipass: 7.1.3
       minipass-collect: 2.0.1
       minipass-flush: 1.0.7
@@ -33251,8 +32708,6 @@ snapshots:
       inherits: 2.0.4
       safe-buffer: 5.2.1
       to-buffer: 1.2.2
-
-  cjs-module-lexer@1.4.3: {}
 
   cjs-module-lexer@2.2.0: {}
 
@@ -33935,8 +33390,6 @@ snapshots:
 
   d3-collection@1.0.7: {}
 
-  d3-color@1.4.1: {}
-
   d3-color@3.1.0: {}
 
   d3-contour@4.0.2:
@@ -33984,7 +33437,7 @@ snapshots:
 
   d3-interpolate@1.4.0:
     dependencies:
-      d3-color: 1.4.1
+      d3-color: 3.1.0
 
   d3-interpolate@3.0.1:
     dependencies:
@@ -34213,7 +33666,7 @@ snapshots:
 
   deep-is@0.1.4: {}
 
-  deepmerge-ts@7.1.5: {}
+  deepmerge-ts@8.0.2: {}
 
   deepmerge@4.3.1: {}
 
@@ -34353,7 +33806,7 @@ snapshots:
       docker-modem: 5.0.7
       protobufjs: 7.6.6
       tar-fs: 2.1.5
-      uuid: 10.0.0
+      uuid: 11.1.1
     transitivePeerDependencies:
       - supports-color
 
@@ -35914,7 +35367,7 @@ snapshots:
       https-proxy-agent: 7.0.6
       is-stream: 2.0.1
       node-fetch: 2.7.0(encoding@0.1.13)
-      uuid: 9.0.1
+      uuid: 11.1.1
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -36030,7 +35483,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 5.3.1
+      basic-ftp: 6.2.2
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
@@ -36233,7 +35686,7 @@ snapshots:
       proto3-json-serializer: 2.0.2
       protobufjs: 7.6.6
       retry-request: 7.0.2(encoding@0.1.13)
-      uuid: 9.0.1
+      uuid: 11.1.1
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -36509,7 +35962,7 @@ snapshots:
 
   hosted-git-info@9.0.3:
     dependencies:
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
 
   hpack.js@2.1.6:
     dependencies:
@@ -36748,13 +36201,6 @@ snapshots:
     dependencies:
       resolve-from: 5.0.0
 
-  import-in-the-middle@1.15.0:
-    dependencies:
-      acorn: 8.18.0
-      acorn-import-attributes: 1.9.5(acorn@8.18.0)
-      cjs-module-lexer: 1.4.3
-      module-details-from-path: 1.0.4
-
   import-in-the-middle@3.3.3:
     dependencies:
       cjs-module-lexer: 2.2.0
@@ -36809,14 +36255,14 @@ snapshots:
   ink-text-input@4.0.3(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2):
     dependencies:
       chalk: 4.1.2
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       react: 17.0.2
       type-fest: 0.15.1
 
-  ink-text-input@4.0.3(ink@3.2.0(@types/react@19.2.18)(react@17.0.2))(react@17.0.2):
+  ink-text-input@4.0.3(ink@3.2.0(react@17.0.2))(react@17.0.2):
     dependencies:
       chalk: 4.1.2
-      ink: 3.2.0(@types/react@19.2.18)(react@19.2.8)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       type-fest: 0.15.1
 
@@ -36852,7 +36298,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  ink@3.2.0(@types/react@19.2.18)(react@17.0.2):
+  ink@3.2.0(@types/react@18.3.31)(react@18.3.1):
     dependencies:
       ansi-escapes: 4.3.2
       auto-bind: 4.0.0
@@ -36865,9 +36311,9 @@ snapshots:
       is-ci: 2.0.0
       lodash: 4.18.1
       patch-console: 1.0.0
-      react: 17.0.2
+      react: 18.3.1
       react-devtools-core: 4.28.5
-      react-reconciler: 0.26.2(react@17.0.2)
+      react-reconciler: 0.26.2(react@18.3.1)
       scheduler: 0.20.2
       signal-exit: 3.0.7
       slice-ansi: 3.0.0
@@ -36879,39 +36325,7 @@ snapshots:
       ws: 7.5.13
       yoga-layout-prebuilt: 1.10.0
     optionalDependencies:
-      '@types/react': 19.2.18
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  ink@3.2.0(@types/react@19.2.18)(react@19.2.8):
-    dependencies:
-      ansi-escapes: 4.3.2
-      auto-bind: 4.0.0
-      chalk: 4.1.2
-      cli-boxes: 2.2.1
-      cli-cursor: 3.1.0
-      cli-truncate: 2.1.0
-      code-excerpt: 3.0.0
-      indent-string: 4.0.0
-      is-ci: 2.0.0
-      lodash: 4.18.1
-      patch-console: 1.0.0
-      react: 19.2.8
-      react-devtools-core: 4.28.5
-      react-reconciler: 0.26.2(react@19.2.8)
-      scheduler: 0.20.2
-      signal-exit: 3.0.7
-      slice-ansi: 3.0.0
-      stack-utils: 2.0.6
-      string-width: 4.2.3
-      type-fest: 0.12.0
-      widest-line: 3.1.0
-      wrap-ansi: 6.2.0
-      ws: 7.5.13
-      yoga-layout-prebuilt: 1.10.0
-    optionalDependencies:
-      '@types/react': 19.2.18
+      '@types/react': 18.3.31
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -38844,9 +38258,9 @@ snapshots:
 
   jwt-decode@4.0.0: {}
 
-  katex@0.16.47:
+  katex@0.18.10:
     dependencies:
-      commander: 8.3.0
+      commander: 15.0.0
 
   kdbush@4.1.0: {}
 
@@ -39114,7 +38528,7 @@ snapshots:
     dependencies:
       p-locate: 6.0.0
 
-  locutus@2.0.39: {}
+  locutus@3.0.36: {}
 
   lodash-es@4.18.1: {}
 
@@ -39213,8 +38627,6 @@ snapshots:
       highlight.js: 10.7.3
 
   lru-cache@10.4.3: {}
-
-  lru-cache@11.5.2: {}
 
   lru-cache@11.5.3: {}
 
@@ -39594,7 +39006,7 @@ snapshots:
       dayjs: 1.11.23
       dompurify: 3.4.16
       es-toolkit: 1.51.0
-      katex: 0.16.47
+      katex: 0.18.10
       khroma: 2.1.0
       marked: 16.4.2
       roughjs: 4.6.6
@@ -40019,7 +39431,7 @@ snapshots:
       socks-proxy-agent: 7.0.0
       typed-error: 3.2.3
       urlpattern-polyfill: 8.0.2
-      uuid: 8.3.2
+      uuid: 11.1.1
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
@@ -41242,7 +40654,7 @@ snapshots:
   postcss-calc@8.2.4(postcss@8.5.29):
     dependencies:
       postcss: 8.5.29
-      postcss-selector-parser: 6.1.4
+      postcss-selector-parser: 7.1.6
       postcss-value-parser: 4.2.0
 
   postcss-colormin@5.3.1(postcss@8.5.29):
@@ -41302,7 +40714,7 @@ snapshots:
       caniuse-api: 3.0.0
       cssnano-utils: 3.1.0(postcss@8.5.29)
       postcss: 8.5.29
-      postcss-selector-parser: 6.1.4
+      postcss-selector-parser: 7.1.6
 
   postcss-minify-font-values@5.1.0(postcss@8.5.29):
     dependencies:
@@ -41326,7 +40738,7 @@ snapshots:
   postcss-minify-selectors@5.2.1(postcss@8.5.29):
     dependencies:
       postcss: 8.5.29
-      postcss-selector-parser: 6.1.4
+      postcss-selector-parser: 7.1.6
 
   postcss-modules-extract-imports@3.1.0(postcss@8.5.25):
     dependencies:
@@ -41445,11 +40857,6 @@ snapshots:
       postcss: 8.5.29
       postcss-value-parser: 4.2.0
 
-  postcss-selector-parser@6.1.4:
-    dependencies:
-      cssesc: 3.0.0
-      util-deprecate: 1.0.2
-
   postcss-selector-parser@7.1.6:
     dependencies:
       cssesc: 3.0.0
@@ -41464,7 +40871,7 @@ snapshots:
   postcss-unique-selectors@5.1.1(postcss@8.5.29):
     dependencies:
       postcss: 8.5.29
-      postcss-selector-parser: 6.1.4
+      postcss-selector-parser: 7.1.6
 
   postcss-value-parser@4.2.0: {}
 
@@ -42190,11 +41597,11 @@ snapshots:
       react: 17.0.2
       scheduler: 0.20.2
 
-  react-reconciler@0.26.2(react@19.2.8):
+  react-reconciler@0.26.2(react@18.3.1):
     dependencies:
       loose-envify: 1.4.0
       object-assign: 4.1.1
-      react: 19.2.8
+      react: 18.3.1
       scheduler: 0.20.2
 
   react-redux@7.2.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
@@ -42266,22 +41673,10 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-router: 6.30.6(react@18.3.1)
 
-  react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      '@remix-run/router': 1.23.4
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-router: 6.30.6(react@19.2.8)
-
   react-router@6.30.6(react@18.3.1):
     dependencies:
       '@remix-run/router': 1.23.4
       react: 18.3.1
-
-  react-router@6.30.6(react@19.2.8):
-    dependencies:
-      '@remix-run/router': 1.23.4
-      react: 19.2.8
 
   react-side-effect@2.1.2(react@18.3.1):
     dependencies:
@@ -42367,15 +41762,6 @@ snapshots:
       prop-types: 15.8.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-
-  react-transition-group@4.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      '@babel/runtime': 7.29.7
-      dom-helpers: 5.2.1
-      loose-envify: 1.4.0
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   react-universal-interface@0.6.2(react@18.3.1)(tslib@2.8.1):
     dependencies:
@@ -42694,14 +42080,6 @@ snapshots:
   require-directory@2.1.1: {}
 
   require-from-string@2.0.2: {}
-
-  require-in-the-middle@7.5.2:
-    dependencies:
-      debug: 4.4.3(supports-color@5.5.0)
-      module-details-from-path: 1.0.4
-      resolve: 1.22.12
-    transitivePeerDependencies:
-      - supports-color
 
   require-in-the-middle@8.0.1:
     dependencies:
@@ -43297,8 +42675,6 @@ snapshots:
 
   shell-quote@1.12.0: {}
 
-  shimmer@1.2.1: {}
-
   short-unique-id@5.3.2: {}
 
   side-channel-list@1.0.1:
@@ -43389,7 +42765,7 @@ snapshots:
   sockjs@0.3.24:
     dependencies:
       faye-websocket: 0.11.4
-      uuid: 8.3.2
+      uuid: 11.1.1
       websocket-driver: 0.7.5
 
   socks-proxy-agent@7.0.0:
@@ -43832,7 +43208,7 @@ snapshots:
     dependencies:
       browserslist: 4.28.8
       postcss: 8.5.29
-      postcss-selector-parser: 6.1.4
+      postcss-selector-parser: 7.1.6
 
   stylis@4.2.0: {}
 
@@ -44115,7 +43491,7 @@ snapshots:
       https-proxy-agent: 5.0.1
       node-fetch: 2.7.0(encoding@0.1.13)
       stream-events: 1.0.5
-      uuid: 9.0.1
+      uuid: 11.1.1
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -44603,11 +43979,11 @@ snapshots:
 
   tweetnacl@0.14.5: {}
 
-  twig@1.17.1:
+  twig@3.0.0:
     dependencies:
       '@babel/runtime': 7.29.10
-      locutus: 2.0.39
-      minimatch: 3.1.5
+      locutus: 3.0.36
+      minimatch: 10.2.6
       walk: 2.3.15
 
   typanion@3.14.0: {}
@@ -44949,15 +44325,9 @@ snapshots:
 
   utils-merge@1.0.1: {}
 
-  uuid@10.0.0: {}
+  uuid@11.1.1: {}
 
   uuid@14.0.2: {}
-
-  uuid@3.4.0: {}
-
-  uuid@8.3.2: {}
-
-  uuid@9.0.1: {}
 
   uvu@0.5.6:
     dependencies:
@@ -45829,7 +45199,7 @@ snapshots:
       latest-version: 9.0.0
       log-symbols: 7.0.1
       semver: 7.8.5
-      twig: 1.17.1
+      twig: 3.0.0
 
   yeoman-environment@6.1.0(@types/node@26.6.4)(@yeoman/adapter@4.0.2(@types/node@26.6.4))(@yeoman/types@1.11.1(@types/node@26.6.4)(@yeoman/adapter@4.0.2(@types/node@26.6.4))(mem-fs@4.1.3))(mem-fs@4.1.3):
     dependencies:
