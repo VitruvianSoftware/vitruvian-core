@@ -24,6 +24,8 @@ import Carbon.HIToolbox
 import Combine
 import UserNotifications
 
+import NexusAgentCore
+
 // Global C callback for the Carbon hotkey event handler
 private func carbonHotkeyHandler(
     nextHandler: EventHandlerCallRef?,
@@ -1599,8 +1601,17 @@ struct ChatWorkingDirectoryBadge: View {
 /// which is enough to list, resume (`--conversation <id>`) and delete.
 /// Queries go through /usr/bin/sqlite3 so the app links nothing extra.
 enum SessionFileReader {
+    /// agy's data folders: the desktop app's, then the CLI's own.
+    static var dataDirectories: [URL] {
+        AntigravityAnnotations.dataDirectories.map {
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent($0)
+        }
+    }
+    /// The data folder that holds the conversation index.
     static var dataDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/antigravity")
+        dataDirectories.first {
+            FileManager.default.fileExists(atPath: $0.appendingPathComponent("conversation_summaries.db").path)
+        } ?? dataDirectories[0]
     }
     static var summariesDatabase: URL { dataDirectory.appendingPathComponent("conversation_summaries.db") }
     static var conversationsDirectory: URL { dataDirectory.appendingPathComponent("conversations") }
@@ -1645,6 +1656,8 @@ enum SessionFileReader {
 
     /// Top-level conversations for `workingDirectory` (plus any with no
     /// recorded workspace), newest first. `fileName` carries the conversation id.
+    /// Archived conversations are left out: agy records that in its
+    /// annotations, not in the index (`killed` is an aborted run).
     static func listSessions(workingDirectory: URL) -> [SessionInfo] {
         let rows = query("""
         SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris
@@ -1653,9 +1666,10 @@ enum SessionFileReader {
         ORDER BY last_modified_time DESC LIMIT 200;
         """)
         let wanted = "file://" + workingDirectory.standardizedFileURL.path
+        let archived = AntigravityAnnotations.archivedConversationIDs(in: dataDirectories)
         var sessions: [SessionInfo] = []
         for row in rows {
-            guard let id = row["conversation_id"] as? String, !id.isEmpty else { continue }
+            guard let id = row["conversation_id"] as? String, !id.isEmpty, !archived.contains(id) else { continue }
             let workspaces: [String] = {
                 guard let text = row["workspace_uris"] as? String, let d = text.data(using: .utf8),
                       let arr = try? JSONSerialization.jsonObject(with: d) as? [String] else { return [] }

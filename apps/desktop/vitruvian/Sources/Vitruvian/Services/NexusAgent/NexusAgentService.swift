@@ -730,8 +730,7 @@ extension NexusAgentService {
         if provider.id == NexusAgentCLIProvider.ollama.id {
             return []
         }
-        let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
-        guard FileManager.default.fileExists(atPath: database) else { return [] }
+        guard let database = NexusAgentSessionSummary.antigravitySummariesDatabase(home: home) else { return [] }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
         process.arguments = ["-json", database, NexusAgentSessionSummary.query]
@@ -743,7 +742,9 @@ extension NexusAgentService {
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { return [] }
         let filterDirectory = (directory.isEmpty || directory == home) ? "" : directory
-        return NexusAgentSessionSummary.parse(data, directory: filterDirectory)
+        return NexusAgentSessionSummary.parse(
+            data, directory: filterDirectory,
+            archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: home))
     }
 
     /// Reads conversation transcript from ~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl
@@ -1079,11 +1080,7 @@ extension NexusAgentService {
 
     nonisolated package static func archiveSession(home: String, id: String, provider: NexusAgentCLIProvider) {
         if provider.id == NexusAgentCLIProvider.antigravity.id {
-            let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
-            guard FileManager.default.fileExists(atPath: database) else { return }
-            let safeID = id.replacingOccurrences(of: "'", with: "''")
-            let sql = "UPDATE conversation_summaries SET killed = 1 WHERE conversation_id = '\(safeID)';"
-            runSqlite(database: database, sql: sql)
+            setAntigravityArchived(home: home, id: id, archived: true)
         } else if provider.id == NexusAgentCLIProvider.claude.id {
             var hidden = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
             if !hidden.contains(id) {
@@ -1096,11 +1093,7 @@ extension NexusAgentService {
 
     nonisolated package static func unarchiveSession(home: String, id: String, provider: NexusAgentCLIProvider) {
         if provider.id == NexusAgentCLIProvider.antigravity.id {
-            let database = (home as NSString).appendingPathComponent(".gemini/antigravity/conversation_summaries.db")
-            guard FileManager.default.fileExists(atPath: database) else { return }
-            let safeID = id.replacingOccurrences(of: "'", with: "''")
-            let sql = "UPDATE conversation_summaries SET killed = 0 WHERE conversation_id = '\(safeID)';"
-            runSqlite(database: database, sql: sql)
+            setAntigravityArchived(home: home, id: id, archived: false)
         } else if provider.id == NexusAgentCLIProvider.claude.id {
             var hidden = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? []
             if hidden.contains(id) {
@@ -1108,6 +1101,30 @@ extension NexusAgentService {
                 UserDefaults.standard.set(hidden, forKey: "vitruvian.claude.hiddenSessionIds")
             }
             updateClaudeVSCodeHiddenState(home: home, id: id, isArchived: false)
+        }
+    }
+
+    /// Records the archive state where agy itself reads it: the annotation
+    /// beside the conversation, `annotations/<id>.pbtxt`. The index's `killed`
+    /// column means an aborted run, so it is left alone.
+    nonisolated private static func setAntigravityArchived(home: String, id: String, archived: Bool,
+                                                          now: Date = Date()) {
+        guard !id.isEmpty, id == (id as NSString).lastPathComponent, id != ".", id != ".." else { return }
+        let files = FileManager.default
+        let roots = NexusAgentSessionSummary.antigravityDataDirectories
+            .map { (home as NSString).appendingPathComponent($0) }
+        let annotation = { (root: String) in root + "/annotations/\(id).pbtxt" }
+        let existing = roots.filter { files.fileExists(atPath: annotation($0)) }
+        // Unarchiving clears every copy, since any one of them archives the session.
+        let targets = archived
+            ? [roots.first { files.fileExists(atPath: $0 + "/conversations/\(id).db") } ?? existing.first ?? roots[0]]
+            : existing
+        for root in targets {
+            let path = annotation(root)
+            let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+            try? files.createDirectory(atPath: root + "/annotations", withIntermediateDirectories: true)
+            try? NexusAgentSessionSummary.antigravityAnnotation(text, archived: archived, now: now)
+                .write(toFile: path, atomically: true, encoding: .utf8)
         }
     }
 

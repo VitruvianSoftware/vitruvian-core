@@ -2542,6 +2542,10 @@ is that notice. Add an entry for every change to upstream files.
   - upstream's checks on generated copies of the island are ported onto the
     real island, except two companion-yield cases (lingering music and the
     bridge fade) that need a seam the island does not have yet.
+- **2026-10-08**: Archived Antigravity sessions no longer show as active in Quick Prompt:
+  - `NexusAgentSessionSummary`: archived state now comes from agy's annotations (`annotations/<id>.pbtxt`, `archived:true`) instead of the index's `killed` column, which marks an aborted run; added `antigravityAnnotationIsArchived`, `antigravityAnnotation(_:archived:now:)`, `antigravityArchivedSessionIds(home:)` and `antigravitySummariesDatabase(home:)`, and `parse` takes the archived ids. The index and annotations are looked up in both of agy's data folders (`~/.gemini/antigravity`, `~/.gemini/antigravity-cli`);
+  - `NexusAgentService`: `archiveSession` / `unarchiveSession` write the annotation (`archived:true` + `archival_status_timestamp`, other fields kept) and no longer touch `killed`;
+  - `NexusAgentTests`: `sessionArchiving` covers annotation parsing, rewriting, and archive/unarchive against a throwaway home.
 
 ## Tracking and porting upstream
 
