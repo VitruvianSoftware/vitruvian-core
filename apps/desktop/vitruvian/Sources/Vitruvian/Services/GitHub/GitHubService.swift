@@ -108,8 +108,9 @@ package final class GitHubService: ObservableObject {
 
         // 3. Update peripheral LED if mouse indicator is enabled. The mouse
         // keeps its LED across app restarts, so the first snapshot always writes.
+        // A check paused for approval outranks the verdict there.
         if defaults[Preferences.githubMouseIndicator] {
-            GitHubPeripheralSink.shared.update(verdict: summary.aggregate, force: firstSnapshot)
+            GitHubPeripheralSink.shared.update(summary: summary, force: firstSnapshot)
         }
     }
 

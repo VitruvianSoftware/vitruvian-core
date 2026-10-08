@@ -1013,6 +1013,9 @@ package enum Defaults {
         DefaultsKey.githubMouseFailureColor: Preferences.githubMouseFailureColor.defaultValue,
         DefaultsKey.githubMouseFailureMode: Preferences.githubMouseFailureMode.defaultValue,
         DefaultsKey.githubMouseIdleBehavior: Preferences.githubMouseIdleBehavior.defaultValue,
+        DefaultsKey.githubMouseApprovalColor: Preferences.githubMouseApprovalColor.defaultValue,
+        DefaultsKey.githubMouseApprovalMode: Preferences.githubMouseApprovalMode.defaultValue,
+        DefaultsKey.githubMouseApprovalSpeed: Preferences.githubMouseApprovalSpeed.defaultValue,
     ]
 
     package static func register() {

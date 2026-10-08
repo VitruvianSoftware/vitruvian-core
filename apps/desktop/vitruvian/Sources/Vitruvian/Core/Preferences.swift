@@ -927,4 +927,13 @@ package enum Preferences {
         DefaultsKey.githubMouseFailureMode, default: "breathe")
     package static let githubMouseIdleBehavior = Preference(
         DefaultsKey.githubMouseIdleBehavior, default: "restore")
+    /// Something is paused for approval. The mouse's breathe speed runs 0-9;
+    /// 9 is what tells this apart from the other breathing states, which
+    /// leave the speed to the mouse command (5).
+    package static let githubMouseApprovalColor = Preference(
+        DefaultsKey.githubMouseApprovalColor, default: "blue")
+    package static let githubMouseApprovalMode = Preference(
+        DefaultsKey.githubMouseApprovalMode, default: "breathe")
+    package static let githubMouseApprovalSpeed = Preference(
+        DefaultsKey.githubMouseApprovalSpeed, default: 9)
 }

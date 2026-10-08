@@ -26,6 +26,9 @@ package struct GitHubSettingsView: View {
     @AppStorage(Preferences.githubMouseFailureColor) private var failureColor: String
     @AppStorage(Preferences.githubMouseFailureMode) private var failureMode: String
     @AppStorage(Preferences.githubMouseIdleBehavior) private var idleBehavior: String
+    @AppStorage(Preferences.githubMouseApprovalColor) private var approvalColor: String
+    @AppStorage(Preferences.githubMouseApprovalMode) private var approvalMode: String
+    @AppStorage(Preferences.githubMouseApprovalSpeed) private var approvalSpeed: Int
 
     private let colorOptions = ["green", "cyan", "blue", "purple", "magenta", "yellow", "orange", "red", "white", "pink"]
 
@@ -113,7 +116,7 @@ package struct GitHubSettingsView: View {
                                     .toggleStyle(TrailingSwitchToggleStyle())
                                     .onChange(of: mouseIndicator) { _, isEnabled in
                                         if isEnabled {
-                                            GitHubPeripheralSink.shared.update(verdict: service.summary.aggregate)
+                                            GitHubPeripheralSink.shared.update(summary: service.summary)
                                         } else {
                                             GitHubPeripheralSink.shared.restore()
                                         }
@@ -121,6 +124,33 @@ package struct GitHubSettingsView: View {
 
                                 if mouseIndicator {
                                     Divider()
+
+                                    // Awaiting approval: outranks the rows below
+                                    HStack {
+                                        Label("Awaiting Approval", systemImage: "hand.raised.fill")
+                                            .foregroundStyle(.blue)
+                                            .frame(width: 140, alignment: .leading)
+                                        Spacer()
+                                        Picker("Color", selection: $approvalColor) {
+                                            ForEach(colorOptions, id: \.self) { c in
+                                                Text(c.capitalized).tag(c)
+                                            }
+                                        }
+                                        .frame(width: 105)
+                                        .labelsHidden()
+                                        Picker("Style", selection: $approvalMode) {
+                                            Text("Solid").tag("fixed")
+                                            Text("Pulsing").tag("breathe")
+                                        }
+                                        .frame(width: 95)
+                                        .labelsHidden()
+                                        Button("Test") {
+                                            GitHubPeripheralSink.shared.signal(color: approvalColor, mode: approvalMode,
+                                                                               speed: approvalSpeed)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
 
                                     // Success
                                     HStack {
