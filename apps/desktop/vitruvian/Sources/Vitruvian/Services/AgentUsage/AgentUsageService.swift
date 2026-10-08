@@ -261,6 +261,12 @@ package final class AgentUsageService: ObservableObject {
             }
             guard !cancellation.isCancelled else { return }
             let now = Date()
+            if providers.contains(.antigravity) {
+                AgentAntigravityReader.read(store: store, enabled: providers, home: home, now: now)
+                if let limits = AgentAntigravityReader.probeQuota() {
+                    store.updateLimits(limits)
+                }
+            }
             // A turn left open by a crash would otherwise stay working.
             store.closeIdleTurns(now: now, after: NotchAgentSupport.idleTurn)
             closeEndedTurns(roots, atLaunch: true)
@@ -391,6 +397,13 @@ package final class AgentUsageService: ObservableObject {
                     || UInt64(info.st_ino) != cursor.identity else { continue }
             if read(path, provider: cursor.provider) { changed = true }
         }
+        if enabled.contains(.antigravity) {
+            AgentAntigravityReader.read(store: store, enabled: enabled, home: home, now: now)
+            if let limits = AgentAntigravityReader.probeQuota() {
+                store.updateLimits(limits)
+                changed = true
+            }
+        }
         return changed
     }
 
@@ -469,6 +482,7 @@ package final class AgentUsageService: ObservableObject {
             case .codex: entries = AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
             case .opencode: entries = AgentLogParser.parseOpenCode(line, state: &cursor.state, now: now)
             case .copilot: entries = AgentLogParser.parseCopilot(line, state: &cursor.state, now: now)
+            case .antigravity: entries = []
             }
             guard !entries.isEmpty else { return }
             changed = true

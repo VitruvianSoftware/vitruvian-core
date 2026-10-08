@@ -106,17 +106,38 @@ package struct AgentPriceList: Equatable {
     package static let schema = 1
     package static let maximumSize = 256 << 10
 
+    package static let defaultGeminiModels: [Model] = [
+        Model(id: "gemini-3.8-flash", price: AgentPrice(input: 0.15, output: 0.60, cacheRead: 0.0375, cacheWrite: 0.15, cacheWriteLong: 0.15)),
+        Model(id: "gemini-3.7-flash", price: AgentPrice(input: 0.15, output: 0.60, cacheRead: 0.0375, cacheWrite: 0.15, cacheWriteLong: 0.15)),
+        Model(id: "gemini-3.5-flash", price: AgentPrice(input: 0.15, output: 0.60, cacheRead: 0.0375, cacheWrite: 0.15, cacheWriteLong: 0.15)),
+        Model(id: "gemini-3-pro", price: AgentPrice(input: 1.25, output: 5.00, cacheRead: 0.3125, cacheWrite: 1.25, cacheWriteLong: 1.25)),
+        Model(id: "gemini-3.5-pro", price: AgentPrice(input: 1.25, output: 5.00, cacheRead: 0.3125, cacheWrite: 1.25, cacheWriteLong: 1.25)),
+    ]
+
     /// The day the list was last reviewed; the newer of two lists wins.
     package let updated: Date
     package let claude: [Model]
     package let codex: [Model]
+    package let gemini: [Model]
     package let claudePlans: [Plan]
     package let codexPlans: [Plan]
     package let webSearch: Double
     package let usOnlyMultiplier: Double
 
-    package static let empty = AgentPriceList(updated: .distantPast, claude: [], codex: [], claudePlans: [], codexPlans: [],
-                                      webSearch: 0, usOnlyMultiplier: 1)
+    package static let empty = AgentPriceList(updated: .distantPast, claude: [], codex: [], gemini: defaultGeminiModels,
+                                              claudePlans: [], codexPlans: [], webSearch: 0, usOnlyMultiplier: 1)
+
+    package init(updated: Date, claude: [Model], codex: [Model], gemini: [Model] = defaultGeminiModels,
+                 claudePlans: [Plan], codexPlans: [Plan], webSearch: Double, usOnlyMultiplier: Double) {
+        self.updated = updated
+        self.claude = claude
+        self.codex = codex
+        self.gemini = gemini
+        self.claudePlans = claudePlans
+        self.codexPlans = codexPlans
+        self.webSearch = webSearch
+        self.usOnlyMultiplier = usOnlyMultiplier
+    }
 
     package static func decode(_ data: Data) -> AgentPriceList? {
         guard data.count <= maximumSize,
@@ -129,7 +150,8 @@ package struct AgentPriceList: Equatable {
               let claudePlans = plans(claude["plans"]), let codexPlans = plans(codex["plans"]),
               let webSearch = number(claude["webSearch"], in: 0...1),
               let usOnly = number(claude["usOnlyMultiplier"], in: 1...3) else { return nil }
-        return AgentPriceList(updated: updated, claude: claudeModels, codex: codexModels,
+        let geminiModels = (json["gemini"] as? [String: Any]).flatMap { models($0["models"], prefix: "gemini-") } ?? defaultGeminiModels
+        return AgentPriceList(updated: updated, claude: claudeModels, codex: codexModels, gemini: geminiModels,
                               claudePlans: claudePlans, codexPlans: codexPlans, webSearch: webSearch,
                               usOnlyMultiplier: usOnly)
     }
@@ -215,13 +237,8 @@ package struct AgentPriceList: Equatable {
 
     // Spelled out because a memberwise initializer never leaves its module.
     package init(updated: Date, claude: [Model], codex: [Model], claudePlans: [Plan], codexPlans: [Plan], webSearch: Double, usOnlyMultiplier: Double) {
-        self.updated = updated
-        self.claude = claude
-        self.codex = codex
-        self.claudePlans = claudePlans
-        self.codexPlans = codexPlans
-        self.webSearch = webSearch
-        self.usOnlyMultiplier = usOnlyMultiplier
+        self.init(updated: updated, claude: claude, codex: codex, gemini: Self.defaultGeminiModels,
+                  claudePlans: claudePlans, codexPlans: codexPlans, webSearch: webSearch, usOnlyMultiplier: usOnlyMultiplier)
     }
 }
 
@@ -268,7 +285,14 @@ package enum AgentPricing {
     /// never inherits the price of the version it extends.
     package static func price(for model: String, in list: AgentPriceList = AgentPricing.list) -> AgentPrice? {
         let id = normalized(model)
-        let table = id.hasPrefix("claude-") ? list.claude : list.codex
+        let table: [AgentPriceList.Model]
+        if id.hasPrefix("claude-") {
+            table = list.claude
+        } else if id.hasPrefix("gemini-") {
+            table = list.gemini
+        } else {
+            table = list.codex
+        }
         guard let match = table.filter({ matches(id, family: $0.id) })
             .max(by: { $0.id.count < $1.id.count }) else { return nil }
         // A smaller, larger or specialized sibling the list does not name is
@@ -322,6 +346,12 @@ package enum AgentPricing {
     package static func displayName(_ model: String) -> String {
         let id = normalized(model)
         guard !id.isEmpty else { return "" }
+        if id.hasPrefix("gemini-") {
+            var parts = id.dropFirst(7).split(separator: "-").map(String.init)
+            parts.removeAll { $0 == "latest" }
+            parts.removeAll { $0.count >= 6 && $0.allSatisfy(\.isNumber) }
+            return (["Gemini"] + parts.map(\.capitalized)).joined(separator: " ")
+        }
         if id.hasPrefix("claude-") {
             // A router's tag after a colon, like ":thinking", is a mode of the same model.
             let family = id.split(separator: ":", maxSplits: 1).first.map(String.init) ?? id

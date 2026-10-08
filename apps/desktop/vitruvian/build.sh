@@ -293,6 +293,7 @@ if (( TEST )); then
         Sources/Vitruvian/Services/AgentUsage/AgentClaudeAppUsage.swift
         Sources/Vitruvian/Services/AgentUsage/AgentCodexServer.swift
         Sources/Vitruvian/Services/AgentUsage/AgentOpenCodeReader.swift
+        Sources/Vitruvian/Services/AgentUsage/AgentAntigravityReader.swift
         Sources/Vitruvian/Services/Notch/NotchGestureSupport.swift
         Sources/Vitruvian/Services/Notch/NotchSectionPaging.swift
         Sources/Vitruvian/Services/Notch/NotchSliderEditing.swift

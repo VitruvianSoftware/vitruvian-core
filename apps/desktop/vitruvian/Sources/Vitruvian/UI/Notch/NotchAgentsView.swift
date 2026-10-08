@@ -20,6 +20,7 @@ package struct NotchAgentsView: View {
     @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
     @AppStorage(Preferences.notchAgentsCopilot) private var copilot: Bool
+    @AppStorage(Preferences.notchAgentsAntigravity) private var antigravity: Bool
 
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
@@ -27,7 +28,7 @@ package struct NotchAgentsView: View {
     /// Only agents that left something on this Mac get cards.
     private var providers: [AgentProvider] {
         // The switches are read here so a change in Settings redraws the page.
-        _ = (claude, codex, opencode, copilot)
+        _ = (claude, codex, opencode, copilot, antigravity)
         return NotchAgentSupport.pageProviders(seen: usage.snapshot.seen)
     }
 
