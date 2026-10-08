@@ -55,7 +55,7 @@ The copy is upstream's latest `main` plus only the changes
 5. Before every push, run these and check each exit status. Piping one through
    `tail` hides a failure.
    - `bazel run //apps/web/gods-eye-view:track_upstream -- check`
-   - `bazel test //apps/web/gods-eye-view:unit_tests //apps/web/gods-eye-view:server_test //apps/web/gods-eye-view:cesium_assets_test //apps/web/gods-eye-view:upstream_test`
+   - `bazel test //apps/web/gods-eye-view:unit_tests //apps/web/gods-eye-view:server_test //apps/web/gods-eye-view:tle_mirror_test //apps/web/gods-eye-view:cesium_assets_test //apps/web/gods-eye-view:upstream_test`
    - `bazel build //apps/web/gods-eye-view:build`
    - `bazel run //tools/license:check`
 6. Commit as `feat(gods-eye-view): sync upstream to <short sha>`, with the

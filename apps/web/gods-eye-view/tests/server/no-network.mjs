@@ -23,7 +23,8 @@
 /**
  * Preloaded into the server under test (`node --import`): every outbound
  * request fails at once instead of reaching the internet, so a route's answer
- * comes from this server alone and the test stays hermetic.
+ * comes from this server, or one the test runs on loopback, and the test stays
+ * hermetic.
  */
 import dns from 'node:dns';
 import http from 'node:http';
@@ -33,7 +34,11 @@ import { syncBuiltinESMExports } from 'node:module';
 
 const refused = () => new Error('network disabled under test');
 
-globalThis.fetch = async () => {
+// A loopback fetch reaches a server the test itself runs.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const { hostname } = new URL(input instanceof Request ? input.url : String(input));
+  if (hostname === '127.0.0.1' || hostname === 'localhost') return realFetch(input, init);
   throw new TypeError('fetch failed', { cause: refused() });
 };
 globalThis.WebSocket = class {

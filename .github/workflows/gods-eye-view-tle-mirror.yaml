@@ -1,0 +1,87 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: God's Eye View TLE Mirror
+
+# God's Eye View's satellites come from CelesTrak, which does not answer the
+# homelab: every connection from the pod to celestrak.org times out (CelesTrak
+# throttles hosts that poll it too often, which the old, uncached production
+# server did). This job fetches the satellite groups the app requests from
+# GitHub's runners instead, every 6 hours (CelesTrak asks for no more than one
+# fetch per group per 2 hours), and publishes them as <group>.txt on the
+# gods-eye-view-tle branch. The server reads that branch through
+# CELESTRAK_TLE_MIRROR_URL (gitops/argocd/platform/gods-eye-view/deployment.yaml)
+# and falls back to CelesTrak for any group it lacks.
+#
+# The branch holds one commit, replaced on each run, so it never grows. A
+# group that fails to fetch keeps the file the previous run published.
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: gods-eye-view-tle-mirror
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    env:
+      BRANCH: gods-eye-view-tle
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: apps/web/gods-eye-view/tle-mirror
+
+      - name: Start from the published mirror
+        run: |
+          set -euo pipefail
+          MIRROR_DIR="${RUNNER_TEMP}/tle"
+          mkdir -p "${MIRROR_DIR}"
+          if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null; then
+            git fetch --depth 1 origin "${BRANCH}"
+            git archive FETCH_HEAD | tar -x -C "${MIRROR_DIR}"
+          fi
+
+      - name: Refresh from CelesTrak
+        run: node apps/web/gods-eye-view/tle-mirror/mirror.mjs "${RUNNER_TEMP}/tle"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          cd "${RUNNER_TEMP}/tle"
+          git init -q -b "${BRANCH}"
+          git add -A
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "TLE mirror for gods-eye-view, $(date -u +%Y-%m-%dT%H:%MZ)" \
+            -m "Written by .github/workflows/gods-eye-view-tle-mirror.yaml; replaced on each run."
+          git push --force "https://github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+          ls -l

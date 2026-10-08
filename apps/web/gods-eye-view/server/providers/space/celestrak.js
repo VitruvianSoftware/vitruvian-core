@@ -70,9 +70,25 @@ export function celestrakProxy() {
     }
   }
 
+  // A mirror of CelesTrak's groups (CELESTRAK_TLE_MIRROR_URL, `<base>/<group>.txt`)
+  // is tried first, for a host CelesTrak does not answer; CelesTrak itself
+  // stays the fallback for any group the mirror lacks.
   async function fetchUpstream(group) {
-    const url = celestrakTleUrl(group);
-    const res = await fetch(url.toString(), {
+    const mirror = String(process.env.CELESTRAK_TLE_MIRROR_URL || '')
+      .trim()
+      .replace(/\/+$/, '');
+    if (mirror) {
+      try {
+        return await fetchTle(`${mirror}/${encodeURIComponent(group)}.txt`);
+      } catch {
+        console.warn('[celestrak-proxy] mirror fetch failed — trying CelesTrak');
+      }
+    }
+    return fetchTle(celestrakTleUrl(group).toString());
+  }
+
+  async function fetchTle(url) {
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(20000),
       // CelesTrak 403s bulk groups (e.g. `active`) unless the request carries a
       // descriptive User-Agent with a contact point.
