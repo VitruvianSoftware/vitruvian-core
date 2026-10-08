@@ -53,9 +53,27 @@
 # type up front.
 name: notify-ci-issues
 
+# The schedule alone is not enough. GitHub treats `*/5` as a suggestion: over
+# 2026-10-06..08 this workflow ran about once every 4-7 hours (13:16, 06:00,
+# 00:11, 20:11 UTC ...), and each run only looks back 20 minutes, so nearly
+# every failure on main went unannounced. So it also runs on the two events
+# that matter most, with a shorter look-back:
+#   push to main          -- catches a commit that skipped the merge queue the
+#                            moment it lands (check 4 in the script);
+#   a required workflow   -- the "main is broken" alert when it happens, not
+#   failing on main          hours later.
+# The workflow_run list is the handful of workflows behind main's required
+# checks, not all 90: a short list that rarely changes is worth keeping by
+# hand. The schedule stays for the approval checks nothing can trigger on.
 on:
   schedule:
     - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["CI", "Presubmit", "Tidy Check", "Supply Chain", "Conformance Check"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:
@@ -64,18 +82,28 @@ permissions:
 
 # Never overlap two polls — a slow gh api page or ntfy hiccup in one run
 # shouldn't stack with the next scheduled tick.
+# Event-triggered runs each get their own group: GitHub keeps only ONE pending
+# run per group and cancels the rest, so sharing the schedule's group would
+# silently drop the very alert a failing workflow just asked for. They are
+# read-only and short, so overlapping is harmless.
 concurrency:
-  group: notify-ci-issues
+  group: notify-ci-issues-${{ github.event_name == 'schedule' && 'schedule' || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   notify:
+    # A required workflow that finished green on main has nothing to announce.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       NTFY_PASSWORD: ${{ secrets.NTFY_GITHUB_ACTIONS_PASSWORD }}
       REPO: ${{ github.repository }}
+      # Event-triggered runs fire right after the thing they report, so a
+      # short look-back is enough and keeps repeat alerts down. The schedule
+      # keeps the script's wider default.
+      CUTOFF_MINUTES: ${{ github.event_name == 'schedule' && '20' || '8' }}
     steps:
       # tools/ci/notify-ci-issues.sh must physically exist on the runner.
       - uses: actions/checkout@v7.0.1
