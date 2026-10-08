@@ -7,19 +7,28 @@ import VitruvianCore
 /// Translates the aggregate GitHub status verdict into physical GravaStar mouse RGB signals.
 @MainActor
 package final class GitHubPeripheralSink {
+    /// Runs one mouse command, e.g. `["color", "green"]`.
+    package typealias Executor = @MainActor ([String]) -> Void
+
     package static let shared = GitHubPeripheralSink()
 
     private var lastVerdict: Verdict?
     private let mouseBinaryPath = "/Users/james/bin/gravastar-mouse"
     private let defaults: UserDefaults
+    private let executor: Executor?
 
-    package init(defaults: UserDefaults = .standard) {
+    /// `executor` stands in for the mouse binary; nil runs the binary itself.
+    package init(defaults: UserDefaults = .standard, executor: Executor? = nil) {
         self.defaults = defaults
+        self.executor = executor
     }
 
     /// Updates the GravaStar mouse RGB lighting based on the current aggregate verdict.
-    package func update(verdict: Verdict) {
-        guard verdict != lastVerdict else { return }
+    /// A repeated verdict writes nothing, unless `force`: the mouse keeps its
+    /// last LED state across app restarts, so the first snapshot after launch
+    /// always writes, even when it matches what this process last sent.
+    package func update(verdict: Verdict, force: Bool = false) {
+        guard force || verdict != lastVerdict else { return }
         lastVerdict = verdict
 
         switch verdict {
@@ -63,6 +72,10 @@ package final class GitHubPeripheralSink {
     }
 
     private func execute(arguments: [String]) {
+        if let executor {
+            executor(arguments)
+            return
+        }
         guard FileManager.default.isExecutableFile(atPath: mouseBinaryPath) else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: mouseBinaryPath)

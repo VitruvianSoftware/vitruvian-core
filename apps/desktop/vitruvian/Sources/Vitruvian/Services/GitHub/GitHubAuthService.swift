@@ -23,6 +23,7 @@ import AppKit
 import AuthenticationServices
 import Combine
 import Foundation
+import os
 import VitruvianCore
 
 // MARK: - Interfaces
@@ -193,6 +194,11 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     /// relay's own `sha256(verifier) == state` check already binds the code
     /// to this app.
     package static let sendsPKCE = false
+    /// Where the GitHub CLI keeps its login.
+    package static let defaultCLIHostsURL = URL(
+        fileURLWithPath: ("~/.config/gh/hosts.yml" as NSString).expandingTildeInPath)
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+                                    category: "github-auth")
 
     @Published package private(set) var state: GitHubAuthState = .signedOut {
         didSet { signedIn.send(isSignedIn) }
@@ -205,19 +211,28 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     private let now: @Sendable () -> Date
     private let sleep: @Sendable (TimeInterval) async throws -> Void
     private let randomBytes: @Sendable (Int) -> [UInt8]
+    private let cliHostsURL: URL
     private let signedIn = CurrentValueSubject<Bool, Never>(false)
     private var token: String?
     private var tokenLoaded = false
     private var attempt: Task<Void, Never>?
+    /// Set by `disconnect()`: the person signed out on purpose, so the GitHub
+    /// CLI login must not sign them straight back in. Lasts until relaunch.
+    private var cliAutoConnectSuppressed = false
+    /// The last token GitHub answered 401 to. Auto-connect never retries it,
+    /// so a dead CLI token cannot loop 401 → signed out → sync → 401.
+    private var rejectedToken: String?
 
     /// `now` and `sleep` pace the device flow; tests pass a clock that jumps.
+    /// `cliHostsURL` is the GitHub CLI's `hosts.yml`; tests point it at a file of their own.
     package init(store: any GitHubTokenStore, transport: any GitHubAuthTransport,
                  presenter: any GitHubWebAuthPresenting, defaults: UserDefaults = .standard,
                  now: @escaping @Sendable () -> Date = { Date() },
                  sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
                      try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
                  },
-                 randomBytes: @escaping @Sendable (Int) -> [UInt8] = { GitHubOAuthState.systemRandomBytes($0) }) {
+                 randomBytes: @escaping @Sendable (Int) -> [UInt8] = { GitHubOAuthState.systemRandomBytes($0) },
+                 cliHostsURL: URL = GitHubAuthService.defaultCLIHostsURL) {
         self.store = store
         self.transport = transport
         self.presenter = presenter
@@ -225,6 +240,7 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
         self.now = now
         self.sleep = sleep
         self.randomBytes = randomBytes
+        self.cliHostsURL = cliHostsURL
     }
 
     // MARK: Reading
@@ -274,8 +290,11 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     // MARK: Lifecycle
 
     /// The feature runtime's binding. Switched on, a saved token is checked
-    /// with GitHub so the login shows; switched off or uninstalled, a sign-in
-    /// in progress stops. The token itself stays: reinstalling finds it.
+    /// with GitHub so the login shows; with no saved token, a GitHub CLI
+    /// login (`hosts.yml`) signs in with no click, unless the person
+    /// disconnected this session or GitHub already refused that token.
+    /// Switched off or uninstalled, a sign-in in progress stops. The token
+    /// itself stays: reinstalling finds it.
     package func syncWithPreferences() {
         guard Self.isEnabled(in: defaults) else {
             stopAttempt()
@@ -284,7 +303,12 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
         }
         guard state == .signedOut else { return }
         loadTokenIfNeeded()
-        if let token { start { service in await service.confirm(token) } }
+        if let token {
+            start { service in await service.confirm(token) }
+        } else if state == .signedOut, !cliAutoConnectSuppressed,
+                  let detected = detectedCLIAccount, detected.token != rejectedToken {
+            connectWithToken(detected.token)
+        }
     }
 
     /// Checks the saved token with GitHub again, after it could not be reached.
@@ -302,10 +326,10 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
 
     // MARK: CLI & Token Sign-In
 
-    /// Reads credentials from ~/.config/gh/hosts.yml if present.
+    /// Reads credentials from the GitHub CLI's `hosts.yml`
+    /// (`~/.config/gh/hosts.yml` unless the initializer named another) if present.
     package var detectedCLIAccount: (login: String, token: String)? {
-        let path = ("~/.config/gh/hosts.yml" as NSString).expandingTildeInPath
-        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        guard let content = try? String(contentsOf: cliHostsURL, encoding: .utf8) else { return nil }
         var user: String?
         var token: String?
         for line in content.components(separatedBy: .newlines) {
@@ -501,12 +525,16 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
 
     // MARK: Signing in and out
 
+    /// Saves the token, then confirms it. A Keychain refusal does not stop the
+    /// sign-in: ad-hoc builds lack the Keychain entitlement, so the token
+    /// lives in memory for this session and the next launch asks again (or
+    /// finds the GitHub CLI login).
     private func finishSignIn(with token: String) async {
         do {
             try store.save(token)
         } catch {
-            state = .failed(.keychain(status: (error as? GitHubTokenStoreError)?.status ?? errSecIO))
-            return
+            let status = (error as? GitHubTokenStoreError)?.status ?? errSecIO
+            Self.log.notice("Keychain refused the GitHub token (OSStatus \(status, privacy: .public)); keeping it in memory")
         }
         self.token = token
         tokenLoaded = true
@@ -545,6 +573,7 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
 
     package func disconnect() {
         stopAttempt()
+        cliAutoConnectSuppressed = true
         loadTokenIfNeeded()
         let revoked = token
         token = nil
@@ -566,6 +595,7 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
 
     package func handleUnauthorized() {
         stopAttempt()
+        if let token { rejectedToken = token }
         token = nil
         tokenLoaded = true
         try? store.delete()

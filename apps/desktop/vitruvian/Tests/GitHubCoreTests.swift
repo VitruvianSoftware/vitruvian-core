@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
+import Security
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -59,6 +60,13 @@ enum GitHubCoreTests {
         // Frictionless Auth & Peripherals
         frictionlessAuthParsing(suite)
         peripheralSignalMapping(suite)
+        // Each prints its own indented line, so a run shows these real-class tests ran.
+        named("autoConnectFallsBackToCLIAccount", suite, autoConnectFallsBackToCLIAccount)
+        named("autoConnectSkipsWhenKeychainHasToken", suite, autoConnectSkipsWhenKeychainHasToken)
+        named("autoConnectSkipsAfterExplicitDisconnect", suite, autoConnectSkipsAfterExplicitDisconnect)
+        named("autoConnectSkipsATokenGitHubRejected", suite, autoConnectSkipsATokenGitHubRejected)
+        named("keychainSaveFailureStillSignsIn", suite, keychainSaveFailureStillSignsIn)
+        named("peripheralSinkForceRewritesSameVerdict", suite, peripheralSinkForceRewritesSameVerdict)
         // Notch Module & Quick Access
         notchModuleProperties(suite)
         notchContentEditorStyling(suite)
@@ -602,6 +610,171 @@ enum GitHubCoreTests {
                      "idle behavior restore maps to restore command")
     }
 
+    // MARK: - Zero-click CLI sign-in, Keychain-less sign-in, LED reconcile
+
+    /// Runs one test and prints `  name: OK (n checks)`. The indent keeps the
+    /// line out of the suite count in `bazel/run_unit_tests.sh`.
+    private static func named(_ name: String, _ suite: TestSuite, _ test: (TestSuite) -> Void) {
+        let checksBefore = suite.checks
+        let failuresBefore = suite.failures.count
+        test(suite)
+        let checks = suite.checks - checksBefore
+        if checks == 0 { suite.expect(false, "\(name) executed no assertions") }
+        print("  \(name): \(suite.failures.count == failuresBefore ? "OK" : "FAILED") (\(checks) checks)")
+    }
+
+    /// Defaults with the GitHub feature installed and switched on, in a
+    /// domain of their own. The caller removes the domain.
+    private static func enabledDefaults(_ name: String) -> (UserDefaults, String) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.github.\(name)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defaults.set(true, forKey: AppFeature.notchGitHub.availabilityKey)
+        defaults[Preferences.notchGitHubEnabled] = true
+        return (defaults, domain)
+    }
+
+    /// A GitHub CLI `hosts.yml` in a fresh temporary directory.
+    private static func cliHostsFile(user: String, token: String) -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-gh-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("hosts.yml")
+        let yaml = "github.com:\n    git_protocol: https\n    users:\n        \(user):\n"
+            + "            oauth_token: \(token)\n    user: \(user)\n    oauth_token: \(token)\n"
+        try? yaml.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private static let missingCLIHosts = FileManager.default.temporaryDirectory
+        .appendingPathComponent("vitruvian-gh-absent-\(UUID().uuidString)/hosts.yml")
+
+    /// Spins the main run loop until `done` or the deadline, so the service's
+    /// main-actor tasks and the transport's answers get through.
+    @discardableResult
+    private static func spin(upTo seconds: TimeInterval = 2, until done: () -> Bool = { false }) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !done() && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        return done()
+    }
+
+    private static func autoConnectFallsBackToCLIAccount(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("cli-fallback")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let cliToken = "gho_" + "cliFallbackToken"
+        let store = InMemoryGitHubTokenStore()
+        let transport = StubGitHubUserTransport(logins: [cliToken: "testuser"])
+        let auth = GitHubAuthService(store: store, transport: transport, presenter: HeadlessWebAuthPresenter(),
+                                     defaults: defaults,
+                                     cliHostsURL: cliHostsFile(user: "testuser", token: cliToken))
+        auth.syncWithPreferences()
+        spin { auth.isSignedIn }
+        suite.expect(auth.state == .signedIn(login: "testuser"),
+                     "with no saved token, the GitHub CLI login signs in with no click: \(auth.state)")
+        suite.expect(auth.currentToken() == cliToken, "the CLI token is the one in use")
+        suite.expect(transport.userRequestTokens == [cliToken], "GitHub confirmed the CLI token once")
+        suite.expect((try? store.load()) == cliToken, "the CLI token is saved where the store can keep it")
+    }
+
+    private static func autoConnectSkipsWhenKeychainHasToken(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("saved-token")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let cliToken = "gho_" + "cliIgnoredToken"
+        let transport = StubGitHubUserTransport(logins: ["saved-token": "saveduser", cliToken: "cliuser"])
+        let auth = GitHubAuthService(store: InMemoryGitHubTokenStore(token: "saved-token"), transport: transport,
+                                     presenter: HeadlessWebAuthPresenter(), defaults: defaults,
+                                     cliHostsURL: cliHostsFile(user: "cliuser", token: cliToken))
+        auth.syncWithPreferences()
+        spin { auth.isSignedIn }
+        suite.expect(auth.state == .signedIn(login: "saveduser"), "a saved token wins over the CLI login: \(auth.state)")
+        suite.expect(transport.userRequestTokens == ["saved-token"],
+                     "only the saved token reached GitHub: \(transport.userRequestTokens.count) requests")
+        suite.expect(auth.currentToken() == "saved-token", "the saved token stays in use")
+    }
+
+    private static func autoConnectSkipsAfterExplicitDisconnect(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("disconnect")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let cliToken = "gho_" + "cliDisconnectToken"
+        let transport = StubGitHubUserTransport(logins: [cliToken: "testuser"])
+        let auth = GitHubAuthService(store: InMemoryGitHubTokenStore(), transport: transport,
+                                     presenter: HeadlessWebAuthPresenter(), defaults: defaults,
+                                     cliHostsURL: cliHostsFile(user: "testuser", token: cliToken))
+        auth.syncWithPreferences()
+        suite.expect(spin { auth.isSignedIn }, "auto-connect signs in first: \(auth.state)")
+        auth.disconnect()
+        suite.expect(auth.state == .signedOut, "disconnect signs out: \(auth.state)")
+        auth.syncWithPreferences()
+        spin(upTo: 0.3)
+        suite.expect(auth.state == .signedOut && auth.currentToken() == nil,
+                     "a preference sync right after disconnecting does not sign back in from the CLI: \(auth.state)")
+        suite.expect(transport.userRequestTokens == [cliToken],
+                     "no second sign-in reached GitHub: \(transport.userRequestTokens.count) requests")
+        auth.connectWithGitHubCLI()
+        suite.expect(spin { auth.isSignedIn }, "an explicit CLI connect still works after disconnecting: \(auth.state)")
+    }
+
+    private static func autoConnectSkipsATokenGitHubRejected(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("rejected")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let deadToken = "gho_" + "cliDeadToken"
+        let transport = StubGitHubUserTransport(logins: [:])
+        let auth = GitHubAuthService(store: InMemoryGitHubTokenStore(), transport: transport,
+                                     presenter: HeadlessWebAuthPresenter(), defaults: defaults,
+                                     cliHostsURL: cliHostsFile(user: "testuser", token: deadToken))
+        auth.syncWithPreferences()
+        spin { transport.userRequestTokens.count == 1 && auth.state == .signedOut }
+        suite.expect(auth.state == .signedOut && transport.userRequestTokens == [deadToken],
+                     "GitHub's 401 to the CLI token signs out: \(auth.state)")
+        auth.syncWithPreferences()
+        spin(upTo: 0.3)
+        suite.expect(transport.userRequestTokens.count == 1 && auth.state == .signedOut,
+                     "a token GitHub refused is not tried again, so there is no 401 loop: "
+                         + "\(transport.userRequestTokens.count) requests")
+    }
+
+    private static func keychainSaveFailureStillSignsIn(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("keychainless")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let transport = StubGitHubUserTransport(logins: ["gho_x": "keychainless"])
+        let auth = GitHubAuthService(store: SaveRefusingTokenStore(), transport: transport,
+                                     presenter: HeadlessWebAuthPresenter(), defaults: defaults,
+                                     cliHostsURL: missingCLIHosts)
+        auth.connectWithToken("gho_x")
+        spin {
+            if case .exchanging = auth.state { return false }
+            return true
+        }
+        suite.expect(auth.state == .signedIn(login: "keychainless"),
+                     "a Keychain that refuses the token does not fail the sign-in: \(auth.state)")
+        suite.expect(auth.currentToken() == "gho_x", "the token is kept in memory for the session")
+    }
+
+    private static func peripheralSinkForceRewritesSameVerdict(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.github.peripheral"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        var commands: [[String]] = []
+        let sink = GitHubPeripheralSink(defaults: defaults, executor: { commands.append($0) })
+        sink.update(verdict: .green)
+        suite.expect(commands == [["color", "green"]],
+                     "green writes the configured success color and mode: \(commands)")
+        sink.update(verdict: .green)
+        suite.expect(commands.count == 1, "the same verdict again writes nothing: \(commands)")
+        sink.update(verdict: .green, force: true)
+        suite.expect(commands == [["color", "green"], ["color", "green"]],
+                     "forced, the same verdict writes again, since the mouse kept its LED from before: \(commands)")
+        sink.update(verdict: .green)
+        suite.expect(commands.count == 2, "after a forced write the verdict still dedupes: \(commands)")
+        defaults[Preferences.githubMouseFailureColor] = "magenta"
+        sink.update(verdict: .red)
+        suite.expect(commands.last == ["breathe", "magenta"],
+                     "red writes the configured failure color, breathing by default: \(commands)")
+    }
+
     private static func notchModuleProperties(_ suite: TestSuite) {
         let module = NotchModule.github
         suite.expect(module.symbol == "arrow.triangle.branch", "github module uses arrow.triangle.branch symbol")
@@ -619,4 +792,57 @@ enum GitHubCoreTests {
         let module = NotchModule.github
         suite.expect(module.settingsTint != nil, "github module has settingsTint defined")
     }
+}
+
+// MARK: - Fakes for the sign-in
+
+/// Answers `GET /user` with the login each token maps to, or 401, and records
+/// the bearer token of each one. Every other request gets an empty 200.
+private nonisolated final class StubGitHubUserTransport: GitHubAuthTransport, @unchecked Sendable {
+    private let logins: [String: String]
+    // Guarded by `lock`.
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    init(logins: [String: String]) {
+        self.logins = logins
+    }
+
+    /// The bearer token of each `GET /user`, in order.
+    var userRequestTokens: [String] { lock.withLock { recorded } }
+
+    private func record(_ token: String) {
+        lock.withLock { recorded.append(token) }
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let url = request.url ?? URL(fileURLWithPath: "/")
+        var status = 200
+        var body = Data("{}".utf8)
+        if url.path == "/user" {
+            let header = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            let token = header.hasPrefix("Bearer ") ? String(header.dropFirst("Bearer ".count)) : header
+            record(token)
+            if let login = logins[token] {
+                body = Data(#"{"login":"\#(login)"}"#.utf8)
+            } else {
+                status = 401
+            }
+        }
+        return (body, HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!)
+    }
+}
+
+/// A Keychain without the entitlement, as an ad-hoc build sees it: nothing
+/// saved, and every save refused.
+private nonisolated final class SaveRefusingTokenStore: GitHubTokenStore, @unchecked Sendable {
+    func load() throws -> String? { nil }
+    func save(_ token: String) throws { throw GitHubTokenStoreError(status: errSecMissingEntitlement) }
+    func delete() throws {}
+}
+
+/// Never opens a browser; these tests do not sign in through one.
+private final class HeadlessWebAuthPresenter: GitHubWebAuthPresenting {
+    func authenticate(url: URL, callbackScheme: String) async throws -> URL { throw GitHubWebAuthCancelled() }
+    func cancel() {}
 }
