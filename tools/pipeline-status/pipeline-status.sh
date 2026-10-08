@@ -24,28 +24,30 @@ evaluate_runs_json() {
   local json="$1"
 
   if command -v jq >/dev/null 2>&1; then
-    local total failed in_flight passed
+    local eval_data
+    eval_data=$(echo "$json" | jq -r '
+      ([.workflow_runs[]? | select((.name != null) or (.workflow_id != null))] | group_by(.workflow_id // .name) | map(sort_by(.id // 0) | last)) as $latest |
+      if ($latest | length) == 0 then
+        "NO_RUNS|3"
+      else
+        ([$latest[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")] | length) as $failed |
+        ([$latest[] | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting")] | length) as $in_flight |
+        ([$latest[] | select(.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral")] | length) as $passed |
+        ($latest | length) as $total |
+        if $failed > 0 then
+          "FAILED: \($failed) failed, \($in_flight) in-flight, \($passed) passed out of \($total) total|1"
+        elif $in_flight > 0 then
+          "IN_PROGRESS: \($in_flight) in-flight, \($passed) passed out of \($total) total|2"
+        else
+          "ALL_PASSED: \($passed) passed out of \($total) total|0"
+        end
+      end
+    ')
 
-    total=$(echo "$json" | jq '.total_count // (.workflow_runs | length)')
-    if [ -z "$total" ] || [ "$total" -eq 0 ] || [ "$total" = "null" ]; then
-      echo "NO_RUNS"
-      return 3
-    fi
-
-    failed=$(echo "$json" | jq -r '[.workflow_runs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")] | length')
-    in_flight=$(echo "$json" | jq -r '[.workflow_runs[]? | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting")] | length')
-    passed=$(echo "$json" | jq -r '[.workflow_runs[]? | select(.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral")] | length')
-
-    if [ "$failed" -gt 0 ]; then
-      echo "FAILED: $failed failed, $in_flight in-flight, $passed passed out of $total total"
-      return 1
-    elif [ "$in_flight" -gt 0 ]; then
-      echo "IN_PROGRESS: $in_flight in-flight, $passed passed out of $total total"
-      return 2
-    else
-      echo "ALL_PASSED: $passed passed out of $total total"
-      return 0
-    fi
+    local msg="${eval_data%|*}"
+    local rc="${eval_data##*|}"
+    echo "$msg"
+    return "$rc"
   elif command -v python3 >/dev/null 2>&1; then
     python3 -c '
 import json, sys
@@ -55,13 +57,25 @@ except Exception:
     print("NO_RUNS")
     sys.exit(3)
 runs = data.get("workflow_runs") or []
-total = data.get("total_count", len(runs))
-if not total or total == 0:
+if not runs:
     print("NO_RUNS")
     sys.exit(3)
-failed = sum(1 for r in runs if r.get("conclusion") in ("failure", "timed_out", "startup_failure"))
-in_flight = sum(1 for r in runs if r.get("status") in ("in_progress", "queued", "pending", "waiting"))
-passed = sum(1 for r in runs if r.get("conclusion") in ("success", "skipped", "neutral"))
+
+latest = {}
+for r in sorted(runs, key=lambda x: x.get("id", 0)):
+    key = r.get("workflow_id") or r.get("name")
+    if key:
+        latest[key] = r
+
+items = list(latest.values())
+if not items:
+    print("NO_RUNS")
+    sys.exit(3)
+
+total = len(items)
+failed = sum(1 for r in items if r.get("conclusion") in ("failure", "timed_out", "startup_failure"))
+in_flight = sum(1 for r in items if r.get("status") in ("in_progress", "queued", "pending", "waiting"))
+passed = sum(1 for r in items if r.get("conclusion") in ("success", "skipped", "neutral"))
 
 if failed > 0:
     print(f"FAILED: {failed} failed, {in_flight} in-flight, {passed} passed out of {total} total")

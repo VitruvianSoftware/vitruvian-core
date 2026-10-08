@@ -21,6 +21,16 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+sh_binary(
+    name = "pipeline-mouse-daemon",
+    srcs = ["pipeline-mouse-daemon.sh"],
+    data = [
+        "pipeline-status.sh",
+        "//packages/peripherals:gravastar-mouse",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 sh_test(
     name = "pipeline-status_test",
     size = "small",
