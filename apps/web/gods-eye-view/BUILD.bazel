@@ -80,18 +80,22 @@ js_test(
     entry_point = "scripts/bazel-unit-tests.mjs",
 )
 
-# Boots server.mjs from the Dockerfile's runtime-stage layout and checks the
-# Street Level routes, so an upstream file the image lacks fails here first.
+# Boots server.mjs from the Dockerfile's runtime-stage layout and checks it
+# serves every route upstream mounts for `vite preview`, so an upstream file the
+# image lacks, or a route production misses, fails here first.
 js_test(
     name = "server_test",
-    size = "small",
+    size = "medium",
     chdir = package_name(),
     data = [
         "Dockerfile",
         "package.json",
         "server.mjs",
+        "tests/server/no-network.mjs",
         ":node_modules",
     ] + glob([
+        "config/**",
+        "scripts/**",
         "server/**",
         "src/**",
     ]),

@@ -681,46 +681,48 @@ else
 	fail "B9.2: Host binding check failed in server.mjs"
 fi
 
-# B9.3: Missing upstream API keys triggers graceful keyless fallback in server.mjs
+# B9.3: Missing upstream API keys triggers graceful keyless fallback in the
+# upstream providers server.mjs mounts
 keyless_mode=$(node -e '
 import fs from "node:fs";
-const code = fs.readFileSync("apps/web/gods-eye-view/server.mjs", "utf8");
-const hasSetupStatus = code.includes("/api/setup/status") && code.includes("Boolean(process.env.GOOGLE_MAPS_API_KEY)");
-const hasFirmsKeyless = code.includes("/api/firms") && code.includes("fires: []");
-const hasTomTomStatus = code.includes("/api/tomtom/status") && code.includes("Boolean(process.env.TOMTOM_API_KEY)");
-process.stdout.write(hasSetupStatus && hasFirmsKeyless && hasTomTomStatus ? "1" : "0");
+const read = (f) => fs.readFileSync("apps/web/gods-eye-view/server/providers/" + f, "utf8");
+const hasPlacesKeyless = read("places/google-key.js").includes("keylessGooglePlacesResponse");
+const hasFirmsKeyless = read("firms.js").includes("hasKey: false");
+const hasTomTomKeyless = read("traffic.js").includes("hasKey:false");
+process.stdout.write(hasPlacesKeyless && hasFirmsKeyless && hasTomTomKeyless ? "1" : "0");
 ')
 if [ "$keyless_mode" = "1" ]; then
 	pass "B9.3: Proxy layer engine gracefully falls back to Esri/OSM when API keys are absent"
 else
-	fail "B9.3: Keyless mode fallback check failed in server.mjs"
+	fail "B9.3: Keyless mode fallback check failed in the upstream providers"
 fi
 
-# B9.4: Invalid or unreachable AISStream WebSocket URL triggers backoff capped at 60s in server.mjs
+# B9.4: An unreachable AISStream walks upstream's bounded backoff ladder
 backoff_calc=$(node -e '
 import fs from "node:fs";
-const code = fs.readFileSync("apps/web/gods-eye-view/server.mjs", "utf8");
-const hasCap = code.includes("_aisMaxReconnectDelay = 60000");
-const hasBackoff = code.includes("scheduleAisReconnect") && code.includes("Math.min");
-process.stdout.write(hasCap && hasBackoff ? "1" : "0");
+const code = fs.readFileSync("apps/web/gods-eye-view/server/providers/vessels/ais-live.js", "utf8");
+const ladder = /AISSTREAM_BACKOFF_MS = Object\.freeze\(\[([^\]]+)\]\)/.exec(code);
+const steps = ladder ? ladder[1].split(",").map((s) => Number(s.replace(/_/g, ""))) : [];
+const rising = steps.length > 1 && steps.every((ms, i) => Number.isFinite(ms) && (i === 0 || ms > steps[i - 1]));
+process.stdout.write(rising && code.includes("backoffMs: [...AISSTREAM_BACKOFF_MS]") ? "1" : "0");
 ')
 if [ "$backoff_calc" = "1" ]; then
-	pass "B9.4: WebSocket reconnect logic caps exponential backoff at maximum 60s"
+	pass "B9.4: AISStream reconnects walk a finite, rising backoff ladder"
 else
-	fail "B9.4: Backoff calculation check failed in server.mjs"
+	fail "B9.4: AISStream backoff ladder check failed"
 fi
 
-# B9.5: Zero or negative rate-limiting values handled safely in server.mjs
+# B9.5: Zero or negative rate-limiting values handled safely by upstream's limiter
 ratelimit_guard=$(node -e '
 import fs from "node:fs";
-const code = fs.readFileSync("apps/web/gods-eye-view/server.mjs", "utf8");
-const hasCheck = code.includes("function checkRateLimit") && code.includes("limitPerMin <= 0");
+const code = fs.readFileSync("apps/web/gods-eye-view/server/providers/common/rate-limit.js", "utf8");
+const hasCheck = code.includes("parsed < 0") && code.includes("max <= 0");
 process.stdout.write(hasCheck ? "1" : "0");
 ')
 if [ "$ratelimit_guard" = "1" ]; then
 	pass "B9.5: Rate limit parser handles non-positive values without divide-by-zero"
 else
-	fail "B9.5: Rate limit check failed in server.mjs"
+	fail "B9.5: Rate limit check failed in the upstream limiter"
 fi
 
 # ------------------------------------------------------------------------------
@@ -1512,24 +1514,16 @@ else
 	fail "B19.2: Path traversal check failed"
 fi
 
-# B19.3: WebSocket reconnect backoff capping
+# B19.3: Once upstream's AIS watchdog spends its backoff ladder, it settles on
+# one fixed retry interval instead of growing without bound
 reconnect_capped=$(node --input-type=module -e '
 import fs from "node:fs";
-const content = fs.readFileSync("'"$ROOT/apps/web/gods-eye-view/server.mjs"'", "utf8");
-const hasMaxDelay = /_aisMaxReconnectDelay\s*=\s*60000;/.test(content);
-const hasCap = /Math\.min\(_aisReconnectDelay\s*\*\s*1\.5,\s*_aisMaxReconnectDelay\)/.test(content);
-let delay = 2000;
-for (let i = 0; i < 20; i++) {
-  delay = Math.min(delay * 1.5, 60000);
-}
-if (hasMaxDelay && hasCap && delay === 60000) {
-  process.stdout.write("1");
-} else {
-  process.stdout.write("0");
-}
+const content = fs.readFileSync("'"$ROOT/apps/web/gods-eye-view/src/data/aisWatchdog.js"'", "utf8");
+const settles = /if \(isExhausted\(\)\) \{\s*status = .down.;\s*nextAttemptMono = monoNow \+ downRetryMs;/.test(content);
+process.stdout.write(settles ? "1" : "0");
 ')
 if [ "$reconnect_capped" = "1" ]; then
-	pass "B19.3: WebSocket reconnection delay safely saturates at 60,000ms boundary"
+	pass "B19.3: AIS reconnection settles on a fixed retry interval once the backoff ladder is spent"
 else
 	fail "B19.3: Backoff saturation check failed"
 fi

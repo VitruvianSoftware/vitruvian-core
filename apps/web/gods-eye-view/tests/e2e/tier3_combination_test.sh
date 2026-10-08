@@ -229,14 +229,17 @@ fi
 echo "--- Pairwise 9: Client Data Layers x Backend Proxies (F1 x F9) ---"
 if [ -f "apps/web/gods-eye-view/server.mjs" ]; then
 	client_api_matched=$(python3 -c '
+import pathlib
+# server.mjs mounts upstream'"'"'s provider plugins; the routes live there.
 server_code = open("apps/web/gods-eye-view/server.mjs").read()
+providers = "".join(p.read_text() for p in pathlib.Path("apps/web/gods-eye-view/server/providers").rglob("*.js"))
 # Primary proxy endpoints required by client data feeds
-required_proxies = ["/api/opensky", "/api/celestrak", "/api/firms", "/api/cctv", "/api/ais-live", "/api/realtime/token"]
-matched = [p for p in required_proxies if p in server_code]
+required_proxies = ["/api/flights", "/api/celestrak", "/api/firms", "/api/cctv", "/api/vessels", "/api/realtime/token"]
+matched = [p for p in required_proxies if "localProviderPlugins" in server_code and p in providers]
 print("1" if len(matched) == len(required_proxies) else f"Matched {len(matched)}/{len(required_proxies)}")
 ')
 	if [ "$client_api_matched" = "1" ]; then
-		pass "C9 (F1xF9): server.mjs implements all core proxy routes queried by client HUD layers"
+		pass "C9 (F1xF9): server.mjs mounts all core proxy routes queried by client HUD layers"
 	else
 		fail "C9 (F1xF9): Missing expected proxy route definitions in server.mjs: $client_api_matched"
 	fi

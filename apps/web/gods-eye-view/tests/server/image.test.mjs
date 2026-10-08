@@ -22,22 +22,27 @@
 
 /**
  * Boots server.mjs from a directory laid out the way the Dockerfile's runtime
- * stage lays out /app, then exercises the Street Level routes.
+ * stage lays out /app, then checks that it serves upstream's routes the way
+ * `vite preview` does: every route upstream mounts for preview, none of the
+ * dev-only ones, and the same-site gate on the paid ones.
  *
- * server.mjs imports upstream's tile engine, so the image must carry every file
- * that engine imports. An upstream sync can add one; the server then fails to
- * start here, naming the missing file, before it fails in production.
+ * The image must carry every file upstream's handlers import, so a file the
+ * Dockerfile leaves out fails the server's start here, naming it. Outbound
+ * network is stubbed in the server (no-network.mjs), so answers come from this
+ * server alone.
  */
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const APP = path.resolve(HERE, '..', '..');
+const NO_NETWORK = pathToFileURL(path.join(HERE, 'no-network.mjs')).href;
 
 /** The runtime stage's COPY lines that copy from the build context. */
 function runtimeCopies(dockerfile) {
@@ -106,7 +111,7 @@ const NODE = process.env.JS_BINARY__NODE_BINARY || process.execPath;
 /** Starts server.mjs in `root` and resolves once /healthz answers. */
 async function startServer(root, env) {
   const port = await freePort();
-  const child = spawn(NODE, ['server.mjs'], {
+  const child = spawn(NODE, ['--import', NO_NETWORK, 'server.mjs'], {
     cwd: root,
     env: {
       PATH: process.env.PATH,
@@ -122,7 +127,7 @@ async function startServer(root, env) {
   child.stderr.on('data', (chunk) => (output += chunk));
   const exited = new Promise((resolve) => child.once('exit', resolve));
   const base = `http://127.0.0.1:${port}`;
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) break;
     try {
@@ -138,17 +143,98 @@ async function startServer(root, env) {
   assert.fail(`server.mjs did not start from the image layout:\n${output}`);
 }
 
+/**
+ * The routes upstream's plugins mount under `vite preview` and under its dev
+ * server, read in a child process from the image layout (installing the
+ * plugins starts timers the child's exit clears).
+ */
+function upstreamRoutes(root) {
+  const script = `
+    import { EventEmitter } from 'node:events';
+    const { localProviderPlugins } = await import('./server/providers/local.js');
+    const { standaloneVoiceTools } = await import('./server/standalone/voiceTools.js');
+    const record = (isPreview) => {
+      const routes = new Set();
+      const server = {
+        middlewares: { use: (route) => typeof route === 'string' && routes.add(route) },
+        httpServer: new EventEmitter(),
+      };
+      const env = { command: 'serve', mode: isPreview ? 'production' : 'development', isPreview };
+      for (const plugin of localProviderPlugins({ realtime: { tools: standaloneVoiceTools() } })) {
+        const applies = typeof plugin.apply === 'function'
+          ? plugin.apply({}, env)
+          : plugin.apply === undefined || plugin.apply === 'serve';
+        if (applies) plugin[isPreview ? 'configurePreviewServer' : 'configureServer']?.(server);
+      }
+      return [...routes].sort();
+    };
+    process.stdout.write(JSON.stringify({ preview: record(true), dev: record(false) }));
+    process.exit(0);
+  `;
+  const out = execFileSync(NODE, ['--import', NO_NETWORK, '--input-type=module', '-e', script], {
+    cwd: root,
+    env: { PATH: process.env.PATH },
+    encoding: 'utf8',
+  });
+  return JSON.parse(out);
+}
+
+/** Whether a response is upstream's answer for an /api path nothing mounts. */
+async function isUnknownApiRoute(response) {
+  if (response.status !== 404) return false;
+  const body = await response.json().catch(() => ({}));
+  return body.error === 'Unknown API route';
+}
+
+/**
+ * The packages the server's import graph reaches from server.mjs: bare
+ * specifiers of every static or literal dynamic import, following relative
+ * ones through the image layout.
+ */
+function importedPackages(root) {
+  const statement = new RegExp(
+    [
+      String.raw`(?:^|[\s;])(?:import|export)\b[^'"\x60;]*?\bfrom\s*['"]([^'"]+)['"]`,
+      String.raw`(?:^|[\s;(,=])import\s*['"]([^'"]+)['"]`,
+      String.raw`import\(\s*['"]([^'"]+)['"]\s*\)`,
+    ].join('|'),
+    'gm',
+  );
+  const packages = new Set();
+  const seen = new Set();
+  const todo = [path.join(root, 'server.mjs')];
+  while (todo.length) {
+    const file = todo.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const source = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const match of source.matchAll(statement)) {
+      const specifier = match[1] || match[2] || match[3];
+      if (specifier.startsWith('.')) {
+        const target = path.resolve(path.dirname(file), specifier);
+        const found = [target, `${target}.js`, `${target}.mjs`].find(
+          (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+        );
+        if (found) todo.push(found);
+      } else if (!specifier.startsWith('node:')) {
+        const parts = specifier.split('/');
+        packages.add(specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
+      }
+    }
+  }
+  return packages;
+}
+
 let root;
+let routes;
 let keyless;
 let keyed;
 
 before(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-image-'));
   layOutImage(root);
-  keyless = await startServer(root, {
-    GEV_RATELIMIT_MAPILLARY_PER_MIN: '3',
-    GEV_RATELIMIT_OPENAI_PER_MIN: '3',
-  });
+  routes = upstreamRoutes(root);
+  keyless = await startServer(root, {});
   keyed = await startServer(root, { MAPILLARY_CLIENT_TOKEN: 'MLY|0|image-test' });
 });
 
@@ -156,6 +242,71 @@ after(async () => {
   await keyless?.stop();
   await keyed?.stop();
   if (root) fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('the server imports only runtime dependencies', () => {
+  // The image installs package.json's dependencies alone; this package's
+  // node_modules, which the server runs on here, has the devDependencies too.
+  const { dependencies } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const devOnly = [...importedPackages(root)].filter((name) => !(name in dependencies));
+  assert.deepEqual(devOnly, [], 'imported by the server but not in dependencies');
+});
+
+test('every route upstream mounts for preview is served', async () => {
+  // The client's live layers, so a regression names the feature it breaks.
+  for (const route of ['/api/flights', '/api/military', '/api/vessels', '/api/geocode']) {
+    assert.ok(routes.preview.includes(route), `upstream mounts ${route}`);
+  }
+  // A route is missing when it gets the answer a path nothing mounts gets.
+  // Some routes serve only paths below them and 404 their own, so compare the
+  // error, not just the status.
+  const unmounted = await (await fetch(`${keyless.base}/api/no-such-route`)).json();
+  assert.ok(unmounted.error, 'an unmounted /api path answers a JSON error');
+  const missing = [];
+  for (const route of routes.preview) {
+    const response = await fetch(`${keyless.base}${route}`);
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 404 && body.error === unmounted.error) missing.push(route);
+  }
+  assert.deepEqual(missing, [], 'routes upstream mounts that server.mjs does not serve');
+});
+
+test('dev-only routes stay out of production', async () => {
+  // Upstream's credential panel writes keys to disk; it installs in its dev
+  // server only. A new dev-only route lands here for a decision.
+  const devOnly = routes.dev.filter((route) => !routes.preview.includes(route));
+  assert.deepEqual(devOnly, ['/api/setup/keys', '/api/setup/status']);
+  for (const route of devOnly) {
+    for (const method of ['GET', 'POST']) {
+      const response = await fetch(`${keyless.base}${route}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: method === 'POST' ? '{"GOOGLE_MAPS_API_KEY":"x"}' : undefined,
+      });
+      assert.ok(await isUnknownApiRoute(response), `${method} ${route} is not served`);
+    }
+  }
+});
+
+test('an unknown API path answers 404 JSON, not the app', async () => {
+  const response = await fetch(`${keyless.base}/api/does-not-exist`);
+  assert.ok(await isUnknownApiRoute(response));
+});
+
+test('the paid routes refuse requests a proxy forwarded', async () => {
+  for (const route of [
+    '/api/mapillary/status',
+    '/api/mapillary/tiles/coverage/14/2/3',
+    '/api/openai/hud-summary',
+    '/api/google/nearby-places',
+    '/api/google/text-search',
+    '/api/realtime/token',
+  ]) {
+    const response = await fetch(`${keyed.base}${route}`, {
+      headers: { 'X-Forwarded-For': '203.0.113.7' },
+    });
+    assert.equal(response.status, 403, route);
+  }
 });
 
 test('the status route says whether a token is configured', async () => {
@@ -178,18 +329,7 @@ test('the tile route refuses bad requests before contacting Mapillary', async ()
   assert.match((await wrongLayer.json()).error, /coverage/);
   const post = await fetch(`${keyed.base}/api/mapillary/tiles/coverage/14/2/3`, { method: 'POST' });
   assert.equal(post.status, 405);
-});
-
-test('without a token the tile route answers no_key, then its own rate limit', async () => {
-  for (let i = 0; i < 3; i += 1) {
-    const response = await fetch(`${keyless.base}/api/mapillary/tiles/coverage/14/2/3`);
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), { error: 'no_key', keyRequired: true });
-  }
-  const limited = await fetch(`${keyless.base}/api/mapillary/tiles/coverage/14/2/3`);
-  assert.equal(limited.status, 429);
-  // Tiles count in a bucket of their own: the client's OpenAI allowance,
-  // also 3 a minute here, is untouched.
-  const summary = await fetch(`${keyless.base}/api/openai/hud-summary`);
-  assert.equal(summary.status, 200);
+  const keylessTile = await fetch(`${keyless.base}/api/mapillary/tiles/coverage/14/2/3`);
+  assert.equal(keylessTile.status, 503);
+  assert.deepEqual(await keylessTile.json(), { error: 'no_key', keyRequired: true });
 });

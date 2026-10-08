@@ -45,11 +45,13 @@ The copy is upstream's latest `main` plus only the changes
      Keep the versions the row for `package.json` explains;
    - when upstream added a top-level directory, decide whether `BUILD.bazel`'s
      globs need it: they name directories one by one;
-   - for upstream's server changes, decide what `server.mjs` needs (README.md,
-     "The production server"). Porting a whole new feature's routes can be its
-     own pull request; say so in the report rather than leave it unmentioned.
-     When `:server_test` fails because the image lacks a file the tile engine
-     now imports, add it to the Dockerfile's runtime-stage `COPY` lines.
+   - upstream's provider routes (`server/providers/`) reach production on
+     their own: `server.mjs` mounts them (README.md, "The production server").
+     For the dev-server wiring the report lists, decide whether `server.mjs`
+     needs the change. When `:server_test` fails because upstream added a
+     dev-only route, decide whether production should serve it and update the
+     test's list; when it fails because the image lacks a file, add its
+     top-level directory to the Dockerfile's runtime-stage `COPY` lines.
 5. Before every push, run these and check each exit status. Piping one through
    `tail` hides a failure.
    - `bazel run //apps/web/gods-eye-view:track_upstream -- check`
@@ -73,7 +75,7 @@ The copy is upstream's latest `main` plus only the changes
 8. After it merges, run `bazel run //tools/pipeline-status -- <sha>` for the
    squashed commit, then `status` again. If upstream moved meanwhile, sync again.
 9. Report the pull request merged, the upstream commit the copy now matches,
-   the follow-ups left (above all, routes `server.mjs` still lacks), and anything
+   the follow-ups left (above all, dev-server wiring production may need), and anything
    a maintainer must decide.
 
 ## What earlier syncs learned

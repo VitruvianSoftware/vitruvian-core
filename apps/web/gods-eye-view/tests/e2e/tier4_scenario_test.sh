@@ -263,14 +263,17 @@ if [ -f "apps/web/gods-eye-view/server.mjs" ] || [ -f "apps/web/gods-eye-view/vi
 		proxy_source="apps/web/gods-eye-view/vite.config.js"
 	fi
 	protocol_ok=$(python3 -c '
-code = open("'"$proxy_source"'").read()
-has_ws = "stream.aisstream.io" in code or "AISSTREAM" in code
-has_token = "/api/realtime/token" in code or "client_secrets" in code
-has_proxy = "/api/opensky" in code and "/api/celestrak" in code
+import pathlib
+# server.mjs mounts upstream'"'"'s provider plugins, so the contract lives there.
+mounts = "localProviderPlugins" in open("'"$proxy_source"'").read()
+code = "".join(p.read_text() for p in pathlib.Path("apps/web/gods-eye-view/server/providers").rglob("*.js"))
+has_ws = mounts and ("stream.aisstream.io" in code or "AISSTREAM" in code)
+has_token = mounts and ("/api/realtime/token" in code or "client_secrets" in code)
+has_proxy = mounts and "/api/flights" in code and "/api/celestrak" in code
 print("1" if has_ws and has_token and has_proxy else f"ws:{has_ws}, token:{has_token}, proxy:{has_proxy}")
 ')
 	if [ "$protocol_ok" = "1" ]; then
-		pass "Scenario 5: Proxy Routing & WebRTC/WebSocket Protocol Contract verified (26 proxies, AISStream WS, OpenAI Realtime WebRTC token)"
+		pass "Scenario 5: Proxy Routing & WebRTC/WebSocket Protocol Contract verified (upstream provider routes, AISStream WS, OpenAI Realtime WebRTC token)"
 	else
 		fail "Scenario 5: Protocol contract verification failed: $protocol_ok"
 	fi
