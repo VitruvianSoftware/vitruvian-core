@@ -420,6 +420,7 @@ ROWS_CHECKOUT=""
 ROWS_DEPENDABOT_ACTIONS=""
 ROWS_ACTION_PINS=""
 ROWS_TECHDOCS=""
+ROWS_PROJKIND=""
 
 
 emit() {
@@ -458,6 +459,7 @@ emit() {
     dependabot_actions) ROWS_DEPENDABOT_ACTIONS="${ROWS_DEPENDABOT_ACTIONS}${_row}" ;;
     action_pins)  ROWS_ACTION_PINS="${ROWS_ACTION_PINS}${_row}" ;;
     techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
+    projkind)     ROWS_PROJKIND="${ROWS_PROJKIND}${_row}" ;;
 
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
@@ -3019,8 +3021,11 @@ check_project_kind_allowlist() {
   # the Cluster change merged alongside it sat unapplied behind it.
   #
   # Covers plain-manifest directory sources in this repo (a chart's rendered
-  # kinds need helm, so chart paths are skipped). Line-based on purpose, like
-  # the checks above: only top-level apiVersion/kind lines are read.
+  # kinds need helm, so chart paths are skipped), and Kustomize sources: there
+  # only the files the kustomization lists under `resources:` are synced, so
+  # only those are read (generated objects, like a chart's, are not). Line-based
+  # on purpose, like the checks above: only top-level apiVersion/kind lines are
+  # read.
   results="$(ROOT="$ROOT" python3 - <<'PY'
 import os, re, fnmatch
 root = os.environ.get("ROOT", ".")
@@ -3056,6 +3061,26 @@ for f in sorted(os.listdir(proj_dir)):
 def expand(pat):
     m = re.match(r"^(.*)\{([^}]*)\}(.*)$", pat)
     return [m.group(1) + p + m.group(3) for p in m.group(2).split(",")] if m else [pat]
+def kustomize_resources(d):
+    # The files a kustomization in d lists under `resources:`, or None when d
+    # has no kustomization (ArgoCD then renders it as a plain directory).
+    for k in ("kustomization.yaml", "kustomization.yml", "Kustomization"):
+        f = os.path.join(d, k)
+        if not os.path.isfile(f):
+            continue
+        listed, inres = [], False
+        for l in open(f):
+            l = strip(l)
+            if not l.strip():
+                continue
+            if not l[0].isspace() and not l.startswith("-"):
+                inres = l.strip() == "resources:"
+                continue
+            m = re.match(r"^\s*-\s*['\"]?([^'\"]+?)['\"]?$", l)
+            if inres and m:
+                listed.append(os.path.join(d, m.group(1)))
+        return [r for r in listed if os.path.isfile(r)]
+    return None
 for f in sorted(os.listdir(app_dir)):
     text = [strip(l) for l in open(os.path.join(app_dir, f))]
     proj = next((l.split(":", 1)[1].strip() for l in text if l.strip().startswith("project:")), None)
@@ -3070,23 +3095,24 @@ for f in sorted(os.listdir(app_dir)):
         d = os.path.join(root, p)
         if not os.path.isdir(d) or os.path.isfile(os.path.join(d, "Chart.yaml")):
             continue
-        for dp, _, fs in os.walk(d):
-            for fn in sorted(fs):
-                if not fn.endswith((".yaml", ".yml")) or any(fnmatch.fnmatch(fn, e) for e in excludes):
-                    continue
-                rel = os.path.relpath(os.path.join(dp, fn), root)
-                api = None
-                for l in open(os.path.join(dp, fn)):
-                    l = strip(l)
-                    if l.startswith("---"):
-                        api = None
-                    elif l.startswith("apiVersion:"):
-                        api = l.split(":", 1)[1].strip()
-                    elif l.startswith("kind:") and api:
-                        kind = l.split(":", 1)[1].strip()
-                        g = api.split("/")[0] if "/" in api else ""
-                        ok = (g, kind) in projects[proj] or (g, "*") in projects[proj]
-                        print(f"{'OK' if ok else 'FAIL'}\t{rel}\t{g or 'core'}/{kind}\t{proj}")
+        files = kustomize_resources(d)
+        if files is None:
+            files = [os.path.join(dp, fn) for dp, _, fs in os.walk(d) for fn in sorted(fs)
+                     if fn.endswith((".yaml", ".yml")) and not any(fnmatch.fnmatch(fn, e) for e in excludes)]
+        for path in files:
+            rel = os.path.relpath(path, root)
+            api = None
+            for l in open(path):
+                l = strip(l)
+                if l.startswith("---"):
+                    api = None
+                elif l.startswith("apiVersion:"):
+                    api = l.split(":", 1)[1].strip()
+                elif l.startswith("kind:") and api:
+                    kind = l.split(":", 1)[1].strip()
+                    g = api.split("/")[0] if "/" in api else ""
+                    ok = (g, kind) in projects[proj] or (g, "*") in projects[proj]
+                    print(f"{'OK' if ok else 'FAIL'}\t{rel}\t{g or 'core'}/{kind}\t{proj}")
 PY
 )"
   while IFS="$(printf '\t')" read -r verdict rel kind proj; do
@@ -3810,6 +3836,7 @@ print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Chart-owned CRDs (turning a chart's CRD install off lets Argo CD prune them, deleting every object)" "$ROWS_CRDOWN"
+print_group "AppProject kinds (every synced manifest's kind is in its app's AppProject allowlist)" "$ROWS_PROJKIND"
 print_group "Monorepo naming conventions (tools/lint-naming → docs/standards/naming-conventions.md)" "$ROWS_NAMING"
 print_group "pnpm build pin (Dockerfile → a reachable pnpm version)" "$ROWS_PNPM_PIN"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"

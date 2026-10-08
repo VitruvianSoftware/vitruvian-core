@@ -18,31 +18,25 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# gods-eye-view — git-source Application for God's Eye View geospatial console.
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: gods-eye-view
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  project: gods-eye-view-project
-  source:
-    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
-    targetRevision: HEAD
-    # Kustomize source: kustomization.yaml in this path lists the manifests
-    # and pins the image digest that argocd-image-updater keeps current. No
-    # `directory:` block, or ArgoCD would render the files as a plain directory
-    # and ignore the pinned image.
-    path: gitops/argocd/platform/gods-eye-view
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: gods-eye-view
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
+# The gods-eye-view Application renders this directory as a Kustomize source
+# (gitops/argocd/applications/gods-eye-view.yaml has no `directory:` block), so
+# the image the Deployment runs is pinned here by digest. argocd-image-updater
+# writes each new digest behind ghcr.io/vitruviansoftware/gods-eye-view:latest
+# into `images:` below, on the image-updates/gods-eye-view branch (see
+# gitops/argocd/platform/argocd-image-updater/resources/imageupdater-gods-eye-view.yaml),
+# and merging that branch's PR rolls the pod out.
+#
+# secrets.template.yaml documents the sealed secret's keys; it is not a resource
+# and is deliberately not listed.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - dnsendpoint.yaml
+  - httproute.yaml
+  - service.yaml
+images:
+  - name: ghcr.io/vitruviansoftware/gods-eye-view
+    newName: ghcr.io/vitruviansoftware/gods-eye-view
+    newTag: latest
+    digest: sha256:a57b494685e5f55ff6c3a9f0ace260da33a1fa1672b832608c83cb7bf08d9c6c
