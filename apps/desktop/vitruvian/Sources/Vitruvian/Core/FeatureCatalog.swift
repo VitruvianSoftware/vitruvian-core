@@ -31,7 +31,7 @@ package enum AppFeature: String, CaseIterable {
          commandBar, screenRecorder, wallpaper, killProcess, portManager, nexusAgent
     // Dynamic Island, then its extensions
     case notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics,
-         notchQueue, notchLiveEqualizer, notchDownloads, notchAgents, notchWatch, notchMascot
+         notchQueue, notchLiveEqualizer, notchDownloads, notchAgents, notchWatch, notchGitHub, notchMascot
     // System monitor, one entry per metric family (temperatures live with
     // their parent metric: CPU temp with CPU, battery temp with power).
     case monitorCPU, monitorGPU, monitorMemory, monitorNetwork, monitorDisk, monitorPower, connectedDevices, fanControl
@@ -82,8 +82,10 @@ extension AppFeature {
                     ).isEmpty)
         // Watch asks when an area is chosen and checks on every reading. The
         // companion uses no permission at all.
+        // GitHub asks for no grant at all: it talks to the network and keeps
+        // its token in a Keychain item it owns.
         case .screenOCR, .cleaningMode, .screenshot, .commandBar, .screenRecorder, .wallpaper, .notchWatch,
-             .notchMascot:
+             .notchGitHub, .notchMascot:
             return false
         default:
             return true
@@ -117,7 +119,7 @@ extension AppFeature {
             return .tools
         case .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories,
              .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchAgents, .notchWatch,
-             .notchMascot:
+             .notchGitHub, .notchMascot:
             return .dynamicIsland
         case .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .connectedDevices, .fanControl:
@@ -192,6 +194,8 @@ extension AppFeature {
         case .notchCalendar: return "calendar"
         case .notchAgents: return "sparkles"
         case .notchWatch: return "eye"
+        // A branch: it reads as git, and as "main" and the pull requests off it.
+        case .notchGitHub: return "arrow.triangle.branch"
         case .notchMascot: return "face.smiling"
         case .notch: return "macbook"
         case .radialMenu: return "circle.grid.cross"
@@ -267,6 +271,7 @@ extension AppFeature {
         case .notchCalendar: return [DefaultsKey.notchCalendarEnabled]
         case .notchAgents: return [DefaultsKey.notchAgentsEnabled]
         case .notchWatch: return [DefaultsKey.notchWatchEnabled]
+        case .notchGitHub: return [DefaultsKey.notchGitHubEnabled]
         case .notchMascot: return [DefaultsKey.notchMascotEnabled]
         case .notch: return [DefaultsKey.notchEnabled]
         case .radialMenu: return [DefaultsKey.radialMenuEnabled]
@@ -336,6 +341,9 @@ extension AppFeature {
         case .notchAgents: return []
         // It only draws, and hears of what happens from the island itself.
         case .notchMascot: return []
+        // It reaches GitHub and its relay over the network and keeps the
+        // sign-in in a Keychain item of its own: no system grant.
+        case .notchGitHub: return []
         // The bars read the player's own audio output, which macOS gates
         // behind the same permission the mixer and the recorder ask for.
         case .notchLiveEqualizer: return [.audioCapture]
@@ -430,10 +438,10 @@ extension AppFeature {
     }
 
     /// The extensions a first install of the island brings along. The
-    /// companion changes how the closed island looks at rest, so it only
-    /// comes when someone picks it.
+    /// companion changes how the closed island looks at rest, and GitHub
+    /// needs a sign-in, so each only comes when someone picks it.
     package static var dynamicIslandInitialExtensions: [AppFeature] {
-        dynamicIslandExtensions.filter { $0 != .notchMascot }
+        dynamicIslandExtensions.filter { $0 != .notchMascot && $0 != .notchGitHub }
     }
 
     package var initialInstallGroup: [AppFeature] {
@@ -499,7 +507,8 @@ extension AppFeature {
              .connectedDevices:
             return true
         case .focusFollowsMouse, .scrollHorizontal, .linearScroll, .diskImageInstaller, .audioPriority,
-             .wallpaper, .killProcess, .portManager, .nexusAgent, .fanControl, .spacesOrder, .notchMascot:
+             .wallpaper, .killProcess, .portManager, .nexusAgent, .fanControl, .spacesOrder, .notchMascot,
+             .notchGitHub:
             return false
         }
     }

@@ -57,6 +57,23 @@ package enum NotchAgentTab: String, CaseIterable, Identifiable {
     package var id: String { rawValue }
 }
 
+/// Which agent provider's metrics to show on the Notch AI Agents telemetry page.
+package enum NotchTelemetryFilter: String, CaseIterable, Identifiable {
+    case antigravity
+    case claude
+    case all
+
+    package var id: String { rawValue }
+
+    package var displayName: String {
+        switch self {
+        case .antigravity: return "Antigravity"
+        case .claude: return "Claude"
+        case .all: return "All"
+        }
+    }
+}
+
 package struct NotchAgentTile: Identifiable, Equatable {
     package let card: NotchAgentCard
     /// The account a limits card belongs to.
@@ -147,7 +164,9 @@ package enum NotchAgentSupport {
         case .session: kind = .session
         case .weekly: kind = .weekly
         }
-        return limits?.windows.first { $0.kind == kind && $0.scope == nil }.map { AgentLimitSupport.current($0, at: now) }
+        return (limits?.windows.first { $0.kind == kind && $0.scope == nil }
+            ?? limits?.windows.first { $0.kind == kind })
+            .map { AgentLimitSupport.current($0, at: now) }
     }
 
     /// The resting island's allowance across every account: the most spent

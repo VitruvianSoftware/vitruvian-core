@@ -50,8 +50,8 @@ package struct NotchSettingsTabRow: View {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(tab: Binding<NotchSettingsTab>, language: AppLanguage, showsCompanion: Bool = false, canOpen: Bool,
-                 open: @escaping () -> Void) {
+    package init(tab: Binding<NotchSettingsTab>, language: AppLanguage, showsCompanion: Bool = false,
+                 canOpen: Bool, open: @escaping () -> Void) {
         self._tab = tab
         self.language = language
         self.showsCompanion = showsCompanion

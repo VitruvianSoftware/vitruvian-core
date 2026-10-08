@@ -131,7 +131,7 @@ package struct NotchAgentRestingWing: View {
     @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
     package var body: some View {
-        TimelineView(.periodic(from: .now, by: nexusSession.isRunning ? 1 : 60)) { context in
+        TimelineView(.periodic(from: .now, by: nexusSession.isRunning ? 1 : 6)) { context in
             content(now: context.date)
         }
         .contentShape(Rectangle())
@@ -139,6 +139,33 @@ package struct NotchAgentRestingWing: View {
             NotchService.shared.agentTab = .chat
             NotchService.shared.select(.agents)
         }
+    }
+
+    private func activeRestingProviders(snapshot: AgentUsageSnapshot) -> [AgentProvider] {
+        let candidates: [AgentProvider] = [.claude, .antigravity]
+        let filtered = candidates.filter { snapshot.seen.contains($0) || snapshot.limits[$0] != nil }
+        return filtered.isEmpty ? candidates : filtered
+    }
+
+    private func activeProvider(from providers: [AgentProvider], now: Date) -> AgentProvider {
+        guard !providers.isEmpty else { return .claude }
+        let cycleIndex = Int(now.timeIntervalSince1970 / 6) % providers.count
+        return providers[cycleIndex]
+    }
+
+    private func remainingUsageFraction(for provider: AgentProvider, snapshot: AgentUsageSnapshot, now: Date) -> (remaining: Double, used: Double) {
+        if let window = NotchAgentSupport.focusedLimit(snapshot.limits[provider],
+                                                       focus: NotchAgentLimitFocus(rawValue: focus) ?? .mostUsed,
+                                                       now: now) {
+            return (window.remainingFraction, window.usedFraction)
+        }
+        if provider == .claude, let block = snapshot.claudeBlock {
+            let length = max(1, block.end.timeIntervalSince(block.start))
+            let elapsed = max(0, min(length, now.timeIntervalSince(block.start)))
+            let remaining = max(0.0, 1.0 - (elapsed / length))
+            return (remaining, 1.0 - remaining)
+        }
+        return (1.0, 0.0)
     }
 
     @ViewBuilder private func content(now: Date) -> some View {
@@ -159,30 +186,19 @@ package struct NotchAgentRestingWing: View {
             }
         } else {
             let snapshot = usage.snapshot
-            let limit = NotchAgentSupport.restingLimit(snapshot, focus: NotchAgentLimitFocus(rawValue: focus) ?? .mostUsed, now: now)
-            let used = display == NotchAgentLimitDisplay.used.rawValue
-            if let limit {
-                let tint = agentLimitTint(limit.provider, usedFraction: limit.window.usedFraction)
-                if leading {
-                    NotchAgentRing(value: used ? limit.window.usedFraction : limit.window.remainingFraction,
-                                   tint: tint, lineWidth: 2)
-                        .frame(width: 11, height: 11)
-                } else {
-                    Text(AgentFormat.percent(used ? limit.window.usedFraction : limit.window.remainingFraction))
-                        .font(.system(size: 9, weight: .medium))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                }
-            } else if let provider = AgentProvider.allCases.first(where: snapshot.seen.contains) {
-                if leading {
-                    NotchAgentMark(provider: provider, size: 10)
-                } else {
-                    Text(AgentFormat.cost(snapshot.usage(.today).total.cost))
-                        .font(.system(size: 9, weight: .medium))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
+            let providers = activeRestingProviders(snapshot: snapshot)
+            let provider = activeProvider(from: providers, now: now)
+            let (remaining, used) = remainingUsageFraction(for: provider, snapshot: snapshot, now: now)
+            let tint = agentLimitTint(provider, usedFraction: used)
+            if leading {
+                NotchAgentMark(provider: provider, size: 10, tint: tint)
+            } else {
+                Text(AgentFormat.percent(remaining))
+                    .font(.system(size: 9, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(tint == provider.tint ? .white : tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
     }

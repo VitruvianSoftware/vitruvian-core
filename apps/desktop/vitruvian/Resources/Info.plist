@@ -82,5 +82,16 @@
 	<string>© 2026 Vorssaint</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.vitruviansoftware.vitruvian</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vitruvian</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
