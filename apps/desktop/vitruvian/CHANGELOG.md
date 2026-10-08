@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.29.0...vitruvian-v3.30.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** throttle antigravity polling and fix claude & antigravity telemetry ([#2905](https://github.com/VitruvianSoftware/vitruvian-core/issues/2905)) ([d629276](https://github.com/VitruvianSoftware/vitruvian-core/commit/d62927694c26de690e4da64c428ec03e36596ee6))
+
 ## [3.29.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.28.0...vitruvian-v3.29.0) (2026-10-08)
 
 
