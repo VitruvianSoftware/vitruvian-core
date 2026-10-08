@@ -14,6 +14,41 @@ package enum AgentAntigravityReader {
     package static let telemetryStateFile = ".telemetry_state.json"
     package static let conversationDBFile = "conversation_summaries.db"
 
+    private struct DaemonConnection: Sendable {
+        let pid: Int32
+        let port: Int
+        let token: String
+        let discoveredAt: Date
+    }
+
+    private final class CacheState: @unchecked Sendable {
+        let lock = NSLock()
+        var lastDBMtime: time_t = 0
+        var lastDBSize: off_t = -1
+        var lastStateMtime: time_t = 0
+        var lastStateSize: off_t = -1
+        var cachedProjects: [String: String] = [:]
+
+        var cachedConnection: DaemonConnection?
+        var lastProbeDate: Date = .distantPast
+        var cachedLimits: AgentLimits?
+    }
+
+    private static let cache = CacheState()
+
+    package static func resetCache() {
+        cache.lock.withLock {
+            cache.lastDBMtime = 0
+            cache.lastDBSize = -1
+            cache.lastStateMtime = 0
+            cache.lastStateSize = -1
+            cache.cachedProjects = [:]
+            cache.cachedConnection = nil
+            cache.lastProbeDate = .distantPast
+            cache.cachedLimits = nil
+        }
+    }
+
     // MARK: - Telemetry & History Reading
 
     /// Reads conversation IDs to workspace project names from `conversation_summaries.db`.
@@ -115,16 +150,48 @@ package enum AgentAntigravityReader {
     }
 
     /// Reads telemetry state and conversation DB, applying usage records to the store.
-    package static func read(store: AgentUsageStore, enabled: Set<AgentProvider>, home: URL, now: Date) {
-        guard enabled.contains(.antigravity) else { return }
+    /// Returns true if changes were applied to store, false if unchanged or unneeded.
+    @discardableResult
+    package static func read(store: AgentUsageStore, enabled: Set<AgentProvider>, home: URL, now: Date) -> Bool {
+        guard enabled.contains(.antigravity) else { return false }
         let base = home.appending(path: ".gemini/antigravity", directoryHint: .isDirectory)
         let dbURL = base.appending(path: conversationDBFile, directoryHint: .notDirectory)
         let stateURL = base.appending(path: telemetryStateFile, directoryHint: .notDirectory)
 
-        let projects = FileManager.default.fileExists(atPath: dbURL.path) ? readProjects(from: dbURL) : [:]
+        var stateInfo = stat()
+        guard stat(stateURL.path, &stateInfo) == 0 else { return false }
 
-        guard let data = try? Data(contentsOf: stateURL), !data.isEmpty else { return }
-        let records = parseTelemetryState(data, projects: projects)
+        var shouldRead = false
+        var currentProjects: [String: String] = [:]
+
+        cache.lock.withLock {
+            var dbInfo = stat()
+            if stat(dbURL.path, &dbInfo) == 0 {
+                if dbInfo.st_mtimespec.tv_sec != cache.lastDBMtime || dbInfo.st_size != cache.lastDBSize {
+                    cache.lastDBMtime = dbInfo.st_mtimespec.tv_sec
+                    cache.lastDBSize = dbInfo.st_size
+                    cache.cachedProjects = readProjects(from: dbURL)
+                }
+            } else {
+                cache.lastDBMtime = 0
+                cache.lastDBSize = -1
+                cache.cachedProjects = [:]
+            }
+            currentProjects = cache.cachedProjects
+
+            if stateInfo.st_mtimespec.tv_sec <= cache.lastStateMtime && stateInfo.st_size == cache.lastStateSize {
+                shouldRead = false
+            } else {
+                cache.lastStateMtime = stateInfo.st_mtimespec.tv_sec
+                cache.lastStateSize = stateInfo.st_size
+                shouldRead = true
+            }
+        }
+
+        guard shouldRead else { return false }
+        guard let data = try? Data(contentsOf: stateURL), !data.isEmpty else { return false }
+        let records = parseTelemetryState(data, projects: currentProjects)
+        guard !records.isEmpty else { return false }
 
         for record in records {
             let billable = AgentBillable(tokens: record.tokens)
@@ -132,15 +199,74 @@ package enum AgentAntigravityReader {
             let entry: AgentLogEntry = .usage(key: key, record: record, billable: billable)
             store.apply([entry], file: record.session, provider: .antigravity, tracksTurns: false, modified: record.date, now: now)
         }
+        return true
     }
 
     // MARK: - Live Quota Probe
 
     /// Discovers the local language_server port and CSRF token, and requests quota limits.
-    package static func probeQuota() -> AgentLimits? {
-        guard let (pid, token) = findLanguageServer() else { return nil }
-        guard let port = findListeningPort(for: pid) else { return nil }
-        return fetchQuotaSummary(port: port, token: token)
+    /// Results are cached and throttled to at most once every 25 seconds unless forced.
+    package static func probeQuota(force: Bool = false) -> AgentLimits? {
+        let now = Date()
+        let (shouldProbe, connection) = cache.lock.withLock { () -> (Bool, DaemonConnection?) in
+            if !force && now.timeIntervalSince(cache.lastProbeDate) < 25.0 {
+                return (false, nil)
+            }
+            return (true, cache.cachedConnection)
+        }
+
+        if !shouldProbe {
+            return cache.lock.withLock { cache.cachedLimits }
+        }
+
+        // Check if cached connection PID is still alive via kill(pid, 0)
+        if let conn = connection, kill(conn.pid, 0) == 0 {
+            if let limits = fetchQuotaSummary(port: conn.port, token: conn.token, timeout: 3.0) {
+                cache.lock.withLock {
+                    cache.lastProbeDate = Date()
+                    cache.cachedLimits = limits
+                }
+                return limits
+            } else {
+                cache.lock.withLock {
+                    cache.cachedConnection = nil
+                }
+            }
+        }
+
+        // Subprocess discovery of language_server
+        guard let (pid, token) = findLanguageServer() else {
+            cache.lock.withLock {
+                cache.lastProbeDate = Date()
+                cache.cachedConnection = nil
+            }
+            return nil
+        }
+        guard let port = findListeningPort(for: pid) else {
+            cache.lock.withLock {
+                cache.lastProbeDate = Date()
+                cache.cachedConnection = nil
+            }
+            return nil
+        }
+
+        let newConn = DaemonConnection(pid: pid, port: port, token: token, discoveredAt: Date())
+        cache.lock.withLock {
+            cache.cachedConnection = newConn
+        }
+
+        if let limits = fetchQuotaSummary(port: port, token: token, timeout: 3.0) {
+            cache.lock.withLock {
+                cache.lastProbeDate = Date()
+                cache.cachedLimits = limits
+            }
+            return limits
+        } else {
+            cache.lock.withLock {
+                cache.lastProbeDate = Date()
+            }
+            return nil
+        }
     }
 
     /// Finds the running `language_server` process and extracts the CSRF token.
@@ -218,7 +344,7 @@ package enum AgentAntigravityReader {
     }
 
     /// Makes HTTPS POST to local language server to retrieve quota summary.
-    package static func fetchQuotaSummary(port: Int, token: String, timeout: TimeInterval = 5.0) -> AgentLimits? {
+    package static func fetchQuotaSummary(port: Int, token: String, timeout: TimeInterval = 3.0) -> AgentLimits? {
         guard let url = URL(string: "https://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") else {
             return nil
         }

@@ -1322,6 +1322,34 @@ enum NexusAgentTests {
             suite.expect(session.minutes == 300, "session minutes is 300")
             suite.expect(abs(session.usedPercent - 40.0) < 0.001, "usedPercent is 40%")
         }
+
+        // 5. File Stat Caching & Incremental Reading
+        AgentAntigravityReader.resetCache()
+        let tempDir = FileManager.default.temporaryDirectory.appending(path: "antigravity-test-\(UUID().uuidString)")
+        let geminiDir = tempDir.appending(path: ".gemini/antigravity")
+        try? FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let stateFile = geminiDir.appending(path: ".telemetry_state.json")
+        try? Data(telemetryJson.utf8).write(to: stateFile)
+        let store = AgentUsageStore()
+        let didReadFirst = AgentAntigravityReader.read(store: store, enabled: [.antigravity], home: tempDir, now: Date())
+        suite.expect(didReadFirst, "first read returns true and applies records")
+        suite.expect(store.records.count == 1, "store contains 1 record after first read")
+
+        let didReadSecond = AgentAntigravityReader.read(store: store, enabled: [.antigravity], home: tempDir, now: Date())
+        suite.expect(!didReadSecond, "second read without file modification returns false immediately")
+
+        // 6. Quota Probe Throttle Window
+        let probe1 = AgentAntigravityReader.probeQuota()
+        let probe2 = AgentAntigravityReader.probeQuota()
+        suite.expect(probe1 == probe2, "repeated probeQuota within throttle window returns cached value")
+
+        // 7. Store limits change detection
+        let sampleLimits = AgentAntigravityReader.parseQuotaResponse(Data(quotaJson.utf8), observed: Date())!
+        store.updateLimits(sampleLimits)
+        suite.expect(store.limits[.antigravity] == sampleLimits, "store retains applied limits")
+        suite.expect(store.limits[.antigravity] == sampleLimits, "store limit equality matches")
     }
 }
 

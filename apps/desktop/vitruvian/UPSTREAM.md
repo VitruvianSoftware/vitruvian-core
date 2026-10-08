@@ -107,6 +107,10 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-08**: Performance optimization: throttled Antigravity quota probing and telemetry file stat caching:
+  - Cached `stat()` checks for `.telemetry_state.json` and `conversation_summaries.db` in `AgentAntigravityReader` to avoid redundant file I/O and JSON parsing on the 2-second polling loop.
+  - Cached language server daemon connection (`pid`, `port`, `token`) with `kill(pid, 0)` liveness check to avoid continuous `ps` and `lsof` process spawns.
+  - Decoupled live quota probing from the 2-second poller to a 25-second throttle window, triggered on launch, Notch view appear, and 30-second timer ticks.
 - **2026-10-08**: AI Agents title reversion and Antigravity telemetry integration:
   - Reverted the Notch AI agent title from "Nexus Agent" back to "AI Agents" across `NotchAgentStrings.swift` and tests.
   - Added `.antigravity` provider to `AgentProvider`, preferences (`notchAgentsAntigravity`), Notch UI, and settings.
