@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.0...nexus-agent-v1.18.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **desktop:** read Antigravity's archived state from its annotations, not the killed flag ([#2928](https://github.com/VitruvianSoftware/vitruvian-core/issues/2928)) ([64d62f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/64d62f8b4b5950825c773869a2394934293e3296))
+
 ## [1.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.17.0...nexus-agent-v1.18.0) (2026-10-08)
 
 
