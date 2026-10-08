@@ -1,6 +1,6 @@
 # Vitruvian as a platform: tools, an SDK and a marketplace — design
 
-**Date:** 2026-10-08 · **Status:** draft for review · **Owner:** compass
+**Date:** 2026-10-08 · **Status:** approved by James 2026-10-08 · **Owner:** compass
 **Scope:** `apps/desktop/vitruvian`, a new permissively licensed
 `packages/vitruvian-sdk`, and later a public tool registry.
 
@@ -425,9 +425,11 @@ code, so neither waits on signing or the legal opinion. Sub-project 3 does.
   Each sub-project states what was checked by hand, on which Mac and macOS
   version, and what remains untested.
 
-## 15. Open questions for James
+## 15. Open questions, and how they were settled
 
-Each has a default this design assumes until told otherwise.
+James accepted every default below on 2026-10-08. They are decisions now, not
+assumptions. Question 1 is revisited after the first five migrations, as its
+default says.
 
 1. **Upstream.** Keep porting indefinitely, or set a cut-off once sub-project
    2 lands? *Default: keep porting; revisit after the first five migrations
