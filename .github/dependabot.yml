@@ -227,6 +227,13 @@ updates:
       # back") for when and how to remove it.
       - dependency-name: "react-router"
         versions: [">= 7.0.0"]
+      # Backstage's ~200 packages are released and tested upstream as one set.
+      # Bumping them one at a time leaves a mix of releases that can install,
+      # pass unit tests and still crash at boot (#2854 -> #2865, 2026-10-07).
+      # They move together with apps/web/backstage/bump-release.sh, and
+      # packages/backend/src/release.test.ts fails any PR that moves one alone.
+      # Security alerts for them still appear; the fix is a release bump.
+      - dependency-name: "@backstage/*"
       - dependency-name: "react-router-dom"
         versions: [">= 7.0.0"]
       # Pinned to the Bazel-vendored browser build (MODULE.bazel documents the
