@@ -78,3 +78,21 @@ In Claude Code (`~/.claude/mcp.json`) or Claude Desktop (`claude_desktop_config.
   }
 }
 ```
+
+---
+
+## Upgrading Backstage
+
+Backstage ships about 200 packages as one tested set per release. Move them together, never one at a time:
+
+```bash
+apps/web/backstage/bump-release.sh 1.55.3   # or: main, for the latest monthly release
+```
+
+That sets every `@backstage/*` dependency to the versions that release shipped, records the release in `backstage.json` and `release-manifest.json`, and refreshes both lockfiles. Then:
+
+1. Read the release notes for every release you crossed and act on each **BREAKING** entry.
+2. Run the tests: `pnpm --filter @vitruviansoftware/backstage-backend test` and `pnpm --filter @vitruviansoftware/backstage-app test`.
+3. Open a PR. The `backstage-image` workflow builds the image and boots it against Postgres; that smoke test is what catches a backend that cannot start.
+
+`packages/backend/src/release.test.ts` fails if any `@backstage/*` dependency is off the recorded release, and Dependabot is told to leave them alone. Both exist because a single bumped package crashed the backend at boot on 2026-10-07.
