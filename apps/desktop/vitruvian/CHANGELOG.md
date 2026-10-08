@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.27.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.26.0...vitruvian-v3.27.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** add notch chat pop-out, docking, and telemetry theme styling ([#2881](https://github.com/VitruvianSoftware/vitruvian-core/issues/2881)) ([92be5dd](https://github.com/VitruvianSoftware/vitruvian-core/commit/92be5dd953f4f0375940899c171de8a62f778366))
+* **desktop:** match notch chat color scheme and card layout 1:1 to telemetry ([#2883](https://github.com/VitruvianSoftware/vitruvian-core/issues/2883)) ([e025883](https://github.com/VitruvianSoftware/vitruvian-core/commit/e02588369c882115dfe6e8e61b93f3cd5b69aaf0))
+
+
+### Bug Fixes
+
+* **vitruvian:** stop the Spaces-order test counting on a single read from a repeated trigger ([#2885](https://github.com/VitruvianSoftware/vitruvian-core/issues/2885)) ([2a4c619](https://github.com/VitruvianSoftware/vitruvian-core/commit/2a4c619f045af8b0518f7fb2674bd0b591d9c045))
+
 ## [3.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.25.0...vitruvian-v3.26.0) (2026-10-07)
 
 
