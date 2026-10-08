@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.31.0...vitruvian-v3.32.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** add dedicated github pipeline metrics tile to notch quick access ([#2911](https://github.com/VitruvianSoftware/vitruvian-core/issues/2911)) ([a967cea](https://github.com/VitruvianSoftware/vitruvian-core/commit/a967cea90dd22b6a5bb69b10a610b7fc1df4d363))
+
 ## [3.31.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.30.0...vitruvian-v3.31.0) (2026-10-08)
 
 
