@@ -1359,26 +1359,6 @@ enum NexusAgentTests {
         store.updateLimits(sampleLimits)
         suite.expect(store.limits[.antigravity] == sampleLimits, "store retains applied limits")
         suite.expect(store.limits[.antigravity] == sampleLimits, "store limit equality matches")
-
-        // 8. Claude Code Weekly Limit Retention past reset moment
-        let now = Date()
-        let sampleOld = AgentClaudeAppUsage.Sample(
-            date: now.addingTimeInterval(-16 * 3600),
-            organization: "test-org",
-            used: ["fh": 50, "sd": 69]
-        )
-        let samplePrior = AgentClaudeAppUsage.Sample(
-            date: now.addingTimeInterval(-18 * 3600),
-            organization: "test-org",
-            used: ["fh": 40, "sd": 85]
-        )
-        let claudeLimits = AgentClaudeAppUsage.limits(from: [samplePrior, sampleOld], now: now, organization: "test-org")
-        suite.expect(claudeLimits != nil, "claudeLimits generated")
-        let claudeWeekly = claudeLimits?.windows.first { $0.kind == .weekly }
-        suite.expect(claudeWeekly != nil, "claude weekly window is never dropped when past reset moment")
-        if let cw = claudeWeekly {
-            suite.expect(cw.resetsAt != nil && cw.resetsAt! > now, "claude weekly renewal is always upcoming")
-        }
     }
 }
 

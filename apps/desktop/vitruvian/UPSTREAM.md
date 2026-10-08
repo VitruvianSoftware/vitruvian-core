@@ -107,8 +107,7 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
-- **2026-10-08**: Telemetry accuracy fixes: restore Claude Code weekly limit and fix Antigravity quota:
-  - Fixed `AgentClaudeAppUsage.swift` so `sd` (weekly limit) advances renewal past `now` and is never dropped when readings span past the reset moment.
+- **2026-10-08**: Telemetry accuracy fixes: parse Connect-RPC Antigravity quota and plan-wide limits:
   - Fixed `AgentAntigravityReader.swift` to parse Connect-RPC `{"response": {"groups": [...]}}` responses from local `language_server`.
   - Set `gemini-weekly` and `gemini-5h` primary limit scopes to `nil` so plan-wide focus and `NotchAgentLimitsCard` correctly display both session and weekly quota.
 - **2026-10-08**: Performance optimization: throttled Antigravity quota probing and telemetry file stat caching:

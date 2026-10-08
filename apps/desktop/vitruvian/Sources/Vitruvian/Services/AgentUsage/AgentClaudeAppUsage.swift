@@ -88,15 +88,13 @@ package enum AgentClaudeAppUsage {
             if window.kind == .session, now.timeIntervalSince(latest.date) >= length { continue }
             let resets = window.kind == .session
                 ? sessionEnd(history, used: used, start: sessionStart, length: length)
-                : renewal(history, key: window.key, length: length, after: latest.date, now: now)
-            var usedPercent = used
-            // If the window renewed between the reading and now, its allowance renewed to 0
-            if let resets, resets > now, latest.date.addingTimeInterval(length) < resets {
-                usedPercent = 0
-            }
+                : renewal(history, key: window.key, length: length, after: latest.date)
+            // A window that renewed after the reading has spent an unknown
+            // amount since, and without a date a day-old week may have too.
+            if let resets, resets <= now { continue }
             if resets == nil, now.timeIntervalSince(latest.date) >= 86_400 { continue }
             result.append(AgentLimitWindow(id: "claude.\(window.key)", kind: window.kind, minutes: window.minutes,
-                                           scope: window.scope, usedPercent: usedPercent, resetsAt: resets))
+                                           scope: window.scope, usedPercent: used, resetsAt: resets))
         }
         guard !result.isEmpty else { return nil }
         return AgentLimits(provider: .claude, windows: result, observedAt: latest.date, source: .claudeApp)
@@ -135,8 +133,8 @@ package enum AgentClaudeAppUsage {
         return began.addingTimeInterval(length)
     }
 
-    /// The first renewal after `reading` and `now`, from the last drop the history saw.
-    private static func renewal(_ history: [Sample], key: String, length: TimeInterval, after reading: Date, now: Date = Date()) -> Date? {
+    /// The first renewal after `reading`, from the last drop the history saw.
+    private static func renewal(_ history: [Sample], key: String, length: TimeInterval, after reading: Date) -> Date? {
         for index in history.indices.dropFirst().reversed() {
             guard let before = history[index - 1].used[key], let after = history[index].used[key],
                   after + 1 < before else { continue }
@@ -144,7 +142,6 @@ package enum AgentClaudeAppUsage {
             let next = hour(of: history[index - 1].date).addingTimeInterval(3_600)
             var moment = next <= history[index].date ? next : history[index].date
             while moment <= reading { moment.addTimeInterval(length) }
-            while moment <= now { moment.addTimeInterval(length) }
             return moment
         }
         return nil
