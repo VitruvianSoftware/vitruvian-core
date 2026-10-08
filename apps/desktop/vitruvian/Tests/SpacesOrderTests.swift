@@ -579,17 +579,26 @@ enum SpacesOrderTests {
         dock.changeAfterFirstRead = .on
         hold.syncWithPreferences()
         let noticeDeadline = Date().addingTimeInterval(3)
+        var posts = 0
         // Publication and recovery cleanup run on different queues. Wait for
         // both before the next case reuses these preferences.
         while (defaults.bool(forKey: enabled) || defaults.object(forKey: marker) != nil),
               Date() < noticeDeadline {
             NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification,
                                                        object: nil)
+            posts += 1
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
         }
+        // At least one read beyond the sync's own proves the watch did the
+        // check. Not exactly one: the loop above posts a Space change every
+        // 20 ms until the main thread has turned the toggle off, and a post
+        // that lands before then is read too. Counting on a single read made
+        // this fail whenever the main thread was slow (1 run in 30 on an idle
+        // Mac, 3 in 5 on CI on 2026-10-08), with nothing wrong in the hold.
         suite.expect(defaults.object(forKey: marker) == nil && !defaults.bool(forKey: enabled)
-                     && dock.events.isEmpty && dock.value == .on && dock.reads == 2,
-                     "a Space change after rearranging is turned back on turns the feature off")
+                     && dock.events.isEmpty && dock.value == .on && dock.reads >= 2,
+                     "a Space change after rearranging is turned back on turns the feature off"
+                         + " (reads: \(dock.reads), posts: \(posts))")
 
         // Letting go publishes the toggle on main and clears recovery on the service queue.
         // Starts a let-go with `trigger`, checks that nothing changed while the
