@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.28.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.27.0...vitruvian-v3.28.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** GitHub status Core models, reducer, and preferences ([#2888](https://github.com/VitruvianSoftware/vitruvian-core/issues/2888)) ([4dfc270](https://github.com/VitruvianSoftware/vitruvian-core/commit/4dfc2705fcc46b28561cd0cf6387ec0c107ff75d))
+
 ## [3.27.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.26.0...vitruvian-v3.27.0) (2026-10-08)
 
 
