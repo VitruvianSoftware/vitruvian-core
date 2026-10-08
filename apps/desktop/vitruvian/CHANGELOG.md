@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.31.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.30.0...vitruvian-v3.31.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** implement frictionless GitHub CLI auth, direct REST sync, and sidebar settings ([#2910](https://github.com/VitruvianSoftware/vitruvian-core/issues/2910)) ([0c84641](https://github.com/VitruvianSoftware/vitruvian-core/commit/0c84641814be38a41aab5b023767a56b28bc3c82))
+
 ## [3.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.29.0...vitruvian-v3.30.0) (2026-10-08)
 
 
