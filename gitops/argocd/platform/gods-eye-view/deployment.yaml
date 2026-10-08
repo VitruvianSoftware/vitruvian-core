@@ -59,6 +59,12 @@ spec:
             - secretRef:
                 name: gods-eye-view-secrets
                 optional: true
+          env:
+            # Celestrak's groups, mirrored every 6 h by
+            # .github/workflows/gods-eye-view-tle-mirror.yaml: connections from
+            # here to celestrak.org time out. CelesTrak stays the fallback.
+            - name: CELESTRAK_TLE_MIRROR_URL
+              value: https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/gods-eye-view-tle
           resources:
             requests:
               cpu: 100m

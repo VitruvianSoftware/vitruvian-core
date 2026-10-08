@@ -20,10 +20,12 @@ scripts/verify-cesium-assets.sh	added	:cesium_assets_test, which checks the bund
 src/camera.test.mjs	added	Pins HOME_VIEW, the landing view src/camera.js adds.
 tests/e2e/	added	The monorepo's end-to-end suite against the production server.
 tests/server/	added	:server_test, which boots server.mjs from the Dockerfile's runtime layout and checks it serves every route upstream mounts for `vite preview`, none of the dev-only ones, and the same-site gate on the paid ones.
+tle-mirror/	added	The CelesTrak mirror: the script .github/workflows/gods-eye-view-tle-mirror.yaml runs every 6 hours from GitHub's runners, because connections from the homelab to celestrak.org time out, and its test, which holds its groups to the client's.
 upstream/	added	This tracking: the tool, its tests, this list and the sync brief.
 package-lock.json	deleted	The monorepo is one pnpm workspace; pnpm-lock.yaml at the repository root is the lockfile.
 .github/workflows/ci.yml	modified	Upstream's CI, which never runs here; Dependabot bumps its action pins with the rest of the repository's.
 package.json	modified	Dependencies at the monorepo's one version (cesium, sharp); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency, since upstream's AIS provider requires it at run time and the image installs dependencies only; `start` runs server.mjs.
+server/providers/space/celestrak.js	modified	Tries a mirror of CelesTrak's groups first when CELESTRAK_TLE_MIRROR_URL is set, then CelesTrak: production cannot reach celestrak.org (see tle-mirror/).
 src/app/controls.js	modified	Lands on HOME_VIEW (Irvine, CA) instead of Austin, TX.
 src/app/startupCamera.test.mjs	modified	Follows flyToAustin's rename to flyToHome.
 src/camera.js	modified	HOME_VIEW, one constant for the landing view, and flyToHome in place of flyToAustin.

@@ -35,6 +35,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import { builtinModules } from 'node:module';
 import net from 'node:net';
 import os from 'node:os';
@@ -229,22 +230,46 @@ function importedPackages(root) {
   return packages;
 }
 
+const MIRROR_TLE =
+  'ISS (ZARYA)\n1 25544U 98067A   26280.50000000  .00010000  00000-0  18000-3 0  9990\n2 25544  51.6400 100.0000 0005000 100.0000 260.0000 15.50000000400000\n';
+
+/** A TLE mirror on loopback that holds only stations.txt. */
+async function startMirror() {
+  const mirror = http.createServer((req, res) => {
+    if (req.url === '/tle/stations.txt') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(MIRROR_TLE);
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+  await new Promise((resolve) => mirror.listen(0, '127.0.0.1', resolve));
+  return {
+    url: `http://127.0.0.1:${mirror.address().port}/tle/`,
+    stop: () => new Promise((resolve) => mirror.close(resolve)),
+  };
+}
+
 let root;
 let routes;
 let keyless;
 let keyed;
+let tleMirror;
 
 before(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-image-'));
   layOutImage(root);
   routes = upstreamRoutes(root);
-  keyless = await startServer(root, {});
+  tleMirror = await startMirror();
+  keyless = await startServer(root, { CELESTRAK_TLE_MIRROR_URL: tleMirror.url });
   keyed = await startServer(root, { MAPILLARY_CLIENT_TOKEN: 'MLY|0|image-test' });
 });
 
 after(async () => {
   await keyless?.stop();
   await keyed?.stop();
+  await tleMirror?.stop();
   if (root) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -336,4 +361,18 @@ test('the tile route refuses bad requests before contacting Mapillary', async ()
   const keylessTile = await fetch(`${keyless.base}/api/mapillary/tiles/coverage/14/2/3`);
   assert.equal(keylessTile.status, 503);
   assert.deepEqual(await keylessTile.json(), { error: 'no_key', keyRequired: true });
+});
+
+test('Celestrak groups come from the TLE mirror, then CelesTrak', async () => {
+  const mirrored = await fetch(`${keyless.base}/api/celestrak/stations`);
+  assert.equal(mirrored.status, 200);
+  assert.equal(await mirrored.text(), MIRROR_TLE);
+  // The mirror lacks this group, so the server falls back to CelesTrak, which
+  // no-network.mjs refuses, and answers 502 with nothing cached.
+  const unmirrored = await fetch(`${keyless.base}/api/celestrak/visual`);
+  assert.equal(unmirrored.status, 502);
+  // Without a mirror configured, CelesTrak is the only source. (Both servers
+  // share the layout's cache, so this asks for a group neither has cached.)
+  const direct = await fetch(`${keyed.base}/api/celestrak/geo`);
+  assert.equal(direct.status, 502);
 });

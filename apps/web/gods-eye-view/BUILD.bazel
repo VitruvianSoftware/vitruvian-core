@@ -102,6 +102,19 @@ js_test(
     entry_point = "tests/server/image.test.mjs",
 )
 
+# The TLE mirror's group list against the client's, and its refresh logic.
+js_test(
+    name = "tle_mirror_test",
+    size = "small",
+    chdir = package_name(),
+    data = ["package.json"] + glob([
+        "src/**/*.js",
+        "src/**/*.mjs",
+        "tle-mirror/**",
+    ]),
+    entry_point = "tle-mirror/mirror.test.mjs",
+)
+
 sh_test(
     name = "cesium_assets_test",
     size = "small",
@@ -152,6 +165,7 @@ pipeline_unit(
     test_targets = [
         ":unit_tests",
         ":server_test",
+        ":tle_mirror_test",
         ":cesium_assets_test",
         ":upstream_test",
         ":build",
