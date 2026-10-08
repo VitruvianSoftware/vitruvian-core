@@ -39,13 +39,34 @@ package struct NotchAgentsView: View {
 
     package var body: some View {
         VStack(spacing: 8) {
-            Picker("Mode", selection: $notchService.agentTab) {
-                Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
-                Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+            HStack(spacing: 10) {
+                Spacer()
+                Picker("Mode", selection: $notchService.agentTab) {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
+                    Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
+
+                if notchService.agentTab == .chat {
+                    Button {
+                        notchService.popOutToQuickPrompt()
+                    } label: {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(4)
+                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Pop out to floating window (⌃Space)")
+                } else {
+                    Spacer().frame(width: 25)
+                }
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 220)
             .padding(.top, 4)
+            .padding(.horizontal, 16)
 
             if notchService.agentTab == .chat {
                 NexusAgentQuickPromptView()

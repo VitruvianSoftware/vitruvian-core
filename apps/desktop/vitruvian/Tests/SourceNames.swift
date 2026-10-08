@@ -43,7 +43,6 @@ enum SourceNames {
         "bolt.fill",
         "bubble.left.and.text.bubble.right",
         "bubble.left.and.text.bubble.right.fill",
-        "bubble.left.fill",
         "calendar",
         "calendar.badge.checkmark",
         "calendar.badge.clock",

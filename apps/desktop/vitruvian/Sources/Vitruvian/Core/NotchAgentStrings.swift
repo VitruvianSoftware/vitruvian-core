@@ -175,7 +175,7 @@ extension FeatureStrings {
 
 extension NotchAgentStrings {
     package static let enUS = NotchAgentStrings(
-        title: "AI Agents",
+        title: "Nexus Agent",
         hubDescription: "Follow plan limits, tokens, API value and the work in progress of Claude, Codex, OpenCode and GitHub Copilot in the Dynamic Island.",
         settingsDescription: "Reads the usage Claude Code, Codex, OpenCode and GitHub Copilot record on this Mac and the plan limits the Claude app saves. Prompts, replies and files are never kept, and your usage never leaves your Mac.",
         restingTitle: "AI limits",

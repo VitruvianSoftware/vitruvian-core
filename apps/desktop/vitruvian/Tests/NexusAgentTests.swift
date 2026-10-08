@@ -1220,6 +1220,16 @@ enum NexusAgentTests {
         let service = NexusAgentService(environment: rig.environment)
         suite.expect(!service.session.isRunning, "Session is initially not running")
         suite.expect(service.session.activity == nil, "Initial activity is nil")
+
+        // 5. Pop out and dock navigation
+        notchService.popOutToQuickPrompt()
+        suite.expect(service.session.mode == .compact || service.session.mode == .chat, "popOutToQuickPrompt initiates quick prompt presentation")
+
+        service.dockToNotch()
+        suite.expect(notchService.agentTab == .chat, "dockToNotch sets agentTab to chat")
+
+        // 6. Title is Nexus Agent
+        suite.expect(FeatureStrings.notchAgents(.enUS).title == "Nexus Agent", "enUS title is Nexus Agent")
     }
 }
 

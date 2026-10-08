@@ -301,6 +301,10 @@ package final class NotchService: ObservableObject {
     package var captureSelectionInProgress: Bool { captureState.selectionInProgress }
     @Published package var pinned = false
     @Published package var agentTab: NotchAgentTab = .chat
+    package func popOutToQuickPrompt() {
+        collapse()
+        NexusAgentService.shared.showQuickPrompt()
+    }
     @Published package private(set) var selected: NotchModule = .controls
     @Published package private(set) var showingAppPanel = false
     @Published package private(set) var showingSections = false
@@ -1202,7 +1206,7 @@ package final class NotchService: ObservableObject {
                                      timerMode: services.timerSession.hasSession
                                         ? services.timerSession.mode : NotchTimerSupport.savedMode(in: defaults),
                                      agentsHeight: module == .agents && !detail && !panel
-                                        ? agentsContentHeight(width: geometry.contentWidth) : nil)
+                                        ? (agentTab == .chat ? nil : agentsContentHeight(width: geometry.contentWidth)) : nil)
     }
 
     /// The AI page is as tall as the cards it shows; nil while the logs are

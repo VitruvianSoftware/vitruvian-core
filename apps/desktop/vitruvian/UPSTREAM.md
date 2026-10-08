@@ -2409,6 +2409,13 @@ is that notice. Add an entry for every change to upstream files.
     The command bar's aliases and row shortcuts write or remove their
     encoded text. `WallpaperService.applyAllDisplays` reads its preference
     directly.
+- **2026-10-07**: Notch chat pop-out, docking, and telemetry theme styling:
+  - `NotchService`: added `popOutToQuickPrompt()` to transition from Notch HUD to floating Quick Prompt window, and uncapped `agentsHeight` in `.chat` mode so the chat interface uses the full Notch island budget;
+  - `NexusAgentService`: added `dockToNotch()` to transition from the floating window back into the Notch HUD `.agents` module with `.chat` selected;
+  - `NotchAgentsView`: added pop-out button (`arrow.up.forward.app`) beside the mode picker to easily pop out to the floating window (`⌃Space`);
+  - `NexusAgentQuickPromptView`: added dock-to-notch button (`sparkles.rectangle.stack`) in `chatHeader`, and restyled message bubbles with Telemetry tab's dark glass card aesthetic (warm coral/terracotta gradients `#D87856`, translucent dark glass fills, subtle hairline borders, and warm accent markdown elements);
+  - `NotchAgentStrings`: updated `enUS` module title from "AI Agents" to "Nexus Agent";
+  - `NexusAgentTests`: added test cases verifying pop-out navigation, docking navigation, and `enUS` title string resolution.
 - **2026-10-07**: MacBook Notch / Dynamic Island native integration for Nexus Agent:
   - `NotchAgentSupport`: added `NotchAgentTab` enum (`.chat` vs `.telemetry`) to represent the active mode of the Notch AI Agents page;
   - `NotchService`: added `@Published package var agentTab: NotchAgentTab = .chat`;
