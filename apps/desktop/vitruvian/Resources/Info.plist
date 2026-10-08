@@ -41,7 +41,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.29.0</string>
+	<string>3.30.0</string>
 	<key>CFBundleSupportedPlatforms</key>
 	<array>
 		<string>MacOSX</string>
@@ -82,5 +82,16 @@
 	<string>© 2026 Vorssaint</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.vitruviansoftware.vitruvian</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vitruvian</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -366,6 +366,10 @@ package enum SettingsDirectory {
                                       keywords: [FeatureStrings.nexusAgent(language).quickPromptTitle,
                                                  FeatureStrings.nexusAgent(language).botSection,
                                                  "Telegram", "bot", "agy", "Antigravity", "AI", "agent"]),
+                SettingsDirectoryItem(page: .github,
+                                      title: FeatureStrings.notchGitHub(language).title,
+                                      icon: "arrow.triangle.branch",
+                                      keywords: ["github", "pr", "pull request", "ci", "checks", "workflow", "actions", "repo"]),
             ]),
             (categories.utilities, [
                 SettingsDirectoryItem(page: .notch,
