@@ -8,9 +8,7 @@
     "active": true
   },
   "redirect_url": "https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/github-relay/README.md",
-  "callback_urls": [
-    "vitruvian://github/callback"
-  ],
+  "callback_urls": ["vitruvian://github/callback"],
   "request_oauth_on_install": false,
   "setup_on_update": false,
   "default_permissions": {
