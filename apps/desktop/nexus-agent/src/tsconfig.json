@@ -9,5 +9,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["formatter.js", "sessions.js"]
+  "include": ["annotations.js", "formatter.js", "sessions.js"]
 }

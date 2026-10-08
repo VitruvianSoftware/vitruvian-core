@@ -7,5 +7,5 @@
     "incremental": true,
     "outDir": "./dist_typecheck"
   },
-  "include": ["formatter.js", "sessions.js"]
+  "include": ["annotations.js", "formatter.js", "sessions.js"]
 }

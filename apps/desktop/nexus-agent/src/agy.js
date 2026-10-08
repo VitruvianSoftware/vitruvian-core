@@ -24,6 +24,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { archivedConversationIds } from "./annotations.js";
 import {
   getPersistedSession,
   setPersistedSession,
@@ -719,9 +720,25 @@ function cleanCliOutput(raw) {
 // ~/.gemini/antigravity/conversation_summaries.db. The index is enough to list,
 // resume (`--conversation <id>`) and delete.
 
-const AGY_DATA_DIR = path.join(os.homedir(), ".gemini/antigravity");
-const SUMMARIES_DB = path.join(AGY_DATA_DIR, "conversation_summaries.db");
-const CONVERSATIONS_DIR = path.join(AGY_DATA_DIR, "conversations");
+// agy's data folders: the desktop app's, then the CLI's own. The index sits
+// in whichever one this agy uses; what the user archived is recorded beside
+// each conversation in `annotations/<id>.pbtxt`, not in the index.
+const AGY_DATA_DIRS = [".gemini/antigravity", ".gemini/antigravity-cli"].map(
+  (dir) => path.join(os.homedir(), dir),
+);
+
+/** The data folder that holds the conversation index. */
+function agyDataDir() {
+  return (
+    AGY_DATA_DIRS.find((dir) =>
+      fs.existsSync(path.join(dir, "conversation_summaries.db")),
+    ) ?? AGY_DATA_DIRS[0]
+  );
+}
+
+function summariesDb() {
+  return path.join(agyDataDir(), "conversation_summaries.db");
+}
 
 /**
  * @typedef {{ id: string, title: string, lastModified: Date, steps: number, workspaces: string[] }} Conversation
@@ -729,14 +746,16 @@ const CONVERSATIONS_DIR = path.join(AGY_DATA_DIR, "conversations");
 
 /**
  * Read the conversation index. Only top-level conversations that belong to
- * `workingDir` (when given) are returned, newest first.
+ * `workingDir` (when given) and are not archived are returned, newest first.
  * @param {string} [workingDir]
  * @returns {Promise<Conversation[]>}
  */
 export async function listConversations(workingDir) {
-  if (!fs.existsSync(SUMMARIES_DB)) return [];
+  const summaries = summariesDb();
+  if (!fs.existsSync(summaries)) return [];
+  const archived = archivedConversationIds(AGY_DATA_DIRS);
   const { DatabaseSync } = await import("node:sqlite");
-  const db = new DatabaseSync(SUMMARIES_DB, { readOnly: true });
+  const db = new DatabaseSync(summaries, { readOnly: true });
   try {
     const rows = db
       .prepare(
@@ -768,7 +787,10 @@ export async function listConversations(workingDir) {
       })
       .filter(
         (c) =>
-          !wanted || c.workspaces.length === 0 || c.workspaces.includes(wanted),
+          !archived.has(c.id) &&
+          (!wanted ||
+            c.workspaces.length === 0 ||
+            c.workspaces.includes(wanted)),
       );
   } finally {
     db.close();
@@ -846,7 +868,7 @@ export async function deleteSession(ref, cwd, chatId) {
   const id = await resolveSessionRef(chatId ?? 0, ref, cwd);
   if (!id) return `No session matches "${ref}". Use /sessions first.`;
   const { DatabaseSync } = await import("node:sqlite");
-  const db = new DatabaseSync(SUMMARIES_DB);
+  const db = new DatabaseSync(summariesDb());
   try {
     db.prepare(
       "DELETE FROM conversation_summaries WHERE conversation_id = ?",
@@ -856,7 +878,7 @@ export async function deleteSession(ref, cwd, chatId) {
   }
   for (const suffix of [".db", ".db-wal", ".db-shm"]) {
     try {
-      fs.rmSync(path.join(CONVERSATIONS_DIR, `${id}${suffix}`), {
+      fs.rmSync(path.join(agyDataDir(), "conversations", `${id}${suffix}`), {
         force: true,
       });
     } catch {

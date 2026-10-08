@@ -90,15 +90,18 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
 
     /// The SQL the drawer runs against agy's `conversation_summaries.db`.
     package static let query = """
-    SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, killed \
+    SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris \
     FROM conversation_summaries WHERE nesting_depth = 0 \
     ORDER BY last_modified_time DESC LIMIT 200;
     """
 
     /// Rows from `sqlite3 -json`, keeping the top-level conversations for
     /// `directory` and those with no recorded folder, newest first.
-    /// An empty `directory` keeps all workspaces.
-    package static func parse(_ data: Data, directory: String) -> [NexusAgentSessionSummary] {
+    /// An empty `directory` keeps all workspaces. `archivedIds` are the
+    /// conversations agy's annotations mark archived; the index's `killed`
+    /// column means an aborted run, not an archived one.
+    package static func parse(_ data: Data, directory: String,
+                              archivedIds: Set<String> = []) -> [NexusAgentSessionSummary] {
         guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
         let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
         let wanted = trimmedDir.isEmpty ? nil : normalizePath(trimmedDir)
@@ -121,13 +124,78 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                 .compactMap { $0?.split(separator: "\n").first.map(String.init) }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
             let stamp = row["last_modified_time"] as? String ?? ""
-            let isArchived = (row["killed"] as? NSNumber)?.intValue == 1
             return NexusAgentSessionSummary(id: id, title: String(title.prefix(100)),
                                             preview: preview,
                                             steps: (row["step_count"] as? NSNumber)?.intValue ?? 0,
                                             modified: dates.date(from: stamp) ?? plainDates.date(from: stamp),
-                                            isArchived: isArchived)
+                                            isArchived: archivedIds.contains(id))
         }
+    }
+
+    /// Where agy keeps its data under the home folder: the desktop app's
+    /// folder, then the CLI's own. Each holds `conversations/` and, beside
+    /// it, `annotations/<id>.pbtxt` with what the user did to a conversation.
+    package static let antigravityDataDirectories = [".gemini/antigravity", ".gemini/antigravity-cli"]
+
+    /// The first of agy's data folders that holds a conversation index.
+    package static func antigravitySummariesDatabase(home: String) -> String? {
+        antigravityDataDirectories
+            .map { (home as NSString).appendingPathComponent($0 + "/conversation_summaries.db") }
+            .first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// A quoted string, or one of the two archive fields with the blank
+    /// space after it. Strings are matched so a title cannot pass for a field.
+    private static let antigravityAnnotationFields = try? NSRegularExpression(
+        pattern: #""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#
+            + #"|\barchived\s*:\s*(true|false)\b\s*"#
+            + #"|\barchival_status_timestamp\s*:?\s*\{[^}]*\}\s*"#)
+
+    /// The archive fields of one annotation, in order, with `archived`'s value.
+    private static func antigravityArchiveFields(_ text: String) -> [(range: Range<String.Index>, value: String?)] {
+        guard let fields = antigravityAnnotationFields else { return [] }
+        return fields.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in
+            guard let range = Range(match.range, in: text),
+                  !text[range].hasPrefix("\""), !text[range].hasPrefix("'") else { return nil }
+            return (range, Range(match.range(at: 1), in: text).map { String(text[$0]) })
+        }
+    }
+
+    /// Whether an annotation (protobuf text, `archived:true` or
+    /// `archived: true`) marks its conversation archived.
+    package static func antigravityAnnotationIsArchived(_ text: String) -> Bool {
+        antigravityArchiveFields(text).compactMap(\.value).last == "true"
+    }
+
+    /// `text` with its archive state replaced and every other field kept.
+    /// Archiving stamps `archival_status_timestamp` as agy does; unarchiving
+    /// drops both fields, which is how agy writes a never-archived one.
+    package static func antigravityAnnotation(_ text: String, archived: Bool, now: Date) -> String {
+        var rest = text
+        for field in antigravityArchiveFields(text).reversed() { rest.removeSubrange(field.range) }
+        rest = rest.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard archived else { return rest }
+        let stamp = now.timeIntervalSince1970
+        let seconds = Int(stamp.rounded(.down))
+        let nanos = Int((stamp - Double(seconds)) * 1_000_000) * 1000
+        let fields = "archived:true archival_status_timestamp:{seconds:\(seconds) nanos:\(nanos)}"
+        return rest.isEmpty ? fields : fields + " " + rest
+    }
+
+    /// The conversations agy's annotations mark archived, across its data folders.
+    package static func antigravityArchivedSessionIds(home: String) -> Set<String> {
+        var archived = Set<String>()
+        for directory in antigravityDataDirectories {
+            let annotations = (home as NSString).appendingPathComponent(directory + "/annotations")
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: annotations)) ?? []
+            where name.hasSuffix(".pbtxt") {
+                let path = (annotations as NSString).appendingPathComponent(name)
+                guard let text = try? String(contentsOfFile: path, encoding: .utf8),
+                      antigravityAnnotationIsArchived(text) else { continue }
+                archived.insert(String(name.dropLast(".pbtxt".count)))
+            }
+        }
+        return archived
     }
 
     /// Discovers archived/hidden Claude session IDs across VS Code state and UserDefaults.
