@@ -45,16 +45,16 @@
 set -uo pipefail
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "block-queue-bypass: jq not found; not checking this command" >&2
-  exit 0
+	echo "block-queue-bypass: jq not found; not checking this command" >&2
+	exit 0
 fi
 
 command_text="$(jq -r '.tool_input.command // ""' 2>/dev/null || true)"
 [ -n "${command_text}" ] || exit 0
 
 deny() {
-  jq -n --arg why "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $why}}'
-  exit 0
+	jq -n --arg why "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $why}}'
+	exit 0
 }
 
 HOW="Add the PR to the merge queue instead (gh pr merge <number>, no --admin) and wait for it. If the queue rejected the PR, fix what failed. Skipping the queue is the human maintainer's break-glass: ask James, do not do it yourself."
@@ -64,29 +64,29 @@ HOW="Add the PR to the merge queue instead (gh pr merge <number>, no --admin) an
 # a quoted string or heredoc that does not START a line with one of these
 # commands (a PR body that mentions them, say) is left alone.
 while IFS= read -r segment; do
-  segment="$(printf '%s' "${segment}" | sed -E 's/^[[:space:](]+//; s/^(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|command|exec|time)[[:space:]]+)+//')"
-  case "${segment}" in
-    "gh pr merge"*)
-      if printf '%s' "${segment}" | grep -Eq '(^|[[:space:]])--admin([^[:alnum:]_-]|$)'; then
-        deny "Refused: 'gh pr merge --admin' merges past the merge queue. ${HOW}"
-      fi
-      ;;
-    "gh api"*)
-      if printf '%s' "${segment}" | grep -Eq 'pulls/[0-9]+/merge' &&
-        printf '%s' "${segment}" | grep -Eiq '(-X|--method)[[:space:]=]*PUT'; then
-        deny "Refused: this API call merges a pull request directly, past the merge queue. ${HOW}"
-      fi
-      if printf '%s' "${segment}" | grep -q 'mergePullRequest'; then
-        deny "Refused: the mergePullRequest mutation merges directly, past the merge queue. ${HOW}"
-      fi
-      ;;
-    "git push"* | "git -C "*" push"*)
-      # A refspec whose destination is main: `main`, `x:main`, `refs/heads/main`.
-      if printf '%s' "${segment}" | grep -Eq '(^|[[:space:]:+])(refs/heads/)?main([[:space:])]|$)'; then
-        deny "Refused: this pushes straight to main, past the merge queue. Push a branch and open a pull request. ${HOW}"
-      fi
-      ;;
-  esac
+	segment="$(printf '%s' "${segment}" | sed -E 's/^[[:space:](]+//; s/^(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|command|exec|time)[[:space:]]+)+//')"
+	case "${segment}" in
+	"gh pr merge"*)
+		if printf '%s' "${segment}" | grep -Eq '(^|[[:space:]])--admin([^[:alnum:]_-]|$)'; then
+			deny "Refused: 'gh pr merge --admin' merges past the merge queue. ${HOW}"
+		fi
+		;;
+	"gh api"*)
+		if printf '%s' "${segment}" | grep -Eq 'pulls/[0-9]+/merge' &&
+			printf '%s' "${segment}" | grep -Eiq '(-X|--method)[[:space:]=]*PUT'; then
+			deny "Refused: this API call merges a pull request directly, past the merge queue. ${HOW}"
+		fi
+		if printf '%s' "${segment}" | grep -q 'mergePullRequest'; then
+			deny "Refused: the mergePullRequest mutation merges directly, past the merge queue. ${HOW}"
+		fi
+		;;
+	"git push"* | "git -C "*" push"*)
+		# A refspec whose destination is main: `main`, `x:main`, `refs/heads/main`.
+		if printf '%s' "${segment}" | grep -Eq '(^|[[:space:]:+])(refs/heads/)?main([[:space:])]|$)'; then
+			deny "Refused: this pushes straight to main, past the merge queue. Push a branch and open a pull request. ${HOW}"
+		fi
+		;;
+	esac
 done < <(printf '%s\n' "${command_text}" | sed -E 's/(&&|\|\||;|\||[$][(])/\n/g')
 
 exit 0
