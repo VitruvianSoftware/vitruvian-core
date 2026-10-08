@@ -2408,7 +2408,10 @@ is that notice. Add an entry for every change to upstream files.
     declared defaults, and 18 `removeObject(forKey:)` resets in 13 files.
     The command bar's aliases and row shortcuts write or remove their
     encoded text. `WallpaperService.applyAllDisplays` reads its preference
-    directly.
+- **2026-10-07**: MacBook Notch chat telemetry color scheme and card layout parity:
+  - `NotchAgentsView`: styled pop-out button with warm coral palette `Color(red: 0.85, green: 0.47, blue: 0.34)` and passed `embeddedInNotch: true` to `NexusAgentQuickPromptView`;
+  - `NexusAgentQuickPromptView`: defined `NexusAgentTheme` (`warmCoral`, `warmCoralLight`, `gradient`, `cardFill`, `cardBorder`), eliminated the opaque `HUDBackdrop` box in Notch mode so the chat blends seamlessly into the Notch's liquid glass black surface, styled prompt bars and session drawer with Telemetry translucent dark glass cards (`.white.opacity(0.065)` fill, `.white.opacity(0.08)` hairline border), added `agentEnvironmentCard` displaying active provider, model, working directory, and shortcut hints when sessions are empty, and replaced all remaining legacy blue/orange/indigo accents across sparkles, plan mode, send button, message bubbles, active subagent banner, and session rows with warm coral;
+  - `QuickPromptWindow` (Nexus Agent macOS): aligned theme palette 1:1 with `QuickPromptTheme`, updating permission approval cards, session buttons, message bubbles, user/assistant avatars, code block copy buttons, and error banners.
 - **2026-10-07**: Notch chat pop-out, docking, and telemetry theme styling:
   - `NotchService`: added `popOutToQuickPrompt()` to transition from Notch HUD to floating Quick Prompt window, and uncapped `agentsHeight` in `.chat` mode so the chat interface uses the full Notch island budget;
   - `NexusAgentService`: added `dockToNotch()` to transition from the floating window back into the Notch HUD `.agents` module with `.chat` selected;

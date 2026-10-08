@@ -36,6 +36,17 @@ private func carbonHotkeyHandler(
     return noErr
 }
 
+// MARK: - Theme
+private enum QuickPromptTheme {
+    static let warmCoral = Color(red: 0.85, green: 0.47, blue: 0.34)
+    static let warmCoralLight = Color(red: 0.92, green: 0.55, blue: 0.42)
+    static let gradient = LinearGradient(
+        colors: [warmCoralLight, warmCoral],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+}
+
 // MARK: - Custom Panel
 /// An NSPanel subclass that overrides `canBecomeKey` to allow text input without a title bar.
 class QuickPromptPanel: NSPanel {
@@ -642,11 +653,7 @@ struct QuickPromptView: View {
                     // Gentle pulse on sparkle icon when idle
                     Image(systemName: "sparkles")
                         .font(.title2)
-                        .foregroundStyle(.linearGradient(
-                            colors: [.blue, .purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
+                        .foregroundStyle(QuickPromptTheme.gradient)
                         .opacity(sparklePulse ? 0.5 : 1.0)
                         .onAppear {
                             withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
@@ -752,7 +759,7 @@ struct QuickPromptView: View {
                                     .font(.system(size: 8, weight: .bold, design: .rounded))
                                     .foregroundStyle(.white)
                                     .frame(minWidth: 14, minHeight: 14)
-                                    .background(Circle().fill(Color.blue))
+                                    .background(Circle().fill(QuickPromptTheme.warmCoral))
                                     .offset(x: 4, y: -4)
                                     .transition(.scale.combined(with: .opacity))
                             }
@@ -762,7 +769,7 @@ struct QuickPromptView: View {
                             icon: planMode ? "doc.text.fill" : "doc.text",
                             isActive: planMode,
                             help: planMode ? "Plan mode on (read-only)" : "Enable plan mode",
-                            activeColor: .orange
+                            activeColor: QuickPromptTheme.warmCoral
                         ) {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 planMode.toggle()
@@ -787,7 +794,7 @@ struct QuickPromptView: View {
                                 icon: "folder",
                                 isActive: false,
                                 help: "Change working directory",
-                                activeColor: .blue
+                                activeColor: QuickPromptTheme.warmCoral
                             ) {
                                 let panel = NSOpenPanel()
                                 panel.canChooseFiles = false
@@ -907,11 +914,11 @@ struct QuickPromptView: View {
                                     HStack(spacing: 12) {
                                         Image(systemName: "text.bubble")
                                             .font(.system(size: 18))
-                                            .foregroundStyle(.blue)
+                                            .foregroundStyle(QuickPromptTheme.warmCoral)
                                             .frame(width: 28, height: 28)
                                             .background(
                                                 RoundedRectangle(cornerRadius: 6)
-                                                    .fill(Color.blue.opacity(0.1))
+                                                    .fill(QuickPromptTheme.warmCoral.opacity(0.12))
                                             )
 
                                         VStack(alignment: .leading, spacing: 1) {
@@ -961,7 +968,7 @@ struct QuickPromptView: View {
                                         RoundedRectangle(cornerRadius: 8)
                                             .fill(
                                                 selectedSessionIndex == idx
-                                                    ? Color.blue.opacity(0.2)
+                                                    ? QuickPromptTheme.warmCoral.opacity(0.2)
                                                     : (hoveredSessionId == session.id
                                                        ? Color.primary.opacity(0.06)
                                                        : Color.clear)
@@ -1137,7 +1144,7 @@ struct QuickPromptView: View {
         icon: String,
         isActive: Bool,
         help: String,
-        activeColor: Color = .blue,
+        activeColor: Color = QuickPromptTheme.warmCoral,
         action: @escaping () -> Void
     ) -> some View {
         ModularButtonView(icon: icon, isActive: isActive, help: help, activeColor: activeColor, action: action)
@@ -1220,7 +1227,7 @@ struct ModularButtonView: View {
     let icon: String
     let isActive: Bool
     let help: String
-    var activeColor: Color = .blue
+    var activeColor: Color = QuickPromptTheme.warmCoral
     let action: () -> Void
     @State private var isHovered = false
 
@@ -1306,7 +1313,7 @@ struct SendButtonView: View {
         Button(action: action) {
             Image(systemName: "arrow.up.circle.fill")
                 .font(.title2)
-                .foregroundStyle(isEnabled ? (isHovered ? Color.blue.opacity(0.8) : Color.blue) : Color.gray)
+                .foregroundStyle(isEnabled ? (isHovered ? QuickPromptTheme.warmCoralLight : QuickPromptTheme.warmCoral) : Color.gray)
                 .scaleEffect(isHovered && isEnabled ? 1.15 : 1.0)
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
@@ -1358,15 +1365,15 @@ struct ModeToggleStrip: View {
                     Text("Plan")
                         .font(.system(size: 9, weight: .semibold))
                 }
-                .foregroundStyle(planEnabled ? Color.orange : Color.secondary.opacity(0.4))
+                .foregroundStyle(planEnabled ? QuickPromptTheme.warmCoral : Color.secondary.opacity(0.4))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
-                        .fill(planEnabled ? Color.orange.opacity(0.12) : Color.clear)
+                        .fill(planEnabled ? QuickPromptTheme.warmCoral.opacity(0.18) : Color.clear)
                         .overlay(
                             Capsule()
-                                .strokeBorder(planEnabled ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                                .strokeBorder(planEnabled ? QuickPromptTheme.warmCoral.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: 0.5)
                         )
                 )
             }
@@ -1406,7 +1413,7 @@ struct ModeToggleStrip: View {
             if planEnabled {
                 Text("Read-only — agent will explain without making changes")
                     .font(.system(size: 9))
-                    .foregroundStyle(.orange.opacity(0.7))
+                    .foregroundStyle(QuickPromptTheme.warmCoral.opacity(0.85))
                     .lineLimit(1)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else if worktreeEnabled {
@@ -1491,7 +1498,7 @@ struct ChatModelBadge: View {
                         .fill(Color.secondary.opacity(0.15))
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
-                                .strokeBorder(Color.blue.opacity(0.4), lineWidth: 1)
+                                .strokeBorder(QuickPromptTheme.warmCoral.opacity(0.6), lineWidth: 1)
                         )
                 )
                 .focused($isFocused)
@@ -1822,11 +1829,7 @@ struct QuickPromptChatView: View {
                 // #8: Sparkles icon matches the prompt bar branding
                 Image(systemName: "sparkles")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.linearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
+                    .foregroundStyle(QuickPromptTheme.gradient)
                     .opacity(sparklePulse ? (isLoading ? 0.6 : 0.5) : 1.0)
                     .onAppear {
                         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
@@ -1847,10 +1850,10 @@ struct QuickPromptChatView: View {
                 if resumeUUID != nil && !isLoading {
                     Text("Resumed")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.blue.opacity(0.7))
+                        .foregroundStyle(QuickPromptTheme.warmCoral.opacity(0.9))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.blue.opacity(0.1)))
+                        .background(Capsule().fill(QuickPromptTheme.warmCoral.opacity(0.18)))
                 }
                 
                 // Message count badge
@@ -1915,7 +1918,7 @@ struct QuickPromptChatView: View {
                     Image(systemName: isPinned
                           ? "pin.circle.fill" : "pin.circle")
                         .font(.system(size: 16))
-                        .foregroundStyle(isPinned ? Color.blue : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
+                        .foregroundStyle(isPinned ? QuickPromptTheme.warmCoral : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
                         .rotationEffect(.degrees(isPinned ? 0 : 45))
                         .scaleEffect(hoveringPin ? 1.1 : 1.0)
                         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPinned)
@@ -1970,17 +1973,14 @@ struct QuickPromptChatView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "ellipsis.bubble")
                                         .font(.caption2)
-                                        .foregroundStyle(.linearGradient(
-                                            colors: [.blue, .purple],
-                                            startPoint: .top, endPoint: .bottom
-                                        ))
+                                        .foregroundStyle(QuickPromptTheme.gradient)
                                         .frame(width: 22, height: 22)
-                                        .background(Circle().fill(Color.blue.opacity(0.15)))
+                                        .background(Circle().fill(QuickPromptTheme.warmCoral.opacity(0.18)))
 
                                     HStack(spacing: 4) {
                                         ForEach(0..<3, id: \.self) { i in
                                             Circle()
-                                                .fill(Color.blue.opacity(0.6))
+                                                .fill(QuickPromptTheme.warmCoral.opacity(0.7))
                                                 .frame(width: 6, height: 6)
                                                 .scaleEffect(typingDotPhase == i ? 1.3 : 0.7)
                                                 .animation(
@@ -2037,7 +2037,7 @@ struct QuickPromptChatView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "exclamationmark.triangle.fill")
                                         .font(.caption)
-                                        .foregroundStyle(.orange)
+                                        .foregroundStyle(QuickPromptTheme.warmCoral)
                                     Text(error)
                                         .foregroundStyle(.secondary)
                                         .font(.caption)
@@ -2057,7 +2057,7 @@ struct QuickPromptChatView: View {
                                         }) {
                                             Image(systemName: "arrow.clockwise")
                                                 .font(.caption)
-                                                .foregroundStyle(.blue)
+                                                .foregroundStyle(QuickPromptTheme.warmCoral)
                                         }
                                         .buttonStyle(.plain)
                                         .help("Retry")
@@ -2174,7 +2174,7 @@ struct QuickPromptChatView: View {
             }
             
             Rectangle()
-                .fill(planMode ? Color.orange.opacity(0.15) : Color.primary.opacity(0.08))
+                .fill(planMode ? QuickPromptTheme.warmCoral.opacity(0.18) : Color.primary.opacity(0.08))
                 .frame(height: 1)
                 .padding(.horizontal, 12)
                 .animation(.easeInOut(duration: 0.2), value: planMode)
@@ -2186,7 +2186,7 @@ struct QuickPromptChatView: View {
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
                 let inputIcon: String = planMode ? "doc.text" : (isLoading ? "ellipsis" : "arrow.up.message")
-                let inputColor: Color = planMode ? .orange.opacity(0.6) : (isLoading ? .secondary.opacity(0.3) : .secondary.opacity(0.5))
+                let inputColor: Color = planMode ? QuickPromptTheme.warmCoral.opacity(0.8) : (isLoading ? .secondary.opacity(0.3) : .secondary.opacity(0.5))
                 Image(systemName: inputIcon)
                     .font(.system(size: 12))
                     .foregroundStyle(inputColor)
@@ -2256,8 +2256,8 @@ struct QuickPromptChatView: View {
                         RoundedRectangle(cornerRadius: 12)
                             .strokeBorder(
                                 planMode
-                                    ? Color.orange.opacity(0.4)
-                                    : (isInputFocused ? Color.blue.opacity(0.3) : Color.primary.opacity(0.06)),
+                                    ? QuickPromptTheme.warmCoral.opacity(0.6)
+                                    : (isInputFocused ? QuickPromptTheme.warmCoral.opacity(0.4) : Color.primary.opacity(0.06)),
                                 lineWidth: planMode ? 1.2 : (isInputFocused ? 1.0 : 0.5)
                             )
                             .animation(.easeInOut(duration: 0.2), value: isInputFocused)
@@ -3266,7 +3266,7 @@ struct ApprovalCardView: View {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill")
                     .font(.system(size: 11))
-                    .foregroundStyle(request.status == .pending ? Color.orange : Color.secondary)
+                    .foregroundStyle(request.status == .pending ? QuickPromptTheme.warmCoral : Color.secondary)
                 Text("Permission Request")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.primary)
@@ -3280,7 +3280,7 @@ struct ApprovalCardView: View {
                 case .pending:
                     Text("Awaiting confirmation")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(QuickPromptTheme.warmCoral)
                 case .approved:
                     HStack(spacing: 3) {
                         Image(systemName: "checkmark.circle.fill")
@@ -3303,10 +3303,10 @@ struct ApprovalCardView: View {
                     HStack(spacing: 3) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 10))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(QuickPromptTheme.warmCoral)
                         Text("Allowed for Session")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(QuickPromptTheme.warmCoral)
                     }
                 }
             }
@@ -3372,8 +3372,8 @@ struct ApprovalCardView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(hoveredButton == "session" ? 0.25 : 0.15)))
-                        .foregroundStyle(Color.blue)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(QuickPromptTheme.warmCoral.opacity(hoveredButton == "session" ? 0.25 : 0.15)))
+                        .foregroundStyle(QuickPromptTheme.warmCoral)
                     }
                     .buttonStyle(.plain)
                     .onHover { hoveredButton = $0 ? "session" : nil }
@@ -3390,7 +3390,7 @@ struct ApprovalCardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(request.status == .pending ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 1)
+                .strokeBorder(request.status == .pending ? QuickPromptTheme.warmCoral.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 }
@@ -3464,12 +3464,9 @@ struct MessageBubble: View {
             if !isUser {
                 Image(systemName: "bubble.left.fill")
                     .font(.system(size: 10))
-                    .foregroundStyle(.linearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .top, endPoint: .bottom
-                    ))
+                    .foregroundStyle(QuickPromptTheme.gradient)
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.blue.opacity(0.15)))
+                    .background(Circle().fill(QuickPromptTheme.warmCoral.opacity(0.18)))
                     .padding(.top, 4)
             }
             
@@ -3500,7 +3497,7 @@ struct MessageBubble: View {
                                 .fill(Color.secondary.opacity(0.08))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 14)
-                                        .strokeBorder(Color.blue.opacity(0.12), lineWidth: 1)
+                                        .strokeBorder(QuickPromptTheme.warmCoral.opacity(0.2), lineWidth: 1)
                                 )
                         )
                     } else {
@@ -3512,14 +3509,14 @@ struct MessageBubble: View {
                                     .fill(
                                         isUser
                                             ? AnyShapeStyle(.linearGradient(
-                                                colors: [Color.blue.opacity(0.22), Color.indigo.opacity(0.18)],
+                                                colors: [QuickPromptTheme.warmCoralLight.opacity(0.25), QuickPromptTheme.warmCoral.opacity(0.2)],
                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
                                             : AnyShapeStyle(Color.secondary.opacity(0.08))
                                     )
                                     .overlay(
                                         !isUser
                                             ? AnyView(RoundedRectangle(cornerRadius: 14)
-                                                .strokeBorder(Color.blue.opacity(0.08), lineWidth: 0.5))
+                                                .strokeBorder(QuickPromptTheme.warmCoral.opacity(0.15), lineWidth: 0.5))
                                             : AnyView(EmptyView())
                                     )
                             )
@@ -3531,7 +3528,7 @@ struct MessageBubble: View {
                     Label(copied ? "Copied!" : "Copy",
                           systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.caption2)
-                        .foregroundStyle(copied ? .blue : .secondary)
+                        .foregroundStyle(copied ? QuickPromptTheme.warmCoral : .secondary)
                         .scaleEffect(copyBounce ? 1.25 : 1.0)
                         .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
                 }
@@ -3619,12 +3616,9 @@ struct MessageBubble: View {
             if isUser {
                 Text(String(NSFullUserName().prefix(1)).uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.linearGradient(
-                        colors: [.indigo, .purple],
-                        startPoint: .top, endPoint: .bottom
-                    ))
+                    .foregroundStyle(QuickPromptTheme.gradient)
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.indigo.opacity(0.15)))
+                    .background(Circle().fill(QuickPromptTheme.warmCoral.opacity(0.18)))
                     .padding(.top, 4)
             }
             
@@ -3722,7 +3716,7 @@ struct CodeBlockView: View {
                     Label(copied ? "Copied" : "Copy",
                           systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.caption2)
-                        .foregroundStyle(copied ? .blue : .secondary)
+                        .foregroundStyle(copied ? QuickPromptTheme.warmCoral : .secondary)
                         .scaleEffect(copyBounce ? 1.25 : 1.0)
                         .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
                 }

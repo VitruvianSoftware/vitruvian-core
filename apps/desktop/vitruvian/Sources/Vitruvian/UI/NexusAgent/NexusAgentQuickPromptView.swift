@@ -17,7 +17,21 @@ import WebKit
 /// a follow-up bar. Return sends, Shift-Return adds a line, Esc closes.
 /// Sizes come from `NexusAgentQuickPromptLayout`; the service resizes the
 /// panel when `session.mode` changes.
+package enum NexusAgentTheme {
+    package static let warmCoral = Color(red: 0.85, green: 0.47, blue: 0.34)
+    package static let warmCoralLight = Color(red: 0.92, green: 0.55, blue: 0.42)
+    package static let gradient = LinearGradient(
+        colors: [warmCoralLight, warmCoral],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    package static let cardFill = Color.white.opacity(0.065)
+    package static let cardBorder = Color.white.opacity(0.08)
+}
+
 package struct NexusAgentQuickPromptView: View {
+    package let embeddedInNotch: Bool
+
     @ObservedObject private var service = NexusAgentService.shared
     @ObservedObject private var session = NexusAgentService.shared.session
     @ObservedObject private var l10n = L10n.shared
@@ -35,7 +49,9 @@ package struct NexusAgentQuickPromptView: View {
     @State private var hoveringSessions = false
     @State private var isArchivedExpanded = false
 
-    package init() {}
+    package init(embeddedInNotch: Bool = false) {
+        self.embeddedInNotch = embeddedInNotch
+    }
 
     private typealias Layout = NexusAgentQuickPromptLayout
     private var strings: NexusAgentFeatureStrings { FeatureStrings.nexusAgent(l10n.language) }
@@ -66,9 +82,9 @@ package struct NexusAgentQuickPromptView: View {
         VStack(spacing: 0) {
             if session.mode == .chat {
                 chatHeader
-                Divider().opacity(0.5)
+                Divider().opacity(0.3)
                 conversation
-                Divider().opacity(0.5)
+                Divider().opacity(0.3)
                 ModeToggleStrip(
                     planEnabled: $session.planMode,
                     worktreeEnabled: $session.worktreeMode,
@@ -85,19 +101,42 @@ package struct NexusAgentQuickPromptView: View {
                 followUpBar
             } else {
                 pill
-                if session.mode == .sessions {
-                    Divider().opacity(0.5)
+                if embeddedInNotch || session.mode == .sessions {
+                    Divider().opacity(0.3)
                     drawer
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(HUDBackdrop(cornerRadius: Layout.cornerRadius))
+        .background(backdropView)
         .clipShape(shape)
-        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-        .onAppear { inputFocused = true }
+        .overlay(overlayBorder)
+        .onAppear {
+            inputFocused = true
+            if embeddedInNotch && session.sessions.isEmpty {
+                session.refreshSessions(configuration: service.configuration)
+            }
+        }
         .onChange(of: session.focusSerial) { _, _ in inputFocused = true }
         .onChange(of: session.mode) { _, _ in inputFocused = true }
+    }
+
+    @ViewBuilder
+    private var backdropView: some View {
+        if embeddedInNotch {
+            Color.clear
+        } else {
+            HUDBackdrop(cornerRadius: Layout.cornerRadius)
+        }
+    }
+
+    @ViewBuilder
+    private var overlayBorder: some View {
+        if embeddedInNotch {
+            EmptyView()
+        } else {
+            shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+        }
     }
 
     // MARK: - Pill
@@ -145,8 +184,12 @@ package struct NexusAgentQuickPromptView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.065))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
         )
     }
 
@@ -167,8 +210,7 @@ package struct NexusAgentQuickPromptView: View {
     private var pulsingSparkles: some View {
         Image(systemName: "sparkles")
             .font(.title2)
-            .foregroundStyle(.linearGradient(colors: [.blue, .purple],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+            .foregroundStyle(NexusAgentTheme.gradient)
             .opacity(sparklePulse ? 0.5 : 1.0)
             .onAppear {
                 guard session.draft.isEmpty else { return }
@@ -211,7 +253,7 @@ package struct NexusAgentQuickPromptView: View {
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(minWidth: 14, minHeight: 14)
-                        .background(Circle().fill(Color.blue))
+                        .background(Circle().fill(NexusAgentTheme.warmCoral))
                         .offset(x: 4, y: -4)
                         .transition(.scale.combined(with: .opacity))
                         .accessibilityHidden(true)
@@ -221,7 +263,7 @@ package struct NexusAgentQuickPromptView: View {
             ModularButtonView(icon: session.planMode ? "doc.text.fill" : "doc.text",
                               isActive: session.planMode,
                               help: session.planMode ? strings.planModeOn : strings.planModeOff,
-                              activeColor: .orange) {
+                              activeColor: NexusAgentTheme.warmCoral) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     session.planMode.toggle()
                 }
@@ -279,8 +321,7 @@ package struct NexusAgentQuickPromptView: View {
     private var sparkles: some View {
         Image(systemName: "sparkles")
             .font(.system(size: 18, weight: .medium))
-            .foregroundStyle(LinearGradient(colors: [.blue, .purple],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing))
+            .foregroundStyle(NexusAgentTheme.gradient)
             .frame(width: 24, height: 24)
             .background(QuickPromptDragHandle())
             .accessibilityHidden(true)
@@ -307,7 +348,7 @@ package struct NexusAgentQuickPromptView: View {
 
     private var planButton: some View {
         modeButton(icon: session.planMode ? "doc.text.fill" : "doc.text", active: session.planMode,
-                   tint: .orange, help: session.planMode ? strings.planModeOn : strings.planModeOff) {
+                   tint: NexusAgentTheme.warmCoral, help: session.planMode ? strings.planModeOn : strings.planModeOff) {
             session.planMode.toggle()
         }
     }
@@ -347,7 +388,7 @@ package struct NexusAgentQuickPromptView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(session.canSend ? Color.white : Color.primary.opacity(0.35))
                     .frame(width: 26, height: 26)
-                    .background(Circle().fill(session.canSend ? Color.accentColor : Color.primary.opacity(0.08)))
+                    .background(Circle().fill(session.canSend ? NexusAgentTheme.warmCoral : Color.primary.opacity(0.08)))
             }
             .buttonStyle(.plain)
             .disabled(!session.canSend)
@@ -369,7 +410,14 @@ package struct NexusAgentQuickPromptView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.065))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
 
                 planButton
             }
@@ -387,10 +435,14 @@ package struct NexusAgentQuickPromptView: View {
 
         return LazyVStack(spacing: 6) {
             if activeSessions.isEmpty && archivedSessions.isEmpty {
-                Text(strings.noSessions)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 24)
+                if embeddedInNotch {
+                    agentEnvironmentCard
+                } else {
+                    Text(strings.noSessions)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 24)
+                }
             }
 
             ForEach(activeSessions) { summary in
@@ -432,6 +484,71 @@ package struct NexusAgentQuickPromptView: View {
         }
     }
 
+    private var agentEnvironmentCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(NexusAgentTheme.warmCoral)
+                Text("Agent Environment")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                Spacer()
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(NexusAgentTheme.warmCoral)
+                        .frame(width: 6, height: 6)
+                    Text("Ready")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(NexusAgentTheme.warmCoral)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.14)))
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                environmentRow(label: "Provider", value: service.configuration.activeProvider.name, icon: "cpu")
+                environmentRow(label: "Model", value: service.configuration.model.isEmpty ? "Default / Auto" : service.configuration.model, icon: "cube")
+                environmentRow(label: "Directory", value: URL(fileURLWithPath: session.workingDirectory(for: service.configuration)).lastPathComponent, icon: "folder")
+            }
+
+            Divider().opacity(0.2)
+
+            Text("Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.065))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+        )
+        .padding(.top, 8)
+    }
+
+    private func environmentRow(label: String, value: String, icon: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 58, alignment: .leading)
+            Text(value)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+        }
+    }
+
     // MARK: - Chat
 
     private var chatHeader: some View {
@@ -444,10 +561,10 @@ package struct NexusAgentQuickPromptView: View {
             if session.isResumed && !session.isRunning {
                 Text("Resumed")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.accentColor.opacity(0.85))
+                    .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.9))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                    .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
             }
             if !session.messages.isEmpty {
                 Text("\(session.messages.count)")
@@ -507,7 +624,7 @@ package struct NexusAgentQuickPromptView: View {
                     }
                 }
                 .font(.system(size: 16))
-                .foregroundStyle(service.isPinned ? Color.blue : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
+                .foregroundStyle(service.isPinned ? NexusAgentTheme.warmCoral : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
                 .rotationEffect(.degrees(service.isPinned ? 0 : 45))
                 .scaleEffect(hoveringPin ? 1.1 : 1.0)
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: service.isPinned)
@@ -579,7 +696,7 @@ package struct NexusAgentQuickPromptView: View {
                                         Text(strings.retry)
                                             .font(.caption)
                                     }
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(NexusAgentTheme.warmCoral)
                                 }
                                 .buttonStyle(.plain)
                                 .help(strings.retry)
@@ -671,17 +788,14 @@ package struct NexusAgentQuickPromptView: View {
         HStack(spacing: 6) {
             Image(systemName: "ellipsis.bubble")
                 .font(.caption2)
-                .foregroundStyle(.linearGradient(
-                    colors: [.blue, .purple],
-                    startPoint: .top, endPoint: .bottom
-                ))
+                .foregroundStyle(NexusAgentTheme.gradient)
                 .frame(width: 22, height: 22)
-                .background(Circle().fill(Color.blue.opacity(0.15)))
+                .background(Circle().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
 
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { i in
                     Circle()
-                        .fill(Color.blue.opacity(0.6))
+                        .fill(NexusAgentTheme.warmCoral.opacity(0.7))
                         .frame(width: 6, height: 6)
                         .scaleEffect(typingDotPhase == i ? 1.3 : 0.7)
                         .animation(
@@ -776,8 +890,14 @@ package struct NexusAgentQuickPromptView: View {
                 .animation(.easeInOut(duration: 0.15), value: session.draft.count > 20)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(session.planMode ? Color.orange.opacity(0.5) : Color.primary.opacity(0.12)))
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.065))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(session.planMode ? NexusAgentTheme.warmCoral.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
             sendButton
         }
         .padding(.horizontal, 12)
@@ -796,7 +916,7 @@ private struct NexusAgentApprovalCardView: View {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill")
                     .font(.system(size: 11))
-                    .foregroundStyle(request.status == .pending ? Color.orange : Color.secondary)
+                    .foregroundStyle(request.status == .pending ? NexusAgentTheme.warmCoral : Color.secondary)
                 Text("Permission Request")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.primary)
@@ -810,7 +930,7 @@ private struct NexusAgentApprovalCardView: View {
                 case .pending:
                     Text("Awaiting confirmation")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(NexusAgentTheme.warmCoral)
                 case .approved:
                     HStack(spacing: 3) {
                         Image(systemName: "checkmark.circle.fill")
@@ -833,10 +953,10 @@ private struct NexusAgentApprovalCardView: View {
                     HStack(spacing: 3) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 10))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(NexusAgentTheme.warmCoral)
                         Text("Allowed for Session")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(NexusAgentTheme.warmCoral)
                     }
                 }
             }
@@ -902,8 +1022,8 @@ private struct NexusAgentApprovalCardView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(hoveredButton == "session" ? 0.25 : 0.15)))
-                        .foregroundStyle(Color.blue)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(NexusAgentTheme.warmCoral.opacity(hoveredButton == "session" ? 0.25 : 0.15)))
+                        .foregroundStyle(NexusAgentTheme.warmCoral)
                     }
                     .buttonStyle(.plain)
                     .onHover { hoveredButton = $0 ? "session" : nil }
@@ -920,7 +1040,7 @@ private struct NexusAgentApprovalCardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(request.status == .pending ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 1)
+                .strokeBorder(request.status == .pending ? NexusAgentTheme.warmCoral.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 }
@@ -1058,7 +1178,7 @@ private struct NexusAgentMessageBubble: View {
                             HStack(spacing: 5) {
                                 Image(systemName: "sparkles")
                                     .font(.system(size: 10))
-                                    .foregroundStyle(.purple)
+                                    .foregroundStyle(NexusAgentTheme.warmCoral)
                                 Text("Thinking process")
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
@@ -1068,7 +1188,7 @@ private struct NexusAgentMessageBubble: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.purple.opacity(0.08)))
+                            .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.12)))
                         }
                         .buttonStyle(.plain)
 
@@ -1097,7 +1217,7 @@ private struct NexusAgentMessageBubble: View {
                                         case .heading(let level, let headingText):
                                             Text(Self.markdown(headingText))
                                                 .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
-                                                .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                                .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                                 .padding(.vertical, 2)
                                         case .bulletItem(let bulletText):
                                             HStack(alignment: .top, spacing: 6) {
@@ -1107,7 +1227,7 @@ private struct NexusAgentMessageBubble: View {
                                                     .padding(.top, 6)
                                                 Text(Self.markdown(bulletText))
                                                     .font(.system(size: 13))
-                                                    .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                                    .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                             }
                                         case .numberedItem(let number, let itemText):
                                             HStack(alignment: .top, spacing: 6) {
@@ -1117,7 +1237,7 @@ private struct NexusAgentMessageBubble: View {
                                                     .padding(.top, 1)
                                                 Text(Self.markdown(itemText))
                                                     .font(.system(size: 13))
-                                                    .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                                    .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                             }
                                         case .blockquote(let quoteText):
                                             HStack(alignment: .top, spacing: 8) {
@@ -1137,7 +1257,7 @@ private struct NexusAgentMessageBubble: View {
                                         case .paragraph(let paragraphText):
                                             Text(Self.markdown(paragraphText))
                                                 .font(.system(size: 13))
-                                                .foregroundStyle(message.isError ? Color.orange : Color.primary)
+                                                .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                         }
                                     }
                                 }
@@ -1169,7 +1289,7 @@ private struct NexusAgentMessageBubble: View {
                         Text(copied ? "Copied!" : "Copy")
                     }
                     .font(.caption2)
-                    .foregroundStyle(copied ? Color.blue : Color.secondary)
+                    .foregroundStyle(copied ? NexusAgentTheme.warmCoral : Color.secondary)
                     .scaleEffect(copyBounce ? 1.25 : 1.0)
                     .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
                 }
@@ -1270,7 +1390,7 @@ private struct NexusAgentMermaidCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(NexusAgentTheme.warmCoral)
                 Text("Diagram")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -1527,7 +1647,7 @@ private struct ModularButtonView: View {
     let icon: String
     let isActive: Bool
     let help: String
-    var activeColor: Color = .blue
+    var activeColor: Color = NexusAgentTheme.warmCoral
     let action: () -> Void
     @State private var isHovered = false
 
@@ -1586,7 +1706,7 @@ private struct SendButtonView: View {
         Button(action: action) {
             Image(systemName: "arrow.up.circle.fill")
                 .font(.title2)
-                .foregroundStyle(isEnabled ? (isHovered ? Color.blue.opacity(0.8) : Color.blue) : Color.gray)
+                .foregroundStyle(isEnabled ? (isHovered ? NexusAgentTheme.warmCoralLight : NexusAgentTheme.warmCoral) : Color.gray)
                 .scaleEffect(isHovered && isEnabled ? 1.15 : 1.0)
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
@@ -1715,7 +1835,7 @@ private struct ChatModelBadge: View {
                         .fill(Color.secondary.opacity(0.15))
                         .overlay(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .strokeBorder(Color.blue.opacity(0.4), lineWidth: 1)
+                                .strokeBorder(NexusAgentTheme.warmCoral.opacity(0.6), lineWidth: 1)
                         )
                 )
                 .focused($isFocused)
@@ -1832,15 +1952,15 @@ private struct ModeToggleStrip: View {
                     Text("Plan")
                         .font(.system(size: 9, weight: .semibold))
                 }
-                .foregroundStyle(planEnabled ? Color.orange : Color.secondary.opacity(0.4))
+                .foregroundStyle(planEnabled ? NexusAgentTheme.warmCoral : Color.secondary.opacity(0.4))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
-                        .fill(planEnabled ? Color.orange.opacity(0.12) : Color.clear)
+                        .fill(planEnabled ? NexusAgentTheme.warmCoral.opacity(0.18) : Color.clear)
                         .overlay(
                             Capsule()
-                                .strokeBorder(planEnabled ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                                .strokeBorder(planEnabled ? NexusAgentTheme.warmCoral.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: 0.5)
                         )
                 )
             }
@@ -1878,7 +1998,7 @@ private struct ModeToggleStrip: View {
             if planEnabled {
                 Text(strings.planContext)
                     .font(.system(size: 9))
-                    .foregroundStyle(Color.orange.opacity(0.7))
+                    .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.85))
                     .lineLimit(1)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else if worktreeEnabled {
@@ -2008,10 +2128,10 @@ private struct ActiveSubagentBannerView: View {
 
                                     Text(subagent.model)
                                         .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(NexusAgentTheme.warmCoral)
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 1)
-                                        .background(Capsule().fill(Color.blue.opacity(0.12)))
+                                        .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.15)))
                                 }
 
                                 if !subagent.prompt.isEmpty {
@@ -2051,7 +2171,7 @@ private struct NexusAgentSessionRow: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: summary.isArchived ? "archivebox" : "bubble.left.and.text.bubble.right")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(NexusAgentTheme.warmCoral)
                 Text(summary.title.isEmpty ? strings.untitledSession : summary.title)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
@@ -2062,13 +2182,20 @@ private struct NexusAgentSessionRow: View {
                 } else if let modified = summary.modified {
                     Text(modified, format: .relative(presentation: .named))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.85))
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(isHovered ? 0.08 : 0.05)))
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(isHovered ? 0.09 : 0.055))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.white.opacity(isHovered ? 0.14 : 0.07), lineWidth: 0.5)
+                    )
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
