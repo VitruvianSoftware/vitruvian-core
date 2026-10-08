@@ -68,6 +68,18 @@ if [ "$1" = "api" ]; then
         *"owner/repo"*) printf '%s' "${FAKE_FAILURE_JSON:-$empty}" ;;
         *) printf '%s' "${FAKE_MIRROR_FAILURE_JSON:-$empty}" ;;
       esac ;;
+    *"/commits?sha=main"*)
+      [ -n "${FAKE_COMMITS_FAIL:-}" ] && { echo "HTTP 502" >&2; exit 1; }
+      printf '%s' "${FAKE_COMMITS_JSON:-[]}" ;;
+    *"event=merge_group"*)
+      # $FAKE_QUEUE_TESTED lists the shas the queue tested; $FAKE_QUEUE_UNREADABLE
+      # names one whose lookup fails.
+      sha="${2##*head_sha=}"; sha="${sha%%&*}"
+      [ "${FAKE_QUEUE_UNREADABLE:-}" = "$sha" ] && { echo "HTTP 502" >&2; exit 1; }
+      case " ${FAKE_QUEUE_TESTED:-} " in
+        *" $sha "*) printf '{"total_count":9,"workflow_runs":[]}' ;;
+        *) printf '{"total_count":0,"workflow_runs":[]}' ;;
+      esac ;;
     *) echo "unexpected gh api url: $2" >&2; exit 99 ;;
   esac
   exit 0
@@ -222,6 +234,46 @@ if grep -q 'main broken: CI' "$work/curl.bodies" && ! grep -q 'exported mirror' 
   ok "the monorepo's own main failure still notifies, not mislabelled as a mirror"
 else
   bad "own-repo failure regressed:"; sed 's/^/    /' "$work/curl.bodies" >&2
+fi
+
+echo "--- commits on main the merge queue never tested ---"
+commits_json='[
+  {"sha":"aaaaaaaaa1","html_url":"https://x/c/a","author":{"login":"ipv1337"},"commit":{"message":"feat: went through the queue\n\nbody"}},
+  {"sha":"bbbbbbbbb2","html_url":"https://x/c/b","author":{"login":"vitruvian-beacon-agent[bot]"},"commit":{"message":"feat(desktop): merged directly\n\nbody"}},
+  {"sha":"ccccccccc3","html_url":"https://x/c/c","author":{"login":"vitruvian-copybara-sync[bot]"},"commit":{"message":"sync: allowed to skip"}},
+  {"sha":"ddddddddd4","html_url":"https://x/c/d","author":null,"commit":{"author":{"name":"Someone"},"message":"chore: lookup fails"}}
+]'
+rc="$(run FAKE_COMMITS_JSON="$commits_json" FAKE_QUEUE_TESTED="aaaaaaaaa1" FAKE_QUEUE_UNREADABLE="ddddddddd4")"
+if [ "$rc" = "0" ] && [ "$(wc -l < "$work/curl.log" | tr -d ' ')" = "1" ] \
+   && grep -q '"title": "\[ci\] merged past the queue: bbbbbbbbb"' "$work/curl.bodies" \
+   && grep -q 'feat(desktop): merged directly (author vitruvian-beacon-agent\[bot\])' "$work/curl.bodies"; then
+  ok "only the commit with no merge-queue run notifies, naming its subject and author"
+else
+  bad "queue-bypass payload wrong (rc=$rc):"; cat "$work/curl.bodies" >&2; sed 's/^/    /' "$work/stderr" >&2
+fi
+if grep -q 'WARN: cannot tell whether ddddddddd went through the merge queue' "$work/stderr"; then
+  ok "an unreadable lookup is a WARN, never reported as a bypass"
+else
+  bad "unreadable lookup not warned:"; sed 's/^/    /' "$work/stderr" >&2
+fi
+rc="$(run FAKE_COMMITS_JSON="$commits_json" FAKE_QUEUE_TESTED="aaaaaaaaa1 bbbbbbbbb2 ddddddddd4" QUEUE_BYPASS_ALLOW="")"
+if [ "$rc" = "0" ] && grep -q 'merged past the queue: ccccccccc' "$work/curl.bodies" \
+   && [ "$(wc -l < "$work/curl.log" | tr -d ' ')" = "1" ]; then
+  ok "the allow-list is what exempts the sync app: emptied, its commit notifies"
+else
+  bad "allow-list handling wrong:"; cat "$work/curl.bodies" >&2
+fi
+rc="$(run FAKE_COMMITS_FAIL=1)"
+if [ "$rc" = "0" ] && grep -q 'NOT watching for queue bypasses' "$work/stderr" && [ ! -s "$work/curl.log" ]; then
+  ok "an unreadable commit list warns loudly and exits 0"
+else
+  bad "commit-list failure handling wrong (rc=$rc):"; sed 's/^/    /' "$work/stderr" >&2
+fi
+rc="$(run)"
+if [ "$rc" = "0" ] && [ ! -s "$work/curl.log" ] && [ ! -s "$work/stderr" ]; then
+  ok "nothing recent: silent"
+else
+  bad "quiet run was not quiet (rc=$rc):"; sed 's/^/    /' "$work/stderr" >&2
 fi
 
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails" >&2; exit 1; fi
