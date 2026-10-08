@@ -215,7 +215,9 @@ package final class AgentUsageService: ObservableObject {
         guard running else { return }
         queue.async { [self] in
             guard readerSession >= 0 else { return }
-            readClaudeApp(now: Date())
+            let now = Date()
+            readClaudeApp(now: now)
+            readAntigravityQuota(now: now, force: true)
             checkLimits()
             publish()
         }
@@ -262,10 +264,8 @@ package final class AgentUsageService: ObservableObject {
             guard !cancellation.isCancelled else { return }
             let now = Date()
             if providers.contains(.antigravity) {
-                AgentAntigravityReader.read(store: store, enabled: providers, home: home, now: now)
-                if let limits = AgentAntigravityReader.probeQuota() {
-                    store.updateLimits(limits)
-                }
+                _ = AgentAntigravityReader.read(store: store, enabled: providers, home: home, now: now)
+                readAntigravityQuota(now: now, force: true)
             }
             // A turn left open by a crash would otherwise stay working.
             store.closeIdleTurns(now: now, after: NotchAgentSupport.idleTurn)
@@ -398,9 +398,7 @@ package final class AgentUsageService: ObservableObject {
             if read(path, provider: cursor.provider) { changed = true }
         }
         if enabled.contains(.antigravity) {
-            AgentAntigravityReader.read(store: store, enabled: enabled, home: home, now: now)
-            if let limits = AgentAntigravityReader.probeQuota() {
-                store.updateLimits(limits)
+            if AgentAntigravityReader.read(store: store, enabled: enabled, home: home, now: now) {
                 changed = true
             }
         }
@@ -571,6 +569,7 @@ package final class AgentUsageService: ObservableObject {
                 readClaudePlan()
             }
             readClaudeApp(now: now)
+            readAntigravityQuota(now: now)
             checkLimits()
             reportRenewals(now: now)
             if now.timeIntervalSince(lastSave) >= Self.saveInterval { saveProgress() }
@@ -741,6 +740,19 @@ package final class AgentUsageService: ObservableObject {
             store.setLimits(limits)
         } else if store.limits[.claude]?.source == .claudeApp {
             store.clearLimits(.claude)
+        }
+    }
+
+    /// Probes live quota limits for Antigravity from the local daemon.
+    /// Runs on `queue`.
+    nonisolated private func readAntigravityQuota(now: Date, force: Bool = false) {
+        guard enabled.contains(.antigravity) else { return }
+        if let limits = AgentAntigravityReader.probeQuota(force: force) {
+            if store.limits[.antigravity] != limits {
+                store.updateLimits(limits)
+                checkLimits()
+                schedulePublish()
+            }
         }
     }
 

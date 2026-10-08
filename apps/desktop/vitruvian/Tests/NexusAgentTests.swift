@@ -1315,13 +1315,50 @@ enum NexusAgentTests {
             suite.expect(weekly.kind == .weekly, "gemini-weekly kind is weekly")
             suite.expect(weekly.minutes == 10080, "weekly minutes is 10080")
             suite.expect(abs(weekly.usedPercent - 15.0) < 0.001, "usedPercent is 15%")
-            suite.expect(weekly.scope == "Gemini Models", "scope is Gemini Models")
+            suite.expect(weekly.scope == nil, "gemini-weekly scope is nil for plan-wide focus")
         }
         if let session = limits?.windows.first(where: { $0.id == "gemini-5h" }) {
             suite.expect(session.kind == .session, "gemini-5h kind is session")
             suite.expect(session.minutes == 300, "session minutes is 300")
             suite.expect(abs(session.usedPercent - 40.0) < 0.001, "usedPercent is 40%")
+            suite.expect(session.scope == nil, "gemini-5h scope is nil for plan-wide focus")
         }
+        if let tpWeekly = limits?.windows.first(where: { $0.id == "3p-weekly" }) {
+            suite.expect(tpWeekly.scope == "Claude and GPT models", "3p-weekly scope is preserved")
+        }
+
+        // Connect-RPC Response Wrapper
+        let wrappedJson = "{\"response\": \(quotaJson)}"
+        let wrappedLimits = AgentAntigravityReader.parseQuotaResponse(Data(wrappedJson.utf8), observed: Date())
+        suite.expect(wrappedLimits != nil && wrappedLimits?.windows.count == 3, "parseQuotaResponse parses Connect-RPC response wrapper")
+
+        // 5. File Stat Caching & Incremental Reading
+        AgentAntigravityReader.resetCache()
+        let tempDir = FileManager.default.temporaryDirectory.appending(path: "antigravity-test-\(UUID().uuidString)")
+        let geminiDir = tempDir.appending(path: ".gemini/antigravity")
+        try? FileManager.default.createDirectory(at: geminiDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let stateFile = geminiDir.appending(path: ".telemetry_state.json")
+        try? Data(telemetryJson.utf8).write(to: stateFile)
+        let store = AgentUsageStore()
+        let didReadFirst = AgentAntigravityReader.read(store: store, enabled: [.antigravity], home: tempDir, now: Date())
+        suite.expect(didReadFirst, "first read returns true and applies records")
+        suite.expect(store.records.count == 1, "store contains 1 record after first read")
+
+        let didReadSecond = AgentAntigravityReader.read(store: store, enabled: [.antigravity], home: tempDir, now: Date())
+        suite.expect(!didReadSecond, "second read without file modification returns false immediately")
+
+        // 6. Quota Probe Throttle Window
+        let probe1 = AgentAntigravityReader.probeQuota()
+        let probe2 = AgentAntigravityReader.probeQuota()
+        suite.expect(probe1 == probe2, "repeated probeQuota within throttle window returns cached value")
+
+        // 7. Store limits change detection
+        let sampleLimits = AgentAntigravityReader.parseQuotaResponse(Data(quotaJson.utf8), observed: Date())!
+        store.updateLimits(sampleLimits)
+        suite.expect(store.limits[.antigravity] == sampleLimits, "store retains applied limits")
+        suite.expect(store.limits[.antigravity] == sampleLimits, "store limit equality matches")
     }
 }
 
