@@ -34,6 +34,9 @@ enum ToolPlatformTests {
         shortcutRegistrarOwnToolsOnly(suite)
         shortcutRegistrarSaving(suite)
         shortcutConflicts(suite)
+        shortcutSections(suite)
+        shortcutRowDecision(suite)
+        shortcutRowState(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -1099,5 +1102,221 @@ enum ToolPlatformTests {
         suite.expect(defaults.object(forKey: DefaultsKey.toolCommandShortcuts) == nil
                          && defaults[Preferences.toolCommandShortcuts].isEmpty,
                      "clearing the last shortcut returns the preference to its default")
+    }
+
+    // MARK: - The Shortcuts page
+
+    /// What the page lists: nothing with only the app's own tools, and
+    /// otherwise the same sections in the same order at every launch.
+    static func shortcutSections(_ suite: TestSuite) {
+        let shipped = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: shipped)
+        suite.expect(ToolCommandShortcutSection.all(registry: shipped, language: .systemDefault).isEmpty,
+                     "with only the app's own tools, the Shortcuts page gains no section")
+        SampleTool.install(into: shipped, say: { _ in })
+        let sections = ToolCommandShortcutSection.all(registry: shipped, language: .systemDefault)
+        suite.expect(sections.count == 1 && sections[0].toolID == SampleTool.id
+                         && sections[0].name == "Sample tool"
+                         && sections[0].commands.map(\.id) == [SampleTool.hello],
+                     "a tool whose commands ask for a shortcut gets a section under its own name")
+
+        // Two tools, registered in either order, list the same way.
+        func install(_ text: String, _ names: [String], surfaces: Set<ToolSurface> = [.shortcut], into registry: ToolRegistry) {
+            let tool = ToolID(text)!
+            let ids = names.map { CommandID(tool: tool, name: $0)! }
+            try? registry.register(ToolDescriptor(id: tool, name: text, symbol: "square", commands: ids.map {
+                CommandDescriptor(id: $0, title: $0.name, symbol: "square", surfaces: surfaces)!
+            })!)
+            for id in ids { try? registry.setHandler(.init(title: { _ in id.name }, run: {}), for: id) }
+        }
+        let forward = ToolRegistry(isAvailable: { _ in true })
+        install("com.acme.alpha", ["zoom", "arrange"], into: forward)
+        install("com.acme.beta", ["open"], into: forward)
+        install("com.acme.quiet", ["hum"], surfaces: [.radial], into: forward)
+        let backward = ToolRegistry(isAvailable: { _ in true })
+        install("com.acme.quiet", ["hum"], surfaces: [.radial], into: backward)
+        install("com.acme.beta", ["open"], into: backward)
+        install("com.acme.alpha", ["zoom", "arrange"], into: backward)
+        let listed = ToolCommandShortcutSection.all(registry: forward, language: .systemDefault)
+        suite.expect(listed.map(\.toolID.rawValue) == ["com.acme.alpha", "com.acme.beta"]
+                         && listed.first?.commands.map(\.id.name) == ["zoom", "arrange"]
+                         && listed == ToolCommandShortcutSection.all(registry: backward, language: .systemDefault),
+                     "sections are in the order of their tool ids whatever order the tools registered in, a tool's commands stay in the order it declared them, and a tool with no command asking has no section")
+    }
+
+    /// Review Focus 2: what the row does with a combination, every branch.
+    /// The order is the other rows' order: a role, window layout, Command
+    /// Bar rows and other tool commands, then the list's own rules, then macOS.
+    static func shortcutRowDecision(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let optionK = GlobalShortcut(keyCode: 40, modifiers: [.option])
+        let optionW = GlobalShortcut(keyCode: 13, modifiers: [.option])
+        let commandSpace = GlobalShortcut(keyCode: 49, modifiers: [.command])
+        let hello = SampleTool.hello
+        let other = "com.acme.gone/open"
+        let rows = ["app.bundle.mail": optionM]
+        var saved = [hello.rawValue: optionB, other: optionN]
+        var takenOver = false
+        func decide(_ shortcut: GlobalShortcut) -> ToolCommandShortcutSave {
+            ToolCommandShortcutSave.decide(shortcut, for: hello, saved: saved, checks: .init(
+                roleHolder: { $0 == optionK || $0 == optionM ? "Keep awake" : nil },
+                windowLayoutHolder: { $0 == optionW || $0 == optionM ? "Left half" : nil },
+                otherHolder: { shortcut in
+                    ShortcutConflicts.holder(of: shortcut, rows: rows, commands: saved,
+                                             excludingRow: nil, excludingCommand: hello).map {
+                        ShortcutConflicts.name(of: $0, rowTitle: { _ in "Mail" }, rowFallback: "Rows",
+                                               commandTitle: { _ in nil })
+                    }
+                },
+                commandName: { "named " + $0 },
+                conflictsWithMacOS: { $0 == commandSpace },
+                takenOver: takenOver))
+        }
+        let free = GlobalShortcut(keyCode: 0, modifiers: [.control])
+        suite.expect(decide(free) == .save(clearTakeOver: true),
+                     "a combination nothing holds is saved, and a stale take-over is dropped")
+        suite.expect(decide(optionK) == .refuse(.held(by: "Keep awake")),
+                     "a combination a role holds is refused, naming the role")
+        suite.expect(decide(optionW) == .refuse(.held(by: "Left half")),
+                     "a combination a window-layout action holds is refused, naming the action")
+        suite.expect(decide(optionM) == .refuse(.held(by: "Keep awake")),
+                     "with several holders the role is named first, as on the other rows")
+        saved[hello.rawValue] = nil
+        suite.expect(decide(optionN) == .refuse(.held(by: other)),
+                     "a combination another tool command holds is refused, even one not registered now")
+        saved[hello.rawValue] = optionB
+        suite.expect(decide(optionB) == .save(clearTakeOver: true),
+                     "a command may record the combination it already has")
+        let rowHeld = GlobalShortcut(keyCode: 46, modifiers: [.control])
+        suite.expect(ToolCommandShortcutSave.decide(rowHeld, for: hello, saved: saved, checks: .init(
+            roleHolder: { _ in nil }, windowLayoutHolder: { _ in nil },
+            otherHolder: { $0 == rowHeld ? "Mail" : nil }, commandName: { $0 },
+            conflictsWithMacOS: { _ in true }, takenOver: false)) == .refuse(.held(by: "Mail")),
+                     "a combination a Command Bar row holds is refused before macOS is asked")
+        suite.expect(decide(GlobalShortcut(keyCode: 11, modifiers: [])) == .refuse(.invalid),
+                     "a bare key is refused")
+
+        // A check that misses another command's entry: the list's own rule still refuses it.
+        let blind = ToolCommandShortcutSave.Checks(
+            roleHolder: { _ in nil }, windowLayoutHolder: { _ in nil }, otherHolder: { _ in nil },
+            commandName: { "named " + $0 }, conflictsWithMacOS: { _ in false }, takenOver: false)
+        suite.expect(ToolCommandShortcutSave.decide(optionN, for: hello, saved: saved, checks: blind)
+                         == .refuse(.held(by: "named " + other)),
+                     "the list itself refuses a combination another command has saved")
+
+        // Full: every place is held by a command that is not here.
+        var full: [String: GlobalShortcut] = [:]
+        for index in 0 ..< ToolCommandShortcuts.limit {
+            full["com.acme.full/c\(index)"] = GlobalShortcut(keyCode: Int64(100 + index), modifiers: [.option])
+        }
+        suite.expect(ToolCommandShortcutSave.decide(free, for: hello, saved: full, checks: blind) == .refuse(.full),
+                     "a command with no place in a full list is refused")
+        suite.expect(ToolCommandShortcutSave.decide(commandSpace, for: hello, saved: full, checks: .init(
+            roleHolder: { _ in nil }, windowLayoutHolder: { _ in nil }, otherHolder: { _ in nil },
+            commandName: { $0 }, conflictsWithMacOS: { _ in true }, takenOver: false)) == .refuse(.full),
+                     "a full list refuses before macOS is asked, so no take-over is offered that could not be kept")
+        full["com.acme.full/c0"] = nil
+        full[hello.rawValue] = optionB
+        suite.expect(ToolCommandShortcutSave.decide(free, for: hello, saved: full, checks: blind) == .save(clearTakeOver: true),
+                     "a command that has a place may change its combination in a full list")
+
+        // macOS answers the combination.
+        suite.expect(decide(commandSpace) == .offerTakeOver,
+                     "a combination macOS answers is offered as a take-over, not saved")
+        saved[hello.rawValue] = commandSpace
+        takenOver = true
+        suite.expect(decide(commandSpace) == .save(clearTakeOver: false),
+                     "the combination already taken over is saved again without asking, and stays taken over")
+        suite.expect(decide(free) == .save(clearTakeOver: true),
+                     "moving off a taken-over combination drops the take-over")
+
+        // What `assign` says is the last word, and each reason has its message.
+        suite.expect(ToolCommandShortcutSave.refusal(for: .invalid, commandName: { $0 }) == .invalid
+                         && ToolCommandShortcutSave.refusal(for: .full, commandName: { $0 }) == .full
+                         && ToolCommandShortcutSave.refusal(for: .occupied(other), commandName: { "named " + $0 })
+                         == .held(by: "named " + other),
+                     "each reason `assign` gives for refusing has its own refusal")
+        let s = Strings.localized(.enUS)
+        let limitFormat = FeatureStrings.commandBar(.enUS).rowShortcutsLimitFormat
+        func message(_ refusal: ToolCommandShortcutSave.Refusal) -> String {
+            refusal.message(s, limitFormat: limitFormat)
+        }
+        suite.expect(message(.invalid) == s.shortcutInvalid
+                         && message(.held(by: "Say hello")) == String(format: s.shortcutConflictFormat, "Say hello")
+                         && message(.held(by: "Say hello")).contains("Say hello")
+                         && message(.full) == String(format: limitFormat, ToolCommandShortcuts.limit)
+                         && message(.full).contains("\(ToolCommandShortcuts.limit)"),
+                     "every refusal has a message of its own: \(message(.invalid)) / \(message(.held(by: "Say hello"))) / \(message(.full))")
+    }
+
+    /// Review Focus 3 and 5: what a row shows. The saved combination stays
+    /// shown when macOS refuses the key, and comes back with its tool.
+    static func shortcutRowState(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
+        var on = true
+        var runnable = true
+        let bench = RegistrarBench(registry: ToolRegistry(isAvailable: { _ in on }))
+        let tool = ToolID("screenshot")!
+        let capture = CommandID(tool: tool, name: "capture")!
+        try? bench.registry.register(ToolDescriptor(id: tool, name: "Screenshot", symbol: "camera.viewfinder", commands: [
+            CommandDescriptor(id: capture, title: "Capture", symbol: "camera.viewfinder", surfaces: [.shortcut])!,
+        ])!)
+        try? bench.registry.setHandler(.init(title: { _ in "Capture" }, isRunnable: { runnable }, run: {}), for: capture)
+        func state() -> ToolCommandShortcutRowState {
+            ToolCommandShortcutRowState(command: capture, registry: bench.registry, registrar: bench.registrar)
+        }
+        func listed() -> [CommandID] {
+            ToolCommandShortcutSection.all(registry: bench.registry, language: .systemDefault).flatMap(\.commands).map(\.id)
+        }
+        suite.expect(state() == .init(shortcut: nil, isRefused: false, isActive: false),
+                     "a command starts with no shortcut, and is not active")
+
+        bench.registrar.assign(optionB, to: capture)
+        suite.expect(state() == .init(shortcut: optionB, isRefused: false, isActive: true),
+                     "a recorded shortcut is shown, and active while its command can run")
+
+        runnable = false
+        suite.expect(listed() == [capture] && state() == .init(shortcut: optionB, isRefused: false, isActive: false),
+                     "a command that is listed but cannot run now keeps its row and its shortcut, and reads inactive")
+        runnable = true
+
+        // Another app holds the combination.
+        bench.refusing = true
+        bench.registrar.assign(optionM, to: capture)
+        suite.expect(state() == .init(shortcut: optionM, isRefused: true, isActive: false)
+                         && bench.saved[capture.rawValue] == optionM,
+                     "a key macOS refuses is reported, and the saved combination stays shown")
+        bench.refusing = false
+        bench.registrar.sync()
+        suite.expect(state() == .init(shortcut: optionM, isRefused: false, isActive: true),
+                     "when macOS gives the key after all, the report goes")
+
+        // Switched off: no row, the shortcut kept; back on: the row shows it again.
+        let saves = bench.saves
+        on = false
+        bench.registry.noteAvailabilityChanged()
+        suite.expect(listed().isEmpty && bench.saved[capture.rawValue] == optionM && bench.saves == saves,
+                     "a tool that is switched off has no row, and its saved shortcut is untouched")
+        on = true
+        bench.registry.noteAvailabilityChanged()
+        suite.expect(listed() == [capture] && state() == .init(shortcut: optionM, isRefused: false, isActive: true),
+                     "when the tool returns its row shows the saved combination again")
+
+        // A refused `assign` saves nothing, so the row keeps showing what is saved.
+        bench.saved["com.acme.gone/open"] = optionB
+        let issue = bench.registrar.assign(optionB, to: capture)
+        suite.expect(issue.map { ToolCommandShortcutSave.refusal(for: $0, commandName: { $0 }) } == .held(by: "com.acme.gone/open")
+                         && state().shortcut == optionM,
+                     "a combination `assign` refuses is not shown as saved")
+
+        // Clearing.
+        bench.takeOvers = []
+        bench.registrar.assign(nil, to: capture)
+        suite.expect(state() == .init(shortcut: nil, isRefused: false, isActive: false)
+                         && bench.takeOvers == ["\(ToolCommandShortcuts.takeOverKey(for: capture))=false"],
+                     "a cleared shortcut shows as none, and its take-over is switched off")
     }
 }

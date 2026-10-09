@@ -49,8 +49,14 @@ package enum ShortcutConflicts {
     }
 
     /// The holder's name as the other shortcut rows would name it, or nil
-    /// when the combination is free of both lists. Row shortcuts count while
-    /// the Command Bar is installed, which is when the bar itself keeps them.
+    /// when the combination is free of both lists.
+    ///
+    /// The Command Bar keeps its saved rows always, but holds their keys
+    /// only while it is installed. A row of a removed Command Bar does not
+    /// block, the same as a removed role or window-layout action. If the bar
+    /// is installed again and a row's combination was given away meanwhile,
+    /// the first to register wins, and Command Bar settings flags the row
+    /// that lost.
     package static func title(for shortcut: GlobalShortcut, excludingRow: String? = nil,
                               excludingCommand: CommandID? = nil) -> String? {
         let rows = AppFeature.commandBar.isAvailable ? CommandBarService.shared.rowShortcuts : [:]

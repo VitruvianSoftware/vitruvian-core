@@ -14,6 +14,9 @@ package struct ShortcutsSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var superKey = SuperKeyService.shared
     @ObservedObject private var router = SettingsRouter.shared
+    /// Redraw when a tool registers, leaves, or is switched on or off. Each
+    /// tool command's row watches its own shortcut.
+    @ObservedObject private var registry = ToolRegistry.shared
     @AppStorage(Preferences.keyboardBrightnessShortcutsEnabled) private var keyboardBrightnessShortcutsEnabled: Bool
     /// Keyed by group too: brightness has a row in two groups, and each opens on its own.
     @State private var expandedFeatures: [FeatureGroup: Set<AppFeature>] = [.tools: [.screenshot]]
@@ -55,6 +58,17 @@ package struct ShortcutsSettings: View {
                         } else {
                             featureRows(feature, in: group)
                         }
+                    }
+                }
+            }
+
+            // Tools outside the app's own lists, each under its own name.
+            // With none asking for a shortcut the list is empty, and an
+            // empty `ForEach` puts nothing on the page.
+            ForEach(ToolCommandShortcutSection.all(registry: registry, language: l10n.language)) { section in
+                Section(section.name) {
+                    ForEach(section.commands, id: \.id) { command in
+                        ToolCommandShortcutRow(command: command)
                     }
                 }
             }
