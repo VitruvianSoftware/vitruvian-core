@@ -1032,7 +1032,8 @@ enum GitHubCoreTests {
                     + #"{"id":2,"name":"deploy","head_sha":"aaaa","status":"\#(jobStatus)","conclusion":null,"html_url":null}]}"#,
                 "/repos/VitruvianSoftware/vitruvian-core/actions/runs":
                     #"{"workflow_runs":[{"id":3,"name":"release","head_sha":"aaaa","status":"\#(runStatus)","conclusion":null,"html_url":null},"#
-                    + #"{"id":4,"name":"release","head_sha":"older","status":"waiting","conclusion":null,"html_url":null}]}"#,
+                    + #"{"id":4,"name":"release","head_sha":"older","status":"waiting","conclusion":null,"html_url":null},"#
+                    + #"{"id":5,"name":"release","head_sha":"older","status":"completed","conclusion":"failure","html_url":null}]}"#,
                 "/repos/VitruvianSoftware/vitruvian-core/pulls": "[]",
             ])
             let api = GitHubAPIClient(transport: transport, apiURL: URL(string: "https://api.example.test")!)
@@ -1050,8 +1051,8 @@ enum GitHubCoreTests {
             return
         }
         suite.expect(paused.checks["workflow_run:3"]?.status == .waiting && paused.checks["check_run:2"]?.status == .waiting
-                     && paused.checks["workflow_run:4"] == nil,
-                     "the snapshot keeps the head's waiting run and job, and drops an older commit's: \(paused.checks.keys.sorted())")
+                     && paused.checks["workflow_run:4"]?.status == .waiting && paused.checks["workflow_run:5"] == nil,
+                     "the snapshot keeps the head's waiting run and job and an older commit's waiting run, and drops the older commit's other runs: \(paused.checks.keys.sorted())")
         let rig = SinkRig("rest")
         defer { rig.cleanUp() }
         rig.sink.update(summary: summary(paused), force: true)
@@ -1062,8 +1063,8 @@ enum GitHubCoreTests {
             return
         }
         rig.sink.update(summary: summary(running))
-        suite.expect(!summary(running).awaitingApproval && rig.commands.last == ["breathe", "red"],
-                     "the next snapshot after approval falls back to the verdict: \(rig.commands)")
+        suite.expect(summary(running).awaitingApproval && rig.commands == [approvalCommand],
+                     "with the head approved, the older commit's paused run still holds the approval signal: \(rig.commands)")
     }
 
     private static func notchModuleProperties(_ suite: TestSuite) {

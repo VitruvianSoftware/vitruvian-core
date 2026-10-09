@@ -141,6 +141,9 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: No two global hotkeys share an id:
   - `Services/QuickTools/ScreenCaptureService.swift`: the comment on the capture tools' hotkey ids says where the run starts and what keeps it clear; it claimed the hand-assigned ids ended at 24 after the Quick Prompt had been given 25. No code change in this file.
   - `bazel/source_lints.py`: `hotkey_ids_are_unique` fails when two `QuickToolHotkey` ids, or runs of ids, overlap.
+- **2026-10-09**: A run paused for approval on an earlier commit of `main` still counts:
+  - `Services/GitHub/GitHubAPIClient.swift`: `fetchSnapshot` kept only the head commit's workflow runs, so a deploy waiting at its gate vanished as soon as the next push moved `main`, and the mouse showed building instead of awaiting approval. It now also keeps any `waiting` run on the default branch, and asks for those by status so the newest ten runs cannot crowd one out. Other runs of earlier commits are still dropped.
+  - `Tests/GitHubCoreTests.swift`: `restSnapshotCarriesAWaitingRun` asserted the earlier commit's waiting run was dropped; it now expects it kept, a completed run of that commit dropped, and the approval signal held while it waits.
 - **2026-10-09**: Settings says when the typed mouse command path is ignored:
   - `GitHubMouseBinary.swift`: `configuredIsIgnored` is true when a path is configured and does not run.
   - `GitHubPeripheralSink.swift`: `configuredBinaryIsIgnored` asks that for this Mac.
