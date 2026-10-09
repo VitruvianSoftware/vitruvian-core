@@ -60,7 +60,7 @@ description: >-
         <p class="muted">Every change lands through the merge queue, which tests it against the latest main. Deploys authenticate with Workload Identity Federation, so there are no service-account keys to leak, and each app deploys into its own project behind its own GitHub Environment.</p>
       </div>
       <ul class="checklist">
-        <li><strong>Squash-only main</strong> behind a merge queue. Agents cannot push to main or merge around the queue; the maintainer's break-glass raises an alert.</li>
+        <li><strong>Squash-only main</strong> behind a merge queue. Agents do not push to main or merge around the queue; the maintainer's break-glass raises an alert.</li>
         <li><strong>Per-app GCP projects</strong> and deploy identities, scoped to one service each.</li>
         <li><strong>Post-merge verification</strong>: work is not done until the pipelines on main are green.</li>
         <li><strong>Secrets never in git</strong>: Secret Manager at runtime, sealed-secrets in the cluster.</li>
