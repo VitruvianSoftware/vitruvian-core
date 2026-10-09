@@ -169,5 +169,67 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	} >>"$CLAUDE_ENV_FILE"
 fi
 
-echo "kube-setup: kubeconfig written (context 'lab'); apiserver reachable via SOCKS5 :1055"
+# Say whether the apiserver actually answers. This line is what the agent sees:
+# Claude Code adds a SessionStart hook's stdout to the session and never shows it
+# stderr from a hook that exits 0, so the failures tailscale-up.sh reports are
+# invisible to it. It used to claim "reachable" unconditionally, which sent
+# agents at a cluster they could not reach once TS_AUTHKEY had been revoked.
+#
+# Claude Code runs a group's hooks in parallel, so tailscale-up.sh may still be
+# joining the tailnet here: wait while it runs (it gives `tailscale up` 30s),
+# then report the state it left.
+written="kube-setup: kubeconfig written (context 'lab')"
+help="see docs/admin/claude-code-cloud-sessions.md, Kubernetes access"
+
+backend_state() {
+	sed -n 's/^[[:space:]]*"BackendState":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1
+}
+
+# tailscaled's health messages (e.g. "The last login error was: …"), one line.
+health_messages() {
+	awk '/"Health":[[:space:]]*\[[[:space:]]*$/ { on = 1; next }
+		on && /^[[:space:]]*\]/ { exit }
+		on { sub(/^[[:space:]]*"/, ""); sub(/",?[[:space:]]*$/, ""); printf "%s%s", sep, $0; sep = "; " }'
+}
+
+if ! command -v tailscale >/dev/null 2>&1; then
+	echo "${written}, but the apiserver is NOT reachable: tailscale is not installed (the session's profile does not list it; see tools/cloud-bootstrap/profiles.tsv)"
+	exit 0
+fi
+
+# A shell running the script, not any command that merely names it.
+joining='^([^ ]*/)?(ba)?sh [^ ]*/tailscale-up\.sh$'
+for _ in $(seq 1 60); do
+	pgrep -f "$joining" >/dev/null 2>&1 || break
+	tailscale status --json 2>/dev/null | backend_state | grep -qx Running && break
+	sleep 1
+done
+status_json="$(tailscale status --json 2>/dev/null)"
+state="$(printf '%s\n' "$status_json" | backend_state)"
+
+if [ -z "$state" ]; then
+	if [ -z "${TS_AUTHKEY:-}" ]; then
+		reason="tailscaled is not running because TS_AUTHKEY is not set"
+	else
+		reason="tailscaled is not running (see /tmp/tailscaled.log)"
+	fi
+	echo "${written}, but the apiserver is NOT reachable: ${reason}; ${help}"
+	exit 0
+fi
+
+if [ "$state" != Running ]; then
+	health="$(printf '%s\n' "$status_json" | health_messages)"
+	echo "${written}, but the apiserver is NOT reachable: the tailnet is ${state}${health:+ (${health})}; reissue TS_AUTHKEY if it was revoked or has expired, ${help}"
+	exit 0
+fi
+
+if probe="$(kubectl --kubeconfig "${HOME}/.kube/config" --request-timeout=10s get --raw=/version 2>&1)"; then
+	echo "${written}; apiserver reachable via SOCKS5 :1055"
+	exit 0
+fi
+case "$probe" in
+*Unauthorized*) reason="the apiserver rejected LAB_SA_TOKEN (Unauthorized)" ;;
+*) reason="the tailnet is up but kubectl got: $(printf '%s\n' "$probe" | grep -v '^[[:space:]]*$' | tail -n1)" ;;
+esac
+echo "${written}, but the apiserver is NOT reachable: ${reason}; ${help}"
 exit 0
