@@ -121,7 +121,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var historyIndex: Int = -1
     /// Called when an agent turn completes, in place of telling the host
     /// directly: the engine sets it, to add whether its chat is on screen.
-    public var onTurnFinished: ((NexusAgentTurnNotice) -> Void)?
+    public internal(set) var onTurnFinished:((NexusAgentTurnNotice) -> Void)?
     /// Turns run with `--mode plan` (read-only) while on. Remembered.
     @Published public var planMode: Bool {
         didSet { host.planMode = planMode }
@@ -131,7 +131,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     @Published public private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
     @Published public var isFollowerActive: Bool = false
-    public weak var engine: NexusAgentEngine?
+    public internal(set) weak var engine:NexusAgentEngine?
     private var followerTimer: Timer?
     private var lastTranscriptModDate: Date?
     private var lastTranscriptSize: UInt64?
