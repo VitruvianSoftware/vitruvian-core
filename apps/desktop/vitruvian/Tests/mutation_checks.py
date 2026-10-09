@@ -357,6 +357,16 @@ MUTATIONS = [
      "        guard isToolAvailable(id.tool) else { return false }\n",
      "",
      "a command of a switched-off tool neither lists nor runs"),
+    ("built-in commands with no tile ask for the panel", "platform",
+     "Sources/Vitruvian/Services/Platform/BuiltinTools.swift",
+     "surfaces: tiled.contains(command) ? [.radial, .quickPanel] : [.radial])",
+     "surfaces: [.radial, .quickPanel])",
+     "a built-in command asks for the panel only when a tile runs it"),
+    ("reordering forgets a tile that is not showing", "platform",
+     "Sources/Vitruvian/Core/QuickTools/QuickToolsSupport.swift",
+     "            } else if isWellFormed(id) {\n                result.append(id)\n            }\n",
+     "            }\n",
+     "a tile that is not showing now keeps its place in the saved order"),
 ]
 
 
