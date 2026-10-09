@@ -1,0 +1,85 @@
+{
+  "rule": "The value of AGY_APPROVAL_MODE, as the bot receives it, decides which permission flags agy is run with. A null value means the key is absent from .env.",
+  "cases": [
+    {
+      "name": "the key is absent: the bot's default is yolo",
+      "value": null,
+      "args": ["--dangerously-skip-permissions"]
+    },
+    {
+      "name": "an empty value is not a mode: no flag",
+      "value": "",
+      "args": []
+    },
+    {
+      "name": "yolo skips permission prompts",
+      "value": "yolo",
+      "args": ["--dangerously-skip-permissions"]
+    },
+    {
+      "name": "capitals are recognised: YOLO",
+      "value": "YOLO",
+      "args": ["--dangerously-skip-permissions"]
+    },
+    {
+      "name": "mixed case is recognised: Yolo",
+      "value": "Yolo",
+      "args": ["--dangerously-skip-permissions"]
+    },
+    {
+      "name": "spaces around yolo are not removed, so it is not a mode: no flag",
+      "value": " yolo ",
+      "args": []
+    },
+    {
+      "name": "plan",
+      "value": "plan",
+      "args": ["--mode", "plan"]
+    },
+    {
+      "name": "capitals are recognised: PLAN",
+      "value": "PLAN",
+      "args": ["--mode", "plan"]
+    },
+    {
+      "name": "spaces around plan are not removed, so it is not a mode: no flag",
+      "value": " plan ",
+      "args": []
+    },
+    {
+      "name": "accept-edits, agy's own spelling",
+      "value": "accept-edits",
+      "args": ["--mode", "accept-edits"]
+    },
+    {
+      "name": "accept_edits with an underscore means accept-edits",
+      "value": "accept_edits",
+      "args": ["--mode", "accept-edits"]
+    },
+    {
+      "name": "auto_edit, the retired Gemini name, means accept-edits",
+      "value": "auto_edit",
+      "args": ["--mode", "accept-edits"]
+    },
+    {
+      "name": "capitals are recognised: AUTO_EDIT",
+      "value": "AUTO_EDIT",
+      "args": ["--mode", "accept-edits"]
+    },
+    {
+      "name": "default asks agy for its own default: no flag",
+      "value": "default",
+      "args": []
+    },
+    {
+      "name": "a word the bot does not know: no flag",
+      "value": "bogus",
+      "args": []
+    },
+    {
+      "name": "acceptEdits without a separator is not a spelling the bot knows: no flag",
+      "value": "acceptEdits",
+      "args": []
+    }
+  ]
+}

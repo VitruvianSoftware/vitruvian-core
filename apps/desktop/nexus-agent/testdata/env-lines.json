@@ -1,0 +1,401 @@
+{
+  "rule": "One line of .env gives one key and value, or nothing, exactly as the dotenv package the bot loads reads it. Null key and value mean the line assigns nothing.",
+  "cases": [
+    {
+      "name": "a plain assignment",
+      "line": "K=v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "nothing after the equals sign is an empty value",
+      "line": "K=",
+      "key": "K",
+      "value": ""
+    },
+    {
+      "name": "only spaces after the equals sign is an empty value",
+      "line": "K=  ",
+      "key": "K",
+      "value": ""
+    },
+    {
+      "name": "empty double quotes are an empty value",
+      "line": "K=\"\"",
+      "key": "K",
+      "value": ""
+    },
+    {
+      "name": "empty single quotes are an empty value",
+      "line": "K=''",
+      "key": "K",
+      "value": ""
+    },
+    {
+      "name": "spaces around the key, the equals sign and the value are dropped",
+      "line": " K = v ",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "a space before the equals sign is allowed",
+      "line": "K =v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "a tab before the key is dropped",
+      "line": "\tK=v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "spaces inside an unquoted value are kept",
+      "line": "K=a b",
+      "key": "K",
+      "value": "a b"
+    },
+    {
+      "name": "an unquoted value ends at a # that has a space before it",
+      "line": "K=a # c",
+      "key": "K",
+      "value": "a"
+    },
+    {
+      "name": "an unquoted value ends at a # that has no space before it",
+      "line": "K=a#b",
+      "key": "K",
+      "value": "a"
+    },
+    {
+      "name": "an unquoted value ends at a # that has a tab before it",
+      "line": "K=a\t#b",
+      "key": "K",
+      "value": "a"
+    },
+    {
+      "name": "an unquoted value ends at the first of two #",
+      "line": "K=v # c # d",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "an unquoted value that starts with # is empty",
+      "line": "K=#x",
+      "key": "K",
+      "value": ""
+    },
+    {
+      "name": "a # inside double quotes is kept",
+      "line": "K=\"a # b\"",
+      "key": "K",
+      "value": "a # b"
+    },
+    {
+      "name": "a # inside single quotes is kept",
+      "line": "K='a # b'",
+      "key": "K",
+      "value": "a # b"
+    },
+    {
+      "name": "a # inside backticks is kept",
+      "line": "K=`a # b`",
+      "key": "K",
+      "value": "a # b"
+    },
+    {
+      "name": "a comment after a double-quoted value is dropped",
+      "line": "K=\"a\" # c",
+      "key": "K",
+      "value": "a"
+    },
+    {
+      "name": "a comment straight after a single-quoted value, with no space, is dropped",
+      "line": "K='a'#c",
+      "key": "K",
+      "value": "a"
+    },
+    {
+      "name": "spaces inside quotes are kept",
+      "line": "K=\" a \"",
+      "key": "K",
+      "value": " a "
+    },
+    {
+      "name": "one space in quotes is a value of one space",
+      "line": "K=\" \"",
+      "key": "K",
+      "value": " "
+    },
+    {
+      "name": "spaces outside the quotes are dropped",
+      "line": "K= \"a\" ",
+      "key": "K",
+      "value": "a"
+    },
+    {
+      "name": "a single quote inside double quotes is kept",
+      "line": "K=\"a'b\"",
+      "key": "K",
+      "value": "a'b"
+    },
+    {
+      "name": "a double quote inside single quotes is kept",
+      "line": "K='a\"b'",
+      "key": "K",
+      "value": "a\"b"
+    },
+    {
+      "name": "both other quote kinds inside backticks are kept",
+      "line": "K=`a'b\"c`",
+      "key": "K",
+      "value": "a'b\"c"
+    },
+    {
+      "name": "a quote in the middle of an unquoted value is kept",
+      "line": "K=a\"b",
+      "key": "K",
+      "value": "a\"b"
+    },
+    {
+      "name": "export before the key is dropped",
+      "line": "export K=v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "export followed by a tab is dropped",
+      "line": "export\tK=v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "export with spaces around the equals sign",
+      "line": "export K = v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "export with nothing between it and the equals sign is the key itself",
+      "line": "export=v",
+      "key": "export",
+      "value": "v"
+    },
+    {
+      "name": "export joined to the key is part of the key",
+      "line": "exportK=v",
+      "key": "exportK",
+      "value": "v"
+    },
+    {
+      "name": "export and a key with no equals sign assigns nothing",
+      "line": "export K",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a colon and a space works like an equals sign",
+      "line": "K: v",
+      "key": "K",
+      "value": "v"
+    },
+    {
+      "name": "a colon with no space after it assigns nothing",
+      "line": "K:v",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a commented-out assignment assigns nothing",
+      "line": "# K=v",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "an indented comment assigns nothing",
+      "line": "  # a note",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a blank line assigns nothing",
+      "line": "",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a line with no equals sign assigns nothing",
+      "line": "no equals sign",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a line with no key assigns nothing",
+      "line": "=v",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a double quote that never closes is kept as part of the value",
+      "line": "K=\"unterminated",
+      "key": "K",
+      "value": "\"unterminated"
+    },
+    {
+      "name": "a single quote that never closes is kept as part of the value",
+      "line": "K='unterminated",
+      "key": "K",
+      "value": "'unterminated"
+    },
+    {
+      "name": "a double quote that never closes, then a #: cut at the #, quote kept",
+      "line": "K=\"a#b",
+      "key": "K",
+      "value": "\"a"
+    },
+    {
+      "name": "backslash n inside double quotes becomes a line break",
+      "line": "K=\"a\\nb\"",
+      "key": "K",
+      "value": "a\nb"
+    },
+    {
+      "name": "backslash n inside double quotes becomes a line break even when a combining accent follows it",
+      "line": "K=\"a\\n\u0301b\"",
+      "key": "K",
+      "value": "a\n\u0301b"
+    },
+    {
+      "name": "backslash r inside double quotes becomes a carriage return",
+      "line": "K=\"a\\rb\"",
+      "key": "K",
+      "value": "a\rb"
+    },
+    {
+      "name": "backslash t inside double quotes stays as written",
+      "line": "K=\"a\\tb\"",
+      "key": "K",
+      "value": "a\\tb"
+    },
+    {
+      "name": "two backslashes then n inside double quotes: one backslash stays, then a line break",
+      "line": "K=\"a\\\\nb\"",
+      "key": "K",
+      "value": "a\\\nb"
+    },
+    {
+      "name": "backslash n inside single quotes stays as written",
+      "line": "K='a\\nb'",
+      "key": "K",
+      "value": "a\\nb"
+    },
+    {
+      "name": "backslash n in an unquoted value stays as written",
+      "line": "K=a\\nb",
+      "key": "K",
+      "value": "a\\nb"
+    },
+    {
+      "name": "backslash n after a double quote that never closes still becomes a line break",
+      "line": "K=\"a\\nb",
+      "key": "K",
+      "value": "\"a\nb"
+    },
+    {
+      "name": "a backslash before a double quote lets it sit inside double quotes; the backslash stays",
+      "line": "K=\"a\\\"b\"",
+      "key": "K",
+      "value": "a\\\"b"
+    },
+    {
+      "name": "a backslash before a single quote lets it sit inside single quotes; the backslash stays",
+      "line": "K='a\\'b'",
+      "key": "K",
+      "value": "a\\'b"
+    },
+    {
+      "name": "text after the closing quote: the value is no longer quoted, so the quotes stay",
+      "line": "K=\"a\" b",
+      "key": "K",
+      "value": "\"a\" b"
+    },
+    {
+      "name": "two quoted parts: only the outermost pair of quotes is removed",
+      "line": "K=\"a\" \"b\"",
+      "key": "K",
+      "value": "a\" \"b"
+    },
+    {
+      "name": "a quote inside the same kind of quotes: only the outermost pair is removed",
+      "line": "K=\"a\"b\"",
+      "key": "K",
+      "value": "a\"b"
+    },
+    {
+      "name": "three double quotes are a value of one double quote",
+      "line": "K=\"\"\"",
+      "key": "K",
+      "value": "\""
+    },
+    {
+      "name": "a # inside quotes followed by more text: cut at the #, opening quote kept",
+      "line": "K=\"a#b\"c",
+      "key": "K",
+      "value": "\"a"
+    },
+    {
+      "name": "an equals sign inside the value is kept",
+      "line": "K=a=b",
+      "key": "K",
+      "value": "a=b"
+    },
+    {
+      "name": "a dollar reference is not expanded",
+      "line": "K=${HOME}",
+      "key": "K",
+      "value": "${HOME}"
+    },
+    {
+      "name": "a key may contain a dot",
+      "line": "K.L=v",
+      "key": "K.L",
+      "value": "v"
+    },
+    {
+      "name": "a key may contain a hyphen",
+      "line": "K-L=v",
+      "key": "K-L",
+      "value": "v"
+    },
+    {
+      "name": "a key may start with a digit",
+      "line": "1K=v",
+      "key": "1K",
+      "value": "v"
+    },
+    {
+      "name": "a key may be lower case",
+      "line": "k=v",
+      "key": "k",
+      "value": "v"
+    },
+    {
+      "name": "a key with a letter outside A to Z assigns nothing",
+      "line": "KÉ=v",
+      "key": null,
+      "value": null
+    },
+    {
+      "name": "a value with a letter outside A to Z is kept",
+      "line": "K=é",
+      "key": "K",
+      "value": "é"
+    },
+    {
+      "name": "a carriage return at the end of the line is not part of the value",
+      "line": "K=v\r",
+      "key": "K",
+      "value": "v"
+    }
+  ]
+}

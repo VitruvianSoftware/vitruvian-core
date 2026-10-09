@@ -1,0 +1,60 @@
+{
+  "rule": "An Antigravity annotation marks its conversation archived when the last `archived` field outside a quoted string says true.",
+  "cases": [
+    {
+      "name": "archived, as agy writes it with no space after the colon",
+      "text": "archived:true archival_status_timestamp:{seconds:1787464769 nanos:503730000} marked_as_unread:false",
+      "archived": true
+    },
+    {
+      "name": "archived, as agy writes it with a space after the colon and a title before it",
+      "text": "title:\"Daily Briefing\"  archived: true  last_user_view_time:{seconds:1  nanos:2}",
+      "archived": true
+    },
+    {
+      "name": "no archived field at all",
+      "text": "last_user_view_time:{seconds:1790974412  nanos:316000000}",
+      "archived": false
+    },
+    {
+      "name": "archived:false is not archived",
+      "text": "archived:false pinned:true",
+      "archived": false
+    },
+    {
+      "name": "empty text is not archived",
+      "text": "",
+      "archived": false
+    },
+    {
+      "name": "a double-quoted title that contains archived:true does not count",
+      "text": "title:\"why is archived:true ignored\" pinned:true",
+      "archived": false
+    },
+    {
+      "name": "a single-quoted title that contains archived:true does not count",
+      "text": "title:'archived:true' pinned:true",
+      "archived": false
+    },
+    {
+      "name": "true then false: the last value wins",
+      "text": "archived: true pinned:true archived:false",
+      "archived": false
+    },
+    {
+      "name": "false then true: the last value wins",
+      "text": "archived:false pinned:true archived:true",
+      "archived": true
+    },
+    {
+      "name": "a longer field name ending in archived is a different field",
+      "text": "unarchived:true",
+      "archived": false
+    },
+    {
+      "name": "the field on its own line, after another field",
+      "text": "pinned:true\narchived:true\n",
+      "archived": true
+    }
+  ]
+}

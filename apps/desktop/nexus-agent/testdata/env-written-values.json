@@ -1,0 +1,132 @@
+{
+  "rule": "A value is written after the equals sign as `line`, and the bot's dotenv reads that line back as the same value. A case marked lossy is a value no spelling can carry: the bot reads something different.",
+  "cases": [
+    {
+      "name": "a plain word is written as it is",
+      "value": "plain",
+      "line": "plain"
+    },
+    {
+      "name": "an empty value is written as nothing",
+      "value": "",
+      "line": ""
+    },
+    {
+      "name": "spaces inside a value need no quotes",
+      "value": "a b c",
+      "line": "a b c"
+    },
+    {
+      "name": "spaces at the ends are kept by single quotes",
+      "value": " padded ",
+      "line": "' padded '"
+    },
+    {
+      "name": "a # with a space before it is kept by single quotes",
+      "value": "a #b",
+      "line": "'a #b'"
+    },
+    {
+      "name": "a # with no space before it is kept by single quotes",
+      "value": "a#b",
+      "line": "'a#b'"
+    },
+    {
+      "name": "a value starting with # is kept by single quotes",
+      "value": "#x",
+      "line": "'#x'"
+    },
+    {
+      "name": "a value starting with a double quote is kept by single quotes",
+      "value": "\"quoted\" start",
+      "line": "'\"quoted\" start'"
+    },
+    {
+      "name": "a value wrapped in double quotes keeps them inside single quotes",
+      "value": "\"both ends\"",
+      "line": "'\"both ends\"'"
+    },
+    {
+      "name": "a value starting with a single quote is kept by double quotes",
+      "value": "'quoted' start",
+      "line": "\"'quoted' start\""
+    },
+    {
+      "name": "a single quote inside a value needs no quotes",
+      "value": "it's",
+      "line": "it's"
+    },
+    {
+      "name": "a double quote inside a value needs no quotes",
+      "value": "say \"hi\"",
+      "line": "say \"hi\""
+    },
+    {
+      "name": "a single quote and a # are kept by double quotes",
+      "value": "it's #1",
+      "line": "\"it's #1\""
+    },
+    {
+      "name": "both quote kinds and a # are kept by backticks",
+      "value": "tool \"a #1\" 'x'",
+      "line": "`tool \"a #1\" 'x'`"
+    },
+    {
+      "name": "a single quote, a # and a written backslash n are kept by backticks, which leave the backslash n alone",
+      "value": "it's \\n #1",
+      "line": "`it's \\n #1`"
+    },
+    {
+      "name": "spaces at the ends with a single quote inside are kept by double quotes",
+      "value": " it's ",
+      "line": "\" it's \""
+    },
+    {
+      "name": "a Telegram token is written as it is",
+      "value": "123456:ABC-def_ghi",
+      "line": "123456:ABC-def_ghi"
+    },
+    {
+      "name": "a path with spaces is written as it is",
+      "value": "/Users/me/My Projects/app",
+      "line": "/Users/me/My Projects/app"
+    },
+    {
+      "name": "a command template is written as it is",
+      "value": "claude -p {prompt} --model {model}",
+      "line": "claude -p {prompt} --model {model}"
+    },
+    {
+      "name": "a command template with a quoted placeholder is written as it is",
+      "value": "ollama launch claude --model {model} -- -p \"{prompt}\"",
+      "line": "ollama launch claude --model {model} -- -p \"{prompt}\""
+    },
+    {
+      "name": "an equals sign needs no quotes",
+      "value": "a=b",
+      "line": "a=b"
+    },
+    {
+      "name": "a backslash needs no quotes",
+      "value": "C:\\dir\\name",
+      "line": "C:\\dir\\name"
+    },
+    {
+      "name": "a backslash and a # are kept by single quotes",
+      "value": "ends with a backslash \\ #1",
+      "line": "'ends with a backslash \\ #1'"
+    },
+    {
+      "name": "a # with all three quote kinds cannot be written so that the bot reads it back",
+      "value": "a `b` \"c\" 'd' #1",
+      "line": "\"a `b` \"c\" 'd' #1\"",
+      "lossy": true
+    },
+    {
+      "name": "a #, a single quote, a backtick and a written backslash n cannot be written so that the bot reads it back",
+      "value": "it's a\\nb #1 `x`",
+      "line": "\"it's a\\nb #1 `x`\"",
+      "lossy": true
+    }
+  ]
+}

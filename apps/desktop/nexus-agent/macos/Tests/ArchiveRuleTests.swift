@@ -25,22 +25,9 @@ import NexusAgentCore
 final class ArchiveRuleTests: XCTestCase {
     private typealias Layout = NexusAgentSessionSummary
 
-    func testArchivedInTheShapesAgyWrites() {
-        XCTAssertTrue(Layout.antigravityAnnotationIsArchived(
-            "archived:true archival_status_timestamp:{seconds:1787464769 nanos:503730000} marked_as_unread:false"))
-        XCTAssertTrue(Layout.antigravityAnnotationIsArchived(
-            #"title:"Daily Briefing"  archived: true  last_user_view_time:{seconds:1  nanos:2}"#))
-    }
-
-    func testNotArchivedWithoutTheField() {
-        XCTAssertFalse(Layout.antigravityAnnotationIsArchived("last_user_view_time:{seconds:1790974412  nanos:316000000}"))
-        XCTAssertFalse(Layout.antigravityAnnotationIsArchived("archived:false pinned:true"))
-        XCTAssertFalse(Layout.antigravityAnnotationIsArchived(""))
-    }
-
-    func testATitleCannotPassForTheField() {
-        XCTAssertFalse(Layout.antigravityAnnotationIsArchived(#"title:"why is archived:true ignored" pinned:true"#))
-    }
+    // Which annotation text counts as archived is checked in SharedCasesTests,
+    // from the examples the bot's tests also read
+    // (apps/desktop/nexus-agent/testdata/archive-annotations.json).
 
     func testArchivedIDsAcrossDataDirectories() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("agy-annotations-\(UUID().uuidString)")
