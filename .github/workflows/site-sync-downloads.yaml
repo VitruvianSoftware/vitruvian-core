@@ -1,0 +1,99 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: site-sync-downloads
+
+on:
+  schedule:
+    # Run daily at 05:00 UTC
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-sync-downloads
+  cancel-in-progress: false
+
+jobs:
+  sync-downloads:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Mint App token for PR operations
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
+      - name: Run catalog synchronization
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          python3 tools/sync-downloads/sync_downloads.py
+
+      - name: Open or update PR if changes detected
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet apps/web/vitruviansoftware-dev/_data/downloads.yml; then
+            echo "Catalog is up to date, nothing to commit."
+            exit 0
+          fi
+
+          branch="auto/sync-downloads-catalog"
+          git config user.name "vitruvian-wren-agent[bot]"
+          git config user.email "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
+
+          git checkout -B "$branch"
+          git add apps/web/vitruviansoftware-dev/_data/downloads.yml
+          git commit -m "chore(site): synchronize downloads catalog with latest releases"
+          git push -f origin "$branch"
+
+          body="Synchronized \`apps/web/vitruviansoftware-dev/_data/downloads.yml\` with newly published GitHub Releases across standalone and monorepo components.
+
+          Generated automatically by the \`site-sync-downloads\` workflow."
+
+          existing="$(gh pr list \
+            --head "$branch" \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "PR #${existing} already open for $branch -- updated."
+          else
+            gh pr create \
+              --title "chore(site): synchronize downloads catalog with latest releases" \
+              --body "$body" \
+              --base main \
+              --head "$branch"
+          fi
