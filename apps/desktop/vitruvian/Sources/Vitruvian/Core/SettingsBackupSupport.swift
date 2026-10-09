@@ -152,6 +152,8 @@ package enum SettingsBackupSupport {
         DefaultsKey.musicBlockReplacementPath,
         // Where the Nexus Agent bot is installed is a folder on this Mac.
         DefaultsKey.nexusAgentBotDirectory,
+        // So is where the GravaStar mouse command is installed.
+        DefaultsKey.githubMouseBinaryPath,
         // A local watermark file is authority on this Mac, not portable data.
         DefaultsKey.mediaImageWatermarkLogoPath,
         DefaultsKey.simulateUpdate,

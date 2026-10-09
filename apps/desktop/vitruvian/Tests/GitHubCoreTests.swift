@@ -74,6 +74,7 @@ enum GitHubCoreTests {
         named("peripheralSinkApprovalOutranksRed", suite, peripheralSinkApprovalOutranksRed)
         named("peripheralSinkApprovalDedupesAndClears", suite, peripheralSinkApprovalDedupesAndClears)
         named("peripheralSinkApprovalFollowsPreferences", suite, peripheralSinkApprovalFollowsPreferences)
+        named("mouseBinaryResolution", suite, mouseBinaryResolution)
         named("restSnapshotCarriesAWaitingRun", suite, restSnapshotCarriesAWaitingRun)
         // Notch Module & Quick Access
         notchModuleProperties(suite)
@@ -953,6 +954,39 @@ enum GitHubCoreTests {
                      "a solid approval colour takes no speed, the mouse command has none for it: \(rig.commands)")
         rig.sink.signal(color: "red", mode: "breathe")
         suite.expect(rig.commands.last == ["breathe", "red"], "a signal without a speed sends none: \(rig.commands)")
+    }
+
+    private static func mouseBinaryResolution(_ suite: TestSuite) {
+        let home = "/Users/test"
+        let path = ["PATH": "/usr/bin:relative/bin:/opt/tools/bin"]
+        func locate(_ configured: String, _ environment: [String: String] = [:], _ installed: Set<String>) -> String? {
+            GitHubMouseBinary.locate(configured: configured, environment: environment, home: home,
+                                     isExecutable: installed.contains)
+        }
+        suite.expect(locate("", [:], ["/Users/test/.local/bin/gravastar-mouse", "/opt/homebrew/bin/gravastar-mouse"])
+                     == "/Users/test/.local/bin/gravastar-mouse"
+                     && locate("", [:], ["/usr/local/bin/gravastar-mouse"]) == "/usr/local/bin/gravastar-mouse"
+                     && locate("", [:], ["/Users/test/bin/gravastar-mouse"]) == "/Users/test/bin/gravastar-mouse",
+                     "with nothing configured, the install locations are searched in order, under this user's home")
+        suite.expect(locate("", path, ["/opt/tools/bin/gravastar-mouse", "/Users/test/.local/bin/gravastar-mouse"])
+                     == "/opt/tools/bin/gravastar-mouse"
+                     && locate("", path, ["relative/bin/gravastar-mouse"]) == nil,
+                     "PATH is searched before the install locations, but never a relative entry")
+        suite.expect(locate(" ~/tools/gravastar-mouse ", path, ["/Users/test/tools/gravastar-mouse",
+                                                                "/opt/tools/bin/gravastar-mouse"])
+                     == "/Users/test/tools/gravastar-mouse"
+                     && locate("/custom/mouse", [:], ["/custom/mouse"]) == "/custom/mouse",
+                     "a configured path wins, with ~ expanded")
+        suite.expect(locate("/missing/mouse", [:], ["/opt/homebrew/bin/gravastar-mouse"])
+                     == "/opt/homebrew/bin/gravastar-mouse",
+                     "a configured path that does not run falls back to the search")
+        suite.expect(locate("", path, []) == nil && locate("/missing/mouse", path, []) == nil,
+                     "no binary anywhere finds nothing, so the sink leaves the mouse alone")
+        let registered = Defaults.registeredDefaults
+        suite.expect(registered[Preferences.githubMouseBinaryPath.key] as? String == "",
+                     "the binary path is registered empty, which searches")
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseBinaryPath.key),
+                     "where the binary is installed belongs to this Mac, so a backup leaves it out")
     }
 
     /// The path the app really takes: REST polling, not the relay. A run
