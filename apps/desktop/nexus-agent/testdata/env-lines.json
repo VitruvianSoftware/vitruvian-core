@@ -260,6 +260,12 @@
       "value": "a\nb"
     },
     {
+      "name": "backslash n inside double quotes becomes a line break even when a combining accent follows it",
+      "line": "K=\"a\\n\u0301b\"",
+      "key": "K",
+      "value": "a\n\u0301b"
+    },
+    {
       "name": "backslash r inside double quotes becomes a carriage return",
       "line": "K=\"a\\rb\"",
       "key": "K",

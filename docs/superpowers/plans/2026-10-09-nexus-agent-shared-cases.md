@@ -12,11 +12,13 @@
 
 ## What changes for users
 
+> **Correction (2026-10-09, found while building):** this plan first said the bot does not recognise an approval mode in capitals. That is false. Running the bot showed it lower-cases the value, so `YOLO` and `PLAN` work exactly like `yolo` and `plan`. Only padding with spaces (which reaches the bot only from inside quotes) makes it an unknown mode. The rows and sentences below that repeated the claim are corrected.
+
 The bot does not change. The apps change only where they disagreed with the bot:
 
 | In `.env` | The bot does (unchanged) | The apps showed | The apps now |
 |---|---|---|---|
-| An approval mode in capitals or padded with spaces inside quotes (`YOLO`, `" plan "`) | Does not recognise it: no permission flag, so tools that need approval are refused | The mode as if it were spelled properly (YOLO, Plan) | "Default", which is what the bot does. Vitruvian's own chat turns follow the same reading |
+| An approval mode padded with spaces inside quotes (`" plan "`) | Does not recognise it: no permission flag, so tools that need approval are refused | The mode as if it were spelled properly (Plan) | "Default", which is what the bot does. Vitruvian's own chat turns follow the same reading |
 | An unquoted value with a `#` in it (`KEY=a#b`) | Reads `a` | `a#b` | `a` |
 | Other lines the two read differently (see Task 3) | dotenv's reading | Their own | dotenv's reading, for every case in the shared file |
 
@@ -124,13 +126,13 @@ git commit -m "test(nexus-agent): one set of archive-rule examples, read by the 
 
 - [ ] **Step 1: Produce the table from the bot**
 
-Importing `agy.js` reads the environment and the session store at load. Follow the pattern in `src/sessions.test.js` (set the environment variables it needs to a temporary folder, then `await import`). Run `approvalArgs` on each of these and record what it RETURNS — do not write expectations by reading the code: absent (use the module's own default handling; if the function takes only a string, record how the bot turns an absent key into its default and represent that as the `null` case), `""`, `yolo`, `YOLO`, `Yolo`, ` yolo ` (with spaces), `plan`, `PLAN`, ` plan `, `accept-edits`, `accept_edits`, `auto_edit`, `AUTO_EDIT`, `default`, `bogus`, `acceptEdits`. Write them to the JSON file with plain-word names ("capitals are not recognised").
+Importing `agy.js` reads the environment and the session store at load. Follow the pattern in `src/sessions.test.js` (set the environment variables it needs to a temporary folder, then `await import`). Run `approvalArgs` on each of these and record what it RETURNS — do not write expectations by reading the code: absent (use the module's own default handling; if the function takes only a string, record how the bot turns an absent key into its default and represent that as the `null` case), `""`, `yolo`, `YOLO`, `Yolo`, ` yolo ` (with spaces), `plan`, `PLAN`, ` plan `, `accept-edits`, `accept_edits`, `auto_edit`, `AUTO_EDIT`, `default`, `bogus`, `acceptEdits`. Write them to the JSON file with plain-word names ("capitals are recognised", "spaces around yolo are not removed").
 
 - [ ] **Step 2: Add the test on both sides; the Swift side fails**
 
 JavaScript: every case through `approvalArgs`, deep-equal to `args`. Swift: every case through `NexusAgentApprovalMode.parse(value).agyArguments`, equal to `args`.
 
-Run both. Expected: JavaScript PASSES (the table came from it). Swift FAILS on the capitals and padded cases. Record the failing case names.
+Run both. Expected: JavaScript PASSES (the table came from it). Swift FAILS on the padded cases. Record the failing case names.
 
 - [ ] **Step 3: Make the apps read it as the bot does**
 
@@ -153,7 +155,7 @@ bazel run //apps/desktop/vitruvian:pin_nexus_agent_shared
 bazel test //apps/desktop/vitruvian:nexus_agent_shared_pin_test //apps/desktop/vitruvian:source_lints_test --test_output=errors
 ```
 
-Log line for `UPSTREAM.md`: `- **2026-10-09**: An approval mode in `.env` is now read exactly as the bot reads it: a value in capitals or padded with spaces is not a mode the bot knows, so it shows as Default here too and this app's own chat turns pass no permission flag for it. The examples are shared with the bot's tests (`apps/desktop/nexus-agent/testdata/approval-modes.json`).`
+Log line for `UPSTREAM.md`: `- **2026-10-09**: An approval mode in `.env` is now read exactly as the bot reads it: a value padded with spaces (which only reaches the bot from inside quotes) is not a mode the bot knows, so it shows as Default here too and this app's own chat turns pass no permission flag for it. Capitals are still recognised, because the bot recognises them. The examples are shared with the bot's tests (`apps/desktop/nexus-agent/testdata/approval-modes.json`).`
 
 ```bash
 git add apps/desktop/nexus-agent apps/desktop/vitruvian

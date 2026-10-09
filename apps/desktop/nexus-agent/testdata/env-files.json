@@ -1,0 +1,40 @@
+{
+  "rule": "The whole text of a .env file gives these keys and values, exactly as the dotenv package the bot loads reads it. A line ends only at a line feed, a carriage return, or both together; no other character, however much it looks like a line break, starts a new line.",
+  "cases": [
+    {
+      "name": "a file with LF line endings",
+      "content": "# a note\n\nK=v\nL=w\n",
+      "values": { "K": "v", "L": "w" }
+    },
+    {
+      "name": "the same file with CRLF line endings reads the same",
+      "content": "# a note\r\n\r\nK=v\r\nL=w\r\n",
+      "values": { "K": "v", "L": "w" }
+    },
+    {
+      "name": "the same file with CR-only line endings reads the same",
+      "content": "# a note\r\rK=v\rL=w\r",
+      "values": { "K": "v", "L": "w" }
+    },
+    {
+      "name": "the same file without a final line break reads the same",
+      "content": "# a note\n\nK=v\nL=w",
+      "values": { "K": "v", "L": "w" }
+    },
+    {
+      "name": "a later line wins over an earlier one for the same key",
+      "content": "K=1\nL=w\nK=2\n",
+      "values": { "K": "2", "L": "w" }
+    },
+    {
+      "name": "a line separator and a form feed inside a value do not start a new line",
+      "content": "K=a\u2028b\fc\nL=w\n",
+      "values": { "K": "a\u2028b\fc", "L": "w" }
+    },
+    {
+      "name": "a vertical tab, a next-line character and a paragraph separator inside a value do not start a new line",
+      "content": "K=a\u000bb\u0085c\u2029d\nL=w\n",
+      "values": { "K": "a\u000bb\u0085c\u2029d", "L": "w" }
+    }
+  ]
+}

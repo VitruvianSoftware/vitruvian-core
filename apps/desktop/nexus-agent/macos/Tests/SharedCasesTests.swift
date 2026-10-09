@@ -145,6 +145,35 @@ final class SharedCasesTests: XCTestCase {
         XCTAssertGreaterThan(checked, 0, "at least one case was checked")
     }
 
+    /// A file with no approval-mode line: the page shows the bot's default,
+    /// and saving writes that default out. The bot must still run agy with
+    /// the flags it ran with when the line was missing.
+    func testSavingAFileWithNoApprovalModeNeverChangesWhatTheBotWillDo() {
+        let cases = approvalCases()
+        var flags: [String: [String]] = [:]
+        var absent: [[String]] = []
+        for item in cases {
+            if let value = item.value { flags[value] = item.args } else { absent.append(item.args) }
+        }
+        XCTAssertEqual(absent.count, 1, "the shared examples have one case for the absent key")
+        guard let whenAbsent = absent.first else { return }
+
+        let key = NexusAgentEnvFile.approvalModeKey
+        let before = "# nothing about approval here\nOTHER=1\n"
+        XCTAssertNil(NexusAgentEnvFile.values(in: before)[key], "the file under test has no \(key) line")
+
+        let saved = NexusAgentEnvFile.render(NexusAgentEnvFile.parse(before), over: before)
+        guard let written = NexusAgentEnvFile.values(in: saved)[key] else {
+            XCTFail("the saved file has no \(key)")
+            return
+        }
+        guard let after = flags[written] else {
+            XCTFail("a save writes \"\(written)\", which the shared examples do not cover")
+            return
+        }
+        XCTAssertEqual(after, whenAbsent, "no line, saved as \"\(written)\"")
+    }
+
     // MARK: - .env lines
 
     func testEnvLinesAreReadAsDotenvReadsThem() {
@@ -165,6 +194,50 @@ final class SharedCasesTests: XCTestCase {
             } else {
                 XCTFail("\(name): key and value are both strings, or both null")
                 continue
+            }
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
+
+    // MARK: - .env files
+
+    /// A whole file, not one line: where a line ends decides which keys exist.
+    /// The bot's dotenv ends a line only at a line feed, a carriage return or
+    /// both; the apps must not see a second line where the bot sees one.
+    func testEnvFilesAreReadAsDotenvReadsThem() {
+        let cases = loadCases("env-files.json")
+        var checked = 0
+        for item in cases {
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let content = item["content"] as? String, let values = item["values"] as? [String: String] else {
+                XCTFail("\(name): needs a content and values, an object of strings")
+                continue
+            }
+            XCTAssertEqual(NexusAgentEnvFile.values(in: content), values, name)
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
+
+    /// Saving rewrites the keys the page owns and leaves every other line
+    /// alone, so a key the page does not own must come out of a save with the
+    /// value the bot would have read before it.
+    func testSavingKeepsTheOtherKeysOfEveryFileTheSame() {
+        let cases = loadCases("env-files.json")
+        var checked = 0
+        for item in cases {
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let content = item["content"] as? String, let values = item["values"] as? [String: String] else {
+                XCTFail("\(name): needs a content and values, an object of strings")
+                continue
+            }
+            let saved = NexusAgentEnvFile.render(NexusAgentEnvFile.parse(content), over: content)
+            let after = NexusAgentEnvFile.values(in: saved)
+            for (key, value) in values where !NexusAgentEnvFile.managedKeys.contains(key) {
+                XCTAssertEqual(after[key], value, "\(name): \(key) after a save")
             }
             checked += 1
         }

@@ -2622,6 +2622,7 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: Comment only: `NexusAgentConfiguration.botProvider` says it is nil after the engine saves or loads.
 - **2026-10-09**: An approval mode in `.env` is now read exactly as the bot reads it: a value padded with spaces (which only reaches the bot from inside quotes, `" plan "`) is not a mode the bot knows, so it shows as Default here too and this app's own chat turns pass no permission flag for it. Capitals are still recognised, because the bot recognises them. The examples are shared with the bot's tests (`apps/desktop/nexus-agent/testdata/approval-modes.json`).
 - **2026-10-09**: A line of `.env` is now read exactly as the bot's dotenv reads it (for one: an unquoted value ends at a `#`, with or without a space before it). A value holding a `#` and both a single and a double quote is now written in backticks, which dotenv reads back whole; it used to be cut short. The examples, and the check that what this app writes is read back unchanged, are shared with the bot's tests (`apps/desktop/nexus-agent/testdata/env-lines.json`, `env-written-values.json`).
+- **2026-10-09**: A `.env` file is split into lines only where the bot's dotenv splits it (`\n`, `\r`, `\r\n`), not at every Unicode line break. Shared examples: `apps/desktop/nexus-agent/testdata/env-files.json`.
 
 ## Tracking and porting upstream
 

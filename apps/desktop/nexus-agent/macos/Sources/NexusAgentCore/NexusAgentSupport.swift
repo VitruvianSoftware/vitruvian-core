@@ -211,8 +211,8 @@ public enum NexusAgentEnvFile {
     /// Every `KEY=value` pair, later lines winning as they do for dotenv.
     public static func values(in content: String) -> [String: String] {
         var values: [String: String] = [:]
-        for line in content.components(separatedBy: .newlines) {
-            if let pair = assignment(in: line) {
+        for line in lines(of: content) {
+            if let pair = assignment(in: line.text) {
                 values[pair.key] = pair.value
             }
         }
@@ -246,38 +246,78 @@ public enum NexusAgentEnvFile {
         guard let existing, !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return template(wanted)
         }
-        var lines = existing.components(separatedBy: "\n")
-        // A trailing newline splits into one empty last element; keep it last.
-        let endsWithNewline = lines.last == ""
-        if endsWithNewline { lines.removeLast() }
         var written: Set<String> = []
+        // Each entry is a line with its own ending, so a line left alone
+        // comes out byte for byte as it went in (a CRLF file keeps its CRLF
+        // on every line the page does not change). A line the page rewrites
+        // ends in a plain newline, and so does the last line if the file
+        // did not end in one.
         var output: [String] = []
-        for line in lines {
-            guard let key = assignment(in: line)?.key else {
-                output.append(line)
+        var lastText = ""
+        for line in lines(of: existing) {
+            let ending = line.ending.isEmpty ? "\n" : line.ending
+            guard let key = assignment(in: line.text)?.key else {
+                output.append(line.text + ending)
+                lastText = line.text
                 continue
             }
             if legacyKeys.contains(key) { continue }
             if let value = wanted[key] {
                 // Every copy gets the new value: dotenv reads the last one.
-                output.append("\(key)=\(encoded(value))")
+                let rewritten = "\(key)=\(encoded(value))"
+                output.append(rewritten + "\n")
+                lastText = rewritten
                 written.insert(key)
             } else {
-                output.append(line)
+                output.append(line.text + ending)
+                lastText = line.text
             }
         }
         // The provider lines count as owned only when the app chose one.
         let owned = managedKeys + (configuration.botProvider == nil ? [] : [providerKey, commandTemplateKey])
         let missing = owned.filter { !written.contains($0) }
         if !missing.isEmpty {
-            if output.last.map({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? false {
-                output.append("")
+            if !lastText.trimmingCharacters(in: .whitespaces).isEmpty {
+                output.append("\n")
             }
             for key in missing {
-                output.append("\(key)=\(encoded(wanted[key] ?? ""))")
+                output.append("\(key)=\(encoded(wanted[key] ?? ""))\n")
             }
         }
-        return output.joined(separator: "\n") + "\n"
+        return output.joined()
+    }
+
+    /// The lines of a file, each with the ending it had. A line ends at
+    /// `\r\n`, `\r` or `\n` and nowhere else, which is where dotenv splits
+    /// the file. Other characters that look like line breaks (a vertical tab,
+    /// a form feed, U+0085, U+2028, U+2029) stay inside the line, as they do
+    /// for the bot. The last line has an empty ending if the file did not end
+    /// in a line break; a file that does has no empty line after it.
+    private static func lines(of content: String) -> [(text: String, ending: String)] {
+        var lines: [(text: String, ending: String)] = []
+        var text = String.UnicodeScalarView()
+        var scalars = content.unicodeScalars.makeIterator()
+        var next = scalars.next()
+        while let scalar = next {
+            next = scalars.next()
+            switch scalar {
+            case "\n":
+                lines.append((String(text), "\n"))
+                text = String.UnicodeScalarView()
+            case "\r":
+                if next == Unicode.Scalar("\n") {
+                    next = scalars.next()
+                    lines.append((String(text), "\r\n"))
+                } else {
+                    lines.append((String(text), "\r"))
+                }
+                text = String.UnicodeScalarView()
+            default:
+                text.append(scalar)
+            }
+        }
+        if !text.isEmpty { lines.append((String(text), "")) }
+        return lines
     }
 
     // MARK: - Lines
@@ -359,8 +399,11 @@ public enum NexusAgentEnvFile {
         }
         var value = string(raw)
         if first == "\"" {
-            value = value.replacingOccurrences(of: "\\n", with: "\n")
-                .replacingOccurrences(of: "\\r", with: "\r")
+            // Literal, as dotenv's text search is: without it a combining
+            // accent after the `n` makes `n` + accent one letter, which is
+            // not a match.
+            value = value.replacingOccurrences(of: "\\n", with: "\n", options: .literal)
+                .replacingOccurrences(of: "\\r", with: "\r", options: .literal)
         }
         return value
     }

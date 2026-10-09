@@ -10,6 +10,7 @@ changing a rule on one side fails the other side's tests.
 | `archive-annotations.json` | which Antigravity annotation text marks a conversation archived |
 | `approval-modes.json` | which agy permission flags an `AGY_APPROVAL_MODE` value gives; `null` is the absent key |
 | `env-lines.json` | what one line of `.env` assigns, as the bot's `dotenv` reads it; `null` key and value mean nothing |
+| `env-files.json` | what a whole `.env` file assigns, as `dotenv` reads it; a line ends only at `\n`, `\r` or `\r\n`, so a file's line endings and look-alike characters (U+2028, form feed) change nothing |
 | `env-written-values.json` | the text the apps write after the `=` for a value, which `dotenv` must read back as that value |
 
 ## Who reads them

@@ -25,8 +25,9 @@
 // own code, so a rule changed here without the apps following fails their
 // tests, and the other way round. Expected values live only in the JSON.
 
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -40,9 +41,11 @@ import { annotationIsArchived } from "./annotations.js";
 // session store from the working directory. Point it at a throwaway folder
 // and take the approval-mode keys out BEFORE importing, so the test never
 // touches a real store and sees the bot as it is with no mode in `.env`.
-process.env.AGY_WORKING_DIR = fs.mkdtempSync(
-  path.join(os.tmpdir(), "nexus-shared-cases-"),
-);
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-shared-cases-"));
+after(() => {
+  fs.rmSync(scratch, { recursive: true, force: true });
+});
+process.env.AGY_WORKING_DIR = scratch;
 delete process.env.AGY_APPROVAL_MODE;
 delete process.env.GEMINI_APPROVAL_MODE;
 const { approvalArgs, getChatSettings } = await import("./agy.js");
@@ -94,6 +97,62 @@ test("approval modes: the bot passes agy the flags every shared example says", (
     );
     const mode = value === null ? whenAbsent : value;
     assert.deepEqual(approvalArgs(mode), args, name);
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+test("approval modes: an empty AGY_APPROVAL_MODE in the environment gives the flags of the empty example", () => {
+  // The example for "" above calls approvalArgs directly. What the bot does
+  // with an empty line in `.env` also depends on how agy.js reads the
+  // environment when it loads (`??`, so an empty string wins over the
+  // default and is not replaced by yolo). So load the bot's module the way
+  // the bot starts, with that variable set to "". Modules are cached per
+  // URL, so this runs in a fresh node process, with the home folder and the
+  // working directory pointed at the throwaway folder.
+  const cases = loadCases("approval-modes.json");
+  const empty = cases.filter((item) => item.value === "");
+  assert.equal(
+    empty.length,
+    1,
+    "the shared examples have one case for an empty value",
+  );
+  const agyUrl = new URL("./agy.js", import.meta.url).href;
+  const script = `
+    const { approvalArgs, getChatSettings } = await import(${JSON.stringify(agyUrl)});
+    const mode = getChatSettings(0).approvalMode;
+    process.stdout.write(JSON.stringify({ mode, args: approvalArgs(mode) }));
+    process.exit(0);
+  `;
+  const env = {
+    ...process.env,
+    HOME: scratch,
+    AGY_WORKING_DIR: scratch,
+    AGY_APPROVAL_MODE: "",
+  };
+  delete env.GEMINI_APPROVAL_MODE;
+  delete env.GEMINI_WORKING_DIR;
+  const run = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", script],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(run.status, 0, `the bot's module did not load: ${run.stderr}`);
+  const loaded = JSON.parse(run.stdout);
+  assert.equal(loaded.mode, "", "the bot kept the empty mode, not its default");
+  assert.deepEqual(loaded.args, empty[0].args, empty[0].name);
+});
+
+test(".env files: dotenv reads every shared file as written", () => {
+  const cases = loadCases("env-files.json");
+  let checked = 0;
+  for (const { name, content, values } of cases) {
+    assert.equal(typeof content, "string", `${name}: content is a string`);
+    assert.ok(
+      values !== null && typeof values === "object" && !Array.isArray(values),
+      `${name}: values is an object`,
+    );
+    assert.deepEqual(dotenv.parse(content), values, name);
     checked += 1;
   }
   assert.equal(checked, cases.length);
