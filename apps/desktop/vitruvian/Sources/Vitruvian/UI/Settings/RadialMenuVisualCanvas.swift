@@ -423,7 +423,7 @@ private struct RadialCanvasChip: View {
                 .interpolation(.high)
                 .frame(width: 26, height: 26)
         } else {
-            Image(systemName: item.effectiveSymbolName)
+            Image(systemName: item.resolvedSymbolName())
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(isHighlighted ? AnyShapeStyle(.white) : AnyShapeStyle(.white.opacity(0.9)))
         }

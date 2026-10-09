@@ -38,7 +38,8 @@ package protocol NotchIslandServices: AnyObject {
     var keepsCameraPrompt: Bool { get }
     var activeUtility: QuickLauncherItem? { get }
     var editingTools: Bool { get }
-    var visibleTools: [QuickLauncherItem] { get }
+    /// How many tiles the Tools page shows now, of either kind.
+    var visibleToolCount: Int { get }
     var mediaPresented: Bool { get }
     var mediaContentHeight: CGFloat? { get }
     var offersMediaDrop: Bool { get }
@@ -145,7 +146,7 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var keepsCameraPrompt: Bool { CameraPreviewService.shared.keepsNotchPermissionPrompt }
     package var activeUtility: QuickLauncherItem? { QuickLauncherService.shared.activeUtility }
     package var editingTools: Bool { QuickLauncherService.shared.isEditing }
-    package var visibleTools: [QuickLauncherItem] { QuickLauncherService.shared.visibleItems }
+    package var visibleToolCount: Int { QuickLauncherService.shared.visibleTiles.count }
     package var mediaPresented: Bool { NotchFileToolsService.shared.mediaPresented }
     package var mediaContentHeight: CGFloat? { NotchFileToolsService.shared.mediaContentHeight }
     package var offersMediaDrop: Bool { NotchFileToolsService.shared.offersMediaDrop }

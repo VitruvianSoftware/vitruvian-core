@@ -119,6 +119,18 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   The radial menu, the Quick panel and the command bar run commands through
   `ToolRegistry`, and the command bar also lists them from it. Do not add a
   service call to a surface's own switch.
+- A surface that lists tools has two sources: its own fixed list, and
+  `ToolRegistry.extraCommands(on:)`, the commands that ask for that surface
+  and that the fixed list does not already offer. Never list
+  `commands(on:)` straight onto the Quick panel or the wheel: every built-in
+  command is in it, and each would appear twice. A built-in command asks for
+  a surface in `BuiltinTools.install` only when something there already runs
+  it.
+- A saved order may hold an id the app does not recognise right now: a tool
+  that has not registered yet, or one that is switched off. Keep it where it
+  is (`QuickToolsSupport.savedTileOrder`); drop only what is not well formed.
+- To see a tool that is in no fixed list, build with
+  `--define=vitruvian_sample_tool=true` (`Services/Platform/SampleTool.swift`).
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and

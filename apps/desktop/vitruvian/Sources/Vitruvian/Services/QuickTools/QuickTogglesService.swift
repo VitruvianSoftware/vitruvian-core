@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// Everything the quick toggles tab can do. Raw values are storage ids for
 /// the user's order and the per-item visibility keys.
-package enum QuickToggleAction: String, PanelOrderItem, Identifiable {
+package enum QuickToggleAction: String, PanelOrderItem, CaseIterable, Identifiable {
     // Case order is the default panel order: the appearance switch leads
     // because it is the tab's headline action (issue request).
     case darkMode, keyboardLight, micMute, emptyTrash, ejectDisks, hiddenFiles, desktopIcons,

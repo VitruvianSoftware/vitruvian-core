@@ -24,7 +24,7 @@ package struct DiskSection: View {
     @State private var draggingBlock: Block?
     @State private var selectedDiskID: String?
 
-    private enum Block: String, PanelOrderItem { case usage, activity, smart, protection, tools }
+    private enum Block: String, PanelOrderItem, CaseIterable { case usage, activity, smart, protection, tools }
 
     package var body: some View {
         PanelSection(.disk, title: l10n.s.diskSection, collapsible: collapsible,

@@ -13,17 +13,26 @@ package enum BuiltinTools {
     /// Called once from `main.swift`, before anything can present. Safe to
     /// call again: a tool already there is left alone.
     package static func install(into registry: ToolRegistry = .shared) {
+        // A built-in command asks for the panel only when a tile runs it:
+        // the others have no tile today, and listing them would put new
+        // tiles in front of everyone.
+        let tiled = Set(QuickLauncherItem.allCases.compactMap(\.command))
         for feature in AppFeature.allCases {
             guard let id = ToolID(feature.rawValue), registry.tool(id) == nil else { continue }
-            let commands = BuiltinCommand.allCases.filter { $0.feature == feature }.map { command in
+            let own = BuiltinCommand.allCases.filter { $0.feature == feature }
+            let commands = own.compactMap { command in
                 CommandDescriptor(id: command.id, title: feature.rawValue, symbol: feature.symbolName,
-                                  surfaces: [.radial, .quickPanel])
+                                  surfaces: tiled.contains(command) ? [.radial, .quickPanel] : [.radial])
             }
-            guard let tool = ToolDescriptor(id: id, name: feature.rawValue, symbol: feature.symbolName,
-                                            commands: commands) else { continue }
+            guard commands.count == own.count,
+                  let tool = ToolDescriptor(id: id, name: feature.rawValue, symbol: feature.symbolName,
+                                            commands: commands) else {
+                assertionFailure("the built-in tool \(feature.rawValue) could not be described")
+                continue
+            }
             try? registry.register(tool)
             try? registry.setName(titleProvider(for: feature), for: id)
-            for command in BuiltinCommand.allCases where command.feature == feature {
+            for command in own {
                 try? registry.setHandler(handler(for: command), for: command.id)
             }
         }
