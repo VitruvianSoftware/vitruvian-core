@@ -17,6 +17,7 @@ enum ToolPlatformTests {
         registry(suite)
         radial(suite)
         quickPanel(suite)
+        commandBar(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -90,6 +91,29 @@ enum ToolPlatformTests {
                                           run: { [unowned self] in self.ran.append(id.rawValue) }),
                                     for: id)
         }
+    }
+
+    static func commandBar(_ suite: TestSuite) {
+        let world = World()
+        do {
+            try world.add("com.acme.deploys", "open", surfaces: [.commandBar])
+            try world.add("screenshot", "capture", surfaces: [.radial])
+        } catch {
+            suite.expect(false, "registering two distinct tools succeeds, got \(error)")
+        }
+        let rows = CommandBarCatalog.toolEntries(registry: world.registry, language: .systemDefault)
+        suite.expect(rows.map(\.id) == ["tool.com.acme.deploys/open"],
+                     "the bar lists the commands that asked for it, and only those")
+        suite.expect(rows.first?.title == "first open" && rows.first?.subtitle == "com.acme.deploys",
+                     "a row is titled by its command and filed under its tool")
+        suite.expect(rows.first?.stableKey == rows.first?.id,
+                     "a row's name and pin survive under its command id")
+        rows.first?.run(nil)
+        suite.expect(world.ran == ["com.acme.deploys/open"], "Return on a row runs its command")
+
+        world.registry.unregister(ToolID("com.acme.deploys")!)
+        suite.expect(CommandBarCatalog.toolEntries(registry: world.registry, language: .systemDefault).isEmpty,
+                     "a removed tool leaves no row behind")
     }
 
     static func builtinTools(_ suite: TestSuite) {

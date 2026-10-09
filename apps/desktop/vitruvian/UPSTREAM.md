@@ -114,6 +114,7 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/RadialMenu/RadialMenuService.swift`: tool slices run through `ToolRegistry` instead of a private switch; a `command` slice whose command cannot run is left off the wheel.
   - `UI/RadialMenu/RadialMenuView.swift`, `UI/Settings/RadialMenuSettings.swift`, `UI/Settings/RadialMenuVisualCanvas.swift`: arms for the `command` kind.
   - `Services/QuickTools/QuickLauncherService.swift`: `QuickLauncherItem.command`; the live `perform` runs it through `ToolRegistry` instead of a private switch.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `toolEntries` adds a row for each registry command that asks for the bar; none of the app's own commands do.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
   - `GitHubAuthService.swift`: `syncWithPreferences()` signs in with the GitHub CLI login (`~/.config/gh/hosts.yml`) when nobody is signed in and no token is saved, except after an explicit `disconnect()` this session or for a token GitHub already answered 401 to. `finishSignIn` keeps the token in memory when the Keychain refuses to save it (ad-hoc builds lack the entitlement) instead of failing the sign-in. The `hosts.yml` location is an initializer parameter (`cliHostsURL`) so tests use their own file.
   - `GitHubPeripheralSink.swift`: `update(verdict:force:)` writes even an unchanged verdict when forced; an injectable `Executor` stands in for the mouse binary in tests.
