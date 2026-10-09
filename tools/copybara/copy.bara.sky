@@ -390,6 +390,26 @@ COMPONENTS = [
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
     },
+    # site-vitruviansoftware-dev: EXPORT-ONLY mirror of the vitruviansoftware.dev
+    # Jekyll site (apps/web/vitruviansoftware-dev/ -> the standalone repo root).
+    # The standalone repo is the GitHub Pages publisher bound to the custom
+    # domain, so it stays: every export lands as a push to its main, and its own
+    # jekyll.yml (exported from the subtree like every other file) builds and
+    # deploys. Nothing is imported back -- the site is edited here.
+    #
+    # SQUASH: the mirror keeps the history it had before the move; each export
+    # adds one commit on top. No standalone_only files: the mirror's leftover
+    # local tool state (.agent/, .cursor, .bundle/config) is not carried in the
+    # monorepo and the first export removes it.
+    {
+        "name": "site-vitruviansoftware-dev",
+        "repo": "site-vitruviansoftware-dev",
+        "subtree": "apps/web/vitruviansoftware-dev",
+        "standalone_rev_id": "SITE_VITRUVIANSOFTWARE_DEV_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        "export_only": True,
+    },
     # pulumi-library: EXPORT-ONLY mirror (monorepo pulumi/library/ -> the
     # standalone VitruvianSoftware/pulumi-library, at its repo root). The monorepo
     # subtree (`subtree`) differs from the standalone repo (`repo`), so both are

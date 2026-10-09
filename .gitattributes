@@ -41,3 +41,7 @@ apps/desktop/vitruvian/build.sh    rules-lint-ignored=true
 # header). merge=binary forces a conflict whenever both sides modify the file,
 # so tools and developers always re-resolve rather than trust a textual splice.
 pnpm-lock.yaml  merge=binary
+
+# vitruviansoftware.dev ships one vendored, minified script; reformatting it
+# would turn a one-line upstream file into a hand-maintained fork.
+apps/web/vitruviansoftware-dev/js/canvas-nest.min.js rules-lint-ignored=true
