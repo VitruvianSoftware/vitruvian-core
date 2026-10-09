@@ -26,43 +26,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  annotationIsArchived,
-  archivedConversationIds,
-} from "./annotations.js";
+import { archivedConversationIds } from "./annotations.js";
 
-test("archived in the shapes agy writes", () => {
-  assert.equal(
-    annotationIsArchived(
-      "archived:true archival_status_timestamp:{seconds:1787464769 nanos:503730000} marked_as_unread:false",
-    ),
-    true,
-  );
-  assert.equal(
-    annotationIsArchived(
-      'title:"Daily Briefing"  archived: true  last_user_view_time:{seconds:1  nanos:2}',
-    ),
-    true,
-  );
-});
-
-test("not archived without the field", () => {
-  assert.equal(
-    annotationIsArchived(
-      "last_user_view_time:{seconds:1790974412  nanos:316000000}",
-    ),
-    false,
-  );
-  assert.equal(annotationIsArchived("archived:false pinned:true"), false);
-  assert.equal(annotationIsArchived(""), false);
-});
-
-test("a title cannot pass for the field", () => {
-  assert.equal(
-    annotationIsArchived('title:"why is archived:true ignored" pinned:true'),
-    false,
-  );
-});
+// Which annotation text counts as archived is checked in shared-cases.test.js,
+// from the examples the Mac apps' tests also read (../testdata).
 
 test("archived ids are collected across data directories", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-annotations-"));

@@ -64,6 +64,17 @@ js_test(
     entry_point = "sessions.test.js",
 )
 
+# The examples shared with the Mac apps' tests (../testdata), run through the
+# bot's own code. See ../testdata/README.md.
+js_test(
+    name = "shared_cases_test",
+    data = [
+        ":annotations",
+        "//apps/desktop/nexus-agent:testdata",
+    ],
+    entry_point = "shared-cases.test.js",
+)
+
 js_library(
     name = "agy",
     srcs = ["agy.js"],
@@ -109,6 +120,7 @@ pipeline_unit(
         ":annotations_test",
         ":formatter_test",
         ":sessions_test",
+        ":shared_cases_test",
         ":typecheck_typecheck_test",
     ],
     tier = "L1",
