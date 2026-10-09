@@ -158,7 +158,9 @@ sh_binary(
 # .github/workflows/gravastar-mouse-release.yaml (release machinery, not
 # delivery -- the same split as esp32-s3 and vitruvian).
 delivery(
-    name = "gravastar-mouse",
+    # Not "gravastar-mouse": that is the binary's target, and gazelle reads
+    # this macro call as a rule of the same name.
+    name = "gravastar-mouse-publish",
     app = "gravastar-mouse",
     environments = [
         "beta",

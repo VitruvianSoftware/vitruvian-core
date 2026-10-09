@@ -42,14 +42,14 @@ import (
 //	tabula-build-stack             pulumi, transcribed, single rung, foundation env
 //	charts / tabula-dev-latest     publish, transcribed, single rung
 //	esp32-s3 / vitruvian /         publish, transcribed, beta push rung + release rung
-//	gravastar-mouse                (vitruvian and gravastar-mouse on the macOS runner)
+//	gravastar-mouse-publish        (vitruvian and gravastar-mouse on the macOS runner)
 //
 // Frozen copies rather than a live read of bazel-bin so the golden cannot move
 // under the test when someone edits a real BUILD file.
 var fixtureUnits = []string{
 	"testdata/units/charts.delivery.json",
 	"testdata/units/esp32-s3.delivery.json",
-	"testdata/units/gravastar-mouse.delivery.json",
+	"testdata/units/gravastar-mouse-publish.delivery.json",
 	"testdata/units/oauth-user-inspector-identity.delivery.json",
 	"testdata/units/oauth-user-inspector.delivery.json",
 	"testdata/units/tabula-api.delivery.json",
@@ -1545,7 +1545,7 @@ func TestGroupByAppGivesEveryAppItsOwnWorkflow(t *testing.T) {
 	want := map[string][]string{
 		"charts":               {"charts"},
 		"esp32-s3":             {"esp32-s3"},
-		"gravastar-mouse":      {"gravastar-mouse"},
+		"gravastar-mouse":      {"gravastar-mouse-publish"},
 		"oauth-user-inspector": {"oauth-user-inspector", "oauth-user-inspector-identity", "zitadel-apps"},
 		"tabula":               {"tabula-api", "tabula-build-stack", "tabula-dev-latest", "tabula-identity", "tabula-web"},
 		"vitruvian":            {"vitruvian"},

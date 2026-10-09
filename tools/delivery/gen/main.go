@@ -592,7 +592,7 @@ var transcribedJobs = map[string]transcribedSpec{
 		runsOn:      "xcode-27",
 		renderSteps: renderVitruvianPublishSteps,
 	},
-	"gravastar-mouse": {
+	"gravastar-mouse-publish": {
 		timeoutMinutes: 45,
 		// `gh release upload` + moving the rolling beta tag: contents: write.
 		permissions: []string{"contents: write"},

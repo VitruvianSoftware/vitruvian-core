@@ -55,7 +55,7 @@
 # renaming or deleting a delivery() declaration shows up as a DIFF in this
 # generated file, which is what makes tidy-check's regeneration assertion
 # mean something even for a unit that renders no job yet.
-#   - gravastar-mouse  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
+#   - gravastar-mouse-publish  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
 #       paths:  packages/peripherals/
 #       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
 
@@ -75,7 +75,7 @@ on:
         type: choice
         required: true
         options:
-          - gravastar-mouse
+          - gravastar-mouse-publish
       environment:
         description: Target environment (single-env break-glass redeploy)
         type: choice
@@ -182,7 +182,7 @@ jobs:
       # phase). The affected_* pairs are the convenience form a job-level
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
-      affected_gravastar_mouse: ${{ steps.manifest.outputs.affected_gravastar_mouse }}
+      affected_gravastar_mouse_publish: ${{ steps.manifest.outputs.affected_gravastar_mouse_publish }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -242,7 +242,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: gravastar-mouse
+          ORCHESTRATE_UNITS: gravastar-mouse-publish
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@v7
@@ -254,17 +254,17 @@ jobs:
           # signed off before the legacy path is deleted.
           retention-days: 30
 
-  # ======== unit: gravastar-mouse → beta → production ========
+  # ======== unit: gravastar-mouse-publish → beta → production ========
   # Declared in packages/peripherals/BUILD; break-glass target: //packages/peripherals:publish
   # Transcribed from .github/workflows/vitruvian-release.yaml job "package" (that job no longer exists; see git history).
 
   # The push rung: delivers on an affected push. The later rungs are
   # release-gated promotions and do not chain behind this one.
-  gravastar-mouse-beta:
+  gravastar-mouse-publish-beta:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_gravastar_mouse == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse' && inputs.environment == 'beta'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_gravastar_mouse_publish == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse-publish' && inputs.environment == 'beta'))
     concurrency:
-      group: delivery-gravastar-mouse-beta
+      group: delivery-gravastar-mouse-publish-beta
       cancel-in-progress: false
     runs-on: xcode-27
     timeout-minutes: 45
@@ -294,10 +294,10 @@ jobs:
         run: bash packages/peripherals/publish.sh
 
   # PROMOTION rung 1/1 — release-gated on a gravastar-mouse-v* release, never reached by a push.
-  gravastar-mouse-production:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'gravastar-mouse-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse' && inputs.environment == 'production'))
+  gravastar-mouse-publish-production:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'gravastar-mouse-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse-publish' && inputs.environment == 'production'))
     concurrency:
-      group: delivery-gravastar-mouse-production
+      group: delivery-gravastar-mouse-publish-production
       cancel-in-progress: false
     runs-on: xcode-27
     timeout-minutes: 45

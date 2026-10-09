@@ -24,7 +24,7 @@
 #
 # ONE script, TWO triggers (delivery-orchestrator spec §4.1): the generated
 # .github/workflows/delivery-gravastar-mouse.yaml runs it for the
-# `gravastar-mouse` unit, and the break-glass path is
+# `gravastar-mouse-publish` unit, and the break-glass path is
 # `bazel run //packages/peripherals:publish` on a Mac. The rung selects the grade:
 #
 #   GRADE=beta        (push to main)  rolling prerelease `gravastar-mouse-beta-latest`;

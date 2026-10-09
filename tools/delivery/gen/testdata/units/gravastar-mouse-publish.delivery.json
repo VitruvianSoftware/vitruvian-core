@@ -15,7 +15,7 @@
   "kind": "publish",
   "legacy_job": "package",
   "legacy_workflow": ".github/workflows/vitruvian-release.yaml",
-  "name": "gravastar-mouse",
+  "name": "gravastar-mouse-publish",
   "package": "packages/peripherals",
   "preflight": "",
   "promotion": "release:gravastar-mouse-v",
