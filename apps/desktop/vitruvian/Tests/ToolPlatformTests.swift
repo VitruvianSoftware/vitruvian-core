@@ -12,6 +12,7 @@ enum ToolPlatformTests {
     static func run(_ suite: TestSuite) {
         ids(suite)
         descriptors(suite)
+        builtins(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -50,5 +51,21 @@ enum ToolPlatformTests {
         suite.expect(ToolDescriptor(id: tool, name: "Screenshot", symbol: "camera.viewfinder",
                                     commands: [capture, capture]) == nil,
                      "a tool cannot declare one command twice")
+    }
+
+    static func builtins(_ suite: TestSuite) {
+        for command in BuiltinCommand.allCases {
+            suite.expect(CommandID(command.rawValue) != nil, "\(command.rawValue) is a command id")
+            suite.expect(command.id.tool.rawValue == command.feature.rawValue,
+                         "\(command.rawValue) belongs to the tool of its own feature")
+        }
+        suite.expect(Set(BuiltinCommand.allCases.map(\.rawValue)).count == BuiltinCommand.allCases.count,
+                     "no built-in command id repeats")
+        for tool in RadialMenuTool.allCases {
+            suite.expect(tool.command.feature == tool.feature,
+                         "every radial tool runs the command of its own feature")
+        }
+        suite.expect(Set(RadialMenuTool.allCases.map(\.command)).count == RadialMenuTool.allCases.count,
+                     "no two radial tools share a command")
     }
 }

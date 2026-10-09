@@ -405,6 +405,27 @@ package enum RadialMenuTool: String, Codable, CaseIterable, Identifiable {
 
     package var symbolName: String { feature.symbolName }
 
+    /// The registry command this slice runs.
+    package var command: BuiltinCommand {
+        switch self {
+        case .screenshot: return .screenshotCapture
+        case .screenRecorder: return .screenRecorderToggle
+        case .colorPicker: return .colorPickerPick
+        case .screenOCR: return .screenOCRCapture
+        case .micMute: return .micMuteToggle
+        case .clipboardHistory: return .clipboardHistoryShow
+        case .quickLauncher: return .quickLauncherShow
+        case .cameraPreview: return .cameraPreviewShow
+        case .scratchpad: return .scratchpadShow
+        case .shelf: return .shelfSummon
+        case .cleaner: return .cleanerOpen
+        case .uninstaller: return .uninstallerOpen
+        case .appUpdates: return .appUpdatesCheck
+        case .cleaningMode: return .cleaningModeActivate
+        case .keepAwake: return .keepAwakeToggle
+        }
+    }
+
     /// Hub availability and a feature's own master switch are separate. A
     /// saved Shelf slice stays dormant while Shelf is explicitly disabled and
     /// returns automatically when the user enables it again.
