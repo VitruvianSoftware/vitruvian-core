@@ -32,8 +32,8 @@ package enum NexusAgentTheme {
 package struct NexusAgentQuickPromptView: View {
     package let embeddedInNotch: Bool
 
-    @ObservedObject private var service = NexusAgentService.shared
-    @ObservedObject private var session = NexusAgentService.shared.session
+    @ObservedObject private var service: NexusAgentService
+    @ObservedObject private var session: NexusAgentQuickPromptSession
     @ObservedObject private var l10n = L10n.shared
     @FocusState private var inputFocused: Bool
     /// The pointer is over the pill, which is what brings the action buttons in.
@@ -49,8 +49,13 @@ package struct NexusAgentQuickPromptView: View {
     @State private var hoveringSessions = false
     @State private var isArchivedExpanded = false
 
-    package init(embeddedInNotch: Bool = false) {
+    /// The app shows its one service. The snapshot tool
+    /// (Tools/NexusAgentChatSnapshots.swift) hands in a service built over
+    /// fake files instead, so that it never reads the user's own.
+    package init(embeddedInNotch: Bool = false, service: NexusAgentService = .shared) {
         self.embeddedInNotch = embeddedInNotch
+        self.service = service
+        self.session = service.session
     }
 
     private typealias Layout = NexusAgentQuickPromptLayout

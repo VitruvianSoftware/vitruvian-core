@@ -303,6 +303,37 @@ swift_binary(
     target_compatible_with = MACOS_ONLY,
 )
 
+# Draws the Nexus Agent chat in fixed states and writes each as a PNG, to
+# compare before and after a change that should not alter its look:
+#   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_chat_snapshots -- <output folder>
+# A script like MakeIcon, so it is compiled as main.swift the same way. It is
+# in the app's Swift package because the view and the service are `package`.
+genrule(
+    name = "nexus_agent_chat_snapshots_main",
+    srcs = ["Tools/NexusAgentChatSnapshots.swift"],
+    outs = ["nexus_agent_chat_snapshots_src/main.swift"],
+    cmd = "cp $< $@",
+)
+
+swift_binary(
+    name = "nexus_agent_chat_snapshots",
+    package_name = SWIFT_PACKAGE,
+    srcs = [":nexus_agent_chat_snapshots_main"],
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":VitruvianCore",
+        ":VitruvianDesign",
+        ":VitruvianServices",
+        ":VitruvianUI",
+    ],
+)
+
 genrule(
     name = "icons",
     srcs = glob(["Resources/Brand/*.png"]),
