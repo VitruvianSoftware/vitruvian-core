@@ -1,6 +1,6 @@
 # Vitruvian sub-project 2: the capability broker and the first three bundled tools — design
 
-**Date:** 2026-10-09 · **Status:** draft, awaiting James · **Owner:** compass
+**Date:** 2026-10-09 · **Status:** approved by James 2026-10-09, with every default in section 13 · **Owner:** compass
 **Scope:** `apps/desktop/vitruvian` only. No SDK package, no outside code.
 **Parent:** `docs/superpowers/specs/2026-10-08-vitruvian-tool-platform-design.md`
 (sections 5, 6, 8, 10 and 11; sub-project 2 in section 12).
@@ -456,8 +456,11 @@ each.
 
 ## 13. Open questions
 
-Each has a default. Unless James says otherwise, the default stands and the
-Stage A plan is written against it.
+Each had a default. James accepted every one on 2026-10-09. They are
+decisions now. The stage A plan is
+`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`; it changes
+three details of this spec, listed in its decisions table, and its last task
+brings this document in line.
 
 1. **`processes` as a new capability** (decision 2). *Default: yes.*
 2. **Keep the Port manager's dependency on Kill process** (decision 3).
