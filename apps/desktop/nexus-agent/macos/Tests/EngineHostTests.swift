@@ -69,6 +69,16 @@ final class EngineHostTests: XCTestCase {
         var agentRuns: [(path: String, arguments: [String], directory: String)] = []
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
+        /// Programs the rig says can be run, for the lookups that ask.
+        var executables: Set<String> = []
+        /// A provider's own command, as the session asked for it to be run,
+        /// and the three ways the pretend command talks back.
+        var commandRuns: [(path: String, arguments: [String], directory: String, environment: [String: String])] = []
+        var commandOutput: (@MainActor @Sendable (Data) -> Void)?
+        var commandErrors: (@MainActor @Sendable (Data) -> Void)?
+        var commandExit: (@MainActor @Sendable (Int32) -> Void)?
+        var commandTerminations = 0
+        var commandCannotStart = false
         var listedHidden: [[String]] = []
         /// Every program the engine asked to run for its output, and what
         /// the pretend program prints (nil: it could not be started).
@@ -130,7 +140,7 @@ final class EngineHostTests: XCTestCase {
                 home: home,
                 processEnvironment: ["PATH": "/usr/bin"],
                 stateDirectory: state,
-                isExecutable: { _ in false },
+                isExecutable: { [unowned self] in executables.contains($0) },
                 fileExists: { [unowned self] in files[$0] != nil },
                 readFile: { [unowned self] in files[$0] },
                 readTail: { [unowned self] path, _ in files[path] },
@@ -165,6 +175,14 @@ final class EngineHostTests: XCTestCase {
                         await withCheckedContinuation { heldProgram = $0 }
                     }
                     return programOutput
+                },
+                launchCommand: { [unowned self] path, arguments, directory, environment, onOutput, onErrors, onExit in
+                    if commandCannotStart { throw CocoaError(.fileNoSuchFile) }
+                    commandRuns.append((path, arguments, directory, environment))
+                    commandOutput = onOutput
+                    commandErrors = onErrors
+                    commandExit = onExit
+                    return NexusAgentRunningAgent(terminate: { [unowned self] in commandTerminations += 1 })
                 })
         }
     }
@@ -727,6 +745,401 @@ final class EngineHostTests: XCTestCase {
         // A full path is taken as given if something is there, executable or not.
         XCTAssertEqual(find("/opt/x/ollama", path: "", executables: [], files: ["/opt/x/ollama"]), "/opt/x/ollama")
         XCTAssertNil(find("/opt/x/ollama", path: "", executables: ["/opt/x/ollama"]))
+    }
+
+    // MARK: - A provider's own command is run as written
+
+    /// A provider the user added: a command with the prompt and model in it.
+    private func ownProvider(_ template: String = "llm -m {model} \"{prompt}\"") -> NexusAgentCLIProvider {
+        NexusAgentCLIProvider(id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-00000000000A")!,
+                              name: "My LLM", commandTemplate: template, isBuiltIn: false)
+    }
+
+    /// A rig where `llm` is installed in the first folder the lookup tries.
+    private func rigWithCommand(_ path: String = "/opt/homebrew/bin/llm") -> Rig {
+        let rig = Rig()
+        rig.executables = [path]
+        return rig
+    }
+
+    func testAnOwnProvidersCommandIsRunWithThePromptAsOneArgument() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        engine.updateActiveProvider(ownProvider())
+        var configuration = engine.configuration
+        configuration.model = "m1"
+        let prompt = "say \"hi\"; $(rm -rf x) && echo `id`\nsecond line {model}"
+
+        // The path handed in is agy's; an own command finds its own program.
+        engine.session.send(prompt, configuration: configuration, agentPath: "/fake/agy")
+
+        XCTAssertTrue(rig.agentRuns.isEmpty, "it is not run as agy")
+        XCTAssertTrue(rig.programRuns.isEmpty, "and nothing is asked of Ollama")
+        XCTAssertEqual(rig.commandRuns.count, 1)
+        XCTAssertEqual(rig.commandRuns.first?.path, "/opt/homebrew/bin/llm")
+        XCTAssertEqual(rig.commandRuns.first?.arguments, ["-m", "m1", prompt],
+                       "three arguments: the prompt is the third, whole and unchanged")
+        XCTAssertEqual(rig.commandRuns.first?.directory, rig.home)
+        XCTAssertEqual(rig.commandRuns.first?.environment["NO_COLOR"], "1")
+        XCTAssertEqual(rig.commandRuns.first?.environment["PATH"], "/usr/bin",
+                       "none of the install folders exists in the rig, so PATH is the app's own")
+        XCTAssertTrue(engine.session.isRunning)
+        XCTAssertEqual(engine.session.messages.first?.text, prompt, "the bubble shows what was typed")
+
+        // It prints plain text, in pieces; the reply grows as they arrive.
+        rig.commandOutput?(Data("The answer".utf8))
+        XCTAssertEqual(engine.session.messages.last?.text, "The answer")
+        rig.commandErrors?(Data("a warning on the side\n".utf8))
+        rig.commandOutput?(Data(" is 42.\n\n".utf8))
+        XCTAssertTrue(host.finished.isEmpty)
+        rig.commandExit?(0)
+
+        XCTAssertFalse(engine.session.isRunning)
+        XCTAssertEqual(engine.session.messages.count, 2)
+        XCTAssertEqual(engine.session.messages.last?.role, .agent)
+        XCTAssertEqual(engine.session.messages.last?.text, "The answer is 42.", "trimmed, and without the warning")
+        XCTAssertEqual(engine.session.messages.last?.isError, false)
+        XCTAssertEqual(engine.session.messages.last?.modelName, "m1")
+        XCTAssertNil(engine.session.lastFailedPrompt)
+        XCTAssertEqual(engine.session.elapsedSeconds, 0)
+        XCTAssertEqual(host.finished.count, 1, "exactly one report per turn")
+        XCTAssertEqual(host.finished.first?.notice.providerName, "My LLM")
+        XCTAssertEqual(host.finished.first?.notice.text, "The answer is 42.")
+        XCTAssertEqual(host.finished.first?.notice.failed, false)
+        XCTAssertEqual(host.finished.first?.notice.endedCleanly, true)
+        XCTAssertNil(engine.session.conversationID, "a plain command has no conversation to continue")
+    }
+
+    func testOutputSplitInTheMiddleOfALetterIsStillRead() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: ownProvider()), agentPath: nil)
+
+        let bytes = Array("né 🙂".utf8)
+        rig.commandOutput?(Data(bytes[..<2]))
+        XCTAssertEqual(session.messages.last?.text, "", "half a letter is not shown; the whole is, once it is whole")
+        rig.commandOutput?(Data(bytes[2...]))
+        XCTAssertEqual(session.messages.last?.text, "né 🙂")
+        rig.commandExit?(0)
+        XCTAssertEqual(session.messages.last?.text, "né 🙂")
+    }
+
+    func testPlanModeGoesInFrontOfThePromptForAnOwnCommandOnly() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.planMode = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("add a test", configuration: NexusAgentConfiguration(model: "m1", activeProvider: ownProvider()),
+                     agentPath: nil)
+        XCTAssertEqual(rig.commandRuns.first?.arguments,
+                       ["-m", "m1", NexusAgentSupport.planModePrompt("add a test")],
+                       "a plain command has no plan flag, so it is told in words, still as one argument")
+        XCTAssertEqual(session.messages.first?.text, "add a test", "the bubble shows only what was typed")
+        rig.commandOutput?(Data("a plan".utf8))
+        rig.commandExit?(0)
+
+        session.send("add a test", configuration: NexusAgentConfiguration(), agentPath: "/fake/agy")
+        XCTAssertEqual(rig.agentRuns.first?.arguments.prefix(2).map { $0 }, ["-p", "add a test"],
+                       "agy is told with its flag; its prompt is left alone")
+        XCTAssertEqual(rig.agentRuns.first?.arguments.contains("plan"), true)
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testACommandThatIsNotInstalledSaysSoAndRunsNothing() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: ownProvider()), agentPath: "/fake/agy")
+
+        XCTAssertTrue(rig.commandRuns.isEmpty)
+        XCTAssertTrue(rig.agentRuns.isEmpty, "it does not fall back to agy")
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.count, 2)
+        XCTAssertEqual(session.messages.last?.text, "Could not find 'llm' in PATH. Is it installed?")
+        XCTAssertEqual(session.messages.last?.isError, true)
+        XCTAssertEqual(session.lastFailedPrompt, "hi", "it can be tried again once the program is there")
+        XCTAssertTrue(host.finished.isEmpty, "no turn ran, so none is reported")
+    }
+
+    func testACommandIsLookedForWhereTheStandaloneLooks() {
+        // The same lookup the Ollama model uses, with the rig's files: the
+        // install folders in order, then the app's PATH (here /usr/bin).
+        for (installed, found) in [(["/usr/bin/llm", "/sbin/llm"], "/usr/bin/llm"),
+                                   (["/sbin/llm"], "/sbin/llm"),
+                                   (["/usr/local/bin/llm", "/opt/homebrew/sbin/llm"], "/opt/homebrew/sbin/llm")] {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            rig.executables = Set(installed)
+            let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+            session.send("hi", configuration: NexusAgentConfiguration(activeProvider: ownProvider()), agentPath: nil)
+            XCTAssertEqual(rig.commandRuns.first?.path, found)
+            rig.commandExit?(0)
+        }
+
+        // A full path in the template is taken as given when something is there.
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.files["/Applications/My Tool/run"] = ""
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        session.send("hi", configuration: NexusAgentConfiguration(
+            activeProvider: ownProvider("\"/Applications/My Tool/run\" {prompt}")), agentPath: nil)
+        XCTAssertEqual(rig.commandRuns.first?.path, "/Applications/My Tool/run")
+        XCTAssertEqual(rig.commandRuns.first?.arguments, ["hi"])
+        rig.commandExit?(0)
+    }
+
+    func testAnEmptyTemplateIsNotRun() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: ownProvider("  ")), agentPath: "/fake/agy")
+
+        XCTAssertTrue(rig.commandRuns.isEmpty)
+        XCTAssertTrue(rig.agentRuns.isEmpty)
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.last?.text, "Invalid command template:   ")
+        XCTAssertEqual(session.messages.last?.isError, true)
+        XCTAssertEqual(session.lastFailedPrompt, "hi")
+    }
+
+    func testACommandThatFailsIsAFailedTurn() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let configuration = NexusAgentConfiguration(activeProvider: ownProvider())
+
+        // It complained and printed no answer: the complaint is the message.
+        session.send("one", configuration: configuration, agentPath: nil)
+        rig.commandErrors?(Data("Error: model 'm' not found\n".utf8))
+        rig.commandExit?(1)
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.last?.text, "Error: model 'm' not found")
+        XCTAssertEqual(session.messages.last?.isError, true)
+        XCTAssertEqual(session.lastFailedPrompt, "one", "a failed turn can be retried")
+        XCTAssertEqual(host.finished.count, 1)
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.endedCleanly, false)
+        XCTAssertEqual(host.finished.last?.notice.text, "")
+
+        // It said nothing at all: the exit status is the message.
+        session.send("two", configuration: configuration, agentPath: nil)
+        rig.commandExit?(3)
+        XCTAssertEqual(session.messages.last?.text, "Process exited with code 3")
+        XCTAssertEqual(session.messages.last?.isError, true)
+        XCTAssertEqual(session.lastFailedPrompt, "two")
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+
+        // It succeeded with nothing to say: the standalone calls that an error too.
+        session.send("three", configuration: configuration, agentPath: nil)
+        rig.commandErrors?(Data("just a warning".utf8))
+        rig.commandExit?(0)
+        XCTAssertEqual(session.messages.last?.text, "No output from provider")
+        XCTAssertEqual(session.messages.last?.isError, true)
+        XCTAssertEqual(session.lastFailedPrompt, "three")
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.endedCleanly, false)
+
+        // It answered and THEN failed: the standalone shows the answer and no error.
+        session.send("four", configuration: configuration, agentPath: nil)
+        rig.commandOutput?(Data("half an answer\n".utf8))
+        rig.commandErrors?(Data("then it broke".utf8))
+        rig.commandExit?(2)
+        XCTAssertEqual(session.messages.last?.text, "half an answer")
+        XCTAssertEqual(session.messages.last?.isError, false)
+        XCTAssertNil(session.lastFailedPrompt)
+        XCTAssertEqual(host.finished.last?.notice.failed, false)
+        XCTAssertEqual(host.finished.last?.notice.endedCleanly, true)
+        XCTAssertEqual(host.finished.count, 4, "one report per turn")
+        XCTAssertEqual(session.messages.count, 8, "one question and one answer per turn")
+    }
+
+    func testACommandThatCannotBeStartedSaysWhy() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        rig.commandCannotStart = true
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: ownProvider()), agentPath: nil)
+
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.count, 2)
+        XCTAssertEqual(session.messages.last?.text, CocoaError(.fileNoSuchFile).localizedDescription,
+                       "the system's own words, as the standalone shows them")
+        XCTAssertEqual(session.messages.last?.isError, true)
+        XCTAssertEqual(session.lastFailedPrompt, "hi")
+        XCTAssertEqual(host.finished.count, 1)
+        XCTAssertEqual(host.finished.first?.notice.failed, true)
+    }
+
+    func testStoppingAnOwnCommandEndsIt() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let configuration = NexusAgentConfiguration(activeProvider: ownProvider())
+
+        session.send("hi", configuration: configuration, agentPath: nil)
+        session.stop()
+        XCTAssertEqual(rig.commandTerminations, 1)
+        // The signal ends it; the exit arrives as it does from a real one.
+        rig.commandExit?(15)
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.last?.text, host.strings.replyStopped)
+        XCTAssertEqual(session.messages.last?.isError, false)
+        XCTAssertEqual(host.finished.count, 1)
+        XCTAssertEqual(host.finished.first?.notice.endedCleanly, false)
+
+        // What had arrived before the stop stays.
+        session.send("again", configuration: configuration, agentPath: nil)
+        rig.commandOutput?(Data("so far".utf8))
+        session.stop()
+        rig.commandExit?(15)
+        XCTAssertEqual(session.messages.last?.text, "so far")
+        XCTAssertEqual(host.finished.count, 2)
+
+        // A turn replaced by a new chat is not heard from again.
+        session.send("third", configuration: configuration, agentPath: nil)
+        let staleOutput = rig.commandOutput
+        let staleExit = rig.commandExit
+        session.newChat()
+        staleOutput?(Data("late".utf8))
+        staleExit?(0)
+        XCTAssertTrue(session.messages.isEmpty)
+        XCTAssertEqual(host.finished.count, 2)
+    }
+
+    func testAnOwnProviderThatStartsWithOllamaIsRunAsOllama() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        // No model is set, so Ollama is asked for one exactly as the
+        // built-in Ollama provider asks: the routing and the lookup agree.
+        session.send("hi", configuration: NexusAgentConfiguration(
+            activeProvider: ownProvider("ollama run {model} {prompt}")), agentPath: "/fake/ollama")
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        XCTAssertTrue(rig.commandRuns.isEmpty, "its template is not run")
+        XCTAssertEqual(rig.programRuns.map(\.name), ["ollama"])
+        XCTAssertEqual(rig.agentRuns.first?.path, "/fake/ollama")
+        XCTAssertEqual(rig.agentRuns.first?.arguments.prefix(5).map { $0 },
+                       ["launch", "claude", "--model", "llama3.2:latest", "--"])
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testAnOwnProviderThatStartsWithClaudeIsRunAsClaude() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        session.send("hi", configuration: NexusAgentConfiguration(
+            activeProvider: ownProvider("claude --print {prompt}")), agentPath: "/fake/claude")
+
+        XCTAssertTrue(rig.commandRuns.isEmpty)
+        XCTAssertTrue(rig.programRuns.isEmpty)
+        XCTAssertEqual(rig.agentRuns.first?.arguments, NexusAgentSupport.agentArguments(
+            prompt: "hi", configuration: NexusAgentConfiguration(activeProvider: .claude), conversationID: nil))
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testAnEditedBuiltInProviderStillRunsItsOwnWay() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        var agy = NexusAgentCLIProvider.antigravity
+        agy.commandTemplate = "llm {prompt}"
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: agy), agentPath: "/fake/agy")
+
+        XCTAssertTrue(rig.commandRuns.isEmpty, "the edited template is not run, as in the standalone")
+        XCTAssertEqual(rig.agentRuns.first?.path, "/fake/agy")
+        XCTAssertEqual(rig.agentRuns.first?.arguments.prefix(4).map { $0 }, ["-p", "hi", "--output-format", "stream-json"])
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testTheEngineFindsTheProgramOfTheChosenProvider() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.executables = ["/usr/local/bin/llm", "/opt/homebrew/bin/ollama", "/Users/rig/.local/bin/claude"]
+        let host = RecordingHost()
+        host.savedProviders = [ownProvider()]
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.updateActiveProvider(ownProvider())
+        XCTAssertEqual(engine.agentPath, "/usr/local/bin/llm", "an own command: the first word of its template")
+        engine.load()
+        XCTAssertEqual(engine.agentPath, "/usr/local/bin/llm", "and again after the settings are read")
+
+        engine.updateActiveProvider(ownProvider("missing-tool {prompt}"))
+        XCTAssertNil(engine.agentPath, "so the page can say it is not installed")
+        engine.updateActiveProvider(ownProvider(""))
+        XCTAssertNil(engine.agentPath)
+
+        engine.updateActiveProvider(ownProvider("my-ollama run {model}"))
+        XCTAssertEqual(engine.agentPath, "/opt/homebrew/bin/ollama", "run as Ollama, so Ollama is what is looked for")
+        engine.updateActiveProvider(ownProvider("claude -p {prompt}"))
+        XCTAssertEqual(engine.agentPath, "/Users/rig/.local/bin/claude")
+    }
+
+    /// The real launcher, with a harmless real program: `/bin/echo` prints
+    /// its arguments back. If the command went through a shell, the `;`,
+    /// the `$(…)` and the quotes below would be acted on instead of printed.
+    func testTheRealLauncherPassesArgumentsWithoutAShell() async {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let marker = rig.home + "/made-by-a-shell"
+        let hostile = "a  b; touch '\(marker)' $(touch '\(marker)') `touch '\(marker)'` \"q\" $HOME *"
+        let heard = Heard()
+
+        _ = try? NexusAgentEngine.Environment.live.launchCommand(
+            "/bin/echo", [hostile, "second"], rig.home, ["PATH": "/usr/bin:/bin"],
+            { heard.output.append($0) }, { heard.errors.append($0) }, { heard.status = $0 })
+        await rig.wait { heard.status != nil }
+
+        XCTAssertEqual(heard.status, 0)
+        XCTAssertEqual(String(data: heard.output, encoding: .utf8), hostile + " second\n")
+        XCTAssertTrue(heard.errors.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker), "nothing in the prompt was run")
+    }
+
+    func testTheRealLauncherKeepsComplaintsApartFromOutput() async {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let heard = Heard()
+
+        // `ls` of a file that is not there: nothing printed, a complaint, a bad exit.
+        _ = try? NexusAgentEngine.Environment.live.launchCommand(
+            "/bin/ls", [rig.home + "/not-there"], rig.home, ["PATH": "/usr/bin:/bin"],
+            { heard.output.append($0) }, { heard.errors.append($0) }, { heard.status = $0 })
+        await rig.wait { heard.status != nil }
+
+        XCTAssertNotNil(heard.status)
+        XCTAssertNotEqual(heard.status, 0)
+        XCTAssertTrue(heard.output.isEmpty)
+        XCTAssertTrue(String(data: heard.errors, encoding: .utf8)?.contains("not-there") == true)
+    }
+
+    /// What a real command sent back, gathered on the main actor.
+    @MainActor
+    private final class Heard {
+        var output = Data()
+        var errors = Data()
+        var status: Int32?
     }
 
     // MARK: - Archived Claude sessions live in the host

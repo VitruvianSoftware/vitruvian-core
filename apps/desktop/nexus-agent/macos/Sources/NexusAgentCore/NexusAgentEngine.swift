@@ -91,6 +91,16 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         /// be started. `name` is a bare name (`ollama`) or a full path.
         /// It does not run on the main thread: the program may be slow.
         public var runProgram: @Sendable (_ name: String, _ arguments: [String]) async -> String?
+        /// Runs a provider's own command in `directory`, as the program at
+        /// `path` with exactly these arguments: no shell reads them. What
+        /// it prints and what it writes to standard error are delivered
+        /// apart, each in order, and then its exit status, all on the main
+        /// actor. An exit by signal is reported as the signal's number.
+        public var launchCommand: (_ path: String, _ arguments: [String], _ directory: String,
+                                    _ environment: [String: String],
+                                    _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                    _ onErrorOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                    _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
 
         public init(defaults: UserDefaults,
                      home: String,
@@ -115,7 +125,14 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                      readTranscript: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentChatMessage]? = { _, _ in nil },
                      transcriptPath: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
                      readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
-                     runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil }) {
+                     runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil },
+                     // Left out, no command can be started, and a turn that
+                     // needs one fails saying so.
+                     launchCommand: @escaping (String, [String], String, [String: String],
+                                               @escaping @MainActor @Sendable (Data) -> Void,
+                                               @escaping @MainActor @Sendable (Data) -> Void,
+                                               @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
+                         = { _, _, _, _, _, _, _ in throw CocoaError(.featureUnsupported) }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -137,6 +154,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             self.transcriptPath = transcriptPath
             self.readTranscriptRaw = readTranscriptRaw
             self.runProgram = runProgram
+            self.launchCommand = launchCommand
         }
 
         public static var live: Environment {
@@ -165,7 +183,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                     guard let path = NexusAgentEngine.transcriptPath(home: home, conversationID: id, provider: provider) else { return nil }
                     return try? String(contentsOfFile: path, encoding: .utf8)
                 },
-                runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) })
+                runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) },
+                launchCommand: NexusAgentEngine.launchCommandProcess)
         }
     }
 
@@ -295,21 +314,36 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     public func load() {
         configuration = withChosenProvider(
             environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration())
-        agentPath = NexusAgentSupport.locateAgent(named: configuration.activeProvider.executableName,
-                                                  environment: environment.processEnvironment,
-                                                  home: environment.home,
-                                                  isExecutable: environment.isExecutable)
+        agentPath = locateProgram(of: configuration.activeProvider)
     }
 
     /// Switches the chat to `provider` and has the host remember it.
     public func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
         host.chosenProviderID = provider.id
         configuration.activeProvider = provider
-        agentPath = NexusAgentSupport.locateAgent(named: provider.executableName,
-                                                  environment: environment.processEnvironment,
-                                                  home: environment.home,
-                                                  isExecutable: environment.isExecutable)
+        agentPath = locateProgram(of: provider)
         session.refreshSessions(configuration: configuration)
+    }
+
+    /// Where the program that runs `provider`'s turns is, for the page to
+    /// say when it is missing. For a command of the user's own that is the
+    /// first word of its template, looked for where the session will look
+    /// when it runs it; the session finds it again for each turn, because
+    /// the word may have the model in it.
+    private func locateProgram(of provider: NexusAgentCLIProvider) -> String? {
+        guard provider.route == .custom else {
+            return NexusAgentSupport.locateAgent(named: provider.executableName,
+                                                 environment: environment.processEnvironment,
+                                                 home: environment.home,
+                                                 isExecutable: environment.isExecutable)
+        }
+        guard let command = NexusAgentSupport.providerCommand(template: provider.commandTemplate, prompt: "",
+                                                              model: configuration.model),
+              !command.executable.isEmpty else { return nil }
+        return NexusAgentSupport.executablePath(named: command.executable,
+                                                pathVariable: environment.processEnvironment["PATH"] ?? "",
+                                                isExecutable: environment.isExecutable,
+                                                fileExists: environment.fileExists)
     }
 
     /// Writes the page's values into the `.env`, keeping the rest of it.
@@ -601,6 +635,65 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         return NexusAgentRunningAgent(terminate: {
             // agy leads a process group of its own; signalling the group
             // also ends the tools it started, which hold the pipe open.
+            if getpgid(pid) == pid { _ = kill(-pid, SIGTERM) }
+            process.terminate()
+        })
+    }
+
+    /// A provider's own command. The program is started directly with its
+    /// arguments as given, never through a shell. Its two outputs have a
+    /// pipe and a reading thread each, so neither can fill up and stall
+    /// the other; the exit is queued to the main thread only after both
+    /// have been read to their end, so the session has everything first.
+    nonisolated private static func launchCommandProcess(_ path: String, _ arguments: [String], _ directory: String,
+                                                         _ environment: [String: String],
+                                                         _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                                         _ onErrorOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                                         _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.environment = environment
+        // Nothing can be typed to it, so a command that waits to be asked
+        // something ends instead of hanging the turn.
+        process.standardInput = FileHandle.nullDevice
+        let output = Pipe()
+        let errors = Pipe()
+        process.standardOutput = output
+        process.standardError = errors
+        try process.run()
+        // Only the child keeps the write ends, so its exit reaches the readers as EOF.
+        try? output.fileHandleForWriting.close()
+        try? errors.fileHandleForWriting.close()
+        let outputReader = output.fileHandleForReading
+        let errorReader = errors.fileHandleForReading
+        let errorsRead = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            while true {
+                let chunk = errorReader.availableData
+                if chunk.isEmpty { break }
+                DispatchQueue.main.async { onErrorOutput(chunk) }
+            }
+            try? errorReader.close()
+            errorsRead.signal()
+        }
+        Thread.detachNewThread {
+            while true {
+                let chunk = outputReader.availableData
+                if chunk.isEmpty { break }
+                DispatchQueue.main.async { onOutput(chunk) }
+            }
+            try? outputReader.close()
+            errorsRead.wait()
+            process.waitUntilExit()
+            let status = process.terminationStatus
+            DispatchQueue.main.async { onExit(status) }
+        }
+        let pid = process.processIdentifier
+        return NexusAgentRunningAgent(terminate: {
+            // As for agy: a command that leads its own process group has
+            // the group signalled, so what it started ends with it.
             if getpgid(pid) == pid { _ = kill(-pid, SIGTERM) }
             process.terminate()
         })

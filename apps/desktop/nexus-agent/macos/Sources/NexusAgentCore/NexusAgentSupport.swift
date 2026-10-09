@@ -149,11 +149,60 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
         providers.first { $0.id == id ?? antigravity.id } ?? .antigravity
     }
 
-    public var executableName: String {
-        if id == Self.claude.id { return "claude" }
-        if id == Self.ollama.id { return "ollama" }
-        return "agy"
+    /// How this provider's turns are run, decided as the standalone app's
+    /// chat decides it. The built-in Antigravity provider is always agy,
+    /// whatever its template says. Any other is Ollama or Claude if it is
+    /// that built-in provider or the first word of its template ends in
+    /// `ollama` or `claude` (so a full path counts, and so does any other
+    /// word with that ending); Ollama wins when both apply. What is left is
+    /// a command of the user's own, run as its template is written.
+    ///
+    /// For the first three the template is not run: the provider's own
+    /// arguments are (`NexusAgentSupport.agentArguments`).
+    public var route: NexusAgentProviderRoute {
+        if id == Self.antigravity.id { return .antigravity }
+        let program = commandTemplate.trimmingCharacters(in: .whitespaces)
+            .components(separatedBy: .whitespaces).first ?? ""
+        if program.hasSuffix("ollama") || id == Self.ollama.id { return .ollama }
+        if program.hasSuffix("claude") || id == Self.claude.id { return .claude }
+        return .custom
     }
+
+    /// The program a turn is started with. For a command of the user's own
+    /// this is not it: the program is the first word of the template (see
+    /// `NexusAgentSupport.providerCommand`).
+    public var executableName: String {
+        switch route {
+        case .claude: return "claude"
+        case .ollama: return "ollama"
+        case .antigravity, .custom: return "agy"
+        }
+    }
+}
+
+/// The ways a provider's turn can be run.
+public enum NexusAgentProviderRoute: Equatable, Sendable {
+    /// `agy`, with streamed JSON.
+    case antigravity
+    /// `claude`, with streamed JSON.
+    case claude
+    /// `ollama launch claude`, which is Claude Code on a local model.
+    case ollama
+    /// The provider's own command template; what it prints is the reply.
+    case custom
+}
+
+/// How a provider's own command ended, from what it printed and its exit.
+public enum NexusAgentCommandOutcome: Equatable, Sendable {
+    /// It printed an answer.
+    case reply(String)
+    /// It exited badly with no answer. `errors` is what it complained
+    /// about, cut short, or empty if it said nothing.
+    case failed(status: Int32, errors: String)
+    /// It ran to its end and printed nothing.
+    case noOutput
+    /// It was ended by a signal: someone stopped it.
+    case stopped
 }
 
 /// The part of the bot's `.env` the Settings page edits. Everything else in
@@ -643,13 +692,139 @@ public enum NexusAgentSupport {
         if name.hasPrefix("/") {
             return fileExists(name) ? name : nil
         }
-        let installFolders = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
-                              "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         var seen = Set<String>()
-        return (installFolders + pathVariable.split(separator: ":").map(String.init))
+        return (commandInstallFolders + pathVariable.split(separator: ":").map(String.init))
             .filter { seen.insert($0).inserted }
             .map { ($0 as NSString).appendingPathComponent(name) }
             .first(where: isExecutable)
+    }
+
+    /// Where the standalone app's chat expects programs to be installed, in
+    /// the order it tries them.
+    static let commandInstallFolders = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
+                                        "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+
+    // MARK: - A provider's own command
+
+    /// The model a template's `{model}` stands for when the settings name none.
+    public static let templateFallbackModel = "gemma4:31b-cloud"
+
+    /// A provider's command template as a program and its arguments, with
+    /// `{prompt}` and `{model}` filled in. Nil when the template has no
+    /// words in it.
+    ///
+    /// The template is cut into words FIRST, and only then are the
+    /// placeholders filled, each inside the word it was written in. So the
+    /// prompt is always part of exactly one argument, whatever it holds:
+    /// spaces, quotes, `;`, `$(…)` or new lines in it are plain text. The
+    /// result is for starting the program directly; it must never be
+    /// joined back into a line for a shell.
+    ///
+    /// The cutting is the standalone app's, kept as it is so a saved
+    /// template means what it did: words are separated by spaces (not tabs);
+    /// single or double quotes keep spaces inside a word and are removed;
+    /// nothing escapes a quote; a quote left open runs to the end; and an
+    /// empty pair of quotes makes no word. The first word is the program,
+    /// and is filled in like the rest.
+    ///
+    /// One thing is NOT the standalone's. It fills `{prompt}` and then
+    /// looks for `{model}` in the result, so a prompt that says `{model}`
+    /// is altered. Here what was filled in is never read again.
+    public static func providerCommand(template: String, prompt: String,
+                                       model: String) -> (executable: String, arguments: [String])? {
+        var words: [String] = []
+        var current = ""
+        var inSingle = false
+        var inDouble = false
+        for character in template {
+            if character == "'" && !inDouble {
+                inSingle.toggle()
+            } else if character == "\"" && !inSingle {
+                inDouble.toggle()
+            } else if character == " " && !inSingle && !inDouble {
+                if !current.isEmpty {
+                    words.append(current)
+                    current = ""
+                }
+            } else {
+                current.append(character)
+            }
+        }
+        if !current.isEmpty { words.append(current) }
+        guard !words.isEmpty else { return nil }
+
+        let filled = words.map {
+            fillingPlaceholders(in: $0, prompt: prompt, model: model.isEmpty ? templateFallbackModel : model)
+        }
+        return (filled[0], Array(filled.dropFirst()))
+    }
+
+    /// One word of a template with its placeholders replaced, reading the
+    /// word once from left to right: text that was put in is not looked at.
+    private static func fillingPlaceholders(in word: String, prompt: String, model: String) -> String {
+        let promptMark = "{prompt}"
+        let modelMark = "{model}"
+        var result = ""
+        var rest = Substring(word)
+        while let brace = rest.firstIndex(of: "{") {
+            result += rest[..<brace]
+            rest = rest[brace...]
+            if rest.hasPrefix(promptMark) {
+                result += prompt
+                rest = rest.dropFirst(promptMark.count)
+            } else if rest.hasPrefix(modelMark) {
+                result += model
+                rest = rest.dropFirst(modelMark.count)
+            } else {
+                result.append("{")
+                rest = rest.dropFirst()
+            }
+        }
+        return result + rest
+    }
+
+    /// A prompt for plan mode, for a provider with no flag to say it with:
+    /// the rules go in front of what the user asked, in the standalone
+    /// app's words.
+    public static func planModePrompt(_ prompt: String) -> String {
+        """
+        [SYSTEM] You are in PLAN MODE. You MUST follow these rules strictly:
+        - Do NOT create, edit, modify, or delete any files.
+        - Do NOT run any shell commands or scripts.
+        - Do NOT execute any tools that modify the filesystem or environment.
+        - ONLY explain what you WOULD do, step by step, as a detailed plan.
+        - Present your plan as a numbered list of actions you would take.
+        - Wait for explicit user approval before taking any action.
+
+        User request: \(prompt)
+        """
+    }
+
+    /// The environment a provider's own command runs in, as the standalone
+    /// app gives it: the app's own, colour codes off, and the install
+    /// folders that exist put in front of PATH.
+    public static func commandEnvironment(base: [String: String],
+                                          fileExists: (String) -> Bool) -> [String: String] {
+        var environment = base
+        let current = base["PATH"] ?? "/usr/bin:/bin"
+        environment["PATH"] = (commandInstallFolders.filter(fileExists) + [current]).joined(separator: ":")
+        environment["NO_COLOR"] = "1"
+        return environment
+    }
+
+    /// Reads how a provider's own command ended, as the standalone app
+    /// reads it. `output` is all it printed and `errors` all it wrote to
+    /// standard error; both are trimmed, and either counts as empty if it
+    /// is not text. An answer is an answer even when the exit status is
+    /// bad; a bad exit matters only when nothing was printed.
+    public static func commandOutcome(output: Data, errors: Data, status: Int32) -> NexusAgentCommandOutcome {
+        let printed = String(data: output, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let complaint = String(data: errors, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // SIGTERM and SIGKILL: the two ways a turn is stopped.
+        if status == 15 || status == 9 { return .stopped }
+        if status != 0 && printed.isEmpty { return .failed(status: status, errors: String(complaint.prefix(300))) }
+        if !printed.isEmpty { return .reply(printed) }
+        return .noOutput
     }
 
     /// The model Ollama is run with when none is set and none can be found.
@@ -672,16 +847,23 @@ public enum NexusAgentSupport {
         return name.isEmpty ? ollamaFallbackModel : name
     }
 
-    /// One Quick Prompt turn: formatted per active provider. Ollama must be
+    /// One Quick Prompt turn: formatted per active provider, by the way it
+    /// is run (`NexusAgentCLIProvider.route`). Ollama must be
     /// told a model: `ollamaDefaultModel` is the one to use when the
     /// settings name none, which the caller looks up (see
     /// `ollamaDefaultModel(fromList:)`) so that this stays a plain function.
+    ///
+    /// Plan mode is a flag for agy and for Claude. Ollama gets Claude's
+    /// flags too, and the rules in front of the prompt as well, as the
+    /// standalone app has it. A command of the user's own has no arguments
+    /// here: `providerCommand` makes them from its template.
     public static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
                                        conversationID: String?,
                                        planMode: Bool = false,
                                        worktreeMode: Bool = false,
                                        ollamaDefaultModel: String = NexusAgentSupport.ollamaFallbackModel) -> [String] {
-        if configuration.activeProvider.id == NexusAgentCLIProvider.claude.id {
+        let route = configuration.activeProvider.route
+        if route == .claude {
             var args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
                 args += ["--permission-mode", "plan",
@@ -702,10 +884,11 @@ public enum NexusAgentSupport {
             }
             return args
         }
-        if configuration.activeProvider.id == NexusAgentCLIProvider.ollama.id {
+        if route == .ollama {
             let model = configuration.model.trimmingCharacters(in: .whitespaces)
             let args = ["launch", "claude", "--model", model.isEmpty ? ollamaDefaultModel : model]
-            var innerArgs = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
+            var innerArgs = ["-p", planMode ? planModePrompt(prompt) : prompt,
+                             "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
                 innerArgs += ["--permission-mode", "plan",
                               "--append-system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]

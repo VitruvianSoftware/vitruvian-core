@@ -160,6 +160,10 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private var reportedError = false
     /// Output that is not stream JSON (agy's own errors), kept for a failure.
     private var noise: [String] = []
+    /// Everything a provider's own command has printed this turn, and
+    /// everything it has written to standard error, kept apart.
+    private var commandOutput = Data()
+    private var commandErrors = Data()
 
     public init(environment: NexusAgentEngine.Environment, host: any NexusAgentHost) {
         self.environment = environment
@@ -339,32 +343,20 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
         historyIndex = -1
         lastFailedPrompt = nil
+        // A command of the user's own is not agy: it has its own program,
+        // found from its template, and its own way of answering.
+        if configuration.activeProvider.route == .custom {
+            sendCommand(text, configuration: configuration)
+            return
+        }
         guard let agentPath else {
             messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
             return
         }
-        turn += 1
-        let current = turn
-        buffer = NexusAgentLineBuffer()
-        noise = []
-        stoppedByUser = false
-        reportedError = false
-        currentToolCalls = 0
+        let current = beginTurn(configuration: configuration, followsTranscript: true)
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
-        let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
-        replyID = reply.id
-        messages.append(reply)
-        isRunning = true
-        startTranscriptFollower(provider: configuration.activeProvider)
-        activity = nil
-        elapsedSeconds = 0
-        elapsedTimer?.invalidate()
-        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.elapsedSeconds += 1
-            }
-        }
-        guard configuration.activeProvider.id == NexusAgentCLIProvider.ollama.id, model.isEmpty else {
+        // Whatever is run as Ollama needs a model, not the built-in provider alone.
+        guard configuration.activeProvider.route == .ollama, model.isEmpty else {
             launch(text, configuration: configuration, agentPath: agentPath,
                    ollamaDefaultModel: NexusAgentSupport.ollamaFallbackModel, turn: current)
             return
@@ -380,6 +372,152 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             self.awaitingModel = false
             self.launch(text, configuration: configuration, agentPath: agentPath,
                         ollamaDefaultModel: NexusAgentSupport.ollamaDefaultModel(fromList: listing), turn: current)
+        }
+    }
+
+    /// Puts a new turn on screen as running: an empty reply to fill, the
+    /// clock started. Returns the turn's number, which its callbacks carry
+    /// so that those of a turn since stopped or replaced are dropped.
+    private func beginTurn(configuration: NexusAgentConfiguration, followsTranscript: Bool) -> Int {
+        turn += 1
+        buffer = NexusAgentLineBuffer()
+        noise = []
+        stoppedByUser = false
+        reportedError = false
+        currentToolCalls = 0
+        commandOutput = Data()
+        commandErrors = Data()
+        let model = configuration.model.trimmingCharacters(in: .whitespaces)
+        let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
+        replyID = reply.id
+        messages.append(reply)
+        isRunning = true
+        if followsTranscript { startTranscriptFollower(provider: configuration.activeProvider) }
+        activity = nil
+        elapsedSeconds = 0
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.elapsedSeconds += 1
+            }
+        }
+        return turn
+    }
+
+    /// One turn of a provider's own command, as the standalone app runs
+    /// one. The template gives the program and its arguments, with the
+    /// prompt as part of exactly one of them; the program is started
+    /// directly, never through a shell. A plain command has no plan flag,
+    /// so in plan mode the rules go in front of the prompt instead.
+    private func sendCommand(_ text: String, configuration: NexusAgentConfiguration) {
+        let template = configuration.activeProvider.commandTemplate
+        guard let command = NexusAgentSupport.providerCommand(
+            template: template,
+            prompt: planMode ? NexusAgentSupport.planModePrompt(text) : text,
+            model: configuration.model) else {
+            refuse(text, saying: strings.invalidCommandTemplate(template))
+            return
+        }
+        guard let path = NexusAgentSupport.executablePath(
+            named: command.executable,
+            pathVariable: environment.processEnvironment["PATH"] ?? "",
+            isExecutable: environment.isExecutable,
+            fileExists: environment.fileExists) else {
+            refuse(text, saying: strings.commandNotFound(command.executable))
+            return
+        }
+        // A plain command keeps no transcript to follow.
+        let current = beginTurn(configuration: configuration, followsTranscript: false)
+        let childEnvironment = NexusAgentSupport.commandEnvironment(base: environment.processEnvironment,
+                                                                    fileExists: environment.fileExists)
+        do {
+            running = try environment.launchCommand(
+                path, command.arguments, workingDirectory(for: configuration), childEnvironment,
+                { [weak self] data in self?.receiveCommand(data, isErrors: false, turn: current) },
+                { [weak self] data in self?.receiveCommand(data, isErrors: true, turn: current) },
+                { [weak self] status in self?.commandDidExit(status, turn: current) })
+        } catch {
+            isRunning = false
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
+            // The system's own words for why, as the standalone shows them.
+            replace(reply: error.localizedDescription, isError: true)
+            lastFailedPrompt = text
+            replyID = nil
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false))
+        }
+    }
+
+    /// A turn that cannot even start says why in the conversation, and
+    /// leaves the prompt ready to be tried again.
+    private func refuse(_ prompt: String, saying reason: String) {
+        messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
+        lastFailedPrompt = prompt
+    }
+
+    private func receiveCommand(_ data: Data, isErrors: Bool, turn current: Int) {
+        guard current == turn else { return }
+        guard !isErrors else {
+            commandErrors.append(data)
+            return
+        }
+        commandOutput.append(data)
+        // The reply grows as the command prints. A piece can end in the
+        // middle of a letter; then the reply waits for the rest of it.
+        if let printed = String(data: commandOutput, encoding: .utf8) {
+            replace(reply: printed, isError: false)
+        }
+    }
+
+    private func commandDidExit(_ status: Int32, turn current: Int) {
+        guard current == turn else { return }
+        running = nil
+        isRunning = false
+        activity = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        elapsedSeconds = 0
+        let outcome = NexusAgentSupport.commandOutcome(output: commandOutput, errors: commandErrors, status: status)
+        let printed = String(data: commandOutput, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        commandOutput = Data()
+        commandErrors = Data()
+        var completedReply = ""
+        var failed = false
+        var endedCleanly = false
+        if stoppedByUser || outcome == .stopped {
+            // What arrived before the stop stays, as in any other turn.
+            replace(reply: printed.isEmpty ? strings.replyStopped : printed, isError: false)
+            completedReply = printed
+            failed = printed.isEmpty && status != 0
+        } else {
+            switch outcome {
+            case .reply(let text):
+                replace(reply: text, isError: false)
+                completedReply = text
+                endedCleanly = true
+            case .failed(let code, let errors):
+                replace(reply: errors.isEmpty ? strings.commandExited(status: code) : errors, isError: true)
+                failed = true
+            case .noOutput, .stopped:
+                replace(reply: strings.commandNoOutput, isError: true)
+                failed = true
+            }
+            if failed { lastFailedPrompt = messages.last(where: { $0.role == .user })?.text }
+        }
+        report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
+                                    failed: failed, endedCleanly: endedCleanly))
+        replyID = nil
+    }
+
+    /// Tells the app a turn ended.
+    private func report(_ notice: NexusAgentTurnNotice) {
+        if let onTurnFinished {
+            onTurnFinished(notice)
+        } else {
+            // Built without an engine there is no window to be away from:
+            // the host's in-app notice is due, its notification is not.
+            host.turnFinished(notice, isChatVisible: true)
         }
     }
 
@@ -570,15 +708,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 endedCleanly = true
             }
         }
-        let notice = NexusAgentTurnNotice(providerName: providerName, text: completedReply,
-                                          failed: hadError, endedCleanly: endedCleanly)
-        if let onTurnFinished {
-            onTurnFinished(notice)
-        } else {
-            // Built without an engine there is no window to be away from:
-            // the host's in-app notice is due, its notification is not.
-            host.turnFinished(notice, isChatVisible: true)
-        }
+        report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
+                                    failed: hadError, endedCleanly: endedCleanly))
         replyID = nil
     }
 
