@@ -29,6 +29,7 @@ enum NexusAgentTests {
         notchIntegration(suite)
         antigravityTelemetry(suite)
         hostReadsLive(suite)
+        hostTurnNotices(suite)
     }
 
     // MARK: - Wiring
@@ -154,7 +155,7 @@ enum NexusAgentTests {
                     agentExit = onExit
                     return NexusAgentRunningAgent(terminate: { [unowned self] in agentTerminations += 1 })
                 },
-                listSessions: { [unowned self] directory, provider in
+                listSessions: { [unowned self] directory, provider, _ in
                     listedDirectories.append(directory)
                     listedProviders.append(provider)
                     return sessionList
@@ -658,7 +659,8 @@ enum NexusAgentTests {
         initialHidden.append(testClaudeID)
         UserDefaults.standard.set(initialHidden, forKey: "vitruvian.claude.hiddenSessionIds")
 
-        let detectedHidden = NexusAgentSessionSummary.claudeHiddenSessionIds(home: "/nonexistent-home")
+        let detectedHidden = NexusAgentSessionSummary.claudeHiddenSessionIds(
+            home: "/nonexistent-home", appHidden: VitruvianNexusAgentHost.savedHiddenClaudeSessionIDs)
         suite.expect(detectedHidden.contains(testClaudeID), "claudeHiddenSessionIds includes IDs stored in UserDefaults")
 
         // 4. Claude Code archiving & unarchiving via service
@@ -876,6 +878,54 @@ enum NexusAgentTests {
         suite.expect(host.strings.untitledSession
                      == FeatureStrings.nexusAgent(L10n.shared.language).untitledSession,
                      "text comes from the app's translations")
+    }
+
+    /// What Vitruvian tells the user when a turn ends or waits: the notch
+    /// notice always, the notification only away from the chat.
+    private static func hostTurnNotices(_ suite: TestSuite) {
+        typealias Host = VitruvianNexusAgentHost
+        let strings = NexusAgentHostStrings()
+        let long = String(repeating: "a", count: 300)
+
+        let failed = Host.announcement(
+            finished: NexusAgentTurnNotice(providerName: "Claude", text: long, failed: true, endedCleanly: false),
+            isChatVisible: false, strings: strings)
+        suite.expect(failed.notificationTitle == "Claude — Failed" && failed.notificationBody == String(long.prefix(200))
+                     && failed.notificationBody?.count == 200,
+                     "a failed turn away from the chat notifies with the reply cut to 200 characters")
+        suite.expect(failed.notchTitle == "Claude — Failed" && failed.notchSymbol == "exclamationmark.triangle.fill"
+                     && !failed.playsSound,
+                     "a failed turn shows a warning in the notch and plays no sound")
+
+        let reply = "\n   \n" + long + "\nsecond line"
+        let done = NexusAgentTurnNotice(providerName: "Claude", text: reply, failed: false, endedCleanly: true)
+        let hidden = Host.announcement(finished: done, isChatVisible: false, strings: strings)
+        suite.expect(hidden.notificationTitle == "Claude — Done" && hidden.notificationBody == String(long.prefix(200)),
+                     "a finished turn away from the chat notifies with its first non-blank line cut to 200 characters")
+        suite.expect(hidden.notchTitle == "Claude — Done" && hidden.notchDetail == String(long.prefix(80))
+                     && hidden.notchDetail.count == 80 && hidden.notchSymbol == "sparkles" && hidden.playsSound,
+                     "the notch shows the first non-blank line cut to 80 characters, and a clean turn plays the sound")
+
+        let visible = Host.announcement(finished: done, isChatVisible: true, strings: strings)
+        suite.expect(visible.notificationTitle == nil && visible.notificationBody == nil
+                     && visible.notchTitle == hidden.notchTitle && visible.notchDetail == hidden.notchDetail
+                     && visible.playsSound,
+                     "with the chat on screen there is no notification, only the notch and the sound")
+
+        let empty = Host.announcement(
+            finished: NexusAgentTurnNotice(providerName: "Claude", text: "", failed: false, endedCleanly: true),
+            isChatVisible: false, strings: strings)
+        suite.expect(empty.notificationTitle == nil && empty.notificationBody == nil && empty.notchTitle == "Claude — Done",
+                     "a turn that ended with no reply and no error does not notify")
+
+        let approval = Host.announcement(
+            needingApproval: NexusAgentTurnNotice(providerName: "Claude", text: "Bash: rm -rf /tmp/cache",
+                                                  failed: false, endedCleanly: false),
+            strings: strings)
+        suite.expect(approval.notchTitle == "Claude — Approval Required" && approval.notchDetail == "Bash: rm -rf /tmp/cache"
+                     && approval.notchSymbol == "hand.raised.fill" && !approval.playsSound
+                     && approval.notificationTitle == nil,
+                     "a turn waiting on approval shows the tool in the notch, named for its provider")
     }
 
     // MARK: - Antigravity Telemetry & Quota

@@ -61,7 +61,9 @@ package class NexusAgentEngine: NSObject, ObservableObject {
                                   _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
         /// agy's or claude's recent conversations for a folder, newest first.
-        package var listSessions: (_ directory: String, _ provider: NexusAgentCLIProvider) -> [NexusAgentSessionSummary]
+        /// The last argument is the app's list of archived Claude sessions.
+        package var listSessions: (_ directory: String, _ provider: NexusAgentCLIProvider,
+                                   _ hiddenClaudeSessionIDs: [String]) -> [NexusAgentSessionSummary]
         /// Reads past conversation turns, if present.
         package var readTranscript: (_ id: String, _ provider: NexusAgentCLIProvider) -> [NexusAgentChatMessage]?
         /// Resolves the absolute path to a transcript file if it exists.
@@ -88,7 +90,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
                      launchAgent: @escaping (String, [String], String, [String: String],
                                              @escaping @MainActor @Sendable (Data) -> Void,
                                              @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent,
-                     listSessions: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentSessionSummary] = { _, _ in [] },
+                     listSessions: @escaping (String, NexusAgentCLIProvider, [String]) -> [NexusAgentSessionSummary] = { _, _, _ in [] },
                      readTranscript: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentChatMessage]? = { _, _ in nil },
                      transcriptPath: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
                      readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil }) {
@@ -133,7 +135,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
                 schedule: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } },
                 openFile: { NSWorkspace.shared.open(URL(fileURLWithPath: $0)) },
                 launchAgent: NexusAgentEngine.launchAgentProcess,
-                listSessions: { NexusAgentEngine.readSessions(home: home, directory: $0, provider: $1) },
+                listSessions: { NexusAgentEngine.readSessions(home: home, directory: $0, provider: $1, hiddenClaudeSessionIDs: $2) },
                 readTranscript: { NexusAgentEngine.readTranscript(home: home, conversationID: $0, provider: $1) },
                 transcriptPath: { NexusAgentEngine.transcriptPath(home: home, conversationID: $0, provider: $1) },
                 readTranscriptRaw: { id, provider in
@@ -527,9 +529,11 @@ extension NexusAgentEngine {
     }
 
     /// Reads agy or claude conversation index; empty when provider has none.
-    nonisolated static func readSessions(home: String, directory: String, provider: NexusAgentCLIProvider = .antigravity) -> [NexusAgentSessionSummary] {
+    nonisolated static func readSessions(home: String, directory: String, provider: NexusAgentCLIProvider = .antigravity,
+                                         hiddenClaudeSessionIDs: [String]) -> [NexusAgentSessionSummary] {
         if provider.id == NexusAgentCLIProvider.claude.id {
-            return NexusAgentSessionSummary.parseClaudeSessions(home: home, directory: directory)
+            return NexusAgentSessionSummary.parseClaudeSessions(home: home, directory: directory,
+                                                                appHidden: hiddenClaudeSessionIDs)
         }
         if provider.id == NexusAgentCLIProvider.ollama.id {
             return []

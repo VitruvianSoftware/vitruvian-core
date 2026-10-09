@@ -158,13 +158,15 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
             return
         }
         sessionFilter = ""
-        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider)
+        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
+                                            host.hiddenClaudeSessionIDs)
         mode = .sessions
     }
 
     /// Refreshes the session list using the active provider.
     package func refreshSessions(configuration: NexusAgentConfiguration) {
-        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider)
+        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
+                                            host.hiddenClaudeSessionIDs)
     }
 
     /// Archives a session and reloads the drawer list. A session with no

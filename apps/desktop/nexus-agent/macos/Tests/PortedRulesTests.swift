@@ -438,7 +438,7 @@ final class PortedRulesTests: XCTestCase {
         """
         try? sessionEJSONL.write(to: projectsDir.appendingPathComponent("session-e.jsonl"), atomically: true, encoding: .utf8)
 
-        let sessions = NexusAgentSessionSummary.parseClaudeSessions(home: tmpDir.path, directory: "/test/project")
+        let sessions = NexusAgentSessionSummary.parseClaudeSessions(home: tmpDir.path, directory: "/test/project", appHidden: [])
         let summaryA = sessions.first { $0.id == "session-a" }
         let summaryB = sessions.first { $0.id == "session-b" }
         let summaryC = sessions.first { $0.id == "session-c" }

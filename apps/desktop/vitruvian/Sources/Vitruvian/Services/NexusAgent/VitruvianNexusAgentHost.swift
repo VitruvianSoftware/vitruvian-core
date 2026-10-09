@@ -33,9 +33,8 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
     }
 
     /// The archived Claude sessions as they are saved: always in the app's
-    /// own defaults, whatever `defaults` this host was built with, because
-    /// the session list reads them back from there
-    /// (`NexusAgentSessionSummary.claudeHiddenSessionIds`).
+    /// own defaults, whatever `defaults` this host was built with, which is
+    /// where they have been kept since before there was a host.
     nonisolated package static var savedHiddenClaudeSessionIDs: [String] {
         get { UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") ?? [] }
         set { UserDefaults.standard.set(newValue, forKey: "vitruvian.claude.hiddenSessionIds") }
@@ -50,35 +49,80 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
                                      emptyReply: translated.emptyReply)
     }
 
-    package func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {
-        _ = NotchService.shared.show(NotchNotice(
-            event: .agents,
-            title: strings.approvalRequiredTitle(provider: notice.providerName),
-            detail: notice.text,
-            symbol: "hand.raised.fill"
-        ))
+    /// What the user is told about a turn: the notch notice, whether the
+    /// "done" sound plays and, when one is due, the system notification.
+    /// Decided apart from the telling, so the decision can be tested.
+    package struct TurnAnnouncement: Equatable {
+        package var notchTitle: String
+        package var notchDetail: String
+        package var notchSymbol: String
+        package var playsSound: Bool
+        package var notificationTitle: String?
+        package var notificationBody: String?
+
+        package init(notchTitle: String, notchDetail: String, notchSymbol: String, playsSound: Bool,
+                     notificationTitle: String? = nil, notificationBody: String? = nil) {
+            self.notchTitle = notchTitle
+            self.notchDetail = notchDetail
+            self.notchSymbol = notchSymbol
+            self.playsSound = playsSound
+            self.notificationTitle = notificationTitle
+            self.notificationBody = notificationBody
+        }
+    }
+
+    /// A turn waiting on approval is a notch notice and nothing else.
+    nonisolated package static func announcement(needingApproval notice: NexusAgentTurnNotice,
+                                                 strings: NexusAgentHostStrings) -> TurnAnnouncement {
+        TurnAnnouncement(notchTitle: strings.approvalRequiredTitle(provider: notice.providerName),
+                         notchDetail: notice.text,
+                         notchSymbol: "hand.raised.fill",
+                         playsSound: false)
     }
 
     /// The notch always hears of it. The sound is for a turn that ended
     /// well. The system notification is for a user who is not looking at
     /// the chat, and says nothing for a turn that ended with no reply.
-    package func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {
-        let strings = self.strings
+    nonisolated package static func announcement(finished notice: NexusAgentTurnNotice, isChatVisible: Bool,
+                                                 strings: NexusAgentHostStrings) -> TurnAnnouncement {
         let name = notice.providerName
         let reply = notice.text
         let firstLine = reply.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? reply
+        var announcement = TurnAnnouncement(
+            notchTitle: notice.failed ? strings.failedTitle(provider: name) : strings.doneTitle(provider: name),
+            notchDetail: String(firstLine.prefix(80)),
+            notchSymbol: notice.failed ? "exclamationmark.triangle.fill" : "sparkles",
+            playsSound: notice.endedCleanly)
+        guard !isChatVisible else { return announcement }
+        if notice.failed {
+            announcement.notificationTitle = strings.failedTitle(provider: name)
+            announcement.notificationBody = String(reply.prefix(200))
+        } else if !reply.isEmpty {
+            announcement.notificationTitle = strings.doneTitle(provider: name)
+            announcement.notificationBody = String(firstLine.prefix(200))
+        }
+        return announcement
+    }
+
+    package func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {
+        announce(Self.announcement(needingApproval: notice, strings: strings))
+    }
+
+    package func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {
+        announce(Self.announcement(finished: notice, isChatVisible: isChatVisible, strings: strings))
+    }
+
+    /// The notch first, then the sound, then the notification.
+    private func announce(_ announcement: TurnAnnouncement) {
         _ = NotchService.shared.show(NotchNotice(
             event: .agents,
-            title: notice.failed ? strings.failedTitle(provider: name) : strings.doneTitle(provider: name),
-            detail: String(firstLine.prefix(80)),
-            symbol: notice.failed ? "exclamationmark.triangle.fill" : "sparkles"
+            title: announcement.notchTitle,
+            detail: announcement.notchDetail,
+            symbol: announcement.notchSymbol
         ))
-        if notice.endedCleanly { NSSound(named: "Tink")?.play() }
-        guard !isChatVisible else { return }
-        if notice.failed {
-            Notifier.post(title: strings.failedTitle(provider: name), body: String(reply.prefix(200)))
-        } else if !reply.isEmpty {
-            Notifier.post(title: strings.doneTitle(provider: name), body: String(firstLine.prefix(200)))
+        if announcement.playsSound { NSSound(named: "Tink")?.play() }
+        if let title = announcement.notificationTitle, let body = announcement.notificationBody {
+            Notifier.post(title: title, body: body)
         }
     }
 }
