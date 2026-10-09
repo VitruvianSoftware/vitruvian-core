@@ -69,6 +69,20 @@ jobs:
         with:
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
+      # GitHub refuses a branch update while the PR is in the merge queue, so a
+      # queued release PR could not be refreshed and merged without the change
+      # that just landed (#2938). Out of the queue it can; release-beta-gate.yaml
+      # queues it again once the beta DMG exists for the new code.
+      - name: Take a stale release PR out of the merge queue
+        if: ${{ inputs.tag == '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          COMPONENT: vitruvian
+          CODE_PATH: apps/desktop/vitruvian
+          MAIN_SHA: ${{ github.sha }}
+        run: bash tools/ci/release-pr-dequeue.sh
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         if: ${{ inputs.tag == '' }}

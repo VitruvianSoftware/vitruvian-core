@@ -52,6 +52,11 @@ comment; a fix on `main` rebuilds the PR, and the gate releases it when that
 beta succeeds. Other components' release PRs still auto-merge on open
 (`release-pr-automerge.yaml`).
 
+A release PR already in the merge queue cannot be updated. So when an app change
+lands while it is queued, `vitruvian-release` first takes it out of the queue
+(`tools/ci/release-pr-dequeue.sh`), release-please adds the change, and the gate
+queues it again after that change's beta.
+
 `publish.sh` builds the app and hands it to `Tools/package-release.sh`, which:
 
 - signs it: with the `VITRUVIAN_SIGNING_CERT_P12` /
