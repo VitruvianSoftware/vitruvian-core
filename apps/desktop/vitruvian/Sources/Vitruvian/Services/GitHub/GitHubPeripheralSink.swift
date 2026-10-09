@@ -20,7 +20,6 @@ package final class GitHubPeripheralSink {
     }
 
     private var lastShown: Shown?
-    private let mouseBinaryPath = "/Users/james/bin/gravastar-mouse"
     private let defaults: UserDefaults
     private let executor: Executor?
 
@@ -105,9 +104,15 @@ package final class GitHubPeripheralSink {
             executor(arguments)
             return
         }
-        guard FileManager.default.isExecutableFile(atPath: mouseBinaryPath) else { return }
+        // Looked up on every write, so a binary installed while the app runs
+        // is picked up. Without one there is no mouse to drive.
+        guard let binary = GitHubMouseBinary.locate(configured: defaults[Preferences.githubMouseBinaryPath],
+                                                    environment: ProcessInfo.processInfo.environment,
+                                                    home: NSHomeDirectory(),
+                                                    isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
+        else { return }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: mouseBinaryPath)
+        process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = arguments
         process.standardOutput = Pipe()
         process.standardError = Pipe()
