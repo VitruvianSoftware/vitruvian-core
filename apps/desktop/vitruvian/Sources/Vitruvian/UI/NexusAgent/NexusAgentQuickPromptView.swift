@@ -66,6 +66,10 @@ package struct NexusAgentQuickPromptView: View {
         strings.worktreeModeOff = own.worktreeModeOff
         strings.worktreeContext = own.worktreeContext
         strings.planContext = own.planContext
+        // Two lines that name this app's own shortcuts, so they are said
+        // here and not in the shared view's defaults.
+        strings.environmentHint = "Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry."
+        strings.newChatShortcut = " (⌘N)"
         return strings
     }
 
@@ -83,6 +87,9 @@ package struct NexusAgentQuickPromptView: View {
             showWindow: { service.showQuickPrompt() },
             dockToNotch: { service.dockToNotch() },
             dockToNotchHelp: "Dock into MacBook Notch (⌥⌘G)",
-            errorScheme: "vitruvian-error")
+            errorScheme: "vitruvian-error",
+            // This app's drawer has never had Clear All; a conversation is
+            // deleted from its row's menu, one at a time.
+            offersClearAll: false)
     }
 }

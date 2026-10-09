@@ -86,6 +86,40 @@ public enum NexusAgentQuickPromptLayout {
     }
 }
 
+/// The arrow keys and Return in the sessions drawer, as the standalone
+/// app's own chat handled them. Rows are numbered from the top, in the
+/// order the drawer shows them; the selection is a row's number, or nil
+/// when no row is selected. The view keeps the selection and calls these.
+public enum NexusAgentSessionListKeys {
+    public enum Arrow: Sendable {
+        case up, down
+    }
+
+    /// The selection after an arrow key. With nothing selected, down takes
+    /// the first row and up the last. From a row, each moves one row and
+    /// stops at the end of the list: it does not wrap round. An empty list
+    /// changes nothing.
+    ///
+    /// The filter can shorten the list under a selection, leaving a number
+    /// past its end. That number is kept, as the standalone keeps it: down
+    /// comes back to the last row, up steps one back, and Return
+    /// (`rowToResume`) does not act on a row that is not there.
+    public static func selection(after arrow: Arrow, from current: Int?, count: Int) -> Int? {
+        guard count > 0 else { return current }
+        switch arrow {
+        case .down: return current.map { min($0 + 1, count - 1) } ?? 0
+        case .up: return current.map { max($0 - 1, 0) } ?? count - 1
+        }
+    }
+
+    /// The row Return resumes: the selected one, if the list still has it.
+    /// Nil leaves Return to the prompt, which sends what is typed.
+    public static func rowToResume(selection: Int?, count: Int) -> Int? {
+        guard let selection, selection >= 0, selection < count else { return nil }
+        return selection
+    }
+}
+
 /// One past agy conversation, as the sessions drawer lists it.
 public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     public let id: String

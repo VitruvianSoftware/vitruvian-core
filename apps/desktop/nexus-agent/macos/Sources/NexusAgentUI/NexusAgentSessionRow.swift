@@ -31,6 +31,12 @@ struct NexusAgentSessionRow: View {
     @ObservedObject var session: NexusAgentQuickPromptSession
     @ObservedObject var engine: NexusAgentEngine
     let strings: NexusAgentChatStrings
+    /// The arrow keys have this row: it is tinted, and shows that Return
+    /// opens it.
+    var isSelected = false
+    /// Told when the pointer comes over the row or leaves it, so the
+    /// drawer can let go of a keyboard selection.
+    var onHover: (Bool) -> Void = { _ in }
 
     @State private var isHovered = false
     @State private var isActionHovered = false
@@ -49,6 +55,11 @@ struct NexusAgentSessionRow: View {
                 if isHovered {
                     actionButton
                         .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else if isSelected {
+                    Image(systemName: "return")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 } else if let modified = summary.modified {
                     Text(modified, format: .relative(presentation: .named))
                         .font(.caption)
@@ -60,7 +71,8 @@ struct NexusAgentSessionRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(isHovered ? 0.09 : 0.055))
+                    .fill(isSelected ? NexusAgentTheme.warmCoral.opacity(0.2)
+                                     : Color.white.opacity(isHovered ? 0.09 : 0.055))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(Color.white.opacity(isHovered ? 0.14 : 0.07), lineWidth: 0.5)
@@ -69,7 +81,11 @@ struct NexusAgentSessionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onHover {
+            isHovered = $0
+            onHover($0)
+        }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
             // Only agy's conversations can be deleted; the engine refuses
             // any other provider's, so the item is not offered for them.

@@ -67,6 +67,10 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// A row's buttons.
     public var archiveSession: String
     public var unarchiveSession: String
+    /// The button that deletes every conversation of the working folder,
+    /// and what it says after one click, while it waits for the second.
+    public var clearAll: String
+    public var clearAllConfirm: String
     /// The card an embedded chat shows in place of an empty list.
     public var agentEnvironment: String
     public var ready: String
@@ -74,6 +78,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     public var environmentModel: String
     public var environmentDirectory: String
     public var defaultModel: String
+    /// The card's last line. The default says only what any app's chat can
+    /// do; an app with shortcuts of its own to mention passes its own line.
     public var environmentHint: String
 
     // MARK: The chat's header
@@ -81,6 +87,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// Beside the title of a session that was reopened.
     public var resumed: String
     /// The new-chat button's tooltip, and the shortcut written after it.
+    /// The view does not handle the shortcut: the app's window does, and an
+    /// app whose window has another, or none, passes that here.
     public var newChat: String
     public var newChatShortcut: String
     /// The pin button's tooltip, unpinned and pinned.
@@ -193,13 +201,15 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         archivedSuffix: String = ")",
         archiveSession: String = "Archive session",
         unarchiveSession: String = "Unarchive session",
+        clearAll: String = "Clear All",
+        clearAllConfirm: String = "Confirm?",
         agentEnvironment: String = "Agent Environment",
         ready: String = "Ready",
         environmentProvider: String = "Provider",
         environmentModel: String = "Model",
         environmentDirectory: String = "Directory",
         defaultModel: String = "Default / Auto",
-        environmentHint: String = "Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry.",
+        environmentHint: String = "Type a prompt above to start an agent session.",
         resumed: String = "Resumed",
         newChat: String = "New chat",
         newChatShortcut: String = " (⌘N)",
@@ -281,6 +291,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         self.archivedSuffix = archivedSuffix
         self.archiveSession = archiveSession
         self.unarchiveSession = unarchiveSession
+        self.clearAll = clearAll
+        self.clearAllConfirm = clearAllConfirm
         self.agentEnvironment = agentEnvironment
         self.ready = ready
         self.environmentProvider = environmentProvider

@@ -106,6 +106,11 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         /// it printed, or nil if it failed. With `readsRows` the file is
         /// opened read-only and the rows come back as JSON.
         public var runSqlite: (_ database: String, _ sql: String, _ readsRows: Bool) -> Data?
+        /// The same, but not on the main thread, for work that is many
+        /// statements long (Clear All: up to 200, each of which can wait two
+        /// seconds on a locked index). Nil when an environment has none;
+        /// that work then goes through `runSqlite`, one statement at a time.
+        public var runSqliteOffMain: (@Sendable (_ database: String, _ sql: String, _ readsRows: Bool) async -> Data?)?
 
         public init(defaults: UserDefaults,
                      home: String,
@@ -139,7 +144,9 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                                                @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
                          = { _, _, _, _, _, _, _ in throw CocoaError(.featureUnsupported) },
                      // Left out, every statement fails, so nothing is deleted.
-                     runSqlite: @escaping (String, String, Bool) -> Data? = { _, _, _ in nil }) {
+                     runSqlite: @escaping (String, String, Bool) -> Data? = { _, _, _ in nil },
+                     // Left out, Clear All runs its statements through `runSqlite`.
+                     runSqliteOffMain: (@Sendable (String, String, Bool) async -> Data?)? = nil) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -163,6 +170,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             self.runProgram = runProgram
             self.launchCommand = launchCommand
             self.runSqlite = runSqlite
+            self.runSqliteOffMain = runSqliteOffMain
         }
 
         public static var live: Environment {
@@ -193,7 +201,10 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                 },
                 runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) },
                 launchCommand: NexusAgentEngine.launchCommandProcess,
-                runSqlite: { NexusAgentEngine.runSqliteProcess($0, $1, $2) })
+                runSqlite: { NexusAgentEngine.runSqliteProcess($0, $1, $2) },
+                runSqliteOffMain: { database, sql, readsRows in
+                    await NexusAgentEngine.offMainThread { NexusAgentEngine.runSqliteProcess(database, sql, readsRows) }
+                })
         }
     }
 
@@ -1251,17 +1262,64 @@ extension NexusAgentEngine {
     @discardableResult
     public static func deleteSession(id: String, provider: NexusAgentCLIProvider,
                                      environment: Environment) -> Bool {
-        guard provider.id == NexusAgentCLIProvider.antigravity.id,
-              NexusAgentSessionSummary.isPlainName(id),
-              let database = antigravityIndex(environment: environment),
+        guard let database = indexToDelete(id, from: provider, environment: environment),
               environment.runSqlite(database, NexusAgentSessionSummary.deleteStatement(id: id), false) != nil
         else { return false }
+        removeConversationFiles(of: id, besideIndex: database, environment: environment)
+        return true
+    }
+
+    /// The same, with the statement run off the main thread when the
+    /// environment can (`runSqliteOffMain`). The checks before it and the
+    /// removal of the three files after it are as above, on the main actor.
+    static func deleteSessionOffMain(id: String, provider: NexusAgentCLIProvider,
+                                     environment: Environment) async -> Bool {
+        guard let database = indexToDelete(id, from: provider, environment: environment),
+              await sqliteOffMain(database, NexusAgentSessionSummary.deleteStatement(id: id), false,
+                                  environment: environment) != nil
+        else { return false }
+        removeConversationFiles(of: id, besideIndex: database, environment: environment)
+        return true
+    }
+
+    /// The index a conversation's row may be taken out of, or nil when it
+    /// may not be: another provider's, an id that is not a plain name, or
+    /// no index on this Mac.
+    private static func indexToDelete(_ id: String, from provider: NexusAgentCLIProvider,
+                                      environment: Environment) -> String? {
+        guard provider.id == NexusAgentCLIProvider.antigravity.id,
+              NexusAgentSessionSummary.isPlainName(id) else { return nil }
+        return antigravityIndex(environment: environment)
+    }
+
+    private static func removeConversationFiles(of id: String, besideIndex database: String,
+                                                environment: Environment) {
         let conversations = ((database as NSString).deletingLastPathComponent as NSString)
             .appendingPathComponent("conversations")
         for suffix in [".db", ".db-wal", ".db-shm"] {
             environment.removeFile((conversations as NSString).appendingPathComponent(id + suffix))
         }
-        return true
+    }
+
+    /// One statement, off the main thread if the environment has the entry
+    /// for that, through its plain entry if not.
+    private static func sqliteOffMain(_ database: String, _ sql: String, _ readsRows: Bool,
+                                      environment: Environment) async -> Data? {
+        guard let offMain = environment.runSqliteOffMain else {
+            return environment.runSqlite(database, sql, readsRows)
+        }
+        return await offMain(database, sql, readsRows)
+    }
+
+    /// Runs `work` on a background queue and gives back its answer. For a
+    /// program that is run to its end and waited for, which must not be
+    /// done on the main thread.
+    nonisolated public static func offMainThread<Answer: Sendable>(_ work: @escaping @Sendable () -> Answer) async -> Answer {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: work())
+            }
+        }
     }
 
     /// Deletes every conversation the standalone app's "Clear All" would
@@ -1295,6 +1353,30 @@ extension NexusAgentEngine {
         var deleted: [String] = []
         for id in ids {
             guard deleteSession(id: id, provider: provider, environment: environment) else { break }
+            deleted.append(id)
+        }
+        return deleted
+    }
+
+    /// The same conversations, in the same order, under the same rule that
+    /// the first failure ends it, but with every statement run off the main
+    /// thread when the environment can. This is what the chat's Clear All
+    /// uses: the main thread waits on none of it, so the app stays usable
+    /// however many conversations there are and however long a locked
+    /// index keeps each one waiting.
+    static func deletedSessionIDsOffMain(directory: String, provider: NexusAgentCLIProvider,
+                                         environment: Environment) async -> [String] {
+        guard provider.id == NexusAgentCLIProvider.antigravity.id,
+              let database = antigravityIndex(environment: environment),
+              let rows = await sqliteOffMain(database, NexusAgentSessionSummary.deleteAllQuery, true,
+                                             environment: environment)
+        else { return [] }
+        let ids = NexusAgentSessionSummary.idsToDeleteAll(
+            rows, directory: directory,
+            archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
+        var deleted: [String] = []
+        for id in ids {
+            guard await deleteSessionOffMain(id: id, provider: provider, environment: environment) else { break }
             deleted.append(id)
         }
         return deleted

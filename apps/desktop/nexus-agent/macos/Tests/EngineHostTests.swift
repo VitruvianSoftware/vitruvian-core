@@ -89,6 +89,26 @@ final class EngineHostTests: XCTestCase {
         var sqliteFails = false
         /// When set, a statement that holds this text fails; the rest succeed.
         var sqliteFailsWhenSQLHas: String?
+        /// When true the environment also has the SQLite entry that does not
+        /// run on the main thread. It records and answers as the other does,
+        /// and counts its own runs so a test can tell which one was asked.
+        var hasOffMainSqlite = false
+        var offMainSqliteRuns = 0
+        /// While true a statement given to that entry does not finish until
+        /// `finishSqlite` is called, once for each statement, oldest first.
+        var holdsSqlite = false
+        private var heldSqlite: [CheckedContinuation<Void, Never>] = []
+
+        func finishSqlite() {
+            guard !heldSqlite.isEmpty else { return }
+            heldSqlite.removeFirst().resume()
+        }
+
+        private func sqliteAnswer(_ sql: String, _ readsRows: Bool) -> Data? {
+            if sqliteFails { return nil }
+            if let marker = sqliteFailsWhenSQLHas, sql.contains(marker) { return nil }
+            return Data((readsRows ? sqliteRows : "").utf8)
+        }
         /// Every file the engine asked to have removed, in order.
         var removed: [String] = []
         var listedHidden: [[String]] = []
@@ -201,10 +221,20 @@ final class EngineHostTests: XCTestCase {
                 },
                 runSqlite: { [unowned self] database, sql, readsRows in
                     sqliteRuns.append((database, sql, readsRows))
-                    if sqliteFails { return nil }
-                    if let marker = sqliteFailsWhenSQLHas, sql.contains(marker) { return nil }
-                    return Data((readsRows ? sqliteRows : "").utf8)
-                })
+                    return sqliteAnswer(sql, readsRows)
+                },
+                runSqliteOffMain: hasOffMainSqlite ? offMainSqlite : nil)
+        }
+
+        private var offMainSqlite: @Sendable (String, String, Bool) async -> Data? {
+            { @MainActor [unowned self] database, sql, readsRows in
+                sqliteRuns.append((database, sql, readsRows))
+                offMainSqliteRuns += 1
+                if holdsSqlite {
+                    await withCheckedContinuation { heldSqlite.append($0) }
+                }
+                return sqliteAnswer(sql, readsRows)
+            }
         }
     }
 
@@ -1486,7 +1516,13 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.mode, .compact)
     }
 
-    func testClearAllStartsANewChatOnlyIfTheOpenConversationWasAmongThem() {
+    /// Clears a folder's conversations and waits until that is over.
+    private func clearAll(_ session: NexusAgentQuickPromptSession,
+                          in configuration: NexusAgentConfiguration) async -> Int {
+        await session.deleteAll(in: configuration).value
+    }
+
+    func testClearAllStartsANewChatOnlyIfTheOpenConversationWasAmongThem() async {
         let rig = rigWithIndex()
         defer { rig.tearDown() }
         rig.sqliteRows = """
@@ -1497,26 +1533,29 @@ final class EngineHostTests: XCTestCase {
 
         // Open, but in no list: untouched.
         session.resume(conversation("elsewhere"))
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 2)
+        let others = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(others, 2)
         XCTAssertEqual(session.conversationID, "elsewhere")
         XCTAssertFalse(session.messages.isEmpty)
 
         // Open and deleted with the rest.
         session.resume(conversation("open-1"))
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 2)
+        let withTheOpenOne = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(withTheOpenOne, 2)
         XCTAssertNil(session.conversationID)
         XCTAssertTrue(session.messages.isEmpty)
 
         // Open and in the list, but nothing could be deleted: it stays.
         session.resume(conversation("open-1"))
         rig.sqliteFails = true
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 0)
+        let none = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(none, 0)
         XCTAssertEqual(session.conversationID, "open-1")
         XCTAssertFalse(session.messages.isEmpty)
         rig.sqliteFails = false
     }
 
-    func testOnlyAgyConversationsCanBeDeleted() {
+    func testOnlyAgyConversationsCanBeDeleted() async {
         let rig = rigWithIndex(conversations: ["abc-1"])
         defer { rig.tearDown() }
         let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
@@ -1525,19 +1564,21 @@ final class EngineHostTests: XCTestCase {
         for provider in [NexusAgentCLIProvider.claude, .ollama, own] {
             let configuration = NexusAgentConfiguration(activeProvider: provider)
             XCTAssertFalse(session.delete(conversation("abc-1"), configuration: configuration), provider.name)
-            XCTAssertEqual(session.deleteAll(in: configuration), 0, provider.name)
+            let cleared = await clearAll(session, in: configuration)
+            XCTAssertEqual(cleared, 0, provider.name)
         }
         XCTAssertTrue(rig.sqliteRuns.isEmpty, "nothing was asked of the index")
         XCTAssertTrue(rig.removed.isEmpty, "and no file was removed")
     }
 
-    func testNothingIsRemovedWhenTheIndexCannotBeChanged() {
+    func testNothingIsRemovedWhenTheIndexCannotBeChanged() async {
         // No index at all.
         let bare = Rig()
         defer { bare.tearDown() }
         let onBare = NexusAgentQuickPromptSession(environment: bare.environment, host: RecordingHost())
         XCTAssertFalse(onBare.delete(conversation("abc-1"), configuration: NexusAgentConfiguration()))
-        XCTAssertEqual(onBare.deleteAll(in: NexusAgentConfiguration()), 0)
+        let cleared = await clearAll(onBare, in: NexusAgentConfiguration())
+        XCTAssertEqual(cleared, 0)
         XCTAssertTrue(bare.sqliteRuns.isEmpty, "SQLite is not run on a file that is not there: it would create one")
         XCTAssertTrue(bare.removed.isEmpty)
 
@@ -1576,7 +1617,7 @@ final class EngineHostTests: XCTestCase {
         + "WHERE nesting_depth = 0 AND killed = 0\n"
         + "ORDER BY last_modified_time DESC LIMIT 200;"
 
-    func testClearAllDeletesTheFoldersOwnConversationsOneByOne() {
+    func testClearAllDeletesTheFoldersOwnConversationsOneByOne() async {
         let rig = rigWithIndex()
         defer { rig.tearDown() }
         rig.files[rig.home + "/work"] = ""
@@ -1596,7 +1637,7 @@ final class EngineHostTests: XCTestCase {
         let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
         let listedBefore = rig.listedHidden.count
 
-        let count = session.deleteAll(in: NexusAgentConfiguration(workingDirectory: "~/work/"))
+        let count = await clearAll(session, in: NexusAgentConfiguration(workingDirectory: "~/work/"))
 
         XCTAssertEqual(rig.sqliteRuns.first?.sql, clearAllQuery, "the standalone's own query")
         XCTAssertEqual(rig.sqliteRuns.first?.readsRows, true)
@@ -1612,7 +1653,7 @@ final class EngineHostTests: XCTestCase {
 
     /// With the index locked every try waits out the busy timeout on the
     /// main thread, so the first delete that fails ends the run.
-    func testClearAllStopsAtTheFirstDeleteThatFails() {
+    func testClearAllStopsAtTheFirstDeleteThatFails() async {
         let rig = rigWithIndex(conversations: ["c-1", "c-2", "c-3", "c-4"])
         defer { rig.tearDown() }
         rig.sqliteRows = """
@@ -1623,7 +1664,7 @@ final class EngineHostTests: XCTestCase {
         let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
         let data = rig.home + "/.gemini/antigravity/conversations/"
 
-        let count = session.deleteAll(in: NexusAgentConfiguration())
+        let count = await clearAll(session, in: NexusAgentConfiguration())
 
         XCTAssertEqual(count, 1, "only the one before the failure is counted")
         XCTAssertEqual(rig.sqliteRuns.dropFirst().map(\.sql), [
@@ -1636,7 +1677,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertNotNil(rig.files[data + "c-3.db"])
     }
 
-    func testClearAllWithNoFolderSetIsTheHomeFolders() {
+    func testClearAllWithNoFolderSetIsTheHomeFolders() async {
         let rig = rigWithIndex()
         defer { rig.tearDown() }
         rig.sqliteRows = """
@@ -1647,15 +1688,196 @@ final class EngineHostTests: XCTestCase {
 
         // The drawer lists every folder's conversations when none is set;
         // "all" still means one folder's, as it does in the standalone.
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 1)
+        let atHome = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(atHome, 1)
         XCTAssertEqual(rig.sqliteRuns.last?.sql,
                        "DELETE FROM conversation_summaries WHERE conversation_id = 'home-1';")
 
         // A folder that is set but gone is still that folder, not home.
         rig.sqliteRuns = []
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration(workingDirectory: "/Users/rig/work")), 1)
+        let atWork = await clearAll(session, in: NexusAgentConfiguration(workingDirectory: "/Users/rig/work"))
+        XCTAssertEqual(atWork, 1)
         XCTAssertEqual(rig.sqliteRuns.last?.sql,
                        "DELETE FROM conversation_summaries WHERE conversation_id = 'work-1';")
+    }
+
+    // MARK: Clear All does not hold up the main thread
+
+    private func fourConversations() -> Rig {
+        let rig = rigWithIndex(conversations: ["c-1", "c-2", "c-3", "c-4"])
+        rig.sqliteRows = """
+        [{"conversation_id":"c-1","workspace_uris":"[]"},{"conversation_id":"c-2","workspace_uris":"[]"},
+         {"conversation_id":"c-3","workspace_uris":"[]"},{"conversation_id":"c-4","workspace_uris":"[]"}]
+        """
+        rig.hasOffMainSqlite = true
+        return rig
+    }
+
+    private func deleteOf(_ id: String) -> String {
+        "DELETE FROM conversation_summaries WHERE conversation_id = '\(id)';"
+    }
+
+    /// Clear All can be 200 runs of `sqlite3`, each of which may wait two
+    /// seconds on a locked index. The call that starts it comes back at
+    /// once, with nothing deleted yet, and the session says it is busy.
+    func testClearAllComesBackBeforeAnythingIsDeleted() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.holdsSqlite = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let listedBefore = rig.listedHidden.count
+        let data = rig.home + "/.gemini/antigravity/conversations/"
+        XCTAssertFalse(session.isClearingSessions)
+
+        let clearing = session.deleteAll(in: NexusAgentConfiguration())
+
+        // Back with the caller, on the main actor, and SQLite has not even been asked.
+        XCTAssertTrue(session.isClearingSessions, "the session says a clear is under way")
+        XCTAssertTrue(rig.sqliteRuns.isEmpty, "the call came back before any statement was run")
+        XCTAssertTrue(rig.removed.isEmpty)
+
+        // The query is asked for, and held: the main actor is free meanwhile
+        // (this test is running on it), and still nothing is deleted.
+        await rig.wait { rig.sqliteRuns.count == 1 }
+        XCTAssertEqual(rig.sqliteRuns.map(\.sql), [clearAllQuery])
+        XCTAssertTrue(rig.removed.isEmpty)
+        XCTAssertTrue(session.isClearingSessions)
+
+        // The deletes come one at a time, in the list's order, each one's
+        // files removed only once its row is out.
+        for (index, id) in ["c-1", "c-2", "c-3", "c-4"].enumerated() {
+            rig.finishSqlite()
+            await rig.wait { rig.sqliteRuns.count == index + 2 }
+            XCTAssertEqual(rig.sqliteRuns.last?.sql, deleteOf(id))
+            XCTAssertEqual(rig.removed.count, index * 3, "\(id) is still there while its delete is running")
+            XCTAssertTrue(session.isClearingSessions)
+            XCTAssertEqual(rig.listedHidden.count, listedBefore, "the list is not read again until the end")
+        }
+        rig.finishSqlite()
+        let count = await clearing.value
+
+        XCTAssertEqual(count, 4)
+        XCTAssertEqual(rig.sqliteRuns.count, 5, "the query and four deletes, and no more")
+        XCTAssertEqual(rig.offMainSqliteRuns, 5, "every one through the entry that is off the main thread")
+        XCTAssertEqual(rig.removed.count, 12)
+        XCTAssertEqual(Array(rig.removed.prefix(3)), [data + "c-1.db", data + "c-1.db-wal", data + "c-1.db-shm"])
+        XCTAssertFalse(session.isClearingSessions, "and the session is no longer busy")
+        XCTAssertEqual(rig.listedHidden.count, listedBefore + 1, "the drawer's list is read again, once")
+    }
+
+    func testASecondClearAllWhileOneIsRunningDoesNothing() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.holdsSqlite = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let listedBefore = rig.listedHidden.count
+
+        let first = session.deleteAll(in: NexusAgentConfiguration())
+        await rig.wait { rig.sqliteRuns.count == 1 }
+        let second = session.deleteAll(in: NexusAgentConfiguration())
+        let secondCount = await second.value
+        await rig.settle()
+
+        XCTAssertEqual(secondCount, 0, "the second one deleted nothing")
+        XCTAssertEqual(rig.sqliteRuns.count, 1, "and asked nothing of the index")
+        XCTAssertTrue(session.isClearingSessions, "the first is still under way")
+        XCTAssertEqual(rig.listedHidden.count, listedBefore)
+
+        rig.holdsSqlite = false
+        rig.finishSqlite()
+        let firstCount = await first.value
+        XCTAssertEqual(firstCount, 4)
+        XCTAssertEqual(rig.sqliteRuns.count, 5, "the first ran once through, undisturbed")
+        XCTAssertFalse(session.isClearingSessions)
+
+        // Once it is over, Clear All can be asked for again.
+        let third = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(third, 4)
+        XCTAssertEqual(rig.listedHidden.count, listedBefore + 2)
+    }
+
+    func testClearAllOffTheMainThreadStillStopsAtTheFirstFailure() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.sqliteFailsWhenSQLHas = "'c-2'"
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let data = rig.home + "/.gemini/antigravity/conversations/"
+
+        let count = await clearAll(session, in: NexusAgentConfiguration())
+
+        XCTAssertEqual(count, 1, "only the one before the failure is counted")
+        XCTAssertEqual(rig.sqliteRuns.dropFirst().map(\.sql), [deleteOf("c-1"), deleteOf("c-2")],
+                       "no delete was tried after the one that failed")
+        XCTAssertEqual(rig.offMainSqliteRuns, 3)
+        XCTAssertEqual(rig.removed, [data + "c-1.db", data + "c-1.db-wal", data + "c-1.db-shm"])
+        XCTAssertNotNil(rig.files[data + "c-2.db"])
+        XCTAssertFalse(session.isClearingSessions, "a clear that failed is over too")
+
+        // A query that fails deletes nothing, and is over as well.
+        rig.sqliteFailsWhenSQLHas = nil
+        rig.sqliteFails = true
+        let nothing = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(nothing, 0)
+        XCTAssertFalse(session.isClearingSessions)
+    }
+
+    func testClearAllOffTheMainThreadStartsANewChatIfTheOpenConversationWent() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.holdsSqlite = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        defer { session.stopTranscriptFollower() }
+        session.resume(conversation("c-3"))
+
+        let clearing = session.deleteAll(in: NexusAgentConfiguration())
+        await rig.wait { rig.sqliteRuns.count == 1 }
+        XCTAssertEqual(session.conversationID, "c-3", "the open chat is left alone while the clear runs")
+        XCTAssertFalse(session.messages.isEmpty)
+
+        rig.holdsSqlite = false
+        rig.finishSqlite()
+        let count = await clearing.value
+
+        XCTAssertEqual(count, 4)
+        XCTAssertNil(session.conversationID, "the next prompt cannot resume a conversation that is gone")
+        XCTAssertTrue(session.messages.isEmpty)
+        XCTAssertEqual(session.mode, .compact)
+    }
+
+    /// An environment without the off-main entry (every test double written
+    /// before it) still clears, through the entry it has.
+    func testClearAllUsesThePlainEntryWhenThereIsNoOther() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.hasOffMainSqlite = false
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        let clearing = session.deleteAll(in: NexusAgentConfiguration())
+        XCTAssertTrue(rig.sqliteRuns.isEmpty, "even so, the call comes back first")
+        let count = await clearing.value
+
+        XCTAssertEqual(count, 4)
+        XCTAssertEqual(rig.sqliteRuns.count, 5)
+        XCTAssertEqual(rig.offMainSqliteRuns, 0)
+    }
+
+    /// The real entry, on a real index: it answers as the plain one does,
+    /// and from a thread that is not the main one.
+    func testTheRealOffMainEntryReadsARealIndex() async throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let index = try realIndex(rig)
+        let entry = try XCTUnwrap(NexusAgentEngine.Environment.live.runSqliteOffMain,
+                                  "the real environment has the off-main entry")
+
+        let rows = await entry(index.database, "SELECT conversation_id FROM conversation_summaries;", true)
+
+        let text = String(data: try XCTUnwrap(rows), encoding: .utf8) ?? ""
+        XCTAssertTrue(text.contains("busy-1"), text)
+        let missing = await entry(rig.home + "/no-such-folder/x.db", "SELECT 1;", true)
+        XCTAssertNil(missing, "a statement that fails gives nil, as the plain entry does")
+        let onMain = await NexusAgentEngine.offMainThread { Thread.isMainThread }
+        XCTAssertFalse(onMain, "the work it is given does not run on the main thread")
     }
 
     /// Runs SQL against a real database file, for the test below.
@@ -1675,7 +1897,7 @@ final class EngineHostTests: XCTestCase {
     /// The whole road, for real: the engine's own SQLite and file calls
     /// against a small index in a throwaway home folder. Nothing outside
     /// that folder is named anywhere in it.
-    func testDeletingAgainstARealIndexInAThrowawayHome() throws {
+    func testDeletingAgainstARealIndexInAThrowawayHome() async throws {
         let rig = Rig(realHome: true)
         defer { rig.tearDown() }
         let files = FileManager.default
@@ -1747,7 +1969,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(remaining().count, rows.count - 1)
 
         // All of one folder's.
-        let count = session.deleteAll(in: NexusAgentConfiguration(workingDirectory: work))
+        let count = await clearAll(session, in: NexusAgentConfiguration(workingDirectory: work))
         XCTAssertEqual(count, 4)
         XCTAssertEqual(remaining(), ["aborted", "archived", "nested", "other-folder"],
                        "gone: the folder's top-level ones (one with a quote in its id) and the one with no folder. "

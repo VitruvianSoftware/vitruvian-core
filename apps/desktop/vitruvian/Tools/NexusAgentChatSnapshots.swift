@@ -10,7 +10,12 @@
 //
 // The folder is an absolute path; it is created. Each state is drawn as the
 // floating window and as the notch shows it, in the light and the dark
-// appearance, at two pixels per point. Two runs of the same code on the same
+// appearance, at two pixels per point. After those, each state is drawn once
+// more as the shared chat view looks with nothing of this app's around it
+// (the default text and chrome: no pin, no dock button, no backdrop, Clear
+// All offered), which is how the standalone Nexus Agent app starts from it.
+// Those files begin `standalone-`; they are for looking at, and are not part
+// of what this app's look is compared by. Two runs of the same code on the same
 // Mac write identical files. Files from two Macs, or two macOS versions, are
 // not expected to match: fonts, colour handling and the first letter of the
 // user's name (the avatar beside a prompt) differ.
@@ -50,8 +55,13 @@
 //   only and shows nothing the app can show.
 // - A session list by provider. A row does not say which agent it belongs
 //   to, so the drawer's rows differ by title alone.
+// - The standalone app. The `standalone-` images are the shared view on this
+//   app's service and a flat plate; the standalone's own window, backdrop and
+//   settings are not here. The row's menu (Delete) opens on a right click and
+//   the Clear All button's "Confirm?" on a click, so neither is drawn.
 
 import AppKit
+import NexusAgentUI
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
@@ -406,19 +416,35 @@ let scenarios: [Scenario] = [
 
 // MARK: - Drawing
 
-enum Form: String, CaseIterable {
+enum Form: String {
     case floating, notch
+    /// The shared view with its default text and chrome, as an app that
+    /// adds nothing of its own would show it.
+    case standalone
+
+    /// This app's two, which are what a change to its look is checked by.
+    static let ofThisApp: [Form] = [.floating, .notch]
 
     /// The floating window is the size the service gives its panel for the
-    /// mode. The notch's page is the "spacious" island's width less its side
+    /// mode, and the standalone's window takes the same sizes. The notch's
+    /// page is the "spacious" island's width less its side
     /// insets, at a height a tall custom island leaves under its header.
     /// It is tall enough that the running turn fits without scrolling: a
     /// chat that scrolls to a new message does so over several frames, and
     /// an image caught on the way would differ from run to run.
     func size(for mode: NexusAgentQuickPromptMode) -> CGSize {
         switch self {
-        case .floating: return NexusAgentQuickPromptLayout.size(for: mode)
+        case .floating, .standalone: return NexusAgentQuickPromptLayout.size(for: mode)
         case .notch: return CGSize(width: 504, height: 480)
+        }
+    }
+
+    /// The file a picture is written to. This app's two keep the names
+    /// they have always had.
+    func fileName(scenario: String, step: String, look: Look) -> String {
+        switch self {
+        case .floating, .notch: return "\(scenario)\(step)-\(rawValue)-\(look.rawValue).png"
+        case .standalone: return "standalone-\(scenario)\(step)-\(look.rawValue).png"
         }
     }
 }
@@ -475,6 +501,19 @@ struct Picture {
     var png: Data
 }
 
+/// A chat view, sized and on its backing, in the AppKit view that draws it.
+func hosted<Chat: View>(_ chat: Chat, size: CGSize, backing: Color) -> NSView {
+    NSHostingView(rootView: chat
+        // No animation, whether a view asked for it in `withAnimation` or
+        // with `.animation`: a frame caught part-way would differ each run.
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+        .frame(width: size.width, height: size.height)
+        .background(backing))
+}
+
 /// One scenario in one form and look. Nil when a turn's clock moved on
 /// while its images were being taken, which the caller answers by starting
 /// the scenario again.
@@ -493,21 +532,24 @@ func pictures(of scenario: Scenario, form: Form, look: Look) -> [Picture]? {
     }
 
     let size = form.size(for: service.session.mode)
-    let content = NexusAgentQuickPromptView(embeddedInNotch: form == .notch, service: service)
-        // No animation, whether a view asked for it in `withAnimation` or
-        // with `.animation`: a frame caught part-way would differ each run.
-        .transaction { transaction in
-            transaction.animation = nil
-            transaction.disablesAnimations = true
-        }
-        .frame(width: size.width, height: size.height)
-        .background(look.backing(form))
+    let backing = look.backing(form)
+    let host: NSView
+    switch form {
+    case .floating, .notch:
+        host = hosted(NexusAgentQuickPromptView(embeddedInNotch: form == .notch, service: service),
+                      size: size, backing: backing)
+    case .standalone:
+        // The shared view itself, on the same service, with the text and
+        // the chrome it has when an app passes none.
+        host = hosted(NexusAgentChatView(engine: service, strings: NexusAgentChatStrings(),
+                                         chrome: NexusAgentChatChrome()),
+                      size: size, backing: backing)
+    }
     // The window gives the view somewhere to live. It is never put on screen.
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless],
                           backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.appearance = look.appearance
-    let host = NSHostingView(rootView: content)
     host.frame = NSRect(origin: .zero, size: size)
     window.contentView = host
     defer {
@@ -524,7 +566,7 @@ func pictures(of scenario: Scenario, form: Form, look: Look) -> [Picture]? {
     for step in scenario.steps {
         step.change(rig, service)
         settle(0.12)
-        taken.append(Picture(name: "\(scenario.name)\(step.suffix)-\(form.rawValue)-\(look.rawValue).png",
+        taken.append(Picture(name: form.fileName(scenario: scenario.name, step: step.suffix, look: look),
                              size: size, png: picture(of: host, size: size)))
     }
     if let elapsed = scenario.elapsed, service.session.elapsedSeconds != elapsed { return nil }
@@ -542,29 +584,37 @@ do {
     fail("could not create \(outputFolder.path): \(error.localizedDescription)", status: 73)
 }
 
-let languageBefore = L10n.shared.language
-for scenario in scenarios {
-    L10n.shared.language = scenario.language
-    for form in Form.allCases {
-        for look in Look.allCases {
-            var taken: [Picture]?
-            for _ in 0..<4 where taken == nil {
-                taken = pictures(of: scenario, form: form, look: look)
-            }
-            guard let taken else {
-                fail("\(scenario.name): the turn's clock would not hold still for the image", status: 70)
-            }
-            for picture in taken {
-                do {
-                    try picture.png.write(to: outputFolder.appendingPathComponent(picture.name))
-                } catch {
-                    fail("could not write \(picture.name): \(error.localizedDescription)", status: 73)
+/// Every scenario in these forms, each in both looks, written to the folder.
+func write(_ forms: [Form]) {
+    for scenario in scenarios {
+        L10n.shared.language = scenario.language
+        for form in forms {
+            for look in Look.allCases {
+                var taken: [Picture]?
+                for _ in 0..<4 where taken == nil {
+                    taken = pictures(of: scenario, form: form, look: look)
                 }
-                print("\(picture.name)  \(Int(picture.size.width * pixelsPerPoint))x\(Int(picture.size.height * pixelsPerPoint)) px")
+                guard let taken else {
+                    fail("\(scenario.name): the turn's clock would not hold still for the image", status: 70)
+                }
+                for picture in taken {
+                    do {
+                        try picture.png.write(to: outputFolder.appendingPathComponent(picture.name))
+                    } catch {
+                        fail("could not write \(picture.name): \(error.localizedDescription)", status: 73)
+                    }
+                    print("\(picture.name)  \(Int(picture.size.width * pixelsPerPoint))x\(Int(picture.size.height * pixelsPerPoint)) px")
+                }
             }
         }
     }
 }
+
+let languageBefore = L10n.shared.language
+// This app's own forms first and all together, exactly as before the third
+// form was added, so that nothing about drawing it can reach their images.
+write(Form.ofThisApp)
+write([.standalone])
 L10n.shared.language = languageBefore
 // Nothing is kept: the first copy removes the emptied files.
 for domain in [snapshotDomain, ownDomain] {

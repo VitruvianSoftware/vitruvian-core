@@ -107,6 +107,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var focusSerial = 0
     @Published public private(set) var mode: NexusAgentQuickPromptMode = .compact
     @Published public private(set) var sessions: [NexusAgentSessionSummary] = []
+    /// True from the moment Clear All is asked for until its last delete
+    /// is over. A second Clear All is not started meanwhile.
+    @Published public private(set) var isClearingSessions = false
     @Published public var sessionFilter = ""
     /// The active session's title when resumed from the drawer.
     @Published public private(set) var sessionTitle: String?
@@ -238,24 +241,38 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Deletes every agy conversation of the working folder, as the
     /// standalone app's "Clear All" does, and reloads the drawer list.
-    /// Returns how many went.
     ///
     /// The folder is the one the settings name, or home when they name
     /// none. It is used as named even if it is gone, and never widened:
     /// the drawer lists every folder's conversations when none is set,
     /// but "all" here is always one folder's.
+    ///
+    /// It comes back at once, before anything is deleted. The deleting is
+    /// up to 200 runs of `sqlite3`, each of which can wait two seconds on
+    /// an index agy has locked, so none of it is waited for on the main
+    /// thread: `isClearingSessions` is true until it is over, and the list
+    /// is read again then. The task it returns ends at that moment with
+    /// how many went, for a caller that wants to know. Asked again while
+    /// one clear is under way, it does nothing and its task gives 0.
     @discardableResult
-    public func deleteAll(in configuration: NexusAgentConfiguration) -> Int {
+    public func deleteAll(in configuration: NexusAgentConfiguration) -> Task<Int, Never> {
+        guard !isClearingSessions else { return Task { 0 } }
+        isClearingSessions = true
         let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
         let directory = configured.isEmpty
             ? environment.home
             : NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
-        let deleted = NexusAgentEngine.deletedSessionIDs(directory: directory, provider: configuration.activeProvider,
-                                                         environment: environment)
-        // As for one conversation: the open chat is new if it went too.
-        if let open = conversationID, deleted.contains(open) { newChat() }
-        refreshSessions(configuration: configuration)
-        return deleted.count
+        return Task { [weak self] in
+            guard let environment = self?.environment else { return 0 }
+            let deleted = await NexusAgentEngine.deletedSessionIDsOffMain(
+                directory: directory, provider: configuration.activeProvider, environment: environment)
+            guard let self else { return deleted.count }
+            self.isClearingSessions = false
+            // As for one conversation: the open chat is new if it went too.
+            if let open = self.conversationID, deleted.contains(open) { self.newChat() }
+            self.refreshSessions(configuration: configuration)
+            return deleted.count
+        }
     }
 
     /// Starts watching the transcript file for live updates while in chat mode.

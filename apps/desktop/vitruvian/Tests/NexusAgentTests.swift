@@ -1165,6 +1165,8 @@ enum NexusAgentTests {
         suite.expect(floating.dockToNotchHelp == "Dock into MacBook Notch (⌥⌘G)"
                      && floating.errorScheme == "vitruvian-error",
                      "the dock button's tooltip and the diagram's error scheme are this app's")
+        suite.expect(!floating.offersClearAll && !embedded.offersClearAll && NexusAgentChatChrome().offersClearAll,
+                     "Clear All, which the shared chat offers unless told not to, is not offered in this app")
 
         // The dock button reaches the service, which hands the chat to the notch.
         let notch = NotchService.shared
@@ -1200,6 +1202,11 @@ enum NexusAgentTests {
                      "each of the 23 fields this app has words for is handed over as its own text")
         suite.expect(german.planModeOn != german.planModeOff && german.pinWindow != german.unpinWindow,
                      "and no two of a pair were swapped for one another")
+        suite.expect(english.environmentHint
+                     == "Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry."
+                     && english.newChatShortcut == " (⌘N)"
+                     && english.environmentHint != NexusAgentChatStrings().environmentHint,
+                     "the two lines that name this app's shortcuts are this app's, whatever the shared chat says by default")
     }
 
     // MARK: - Antigravity Telemetry & Quota

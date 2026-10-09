@@ -38,6 +38,10 @@ public struct NexusAgentChatChrome {
     public var dockToNotchHelp: String
     /// The URL scheme the diagram web view uses to report an error.
     public var errorScheme: String
+    /// Whether the sessions drawer has the button that deletes every
+    /// conversation of the working folder. The standalone app's chat has
+    /// always had it; an app whose drawer never did passes false.
+    public var offersClearAll: Bool
 
     public init(backdrop: AnyView = AnyView(Color.clear),
                 isEmbedded: Bool = false,
@@ -45,7 +49,8 @@ public struct NexusAgentChatChrome {
                 showWindow: @escaping () -> Void = {},
                 dockToNotch: (() -> Void)? = nil,
                 dockToNotchHelp: String = "",
-                errorScheme: String = "nexus-agent-error") {
+                errorScheme: String = "nexus-agent-error",
+                offersClearAll: Bool = true) {
         self.backdrop = backdrop
         self.isEmbedded = isEmbedded
         self.isPinned = isPinned
@@ -53,5 +58,6 @@ public struct NexusAgentChatChrome {
         self.dockToNotch = dockToNotch
         self.dockToNotchHelp = dockToNotchHelp
         self.errorScheme = errorScheme
+        self.offersClearAll = offersClearAll
     }
 }

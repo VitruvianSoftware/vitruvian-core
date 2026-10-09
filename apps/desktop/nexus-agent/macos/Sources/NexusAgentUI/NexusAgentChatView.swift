@@ -68,6 +68,12 @@ public struct NexusAgentChatView: View {
     @State private var hoveringNewChat = false
     @State private var hoveringSessions = false
     @State private var isArchivedExpanded = false
+    /// The drawer row the arrow keys have, counted from the top of the
+    /// rows on show; nil when none is selected.
+    @State private var selectedSessionIndex: Int?
+    /// True between the first click on Clear All and the second, or two
+    /// seconds, whichever comes first.
+    @State private var clearAllConfirming = false
 
     public init(engine: NexusAgentEngine, strings: NexusAgentChatStrings, chrome: NexusAgentChatChrome) {
         self.engine = engine
@@ -140,7 +146,55 @@ public struct NexusAgentChatView: View {
             }
         }
         .onChange(of: session.focusSerial) { _, _ in inputFocused = true }
-        .onChange(of: session.mode) { _, _ in inputFocused = true }
+        .onChange(of: session.mode) { _, _ in
+            inputFocused = true
+            // A drawer that opens, or closes, starts with no row selected.
+            selectedSessionIndex = nil
+        }
+        // A prompt being typed is what Return sends: the selection is let
+        // go, so that Return does not open a session instead.
+        .onChange(of: session.draft) { _, _ in selectedSessionIndex = nil }
+    }
+
+    // MARK: - Keys in the sessions drawer
+
+    /// The drawer is on show: opened from the pill, or always, under an
+    /// embedded pill. Never while the conversation is.
+    private var isDrawerShown: Bool {
+        session.mode != .chat && (chrome.isEmbedded || session.mode == .sessions)
+    }
+
+    /// The drawer's rows from the top, as the arrow keys count them: the
+    /// sessions, then the archived ones while their heading is open.
+    private var rowsOnShow: [NexusAgentSessionSummary] {
+        let filtered = session.filteredSessions
+        return filtered.filter { !$0.isArchived } + (isArchivedExpanded ? filtered.filter { $0.isArchived } : [])
+    }
+
+    /// An arrow key moves the selection, by the standalone's rule
+    /// (`NexusAgentSessionListKeys`). It is asked from the two fields the
+    /// caret can be in beside a drawer, the pill's prompt and the drawer's
+    /// filter. With no drawer, or no row in it, the key is left to the
+    /// field. The chat's follow-up bar is a different field with its own
+    /// use for the arrows (the prompt history), and never asks.
+    private func moveSelection(_ arrow: NexusAgentSessionListKeys.Arrow) -> KeyPress.Result {
+        let count = rowsOnShow.count
+        guard isDrawerShown, count > 0 else { return .ignored }
+        selectedSessionIndex = NexusAgentSessionListKeys.selection(after: arrow, from: selectedSessionIndex,
+                                                                   count: count)
+        return .handled
+    }
+
+    /// Return opens the selected row, if there is one. False leaves Return
+    /// to the field it was pressed in.
+    private func resumeSelectedSession() -> Bool {
+        let rows = rowsOnShow
+        guard isDrawerShown,
+              let row = NexusAgentSessionListKeys.rowToResume(selection: selectedSessionIndex, count: rows.count)
+        else { return false }
+        selectedSessionIndex = nil
+        session.resume(rows[row], configuration: engine.configuration)
+        return true
     }
 
     @ViewBuilder
@@ -197,7 +251,12 @@ public struct NexusAgentChatView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 18, weight: .regular))
                 .focused($inputFocused)
-                .onSubmit { if session.canSend { engine.sendQuickPrompt() } }
+                .onSubmit {
+                    if resumeSelectedSession() { return }
+                    if session.canSend { engine.sendQuickPrompt() }
+                }
+                .onKeyPress(.upArrow) { moveSelection(.up) }
+                .onKeyPress(.downArrow) { moveSelection(.down) }
             if !session.draft.isEmpty {
                 clearButton
             }
@@ -429,6 +488,9 @@ public struct NexusAgentChatView: View {
                     TextField(strings.sessionsFilter, text: $session.sessionFilter)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
+                        .onSubmit { _ = resumeSelectedSession() }
+                        .onKeyPress(.upArrow) { moveSelection(.up) }
+                        .onKeyPress(.downArrow) { moveSelection(.down) }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -441,14 +503,81 @@ public struct NexusAgentChatView: View {
                         )
                 )
 
+                if showsClearAll {
+                    clearAllButton
+                }
                 planButton
             }
-            ScrollView {
-                sessionsList
+            ScrollViewReader { proxy in
+                ScrollView {
+                    sessionsList
+                }
+                // A row the arrow keys reach below the fold is brought into view.
+                .onChange(of: selectedSessionIndex) { _, selected in
+                    let rows = rowsOnShow
+                    guard let selected, rows.indices.contains(selected) else { return }
+                    proxy.scrollTo(rows[selected].id)
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// Clear All is offered where the app wants it, for the one provider
+    /// whose conversations can be deleted (agy's; the engine refuses any
+    /// other), while there is something to clear and no filter is typed:
+    /// it clears the folder's conversations, not the ones the filter shows.
+    private var showsClearAll: Bool {
+        chrome.offersClearAll
+            && engine.activeProvider.id == NexusAgentCLIProvider.antigravity.id
+            && !session.sessions.isEmpty
+            && session.sessionFilter.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Two clicks, as in the standalone app: the first turns the button
+    /// into a question, the second within two seconds deletes. While the
+    /// deleting runs the button shows that, and cannot start another.
+    @ViewBuilder
+    private var clearAllButton: some View {
+        if session.isClearingSessions {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(strings.clearAll)
+        } else {
+            Button {
+                if clearAllConfirming {
+                    clearAllConfirming = false
+                    session.deleteAll(in: engine.configuration)
+                } else {
+                    clearAllConfirming = true
+                }
+            } label: {
+                Text(clearAllConfirming ? strings.clearAllConfirm : strings.clearAll)
+                    .font(.caption)
+                    .foregroundStyle(clearAllConfirming ? Color.red : Color.red.opacity(0.6))
+                    .fontWeight(clearAllConfirming ? .semibold : .regular)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.15), value: clearAllConfirming)
+            }
+            .buttonStyle(.plain)
+            // The question goes back to the button's name when it is not
+            // answered. A second click ends this wait with the question.
+            .task(id: clearAllConfirming) {
+                guard clearAllConfirming else { return }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if !Task.isCancelled { clearAllConfirming = false }
+            }
+        }
+    }
+
+    /// One row of the drawer. `index` is its place among the rows on show,
+    /// which is what the arrow keys' selection counts.
+    private func sessionRow(_ summary: NexusAgentSessionSummary, index: Int) -> NexusAgentSessionRow {
+        NexusAgentSessionRow(summary: summary, session: session, engine: engine, strings: strings,
+                             isSelected: selectedSessionIndex == index,
+                             // The pointer takes over from the keyboard, as in the standalone.
+                             onHover: { hovering in if hovering { selectedSessionIndex = nil } })
     }
 
     private var sessionsList: some View {
@@ -467,8 +596,8 @@ public struct NexusAgentChatView: View {
                 }
             }
 
-            ForEach(activeSessions) { summary in
-                NexusAgentSessionRow(summary: summary, session: session, engine: engine, strings: strings)
+            ForEach(Array(activeSessions.enumerated()), id: \.element.id) { index, summary in
+                sessionRow(summary, index: index)
             }
 
             if !archivedSessions.isEmpty {
@@ -494,8 +623,8 @@ public struct NexusAgentChatView: View {
                     .buttonStyle(.plain)
 
                     if isArchivedExpanded {
-                        ForEach(archivedSessions) { summary in
-                            NexusAgentSessionRow(summary: summary, session: session, engine: engine, strings: strings)
+                        ForEach(Array(archivedSessions.enumerated()), id: \.element.id) { index, summary in
+                            sessionRow(summary, index: activeSessions.count + index)
                                 .opacity(0.85)
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
