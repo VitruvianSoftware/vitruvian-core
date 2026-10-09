@@ -1662,7 +1662,7 @@ enum SessionFileReader {
         ORDER BY last_modified_time DESC LIMIT 200;
         """)
         let wanted = "file://" + workingDirectory.standardizedFileURL.path
-        let archived = NexusAgentSessionSummary.antigravityArchivedSessionIds(home: NSHomeDirectory())
+        let archived = NexusAgentSessionSummary.antigravityArchivedSessionIds(home: FileManager.default.homeDirectoryForCurrentUser.path)
         var sessions: [SessionInfo] = []
         for row in rows {
             guard let id = row["conversation_id"] as? String, !id.isEmpty, !archived.contains(id) else { continue }

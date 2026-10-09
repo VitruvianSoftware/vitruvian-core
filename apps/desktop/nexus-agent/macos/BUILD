@@ -8,9 +8,12 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # (docs/superpowers/specs/2026-10-08-nexus-agent-shared-library-design.md).
 # Swift 6 mode because Vitruvian's Core module is. Nothing here may import a
 # Vitruvian module: the dependency runs one way, MIT into GPL.
+# It is a module of its own because the app target has `@main`: linking that
+# into the XCTest target gives a duplicate `_main` symbol (#807), so any code
+# the tests need lives here.
 swift_library(
     name = "NexusAgentCore",
-    srcs = glob(["Sources/NexusAgentCore/**/*.swift"]),
+    srcs = [":shared_sources"],
     features = ["swift.enable_v6"],
     module_name = "NexusAgentCore",
     target_compatible_with = ["@platforms//os:macos"],
@@ -20,6 +23,8 @@ swift_library(
     ],
 )
 
+# The one list of shared source files: it is both what NexusAgentCore compiles
+# and what Vitruvian's pin hashes, so the two cannot drift apart.
 filegroup(
     name = "shared_sources",
     srcs = glob(["Sources/NexusAgentCore/**/*.swift"]),
