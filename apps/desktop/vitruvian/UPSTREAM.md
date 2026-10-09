@@ -141,6 +141,11 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: No two global hotkeys share an id:
   - `Services/QuickTools/ScreenCaptureService.swift`: the comment on the capture tools' hotkey ids says where the run starts and what keeps it clear; it claimed the hand-assigned ids ended at 24 after the Quick Prompt had been given 25. No code change in this file.
   - `bazel/source_lints.py`: `hotkey_ids_are_unique` fails when two `QuickToolHotkey` ids, or runs of ids, overlap.
+- **2026-10-09**: Settings says when the typed mouse command path is ignored:
+  - `GitHubMouseBinary.swift`: `configuredIsIgnored` is true when a path is configured and does not run.
+  - `GitHubPeripheralSink.swift`: `configuredBinaryIsIgnored` asks that for this Mac.
+  - `GitHubSettingsView.swift` and `NotchGitHubStrings.swift`: an orange line under the Mouse command hint says the path is ignored, in every language. Before, the "Using" line named another copy with no word about the typed one.
+  - `Tests/GitHubCoreTests.swift`: `mouseBinaryResolution` covers the ignored and not-ignored cases and the new line in every language.
 - **2026-10-09**: The app carries the GravaStar mouse command and offers it as an MCP server:
   - `BUILD`: `//packages/peripherals:gravastar-mouse` (MIT) goes into `Contents/Helpers` through `additional_contents`, and the `vitruvian` delivery unit also follows `packages/peripherals/`. `Tools/package-release.sh` signs it with the other nested code.
   - `GitHubMouseBinary.swift`: `locate` tries that copy right after the configured path; `mcpConfig(binary:)` builds the `mcpServers` JSON for `gravastar-mouse mcp`.

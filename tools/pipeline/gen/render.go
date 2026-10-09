@@ -106,6 +106,11 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("    outputs:\n")
 	b.WriteString("      units: ${{ steps.plan.outputs.units }}\n")
 	b.WriteString("      degraded: ${{ steps.plan.outputs.degraded }}\n")
+	b.WriteString("      tree: ${{ steps.fastpass.outputs.tree }}\n")
+	// actions: read lets the step below list artifacts; nothing here writes.
+	b.WriteString("    permissions:\n")
+	b.WriteString("      contents: read\n")
+	b.WriteString("      actions: read\n")
 	b.WriteString("    env:\n")
 	b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 	b.WriteString("    steps:\n")
@@ -114,6 +119,31 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("          persist-credentials: false\n")
 	// The diff needs real history; a shallow clone cannot see the base.
 	b.WriteString("          fetch-depth: 0\n\n")
+	// LOG ONLY (#2841). In the merge queue, ask whether a pull-request run
+	// already passed this workflow on these exact files, and say so in the
+	// job summary. Nothing reads the verdict yet: every unit still runs. On a
+	// pull request it only reports the tree hash, which the gate uses to
+	// name its "passed" marker. continue-on-error: a broken lookup must
+	// never cost a plan.
+	b.WriteString("      - name: Has this exact code already passed? (log only)\n")
+	b.WriteString("        id: fastpass\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          GH_TOKEN: ${{ github.token }}\n")
+	b.WriteString("          EVENT_NAME: ${{ github.event_name }}\n")
+	b.WriteString("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          if [ \"$EVENT_NAME\" != merge_group ]; then\n")
+	b.WriteString("            bash tools/ci/queue-fast-pass.sh tree\n")
+	b.WriteString("            exit 0\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          bash tools/ci/queue-fast-pass.sh lookup presubmit | tee \"$RUNNER_TEMP/fastpass.out\"\n")
+	b.WriteString("          {\n")
+	b.WriteString("            echo \"### Already tested? (log only, nothing is skipped)\"\n")
+	b.WriteString("            echo \"\"\n")
+	b.WriteString("            echo \"- verdict: $(sed -n 's/^verdict=//p' \"$RUNNER_TEMP/fastpass.out\")\"\n")
+	b.WriteString("            echo \"- why: $(sed -n 's/^reason=//p' \"$RUNNER_TEMP/fastpass.out\")\"\n")
+	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
 	b.WriteString("      - name: Free up runner disk space\n")
 	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
 	b.WriteString("      - name: Set up Bazel\n")
@@ -545,7 +575,27 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("            echo \"::error::Pipeline units did not pass: $(echo \"$bad\" | tr '\\n' ' ')\"\n")
 	b.WriteString("            exit 1\n")
 	b.WriteString("          fi\n")
-	b.WriteString("          echo \"✓ All $count pipeline units in DAG completed successfully.\"\n")
+	b.WriteString("          echo \"✓ All $count pipeline units in DAG completed successfully.\"\n\n")
+	// The marker queue-fast-pass.sh looks for (#2841): "a pull-request run of
+	// this workflow passed on exactly these files". Written only after the
+	// verdict above succeeded, and only on pull requests. The name carries
+	// the tree hash, so the lookup is a single query. A failed upload costs
+	// nothing but a later miss.
+	b.WriteString("      - name: Record that this exact code passed\n")
+	b.WriteString("        if: ${{ github.event_name == 'pull_request' && needs.plan.outputs.tree != '' }}\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          TREE: ${{ needs.plan.outputs.tree }}\n")
+	b.WriteString("        run: printf '{\"check\":\"presubmit\",\"tree\":\"%s\",\"run\":\"%s\"}\\n' \"$TREE\" \"$GITHUB_RUN_ID\" > \"$RUNNER_TEMP/passed.json\"\n\n")
+	b.WriteString("      - name: Keep the record for the merge queue\n")
+	b.WriteString("        if: ${{ github.event_name == 'pull_request' && needs.plan.outputs.tree != '' }}\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n")
+	b.WriteString("        with:\n")
+	b.WriteString("          name: passed-presubmit-${{ needs.plan.outputs.tree }}\n")
+	b.WriteString("          path: ${{ runner.temp }}/passed.json\n")
+	b.WriteString("          retention-days: 7\n")
+	b.WriteString("          overwrite: true\n")
 
 	return b.String(), nil
 }

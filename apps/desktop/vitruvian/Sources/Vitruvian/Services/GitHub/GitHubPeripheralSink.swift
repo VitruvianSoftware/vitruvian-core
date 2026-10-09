@@ -108,6 +108,13 @@ package final class GitHubPeripheralSink {
                                  isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
+    /// True when the configured path does not run and the search took over.
+    package func configuredBinaryIsIgnored() -> Bool {
+        GitHubMouseBinary.configuredIsIgnored(configured: defaults[Preferences.githubMouseBinaryPath],
+                                              home: NSHomeDirectory(),
+                                              isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
     private func execute(arguments: [String]) {
         if let executor {
             executor(arguments)

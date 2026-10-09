@@ -43,6 +43,10 @@ jobs:
     outputs:
       units: ${{ steps.plan.outputs.units }}
       degraded: ${{ steps.plan.outputs.degraded }}
+      tree: ${{ steps.fastpass.outputs.tree }}
+    permissions:
+      contents: read
+      actions: read
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -50,6 +54,26 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Has this exact code already passed? (log only)
+        id: fastpass
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: .github/workflows/presubmit.yaml
+        run: |
+          if [ "$EVENT_NAME" != merge_group ]; then
+            bash tools/ci/queue-fast-pass.sh tree
+            exit 0
+          fi
+          bash tools/ci/queue-fast-pass.sh lookup presubmit | tee "$RUNNER_TEMP/fastpass.out"
+          {
+            echo "### Already tested? (log only, nothing is skipped)"
+            echo ""
+            echo "- verdict: $(sed -n 's/^verdict=//p' "$RUNNER_TEMP/fastpass.out")"
+            echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/fastpass.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Free up runner disk space
         uses: ./.github/actions/free-disk-space
@@ -867,3 +891,20 @@ jobs:
             exit 1
           fi
           echo "✓ All $count pipeline units in DAG completed successfully."
+
+      - name: Record that this exact code passed
+        if: ${{ github.event_name == 'pull_request' && needs.plan.outputs.tree != '' }}
+        continue-on-error: true
+        env:
+          TREE: ${{ needs.plan.outputs.tree }}
+        run: printf '{"check":"presubmit","tree":"%s","run":"%s"}\n' "$TREE" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/passed.json"
+
+      - name: Keep the record for the merge queue
+        if: ${{ github.event_name == 'pull_request' && needs.plan.outputs.tree != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: passed-presubmit-${{ needs.plan.outputs.tree }}
+          path: ${{ runner.temp }}/passed.json
+          retention-days: 7
+          overwrite: true

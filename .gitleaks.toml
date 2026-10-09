@@ -66,7 +66,7 @@ paths = ['''^tools/sync-env-secrets/secrets\.example/''']
 # extension ID and is meant to ship inside the published bundle.
 [[allowlists]]
 description = "Chrome extension manifest key is a public identity key"
-paths = ['''^tabula/extension/src/manifest\.json$''']
+paths = ['''^apps/suites/tabula/extension/src/manifest\.json$''']
 
 # `cloudflare-token-secret-project` is a reusable-workflow input naming the GCP
 # project that HOLDS the token in Secret Manager. It is a project id, not a
