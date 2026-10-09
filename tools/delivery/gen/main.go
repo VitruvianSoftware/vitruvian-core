@@ -592,6 +592,15 @@ var transcribedJobs = map[string]transcribedSpec{
 		runsOn:      "xcode-27",
 		renderSteps: renderVitruvianPublishSteps,
 	},
+	"gravastar-mouse-publish": {
+		timeoutMinutes: 45,
+		// `gh release upload` + moving the rolling beta tag: contents: write.
+		permissions: []string{"contents: write"},
+		// A universal macOS binary needs Xcode, like the peripherals
+		// pipeline_unit that tests it there.
+		runsOn:      "xcode-27",
+		renderSteps: renderGravastarMousePublishSteps,
+	},
 	"tabula-build-stack": {
 		timeoutMinutes: 60,
 		permissions:    []string{"contents: read", "id-token: write"},
@@ -767,6 +776,35 @@ func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n")
 	b.WriteString("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n")
 	b.WriteString("        run: bash apps/desktop/vitruvian/publish.sh\n")
+}
+
+// renderGravastarMousePublishSteps runs packages/peripherals/publish.sh,
+// which builds the universal gravastar-mouse binary and attaches it to the
+// rolling beta prerelease or the release-please release. It follows
+// renderVitruvianPublishSteps without the app's signing identity: the tool is
+// signed ad hoc by rules_apple. HOMEBREW_TAP_TOKEN is empty until that secret
+// is set, and the script then skips the homebrew-tap formula.
+func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
+	b.WriteString("    steps:\n")
+	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
+	b.WriteString("\n")
+	b.WriteString("      - name: Select the pinned Xcode\n")
+	fmt.Fprintf(b, "        uses: %s\n", selectXcodeAction)
+	b.WriteString("\n")
+	b.WriteString("      - name: Set up Bazel\n")
+	fmt.Fprintf(b, "        uses: %s\n", setupBazelAction)
+	b.WriteString("\n")
+	b.WriteString("      - name: Build and publish gravastar-mouse\n")
+	b.WriteString("        env:\n")
+	fmt.Fprintf(b, "          GRADE: %s\n", env)
+	b.WriteString("          # Empty on a push; the script requires it for the production grade.\n")
+	b.WriteString("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n")
+	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
+	b.WriteString("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
+	b.WriteString("          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}\n")
+	b.WriteString("        run: bash packages/peripherals/publish.sh\n")
 }
 
 // renderTabulaBuildStackSteps is tabula-build-stack.yaml's `deploy` job,

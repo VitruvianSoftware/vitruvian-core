@@ -290,10 +290,20 @@ package struct GitHubSettingsView: View {
             // A change to mouseBinaryPath redraws the view, so this line
             // follows the field as the path is typed or chosen.
             if let found = GitHubPeripheralSink.shared.locateBinary() {
-                Text(text.mouseCommandFound(found))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                HStack {
+                    Text(text.mouseCommandFound(found))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Spacer()
+                    // For an AI agent: the same command as an MCP server.
+                    Button(text.copyMCPConfig) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(GitHubMouseBinary.mcpConfig(binary: found), forType: .string)
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
             } else {
                 Text(text.mouseCommandMissing)
                     .font(.caption)

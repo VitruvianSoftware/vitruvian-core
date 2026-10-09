@@ -10,6 +10,30 @@ over IOKit HID, the same way the vendor's web tool (controlhub.top) does.
 Supported hardware: GravaStar Mercury, CompX chipset, USB `3554:F549`, over
 the 2.4 GHz dongle, on macOS 14 or later.
 
+## Install
+
+Pick one; each gives you the same `gravastar-mouse` command.
+
+- **With the Vitruvian app.** The app carries its own copy, used by its GitHub
+  status light:
+  `/Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse`. Link it onto
+  your `PATH` to use it from a terminal or a hook:
+  `ln -s /Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse ~/.local/bin/`.
+- **Homebrew:** `brew install vitruviansoftware/tap/gravastar-mouse`.
+- **Download:** each `gravastar-mouse-vX.Y.Z` release of this repository has
+  `gravastar-mouse-X.Y.Z-macos.tar.gz` (universal, arm64 and x86_64) and its
+  `.sha256`. The `gravastar-mouse-beta-latest` prerelease follows `main`. The
+  binary is signed ad hoc, so a copy downloaded by a browser needs
+  `xattr -d com.apple.quarantine gravastar-mouse` before macOS runs it.
+- **From source:** see "Wiring a notification source" below.
+
+`publish.sh` builds and uploads these: the generated
+`.github/workflows/delivery-gravastar-mouse.yaml` runs it for every push to
+`main` (beta) and every release (production), and a release also updates
+`Formula/gravastar-mouse.rb` in `VitruvianSoftware/homebrew-tap` when the
+`HOMEBREW_TAP_TOKEN` secret is set. release-please cuts the releases
+(`release-please-config.json`, `.github/workflows/gravastar-mouse-release.yaml`).
+
 ## Use it
 
 ```sh
@@ -32,6 +56,8 @@ compile Swift for macOS.
 | `rainbow [--speed N] [--brightness N]` | Rainbow cycle |
 | `off` | Light off |
 | `set --mode M [--color C] [--speed N] [--brightness N]` | Anything else |
+| `mcp` | Serve these commands as MCP tools over stdio (see below) |
+| `version` | Print the version (also `--version`) |
 
 Colours are names (`red green blue cyan magenta purple yellow orange white
 pink`) or hex (`#00ffcc`). Speed and brightness are 0 to 9. Add `--trace`
@@ -116,6 +142,33 @@ defer { mouse.close() }
 try MouseStatusIndicator(mouse: mouse).signal(.failure)
 ```
 
+## As an MCP server
+
+`gravastar-mouse mcp` serves the commands as [Model Context
+Protocol](https://modelcontextprotocol.io) tools over stdio, so an AI agent can
+drive the light itself: `mouse_signal`, `mouse_restore`, `mouse_status`,
+`mouse_color`, `mouse_breathe`, `mouse_rainbow` and `mouse_off`. They take the
+same values as the command line and are checked by the same parser; a missing
+mouse comes back as a tool error, not a failure.
+
+Claude Code:
+
+```sh
+claude mcp add gravastar-mouse -- gravastar-mouse mcp
+```
+
+Any client that reads an `mcpServers` file (Vitruvian's Settings has a
+**Copy MCP Config** button that fills in the path of the copy it found):
+
+```json
+{"mcpServers": {"gravastar-mouse": {"command": "gravastar-mouse", "args": ["mcp"]}}}
+```
+
+The server is `MCPServer` in `GravaStarCLI`: newline-delimited JSON-RPC 2.0,
+`initialize`, `ping`, `tools/list` and `tools/call`, no SDK. Nothing but
+protocol messages is written to stdout. `--baseline PATH` before `mcp` moves
+the saved lighting, as it does for every command.
+
 ## Layout
 
 | Module | Job |
@@ -123,8 +176,8 @@ try MouseStatusIndicator(mouse: mouse).signal(.failure)
 | `CompXProtocol` | The byte format: frames, checksums, the lighting record. No IOKit, so it tests anywhere. |
 | `CompXHID` | `HIDTransport` (the seam), the IOKit transport, and the `GravaStarMouse` facade. |
 | `StatusSignals` | Signal to colour presets, plus baseline save and restore. |
-| `GravaStarCLI` | Argument parsing (a pure function) and command execution. |
-| `gravastar-mouse` | The executable: three lines that call `GravaStarCLI`. |
+| `GravaStarCLI` | Argument parsing (a pure function), command execution, and the MCP server. |
+| `gravastar-mouse` | The executable: three lines that call `GravaStarCLI`. Bazel builds it as a signed `macos_command_line_application`. |
 
 `Package.swift` and `BUILD` describe the same targets and must stay in step.
 Tests need no mouse: `bazel test --config=macos-app //packages/peripherals:PeripheralsTests`,
@@ -174,4 +227,4 @@ Notes from building the IOKit side (verified on hardware 2026-10-07):
 
 ## License
 
-Copyright (c) 2026 VitruvianSoftware. MIT Licensed.
+Copyright (c) 2026 VitruvianSoftware. MIT Licensed; see [`LICENSE`](LICENSE).
