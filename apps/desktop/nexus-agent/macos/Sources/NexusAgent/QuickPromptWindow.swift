@@ -1603,7 +1603,7 @@ struct ChatWorkingDirectoryBadge: View {
 enum SessionFileReader {
     /// agy's data folders: the desktop app's, then the CLI's own.
     static var dataDirectories: [URL] {
-        AntigravityAnnotations.dataDirectories.map {
+        NexusAgentSessionSummary.antigravityDataDirectories.map {
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent($0)
         }
     }
@@ -1666,7 +1666,7 @@ enum SessionFileReader {
         ORDER BY last_modified_time DESC LIMIT 200;
         """)
         let wanted = "file://" + workingDirectory.standardizedFileURL.path
-        let archived = AntigravityAnnotations.archivedConversationIDs(in: dataDirectories)
+        let archived = NexusAgentSessionSummary.antigravityArchivedSessionIds(home: NSHomeDirectory())
         var sessions: [SessionInfo] = []
         for row in rows {
             guard let id = row["conversation_id"] as? String, !id.isEmpty, !archived.contains(id) else { continue }

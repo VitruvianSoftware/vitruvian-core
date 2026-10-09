@@ -20,6 +20,7 @@
 
 import SwiftUI
 import Foundation
+import NexusAgentCore
 
 // MARK: - CLI Provider Model
 
@@ -192,16 +193,9 @@ class ConfigManager: ObservableObject {
     }
 
     private func parseEnv(_ content: String) {
-        let lines = content.components(separatedBy: .newlines)
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-
-            let parts = trimmed.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2 else { continue }
-
-            let key = String(parts[0]).trimmingCharacters(in: .whitespaces)
-            let value = String(parts[1]).trimmingCharacters(in: .whitespaces)
+        for line in content.components(separatedBy: .newlines) {
+            // An empty value is skipped, as before: the field keeps its default.
+            guard let (key, value) = NexusAgentEnvFile.assignment(in: line), !value.isEmpty else { continue }
 
             switch key {
             case "TELEGRAM_BOT_TOKEN":
@@ -312,12 +306,8 @@ enum AgyInfo {
 
     /// AGY_BIN, then the usual install locations, then nil.
     static func locate() -> String? {
-        if let explicit = ProcessInfo.processInfo.environment["AGY_BIN"], !explicit.isEmpty { return explicit }
-        for candidate in ["\(NSHomeDirectory())/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
-        where FileManager.default.isExecutableFile(atPath: candidate) {
-            return candidate
-        }
-        return nil
+        NexusAgentSupport.locateAgent(environment: ProcessInfo.processInfo.environment, home: NSHomeDirectory(),
+                                      isExecutable: FileManager.default.isExecutableFile(atPath:))
     }
 
     static func run(_ arguments: [String], timeout: TimeInterval = 20) -> String? {
@@ -346,13 +336,7 @@ enum AgyInfo {
 
     /// `agy models` prints a "Fetching…" line, then `id<TAB>display name` rows.
     static func parseModels(_ raw: String) -> [Model] {
-        raw.split(separator: "\n").compactMap { line in
-            let t = line.trimmingCharacters(in: .whitespaces)
-            guard !t.isEmpty, !t.lowercased().hasPrefix("fetching") else { return nil }
-            let parts = t.split(separator: "\t", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
-            guard let id = parts.first, !id.isEmpty else { return nil }
-            return Model(id: id, name: parts.count > 1 ? parts[1] : id)
-        }
+        NexusAgentSupport.parseModels(raw).map { Model(id: $0.id, name: $0.name) }
     }
 
     static func models() -> [Model] {
