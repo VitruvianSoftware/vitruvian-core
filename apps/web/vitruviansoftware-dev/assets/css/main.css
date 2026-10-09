@@ -440,6 +440,19 @@ pre {
   color: var(--color-on-accent);
 }
 
+/* On the light board the steel fill is too pale for light text (3.7:1), so
+   filled controls take the darker steel there. */
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .skip-link {
+  background: var(--color-accent-text);
+  border-color: var(--color-accent-text);
+}
+
+[data-theme="light"] .btn-primary:hover {
+  background: #2f4660;
+  border-color: #2f4660;
+}
+
 .btn svg {
   width: 16px;
   height: 16px;
@@ -486,6 +499,10 @@ pre {
   color: var(--color-text-dim);
   border: 1px solid var(--color-line);
   background: var(--color-surface-2);
+}
+
+[data-theme="light"] .tag {
+  color: #4a545a;
 }
 
 .status {
@@ -731,7 +748,7 @@ pre {
 }
 
 .terminal-body .c {
-  color: #6b757c;
+  color: #808b92;
 }
 
 .terminal-body .ok {
@@ -1199,7 +1216,7 @@ pre {
 .highlight .cm,
 .highlight .cs,
 .highlight .cp {
-  color: #6b757c;
+  color: #808b92;
   font-style: italic;
 }
 
@@ -1507,6 +1524,31 @@ pre {
 
   .footer-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* The hero terminal's longest line is wider than a phone. Wrap it, so the
+     first thing a visitor sees is not text cut off at the edge. */
+  .terminal-body {
+    padding: var(--space-4);
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Links that stand alone get a finger-sized target. */
+  .text-link,
+  .card h3 a,
+  .post-item h2 a,
+  .post-item h3 a,
+  .footer-grid a,
+  .footer-bottom a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+
+  .footer-grid li {
+    margin-bottom: 0;
   }
 }
 

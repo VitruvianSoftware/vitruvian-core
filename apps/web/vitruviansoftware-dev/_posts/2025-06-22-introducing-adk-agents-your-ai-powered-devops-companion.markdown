@@ -8,7 +8,7 @@ author: "Vitruvian Software Team"
 excerpt: "Meet ADK Agents - the intelligent DevOps assistant that understands your codebase, executes commands safely, and helps you ship better software faster. Built on Google's ADK framework with developer productivity at its core."
 ---
 
-# Transform Your Daily Development Workflow with ADK Agents
+## Transform Your Daily Development Workflow with ADK Agents
 
 Ever wished you had a smart colleague who could instantly understand your codebase, help debug issues, automate tedious tasks, and guide you through complex DevOps workflows? **ADK Agents** is that colleague - an AI-powered DevOps assistant built specifically for developers who want to focus on building great software instead of wrestling with tooling.
 
@@ -192,9 +192,7 @@ We're constantly improving ADK Agents based on developer feedback:
 ADK Agents is **open source and free** to use. Try it today and experience what it's like to have an AI-powered DevOps companion that truly understands your code and workflow.
 
 **🔗 Get Started:**
-- [GitHub Repository](https://github.com/VitruvianSoftware/adk-agents) - Star us if you find it useful!
 - [Documentation](https://adk-agents.vitruviansoftware.dev/) - Complete setup guides and examples
-- [Community Discord](#) - Join other developers using ADK Agents
 
 **Found this helpful? Share it with your team and follow us for more updates:**
 - [GitHub](https://github.com/VitruvianSoftware) 
