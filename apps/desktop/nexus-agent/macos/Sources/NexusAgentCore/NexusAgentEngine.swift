@@ -108,8 +108,13 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         public var runSqlite: (_ database: String, _ sql: String, _ readsRows: Bool) -> Data?
         /// The same, but not on the main thread, for work that is many
         /// statements long (Clear All: up to 200, each of which can wait two
-        /// seconds on a locked index). Nil when an environment has none;
-        /// that work then goes through `runSqlite`, one statement at a time.
+        /// seconds on a locked index). `live` has it.
+        ///
+        /// Nil when an environment has none, and that is not a harmless
+        /// default: Clear All then runs every statement through `runSqlite`
+        /// ON THE MAIN THREAD, one after another with nothing in between,
+        /// and the app is frozen until the last one is done. Only a test
+        /// double should leave it out.
         public var runSqliteOffMain: (@Sendable (_ database: String, _ sql: String, _ readsRows: Bool) async -> Data?)?
 
         public init(defaults: UserDefaults,
@@ -145,7 +150,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                          = { _, _, _, _, _, _, _ in throw CocoaError(.featureUnsupported) },
                      // Left out, every statement fails, so nothing is deleted.
                      runSqlite: @escaping (String, String, Bool) -> Data? = { _, _, _ in nil },
-                     // Left out, Clear All runs its statements through `runSqlite`.
+                     // Left out, Clear All runs its statements through
+                     // `runSqlite`, on the main thread: for test doubles only.
                      runSqliteOffMain: (@Sendable (String, String, Bool) async -> Data?)? = nil) {
             self.defaults = defaults
             self.home = home
@@ -1349,47 +1355,18 @@ extension NexusAgentEngine {
     }
 
     /// Deletes every conversation the standalone app's "Clear All" would
-    /// for `directory`, one at a time, and returns how many. That is the
-    /// top-level conversations recorded for exactly that folder, plus those
-    /// with no folder recorded; not a nested, aborted or archived one, and
-    /// not another folder's (`NexusAgentSessionSummary.idsToDeleteAll`).
-    /// It stops at the first one that cannot be deleted; the count is of
-    /// those deleted before it.
-    @discardableResult
-    public static func deleteAllSessions(directory: String, provider: NexusAgentCLIProvider,
-                                         environment: Environment) -> Int {
-        deletedSessionIDs(directory: directory, provider: provider, environment: environment).count
-    }
-
-    /// The same, but gives back which conversations went, in order, so a
-    /// caller can tell whether the one it has open was among them.
-    static func deletedSessionIDs(directory: String, provider: NexusAgentCLIProvider,
-                                  environment: Environment) -> [String] {
-        guard provider.id == NexusAgentCLIProvider.antigravity.id,
-              let database = antigravityIndex(environment: environment),
-              let rows = environment.runSqlite(database, NexusAgentSessionSummary.deleteAllQuery, true)
-        else { return [] }
-        let ids = NexusAgentSessionSummary.idsToDeleteAll(
-            rows, directory: directory,
-            archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
-        // One at a time, and the first failure ends it: with the index locked
-        // each try waits out the busy timeout on the main thread, so going
-        // on through 200 conversations would freeze the app for minutes.
-        // What was deleted before the failure stays deleted and is counted.
-        var deleted: [String] = []
-        for id in ids {
-            guard deleteSession(id: id, provider: provider, environment: environment) else { break }
-            deleted.append(id)
-        }
-        return deleted
-    }
-
-    /// The same conversations, in the same order, under the same rule that
-    /// the first failure ends it, but with every statement run off the main
-    /// thread when the environment can. This is what the chat's Clear All
-    /// uses: the main thread waits on none of it, so the app stays usable
-    /// however many conversations there are and however long a locked
-    /// index keeps each one waiting.
+    /// for `directory`, one at a time, and gives back which went, in
+    /// order, so a caller can tell whether the one it has open was among
+    /// them. That is the top-level conversations recorded for exactly that
+    /// folder, plus those with no folder recorded; not a nested, aborted
+    /// or archived one, and not another folder's
+    /// (`NexusAgentSessionSummary.idsToDeleteAll`).
+    ///
+    /// Every statement is run off the main thread when the environment can
+    /// (`runSqliteOffMain`): the main thread waits on none of it, so the
+    /// app stays usable however many conversations there are and however
+    /// long a locked index keeps each one waiting. This is the only way
+    /// Clear All is done; the chat's session calls it.
     static func deletedSessionIDsOffMain(directory: String, provider: NexusAgentCLIProvider,
                                          environment: Environment) async -> [String] {
         guard provider.id == NexusAgentCLIProvider.antigravity.id,
@@ -1400,6 +1377,10 @@ extension NexusAgentEngine {
         let ids = NexusAgentSessionSummary.idsToDeleteAll(
             rows, directory: directory,
             archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
+        // One at a time, and the first failure ends it: with the index locked
+        // each try waits out the busy timeout, so going on through 200
+        // conversations would keep the clear running for minutes. What was
+        // deleted before the failure stays deleted and is counted.
         var deleted: [String] = []
         for id in ids {
             guard await deleteSessionOffMain(id: id, provider: provider, environment: environment) else { break }

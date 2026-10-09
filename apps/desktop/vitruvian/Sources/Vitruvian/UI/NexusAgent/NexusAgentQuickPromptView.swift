@@ -56,6 +56,10 @@ package struct NexusAgentQuickPromptView: View {
         strings.planModeOff = own.planModeOff
         strings.sessionsFilter = own.sessionsFilter
         strings.noSessions = own.noSessions
+        // This app has one line for an empty list, filtered or not, and
+        // keeps it: its words did not change when the shared view learned
+        // to tell the two apart.
+        strings.noMatchingSessions = own.noSessions
         strings.untitledSession = own.untitledSession
         strings.pinWindow = own.pinWindow
         strings.unpinWindow = own.unpinWindow

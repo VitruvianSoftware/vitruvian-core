@@ -118,6 +118,83 @@ public enum NexusAgentSessionListKeys {
         guard let selection, selection >= 0, selection < count else { return nil }
         return selection
     }
+
+    /// The field the caret is in when a key is pressed beside the drawer.
+    public enum Field: Equatable, Sendable {
+        /// The pill's prompt, with the text it holds.
+        case prompt(String)
+        /// The drawer's own filter.
+        case filter
+    }
+
+    /// Whether an arrow key pressed in `field` moves the selection. False
+    /// leaves the key to the text field, which moves its caret with it.
+    ///
+    /// The filter gives the list its arrows always. The prompt gives them
+    /// only while it is empty, the rule the follow-up bar has for its
+    /// prompt history: someone who has typed a prompt and presses up or
+    /// down means the caret, and a row selected under them would turn the
+    /// Return that follows from "send this" into "open that conversation".
+    ///
+    /// This is not the standalone's rule, on purpose. There the pill's text
+    /// IS the filter, so with the drawer open the arrows always belong to
+    /// the list. In the shared view the pill's text is a prompt.
+    ///
+    /// A key held with Shift, Option, Command or Control is a caret or
+    /// text-selection shortcut and is never the list's. Nor is any arrow
+    /// when there is no row to select.
+    public static func arrowMovesSelection(in field: Field, hasModifiers: Bool, count: Int) -> Bool {
+        guard !hasModifiers, count > 0 else { return false }
+        switch field {
+        case .filter: return true
+        case .prompt(let text): return text.isEmpty
+        }
+    }
+
+    /// The row Return resumes when it is pressed in `field`. In the prompt
+    /// that is the selected row only while the prompt is empty: with text,
+    /// Return sends the text, whatever was selected before it was typed or
+    /// from the other field. Nil leaves Return to the field.
+    public static func rowToResume(from field: Field, selection: Int?, count: Int) -> Int? {
+        if case .prompt(let text) = field, !text.isEmpty { return nil }
+        return rowToResume(selection: selection, count: count)
+    }
+}
+
+/// The two clicks of Clear All. The first turns the button into a question;
+/// a second within `window` seconds of it deletes. The answer is worked out
+/// from the time of the first click and the time now, and from nothing else:
+/// no timer has to fire, and no task has to run to its end, for a first
+/// click that was not followed up to stop counting. The view keeps the time
+/// of the first click and calls these.
+public enum NexusAgentClearAllGuard {
+    /// How long the question stands, in seconds, as in the standalone app.
+    public static let window: TimeInterval = 2
+
+    /// What a click does.
+    public enum Click: Equatable, Sendable {
+        /// It is the first click: nothing is deleted, and the view keeps
+        /// this time as the first click's.
+        case arm(Date)
+        /// It answers the question in time: delete, and forget the first click.
+        case delete
+    }
+
+    /// Whether the button is asking its question at `now`: there was a
+    /// first click, and `window` seconds have not passed since. A first
+    /// click that is somehow later than `now` (the clock was set back) does
+    /// not count either.
+    public static func isArmed(firstClick: Date?, now: Date) -> Bool {
+        guard let firstClick else { return false }
+        let waited = now.timeIntervalSince(firstClick)
+        return waited >= 0 && waited < window
+    }
+
+    /// What a click at `now` does. Only a click while the question stands
+    /// deletes; any other, a late one included, is a first click again.
+    public static func click(firstClick: Date?, now: Date) -> Click {
+        isArmed(firstClick: firstClick, now: now) ? .delete : .arm(now)
+    }
 }
 
 /// One past agy conversation, as the sessions drawer lists it.

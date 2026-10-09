@@ -81,6 +81,9 @@ struct NexusAgentSessionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // While Clear All runs, a conversation's files are being removed:
+        // it is not opened, and not deleted a second time.
+        .disabled(session.isClearingSessions)
         .onHover {
             isHovered = $0
             onHover($0)
@@ -91,6 +94,7 @@ struct NexusAgentSessionRow: View {
             // Resume is a click on the row, and Copy Title takes what the
             // row shows.
             Button(strings.resumeSession) { resume() }
+                .disabled(session.isClearingSessions)
             Button(strings.copySessionTitle) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(displayedTitle, forType: .string)
@@ -104,6 +108,7 @@ struct NexusAgentSessionRow: View {
                 } label: {
                     Label(engine.hostStrings.deleteSession, systemImage: "trash")
                 }
+                .disabled(session.isClearingSessions)
             }
         }
     }
@@ -115,6 +120,7 @@ struct NexusAgentSessionRow: View {
     }
 
     private func resume() {
+        guard !session.isClearingSessions else { return }
         session.resume(summary, configuration: engine.configuration)
     }
 

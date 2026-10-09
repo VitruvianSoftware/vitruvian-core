@@ -1202,6 +1202,9 @@ enum NexusAgentTests {
                      "each of the 23 fields this app has words for is handed over as its own text")
         suite.expect(german.planModeOn != german.planModeOff && german.pinWindow != german.unpinWindow,
                      "and no two of a pair were swapped for one another")
+        suite.expect(german.noMatchingSessions == own.noSessions && english.noMatchingSessions == english.noSessions
+                     && NexusAgentChatStrings().noMatchingSessions == "No matching sessions",
+                     "a filter that matches nothing says what an empty list says here, not the shared chat's own line")
         suite.expect(english.environmentHint
                      == "Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry."
                      && english.newChatShortcut == " (⌘N)"

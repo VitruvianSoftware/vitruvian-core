@@ -59,6 +59,9 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// The filter field, and what the list says when it is empty.
     public var sessionsFilter: String
     public var noSessions: String
+    /// What the list says when there are conversations and the filter
+    /// shows none of them.
+    public var noMatchingSessions: String
     /// A session with no title.
     public var untitledSession: String
     /// The heading of the archived sessions, around their count.
@@ -92,6 +95,11 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// The new-chat button's tooltip, and the shortcut written after it.
     /// The view does not handle the shortcut: the app's window does, and an
     /// app whose window has another, or none, passes that here.
+    ///
+    /// The default names ⌘N on purpose, though the shared defaults
+    /// otherwise carry no app's own wording: both apps that use this view
+    /// start a new chat with ⌘N, so it is the view's shortcut in practice
+    /// and not one app's.
     public var newChat: String
     public var newChatShortcut: String
     /// The pin button's tooltip, unpinned and pinned.
@@ -199,6 +207,7 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         switchProvider: String = "Switch provider",
         sessionsFilter: String = "Filter sessions",
         noSessions: String = "No recent sessions",
+        noMatchingSessions: String = "No matching sessions",
         untitledSession: String = "Untitled",
         archivedPrefix: String = "Archived (",
         archivedSuffix: String = ")",
@@ -291,6 +300,7 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         self.switchProvider = switchProvider
         self.sessionsFilter = sessionsFilter
         self.noSessions = noSessions
+        self.noMatchingSessions = noMatchingSessions
         self.untitledSession = untitledSession
         self.archivedPrefix = archivedPrefix
         self.archivedSuffix = archivedSuffix

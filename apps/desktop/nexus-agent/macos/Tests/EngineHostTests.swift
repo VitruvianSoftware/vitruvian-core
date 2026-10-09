@@ -1861,6 +1861,14 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(rig.offMainSqliteRuns, 0)
     }
 
+    /// An environment without the off-main entry clears on the main thread,
+    /// one two-second wait after another. The one both apps run with must
+    /// have it.
+    func testTheRealEnvironmentHasTheOffMainEntry() {
+        XCTAssertNotNil(NexusAgentEngine.Environment.live.runSqliteOffMain,
+                        "without it Clear All freezes the app while it runs")
+    }
+
     /// The real entry, on a real index: it answers as the plain one does,
     /// and from a thread that is not the main one.
     func testTheRealOffMainEntryReadsARealIndex() async throws {

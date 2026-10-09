@@ -74,4 +74,117 @@ final class SessionListKeysTests: XCTestCase {
         XCTAssertNil(Keys.rowToResume(selection: 0, count: 0))
         XCTAssertNil(Keys.rowToResume(selection: -1, count: 3))
     }
+
+    // MARK: The pill's prompt gives up its arrows only while it is empty
+
+    func testAnArrowInAnEmptyPromptMovesTheSelection() {
+        XCTAssertTrue(Keys.arrowMovesSelection(in: .prompt(""), hasModifiers: false, count: 3))
+    }
+
+    /// Up and down in a typed prompt are the caret's. A row selected there
+    /// would make the next Return open a conversation instead of sending.
+    func testAnArrowInATypedPromptIsLeftToTheTextField() {
+        XCTAssertFalse(Keys.arrowMovesSelection(in: .prompt("fix the build"), hasModifiers: false, count: 3))
+        XCTAssertFalse(Keys.arrowMovesSelection(in: .prompt(" "), hasModifiers: false, count: 3),
+                       "a space is text too, as it is for the follow-up bar's history")
+    }
+
+    func testTheFilterAlwaysGivesTheListItsArrows() {
+        XCTAssertTrue(Keys.arrowMovesSelection(in: .filter, hasModifiers: false, count: 3))
+    }
+
+    /// Shift, Option and Command with an arrow select text or move the
+    /// caret by a word or to an end: never the list's, in either field.
+    func testAnArrowWithAModifierIsNeverTheLists() {
+        XCTAssertFalse(Keys.arrowMovesSelection(in: .prompt(""), hasModifiers: true, count: 3))
+        XCTAssertFalse(Keys.arrowMovesSelection(in: .filter, hasModifiers: true, count: 3))
+    }
+
+    func testAnArrowWithNoRowsIsLeftToTheField() {
+        XCTAssertFalse(Keys.arrowMovesSelection(in: .prompt(""), hasModifiers: false, count: 0))
+        XCTAssertFalse(Keys.arrowMovesSelection(in: .filter, hasModifiers: false, count: 0))
+    }
+
+    func testReturnInAnEmptyPromptResumesTheSelectedRow() {
+        XCTAssertEqual(Keys.rowToResume(from: .prompt(""), selection: 1, count: 3), 1)
+        XCTAssertNil(Keys.rowToResume(from: .prompt(""), selection: nil, count: 3))
+        XCTAssertNil(Keys.rowToResume(from: .prompt(""), selection: 3, count: 3), "a row that is not there")
+    }
+
+    /// A selection can outlive its moment: made from the filter, say, and
+    /// then a prompt is typed. Return sends the prompt.
+    func testReturnInATypedPromptSendsWhateverIsSelected() {
+        XCTAssertNil(Keys.rowToResume(from: .prompt("fix the build"), selection: 1, count: 3))
+        XCTAssertNil(Keys.rowToResume(from: .prompt(" "), selection: 0, count: 3))
+    }
+
+    func testReturnInTheFilterResumesTheSelectedRow() {
+        XCTAssertEqual(Keys.rowToResume(from: .filter, selection: 2, count: 3), 2)
+        XCTAssertNil(Keys.rowToResume(from: .filter, selection: nil, count: 3))
+        XCTAssertNil(Keys.rowToResume(from: .filter, selection: 3, count: 3))
+    }
+}
+
+/// The two clicks of Clear All, which deletes every conversation of a folder
+/// and cannot be undone. The guard is a matter of time alone: a first click
+/// that was not followed up stops counting after two seconds whether or not
+/// anything ran in between to say so.
+final class ClearAllGuardTests: XCTestCase {
+    private typealias Guard = NexusAgentClearAllGuard
+    private let first = Date(timeIntervalSinceReferenceDate: 1_000)
+
+    func testOneClickNeverDeletes() {
+        XCTAssertEqual(Guard.click(firstClick: nil, now: first), .arm(first))
+        XCTAssertFalse(Guard.isArmed(firstClick: nil, now: first), "before any click the button is its name")
+        XCTAssertTrue(Guard.isArmed(firstClick: first, now: first), "after one it asks")
+    }
+
+    func testASecondClickInTimeDeletes() {
+        XCTAssertTrue(Guard.isArmed(firstClick: first, now: first.addingTimeInterval(1.9)))
+        XCTAssertEqual(Guard.click(firstClick: first, now: first.addingTimeInterval(1.9)), .delete)
+        XCTAssertEqual(Guard.click(firstClick: first, now: first), .delete, "a double click")
+    }
+
+    /// The case that used to delete: the question was never taken back
+    /// because the task that would have done it was cancelled.
+    func testASecondClickTooLateArmsAgainInsteadOfDeleting() {
+        let late = first.addingTimeInterval(2.1)
+        XCTAssertFalse(Guard.isArmed(firstClick: first, now: late), "the button is back to its name")
+        XCTAssertEqual(Guard.click(firstClick: first, now: late), .arm(late))
+        XCTAssertFalse(Guard.isArmed(firstClick: first, now: first.addingTimeInterval(2)), "two seconds is too late")
+
+        let minutesLater = first.addingTimeInterval(600)
+        XCTAssertFalse(Guard.isArmed(firstClick: first, now: minutesLater))
+        XCTAssertEqual(Guard.click(firstClick: first, now: minutesLater), .arm(minutesLater),
+                       "however long the first click was left lying, the next one only asks")
+    }
+
+    /// After a reset (the view forgets the first click when the button
+    /// goes, the filter or provider changes, or the drawer closes) one
+    /// click deletes nothing, even inside the two seconds.
+    func testAfterAResetOneClickDeletesNothing() {
+        let soon = first.addingTimeInterval(0.5)
+        XCTAssertFalse(Guard.isArmed(firstClick: nil, now: soon))
+        XCTAssertEqual(Guard.click(firstClick: nil, now: soon), .arm(soon))
+    }
+
+    /// After a delete the view forgets the first click, and after a late
+    /// click it keeps the new time: either way two more are needed.
+    func testEveryDeleteTakesTwoClicksOfItsOwn() {
+        let rearmed = first.addingTimeInterval(5)
+        XCTAssertEqual(Guard.click(firstClick: first, now: rearmed), .arm(rearmed))
+        XCTAssertEqual(Guard.click(firstClick: rearmed, now: rearmed.addingTimeInterval(1)), .delete)
+        XCTAssertEqual(Guard.click(firstClick: nil, now: rearmed.addingTimeInterval(1.5)),
+                       .arm(rearmed.addingTimeInterval(1.5)))
+    }
+
+    func testAFirstClickLaterThanNowDoesNotCount() {
+        let before = first.addingTimeInterval(-30)
+        XCTAssertFalse(Guard.isArmed(firstClick: first, now: before), "the clock was set back")
+        XCTAssertEqual(Guard.click(firstClick: first, now: before), .arm(before))
+    }
+
+    func testTheWindowIsTheStandalonesTwoSeconds() {
+        XCTAssertEqual(Guard.window, 2)
+    }
 }
