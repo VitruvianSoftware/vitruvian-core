@@ -50,8 +50,9 @@ package final class ScreenCaptureService: ObservableObject {
     @Published package private(set) var toolShortcutRegistrationFailures: Set<ScreenCaptureTool> = []
 
     /// One hotkey per tool, built from the tool list so a new mode cannot be
-    /// added without one. Ids continue past the hand-assigned quick tool
-    /// range, which ends at 24.
+    /// added without one. Ids run from 25, past the quick tools' own, and
+    /// the run is kept clear of every other hotkey's id by
+    /// `hotkey_ids_are_unique` in bazel/source_lints.py.
     private let toolHotkeys: [ScreenCaptureTool: QuickToolHotkey] = {
         var next: UInt32 = 25
         var hotkeys: [ScreenCaptureTool: QuickToolHotkey] = [:]

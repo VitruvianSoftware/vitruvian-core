@@ -169,7 +169,10 @@ package final class NexusAgentService: NSObject, ObservableObject, NSWindowDeleg
 
     package let session: NexusAgentQuickPromptSession
     private let environment: Environment
-    private let hotkey = QuickToolHotkey(id: 25)
+    /// Its own id, clear of every other hotkey's: 25 was also the first
+    /// capture tool's, so each could answer to the other's key
+    /// (`hotkey_ids_are_unique` in bazel/source_lints.py).
+    private let hotkey = QuickToolHotkey(id: 90)
     /// The bot this app launched, as opposed to one adopted from the PID file.
     private var managedPID: Int32?
     private var pollTimer: Timer?

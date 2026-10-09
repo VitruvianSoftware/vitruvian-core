@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.3...vitruvian-v3.34.0) (2026-10-09)
+
+
+### Features
+
+* **peripherals:** ship gravastar-mouse in the app, as a release, and as an MCP server ([#2941](https://github.com/VitruvianSoftware/vitruvian-core/issues/2941)) ([e810e70](https://github.com/VitruvianSoftware/vitruvian-core/commit/e810e70f1be4ff213ccbd529725e4cc23bb4037f))
+
 ## [3.33.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.2...vitruvian-v3.33.3) (2026-10-09)
 
 

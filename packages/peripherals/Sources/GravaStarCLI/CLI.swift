@@ -63,7 +63,7 @@ public struct UsageError: Error, Equatable, CustomStringConvertible {
 public enum CLI {
     /// The tool's version, reported by `--version` and to MCP clients.
     /// release-please bumps it (packages/peripherals in release-please-config.json).
-    public static let version = "0.1.0" // x-release-please-version
+    public static let version = "0.1.1" // x-release-please-version
 
     public static let usage = """
     usage: gravastar-mouse [--trace] [--baseline PATH] <command> [options]
