@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.33.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.2...vitruvian-v3.33.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **vitruvian:** find the GravaStar mouse binary on any Mac, settable in Settings ([#2939](https://github.com/VitruvianSoftware/vitruvian-core/issues/2939)) ([b6df493](https://github.com/VitruvianSoftware/vitruvian-core/commit/b6df493f84828ba04f04a3eb7a1a90455ba48cf1))
+
 ## [3.33.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.1...vitruvian-v3.33.2) (2026-10-09)
 
 
