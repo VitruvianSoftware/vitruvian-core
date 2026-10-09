@@ -223,6 +223,36 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         refreshSessions(configuration: configuration)
     }
 
+    /// Deletes an agy conversation for good and reloads the drawer list.
+    /// Returns false, having changed nothing, for any other provider's.
+    @discardableResult
+    public func delete(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) -> Bool {
+        let deleted = NexusAgentEngine.deleteSession(id: summary.id, provider: configuration.activeProvider,
+                                                     environment: environment)
+        refreshSessions(configuration: configuration)
+        return deleted
+    }
+
+    /// Deletes every agy conversation of the working folder, as the
+    /// standalone app's "Clear All" does, and reloads the drawer list.
+    /// Returns how many went.
+    ///
+    /// The folder is the one the settings name, or home when they name
+    /// none. It is used as named even if it is gone, and never widened:
+    /// the drawer lists every folder's conversations when none is set,
+    /// but "all" here is always one folder's.
+    @discardableResult
+    public func deleteAll(in configuration: NexusAgentConfiguration) -> Int {
+        let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
+        let directory = configured.isEmpty
+            ? environment.home
+            : NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
+        let count = NexusAgentEngine.deleteAllSessions(directory: directory, provider: configuration.activeProvider,
+                                                       environment: environment)
+        refreshSessions(configuration: configuration)
+        return count
+    }
+
     /// Starts watching the transcript file for live updates while in chat mode.
     public func startTranscriptFollower(provider: NexusAgentCLIProvider? = nil) {
         if let provider { self.activeProvider = provider }

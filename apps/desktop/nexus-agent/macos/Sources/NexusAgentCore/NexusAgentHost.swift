@@ -105,6 +105,8 @@ public struct NexusAgentHostStrings: Sendable {
     public var commandExitedPrefix: String
     /// The command ran to its end and printed nothing.
     public var commandNoOutput: String
+    /// The menu item that deletes a conversation.
+    public var deleteSession: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -132,7 +134,8 @@ public struct NexusAgentHostStrings: Sendable {
                  commandNotFoundPrefix: String = "Could not find '",
                  commandNotFoundSuffix: String = "' in PATH. Is it installed?",
                  commandExitedPrefix: String = "Process exited with code ",
-                 commandNoOutput: String = "No output from provider") {
+                 commandNoOutput: String = "No output from provider",
+                 deleteSession: String = "Delete") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -160,6 +163,7 @@ public struct NexusAgentHostStrings: Sendable {
         self.commandNotFoundSuffix = commandNotFoundSuffix
         self.commandExitedPrefix = commandExitedPrefix
         self.commandNoOutput = commandNoOutput
+        self.deleteSession = deleteSession
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {

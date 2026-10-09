@@ -26,6 +26,7 @@ enum NexusAgentTests {
         pinningAndRetry(suite)
         liveTranscriptAndSubagents(suite)
         sessionArchiving(suite)
+        sessionDeleting(suite)
         claudeEnhancementsAndApprovals(suite)
         notchIntegration(suite)
         antigravityTelemetry(suite)
@@ -92,6 +93,9 @@ enum NexusAgentTests {
         var sessionList: [NexusAgentSessionSummary] = []
         var listedDirectories: [String] = []
         var listedProviders: [NexusAgentCLIProvider] = []
+        /// The SQL the service asked SQLite to run, and the files it asked to have removed.
+        var sqliteRuns: [String] = []
+        var removed: [String] = []
         let home = "/Users/rig"
         let state = "/Users/rig/Library/Application Support/NexusAgent"
         var bot: String { home + "/.config/nexus-agent" }
@@ -137,7 +141,10 @@ enum NexusAgentTests {
                     files[path] = content
                     return true
                 },
-                removeFile: { [unowned self] in files[$0] = nil },
+                removeFile: { [unowned self] in
+                    removed.append($0)
+                    files[$0] = nil
+                },
                 isBotProcess: { [unowned self] in aliveNode.contains($0) },
                 signal: { [unowned self] pid, signal in
                     signals.append((pid, signal))
@@ -178,8 +185,44 @@ enum NexusAgentTests {
                 readTranscriptRaw: { [unowned self] id, _ in
                     let path = (state as NSString).appendingPathComponent("transcripts/\(id).jsonl")
                     return files[path]
+                },
+                runSqlite: { [unowned self] _, sql, _ in
+                    sqliteRuns.append(sql)
+                    return Data()
                 })
         }
+    }
+
+    // MARK: - Deleting agy conversations
+
+    /// The drawer's Delete item goes through the shared session. The rules
+    /// are tested beside the shared code; here, that this app's service
+    /// does it in its own environment, refuses a Claude session, and that
+    /// the item has a label.
+    private static func sessionDeleting(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let data = rig.home + "/.gemini/antigravity"
+        rig.files[data + "/conversation_summaries.db"] = ""
+        let service = NexusAgentService(environment: rig.environment)
+        let summary = NexusAgentSessionSummary(id: "abc-1", title: "T", steps: 1, modified: nil)
+        let removedBefore = rig.removed.count
+        let listedBefore = rig.listedProviders.count
+
+        let deleted = service.session.delete(summary, configuration: service.configuration)
+        suite.expect(deleted
+                     && rig.sqliteRuns == ["DELETE FROM conversation_summaries WHERE conversation_id = 'abc-1';"]
+                     && Array(rig.removed.dropFirst(removedBefore)) == [data + "/conversations/abc-1.db",
+                                                                        data + "/conversations/abc-1.db-wal",
+                                                                        data + "/conversations/abc-1.db-shm"],
+                     "deleting an agy conversation takes its row out of the index and removes its three files")
+        suite.expect(rig.listedProviders.count == listedBefore + 1, "the drawer's list is read again after a delete")
+
+        service.updateActiveProvider(.claude)
+        let refused = !service.session.delete(summary, configuration: service.configuration)
+        suite.expect(refused && rig.sqliteRuns.count == 1 && rig.removed.count == removedBefore + 3,
+                     "a Claude session is not deleted")
+        suite.expect(service.hostStrings.deleteSession == "Delete", "the Delete item has a label")
     }
 
     private static func botLifecycle(_ suite: TestSuite) {

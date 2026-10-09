@@ -160,6 +160,58 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
             .first { FileManager.default.fileExists(atPath: $0) }
     }
 
+    // MARK: Deleting
+
+    /// `value` as a string in SQL: in single quotes, with every single
+    /// quote inside it doubled. That is the whole of SQL's quoting rule, so
+    /// whatever the value holds, it stays one string and cannot end the
+    /// statement it is put in.
+    public static func sqlQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+    }
+
+    /// The statement that takes one conversation out of agy's index.
+    public static func deleteStatement(id: String) -> String {
+        "DELETE FROM conversation_summaries WHERE conversation_id = \(sqlQuoted(id));"
+    }
+
+    /// Whether `id` can safely name a conversation's files: one name with
+    /// no folder in it. A deletion is not acted on for any other id, since
+    /// the files removed are found by putting the id into a path.
+    public static func isPlainName(_ id: String) -> Bool {
+        !id.isEmpty && id != "." && id != ".." && !id.contains("/") && id == (id as NSString).lastPathComponent
+    }
+
+    /// The SQL "delete all" reads the index with, which is the standalone
+    /// app's own list: top-level conversations that were not aborted, the
+    /// two hundred most recent.
+    public static let deleteAllQuery = """
+    SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris
+    FROM conversation_summaries
+    WHERE nesting_depth = 0 AND killed = 0
+    ORDER BY last_modified_time DESC LIMIT 200;
+    """
+
+    /// The conversations "delete all" removes for `directory`, from the
+    /// rows `deleteAllQuery` gave (`sqlite3 -json`), in their order. As
+    /// the standalone app has it: the ones recorded for exactly that folder
+    /// (not one inside or above it), and the ones with no folder recorded
+    /// at all; never an archived one.
+    public static func idsToDeleteAll(_ data: Data, directory: String,
+                                      archivedIds: Set<String>) -> [String] {
+        guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        let wanted = "file://" + URL(fileURLWithPath: directory).standardizedFileURL.path
+        return rows.compactMap { row in
+            guard let id = row["conversation_id"] as? String, !id.isEmpty, !archivedIds.contains(id) else { return nil }
+            var folders: [String] = []
+            if let text = row["workspace_uris"] as? String, let raw = text.data(using: .utf8),
+               let listed = try? JSONSerialization.jsonObject(with: raw) as? [String] {
+                folders = listed
+            }
+            return folders.isEmpty || folders.contains(wanted) ? id : nil
+        }
+    }
+
     /// A quoted string, or one of the two archive fields with the blank
     /// space after it. Strings are matched so a title cannot pass for a field.
     private static let antigravityAnnotationFields = try? NSRegularExpression(

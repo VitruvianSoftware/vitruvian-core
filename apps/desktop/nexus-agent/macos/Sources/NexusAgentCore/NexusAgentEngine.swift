@@ -101,6 +101,10 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                                     _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                     _ onErrorOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                     _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
+        /// Runs one piece of SQL against a SQLite file and gives back what
+        /// it printed, or nil if it failed. With `readsRows` the file is
+        /// opened read-only and the rows come back as JSON.
+        public var runSqlite: (_ database: String, _ sql: String, _ readsRows: Bool) -> Data?
 
         public init(defaults: UserDefaults,
                      home: String,
@@ -132,7 +136,9 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                                                @escaping @MainActor @Sendable (Data) -> Void,
                                                @escaping @MainActor @Sendable (Data) -> Void,
                                                @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
-                         = { _, _, _, _, _, _, _ in throw CocoaError(.featureUnsupported) }) {
+                         = { _, _, _, _, _, _, _ in throw CocoaError(.featureUnsupported) },
+                     // Left out, every statement fails, so nothing is deleted.
+                     runSqlite: @escaping (String, String, Bool) -> Data? = { _, _, _ in nil }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -155,6 +161,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             self.readTranscriptRaw = readTranscriptRaw
             self.runProgram = runProgram
             self.launchCommand = launchCommand
+            self.runSqlite = runSqlite
         }
 
         public static var live: Environment {
@@ -184,7 +191,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                     return try? String(contentsOfFile: path, encoding: .utf8)
                 },
                 runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) },
-                launchCommand: NexusAgentEngine.launchCommandProcess)
+                launchCommand: NexusAgentEngine.launchCommandProcess,
+                runSqlite: NexusAgentEngine.runSqliteProcess)
         }
     }
 
@@ -217,6 +225,9 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         next.activeProvider = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
         return next
     }
+
+    /// The host's text as it is right now, for a view that shows some of it.
+    public var hostStrings: NexusAgentHostStrings { host.strings }
 
     public let session: NexusAgentQuickPromptSession
     private let environment: Environment
@@ -1140,6 +1151,77 @@ extension NexusAgentEngine {
             try? NexusAgentSessionSummary.antigravityAnnotation(text, archived: archived, now: now)
                 .write(toFile: path, atomically: true, encoding: .utf8)
         }
+    }
+
+    // MARK: - Deleting agy conversations
+
+    /// Deletes one agy conversation, as the standalone app does: its row
+    /// is taken out of the index, and then the three files agy keeps the
+    /// conversation in are removed from the `conversations` folder beside
+    /// that index. Its annotation and its transcript are left, as they are
+    /// there. Returns whether the row was taken out; if it was not, no
+    /// file is removed.
+    ///
+    /// Only the built-in Antigravity provider's conversations can be
+    /// deleted; any other provider is refused. So is an id that is not a
+    /// plain name, because the id goes into the paths of the files removed.
+    /// Everything is looked for under `environment.home`.
+    @discardableResult
+    public static func deleteSession(id: String, provider: NexusAgentCLIProvider,
+                                     environment: Environment) -> Bool {
+        guard provider.id == NexusAgentCLIProvider.antigravity.id,
+              NexusAgentSessionSummary.isPlainName(id),
+              let database = antigravityIndex(environment: environment),
+              environment.runSqlite(database, NexusAgentSessionSummary.deleteStatement(id: id), false) != nil
+        else { return false }
+        let conversations = ((database as NSString).deletingLastPathComponent as NSString)
+            .appendingPathComponent("conversations")
+        for suffix in [".db", ".db-wal", ".db-shm"] {
+            environment.removeFile((conversations as NSString).appendingPathComponent(id + suffix))
+        }
+        return true
+    }
+
+    /// Deletes every conversation the standalone app's "Clear All" would
+    /// for `directory`, one at a time, and returns how many. That is the
+    /// top-level conversations recorded for exactly that folder, plus those
+    /// with no folder recorded; not a nested, aborted or archived one, and
+    /// not another folder's (`NexusAgentSessionSummary.idsToDeleteAll`).
+    @discardableResult
+    public static func deleteAllSessions(directory: String, provider: NexusAgentCLIProvider,
+                                         environment: Environment) -> Int {
+        guard provider.id == NexusAgentCLIProvider.antigravity.id,
+              let database = antigravityIndex(environment: environment),
+              let rows = environment.runSqlite(database, NexusAgentSessionSummary.deleteAllQuery, true)
+        else { return 0 }
+        let ids = NexusAgentSessionSummary.idsToDeleteAll(
+            rows, directory: directory,
+            archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
+        return ids.filter { deleteSession(id: $0, provider: provider, environment: environment) }.count
+    }
+
+    /// The first of agy's data folders under the environment's home that
+    /// holds a conversation index. SQLite is never run on a file that is
+    /// not there, because it would create one.
+    private static func antigravityIndex(environment: Environment) -> String? {
+        NexusAgentSessionSummary.antigravityDataDirectories
+            .map { (environment.home as NSString).appendingPathComponent($0 + "/conversation_summaries.db") }
+            .first(where: environment.fileExists)
+    }
+
+    /// One piece of SQL through `/usr/bin/sqlite3`, the way the standalone
+    /// app runs it. The SQL is one argument of its own; no shell reads it.
+    nonisolated private static func runSqliteProcess(_ database: String, _ sql: String, _ readsRows: Bool) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = (readsRows ? ["-json", "-readonly"] : []) + [database, sql]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? data : nil
     }
 
     nonisolated private static func runSqlite(database: String, sql: String) {

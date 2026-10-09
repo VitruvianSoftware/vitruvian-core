@@ -25,7 +25,10 @@ import NexusAgentCore
 /// The shared engine asks the app it runs in for its settings, its text and
 /// how the user hears about a turn. These tests give it a host that only
 /// records, and an in-memory file system, so nothing real is read, written
-/// or launched (apart from the temporary folders two tests need).
+/// or launched. The exceptions are a few tests that need the real thing to
+/// prove their point, and keep to a temporary folder of their own: Claude's
+/// session files, the command launcher run on `/bin/echo` and `/bin/ls`,
+/// and deleting from a small SQLite index made for the test.
 @MainActor
 final class EngineHostTests: XCTestCase {
 
@@ -79,6 +82,13 @@ final class EngineHostTests: XCTestCase {
         var commandExit: (@MainActor @Sendable (Int32) -> Void)?
         var commandTerminations = 0
         var commandCannotStart = false
+        /// Every statement the engine asked SQLite to run, the rows the
+        /// pretend SQLite gives back to a query, and whether it fails.
+        var sqliteRuns: [(database: String, sql: String, readsRows: Bool)] = []
+        var sqliteRows = ""
+        var sqliteFails = false
+        /// Every file the engine asked to have removed, in order.
+        var removed: [String] = []
         var listedHidden: [[String]] = []
         /// Every program the engine asked to run for its output, and what
         /// the pretend program prints (nil: it could not be started).
@@ -148,7 +158,10 @@ final class EngineHostTests: XCTestCase {
                     files[path] = content
                     return true
                 },
-                removeFile: { [unowned self] in files[$0] = nil },
+                removeFile: { [unowned self] in
+                    removed.append($0)
+                    files[$0] = nil
+                },
                 isBotProcess: { _ in false },
                 signal: { _, _ in },
                 launchBot: { _, _, _, _, _ in throw CocoaError(.fileWriteUnknown) },
@@ -183,6 +196,11 @@ final class EngineHostTests: XCTestCase {
                     commandErrors = onErrors
                     commandExit = onExit
                     return NexusAgentRunningAgent(terminate: { [unowned self] in commandTerminations += 1 })
+                },
+                runSqlite: { [unowned self] database, sql, readsRows in
+                    sqliteRuns.append((database, sql, readsRows))
+                    if sqliteFails { return nil }
+                    return Data((readsRows ? sqliteRows : "").utf8)
                 })
         }
     }
@@ -1140,6 +1158,312 @@ final class EngineHostTests: XCTestCase {
         var output = Data()
         var errors = Data()
         var status: Int32?
+    }
+
+    // MARK: - Deleting agy conversations
+
+    private func conversation(_ id: String) -> NexusAgentSessionSummary {
+        NexusAgentSessionSummary(id: id, title: "T", steps: 1, modified: nil)
+    }
+
+    /// A rig with agy's conversation index in the desktop app's folder
+    /// and, for each id, the three files agy keeps a conversation in.
+    private func rigWithIndex(in folder: String = ".gemini/antigravity", conversations ids: [String] = []) -> Rig {
+        let rig = Rig()
+        let data = rig.home + "/" + folder
+        rig.files[data + "/conversation_summaries.db"] = ""
+        for id in ids {
+            for suffix in [".db", ".db-wal", ".db-shm"] { rig.files[data + "/conversations/" + id + suffix] = "" }
+        }
+        return rig
+    }
+
+    func testDeletingAConversationRemovesItsRowAndItsThreeFiles() {
+        let rig = rigWithIndex(conversations: ["abc-1", "abc-2"])
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let data = rig.home + "/.gemini/antigravity"
+        let listedBefore = rig.listedHidden.count
+
+        XCTAssertTrue(session.delete(conversation("abc-1"), configuration: NexusAgentConfiguration()))
+
+        XCTAssertEqual(rig.sqliteRuns.count, 1)
+        XCTAssertEqual(rig.sqliteRuns.first?.database, data + "/conversation_summaries.db")
+        XCTAssertEqual(rig.sqliteRuns.first?.sql, "DELETE FROM conversation_summaries WHERE conversation_id = 'abc-1';")
+        XCTAssertEqual(rig.sqliteRuns.first?.readsRows, false)
+        XCTAssertEqual(rig.removed, [data + "/conversations/abc-1.db",
+                                     data + "/conversations/abc-1.db-wal",
+                                     data + "/conversations/abc-1.db-shm"],
+                       "its three files, and nothing else")
+        XCTAssertNotNil(rig.files[data + "/conversations/abc-2.db"], "the other conversation is untouched")
+        XCTAssertNotNil(rig.files[data + "/conversation_summaries.db"])
+        XCTAssertEqual(rig.listedHidden.count, listedBefore + 1, "the drawer's list is read again")
+    }
+
+    func testAnIdCannotChangeTheStatement() {
+        let rig = rigWithIndex()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        XCTAssertTrue(session.delete(conversation("it's"), configuration: NexusAgentConfiguration()))
+        XCTAssertTrue(session.delete(conversation("x' OR '1'='1"), configuration: NexusAgentConfiguration()))
+        XCTAssertTrue(session.delete(conversation("x'; DROP TABLE conversation_summaries; --"),
+                                     configuration: NexusAgentConfiguration()))
+
+        XCTAssertEqual(rig.sqliteRuns.map(\.sql), [
+            "DELETE FROM conversation_summaries WHERE conversation_id = 'it''s';",
+            "DELETE FROM conversation_summaries WHERE conversation_id = 'x'' OR ''1''=''1';",
+            "DELETE FROM conversation_summaries WHERE conversation_id = 'x''; DROP TABLE conversation_summaries; --';",
+        ], "every quote in the id is doubled, so the id stays inside its quotes")
+        XCTAssertEqual(NexusAgentSessionSummary.sqlQuoted("plain"), "'plain'")
+        XCTAssertEqual(NexusAgentSessionSummary.sqlQuoted("''"), "''''''")
+    }
+
+    func testAnIdThatIsAPathIsRefused() {
+        let rig = rigWithIndex()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        // The id names files to remove, so one that would leave the
+        // conversations folder is not acted on at all. (The standalone has
+        // no such check; ids only ever reach it from agy's own index.)
+        for id in ["../conversation_summaries", "../../../.ssh/id_ed25519", "a/b", "/etc/passwd", "", ".", ".."] {
+            XCTAssertFalse(session.delete(conversation(id), configuration: NexusAgentConfiguration()), id)
+        }
+        XCTAssertTrue(rig.sqliteRuns.isEmpty)
+        XCTAssertTrue(rig.removed.isEmpty)
+    }
+
+    func testOnlyAgyConversationsCanBeDeleted() {
+        let rig = rigWithIndex(conversations: ["abc-1"])
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let own = NexusAgentCLIProvider(id: UUID(), name: "Mine", commandTemplate: "agy -p {prompt}", isBuiltIn: false)
+
+        for provider in [NexusAgentCLIProvider.claude, .ollama, own] {
+            let configuration = NexusAgentConfiguration(activeProvider: provider)
+            XCTAssertFalse(session.delete(conversation("abc-1"), configuration: configuration), provider.name)
+            XCTAssertEqual(session.deleteAll(in: configuration), 0, provider.name)
+        }
+        XCTAssertTrue(rig.sqliteRuns.isEmpty, "nothing was asked of the index")
+        XCTAssertTrue(rig.removed.isEmpty, "and no file was removed")
+    }
+
+    func testNothingIsRemovedWhenTheIndexCannotBeChanged() {
+        // No index at all.
+        let bare = Rig()
+        defer { bare.tearDown() }
+        let onBare = NexusAgentQuickPromptSession(environment: bare.environment, host: RecordingHost())
+        XCTAssertFalse(onBare.delete(conversation("abc-1"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(onBare.deleteAll(in: NexusAgentConfiguration()), 0)
+        XCTAssertTrue(bare.sqliteRuns.isEmpty, "SQLite is not run on a file that is not there: it would create one")
+        XCTAssertTrue(bare.removed.isEmpty)
+
+        // An index SQLite cannot change: the row stays, so its files stay.
+        let rig = rigWithIndex(conversations: ["abc-1"])
+        defer { rig.tearDown() }
+        rig.sqliteFails = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        XCTAssertFalse(session.delete(conversation("abc-1"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(rig.sqliteRuns.count, 1)
+        XCTAssertTrue(rig.removed.isEmpty)
+    }
+
+    func testFilesAreRemovedBesideTheIndexThatWasChanged() {
+        // Only the CLI's own folder has an index: that is the one used,
+        // and the files are looked for beside it.
+        let rig = rigWithIndex(in: ".gemini/antigravity-cli", conversations: ["abc-1"])
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let data = rig.home + "/.gemini/antigravity-cli"
+
+        XCTAssertTrue(session.delete(conversation("abc-1"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(rig.sqliteRuns.first?.database, data + "/conversation_summaries.db")
+        XCTAssertEqual(rig.removed.first, data + "/conversations/abc-1.db")
+
+        // Both have one: the desktop app's comes first, as it does for the list.
+        rig.files[rig.home + "/.gemini/antigravity/conversation_summaries.db"] = ""
+        XCTAssertTrue(session.delete(conversation("abc-2"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(rig.sqliteRuns.last?.database, rig.home + "/.gemini/antigravity/conversation_summaries.db")
+        XCTAssertEqual(rig.removed.last, rig.home + "/.gemini/antigravity/conversations/abc-2.db-shm")
+    }
+
+    /// What the standalone's "Clear All" reads before it deletes.
+    private let clearAllQuery = "SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris\n"
+        + "FROM conversation_summaries\n"
+        + "WHERE nesting_depth = 0 AND killed = 0\n"
+        + "ORDER BY last_modified_time DESC LIMIT 200;"
+
+    func testClearAllDeletesTheFoldersOwnConversationsOneByOne() {
+        let rig = rigWithIndex()
+        defer { rig.tearDown() }
+        rig.files[rig.home + "/work"] = ""
+        // What SQLite gives back for the query: it has already left out the
+        // nested and the aborted ones, so the folder is all that is left to check.
+        rig.sqliteRows = """
+        [{"conversation_id":"here-1","workspace_uris":"[\\"file:///Users/rig/work\\"]"},
+         {"conversation_id":"elsewhere","workspace_uris":"[\\"file:///Users/rig/other\\"]"},
+         {"conversation_id":"inside","workspace_uris":"[\\"file:///Users/rig/work/sub\\"]"},
+         {"conversation_id":"above","workspace_uris":"[\\"file:///Users/rig\\"]"},
+         {"conversation_id":"both","workspace_uris":"[\\"file:///Users/rig/other\\",\\"file:///Users/rig/work\\"]"},
+         {"conversation_id":"nowhere","workspace_uris":"[]"},
+         {"conversation_id":"unreadable","workspace_uris":"not json"},
+         {"conversation_id":"","workspace_uris":"[]"},
+         {"conversation_id":"it's","workspace_uris":"[\\"file:///Users/rig/work\\"]"}]
+        """
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let listedBefore = rig.listedHidden.count
+
+        let count = session.deleteAll(in: NexusAgentConfiguration(workingDirectory: "~/work/"))
+
+        XCTAssertEqual(rig.sqliteRuns.first?.sql, clearAllQuery, "the standalone's own query")
+        XCTAssertEqual(rig.sqliteRuns.first?.readsRows, true)
+        let deleted = ["here-1", "both", "nowhere", "unreadable", "it's"]
+        XCTAssertEqual(count, deleted.count)
+        XCTAssertEqual(rig.sqliteRuns.dropFirst().map(\.sql), deleted.map {
+            "DELETE FROM conversation_summaries WHERE conversation_id = \(NexusAgentSessionSummary.sqlQuoted($0));"
+        }, "the folder's own, and those with no folder recorded; not another folder's, not one inside or above it")
+        XCTAssertTrue(rig.sqliteRuns.dropFirst().allSatisfy { !$0.readsRows })
+        XCTAssertEqual(rig.removed.count, deleted.count * 3)
+        XCTAssertEqual(rig.listedHidden.count, listedBefore + 1, "the drawer's list is read again, once")
+    }
+
+    func testClearAllWithNoFolderSetIsTheHomeFolders() {
+        let rig = rigWithIndex()
+        defer { rig.tearDown() }
+        rig.sqliteRows = """
+        [{"conversation_id":"home-1","workspace_uris":"[\\"file:///Users/rig\\"]"},
+         {"conversation_id":"work-1","workspace_uris":"[\\"file:///Users/rig/work\\"]"}]
+        """
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        // The drawer lists every folder's conversations when none is set;
+        // "all" still means one folder's, as it does in the standalone.
+        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 1)
+        XCTAssertEqual(rig.sqliteRuns.last?.sql,
+                       "DELETE FROM conversation_summaries WHERE conversation_id = 'home-1';")
+
+        // A folder that is set but gone is still that folder, not home.
+        rig.sqliteRuns = []
+        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration(workingDirectory: "/Users/rig/work")), 1)
+        XCTAssertEqual(rig.sqliteRuns.last?.sql,
+                       "DELETE FROM conversation_summaries WHERE conversation_id = 'work-1';")
+    }
+
+    /// Runs SQL against a real database file, for the test below.
+    private func sqlite(_ database: String, _ sql: String) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [database, sql]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "could not run sqlite3" }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// The whole road, for real: the engine's own SQLite and file calls
+    /// against a small index in a throwaway home folder. Nothing outside
+    /// that folder is named anywhere in it.
+    func testDeletingAgainstARealIndexInAThrowawayHome() throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let files = FileManager.default
+        let data = rig.home + "/.gemini/antigravity"
+        let conversations = data + "/conversations"
+        let database = data + "/conversation_summaries.db"
+        try files.createDirectory(atPath: conversations, withIntermediateDirectories: true)
+        try files.createDirectory(atPath: data + "/annotations", withIntermediateDirectories: true)
+        let work = rig.home + "/work"
+        try files.createDirectory(atPath: work, withIntermediateDirectories: true)
+        // The folder as the engine will name it: /var is a link on macOS.
+        let workURI = "file://" + URL(fileURLWithPath: work).standardizedFileURL.path
+
+        // (id, folder, nesting depth, killed)
+        let rows: [(String, String, Int, Int)] = [
+            ("top-1", "[\"\(workURI)\"]", 0, 0),
+            ("top-2", "[\"\(workURI)\"]", 0, 0),
+            ("it's", "[\"\(workURI)\"]", 0, 0),
+            ("nested", "[\"\(workURI)\"]", 1, 0),
+            ("aborted", "[\"\(workURI)\"]", 0, 1),
+            ("archived", "[\"\(workURI)\"]", 0, 0),
+            ("other-folder", "[\"file:///somewhere/else\"]", 0, 0),
+            ("no-folder", "[]", 0, 0),
+            ("single", "[\"file:///somewhere/else\"]", 0, 0),
+        ]
+        var setup = "CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY, title TEXT, preview TEXT, "
+            + "step_count INTEGER, last_modified_time TEXT, workspace_uris TEXT, nesting_depth INTEGER, killed INTEGER);"
+        for (index, row) in rows.enumerated() {
+            setup += "INSERT INTO conversation_summaries VALUES (\(NexusAgentSessionSummary.sqlQuoted(row.0)), 'T', 'P', 1, "
+                + "'2026-10-0\(index + 1)T10:00:00Z', \(NexusAgentSessionSummary.sqlQuoted(row.1)), \(row.2), \(row.3));"
+            for suffix in [".db", ".db-wal", ".db-shm"] {
+                files.createFile(atPath: conversations + "/" + row.0 + suffix, contents: Data("x".utf8))
+            }
+        }
+        XCTAssertEqual(sqlite(database, setup), "")
+        try "archived:true archival_status_timestamp:{seconds:1 nanos:2}"
+            .write(toFile: data + "/annotations/archived.pbtxt", atomically: true, encoding: .utf8)
+        // Files that must outlive everything below.
+        let bystanders = [rig.home + "/keep.txt", work + "/keep.txt", data + "/annotations/top-1.pbtxt",
+                          conversations + "/top-1.db.bak", rig.home + "/single.db"]
+        for path in bystanders { files.createFile(atPath: path, contents: Data("x".utf8)) }
+
+        func remaining() -> [String] {
+            sqlite(database, "SELECT conversation_id FROM conversation_summaries ORDER BY conversation_id;")
+                .split(separator: "\n").map(String.init)
+        }
+        func conversationFiles() -> [String] {
+            ((try? files.contentsOfDirectory(atPath: conversations)) ?? []).sorted()
+        }
+        XCTAssertEqual(remaining().count, rows.count, "the index was built")
+
+        // The real SQLite and file calls, in the throwaway home. The real
+        // session list is left out: it is not what is under test here.
+        var environment = NexusAgentEngine.Environment.live
+        environment.home = rig.home
+        environment.listSessions = { _, _, _ in [] }
+        let session = NexusAgentQuickPromptSession(environment: environment, host: RecordingHost())
+
+        // One conversation.
+        XCTAssertTrue(session.delete(conversation("single"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(remaining(), ["aborted", "archived", "it's", "nested", "no-folder", "other-folder",
+                                     "top-1", "top-2"], "one row is gone, the rest are there")
+        XCTAssertFalse(conversationFiles().contains { $0.hasPrefix("single") })
+        XCTAssertEqual(conversationFiles().count, (rows.count - 1) * 3 + 1)
+
+        // An id that tries to be more than an id deletes nothing.
+        XCTAssertTrue(session.delete(conversation("x' OR '1'='1"), configuration: NexusAgentConfiguration()))
+        XCTAssertFalse(session.delete(conversation("../../keep"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(remaining().count, rows.count - 1)
+
+        // All of one folder's.
+        let count = session.deleteAll(in: NexusAgentConfiguration(workingDirectory: work))
+        XCTAssertEqual(count, 4)
+        XCTAssertEqual(remaining(), ["aborted", "archived", "nested", "other-folder"],
+                       "gone: the folder's top-level ones (one with a quote in its id) and the one with no folder. "
+                        + "Kept: another folder's, a nested one, an aborted one, an archived one")
+        XCTAssertEqual(conversationFiles(), (["aborted", "archived", "nested", "other-folder"].flatMap { id in
+            [".db", ".db-shm", ".db-wal"].map { id + $0 }
+        } + ["top-1.db.bak"]).sorted())
+
+        for path in bystanders {
+            XCTAssertTrue(files.fileExists(atPath: path), "\(path) was not the engine's to remove")
+        }
+        XCTAssertTrue(files.fileExists(atPath: database))
+        XCTAssertTrue(files.fileExists(atPath: data + "/annotations/archived.pbtxt"))
+    }
+
+    func testTheDeleteItemHasWords() {
+        XCTAssertEqual(NexusAgentHostStrings().deleteSession, "Delete")
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        host.strings.deleteSession = "Löschen"
+        XCTAssertEqual(engine.hostStrings.deleteSession, "Löschen",
+                       "the engine hands on the host's words as they are now")
     }
 
     // MARK: - Archived Claude sessions live in the host
