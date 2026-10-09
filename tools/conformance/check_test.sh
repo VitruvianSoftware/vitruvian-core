@@ -816,6 +816,57 @@ EOF
   rm -rf "$root"
 }
 
+# --- check_gitleaks_allowlist_paths -------------------------------------------
+# A .gitleaks.toml path exemption that no longer matches any file is dead: the
+# file it was written for is scanned again, and only a full-tree scan shows it.
+gitleaks_line() {
+  printf '%s\n' "$1" | awk '
+    /^Secret-scan allowlist/ {in_s=1; next}
+    in_s && /^[A-Za-z]/ && !/^ / {in_s=0}
+    in_s && index($0, ".gitleaks.toml") {print; exit}
+  '
+}
+
+# write_gitleaks <root> <path-regex> — one allowlist entry with one path.
+write_gitleaks() {
+  printf "[[allowlists]]\ndescription = \"public key\"\npaths = ['''%s''']\n" "$2" \
+    > "$1/.gitleaks.toml"
+}
+
+# The fixed state: the exempted file is where the regex says it is.
+case_gitleaks_allowlist_path_live() {
+  root="$(new_root)"
+  mkdir -p "$root/apps/ext/src"
+  printf '{}\n' > "$root/apps/ext/src/manifest.json"
+  write_gitleaks "$root" '^apps/ext/src/manifest\.json$'
+  out="$(run_check "$root")"
+  expect "an allowlist path that matches a file passes" \
+    "$(gitleaks_line "$out")" "✓"
+  rm -rf "$root"
+}
+
+# The broken state: the file moved, the regex did not.
+case_gitleaks_allowlist_path_stale() {
+  root="$(new_root)"
+  mkdir -p "$root/apps/ext/src"
+  printf '{}\n' > "$root/apps/ext/src/manifest.json"
+  write_gitleaks "$root" '^ext/src/manifest\.json$'
+  out="$(run_check "$root")"
+  expect "an allowlist path that matches no file is reported as a failure" \
+    "$(gitleaks_line "$out")" "matches no file"
+  rm -rf "$root"
+}
+
+# A commented-out example must not be read as live config.
+case_gitleaks_allowlist_comment_ignored() {
+  root="$(new_root)"
+  printf "# paths = ['''^nowhere/at/all\$''']\n" > "$root/.gitleaks.toml"
+  out="$(run_check "$root")"
+  expect "a commented-out paths line is not checked" \
+    "$(gitleaks_line "$out")" "0 path(s)"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
@@ -846,6 +897,9 @@ case_dependabot_action_coverage_passes
 case_dependabot_action_coverage_fails
 case_action_sha_pins_passes
 case_action_sha_pins_fails
+case_gitleaks_allowlist_path_live
+case_gitleaks_allowlist_path_stale
+case_gitleaks_allowlist_comment_ignored
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1
