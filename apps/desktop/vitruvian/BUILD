@@ -578,6 +578,7 @@ py_test(
         "Tools/notarize.sh",
         "Tools/package-release.sh",
         "Tools/uninstall.sh",
+        "UPSTREAM.md",
         "build.sh",
         "publish.sh",
     ] + glob([

@@ -96,6 +96,7 @@ class Repository:
         self.build_script = self.read_text("build.sh")
         self.uninstall_script = self.read_text("Tools/uninstall.sh")
         self.source_names = self.read_text("Tests/SourceNames.swift")
+        self.upstream = self.read_text("UPSTREAM.md")
         resources = []
         for root, dirs, files in os.walk(self.app_dir / "Resources", followlinks=True):
             resources.extend(dirs)
@@ -2196,6 +2197,79 @@ def hotkey_ids_are_unique(repo):
     return problems
 
 
+# UPSTREAM.md's sections, in order. "Modifications" is the dated notice
+# GPL-3.0 section 5(a) asks for.
+UPSTREAM_SECTIONS = [
+    "## Licensing: this directory is GPL, not Apache",
+    "## Trademarks and release blockers",
+    "## What the import left out",
+    "## Modifications",
+    "## Tracking and porting upstream",
+]
+# The log held 266 dated entries when this rule was written and only grows,
+# so fewer than this means entries were deleted. Raise it when convenient;
+# it never needs lowering.
+MODIFICATION_LOG_FLOOR = 260
+MODIFICATION_ENTRY_RE = re.compile(r"^- \*\*\d{4}-\d{2}-\d{2}\*\*", re.M)
+CONFLICT_MARKER_RE = re.compile(r"^(<{7} |={7}$|>{7} )", re.M)
+
+
+def modification_log_problems(text, floor):
+    """What is wrong with an UPSTREAM.md: a section gone or out of order, a
+    Modifications log shorter than `floor`, or a conflict marker left in."""
+    problems = []
+    at = -1
+    for section in UPSTREAM_SECTIONS:
+        found = text.find("\n" + section + "\n", at + 1)
+        if found < 0:
+            problems.append(f"section missing or out of order: {section}")
+        else:
+            at = found
+    _, _, log = text.partition("\n## Modifications\n")
+    log = log.partition("\n## ")[0]
+    entries = len(MODIFICATION_ENTRY_RE.findall(log))
+    if entries < floor:
+        problems.append(
+            f"the Modifications log has {entries} dated entries, fewer than {floor}"
+        )
+    if CONFLICT_MARKER_RE.search(text):
+        problems.append("a merge conflict marker is left in the file")
+    return problems
+
+
+def modification_log_is_whole(repo):
+    """UPSTREAM.md keeps its sections and its Modifications log. A merge
+    resolution once cut 2,600 lines out of it and every check stayed green,
+    because nothing read the file. It cannot see a handful of entries
+    removed: only a log that fell under the floor."""
+    problems = []
+    sections = "".join(f"\n{section}\n\ntext\n" for section in UPSTREAM_SECTIONS)
+    whole = sections.replace(
+        "\n## Modifications\n\ntext\n",
+        "\n## Modifications\n\n- **2026-01-02**: one\n  - detail\n- **2026-01-01**: two\n",
+    )
+    cut = whole.replace("- **2026-01-01**: two\n", "")
+    if (
+        modification_log_problems(whole, 2)
+        or len(modification_log_problems(cut, 2)) != 1
+        or len(modification_log_problems(whole + "<<<<<<< HEAD\n", 2)) != 1
+        or len(
+            modification_log_problems(
+                whole.replace("\n## What the import left out\n", "\n"), 2
+            )
+        )
+        != 1
+    ):
+        problems.append("the self-check no longer tells a whole log from a cut one")
+    found = modification_log_problems(repo.upstream, MODIFICATION_LOG_FLOOR)
+    if found:
+        problems.append(
+            "UPSTREAM.md lost part of itself; restore it from main and add "
+            f"your entry again: {found}"
+        )
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -2240,6 +2314,7 @@ RULES = [
     package_views_publish_their_body,
     later_layers_reach_only_package_statics,
     hotkey_ids_are_unique,
+    modification_log_is_whole,
 ]
 
 
