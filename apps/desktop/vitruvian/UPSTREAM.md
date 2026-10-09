@@ -2596,6 +2596,7 @@ is that notice. Add an entry for every change to upstream files.
   - `NexusAgentService`: `archiveSession` / `unarchiveSession` write the annotation (`archived:true` + `archival_status_timestamp`, other fields kept) and no longer touch `killed`;
   - `NexusAgentTests`: `sessionArchiving` covers annotation parsing, rewriting, and archive/unarchive against a throwaway home.
 - **2026-10-08**: Nexus Agent's pure rules (`NexusAgentSupport`, `NexusAgentQuickPromptLayout`) moved to the shared `NexusAgentCore` library in `apps/desktop/nexus-agent` and are re-exported from `Core/NexusAgentCoreExport.swift`. No behaviour change.
+- **2026-10-09**: `NexusAgentService` split in place, ahead of moving its app-neutral half to the shared library: `NexusAgentEngine` (new file) holds the bot runner, the `.env`, agent turns, the session list and archiving; `NexusAgentService` is now its subclass with the floating window, the shortcut and notch docking. The engine and `NexusAgentQuickPromptSession` reach this app only through the `NexusAgentHost` protocol (new file), which `VitruvianNexusAgentHost` (new file) answers from `Preferences`, the translations, `Notifier` and `NotchService`. No behaviour change.
 
 ## Tracking and porting upstream
 

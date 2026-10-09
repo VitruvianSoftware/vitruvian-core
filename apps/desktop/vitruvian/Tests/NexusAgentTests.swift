@@ -28,6 +28,7 @@ enum NexusAgentTests {
         claudeEnhancementsAndApprovals(suite)
         notchIntegration(suite)
         antigravityTelemetry(suite)
+        hostReadsLive(suite)
     }
 
     // MARK: - Wiring
@@ -317,7 +318,7 @@ enum NexusAgentTests {
     private static func quickPrompt(_ suite: TestSuite) {
         let rig = Rig()
         defer { rig.tearDown() }
-        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults))
         let strings = FeatureStrings.nexusAgent(L10n.shared.language)
 
         session.send("hello", configuration: NexusAgentConfiguration(), agentPath: nil)
@@ -387,7 +388,7 @@ enum NexusAgentTests {
     private static func quickPromptModes(_ suite: TestSuite) {
         let rig = Rig()
         defer { rig.tearDown() }
-        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults))
         let agy = "/opt/agy-test/agy"
         suite.expect(session.mode == .compact && !session.planMode, "the prompt opens as the pill, plan mode off")
 
@@ -413,7 +414,7 @@ enum NexusAgentTests {
         session.planMode = true
         suite.expect(rig.defaults[Preferences.nexusAgentPlanMode],
                      "plan mode is remembered")
-        suite.expect(NexusAgentQuickPromptSession(environment: rig.environment).planMode,
+        suite.expect(NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults)).planMode,
                      "a new prompt starts with the remembered plan mode")
         session.send("plan it", configuration: NexusAgentConfiguration(approvalMode: .yolo), agentPath: agy)
         let planned = rig.agentRuns.last?.arguments ?? []
@@ -554,7 +555,7 @@ enum NexusAgentTests {
 
         let rig = Rig()
         defer { rig.tearDown() }
-        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults))
         let convID = "live-test-1"
         let transcriptPath = rig.state + "/transcripts/\(convID).jsonl"
         rig.files[transcriptPath] = transcriptRunning
@@ -843,6 +844,38 @@ enum NexusAgentTests {
 
         // 6. Title is AI Agents
         suite.expect(FeatureStrings.notchAgents(.enUS).title == "AI Agents", "enUS title is AI Agents")
+    }
+
+    // MARK: - The engine's host
+
+    /// The host answers from the saved settings at the moment it is asked.
+    /// The suite's name is a literal in the swept namespace, as
+    /// `PreferenceNamespaceTests` requires, and is emptied before use.
+    private static func hostReadsLive(_ suite: TestSuite) {
+        let name = "com.vitruviansoftware.vitruvian.tests.nexus-agent-host"
+        guard let defaults = UserDefaults(suiteName: name) else {
+            suite.expect(false, "a private defaults suite can be made")
+            return
+        }
+        defaults.removePersistentDomain(forName: name)
+        defer { defaults.removePersistentDomain(forName: name) }
+        let host = VitruvianNexusAgentHost(defaults: defaults)
+
+        defaults[Preferences.nexusAgentBotDirectory] = "~/one"
+        suite.expect(host.configuredBotDirectory == "~/one", "the host reads the bot folder")
+        defaults[Preferences.nexusAgentBotDirectory] = "~/two"
+        suite.expect(host.configuredBotDirectory == "~/two", "a changed bot folder is seen without a restart")
+
+        defaults[Preferences.nexusAgentAutoStart] = true
+        suite.expect(host.startsBotAtLaunch, "the host reads start-with-app")
+        defaults[Preferences.nexusAgentAutoStart] = false
+        suite.expect(!host.startsBotAtLaunch, "a changed start-with-app is seen without a restart")
+
+        host.planMode = true
+        suite.expect(defaults[Preferences.nexusAgentPlanMode], "plan mode is saved through the host")
+        suite.expect(host.strings.untitledSession
+                     == FeatureStrings.nexusAgent(L10n.shared.language).untitledSession,
+                     "text comes from the app's translations")
     }
 
     // MARK: - Antigravity Telemetry & Quota
