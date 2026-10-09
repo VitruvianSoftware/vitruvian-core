@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.34.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.0...vitruvian-v3.34.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **vitruvian:** give the Quick Prompt shortcut an id of its own ([#2951](https://github.com/VitruvianSoftware/vitruvian-core/issues/2951)) ([1b8e68f](https://github.com/VitruvianSoftware/vitruvian-core/commit/1b8e68f43224c398880789c467ad71a6236ade00))
+
 ## [3.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.3...vitruvian-v3.34.0) (2026-10-09)
 
 
