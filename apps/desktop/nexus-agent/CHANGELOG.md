@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.4...nexus-agent-v1.19.0) (2026-10-09)
+
+
+### Features
+
+* **desktop:** the Nexus Agent chat remembers its provider, runs custom commands, keeps history and deletes conversations ([#2995](https://github.com/VitruvianSoftware/vitruvian-core/issues/2995)) ([cb30998](https://github.com/VitruvianSoftware/vitruvian-core/commit/cb309989409f0aabd37273109c26e465409317f5))
+
 ## [1.18.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.3...nexus-agent-v1.18.4) (2026-10-09)
 
 
