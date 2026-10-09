@@ -110,7 +110,8 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.
-  - `Tests/GitHubCoreTests.swift`: `mouseBinaryResolution` covers the search order, `~` expansion, the fallback from a configured path that does not run, relative PATH entries and the no-binary case.
+  - `GitHubSettingsView.swift`: a "Mouse command" field under Hardware & Mouse Lighting, with a Choose… button, a note on where it searches, and the path in use or how to install it. The words are in `NotchGitHubStrings.swift`, in every language.
+  - `Tests/GitHubCoreTests.swift`: `mouseBinaryResolution` covers the search order, `~` expansion, the fallback from a configured path that does not run, relative PATH entries, the no-binary case and the new strings.
 - **2026-10-08**: Awaiting-approval GitHub pipeline notification:
   - Added `githubMouseApprovalColor`, `githubMouseApprovalMode`, and `githubMouseApprovalSpeed` preferences to `Defaults.swift` and `DefaultsKey.swift`.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
