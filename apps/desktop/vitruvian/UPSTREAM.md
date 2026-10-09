@@ -125,6 +125,9 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: This log is checked for being whole:
+  - `bazel/source_lints.py`: `modification_log_is_whole` fails when a section of this file is gone or out of order, when the Modifications log has fewer than 260 dated entries, or when a merge conflict marker is left in. A merge resolution had cut 2,600 lines out of the file and every check stayed green.
+  - `BUILD`: `source_lints_test` reads `UPSTREAM.md`.
 - **2026-10-09**: Tool registry, part 3 (`docs/superpowers/plans/2026-10-09-vitruvian-tool-registry-part-3.md`):
   - `Services/CommandBar/CommandBarRowShortcuts.swift`: the parts that are not about rows (reading, writing, setting, the limit, finding a holder) moved to `Services/ShortcutMap.swift`; every function here keeps its name and signature and calls it.
   - `Core/DefaultsKey.swift`, `Core/Defaults.swift`, `Core/SettingsBackupSupport.swift`: the `toolCommandShortcuts` preference, registered and backed up. (`Core/Preferences.swift` and the tests carry no upstream header.)
