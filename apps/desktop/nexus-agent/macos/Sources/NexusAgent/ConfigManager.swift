@@ -182,8 +182,9 @@ class ConfigManager: ObservableObject {
 
     // MARK: - Load .env
 
-    /// Called once, at launch. The engine reads `.env` again whenever it
-    /// polls or starts the bot, but the fields below are filled only here, so
+    /// Called once, at launch. The engine reads `.env` again when polling
+    /// starts and when the bot is started (the 2-second timer only refreshes
+    /// status and the log), but the fields below are filled only here, so
     /// nothing overwrites what the user is typing in Settings.
     func load() {
         engine.load()
@@ -214,7 +215,10 @@ class ConfigManager: ObservableObject {
 
     // MARK: - Save .env
 
-    func save() {
+    /// Returns whether the `.env` was written. The preferences and the hotkey
+    /// are saved either way.
+    @discardableResult
+    func save() -> Bool {
         var configuration = NexusAgentConfiguration(
             botToken: botToken,
             allowedUserIDs: allowedUserIds,
@@ -231,7 +235,7 @@ class ConfigManager: ObservableObject {
             commandTemplate: provider.commandTemplate, isBuiltIn: provider.isBuiltIn)
         // A save that fails leaves the reason with the engine, which the log
         // panel shows.
-        engine.save(configuration)
+        let saved = engine.save(configuration)
 
         // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")
@@ -247,6 +251,7 @@ class ConfigManager: ObservableObject {
             key: hotkeyKey,
             modifiers: NSEvent.ModifierFlags(rawValue: UInt(hotkeyModifiers))
         )
+        return saved
     }
 
     // MARK: - Validation

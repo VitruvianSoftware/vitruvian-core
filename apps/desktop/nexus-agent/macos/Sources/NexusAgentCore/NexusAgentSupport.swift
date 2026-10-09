@@ -136,7 +136,9 @@ public struct NexusAgentConfiguration: Equatable {
     /// the file's own `CLI_PROVIDER` and `CLI_COMMAND_TEMPLATE` lines alone,
     /// which is what an app that does not manage the bot's provider wants.
     /// Reading a file never fills it in: an app that sets it holds the choice
-    /// itself.
+    /// itself. So after the engine saves or loads, `engine.configuration`'s
+    /// copy is nil. Keep your own choice and set it on every save; do not
+    /// compare your draft against the engine's copy, or save that copy back.
     public var botProvider: NexusAgentCLIProvider?
 
     public init(botToken: String = "",

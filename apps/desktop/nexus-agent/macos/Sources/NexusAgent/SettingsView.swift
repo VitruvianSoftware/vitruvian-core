@@ -26,6 +26,8 @@ struct SettingsView: View {
     @ObservedObject var botManager: BotManager
     @ObservedObject var updateChecker: UpdateChecker
     @State private var showSaveConfirmation = false
+    /// What the last Save returned; decides which message the confirmation shows.
+    @State private var saveSucceeded = true
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
@@ -308,14 +310,14 @@ struct SettingsView: View {
                 Spacer()
 
                 if showSaveConfirmation {
-                    Text("✅ Saved!")
+                    Text(saveSucceeded ? "✅ Saved!" : saveFailureText)
                         .font(.caption)
-                        .foregroundColor(.green)
+                        .foregroundColor(saveSucceeded ? .green : .red)
                         .transition(.opacity)
                 }
 
                 Button("Save") {
-                    configManager.save()
+                    saveSucceeded = configManager.save()
 
                     withAnimation {
                         showSaveConfirmation = true
@@ -330,8 +332,11 @@ struct SettingsView: View {
 
                 if botManager.isRunning {
                     Button("Save & Restart") {
-                        configManager.save()
-                        botManager.restart()
+                        // Restarting after a failed save would run the old settings.
+                        saveSucceeded = configManager.save()
+                        if saveSucceeded {
+                            botManager.restart()
+                        }
 
                         withAnimation {
                             showSaveConfirmation = true
@@ -350,6 +355,15 @@ struct SettingsView: View {
         }
         .padding()
         .frame(minWidth: 520, maxWidth: .infinity, minHeight: 460, maxHeight: .infinity)
+    }
+
+    /// Shown instead of "Saved!" when the `.env` could not be written, with
+    /// the engine's reason when it has one.
+    private var saveFailureText: String {
+        if let reason = botManager.engine.problemDescription {
+            return "Could not save .env: \(reason)"
+        }
+        return "Could not save .env"
     }
 
     private var approvalModeHelp: String {

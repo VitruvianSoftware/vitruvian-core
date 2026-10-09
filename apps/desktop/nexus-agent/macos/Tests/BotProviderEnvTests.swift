@@ -87,4 +87,45 @@ final class BotProviderEnvTests: XCTestCase {
         let saved = NexusAgentEnvFile.render(configuration, over: "TELEGRAM_BOT_TOKEN=1:a\n")
         XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), "mytool --note a #1 {prompt}")
     }
+
+    func testEveryCopyOfAProviderLineIsRewrittenAndACommentedOneIsLeft() {
+        var configuration = NexusAgentConfiguration(botToken: "1:a")
+        configuration.botProvider = .antigravity
+        let existing = """
+        TELEGRAM_BOT_TOKEN=1:a
+        # CLI_PROVIDER=old-note
+        CLI_PROVIDER=custom
+        CLI_COMMAND_TEMPLATE=one
+        AGY_TIMEOUT_MS=900000
+        CLI_PROVIDER=custom
+        """
+        let saved = NexusAgentEnvFile.render(configuration, over: existing)
+        let lines = saved.components(separatedBy: .newlines)
+        XCTAssertTrue(lines.contains("# CLI_PROVIDER=old-note"))
+        XCTAssertFalse(lines.contains("CLI_PROVIDER=custom"))
+        XCTAssertEqual(value("CLI_PROVIDER", in: saved), "agy")
+        XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), "")
+    }
+
+    func testATemplateWithAnEqualsSignSurvives() {
+        var configuration = NexusAgentConfiguration(botToken: "1:a")
+        configuration.botProvider = NexusAgentCLIProvider(
+            id: UUID(), name: "Mine", commandTemplate: "tool --flag=value {prompt}", isBuiltIn: false)
+        let saved = NexusAgentEnvFile.render(configuration, over: "TELEGRAM_BOT_TOKEN=1:a\n")
+        XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), "tool --flag=value {prompt}")
+    }
+
+    func testATemplateWithAHashAndBothQuoteKindsIsAKnownLimit() {
+        var configuration = NexusAgentConfiguration(botToken: "1:a")
+        let template = "tool \"a #1\" 'x'"
+        configuration.botProvider = NexusAgentCLIProvider(
+            id: UUID(), name: "Mine", commandTemplate: template, isBuiltIn: false)
+        let saved = NexusAgentEnvFile.render(configuration, over: "TELEGRAM_BOT_TOKEN=1:a\n")
+        // dotenv-style quoting cannot carry a value that needs quoting and
+        // holds both quote characters, so the value comes back cut short. The
+        // old standalone wrote such values raw. This records the limit; it
+        // does not endorse it.
+        XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), "tool ")
+        XCTAssertNotEqual(value("CLI_COMMAND_TEMPLATE", in: saved), template)
+    }
 }

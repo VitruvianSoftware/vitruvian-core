@@ -18,7 +18,7 @@ These are deliberate. Each is the standalone adopting the rule Vitruvian already
 |---|---|---|
 | Saving Settings | Rewrites `.env` from a template: comments and any key the app does not know (`AGY_BIN`, a hand-set `AGY_TIMEOUT_MS`) are lost; timeout forced back to 300000 | Changes only the keys the app owns, in place; comments, order and other keys are kept. A new file still gets the full template |
 | `.env` file permissions | Default | Readable by the user alone (it holds the bot token) |
-| Values with odd characters | Written raw | Trimmed; quoted when dotenv would otherwise cut them (a `#`, leading quote, outer spaces) |
+| Values with odd characters | Written raw | Trimmed; quoted when dotenv would otherwise cut them (a `#`, leading quote, outer spaces); the allowed-user list is tidied and line breaks are removed |
 | Old `GEMINI_*` lines | Erased with everything else | Erased (they would override the new names) |
 | Stopping the bot | Signals its process, then any process the PID file names, then **every** process matching `node src/bot.js` | Signals only the bot this app recorded; force-kills it if it has not stopped after 3 seconds. A bot started by hand with `bot.sh` is no longer killed |
 | Is the bot running? | Any live process with the recorded PID | Only if that process is Node, so a recycled PID is not mistaken for the bot |
@@ -26,6 +26,13 @@ These are deliberate. Each is the standalone adopting the rule Vitruvian already
 | Start with no token, no Node, or no bot | Launches anyway and fails in the log, or assumes a Homebrew path | Does not launch; the log panel says why |
 | Node search | Homebrew, `/usr/local/bin`, `/usr/bin`; must exist | Homebrew, `/usr/local/bin`, `~/.local/bin`; must be executable |
 | Log panel | Whole log file, plus the app's own "Bot started/stopped" lines | Last 16 KB of the log file; the app's own lines only for a start that could not happen |
+| Both `AGY_*` and the old `GEMINI_*` name in `.env` | Whichever line came last won | The `AGY_*` name wins, as the bot itself reads it |
+| An approval mode the app does not know | Shown as typed | Shown as "Default" (ask each time), which is how the bot treats it; Save writes that |
+| A save that fails | Only printed to the console | Settings says it could not save, and the log panel gives the reason |
+| The reason a start could not happen | n/a | The line stays in the log panel until the next successful start or save |
+| The bot's environment | Homebrew folders added to PATH | `~/.local/bin` and the Homebrew folders added; the bot gets no keyboard input (stdin is empty) |
+
+Unchanged, and worth knowing: an empty `AGY_APPROVAL_MODE=` line still shows as YOLO in Settings, and saving then writes `yolo`, although the bot treats an empty value as ask-each-time. That is the old behaviour; it changes with the chat window in step 3.
 
 What does **not** change: which program the bot runs when a provider is chosen in Settings (still written to `.env`), the saved provider list, the hotkey, auto-start, the chat window.
 
