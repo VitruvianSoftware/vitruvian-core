@@ -130,6 +130,7 @@ run_case "app catalog-info skips"               false "" apps/mobile/android-rem
 run_case "root OWNERS skips"                    false "" OWNERS
 run_case "app OWNERS skips"                     false "" apps/cli/devx/OWNERS
 run_case "CODEOWNERS skips"                     false "" .github/CODEOWNERS
+run_case "site vitruviansoftware-dev skips"      false "" apps/web/vitruviansoftware-dev/downloads.html
 run_case "source change runs"                   true  "" tabula/api/src/index.ts
 run_case "mixed docs+source runs"               true  "" docs/guide.md tabula/api/src/index.ts
 run_case "mixed metadata+source runs"           true  "" catalog-info.yaml tabula/api/src/index.ts

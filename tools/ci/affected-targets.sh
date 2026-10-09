@@ -176,7 +176,7 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 # there are zero Bazel targets to build or test. Short-circuit before fetching
 # target-determinator (which itself takes minutes for the download + two full
 # Bazel analyses). Same ignore set as tools/ci/relevant-paths.sh.
-NON_DOC="$(echo "${CHANGED_FILES}" | grep -E -v -c '^(gitops/|docs/|\.agents/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$' || true)"
+NON_DOC="$(echo "${CHANGED_FILES}" | grep -E -v -c '^(gitops/|docs/|\.agents/|apps/web/vitruviansoftware-dev/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$' || true)"
 if [ "${NON_DOC}" -eq 0 ]; then
   echo "::notice::affected-targets: all changed files are docs/gitops/markdown/metadata-only → nothing to build or test."
   exit 0

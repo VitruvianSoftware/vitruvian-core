@@ -112,7 +112,7 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 # grep -E -v -c prints the count of NON-matching lines. We do NOT pipe its exit
 # status (set -o pipefail + grep exit 1 on zero matches) into the script's
 # control flow: the count is what we branch on.
-IGNORE_REGEX="${IGNORE_REGEX:-^(gitops/|docs/|\.agents/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$}"
+IGNORE_REGEX="${IGNORE_REGEX:-^(gitops/|docs/|\.agents/|apps/web/vitruviansoftware-dev/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$}"
 NON_IGNORED="$(echo "${CHANGED_FILES}" | grep -E -v -c "${IGNORE_REGEX}" || true)"
 
 if [ "${NON_IGNORED}" -eq 0 ]; then
