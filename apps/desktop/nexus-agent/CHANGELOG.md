@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.19.0...nexus-agent-v1.20.0) (2026-10-09)
+
+
+### Features
+
+* **nexus-agent:** the standalone app shows the shared chat, and its own chat is deleted ([#3009](https://github.com/VitruvianSoftware/vitruvian-core/issues/3009)) ([2c3d353](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c3d3537454140da38b2ff8cd02d60ef002fc17e))
+
 ## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.4...nexus-agent-v1.19.0) (2026-10-09)
 
 
