@@ -105,7 +105,7 @@ jobs:
       # already checked out onto the runner. The real checkout -- full
       # history, with the minted token for the later push -- follows once
       # that token exists.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -118,7 +118,7 @@ jobs:
       # Full history: each PR branch is merged with main below, so both sides
       # must be present. The App token is what makes the later push work.
       # persist-credentials: allow (elevated App token for git push)
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}

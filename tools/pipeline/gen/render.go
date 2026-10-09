@@ -109,7 +109,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("    env:\n")
 	b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 	b.WriteString("    steps:\n")
-	b.WriteString("      - uses: actions/checkout@v7.0.1\n")
+	b.WriteString("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n")
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	// The diff needs real history; a shallow clone cannot see the base.
@@ -323,7 +323,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		}
 
 		b.WriteString("    steps:\n")
-		b.WriteString("      - uses: actions/checkout@v7.0.1\n")
+		b.WriteString("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n")
 		b.WriteString("        with:\n")
 		b.WriteString("          persist-credentials: false\n")
 		b.WriteString("          fetch-depth: 0\n\n")
@@ -442,7 +442,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 				// success() only: an artifact salvaged from a failed build is
 				// worse than no artifact, because it still looks installable.
 				b.WriteString("        if: success()\n")
-				b.WriteString("        uses: actions/upload-artifact@v7\n")
+				b.WriteString("        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n")
 				b.WriteString("        with:\n")
 				fmt.Fprintf(&b, "          name: %s\n", n)
 				fmt.Fprintf(&b, "          path: .pipeline-artifacts/%s\n", n)
@@ -478,7 +478,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("    env:\n")
 	b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 	b.WriteString("    steps:\n")
-	b.WriteString("      - uses: actions/checkout@v7.0.1\n")
+	b.WriteString("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n")
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n\n")
 	b.WriteString("      - name: Free up runner disk space\n")

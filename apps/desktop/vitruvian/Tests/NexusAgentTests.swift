@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import Combine
 import Darwin
 import Foundation
 import VitruvianCore
@@ -28,6 +29,9 @@ enum NexusAgentTests {
         claudeEnhancementsAndApprovals(suite)
         notchIntegration(suite)
         antigravityTelemetry(suite)
+        hostReadsLive(suite)
+        hostTurnNotices(suite)
+        changesReachTheViews(suite)
     }
 
     // MARK: - Wiring
@@ -153,7 +157,7 @@ enum NexusAgentTests {
                     agentExit = onExit
                     return NexusAgentRunningAgent(terminate: { [unowned self] in agentTerminations += 1 })
                 },
-                listSessions: { [unowned self] directory, provider in
+                listSessions: { [unowned self] directory, provider, _ in
                     listedDirectories.append(directory)
                     listedProviders.append(provider)
                     return sessionList
@@ -317,7 +321,7 @@ enum NexusAgentTests {
     private static func quickPrompt(_ suite: TestSuite) {
         let rig = Rig()
         defer { rig.tearDown() }
-        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults))
         let strings = FeatureStrings.nexusAgent(L10n.shared.language)
 
         session.send("hello", configuration: NexusAgentConfiguration(), agentPath: nil)
@@ -387,7 +391,7 @@ enum NexusAgentTests {
     private static func quickPromptModes(_ suite: TestSuite) {
         let rig = Rig()
         defer { rig.tearDown() }
-        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults))
         let agy = "/opt/agy-test/agy"
         suite.expect(session.mode == .compact && !session.planMode, "the prompt opens as the pill, plan mode off")
 
@@ -413,7 +417,7 @@ enum NexusAgentTests {
         session.planMode = true
         suite.expect(rig.defaults[Preferences.nexusAgentPlanMode],
                      "plan mode is remembered")
-        suite.expect(NexusAgentQuickPromptSession(environment: rig.environment).planMode,
+        suite.expect(NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults)).planMode,
                      "a new prompt starts with the remembered plan mode")
         session.send("plan it", configuration: NexusAgentConfiguration(approvalMode: .yolo), agentPath: agy)
         let planned = rig.agentRuns.last?.arguments ?? []
@@ -554,7 +558,7 @@ enum NexusAgentTests {
 
         let rig = Rig()
         defer { rig.tearDown() }
-        let session = NexusAgentQuickPromptSession(environment: rig.environment)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: VitruvianNexusAgentHost(defaults: rig.defaults))
         let convID = "live-test-1"
         let transcriptPath = rig.state + "/transcripts/\(convID).jsonl"
         rig.files[transcriptPath] = transcriptRunning
@@ -657,7 +661,8 @@ enum NexusAgentTests {
         initialHidden.append(testClaudeID)
         UserDefaults.standard.set(initialHidden, forKey: "vitruvian.claude.hiddenSessionIds")
 
-        let detectedHidden = NexusAgentSessionSummary.claudeHiddenSessionIds(home: "/nonexistent-home")
+        let detectedHidden = NexusAgentSessionSummary.claudeHiddenSessionIds(
+            home: "/nonexistent-home", appHidden: VitruvianNexusAgentHost.savedHiddenClaudeSessionIDs)
         suite.expect(detectedHidden.contains(testClaudeID), "claudeHiddenSessionIds includes IDs stored in UserDefaults")
 
         // 4. Claude Code archiving & unarchiving via service
@@ -843,6 +848,119 @@ enum NexusAgentTests {
 
         // 6. Title is AI Agents
         suite.expect(FeatureStrings.notchAgents(.enUS).title == "AI Agents", "enUS title is AI Agents")
+    }
+
+    // MARK: - The engine's host
+
+    /// The host answers from the saved settings at the moment it is asked.
+    /// The suite's name is a literal in the swept namespace, as
+    /// `PreferenceNamespaceTests` requires, and is emptied before use.
+    private static func hostReadsLive(_ suite: TestSuite) {
+        let name = "com.vitruviansoftware.vitruvian.tests.nexus-agent-host"
+        guard let defaults = UserDefaults(suiteName: name) else {
+            suite.expect(false, "a private defaults suite can be made")
+            return
+        }
+        defaults.removePersistentDomain(forName: name)
+        defer { defaults.removePersistentDomain(forName: name) }
+        let host = VitruvianNexusAgentHost(defaults: defaults)
+
+        defaults[Preferences.nexusAgentBotDirectory] = "~/one"
+        suite.expect(host.configuredBotDirectory == "~/one", "the host reads the bot folder")
+        defaults[Preferences.nexusAgentBotDirectory] = "~/two"
+        suite.expect(host.configuredBotDirectory == "~/two", "a changed bot folder is seen without a restart")
+
+        defaults[Preferences.nexusAgentAutoStart] = true
+        suite.expect(host.startsBotAtLaunch, "the host reads start-with-app")
+        defaults[Preferences.nexusAgentAutoStart] = false
+        suite.expect(!host.startsBotAtLaunch, "a changed start-with-app is seen without a restart")
+
+        host.planMode = true
+        suite.expect(defaults[Preferences.nexusAgentPlanMode], "plan mode is saved through the host")
+        suite.expect(host.strings.untitledSession
+                     == FeatureStrings.nexusAgent(L10n.shared.language).untitledSession,
+                     "text comes from the app's translations")
+    }
+
+    /// What Vitruvian tells the user when a turn ends or waits: the notch
+    /// notice always, the notification only away from the chat.
+    private static func hostTurnNotices(_ suite: TestSuite) {
+        typealias Host = VitruvianNexusAgentHost
+        let strings = NexusAgentHostStrings()
+        let long = String(repeating: "a", count: 300)
+
+        let failed = Host.announcement(
+            finished: NexusAgentTurnNotice(providerName: "Claude", text: long, failed: true, endedCleanly: false),
+            isChatVisible: false, strings: strings)
+        suite.expect(failed.notificationTitle == "Claude — Failed" && failed.notificationBody == String(long.prefix(200))
+                     && failed.notificationBody?.count == 200,
+                     "a failed turn away from the chat notifies with the reply cut to 200 characters")
+        suite.expect(failed.notchTitle == "Claude — Failed" && failed.notchSymbol == "exclamationmark.triangle.fill"
+                     && !failed.playsSound,
+                     "a failed turn shows a warning in the notch and plays no sound")
+
+        let reply = "\n   \n" + long + "\nsecond line"
+        let done = NexusAgentTurnNotice(providerName: "Claude", text: reply, failed: false, endedCleanly: true)
+        let hidden = Host.announcement(finished: done, isChatVisible: false, strings: strings)
+        suite.expect(hidden.notificationTitle == "Claude — Done" && hidden.notificationBody == String(long.prefix(200)),
+                     "a finished turn away from the chat notifies with its first non-blank line cut to 200 characters")
+        suite.expect(hidden.notchTitle == "Claude — Done" && hidden.notchDetail == String(long.prefix(80))
+                     && hidden.notchDetail.count == 80 && hidden.notchSymbol == "sparkles" && hidden.playsSound,
+                     "the notch shows the first non-blank line cut to 80 characters, and a clean turn plays the sound")
+
+        let visible = Host.announcement(finished: done, isChatVisible: true, strings: strings)
+        suite.expect(visible.notificationTitle == nil && visible.notificationBody == nil
+                     && visible.notchTitle == hidden.notchTitle && visible.notchDetail == hidden.notchDetail
+                     && visible.playsSound,
+                     "with the chat on screen there is no notification, only the notch and the sound")
+
+        let empty = Host.announcement(
+            finished: NexusAgentTurnNotice(providerName: "Claude", text: "", failed: false, endedCleanly: true),
+            isChatVisible: false, strings: strings)
+        suite.expect(empty.notificationTitle == nil && empty.notificationBody == nil && empty.notchTitle == "Claude — Done",
+                     "a turn that ended with no reply and no error does not notify")
+
+        let approval = Host.announcement(
+            needingApproval: NexusAgentTurnNotice(providerName: "Claude", text: "Bash: rm -rf /tmp/cache",
+                                                  failed: false, endedCleanly: false),
+            strings: strings)
+        suite.expect(approval.notchTitle == "Claude — Approval Required" && approval.notchDetail == "Bash: rm -rf /tmp/cache"
+                     && approval.notchSymbol == "hand.raised.fill" && !approval.playsSound
+                     && approval.notificationTitle == nil,
+                     "a turn waiting on approval shows the tool in the notch, named for its provider")
+    }
+
+    /// The service is an engine from another module with its own published
+    /// values added. SwiftUI redraws from `objectWillChange`, so a change to
+    /// either half, and to the chat session, has to reach it.
+    private static func changesReachTheViews(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.installBot()
+        let service = NexusAgentService(environment: rig.environment)
+        var serviceChanges = 0
+        var sessionChanges = 0
+        // Held until the end so the subscriptions last for every check.
+        let subscriptions: [AnyCancellable] = [
+            service.objectWillChange.sink { _ in serviceChanges += 1 },
+            service.session.objectWillChange.sink { _ in sessionChanges += 1 }
+        ]
+        defer { subscriptions.forEach { $0.cancel() } }
+
+        var before = serviceChanges
+        service.isPinned = true
+        suite.expect(serviceChanges > before,
+                     "a value the Vitruvian service adds (the pin) tells the views it changed")
+
+        before = serviceChanges
+        suite.expect(service.configuration.botToken.isEmpty, "the token is not read until the page loads")
+        service.load()
+        suite.expect(service.configuration.botToken == "1:real" && serviceChanges > before,
+                     "a value the shared engine owns (the settings) tells the views it changed")
+
+        before = sessionChanges
+        service.session.draft = "hello"
+        suite.expect(sessionChanges > before, "typing in the chat tells the views the session changed")
     }
 
     // MARK: - Antigravity Telemetry & Quota

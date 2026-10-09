@@ -83,7 +83,7 @@ jobs:
       # (job graph, expressions, deprecated actions, syntax) runs regardless.
       SHELLCHECK_OPTS: --severity=warning
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -103,3 +103,18 @@ jobs:
       # repo root; shellcheck is preinstalled on the runner.
       - name: Lint workflows
         run: actionlint -color
+
+      # Every action from outside this repo is pinned to a full commit SHA
+      # (with the version in a trailing comment, which Dependabot keeps in
+      # step). A tag can be moved to different code after review; a commit
+      # cannot. Local `./` actions and reusable workflows are exempt.
+      - name: Require commit-pinned actions
+        run: |
+          unpinned="$(grep -rnE '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*[^.#[:space:]]' \
+            .github/workflows .github/actions \
+            | grep -vE '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "::error::Actions must be pinned to a full commit SHA, e.g. 'owner/action@<40-hex sha> # v1.2.3':"
+            echo "$unpinned"
+            exit 1
+          fi

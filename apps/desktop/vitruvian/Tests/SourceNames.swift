@@ -187,7 +187,6 @@ enum SourceNames {
         "/usr/bin/perl",
         "/usr/bin/pgrep",
         "/usr/bin/pmset",
-        "/usr/bin/sqlite3",
         "/usr/bin/sudo",
         "/usr/bin/tccutil",
         "/usr/sbin/",

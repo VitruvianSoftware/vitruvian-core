@@ -56,6 +56,9 @@ alias(
 swift_test(
     name = "NexusAgentTests",
     srcs = glob(["Tests/**/*.swift"]),
+    # EngineHostTests reads the shared sources to prove they name no app's
+    # saved-settings key and only run tools that exist.
+    data = [":shared_sources"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":NexusAgentCore"],
