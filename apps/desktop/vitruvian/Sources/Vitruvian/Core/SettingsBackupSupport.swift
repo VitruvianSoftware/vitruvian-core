@@ -54,6 +54,7 @@ package enum SettingsBackupSupport {
         DefaultsKey.radialMenuProfiles,
         DefaultsKey.commandBarLinks,
         DefaultsKey.commandBarRowShortcuts,
+        DefaultsKey.toolCommandShortcuts,
         DefaultsKey.language,
         DefaultsKey.appVolumes,
         DefaultsKey.appOutputDevices,

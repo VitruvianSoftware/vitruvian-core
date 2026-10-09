@@ -597,6 +597,7 @@ package enum DefaultsKey {
     package static let commandBarHidden = "commandBarHidden"         // row keys the person never wants offered
     package static let commandBarLinks = "commandBarLinks"           // Data: [CommandBarLink] JSON
     package static let commandBarRowShortcuts = "commandBarRowShortcuts" // {row key: shortcut}
+    package static let toolCommandShortcuts = "toolCommandShortcuts" // {command id: shortcut}
     package static let commandBarPositionOffset = "commandBarPositionOffset" // "dx,dy" from the default spot
     package static let commandBarEmojiSkinTone = "commandBarEmojiSkinTone" // "" is the yellow default
     // The folders a file search looks in, one per line, written with a tilde

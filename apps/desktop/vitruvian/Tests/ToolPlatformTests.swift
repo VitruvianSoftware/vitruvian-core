@@ -24,6 +24,7 @@ enum ToolPlatformTests {
         tiles(suite)
         shortcutSurface(suite)
         shortcutMap(suite)
+        commandShortcutStore(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -529,5 +530,49 @@ enum ToolPlatformTests {
                      "a full map says so")
         suite.expect(ShortcutMap.assignmentIssue(optionN, for: "a", in: map, limit: 2) == nil,
                      "a key may keep the combination it has")
+    }
+
+    static func commandShortcutStore(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let hello = SampleTool.hello
+        let raw = ToolCommandShortcuts.encode([hello.rawValue: optionB, "com.acme.gone/open": optionN, "not an id": optionB])
+        let map = ToolCommandShortcuts.decode(raw)
+        suite.expect(map.count == 3, "ids that name nothing now, or are not ids at all, are carried, not dropped")
+        suite.expect(ToolCommandShortcuts.shortcut(for: hello, in: map) == optionB,
+                     "a command finds its shortcut")
+        suite.expect(ToolCommandShortcuts.holder(of: optionN, in: map, excluding: nil) == "com.acme.gone/open",
+                     "a command that is not registered still holds its combination")
+        suite.expect(ToolCommandShortcuts.holder(of: optionN, in: map, excluding: CommandID("com.acme.gone/open")) == nil,
+                     "a command does not clash with itself")
+        suite.expect(ToolCommandShortcuts.takeOverKey(for: hello) == "toolCommandShortcuts.dev.vitruvian.sample/hello",
+                     "a command's take-over is kept under the name its hotkey is claimed with")
+        suite.expect(Preferences.toolCommandShortcuts.defaultValue.isEmpty && ToolCommandShortcuts.limit == 64,
+                     "no command starts with a shortcut, and the list has the command bar's limit")
+
+        // The preference itself: registered, backed up, and reading never rewrites it.
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.toolCommandShortcuts] as? String == "",
+                     "the preference is registered with no shortcuts")
+        suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.toolCommandShortcuts),
+                     "tool command shortcuts travel with a settings backup")
+
+        let domain = "com.vitruviansoftware.vitruvian.tests.toolCommandShortcuts"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults[Preferences.toolCommandShortcuts] = raw ?? ""
+        let before = defaults.string(forKey: DefaultsKey.toolCommandShortcuts)
+        let read = ToolCommandShortcuts.decode(defaults[Preferences.toolCommandShortcuts])
+        _ = ToolCommandShortcuts.shortcut(for: hello, in: read)
+        _ = ToolCommandShortcuts.holder(of: optionB, in: read, excluding: hello)
+        suite.expect(read.count == 3 && before != nil
+                         && defaults.string(forKey: DefaultsKey.toolCommandShortcuts) == before,
+                     "reading saved shortcuts, malformed and unregistered ids included, leaves the saved text byte for byte as it was")
+        for stored in ["not json", #"{"com.acme.gone/open":"nonsense"}"#, "[]"] {
+            defaults[Preferences.toolCommandShortcuts] = stored
+            let empty = ToolCommandShortcuts.decode(defaults[Preferences.toolCommandShortcuts])
+            suite.expect(empty.isEmpty && defaults.string(forKey: DefaultsKey.toolCommandShortcuts) == stored,
+                         "unreadable saved text reads as no shortcuts, does not crash, and is not deleted: \(stored)")
+        }
     }
 }

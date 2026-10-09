@@ -125,6 +125,7 @@ is that notice. Add an entry for every change to upstream files.
 
 - **2026-10-09**: Tool registry, part 3 (`docs/superpowers/plans/2026-10-09-vitruvian-tool-registry-part-3.md`):
   - `Services/CommandBar/CommandBarRowShortcuts.swift`: the parts that are not about rows (reading, writing, setting, the limit, finding a holder) moved to `Services/ShortcutMap.swift`; every function here keeps its name and signature and calls it.
+  - `Core/DefaultsKey.swift`, `Core/Defaults.swift`, `Core/SettingsBackupSupport.swift`: the `toolCommandShortcuts` preference, registered and backed up. (`Core/Preferences.swift` and the tests carry no upstream header.)
 - **2026-10-09**: Tool registry, part 2 (`docs/superpowers/plans/2026-10-08-vitruvian-tool-registry-part-2.md`):
   - `Services/FeatureRuntime.swift`: a change of hub availability also tells `ToolRegistry`, so views that list commands redraw.
   - `main.swift`: registers the sample tool, in a build made with `--define=vitruvian_sample_tool=true` only.
