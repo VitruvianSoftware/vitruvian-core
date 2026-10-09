@@ -214,12 +214,12 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
         return archived
     }
 
-    /// Discovers archived/hidden Claude session IDs across VS Code state and UserDefaults.
-    public static func claudeHiddenSessionIds(home: String) -> Set<String> {
+    /// The Claude sessions to show as archived: the ones the user archived
+    /// in this app (`appHidden`, which the app keeps and hands in) and the
+    /// ones VS Code's Claude extension has hidden.
+    public static func claudeHiddenSessionIds(home: String, appHidden: [String]) -> Set<String> {
         var hiddenIds = Set<String>()
-        if let local = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") {
-            hiddenIds.formUnion(local)
-        }
+        hiddenIds.formUnion(appHidden)
         let appSupport = (home as NSString).appendingPathComponent("Library/Application Support")
         let dbPaths = [
             (appSupport as NSString).appendingPathComponent("Code/User/globalStorage/state.vscdb"),
@@ -267,11 +267,13 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     /// Discovers and parses Claude Code session JSONL files in `~/.claude/projects/`.
     /// When `directory` is provided (and not home), checks `~/.claude/projects/<slug>`.
     /// Otherwise scans all project directories under `~/.claude/projects/`.
-    public static func parseClaudeSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
+    /// `appHidden` is the app's own list of archived sessions.
+    public static func parseClaudeSessions(home: String, directory: String,
+                                           appHidden: [String]) -> [NexusAgentSessionSummary] {
         let fileManager = FileManager.default
         let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
         guard fileManager.fileExists(atPath: claudeProjectsDir) else { return [] }
-        let hiddenIds = claudeHiddenSessionIds(home: home)
+        let hiddenIds = claudeHiddenSessionIds(home: home, appHidden: appHidden)
 
         var targetDirs: [String] = []
         let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
