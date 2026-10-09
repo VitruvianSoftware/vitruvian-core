@@ -160,6 +160,15 @@ Two `SessionStart` hooks wire this up automatically (registered in
   (context `lab`) pointed at `https://k8s-api.lab.ipv1337.dev:6443`, dialing the
   apiserver through that SOCKS5 proxy.
 
+`kube-setup.sh` ends by asking the apiserver for `/version` and printing one line
+the agent sees at session start: `apiserver reachable via SOCKS5 :1055` only when
+the apiserver answered, and otherwise `apiserver is NOT reachable:` with the
+reason (tailscale not installed, `tailscaled` not running, the tailnet logged
+out with tailscaled's own error, `LAB_SA_TOKEN` rejected, or kubectl's error).
+The two hooks run in parallel, so it first waits for `tailscale-up.sh` to finish
+joining. That line is the only place a failure shows: a hook's stderr never
+reaches the agent. `tools/ci/kube-setup_test.sh` pins each case.
+
 Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 
 **Prerequisites (set once, outside this repo):**
@@ -186,6 +195,10 @@ Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 > issue it untagged, or add the ACL grant in the same change.
 
 **Troubleshooting:**
+- `the tailnet is NeedsLogin (… invalid key: API key does not exist)` →
+  `TS_AUTHKEY` was revoked or has expired. Issue a new reusable, untagged key
+  and replace it where the session gets it (the environment variable or the
+  `homelab` profile's Secret Manager entry).
 - `unsupported scheme "socks5h"` → kubeconfig must use `proxy-url: socks5://`
   (kubectl/client-go reject `socks5h`; only `curl` accepts it).
 - `Unauthorized` (401) → `LAB_SA_TOKEN` is wrong/expired; transport is fine.
