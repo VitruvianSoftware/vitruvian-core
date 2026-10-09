@@ -107,6 +107,9 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: No two global hotkeys share an id:
+  - `Services/QuickTools/ScreenCaptureService.swift`: the comment on the capture tools' hotkey ids says where the run starts and what keeps it clear; it claimed the hand-assigned ids ended at 24 after the Quick Prompt had been given 25. No code change in this file.
+  - `bazel/source_lints.py`: `hotkey_ids_are_unique` fails when two `QuickToolHotkey` ids, or runs of ids, overlap.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.

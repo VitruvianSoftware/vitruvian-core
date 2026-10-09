@@ -2067,6 +2067,123 @@ def later_layers_reach_only_package_statics(repo):
     return problems
 
 
+# --- Global hotkey ids --------------------------------------------------------
+
+# `QuickToolHotkey` routes every press through one table keyed by the id it
+# was made with, so two hotkeys with one id answer to each other's keys, and
+# whichever is released takes the other's route with it. An id is a literal,
+# or the first of a run made from a list. A run says here how many ids it may
+# take: None for one that has no end.
+HOTKEY_ID_RUNS = {
+    # Command Bar row shortcuts: `200 + index`, up to `CommandBarRowShortcuts.limit`.
+    200: 64,
+    # Radial menu wheels: `1700 + index`, as many as there are wheels.
+    1700: None,
+}
+# A run whose first id is held in a variable: the file, how the variable is
+# set, and how many ids the run may take.
+HOTKEY_ID_COUNTERS = {
+    # One per `ScreenCaptureTool`; four today, with room to grow.
+    APP_PREFIX + "Services/QuickTools/ScreenCaptureService.swift": (
+        re.compile(r"var next: UInt32 = (\d+)"),
+        15,
+    ),
+}
+_HOTKEY_ID = re.compile(r"QuickToolHotkey\(id:\s*([^)]*)\)")
+
+
+def hotkey_id_claims(path, text):
+    """Each run of ids a file takes, as (first, last, where), and what could
+    not be read. `last` is None for a run with no end."""
+    claims, problems = [], []
+    for number, line in enumerate(text.split("\n"), start=1):
+        if is_comment(line):
+            continue
+        for match in _HOTKEY_ID.finditer(line):
+            where = f"{path}:{number}"
+            argument = match.group(1).strip()
+            literal = re.fullmatch(r"(\d+)", argument)
+            run = re.fullmatch(r"(\d+)\s*\+\s*.+", argument)
+            if literal:
+                first = int(literal.group(1))
+                claims.append((first, first, where))
+            elif run:
+                first = int(run.group(1))
+                if first not in HOTKEY_ID_RUNS:
+                    problems.append(
+                        f"{where}: say in HOTKEY_ID_RUNS how many ids the run from {first} may take"
+                    )
+                    continue
+                length = HOTKEY_ID_RUNS[first]
+                claims.append((first, None if length is None else first + length - 1, where))
+            elif path in HOTKEY_ID_COUNTERS:
+                start, length = HOTKEY_ID_COUNTERS[path]
+                found = start.search(text)
+                if found is None:
+                    problems.append(f"{where}: the counter this id comes from is not set where expected")
+                    continue
+                first = int(found.group(1))
+                claims.append((first, first + length - 1, where))
+            else:
+                problems.append(
+                    f"{where}: the id `{argument}` is neither a number nor a run listed in this rule"
+                )
+    return claims, problems
+
+
+def hotkey_id_clashes(claims):
+    """Every pair of runs that share an id."""
+    clashes = []
+    ordered = sorted(claims, key=lambda claim: (claim[0], claim[2]))
+    for index, (first, last, where) in enumerate(ordered):
+        for other_first, other_last, other_where in ordered[index + 1 :]:
+            if last is not None and other_first > last:
+                break
+            shared = other_first if other_first >= first else first
+            clashes.append(f"{where} and {other_where} both take hotkey id {shared}")
+    return clashes
+
+
+def hotkey_ids_are_unique(repo):
+    """No two global hotkeys share an id. The Quick Prompt's and the first
+    capture tool's both had 25: pressing one could run the other, and
+    releasing one silenced both."""
+    problems = []
+    sample = "\n".join(
+        [
+            "let a = QuickToolHotkey(id: 7)",
+            "let b = QuickToolHotkey(id: 200 + index)",
+            "// QuickToolHotkey(id: 7) in prose",
+            "let c = QuickToolHotkey(id: 263)",
+            "let d = QuickToolHotkey(id: 7)",
+            "let e = QuickToolHotkey(id: 9000 + index)",
+            "let f = QuickToolHotkey(id: other)",
+        ]
+    )
+    sample_claims, sample_problems = hotkey_id_claims("sample", sample)
+    if (
+        hotkey_id_clashes(sample_claims)
+        != [
+            "sample:1 and sample:5 both take hotkey id 7",
+            "sample:2 and sample:4 both take hotkey id 263",
+        ]
+        or len(sample_problems) != 2
+    ):
+        problems.append(
+            "the scan finds a repeated id, an id inside a run, an unlisted run "
+            "and an id it cannot read, and not prose"
+        )
+    claims = []
+    for path in repo.app_sources():
+        found, unread = hotkey_id_claims(path, repo.source(path))
+        claims.extend(found)
+        problems.extend(unread)
+    if not claims:
+        problems.append("no QuickToolHotkey id was found: the scan no longer matches the code")
+    problems.extend(hotkey_id_clashes(claims))
+    return problems
+
+
 RULES = [
     swift_sources_read_back,
     views_read_files_once,
@@ -2110,6 +2227,7 @@ RULES = [
     package_types_built_elsewhere_have_package_inits,
     package_views_publish_their_body,
     later_layers_reach_only_package_statics,
+    hotkey_ids_are_unique,
 ]
 
 
