@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.36.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.35.1...vitruvian-v3.36.0) (2026-10-09)
+
+
+### Features
+
+* **nexus-agent:** the standalone app shows the shared chat, and its own chat is deleted ([#3009](https://github.com/VitruvianSoftware/vitruvian-core/issues/3009)) ([2c3d353](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c3d3537454140da38b2ff8cd02d60ef002fc17e))
+
 ## [3.35.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.35.0...vitruvian-v3.35.1) (2026-10-09)
 
 
