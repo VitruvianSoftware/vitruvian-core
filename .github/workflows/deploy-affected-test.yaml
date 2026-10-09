@@ -35,6 +35,8 @@ on:
       - "tools/ci/affected-targets_test.sh"
       - "tools/ci/rdeps-map-ref.sh"
       - "tools/ci/rdeps-map-ref_test.sh"
+      - "tools/ci/queue-fast-pass.sh"
+      - "tools/ci/queue-fast-pass_test.sh"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
       - "tools/ci/td-lib.sh"
@@ -46,6 +48,8 @@ on:
       - "tools/ci/affected-targets_test.sh"
       - "tools/ci/rdeps-map-ref.sh"
       - "tools/ci/rdeps-map-ref_test.sh"
+      - "tools/ci/queue-fast-pass.sh"
+      - "tools/ci/queue-fast-pass_test.sh"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
       - "tools/ci/td-lib.sh"
@@ -73,3 +77,6 @@ jobs:
       # Where the planner's dependency maps are kept (#2841).
       - name: Run the rdeps-map-ref script tests
         run: bash tools/ci/rdeps-map-ref_test.sh
+
+      - name: Run the queue-fast-pass script tests
+        run: bash tools/ci/queue-fast-pass_test.sh
