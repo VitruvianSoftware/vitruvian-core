@@ -215,11 +215,19 @@ public struct NexusAgentTurnNotice: Sendable {
     /// user, no error, a clean exit. Narrower than `!failed`, which also
     /// covers a stopped turn and a bad exit after a reply.
     public var endedCleanly: Bool
+    /// For a failed turn, what went wrong, in the words of the error
+    /// bubble the chat shows; nil when the turn has none, as when the user
+    /// stopped it before anything arrived. `text` never holds this: it is
+    /// the reply, which a failed turn may not have. An app that tells the
+    /// user why a turn failed reads it; one that does not can ignore it.
+    public var failureDetail: String?
 
-    public init(providerName: String, text: String, failed: Bool, endedCleanly: Bool) {
+    public init(providerName: String, text: String, failed: Bool, endedCleanly: Bool,
+                failureDetail: String? = nil) {
         self.providerName = providerName
         self.text = text
         self.failed = failed
         self.endedCleanly = endedCleanly
+        self.failureDetail = failureDetail
     }
 }

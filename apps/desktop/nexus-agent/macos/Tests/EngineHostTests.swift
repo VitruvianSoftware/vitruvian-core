@@ -69,6 +69,9 @@ final class EngineHostTests: XCTestCase {
         let state: String
         let ownsHome: Bool
         var files: [String: String] = [:]
+        /// Files that are there but cannot be read (no permission, or
+        /// caught in the middle of being rewritten).
+        var unreadable: Set<String> = []
         var agentRuns: [(path: String, arguments: [String], directory: String)] = []
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
@@ -89,6 +92,26 @@ final class EngineHostTests: XCTestCase {
         var sqliteFails = false
         /// When set, a statement that holds this text fails; the rest succeed.
         var sqliteFailsWhenSQLHas: String?
+        /// When true the environment also has the SQLite entry that does not
+        /// run on the main thread. It records and answers as the other does,
+        /// and counts its own runs so a test can tell which one was asked.
+        var hasOffMainSqlite = false
+        var offMainSqliteRuns = 0
+        /// While true a statement given to that entry does not finish until
+        /// `finishSqlite` is called, once for each statement, oldest first.
+        var holdsSqlite = false
+        private var heldSqlite: [CheckedContinuation<Void, Never>] = []
+
+        func finishSqlite() {
+            guard !heldSqlite.isEmpty else { return }
+            heldSqlite.removeFirst().resume()
+        }
+
+        private func sqliteAnswer(_ sql: String, _ readsRows: Bool) -> Data? {
+            if sqliteFails { return nil }
+            if let marker = sqliteFailsWhenSQLHas, sql.contains(marker) { return nil }
+            return Data((readsRows ? sqliteRows : "").utf8)
+        }
         /// Every file the engine asked to have removed, in order.
         var removed: [String] = []
         var listedHidden: [[String]] = []
@@ -154,7 +177,7 @@ final class EngineHostTests: XCTestCase {
                 stateDirectory: state,
                 isExecutable: { [unowned self] in executables.contains($0) },
                 fileExists: { [unowned self] in files[$0] != nil },
-                readFile: { [unowned self] in files[$0] },
+                readFile: { [unowned self] in unreadable.contains($0) ? nil : files[$0] },
                 readTail: { [unowned self] path, _ in files[path] },
                 writePrivateFile: { [unowned self] path, content in
                     files[path] = content
@@ -201,10 +224,20 @@ final class EngineHostTests: XCTestCase {
                 },
                 runSqlite: { [unowned self] database, sql, readsRows in
                     sqliteRuns.append((database, sql, readsRows))
-                    if sqliteFails { return nil }
-                    if let marker = sqliteFailsWhenSQLHas, sql.contains(marker) { return nil }
-                    return Data((readsRows ? sqliteRows : "").utf8)
-                })
+                    return sqliteAnswer(sql, readsRows)
+                },
+                runSqliteOffMain: hasOffMainSqlite ? offMainSqlite : nil)
+        }
+
+        private var offMainSqlite: @Sendable (String, String, Bool) async -> Data? {
+            { @MainActor [unowned self] database, sql, readsRows in
+                sqliteRuns.append((database, sql, readsRows))
+                offMainSqliteRuns += 1
+                if holdsSqlite {
+                    await withCheckedContinuation { heldSqlite.append($0) }
+                }
+                return sqliteAnswer(sql, readsRows)
+            }
         }
     }
 
@@ -248,6 +281,137 @@ final class EngineHostTests: XCTestCase {
         host.configuredBotDirectory = ""
         engine.load()
         XCTAssertEqual(engine.configuration.botToken, "9:standard-folder")
+    }
+
+    // MARK: - Settings that cannot be read
+
+    private static let goodEnv = """
+        TELEGRAM_BOT_TOKEN=7:good
+        ALLOWED_USER_IDS=11,22
+        AGY_APPROVAL_MODE=default
+        AGY_MODEL=m-good
+
+        """
+
+    /// The four settings a lost file must not take away: without them the
+    /// bot is open to anyone and every permission prompt is skipped.
+    private func assertHoldsGoodSettings(_ engine: NexusAgentEngine, _ when: String,
+                                         file: StaticString = #filePath, line: UInt = #line) {
+        let held = engine.configuration
+        XCTAssertEqual(held.approvalMode, .standard, "approval mode, \(when)", file: file, line: line)
+        XCTAssertEqual(held.botToken, "7:good", "token, \(when)", file: file, line: line)
+        XCTAssertEqual(held.allowedUserIDs, "11,22", "whitelist, \(when)", file: file, line: line)
+        XCTAssertEqual(held.model, "m-good", "model, \(when)", file: file, line: line)
+    }
+
+    /// A settings file that is there but cannot be read, or reads as
+    /// blank, says nothing: what was read before is kept. Taking the empty
+    /// configuration instead meant approval mode `yolo`, so the chat's next
+    /// agy turn skipped every permission prompt.
+    func testSettingsThatCannotBeReadKeepTheOnesAlreadyLoaded() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let env = rig.defaultBot + "/.env"
+        rig.files[env] = Self.goodEnv
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.load()
+        assertHoldsGoodSettings(engine, "read from a good file")
+
+        rig.unreadable = [env]
+        engine.load()
+        assertHoldsGoodSettings(engine, "the file is there but cannot be read")
+
+        rig.unreadable = []
+        rig.files[env] = ""
+        engine.load()
+        assertHoldsGoodSettings(engine, "the file is empty")
+        rig.files[env] = "\n  \n\r\n"
+        engine.load()
+        assertHoldsGoodSettings(engine, "the file is only blank lines")
+
+        // A good file again, with another value: followed.
+        rig.files[env] = Self.goodEnv.replacingOccurrences(of: "AGY_MODEL=m-good", with: "AGY_MODEL=m-new")
+        engine.load()
+        XCTAssertEqual(engine.configuration.model, "m-new")
+        XCTAssertEqual(engine.configuration.approvalMode, .standard)
+    }
+
+    /// No file at all is not a file that cannot be read: it is a first
+    /// launch, or the user removed it, and the bot with no file has no
+    /// settings either. The engine holds the empty configuration, as before.
+    func testAMissingSettingsFileStillMeansNoSettings() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let env = rig.defaultBot + "/.env"
+        rig.files[env] = Self.goodEnv
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.load()
+        assertHoldsGoodSettings(engine, "read from a good file")
+
+        rig.files[env] = nil
+        engine.load()
+        XCTAssertEqual(engine.configuration.botToken, "")
+        XCTAssertEqual(engine.configuration.allowedUserIDs, "")
+        XCTAssertEqual(engine.configuration.model, "")
+        XCTAssertEqual(engine.configuration.approvalMode, NexusAgentConfiguration().approvalMode)
+
+        // And once the settings are gone, an unreadable file has nothing
+        // to keep: the removed file's settings do not come back.
+        rig.files[env] = Self.goodEnv
+        rig.unreadable = [env]
+        engine.load()
+        XCTAssertEqual(engine.configuration.botToken, "")
+    }
+
+    /// The very first read has nothing to keep, so a file that cannot be
+    /// read, or is blank, gives the empty configuration, as before.
+    func testAFirstReadThatFailsHasNothingToKeep() {
+        for blank in [false, true] {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            let env = rig.defaultBot + "/.env"
+            rig.files[env] = blank ? "\n" : Self.goodEnv
+            if !blank { rig.unreadable = [env] }
+            let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+            engine.load()
+            XCTAssertEqual(engine.configuration.botToken, "", blank ? "blank" : "unreadable")
+            XCTAssertEqual(engine.configuration.approvalMode, NexusAgentConfiguration().approvalMode)
+        }
+    }
+
+    /// What is kept is what THIS file said. When the host points the engine
+    /// at another folder whose file cannot be read, the first folder's
+    /// token and whitelist are not carried over to it.
+    func testSettingsAreNotKeptAcrossFolders() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        rig.files[rig.defaultBot + "/.env"] = Self.goodEnv
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        engine.load()
+        assertHoldsGoodSettings(engine, "read from the standard folder")
+
+        host.configuredBotDirectory = "~/elsewhere"
+        rig.files[rig.home + "/elsewhere/.env"] = "TELEGRAM_BOT_TOKEN=1:other\n"
+        rig.unreadable = [rig.home + "/elsewhere/.env"]
+        engine.load()
+        XCTAssertEqual(engine.configuration.botToken, "")
+    }
+
+    /// What a save wrote counts as read: the file going unreadable
+    /// afterwards does not lose it.
+    func testSavedSettingsAreKeptWhenTheFileThenCannotBeRead() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let env = rig.defaultBot + "/.env"
+        rig.files[rig.defaultBot] = ""
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.load()
+        XCTAssertTrue(engine.save(NexusAgentConfiguration(botToken: "7:good", allowedUserIDs: "11,22",
+                                                          approvalMode: .standard, model: "m-good")))
+        rig.unreadable = [env]
+        engine.load()
+        assertHoldsGoodSettings(engine, "saved, then the file cannot be read")
     }
 
     func testPlanModeIsTheHosts() {
@@ -759,7 +923,8 @@ final class EngineHostTests: XCTestCase {
     }
 
     /// Where a program named without a folder is looked for, as the
-    /// standalone app's chat looks: the usual install folders first, then
+    /// standalone app's own chat looked (removed in step 3c; last shipped in
+    /// nexus-agent 1.19.0): the usual install folders first, then
     /// the folders on PATH, the first executable one winning.
     func testAProgramIsFoundWhereTheStandaloneLooks() {
         func find(_ name: String, path: String, executables: Set<String>, files: Set<String> = []) -> String? {
@@ -1012,6 +1177,12 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(host.finished.last?.notice.failed, true)
         XCTAssertEqual(host.finished.last?.notice.endedCleanly, false)
         XCTAssertEqual(host.finished.last?.notice.text, "")
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Error: model 'm' not found",
+                       "the notice carries the words of the error bubble")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Agent — Failed",
+                                                  notificationBody: "Error: model 'm' not found"))
 
         // It said nothing at all: the exit status is the message.
         session.send("two", configuration: configuration, agentPath: nil)
@@ -1020,6 +1191,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.isError, true)
         XCTAssertEqual(session.lastFailedPrompt, "two")
         XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Process exited with code 3")
 
         // It succeeded with nothing to say: the standalone calls that an error too.
         session.send("three", configuration: configuration, agentPath: nil)
@@ -1030,6 +1202,8 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.lastFailedPrompt, "three")
         XCTAssertEqual(host.finished.last?.notice.failed, true)
         XCTAssertEqual(host.finished.last?.notice.endedCleanly, false)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "No output from provider")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice)?.notificationBody, "No output from provider")
 
         // It answered and THEN failed: the standalone shows the answer and no error.
         session.send("four", configuration: configuration, agentPath: nil)
@@ -1041,6 +1215,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertNil(session.lastFailedPrompt)
         XCTAssertEqual(host.finished.last?.notice.failed, false)
         XCTAssertEqual(host.finished.last?.notice.endedCleanly, true)
+        XCTAssertNil(host.finished.last?.notice.failureDetail, "no error bubble, so no words for one")
         XCTAssertEqual(host.finished.count, 4, "one report per turn")
         XCTAssertEqual(session.messages.count, 8, "one question and one answer per turn")
     }
@@ -1062,6 +1237,10 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.lastFailedPrompt, "hi")
         XCTAssertEqual(host.finished.count, 1)
         XCTAssertEqual(host.finished.first?.notice.failed, true)
+        XCTAssertEqual(host.finished.first?.notice.failureDetail, CocoaError(.fileNoSuchFile).localizedDescription,
+                       "and the notice carries them")
+        XCTAssertEqual(announcedOutOfSight(host.finished.first?.notice)?.notificationBody,
+                       CocoaError(.fileNoSuchFile).localizedDescription)
     }
 
     func testStoppingAnOwnCommandEndsIt() {
@@ -1081,6 +1260,10 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.isError, false)
         XCTAssertEqual(host.finished.count, 1)
         XCTAssertEqual(host.finished.first?.notice.endedCleanly, false)
+        // The user stopped it: nothing failed that has words, and a user
+        // who cannot see the chat is not told "Failed".
+        XCTAssertNil(host.finished.first?.notice.failureDetail)
+        XCTAssertEqual(announcedOutOfSight(host.finished.first?.notice), NexusAgentTurnAnnouncement(playsSound: false))
 
         // What had arrived before the stop stays.
         session.send("again", configuration: configuration, agentPath: nil)
@@ -1089,6 +1272,9 @@ final class EngineHostTests: XCTestCase {
         rig.commandExit?(15)
         XCTAssertEqual(session.messages.last?.text, "so far")
         XCTAssertEqual(host.finished.count, 2)
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice),
+                       NexusAgentTurnAnnouncement(playsSound: false, notificationTitle: "Agent — Done",
+                                                  notificationBody: "so far"))
 
         // A turn replaced by a new chat is not heard from again.
         session.send("third", configuration: configuration, agentPath: nil)
@@ -1486,7 +1672,13 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.mode, .compact)
     }
 
-    func testClearAllStartsANewChatOnlyIfTheOpenConversationWasAmongThem() {
+    /// Clears a folder's conversations and waits until that is over.
+    private func clearAll(_ session: NexusAgentQuickPromptSession,
+                          in configuration: NexusAgentConfiguration) async -> Int {
+        await session.deleteAll(in: configuration).value
+    }
+
+    func testClearAllStartsANewChatOnlyIfTheOpenConversationWasAmongThem() async {
         let rig = rigWithIndex()
         defer { rig.tearDown() }
         rig.sqliteRows = """
@@ -1497,26 +1689,29 @@ final class EngineHostTests: XCTestCase {
 
         // Open, but in no list: untouched.
         session.resume(conversation("elsewhere"))
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 2)
+        let others = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(others, 2)
         XCTAssertEqual(session.conversationID, "elsewhere")
         XCTAssertFalse(session.messages.isEmpty)
 
         // Open and deleted with the rest.
         session.resume(conversation("open-1"))
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 2)
+        let withTheOpenOne = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(withTheOpenOne, 2)
         XCTAssertNil(session.conversationID)
         XCTAssertTrue(session.messages.isEmpty)
 
         // Open and in the list, but nothing could be deleted: it stays.
         session.resume(conversation("open-1"))
         rig.sqliteFails = true
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 0)
+        let none = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(none, 0)
         XCTAssertEqual(session.conversationID, "open-1")
         XCTAssertFalse(session.messages.isEmpty)
         rig.sqliteFails = false
     }
 
-    func testOnlyAgyConversationsCanBeDeleted() {
+    func testOnlyAgyConversationsCanBeDeleted() async {
         let rig = rigWithIndex(conversations: ["abc-1"])
         defer { rig.tearDown() }
         let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
@@ -1525,19 +1720,21 @@ final class EngineHostTests: XCTestCase {
         for provider in [NexusAgentCLIProvider.claude, .ollama, own] {
             let configuration = NexusAgentConfiguration(activeProvider: provider)
             XCTAssertFalse(session.delete(conversation("abc-1"), configuration: configuration), provider.name)
-            XCTAssertEqual(session.deleteAll(in: configuration), 0, provider.name)
+            let cleared = await clearAll(session, in: configuration)
+            XCTAssertEqual(cleared, 0, provider.name)
         }
         XCTAssertTrue(rig.sqliteRuns.isEmpty, "nothing was asked of the index")
         XCTAssertTrue(rig.removed.isEmpty, "and no file was removed")
     }
 
-    func testNothingIsRemovedWhenTheIndexCannotBeChanged() {
+    func testNothingIsRemovedWhenTheIndexCannotBeChanged() async {
         // No index at all.
         let bare = Rig()
         defer { bare.tearDown() }
         let onBare = NexusAgentQuickPromptSession(environment: bare.environment, host: RecordingHost())
         XCTAssertFalse(onBare.delete(conversation("abc-1"), configuration: NexusAgentConfiguration()))
-        XCTAssertEqual(onBare.deleteAll(in: NexusAgentConfiguration()), 0)
+        let cleared = await clearAll(onBare, in: NexusAgentConfiguration())
+        XCTAssertEqual(cleared, 0)
         XCTAssertTrue(bare.sqliteRuns.isEmpty, "SQLite is not run on a file that is not there: it would create one")
         XCTAssertTrue(bare.removed.isEmpty)
 
@@ -1576,7 +1773,7 @@ final class EngineHostTests: XCTestCase {
         + "WHERE nesting_depth = 0 AND killed = 0\n"
         + "ORDER BY last_modified_time DESC LIMIT 200;"
 
-    func testClearAllDeletesTheFoldersOwnConversationsOneByOne() {
+    func testClearAllDeletesTheFoldersOwnConversationsOneByOne() async {
         let rig = rigWithIndex()
         defer { rig.tearDown() }
         rig.files[rig.home + "/work"] = ""
@@ -1596,7 +1793,7 @@ final class EngineHostTests: XCTestCase {
         let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
         let listedBefore = rig.listedHidden.count
 
-        let count = session.deleteAll(in: NexusAgentConfiguration(workingDirectory: "~/work/"))
+        let count = await clearAll(session, in: NexusAgentConfiguration(workingDirectory: "~/work/"))
 
         XCTAssertEqual(rig.sqliteRuns.first?.sql, clearAllQuery, "the standalone's own query")
         XCTAssertEqual(rig.sqliteRuns.first?.readsRows, true)
@@ -1612,7 +1809,7 @@ final class EngineHostTests: XCTestCase {
 
     /// With the index locked every try waits out the busy timeout on the
     /// main thread, so the first delete that fails ends the run.
-    func testClearAllStopsAtTheFirstDeleteThatFails() {
+    func testClearAllStopsAtTheFirstDeleteThatFails() async {
         let rig = rigWithIndex(conversations: ["c-1", "c-2", "c-3", "c-4"])
         defer { rig.tearDown() }
         rig.sqliteRows = """
@@ -1623,7 +1820,7 @@ final class EngineHostTests: XCTestCase {
         let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
         let data = rig.home + "/.gemini/antigravity/conversations/"
 
-        let count = session.deleteAll(in: NexusAgentConfiguration())
+        let count = await clearAll(session, in: NexusAgentConfiguration())
 
         XCTAssertEqual(count, 1, "only the one before the failure is counted")
         XCTAssertEqual(rig.sqliteRuns.dropFirst().map(\.sql), [
@@ -1636,7 +1833,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertNotNil(rig.files[data + "c-3.db"])
     }
 
-    func testClearAllWithNoFolderSetIsTheHomeFolders() {
+    func testClearAllWithNoFolderSetIsTheHomeFolders() async {
         let rig = rigWithIndex()
         defer { rig.tearDown() }
         rig.sqliteRows = """
@@ -1647,15 +1844,204 @@ final class EngineHostTests: XCTestCase {
 
         // The drawer lists every folder's conversations when none is set;
         // "all" still means one folder's, as it does in the standalone.
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 1)
+        let atHome = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(atHome, 1)
         XCTAssertEqual(rig.sqliteRuns.last?.sql,
                        "DELETE FROM conversation_summaries WHERE conversation_id = 'home-1';")
 
         // A folder that is set but gone is still that folder, not home.
         rig.sqliteRuns = []
-        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration(workingDirectory: "/Users/rig/work")), 1)
+        let atWork = await clearAll(session, in: NexusAgentConfiguration(workingDirectory: "/Users/rig/work"))
+        XCTAssertEqual(atWork, 1)
         XCTAssertEqual(rig.sqliteRuns.last?.sql,
                        "DELETE FROM conversation_summaries WHERE conversation_id = 'work-1';")
+    }
+
+    // MARK: Clear All does not hold up the main thread
+
+    private func fourConversations() -> Rig {
+        let rig = rigWithIndex(conversations: ["c-1", "c-2", "c-3", "c-4"])
+        rig.sqliteRows = """
+        [{"conversation_id":"c-1","workspace_uris":"[]"},{"conversation_id":"c-2","workspace_uris":"[]"},
+         {"conversation_id":"c-3","workspace_uris":"[]"},{"conversation_id":"c-4","workspace_uris":"[]"}]
+        """
+        rig.hasOffMainSqlite = true
+        return rig
+    }
+
+    private func deleteOf(_ id: String) -> String {
+        "DELETE FROM conversation_summaries WHERE conversation_id = '\(id)';"
+    }
+
+    /// Clear All can be 200 runs of `sqlite3`, each of which may wait two
+    /// seconds on a locked index. The call that starts it comes back at
+    /// once, with nothing deleted yet, and the session says it is busy.
+    func testClearAllComesBackBeforeAnythingIsDeleted() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.holdsSqlite = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let listedBefore = rig.listedHidden.count
+        let data = rig.home + "/.gemini/antigravity/conversations/"
+        XCTAssertFalse(session.isClearingSessions)
+
+        let clearing = session.deleteAll(in: NexusAgentConfiguration())
+
+        // Back with the caller, on the main actor, and SQLite has not even been asked.
+        XCTAssertTrue(session.isClearingSessions, "the session says a clear is under way")
+        XCTAssertTrue(rig.sqliteRuns.isEmpty, "the call came back before any statement was run")
+        XCTAssertTrue(rig.removed.isEmpty)
+
+        // The query is asked for, and held: the main actor is free meanwhile
+        // (this test is running on it), and still nothing is deleted.
+        await rig.wait { rig.sqliteRuns.count == 1 }
+        XCTAssertEqual(rig.sqliteRuns.map(\.sql), [clearAllQuery])
+        XCTAssertTrue(rig.removed.isEmpty)
+        XCTAssertTrue(session.isClearingSessions)
+
+        // The deletes come one at a time, in the list's order, each one's
+        // files removed only once its row is out.
+        for (index, id) in ["c-1", "c-2", "c-3", "c-4"].enumerated() {
+            rig.finishSqlite()
+            await rig.wait { rig.sqliteRuns.count == index + 2 }
+            XCTAssertEqual(rig.sqliteRuns.last?.sql, deleteOf(id))
+            XCTAssertEqual(rig.removed.count, index * 3, "\(id) is still there while its delete is running")
+            XCTAssertTrue(session.isClearingSessions)
+            XCTAssertEqual(rig.listedHidden.count, listedBefore, "the list is not read again until the end")
+        }
+        rig.finishSqlite()
+        let count = await clearing.value
+
+        XCTAssertEqual(count, 4)
+        XCTAssertEqual(rig.sqliteRuns.count, 5, "the query and four deletes, and no more")
+        XCTAssertEqual(rig.offMainSqliteRuns, 5, "every one through the entry that is off the main thread")
+        XCTAssertEqual(rig.removed.count, 12)
+        XCTAssertEqual(Array(rig.removed.prefix(3)), [data + "c-1.db", data + "c-1.db-wal", data + "c-1.db-shm"])
+        XCTAssertFalse(session.isClearingSessions, "and the session is no longer busy")
+        XCTAssertEqual(rig.listedHidden.count, listedBefore + 1, "the drawer's list is read again, once")
+    }
+
+    func testASecondClearAllWhileOneIsRunningDoesNothing() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.holdsSqlite = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let listedBefore = rig.listedHidden.count
+
+        let first = session.deleteAll(in: NexusAgentConfiguration())
+        await rig.wait { rig.sqliteRuns.count == 1 }
+        let second = session.deleteAll(in: NexusAgentConfiguration())
+        let secondCount = await second.value
+        await rig.settle()
+
+        XCTAssertEqual(secondCount, 0, "the second one deleted nothing")
+        XCTAssertEqual(rig.sqliteRuns.count, 1, "and asked nothing of the index")
+        XCTAssertTrue(session.isClearingSessions, "the first is still under way")
+        XCTAssertEqual(rig.listedHidden.count, listedBefore)
+
+        rig.holdsSqlite = false
+        rig.finishSqlite()
+        let firstCount = await first.value
+        XCTAssertEqual(firstCount, 4)
+        XCTAssertEqual(rig.sqliteRuns.count, 5, "the first ran once through, undisturbed")
+        XCTAssertFalse(session.isClearingSessions)
+
+        // Once it is over, Clear All can be asked for again.
+        let third = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(third, 4)
+        XCTAssertEqual(rig.listedHidden.count, listedBefore + 2)
+    }
+
+    func testClearAllOffTheMainThreadStillStopsAtTheFirstFailure() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.sqliteFailsWhenSQLHas = "'c-2'"
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let data = rig.home + "/.gemini/antigravity/conversations/"
+
+        let count = await clearAll(session, in: NexusAgentConfiguration())
+
+        XCTAssertEqual(count, 1, "only the one before the failure is counted")
+        XCTAssertEqual(rig.sqliteRuns.dropFirst().map(\.sql), [deleteOf("c-1"), deleteOf("c-2")],
+                       "no delete was tried after the one that failed")
+        XCTAssertEqual(rig.offMainSqliteRuns, 3)
+        XCTAssertEqual(rig.removed, [data + "c-1.db", data + "c-1.db-wal", data + "c-1.db-shm"])
+        XCTAssertNotNil(rig.files[data + "c-2.db"])
+        XCTAssertFalse(session.isClearingSessions, "a clear that failed is over too")
+
+        // A query that fails deletes nothing, and is over as well.
+        rig.sqliteFailsWhenSQLHas = nil
+        rig.sqliteFails = true
+        let nothing = await clearAll(session, in: NexusAgentConfiguration())
+        XCTAssertEqual(nothing, 0)
+        XCTAssertFalse(session.isClearingSessions)
+    }
+
+    func testClearAllOffTheMainThreadStartsANewChatIfTheOpenConversationWent() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.holdsSqlite = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        defer { session.stopTranscriptFollower() }
+        session.resume(conversation("c-3"))
+
+        let clearing = session.deleteAll(in: NexusAgentConfiguration())
+        await rig.wait { rig.sqliteRuns.count == 1 }
+        XCTAssertEqual(session.conversationID, "c-3", "the open chat is left alone while the clear runs")
+        XCTAssertFalse(session.messages.isEmpty)
+
+        rig.holdsSqlite = false
+        rig.finishSqlite()
+        let count = await clearing.value
+
+        XCTAssertEqual(count, 4)
+        XCTAssertNil(session.conversationID, "the next prompt cannot resume a conversation that is gone")
+        XCTAssertTrue(session.messages.isEmpty)
+        XCTAssertEqual(session.mode, .compact)
+    }
+
+    /// An environment without the off-main entry (every test double written
+    /// before it) still clears, through the entry it has.
+    func testClearAllUsesThePlainEntryWhenThereIsNoOther() async {
+        let rig = fourConversations()
+        defer { rig.tearDown() }
+        rig.hasOffMainSqlite = false
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        let clearing = session.deleteAll(in: NexusAgentConfiguration())
+        XCTAssertTrue(rig.sqliteRuns.isEmpty, "even so, the call comes back first")
+        let count = await clearing.value
+
+        XCTAssertEqual(count, 4)
+        XCTAssertEqual(rig.sqliteRuns.count, 5)
+        XCTAssertEqual(rig.offMainSqliteRuns, 0)
+    }
+
+    /// An environment without the off-main entry clears on the main thread,
+    /// one two-second wait after another. The one both apps run with must
+    /// have it.
+    func testTheRealEnvironmentHasTheOffMainEntry() {
+        XCTAssertNotNil(NexusAgentEngine.Environment.live.runSqliteOffMain,
+                        "without it Clear All freezes the app while it runs")
+    }
+
+    /// The real entry, on a real index: it answers as the plain one does,
+    /// and from a thread that is not the main one.
+    func testTheRealOffMainEntryReadsARealIndex() async throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let index = try realIndex(rig)
+        let entry = try XCTUnwrap(NexusAgentEngine.Environment.live.runSqliteOffMain,
+                                  "the real environment has the off-main entry")
+
+        let rows = await entry(index.database, "SELECT conversation_id FROM conversation_summaries;", true)
+
+        let text = String(data: try XCTUnwrap(rows), encoding: .utf8) ?? ""
+        XCTAssertTrue(text.contains("busy-1"), text)
+        let missing = await entry(rig.home + "/no-such-folder/x.db", "SELECT 1;", true)
+        XCTAssertNil(missing, "a statement that fails gives nil, as the plain entry does")
+        let onMain = await NexusAgentEngine.offMainThread { Thread.isMainThread }
+        XCTAssertFalse(onMain, "the work it is given does not run on the main thread")
     }
 
     /// Runs SQL against a real database file, for the test below.
@@ -1675,7 +2061,7 @@ final class EngineHostTests: XCTestCase {
     /// The whole road, for real: the engine's own SQLite and file calls
     /// against a small index in a throwaway home folder. Nothing outside
     /// that folder is named anywhere in it.
-    func testDeletingAgainstARealIndexInAThrowawayHome() throws {
+    func testDeletingAgainstARealIndexInAThrowawayHome() async throws {
         let rig = Rig(realHome: true)
         defer { rig.tearDown() }
         let files = FileManager.default
@@ -1747,7 +2133,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(remaining().count, rows.count - 1)
 
         // All of one folder's.
-        let count = session.deleteAll(in: NexusAgentConfiguration(workingDirectory: work))
+        let count = await clearAll(session, in: NexusAgentConfiguration(workingDirectory: work))
         XCTAssertEqual(count, 4)
         XCTAssertEqual(remaining(), ["aborted", "archived", "nested", "other-folder"],
                        "gone: the folder's top-level ones (one with a quote in its id) and the one with no folder. "
@@ -1996,6 +2382,19 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(host.approvals.first?.endedCleanly, false)
         XCTAssertTrue(host.finished.isEmpty, "the turn has not finished")
 
+        // What the standalone app makes of that notice: a notification when
+        // nobody can see the Allow button, nothing more when they can.
+        if let notice = host.approvals.first {
+            XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(notice, isChatVisible: false,
+                                                                    strings: host.strings),
+                           NexusAgentTurnAnnouncement(playsSound: false,
+                                                      notificationTitle: "Antigravity CLI — Approval Required",
+                                                      notificationBody: "Bash: ls -la"))
+            XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(notice, isChatVisible: true,
+                                                                    strings: host.strings),
+                           NexusAgentTurnAnnouncement(playsSound: false))
+        }
+
         rig.agentExit?(0)
         engine.session.stopTranscriptFollower()
     }
@@ -2027,6 +2426,209 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(host.finished.first?.isChatVisible, true,
                        "with no engine there is no window to be away from")
         XCTAssertEqual(host.finished.first?.notice.providerName, host.strings.fallbackProviderName)
+    }
+
+    // MARK: A failed turn says why
+
+    /// What the standalone app does with a notice when its chat is out of sight.
+    private func announcedOutOfSight(_ notice: NexusAgentTurnNotice?) -> NexusAgentTurnAnnouncement? {
+        notice.map { NexusAgentTurnAnnouncement.finished($0, isChatVisible: false, strings: NexusAgentHostStrings()) }
+    }
+
+    func testAnAgentThatExitsBadlyReportsTheWordsOfItsErrorBubble() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        // Not stream JSON: agy's own complaint, which the bubble shows.
+        rig.agentOutput?(Data("agy: quota exceeded\n".utf8))
+        rig.agentExit?(1)
+        engine.session.stopTranscriptFollower()
+
+        let bubble = engine.session.messages.last
+        XCTAssertEqual(bubble?.isError, true)
+        XCTAssertEqual(bubble?.text, "The agent stopped with an error.\nagy: quota exceeded")
+        XCTAssertEqual(host.finished.count, 1)
+        let notice = host.finished.first?.notice
+        XCTAssertEqual(notice?.failed, true)
+        XCTAssertEqual(notice?.text, "", "the reply is still the reply: there was none")
+        XCTAssertEqual(notice?.failureDetail, bubble?.text, "the notice carries what the bubble says")
+        XCTAssertEqual(announcedOutOfSight(notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Failed",
+                                                  notificationBody: "The agent stopped with an error.\nagy: quota exceeded"))
+    }
+
+    func testAnErrorTheAgentReportsItselfIsTheFailuresWords() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        // With no reply: the error has a bubble of its own.
+        engine.session.send("one", configuration: engine.configuration, agentPath: "/fake/agy")
+        rig.agentOutput?(Data((#"{"event":"result","result":{"status":"error","error":"Quota exceeded"}}"# + "\n").utf8))
+        rig.agentExit?(1)
+        XCTAssertEqual(engine.session.messages.last?.text, "Quota exceeded")
+        XCTAssertEqual(engine.session.messages.last?.isError, true)
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Quota exceeded")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice)?.notificationBody, "Quota exceeded")
+
+        // After part of a reply: the notice keeps the reply as its text, and
+        // the notification still says what went wrong, not the half reply.
+        engine.session.send("two", configuration: engine.configuration, agentPath: "/fake/agy")
+        rig.agentOutput?(Data((#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Half a reply"}}"# + "\n").utf8))
+        rig.agentOutput?(Data((#"{"event":"result","result":{"status":"error","error":"Lost the connection"}}"# + "\n").utf8))
+        rig.agentExit?(1)
+        engine.session.stopTranscriptFollower()
+        XCTAssertEqual(host.finished.last?.notice.text, "Half a reply")
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Lost the connection")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Failed",
+                                                  notificationBody: "Lost the connection"))
+        XCTAssertEqual(host.finished.count, 2)
+    }
+
+    func testATurnThatEndedWellCarriesNoFailureWords() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        finishOneTurn(rig, session: engine.session, configuration: engine.configuration,
+                      reply: "All done.", status: 0)
+        XCTAssertNil(host.finished.first?.notice.failureDetail)
+    }
+
+    // MARK: A turn the user stopped is not a failure to announce
+
+    func testStoppingATurnBeforeAnythingArrivedAnnouncesNothing() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        engine.session.stop()
+        // The signal ends it; the exit arrives as it does from a real one.
+        rig.agentExit?(15)
+
+        XCTAssertEqual(engine.session.messages.last?.text, host.strings.replyStopped)
+        XCTAssertEqual(host.finished.count, 1)
+        let notice = host.finished.first?.notice
+        XCTAssertEqual(notice?.failed, true, "what the session sends is as it was: a bad exit with no reply")
+        XCTAssertEqual(notice?.text, "")
+        XCTAssertNil(notice?.failureDetail, "nothing went wrong that has words")
+        XCTAssertEqual(host.finished.first?.isChatVisible, false)
+        XCTAssertEqual(announcedOutOfSight(notice), NexusAgentTurnAnnouncement(playsSound: false),
+                       "the user stopped it: no \"Failed\" notification")
+    }
+
+    func testStoppingATurnAfterSomeOfItArrivedIsDoneWithItsFirstLine() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        rig.agentOutput?(Data((#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"So far so good\nand more"}}"# + "\n").utf8))
+        engine.session.stop()
+        rig.agentExit?(15)
+
+        XCTAssertEqual(host.finished.count, 1)
+        let notice = host.finished.first?.notice
+        XCTAssertEqual(notice?.failed, false)
+        XCTAssertEqual(notice?.endedCleanly, false)
+        XCTAssertNil(notice?.failureDetail)
+        XCTAssertEqual(announcedOutOfSight(notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Done",
+                                                  notificationBody: "So far so good"))
+    }
+
+    // MARK: Plan mode is taken when the prompt is sent
+
+    /// Ollama with no model set waits for `ollama list` before it starts.
+    /// What the user switches while it waits is for the next turn.
+    func testPlanModeSwitchedOffWhileTheModelIsLookedUpStillRunsThatTurnInPlanMode() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        rig.holdsProgram = true
+        let host = RecordingHost()
+        host.planMode = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        XCTAssertTrue(session.planMode)
+
+        // Yolo in the settings: without plan mode this turn would skip every prompt.
+        session.send("tidy up", configuration: NexusAgentConfiguration(approvalMode: .yolo, activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        XCTAssertTrue(rig.agentRuns.isEmpty, "still waiting for the model")
+
+        session.planMode = false
+        rig.finishProgram()
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        let started = rig.agentRuns.first?.arguments ?? []
+        XCTAssertEqual(rig.agentRuns.count, 1)
+        XCTAssertEqual(PermissionArgumentsTests.permissionArguments(in: started), ["--permission-mode", "plan"],
+                       "the turn was sent in plan mode, and runs in it")
+        XCTAssertFalse(PermissionArgumentsTests.skipsPermissionPrompts(started))
+        XCTAssertTrue(started.contains(NexusAgentSupport.planModePrompt("tidy up")),
+                      "with plan mode's words in front of the prompt, as Ollama gets them")
+        rig.agentExit?(0)
+
+        // The next turn is sent with plan mode off, and is not in it.
+        session.send("again", configuration: NexusAgentConfiguration(approvalMode: .yolo, model: "m", activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        XCTAssertTrue(PermissionArgumentsTests.skipsPermissionPrompts(rig.agentRuns.last?.arguments ?? []))
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testPlanModeSwitchedOnWhileTheModelIsLookedUpDoesNotReachThatTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.holdsProgram = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        session.send("tidy up", configuration: NexusAgentConfiguration(approvalMode: .acceptEdits, activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.planMode = true
+        rig.finishProgram()
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        let started = rig.agentRuns.first?.arguments ?? []
+        XCTAssertEqual(PermissionArgumentsTests.permissionArguments(in: started), ["--permission-mode", "acceptEdits"])
+        XCTAssertTrue(started.contains("tidy up"), "the prompt as it was sent")
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testWorktreeModeSwitchedWhileTheModelIsLookedUpIsForTheNextTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.holdsProgram = true
+        let host = RecordingHost()
+        host.worktreeMode = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("tidy up", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.worktreeMode = false
+        rig.finishProgram()
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        XCTAssertTrue((rig.agentRuns.first?.arguments ?? []).contains("-w"), "sent in a worktree, run in one")
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
     }
 
     // MARK: - Text

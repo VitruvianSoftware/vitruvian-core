@@ -56,6 +56,10 @@ package struct NexusAgentQuickPromptView: View {
         strings.planModeOff = own.planModeOff
         strings.sessionsFilter = own.sessionsFilter
         strings.noSessions = own.noSessions
+        // This app has one line for an empty list, filtered or not, and
+        // keeps it: its words did not change when the shared view learned
+        // to tell the two apart.
+        strings.noMatchingSessions = own.noSessions
         strings.untitledSession = own.untitledSession
         strings.pinWindow = own.pinWindow
         strings.unpinWindow = own.unpinWindow
@@ -66,6 +70,10 @@ package struct NexusAgentQuickPromptView: View {
         strings.worktreeModeOff = own.worktreeModeOff
         strings.worktreeContext = own.worktreeContext
         strings.planContext = own.planContext
+        // Two lines that name this app's own shortcuts, so they are said
+        // here and not in the shared view's defaults.
+        strings.environmentHint = "Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry."
+        strings.newChatShortcut = " (⌘N)"
         return strings
     }
 
@@ -83,6 +91,9 @@ package struct NexusAgentQuickPromptView: View {
             showWindow: { service.showQuickPrompt() },
             dockToNotch: { service.dockToNotch() },
             dockToNotchHelp: "Dock into MacBook Notch (⌥⌘G)",
-            errorScheme: "vitruvian-error")
+            errorScheme: "vitruvian-error",
+            // This app's drawer has never had Clear All; a conversation is
+            // deleted from its row's menu, one at a time.
+            offersClearAll: false)
     }
 }

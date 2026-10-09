@@ -38,6 +38,18 @@ public struct NexusAgentChatChrome {
     public var dockToNotchHelp: String
     /// The URL scheme the diagram web view uses to report an error.
     public var errorScheme: String
+    /// Whether the sessions drawer has the button that deletes every
+    /// conversation of the working folder. The standalone app's own chat,
+    /// removed in step 3c (last shipped in nexus-agent 1.19.0), always had
+    /// it, and the standalone app still offers it; an app whose drawer
+    /// never did passes false.
+    public var offersClearAll: Bool
+    /// What the top field says while the session list is open under it.
+    /// What is typed there is a prompt, and Return sends it; the list has
+    /// a filter field of its own. False, the default, shows the filter's
+    /// words there all the same, which is what Vitruvian has always shown.
+    /// True keeps the prompt's own placeholder.
+    public var keepsPromptPlaceholderOverSessions: Bool
 
     public init(backdrop: AnyView = AnyView(Color.clear),
                 isEmbedded: Bool = false,
@@ -45,7 +57,9 @@ public struct NexusAgentChatChrome {
                 showWindow: @escaping () -> Void = {},
                 dockToNotch: (() -> Void)? = nil,
                 dockToNotchHelp: String = "",
-                errorScheme: String = "nexus-agent-error") {
+                errorScheme: String = "nexus-agent-error",
+                offersClearAll: Bool = true,
+                keepsPromptPlaceholderOverSessions: Bool = false) {
         self.backdrop = backdrop
         self.isEmbedded = isEmbedded
         self.isPinned = isPinned
@@ -53,5 +67,7 @@ public struct NexusAgentChatChrome {
         self.dockToNotch = dockToNotch
         self.dockToNotchHelp = dockToNotchHelp
         self.errorScheme = errorScheme
+        self.offersClearAll = offersClearAll
+        self.keepsPromptPlaceholderOverSessions = keepsPromptPlaceholderOverSessions
     }
 }

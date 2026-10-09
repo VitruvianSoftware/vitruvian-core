@@ -25,9 +25,11 @@ import NexusAgentCore
 /// A provider can be a command the user wrote, with `{prompt}` and `{model}`
 /// standing for the prompt and the model. These are the rules for turning
 /// one into a program and its arguments, for choosing how a provider is run,
-/// and for reading what a command printed. The standalone app's chat
-/// (`QuickPromptWindow.swift`) is the specification; where the shared code
-/// departs from it, the test says so.
+/// and for reading what a command printed. The standalone app's own chat,
+/// removed in step 3c (`QuickPromptWindow.swift`; last shipped in
+/// nexus-agent 1.19.0), was the specification, and "the standalone" below means
+/// that chat as it was; where the shared code departs from it, the test
+/// says so.
 final class ProviderCommandTests: XCTestCase {
 
     private func command(_ template: String, prompt: String = "hello", model: String = "m1")
@@ -174,8 +176,9 @@ final class ProviderCommandTests: XCTestCase {
     }
 
     /// For the templates the app ships and a plain one-word prompt, the
-    /// arguments are the ones the standalone's parser gives. Worked out by
-    /// hand from `parseProviderTemplate`.
+    /// arguments are the ones the standalone's parser gave. Worked out by
+    /// hand from `parseProviderTemplate` in the removed
+    /// `QuickPromptWindow.swift` (last shipped in nexus-agent 1.19.0).
     func testOrdinaryTemplatesGiveWhatTheStandaloneGives() {
         assertCommand(NexusAgentCLIProvider.antigravity.commandTemplate, runs: "agy",
                       ["-p", "hello", "--output-format", "stream-json", "--dangerously-skip-permissions"])

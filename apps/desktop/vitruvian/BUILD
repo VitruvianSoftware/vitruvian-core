@@ -335,6 +335,7 @@ swift_binary(
         ":VitruvianDesign",
         ":VitruvianServices",
         ":VitruvianUI",
+        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
     ],
 )
 

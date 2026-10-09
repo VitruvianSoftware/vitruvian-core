@@ -18,19 +18,36 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import AppKit
 import Foundation
 import NexusAgentCore
 
 /// What the shared engine asks this app, answered from the settings the app
 /// already saves, so nothing moves for an existing user.
+///
+/// It is the one writer of the three provider keys (`builtInProviders_v3`,
+/// `customProviders`, `activeProviderId`). Settings reads and saves its
+/// providers through this host and the engine, so the chat and Settings
+/// cannot overwrite each other's choice.
 @MainActor
 final class StandaloneHost: NexusAgentHost {
+    /// The conversation the chat has open, for a notification's click to
+    /// come back to. Set by whoever builds the engine; the host itself
+    /// knows no engine.
+    var openConversation: (() -> (id: String?, title: String?))?
+
+    /// Whether the chat is on screen, for a turn that stops to ask for
+    /// approval: the engine says so when a turn ends, but not then. Set by
+    /// whoever builds the engine, to the engine's own answer; until it is
+    /// set no window shows the engine's turns, and the answer is no.
+    var chatIsVisible: (() -> Bool)?
+
     /// This app has no setting for the bot folder: it is always the standard one.
     var configuredBotDirectory: String { "" }
 
     var startsBotAtLaunch: Bool { UserDefaults.standard.bool(forKey: "autoStart") }
 
-    /// The same key the chat window keeps plan mode under.
+    /// The key this app's chat has always kept plan mode under.
     var planMode: Bool {
         get { UserDefaults.standard.bool(forKey: "planMode") }
         set { UserDefaults.standard.set(newValue, forKey: "planMode") }
@@ -54,21 +71,25 @@ final class StandaloneHost: NexusAgentHost {
         }
     }
 
-    /// The two lists Settings saves, joined: the built-in providers (whose
-    /// command the user may have edited) and the user's own. They are JSON
-    /// under the same keys, with the same four fields, as `ConfigManager`
-    /// reads and writes, so either side can read what the other wrote.
+    /// The two lists this app has always kept, joined: the built-in
+    /// providers (whose command the user may have edited) and the user's
+    /// own. They are JSON under the same keys, with the same four fields,
+    /// as every earlier version wrote. What is read from each list and what
+    /// is written to each are the shared rules, which are tested: the
+    /// built-in list always holds all three, and saving a list that leaves
+    /// a built-in out keeps the one already stored.
     var savedProviders: [NexusAgentCLIProvider] {
-        get { Self.providers(forKey: "builtInProviders_v3") + Self.providers(forKey: "customProviders") }
-        set {
-            Self.save(newValue.filter(\.isBuiltIn), forKey: "builtInProviders_v3")
-            Self.save(newValue.filter { !$0.isBuiltIn }, forKey: "customProviders")
+        get {
+            NexusAgentCLIProvider.saved(builtIn: UserDefaults.standard.data(forKey: "builtInProviders_v3"),
+                                        custom: UserDefaults.standard.data(forKey: "customProviders"))
         }
-    }
-
-    private static func providers(forKey key: String) -> [NexusAgentCLIProvider] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([NexusAgentCLIProvider].self, from: data)) ?? []
+        set {
+            let lists = NexusAgentCLIProvider.storedLists(
+                saving: newValue,
+                over: NexusAgentCLIProvider.stored(UserDefaults.standard.data(forKey: "builtInProviders_v3")))
+            Self.save(lists.builtIn, forKey: "builtInProviders_v3")
+            Self.save(lists.custom, forKey: "customProviders")
+        }
     }
 
     private static func save(_ providers: [NexusAgentCLIProvider], forKey key: String) {
@@ -76,9 +97,9 @@ final class StandaloneHost: NexusAgentHost {
         UserDefaults.standard.set(data, forKey: key)
     }
 
-    /// The same keys the chat window keeps its prompt history and worktree
-    /// mode under, in the same shape: a list of text, oldest first, and a
-    /// yes or no.
+    /// The keys this app's chat has always kept its prompt history and
+    /// worktree mode under, in the same shape: a list of text, oldest
+    /// first, and a yes or no.
     var promptHistory: [String] {
         get { UserDefaults.standard.stringArray(forKey: "promptHistory") ?? [] }
         set { UserDefaults.standard.set(newValue, forKey: "promptHistory") }
@@ -91,10 +112,42 @@ final class StandaloneHost: NexusAgentHost {
 
     var strings: NexusAgentHostStrings { NexusAgentHostStrings() }
 
-    // The chat window does not run on the engine yet and posts its own
-    // notifications, so the engine's turns have nobody to tell. Step 3 of the
-    // shared-library design moves the chat onto the engine and fills these in.
-    func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {}
+    /// A turn stopped to ask whether it may use a tool. This app's own
+    /// chat never asked: it always let agy skip its prompts. The shared
+    /// chat honours the approval mode, so a turn out of sight can now sit
+    /// waiting for an Allow click nobody sees, and the user is told with a
+    /// notification. Whether one is due, and its words, are the shared
+    /// rule, which is tested.
+    func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {
+        post(NexusAgentTurnAnnouncement.needsApproval(notice, isChatVisible: chatIsVisible?() ?? false,
+                                                      strings: strings))
+    }
 
-    func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {}
+    /// What this app's own chat did when a reply ended: the "done" sound
+    /// for a good reply, and a notification when the chat is out of sight.
+    /// Whether each is due, and the notification's title and body, are the
+    /// shared rule, which is tested; the title comes out as this app has
+    /// always worded it, the provider's name and "Done" or "Failed".
+    func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {
+        post(NexusAgentTurnAnnouncement.finished(notice, isChatVisible: isChatVisible, strings: strings))
+    }
+
+    /// Takes the place of the sound and the notification when set: it is
+    /// handed what the shared rule decided, and nothing is played or posted.
+    /// The app never sets it. It is for a run of this app's wiring that
+    /// must stay silent and has no notification centre to post to.
+    var announce: ((NexusAgentTurnAnnouncement) -> Void)?
+
+    /// Does what the shared rule decided, with its words as given.
+    private func post(_ announcement: NexusAgentTurnAnnouncement) {
+        if let announce {
+            announce(announcement)
+            return
+        }
+        if announcement.playsSound { NSSound(named: "Tink")?.play() }
+        guard let title = announcement.notificationTitle, let body = announcement.notificationBody else { return }
+        let conversation = openConversation?()
+        BackgroundNotificationManager.shared.notify(
+            title: title, body: body, sessionUUID: conversation?.id, sessionTitle: conversation?.title)
+    }
 }

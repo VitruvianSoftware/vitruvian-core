@@ -68,6 +68,13 @@ public struct NexusAgentChatView: View {
     @State private var hoveringNewChat = false
     @State private var hoveringSessions = false
     @State private var isArchivedExpanded = false
+    /// The drawer row the arrow keys have, counted from the top of the
+    /// rows on show; nil when none is selected.
+    @State private var selectedSessionIndex: Int?
+    /// When Clear All was first clicked, or nil. Whether the button is
+    /// asking its question is worked out from this and the time now
+    /// (`NexusAgentClearAllGuard`), so a time left lying here does no harm.
+    @State private var clearAllFirstClick: Date?
 
     public init(engine: NexusAgentEngine, strings: NexusAgentChatStrings, chrome: NexusAgentChatChrome) {
         self.engine = engine
@@ -85,7 +92,10 @@ public struct NexusAgentChatView: View {
     }
 
     private var contextualPlaceholder: String {
-        if session.mode == .sessions {
+        // Over an open session list the field shows the filter's words
+        // unless the app asks for the prompt's own: what is typed here is a
+        // prompt either way (the list's filter is the field under it).
+        if session.mode == .sessions, !chrome.keepsPromptPlaceholderOverSessions {
             return strings.sessionsFilter
         }
         let providerName = engine.activeProvider.name.components(separatedBy: " ").first ?? strings.fallbackProviderName
@@ -140,7 +150,74 @@ public struct NexusAgentChatView: View {
             }
         }
         .onChange(of: session.focusSerial) { _, _ in inputFocused = true }
-        .onChange(of: session.mode) { _, _ in inputFocused = true }
+        .onChange(of: session.mode) { _, _ in
+            inputFocused = true
+            // A drawer that opens, or closes, starts with no row selected,
+            // and with Clear All not yet clicked.
+            selectedSessionIndex = nil
+            clearAllFirstClick = nil
+        }
+        // Clear All's question was asked about the list as it then was: a
+        // filter typed since, or another provider, takes the question back.
+        .onChange(of: session.sessionFilter) { _, _ in clearAllFirstClick = nil }
+        .onChange(of: engine.activeProvider.id) { _, _ in clearAllFirstClick = nil }
+        // A prompt being typed is what Return sends: the selection is let
+        // go, so that Return does not open a session instead.
+        .onChange(of: session.draft) { _, _ in selectedSessionIndex = nil }
+    }
+
+    // MARK: - Keys in the sessions drawer
+
+    /// The drawer is on show: opened from the pill, or always, under an
+    /// embedded pill. Never while the conversation is.
+    private var isDrawerShown: Bool {
+        session.mode != .chat && (chrome.isEmbedded || session.mode == .sessions)
+    }
+
+    /// The drawer's rows from the top, as the arrow keys count them: the
+    /// sessions, then the archived ones while their heading is open.
+    private var rowsOnShow: [NexusAgentSessionSummary] {
+        let filtered = session.filteredSessions
+        return filtered.filter { !$0.isArchived } + (isArchivedExpanded ? filtered.filter { $0.isArchived } : [])
+    }
+
+    /// An arrow key moves the selection (`NexusAgentSessionListKeys`). It
+    /// is asked from the two fields the caret can be in beside a drawer.
+    /// The drawer's filter always gives the list its arrows. The pill's
+    /// prompt gives them only while it is empty: this is not the
+    /// standalone's rule, where the pill's text is the filter, because
+    /// here it is a prompt, and an arrow pressed in a typed prompt means
+    /// the caret. With a modifier held, no drawer, or no row in it, the key
+    /// is left to the field too. The chat's follow-up bar is a different
+    /// field with its own use for the arrows (the prompt history), and
+    /// never asks.
+    private func moveSelection(_ arrow: NexusAgentSessionListKeys.Arrow, in field: NexusAgentSessionListKeys.Field,
+                               press: KeyPress) -> KeyPress.Result {
+        let count = rowsOnShow.count
+        // An arrow key always carries the keypad and function flags, so
+        // only the four keys a person holds count as modifiers.
+        let held = !press.modifiers.isDisjoint(with: [.shift, .option, .command, .control])
+        guard isDrawerShown,
+              NexusAgentSessionListKeys.arrowMovesSelection(in: field, hasModifiers: held, count: count)
+        else { return .ignored }
+        selectedSessionIndex = NexusAgentSessionListKeys.selection(after: arrow, from: selectedSessionIndex,
+                                                                   count: count)
+        return .handled
+    }
+
+    /// Return opens the selected row, if there is one and the field it was
+    /// pressed in lets it: a prompt with text in it is sent instead. False
+    /// leaves Return to the field. No row is opened while Clear All is
+    /// removing the conversations' files.
+    private func resumeSelectedSession(from field: NexusAgentSessionListKeys.Field) -> Bool {
+        let rows = rowsOnShow
+        guard isDrawerShown, !session.isClearingSessions,
+              let row = NexusAgentSessionListKeys.rowToResume(from: field, selection: selectedSessionIndex,
+                                                              count: rows.count)
+        else { return false }
+        selectedSessionIndex = nil
+        session.resume(rows[row], configuration: engine.configuration)
+        return true
     }
 
     @ViewBuilder
@@ -197,7 +274,16 @@ public struct NexusAgentChatView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 18, weight: .regular))
                 .focused($inputFocused)
-                .onSubmit { if session.canSend { engine.sendQuickPrompt() } }
+                .onSubmit {
+                    if resumeSelectedSession(from: .prompt(session.draft)) { return }
+                    if session.canSend { engine.sendQuickPrompt() }
+                }
+                .onKeyPress(.upArrow, phases: [.down, .repeat]) {
+                    moveSelection(.up, in: .prompt(session.draft), press: $0)
+                }
+                .onKeyPress(.downArrow, phases: [.down, .repeat]) {
+                    moveSelection(.down, in: .prompt(session.draft), press: $0)
+                }
             if !session.draft.isEmpty {
                 clearButton
             }
@@ -325,7 +411,10 @@ public struct NexusAgentChatView: View {
             engine.save(next)
         }
         // A click in the folder panel counts as a click outside the prompt,
-        // which hides it; bring it back to where the user was.
+        // which hides it; the app is asked to show it again. Where it comes
+        // back is the app's to say, and need not be where the user was: the
+        // standalone's panel, once hidden (it is not while pinned), opens
+        // as on any fresh show, centred near the top of the screen.
         chrome.showWindow()
     }
 
@@ -429,6 +518,9 @@ public struct NexusAgentChatView: View {
                     TextField(strings.sessionsFilter, text: $session.sessionFilter)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
+                        .onSubmit { _ = resumeSelectedSession(from: .filter) }
+                        .onKeyPress(.upArrow, phases: [.down, .repeat]) { moveSelection(.up, in: .filter, press: $0) }
+                        .onKeyPress(.downArrow, phases: [.down, .repeat]) { moveSelection(.down, in: .filter, press: $0) }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -441,14 +533,95 @@ public struct NexusAgentChatView: View {
                         )
                 )
 
+                if showsClearAll {
+                    clearAllButton
+                }
                 planButton
             }
-            ScrollView {
-                sessionsList
+            ScrollViewReader { proxy in
+                ScrollView {
+                    sessionsList
+                }
+                // A row the arrow keys reach below the fold is brought into view.
+                .onChange(of: selectedSessionIndex) { _, selected in
+                    let rows = rowsOnShow
+                    guard let selected, rows.indices.contains(selected) else { return }
+                    proxy.scrollTo(rows[selected].id)
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// Clear All is offered where the app wants it, for the one provider
+    /// whose conversations can be deleted (agy's; the engine refuses any
+    /// other), while there is something to clear and no filter is typed:
+    /// it clears the folder's conversations, not the ones the filter shows.
+    private var showsClearAll: Bool {
+        chrome.offersClearAll
+            && engine.activeProvider.id == NexusAgentCLIProvider.antigravity.id
+            && !session.sessions.isEmpty
+            && session.sessionFilter.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Two clicks, as in the standalone app: the first turns the button
+    /// into a question, the second within two seconds deletes. Whether a
+    /// click deletes is decided from the time of the first click and the
+    /// time of this one (`NexusAgentClearAllGuard`), not from anything
+    /// that has to run in between: Clear All cannot be undone, so a first
+    /// click must never be left counting. While the deleting runs the
+    /// button is replaced by a spinner, and cannot start another.
+    @ViewBuilder
+    private var clearAllButton: some View {
+        if session.isClearingSessions {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(strings.clearAll)
+        } else {
+            let asking = NexusAgentClearAllGuard.isArmed(firstClick: clearAllFirstClick, now: Date())
+            Button {
+                switch NexusAgentClearAllGuard.click(firstClick: clearAllFirstClick, now: Date()) {
+                case .arm(let time):
+                    clearAllFirstClick = time
+                case .delete:
+                    clearAllFirstClick = nil
+                    session.deleteAll(in: engine.configuration)
+                }
+            } label: {
+                Text(asking ? strings.clearAllConfirm : strings.clearAll)
+                    .font(.caption)
+                    .foregroundStyle(asking ? Color.red : Color.red.opacity(0.6))
+                    .fontWeight(asking ? .semibold : .regular)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.15), value: asking)
+            }
+            .buttonStyle(.plain)
+            // Only for the look of it: when the two seconds are up the
+            // first click is forgotten, which redraws the button with its
+            // name. If this wait is cut short (the button went away), the
+            // time stays, and is too old to count whenever it is read.
+            .task(id: clearAllFirstClick) {
+                guard let first = clearAllFirstClick else { return }
+                let left = NexusAgentClearAllGuard.window - Date().timeIntervalSince(first)
+                if left > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
+                }
+                if !Task.isCancelled, clearAllFirstClick == first { clearAllFirstClick = nil }
+            }
+            // A button that goes (a filter typed, the drawer closed, a
+            // conversation opened) comes back unasked.
+            .onDisappear { clearAllFirstClick = nil }
+        }
+    }
+
+    /// One row of the drawer. `index` is its place among the rows on show,
+    /// which is what the arrow keys' selection counts.
+    private func sessionRow(_ summary: NexusAgentSessionSummary, index: Int) -> NexusAgentSessionRow {
+        NexusAgentSessionRow(summary: summary, session: session, engine: engine, strings: strings,
+                             isSelected: selectedSessionIndex == index,
+                             // The pointer takes over from the keyboard, as in the standalone.
+                             onHover: { hovering in if hovering { selectedSessionIndex = nil } })
     }
 
     private var sessionsList: some View {
@@ -460,15 +633,17 @@ public struct NexusAgentChatView: View {
                 if chrome.isEmbedded {
                     agentEnvironmentCard
                 } else {
-                    Text(strings.noSessions)
+                    // Conversations there are, and the filter shows none
+                    // of them: say that, not that there are none.
+                    Text(session.sessions.isEmpty ? strings.noSessions : strings.noMatchingSessions)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.top, 24)
                 }
             }
 
-            ForEach(activeSessions) { summary in
-                NexusAgentSessionRow(summary: summary, session: session, engine: engine, strings: strings)
+            ForEach(Array(activeSessions.enumerated()), id: \.element.id) { index, summary in
+                sessionRow(summary, index: index)
             }
 
             if !archivedSessions.isEmpty {
@@ -494,8 +669,8 @@ public struct NexusAgentChatView: View {
                     .buttonStyle(.plain)
 
                     if isArchivedExpanded {
-                        ForEach(archivedSessions) { summary in
-                            NexusAgentSessionRow(summary: summary, session: session, engine: engine, strings: strings)
+                        ForEach(Array(archivedSessions.enumerated()), id: \.element.id) { index, summary in
+                            sessionRow(summary, index: activeSessions.count + index)
                                 .opacity(0.85)
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))

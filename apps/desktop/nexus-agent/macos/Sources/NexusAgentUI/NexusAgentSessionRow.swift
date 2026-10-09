@@ -31,24 +31,35 @@ struct NexusAgentSessionRow: View {
     @ObservedObject var session: NexusAgentQuickPromptSession
     @ObservedObject var engine: NexusAgentEngine
     let strings: NexusAgentChatStrings
+    /// The arrow keys have this row: it is tinted, and shows that Return
+    /// opens it.
+    var isSelected = false
+    /// Told when the pointer comes over the row or leaves it, so the
+    /// drawer can let go of a keyboard selection.
+    var onHover: (Bool) -> Void = { _ in }
 
     @State private var isHovered = false
     @State private var isActionHovered = false
 
     var body: some View {
         Button {
-            session.resume(summary, configuration: engine.configuration)
+            resume()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: summary.isArchived ? "archivebox" : "bubble.left.and.text.bubble.right")
                     .foregroundStyle(NexusAgentTheme.warmCoral)
-                Text(summary.title.isEmpty ? strings.untitledSession : summary.title)
+                Text(displayedTitle)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 if isHovered {
                     actionButton
                         .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                } else if isSelected {
+                    Image(systemName: "return")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 } else if let modified = summary.modified {
                     Text(modified, format: .relative(presentation: .named))
                         .font(.caption)
@@ -60,7 +71,8 @@ struct NexusAgentSessionRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(isHovered ? 0.09 : 0.055))
+                    .fill(isSelected ? NexusAgentTheme.warmCoral.opacity(0.2)
+                                     : Color.white.opacity(isHovered ? 0.09 : 0.055))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(Color.white.opacity(isHovered ? 0.14 : 0.07), lineWidth: 0.5)
@@ -69,18 +81,50 @@ struct NexusAgentSessionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        // While Clear All runs, a conversation's files are being removed:
+        // it is not opened, and not deleted a second time.
+        .disabled(session.isClearingSessions)
+        .onHover {
+            isHovered = $0
+            onHover($0)
+        }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
+            // The standalone's menu, for every provider's conversations:
+            // Resume is a click on the row, and Copy Title takes what the
+            // row shows.
+            Button(strings.resumeSession) { resume() }
+                .disabled(session.isClearingSessions)
+            // For a conversation with no title that is the placeholder
+            // ("Untitled"), not nothing: the standalone's menu copied the
+            // placeholder too, and this is left as it was.
+            Button(strings.copySessionTitle) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(displayedTitle, forType: .string)
+            }
             // Only agy's conversations can be deleted; the engine refuses
             // any other provider's, so the item is not offered for them.
             if engine.activeProvider.id == NexusAgentCLIProvider.antigravity.id {
+                Divider()
                 Button(role: .destructive) {
                     session.delete(summary, configuration: engine.configuration)
                 } label: {
                     Label(engine.hostStrings.deleteSession, systemImage: "trash")
                 }
+                .disabled(session.isClearingSessions)
             }
         }
+    }
+
+    /// The title as the row shows it: a conversation with none gets the
+    /// app's word for that.
+    private var displayedTitle: String {
+        summary.title.isEmpty ? strings.untitledSession : summary.title
+    }
+
+    private func resume() {
+        guard !session.isClearingSessions else { return }
+        session.resume(summary, configuration: engine.configuration)
     }
 
     @ViewBuilder

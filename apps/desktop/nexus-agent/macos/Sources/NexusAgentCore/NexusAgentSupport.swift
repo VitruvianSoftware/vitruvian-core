@@ -153,7 +153,8 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
     }
 
     /// How this provider's turns are run, decided as the standalone app's
-    /// chat decides it. The built-in Antigravity provider is always agy,
+    /// own chat decided it (removed in step 3c; last shipped in nexus-agent
+    /// 1.19.0). The built-in Antigravity provider is always agy,
     /// whatever its template says. Any other is Ollama or Claude if it is
     /// that built-in provider or the first word of its template ends in
     /// `ollama` or `claude` (so a full path counts, and so does any other
@@ -696,7 +697,8 @@ public enum NexusAgentSupport {
         return FileManager.default.fileExists(atPath: gitDir.path, isDirectory: &isDirectory)
     }
 
-    /// Where a program is, as the standalone app's chat finds one. A full
+    /// Where a program is, as the standalone app's own chat found one
+    /// (removed in step 3c; last shipped in nexus-agent 1.19.0). A full
     /// path is taken as given if anything is there. A bare name is looked
     /// for in the usual install folders and then in the folders of
     /// `pathVariable` (the PATH an app launched from Finder has is short),
@@ -714,8 +716,8 @@ public enum NexusAgentSupport {
             .first(where: isExecutable)
     }
 
-    /// Where the standalone app's chat expects programs to be installed, in
-    /// the order it tries them.
+    /// Where the standalone app's own chat, removed in step 3c, expected
+    /// programs to be installed, in the order it tried them.
     static let commandInstallFolders = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
                                         "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 

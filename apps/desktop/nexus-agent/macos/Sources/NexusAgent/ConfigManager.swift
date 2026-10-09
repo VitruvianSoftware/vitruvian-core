@@ -20,6 +20,7 @@
 
 import SwiftUI
 import Foundation
+import Combine
 import NexusAgentCore
 
 // MARK: - CLI Provider Model
@@ -54,14 +55,27 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
-    static let builtIns: [CLIProvider] = [.antigravity, .claude, .ollama]
+    init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool) {
+        self.id = id
+        self.name = name
+        self.commandTemplate = commandTemplate
+        self.isBuiltIn = isBuiltIn
+    }
+
+    /// The same provider as the shared code holds it: field for field.
+    init(_ shared: NexusAgentCLIProvider) {
+        self.init(id: shared.id, name: shared.name,
+                  commandTemplate: shared.commandTemplate, isBuiltIn: shared.isBuiltIn)
+    }
+
+    var shared: NexusAgentCLIProvider {
+        NexusAgentCLIProvider(id: id, name: name, commandTemplate: commandTemplate, isBuiltIn: isBuiltIn)
+    }
 }
 
 /// Reads and writes the bot's .env configuration file.
 @MainActor
 class ConfigManager: ObservableObject {
-    /// Shared instance — set during app init for cross-component access.
-    static var shared: ConfigManager!
     @Published var botToken: String = ""
     @Published var allowedUserIds: String = ""
     @Published var workingDirectory: String = ""
@@ -71,43 +85,117 @@ class ConfigManager: ObservableObject {
     @Published var effort: String = ""
     @Published var autoStart: Bool = false
 
-
-
     // Hotkey config (stored in UserDefaults, not .env)
     @Published var hotkeyKey: String = "g"
     @Published var hotkeyModifiers: Int = 0  // NSEvent.ModifierFlags raw value
 
-    // AI Backend providers (stored in UserDefaults)
-    @Published var providers: [CLIProvider] = CLIProvider.builtIns
-    @Published var activeProviderId: UUID = CLIProvider.antigravity.id
+    // AI Backend providers.
+    //
+    // There is one record of them, and this class keeps no copy of it: the
+    // chat chooses a provider through the engine, and a copy here would put
+    // the old choice back on the next save. Reading goes through the engine;
+    // a change is written through the host, at once, and the engine is told
+    // so the chat follows. The views bind to these as they always did.
+
+    /// The built-in providers, then the user's own.
+    var providers: [CLIProvider] {
+        get { engine.providers.map { CLIProvider($0) } }
+        set {
+            objectWillChange.send()
+            host.savedProviders = newValue.map(\.shared)
+            // Also falls back to Antigravity if the chosen provider was removed.
+            engine.providersChanged()
+        }
+    }
+
+    var activeProviderId: UUID {
+        get { engine.activeProvider.id }
+        set {
+            objectWillChange.send()
+            host.chosenProviderID = newValue
+            engine.providersChanged()
+        }
+    }
 
     // Update preferences
     @Published var autoCheckUpdates: Bool = true
 
     /// The currently selected provider.
-    var activeProvider: CLIProvider {
-        providers.first { $0.id == activeProviderId } ?? CLIProvider.antigravity
-    }
+    var activeProvider: CLIProvider { CLIProvider(engine.activeProvider) }
     
-    var hotkeyDisplayString: String {
-        var parts: [String] = []
-        let mods = NSEvent.ModifierFlags(rawValue: UInt(hotkeyModifiers))
-        if mods.contains(.control) { parts.append("⌃") }
-        if mods.contains(.option) { parts.append("⌥") }
-        if mods.contains(.shift) { parts.append("⇧") }
-        if mods.contains(.command) { parts.append("⌘") }
-        parts.append(hotkeyKey.uppercased())
-        return parts.joined()
-    }
-
     /// What the approval mode shows when `.env` does not say.
     private static let defaultApprovalMode = "yolo"
 
     /// Reads and writes `.env` by the rules this app shares with Vitruvian.
     private let engine: NexusAgentEngine
+    /// Keeps the saved providers and the chosen one.
+    private let host: StandaloneHost
+    private var cancellables: Set<AnyCancellable> = []
 
-    init(engine: NexusAgentEngine) {
+    /// The six values of `.env` that Settings shows, as text.
+    private struct EnvFields {
+        var botToken = ""
+        var allowedUserIds = ""
+        var workingDirectory = ""
+        var approvalMode = ""
+        var model = ""
+        var effort = ""
+
+        init() {}
+
+        init(_ configuration: NexusAgentConfiguration) {
+            botToken = configuration.botToken
+            allowedUserIds = configuration.allowedUserIDs
+            workingDirectory = configuration.workingDirectory
+            // Shown exactly as the bot reads it. A line with nothing after the `=`
+            // is "default" (ask each time) to the bot, so it is here too: showing
+            // YOLO for it meant the next save wrote `yolo` and silently let the
+            // bot skip every permission prompt.
+            approvalMode = configuration.approvalMode.rawValue
+            model = configuration.model
+            effort = configuration.effort.rawValue
+        }
+
+        /// Each of the six, to go through them one by one.
+        static let each: [WritableKeyPath<EnvFields, String>] = [
+            \.botToken, \.allowedUserIds, \.workingDirectory, \.approvalMode, \.model, \.effort,
+        ]
+    }
+
+    /// The six fields the views bind to, read and set together. Setting
+    /// leaves alone a field that already holds its value, so the views are
+    /// told only of a real change.
+    private var fields: EnvFields {
+        get {
+            var values = EnvFields()
+            values.botToken = botToken
+            values.allowedUserIds = allowedUserIds
+            values.workingDirectory = workingDirectory
+            values.approvalMode = approvalMode
+            values.model = model
+            values.effort = effort
+            return values
+        }
+        set {
+            if botToken != newValue.botToken { botToken = newValue.botToken }
+            if allowedUserIds != newValue.allowedUserIds { allowedUserIds = newValue.allowedUserIds }
+            if workingDirectory != newValue.workingDirectory { workingDirectory = newValue.workingDirectory }
+            if approvalMode != newValue.approvalMode { approvalMode = newValue.approvalMode }
+            if model != newValue.model { model = newValue.model }
+            if effort != newValue.effort { effort = newValue.effort }
+        }
+    }
+
+    /// What the fields were last filled with, or last saved as: a field
+    /// that still holds this has not been touched by the user since.
+    private var untouched = EnvFields()
+    /// The engine's configuration as it last stood, to tell which of its
+    /// values a change changed.
+    private var engineHeld = EnvFields()
+
+    init(engine: NexusAgentEngine, host: StandaloneHost) {
         self.engine = engine
+        self.host = host
 
         // Load preferences from UserDefaults
         autoStart = UserDefaults.standard.bool(forKey: "autoStart")
@@ -124,68 +212,103 @@ class ConfigManager: ObservableObject {
             autoCheckUpdates = UserDefaults.standard.bool(forKey: "autoCheckUpdates")
         }
 
-        // Load providers from UserDefaults
-        loadProviders()
+        // A built-in list from before the Gemini CLI became Antigravity
+        // holds the retired `gemini -p …` template for the same provider.
+        // The list's key was bumped to v3 to drop those once; the old one is
+        // removed here. The user's own providers are under another key.
+        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
+
+        // The chat chooses a provider through the engine, not through this
+        // class, and Settings must show it. The publisher fires just before
+        // the engine takes the new value, which is when SwiftUI wants to
+        // be told.
+        engine.$configuration
+            .map(\.activeProvider)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         load()
+
+        // The chat saves the model and the working folder through the
+        // engine, and the engine reads `.env` again each time the chat is
+        // shown. Settings follows: otherwise it would go on showing the old
+        // value and write it back on its next save.
+        engineHeld = EnvFields(engine.configuration)
+        engine.$configuration
+            .dropFirst()
+            .sink { [weak self] configuration in self?.follow(EnvFields(configuration)) }
+            .store(in: &cancellables)
+    }
+
+    /// Takes over the values the engine's configuration has just changed,
+    /// but never one the user is editing: a field is refreshed only if it
+    /// still holds what it was last filled with. A value the engine did not
+    /// change is left alone too, which keeps the template shown when there
+    /// is no `.env` yet.
+    ///
+    /// Nothing is taken over unless `.env` is there to be read and has
+    /// something in it. This is for the file that has been DELETED while
+    /// the app runs. The engine keeps its settings when the file is there
+    /// but unreadable or blank; when the file is gone it rightly holds the
+    /// empty configuration (no token, no whitelist, approval mode `yolo`),
+    /// as the bot would. Settings is another matter: following that would
+    /// blank every untouched field, and the next Save would write the
+    /// blanks, a bot anyone may use that skips every permission prompt. So
+    /// the fields stay, and Save puts the file back. The same guard covers
+    /// a deleted file that comes back unreadable or blank, where the engine
+    /// has nothing left to keep and is empty still. The record of what the
+    /// engine held is not moved either, so the file's return is compared
+    /// with what Settings last saw in it.
+    private func follow(_ fresh: EnvFields) {
+        guard envFileHasText else { return }
+        var shown = fields
+        for field in EnvFields.each {
+            let value = fresh[keyPath: field]
+            if value != engineHeld[keyPath: field], shown[keyPath: field] == untouched[keyPath: field] {
+                shown[keyPath: field] = value
+            }
+            if shown[keyPath: field] == value {
+                untouched[keyPath: field] = value
+            }
+        }
+        fields = shown
+        engineHeld = fresh
+    }
+
+    /// Whether `.env` can be read right now and holds more than blank lines.
+    private var envFileHasText: Bool {
+        guard let text = try? String(contentsOfFile: engine.envFilePath, encoding: .utf8) else { return false }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The fields as they stand, which is what an untouched field holds
+    /// from now on.
+    private func markFieldsUntouched() {
+        untouched = fields
     }
 
     // MARK: - Provider Persistence
 
-    private func loadProviders() {
-        // Load user-defined (non-built-in) providers
-        if let data = UserDefaults.standard.data(forKey: "customProviders"),
-           let custom = try? JSONDecoder().decode([CLIProvider].self, from: data) {
-            // Merge built-ins (always fresh) + user custom providers
-            providers = CLIProvider.builtIns + custom.filter { !$0.isBuiltIn }
-        } else {
-            providers = CLIProvider.builtIns
-        }
-
-        // Load saved built-in templates (user may have edited them).
-        //
-        // The key is versioned: a v2 blob holds the retired Gemini CLI
-        // template for what is now the Antigravity provider (same UUID), and
-        // restoring it would show `gemini -p …` in Settings for a binary that
-        // no longer runs. Bumping to v3 drops those once; the user's own
-        // custom providers live under a separate key and are untouched.
-        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
-        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v3"),
-           let saved = try? JSONDecoder().decode([CLIProvider].self, from: data) {
-            for saved in saved {
-                if let idx = providers.firstIndex(where: { $0.id == saved.id }) {
-                    providers[idx].commandTemplate = saved.commandTemplate
-                }
-            }
-        }
-
-        // Load active provider
-        if let uuidString = UserDefaults.standard.string(forKey: "activeProviderId"),
-           let uuid = UUID(uuidString: uuidString) {
-            activeProviderId = uuid
-        } else {
-            activeProviderId = CLIProvider.antigravity.id
-        }
-    }
-
+    /// Writes the record as it stands: both lists and the choice. Every
+    /// change is already written when it is made, so this adds nothing for
+    /// a user who has saved before; on a first save it puts the three keys
+    /// in place, as this app always has.
     func saveProviders() {
-        let custom = providers.filter { !$0.isBuiltIn }
-        let builtIn = providers.filter { $0.isBuiltIn }
-        if let data = try? JSONEncoder().encode(custom) {
-            UserDefaults.standard.set(data, forKey: "customProviders")
-        }
-        if let data = try? JSONEncoder().encode(builtIn) {
-            UserDefaults.standard.set(data, forKey: "builtInProviders_v3")
-        }
-        UserDefaults.standard.set(activeProviderId.uuidString, forKey: "activeProviderId")
+        host.savedProviders = engine.providers
+        host.chosenProviderID = engine.activeProvider.id
+        engine.providersChanged()
     }
 
     // MARK: - Load .env
 
-    /// Called once, at launch. The engine reads `.env` again when polling
-    /// starts and when the bot is started (the 2-second timer only refreshes
-    /// status and the log), but the fields below are filled only here, so
-    /// nothing overwrites what the user is typing in Settings.
+    /// Called once, at launch, and fills every field. The engine reads
+    /// `.env` again when polling starts, when the bot is started and when
+    /// the chat is shown (the 2-second timer only refreshes status and the
+    /// log); after this a field follows the engine only while the user has
+    /// not touched it (`follow`), so nothing overwrites what is being typed
+    /// in Settings.
     func load() {
         engine.load()
         if (try? String(contentsOfFile: engine.envFilePath, encoding: .utf8)) != nil {
@@ -197,20 +320,12 @@ class ConfigManager: ObservableObject {
                 show(NexusAgentEnvFile.parse(example))
             }
         }
+        markFieldsUntouched()
     }
 
     /// Copies what the file says into the fields the views bind to.
     private func show(_ configuration: NexusAgentConfiguration) {
-        botToken = configuration.botToken
-        allowedUserIds = configuration.allowedUserIDs
-        workingDirectory = configuration.workingDirectory
-        model = configuration.model
-        effort = configuration.effort.rawValue
-        // Shown exactly as the bot reads it. A line with nothing after the `=`
-        // is "default" (ask each time) to the bot, so it is here too: showing
-        // YOLO for it meant the next save wrote `yolo` and silently let the
-        // bot skip every permission prompt.
-        approvalMode = configuration.approvalMode.rawValue
+        fields = EnvFields(configuration)
     }
 
     // MARK: - Save .env
@@ -236,6 +351,9 @@ class ConfigManager: ObservableObject {
         // A save that fails leaves the reason with the engine, which the log
         // panel shows.
         let saved = engine.save(configuration)
+        // What was just written is what the fields hold: they count as
+        // untouched again, and follow the chat's next change.
+        if saved { markFieldsUntouched() }
 
         // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")

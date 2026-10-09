@@ -59,6 +59,9 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// The filter field, and what the list says when it is empty.
     public var sessionsFilter: String
     public var noSessions: String
+    /// What the list says when there are conversations and the filter
+    /// shows none of them.
+    public var noMatchingSessions: String
     /// A session with no title.
     public var untitledSession: String
     /// The heading of the archived sessions, around their count.
@@ -67,6 +70,13 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// A row's buttons.
     public var archiveSession: String
     public var unarchiveSession: String
+    /// A row's menu: open the conversation, and copy its title.
+    public var resumeSession: String
+    public var copySessionTitle: String
+    /// The button that deletes every conversation of the working folder,
+    /// and what it says after one click, while it waits for the second.
+    public var clearAll: String
+    public var clearAllConfirm: String
     /// The card an embedded chat shows in place of an empty list.
     public var agentEnvironment: String
     public var ready: String
@@ -74,6 +84,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     public var environmentModel: String
     public var environmentDirectory: String
     public var defaultModel: String
+    /// The card's last line. The default says only what any app's chat can
+    /// do; an app with shortcuts of its own to mention passes its own line.
     public var environmentHint: String
 
     // MARK: The chat's header
@@ -81,6 +93,13 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// Beside the title of a session that was reopened.
     public var resumed: String
     /// The new-chat button's tooltip, and the shortcut written after it.
+    /// The view does not handle the shortcut: the app's window does, and an
+    /// app whose window has another, or none, passes that here.
+    ///
+    /// The default names ⌘N on purpose, though the shared defaults
+    /// otherwise carry no app's own wording: both apps that use this view
+    /// start a new chat with ⌘N, so it is the view's shortcut in practice
+    /// and not one app's.
     public var newChat: String
     public var newChatShortcut: String
     /// The pin button's tooltip, unpinned and pinned.
@@ -188,18 +207,23 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         switchProvider: String = "Switch provider",
         sessionsFilter: String = "Filter sessions",
         noSessions: String = "No recent sessions",
+        noMatchingSessions: String = "No matching sessions",
         untitledSession: String = "Untitled",
         archivedPrefix: String = "Archived (",
         archivedSuffix: String = ")",
         archiveSession: String = "Archive session",
         unarchiveSession: String = "Unarchive session",
+        resumeSession: String = "Resume",
+        copySessionTitle: String = "Copy Title",
+        clearAll: String = "Clear All",
+        clearAllConfirm: String = "Confirm?",
         agentEnvironment: String = "Agent Environment",
         ready: String = "Ready",
         environmentProvider: String = "Provider",
         environmentModel: String = "Model",
         environmentDirectory: String = "Directory",
         defaultModel: String = "Default / Auto",
-        environmentHint: String = "Type a prompt above to start an agent session. Use ⌥⌘G to switch between Chat and Telemetry.",
+        environmentHint: String = "Type a prompt above to start an agent session.",
         resumed: String = "Resumed",
         newChat: String = "New chat",
         newChatShortcut: String = " (⌘N)",
@@ -276,11 +300,16 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         self.switchProvider = switchProvider
         self.sessionsFilter = sessionsFilter
         self.noSessions = noSessions
+        self.noMatchingSessions = noMatchingSessions
         self.untitledSession = untitledSession
         self.archivedPrefix = archivedPrefix
         self.archivedSuffix = archivedSuffix
         self.archiveSession = archiveSession
         self.unarchiveSession = unarchiveSession
+        self.resumeSession = resumeSession
+        self.copySessionTitle = copySessionTitle
+        self.clearAll = clearAll
+        self.clearAllConfirm = clearAllConfirm
         self.agentEnvironment = agentEnvironment
         self.ready = ready
         self.environmentProvider = environmentProvider
