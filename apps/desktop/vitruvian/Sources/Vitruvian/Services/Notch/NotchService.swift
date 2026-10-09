@@ -1151,7 +1151,7 @@ package final class NotchService: ObservableObject {
                         musicExtraHeight: musicExtras && musicDetailVisible ? geometry.musicExtrasHeight : 0,
                         fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable(in: defaults)
                             && services.mediaPresented ? services.mediaContentHeight : nil,
-                        toolCount: services.editingTools || services.activeUtility != nil ? nil : services.visibleTools.count,
+                        toolCount: services.editingTools || services.activeUtility != nil ? nil : services.visibleToolCount,
                         capturePreviewHeight: captureContent == nil ? nil : captureContentHeight)
     }
 
@@ -1159,7 +1159,7 @@ package final class NotchService: ObservableObject {
     /// detail, app panel, capture or media editor in front of the page.
     package func previewSize(for module: NotchModule) -> CGSize {
         pageSize(in: previewGeometry(for: module), module: module, detail: false, panel: false, detailHeight: nil, musicExtraHeight: 0,
-                 fileMediaHeight: nil, toolCount: services.visibleTools.count, capturePreviewHeight: nil)
+                 fileMediaHeight: nil, toolCount: services.visibleToolCount, capturePreviewHeight: nil)
     }
 
     /// The island around a previewed section, whose title sits beside the
@@ -3271,7 +3271,7 @@ package final class NotchService: ObservableObject {
         showingSections: { [weak self] in self?.showingSections ?? false },
         showingAppPanel: { [weak self] in self?.showingAppPanel ?? false },
         geometry: { [weak self] in self?.expandedGeometry ?? NotchGeometry(screen: .zero, safeAreaTop: 0, cameraWidth: 0) },
-        tools: { [services] in (services.editingTools, services.visibleTools.count) },
+        tools: { [services] in (services.editingTools, services.visibleToolCount) },
         ownsWindow: { [weak self] in self?.ownsWindow($0 as? NSWindow) ?? false },
         clickIsAway: { [weak self] in self?.clickIsAway() ?? false },
         toggleSections: { [weak self] in self?.toggleSections() },

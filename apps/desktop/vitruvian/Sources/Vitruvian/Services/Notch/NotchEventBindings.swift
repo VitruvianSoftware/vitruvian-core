@@ -136,9 +136,12 @@ package final class NotchEventBindings {
                 trackChanges: { NotchMusicService.shared.trackChanges.eraseToAnyPublisher() },
                 tools: {
                     let launcher = QuickLauncherService.shared
+                    // Four publishers, each of which emits once on subscription:
+                    // the count dropped below has to match the count merged.
                     return launcher.$isEditing.map { _ in () }
-                        .merge(with: launcher.$activeUtility.map { _ in () }, launcher.$hiddenItemsRaw.map { _ in () })
-                        .dropFirst(3).receive(on: DispatchQueue.main).eraseToAnyPublisher()
+                        .merge(with: launcher.$activeUtility.map { _ in () }, launcher.$hiddenItemsRaw.map { _ in () },
+                               ToolRegistry.shared.$revision.map { _ in () })
+                        .dropFirst(4).receive(on: DispatchQueue.main).eraseToAnyPublisher()
                 },
                 fanCard: {
                     SystemMonitor.shared.$snapshot.map { $0.fanSpeeds.isEmpty }.removeDuplicates().dropFirst()

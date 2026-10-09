@@ -89,12 +89,24 @@ package final class QuickLauncherService: ObservableObject {
         /// Runs a tool that works outside the launcher.
         package var perform: (QuickLauncherItem) -> Void
         package var after: (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
+        /// Tile ids in the person's saved order, as written: tiles of either kind.
+        package var savedTileOrder: () -> [String]
+        package var saveTileOrder: ([String]) -> Void
+        /// Registry commands that ask for the panel and that no built-in tile runs.
+        package var commands: () -> [CommandDescriptor]
+        package var canRunCommand: (CommandID) -> Bool
+        package var runCommand: (CommandID) -> Void
 
         package init(isAvailable: @escaping (AppFeature) -> Bool,
                      itemOrder: @escaping () -> [QuickLauncherItem],
                      islandShowsTools: @escaping () -> Bool, collapseIsland: @escaping () -> Void,
                      showCameraInIsland: @escaping () -> Bool, perform: @escaping (QuickLauncherItem) -> Void,
-                     after: @escaping (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void) {
+                     after: @escaping (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void,
+                     savedTileOrder: @escaping () -> [String] = { [] },
+                     saveTileOrder: @escaping ([String]) -> Void = { _ in },
+                     commands: @escaping () -> [CommandDescriptor] = { [] },
+                     canRunCommand: @escaping (CommandID) -> Bool = { _ in true },
+                     runCommand: @escaping (CommandID) -> Void = { _ in }) {
             self.isAvailable = isAvailable
             self.itemOrder = itemOrder
             self.islandShowsTools = islandShowsTools
@@ -102,6 +114,11 @@ package final class QuickLauncherService: ObservableObject {
             self.showCameraInIsland = showCameraInIsland
             self.perform = perform
             self.after = after
+            self.savedTileOrder = savedTileOrder
+            self.saveTileOrder = saveTileOrder
+            self.commands = commands
+            self.canRunCommand = canRunCommand
+            self.runCommand = runCommand
         }
 
         package static var live: Environment {
@@ -114,7 +131,12 @@ package final class QuickLauncherService: ObservableObject {
                 perform: { item in
                     if let command = item.command { ToolRegistry.shared.run(command.id) }
                 },
-                after: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } })
+                after: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } },
+                savedTileOrder: { PanelLayout.rawItemOrder(key: DefaultsKey.quickLauncherItemOrder) },
+                saveTileOrder: { PanelLayout.setRawItemOrder($0, key: DefaultsKey.quickLauncherItemOrder) },
+                commands: { ToolRegistry.shared.extraCommands(on: .quickPanel) },
+                canRunCommand: { ToolRegistry.shared.canRun($0) },
+                runCommand: { ToolRegistry.shared.run($0) })
         }
     }
 
@@ -172,42 +194,62 @@ package final class QuickLauncherService: ObservableObject {
 
     // MARK: - Items
 
-    package var visibleItems: [QuickLauncherItem] {
+    /// Every tile in the grid, in the person's order.
+    package var visibleTiles: [QuickLauncherTile] {
         let hidden = QuickToolsSupport.hiddenIDs(from: hiddenItemsRaw)
-        return orderedItems.filter { !hidden.contains($0.rawValue) }
+        return orderedTiles.filter { !hidden.contains($0.rawValue) }
     }
 
-    package var hiddenItems: [QuickLauncherItem] {
+    package var hiddenTiles: [QuickLauncherTile] {
         let hidden = QuickToolsSupport.hiddenIDs(from: hiddenItemsRaw)
-        return orderedItems.filter { hidden.contains($0.rawValue) }
+        return orderedTiles.filter { hidden.contains($0.rawValue) }
     }
 
-    private var orderedItems: [QuickLauncherItem] {
-        environment.itemOrder().filter { environment.isAvailable($0.feature) }
+    /// The app's own tiles among them, in the same order.
+    package var visibleItems: [QuickLauncherItem] { visibleTiles.compactMap(\.builtin) }
+    package var hiddenItems: [QuickLauncherItem] { hiddenTiles.compactMap(\.builtin) }
+
+    /// The app's own tiles that are switched on, then the commands on offer,
+    /// placed by the saved order.
+    private var orderedTiles: [QuickLauncherTile] {
+        let builtins = environment.itemOrder().filter { environment.isAvailable($0.feature) }
+            .map(QuickLauncherTile.builtin)
+        let commands = environment.commands().map { QuickLauncherTile.command($0.id) }
+        let live = builtins + commands
+        let byID = Dictionary(live.map { ($0.rawValue, $0) }, uniquingKeysWith: { first, _ in first })
+        return QuickToolsSupport.tileOrder(live: live.map(\.rawValue), saved: environment.savedTileOrder())
+            .compactMap { byID[$0] }
     }
 
-    package var itemOrderBinding: Binding<[QuickLauncherItem]> {
+    package var tileOrderBinding: Binding<[QuickLauncherTile]> {
         Binding {
-            self.orderedItems
+            self.orderedTiles
         } set: { newValue in
-            PanelLayout.setItemOrder(newValue, key: DefaultsKey.quickLauncherItemOrder)
+            self.environment.saveTileOrder(
+                QuickToolsSupport.savedTileOrder(afterMoving: newValue.map(\.rawValue),
+                                                 previous: self.environment.savedTileOrder(),
+                                                 isWellFormed: { QuickLauncherTile(rawValue: $0) != nil }))
             self.objectWillChange.send()
         }
     }
 
-    package func setHidden(_ item: QuickLauncherItem, _ hidden: Bool) {
+    package func setHidden(_ tile: QuickLauncherTile, _ hidden: Bool) {
         var ids = QuickToolsSupport.hiddenIDs(from: hiddenItemsRaw)
         if hidden {
-            ids.insert(item.rawValue)
+            ids.insert(tile.rawValue)
             // Hiding the tile whose options card is open would orphan the
             // card below a grid that no longer shows its owner.
-            if editingOptionsItem == item { editingOptionsItem = nil }
+            if let item = tile.builtin, editingOptionsItem == item { editingOptionsItem = nil }
         } else {
-            ids.remove(item.rawValue)
+            ids.remove(tile.rawValue)
         }
         hiddenItemsRaw = QuickToolsSupport.serializeHiddenIDs(ids)
         UserDefaults.standard[Preferences.quickLauncherHiddenItems] = hiddenItemsRaw
         clampSelection()
+    }
+
+    package func setHidden(_ item: QuickLauncherItem, _ hidden: Bool) {
+        setHidden(.builtin(item), hidden)
     }
 
     // MARK: - Presentation
@@ -243,7 +285,7 @@ package final class QuickLauncherService: ObservableObject {
         presentationID = UUID()
         isEditing = false
         editingOptionsItem = nil
-        selectedIndex = visibleItems.isEmpty ? nil : 0
+        selectedIndex = visibleTiles.isEmpty ? nil : 0
         keyboardIndex = selectedIndex
     }
 
@@ -311,18 +353,18 @@ package final class QuickLauncherService: ObservableObject {
     // MARK: - Actions
 
     package func activateSelection() {
-        guard let selectedIndex, visibleItems.indices.contains(selectedIndex) else { return }
-        run(visibleItems[selectedIndex])
+        guard let selectedIndex, visibleTiles.indices.contains(selectedIndex) else { return }
+        run(visibleTiles[selectedIndex])
     }
 
     package func activate(at index: Int) {
-        guard visibleItems.indices.contains(index) else { return }
-        run(visibleItems[index])
+        guard visibleTiles.indices.contains(index) else { return }
+        run(visibleTiles[index])
     }
 
     package func moveSelection(_ direction: QuickToolsSupport.GridDirection,
                        flow: QuickToolsSupport.GridFlow = .rows(columns: QuickLauncherService.columns)) {
-        let count = visibleItems.count
+        let count = visibleTiles.count
         guard count > 0 else { return }
         selectedIndex = QuickToolsSupport.gridIndex(after: selectedIndex ?? 0,
                                                     count: count,
@@ -333,9 +375,26 @@ package final class QuickLauncherService: ObservableObject {
 
     /// The pointer's selection. The hovered tile is already in view, so the
     /// rail stays where it is.
-    package func select(_ item: QuickLauncherItem) {
-        selectedIndex = visibleItems.firstIndex(of: item)
+    package func select(_ tile: QuickLauncherTile) {
+        selectedIndex = visibleTiles.firstIndex(of: tile)
         keyboardIndex = nil
+    }
+
+    package func select(_ item: QuickLauncherItem) {
+        select(.builtin(item))
+    }
+
+    package func run(_ tile: QuickLauncherTile) {
+        switch tile {
+        case .builtin(let item):
+            run(item)
+        case .command(let id):
+            guard !isEditing, environment.canRunCommand(id) else { return }
+            // The same beat the app's own screen-touching tiles get, so the
+            // panel is really gone before the command shows anything.
+            hide()
+            environment.after(0.15) { [weak self] in self?.environment.runCommand(id) }
+        }
     }
 
     package func run(_ item: QuickLauncherItem) {
@@ -361,7 +420,7 @@ package final class QuickLauncherService: ObservableObject {
     }
 
     private func clampSelection() {
-        let count = visibleItems.count
+        let count = visibleTiles.count
         guard count > 0 else {
             selectedIndex = nil
             return

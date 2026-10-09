@@ -105,6 +105,159 @@ enum QuickLauncherContract {
         compositionContracts(suite)
         keyContracts(suite)
         railContracts(suite)
+        commandTileContracts(suite)
+    }
+
+    /// A launcher over doubles that also holds one registry command.
+    final class TileWorld {
+        var events: [String] = []
+        var unavailable: Set<AppFeature> = []
+        var saved: [String] = []
+        var commands: [CommandDescriptor] = []
+        var runnable = true
+        var jobs: [(delay: TimeInterval, work: @MainActor () -> Void)] = []
+
+        lazy var launcher: QuickLauncherService = QuickLauncherService(environment: .init(
+            isAvailable: { [unowned self] in !self.unavailable.contains($0) },
+            itemOrder: { [.keepAwake, .screenshot] },
+            islandShowsTools: { false },
+            collapseIsland: {},
+            showCameraInIsland: { false },
+            perform: { [unowned self] in self.events.append("perform \($0.rawValue)") },
+            after: { [unowned self] delay, work in self.jobs.append((delay, work)) },
+            savedTileOrder: { [unowned self] in self.saved },
+            saveTileOrder: { [unowned self] in self.saved = $0 },
+            commands: { [unowned self] in self.commands },
+            canRunCommand: { [unowned self] _ in self.runnable },
+            runCommand: { [unowned self] in self.events.append("command \($0.rawValue)") }))
+
+        func drain() {
+            let pending = jobs
+            jobs.removeAll()
+            pending.forEach { $0.work() }
+        }
+    }
+
+    static func commandTileContracts(_ suite: TestSuite) {
+        let hello = CommandID("dev.vitruvian.sample/hello")!
+        let descriptor = CommandDescriptor(id: hello, title: "Say hello", symbol: "hand.wave", surfaces: [.quickPanel])!
+
+        let plain = TileWorld()
+        suite.expect(plain.launcher.visibleTiles == [.builtin(.keepAwake), .builtin(.screenshot)]
+                         && plain.launcher.visibleItems == [.keepAwake, .screenshot],
+                     "with no command offered, the panel holds exactly its own tiles")
+
+        let world = TileWorld()
+        world.commands = [descriptor]
+        let launcher = world.launcher
+        suite.expect(launcher.visibleTiles == [.builtin(.keepAwake), .builtin(.screenshot), .command(hello)],
+                     "a command tile joins after the tiles a saved order names")
+        suite.expect(launcher.visibleItems == [.keepAwake, .screenshot],
+                     "the built-in tiles are still listed on their own")
+
+        world.saved = ["dev.vitruvian.sample/hello", "screenshot", "keepAwake"]
+        suite.expect(launcher.visibleTiles == [.command(hello), .builtin(.screenshot), .builtin(.keepAwake)],
+                     "a saved order places a command tile among the others")
+
+        launcher.prepareForPresentation()
+        launcher.run(.command(hello))
+        suite.expect(world.events.isEmpty && world.jobs.count == 1 && world.jobs[0].delay == 0.15,
+                     "a command tile runs after the panel has had time to go")
+        world.drain()
+        suite.expect(world.events == ["command dev.vitruvian.sample/hello"], "a command tile runs its command once")
+
+        world.events = []
+        world.runnable = false
+        launcher.run(.command(hello))
+        world.drain()
+        suite.expect(world.events.isEmpty, "a command tile whose command cannot run does nothing")
+        world.runnable = true
+
+        launcher.isEditing = true
+        launcher.run(.command(hello))
+        world.drain()
+        suite.expect(world.events.isEmpty, "a command tile does nothing in edit mode")
+        launcher.isEditing = false
+
+        // Digit 1 is the first tile, whatever kind it is.
+        launcher.prepareForPresentation()
+        launcher.activate(at: 0)
+        world.drain()
+        suite.expect(world.events == ["command dev.vitruvian.sample/hello"], "the first tile answers to its place, whatever it is")
+        world.events = []
+
+        // Reordering saves the tiles showing, and keeps what is not showing.
+        world.saved = ["keepAwake", "com.acme.gone/open", "dev.vitruvian.sample/hello", "screenshot"]
+        launcher.tileOrderBinding.wrappedValue = [.builtin(.screenshot), .command(hello), .builtin(.keepAwake)]
+        suite.expect(world.saved == ["screenshot", "com.acme.gone/open", "dev.vitruvian.sample/hello", "keepAwake"],
+                     "reordering keeps the place of a tile that is not showing now")
+
+        // Hiding and showing a command tile.
+        launcher.setHidden(.command(hello), true)
+        suite.expect(!launcher.visibleTiles.contains(.command(hello)) && launcher.hiddenTiles == [.command(hello)],
+                     "a hidden command tile leaves the grid and waits in the tray")
+        launcher.setHidden(.command(hello), false)
+        suite.expect(launcher.visibleTiles.contains(.command(hello)) && launcher.hiddenTiles.isEmpty,
+                     "a command tile shown again returns to the grid")
+
+        // The command goes away while the panel is up.
+        launcher.prepareForPresentation()
+        launcher.select(.command(hello))
+        world.commands = []
+        launcher.refreshAvailability()
+        suite.expect(!launcher.visibleTiles.contains(.command(hello))
+                         && (launcher.selectedIndex ?? 0) < launcher.visibleTiles.count,
+                     "a command that goes away takes its tile, and the selection stays inside the grid")
+
+        savedBuiltinOrderContracts(suite)
+    }
+
+    /// What a person already has stored: only the app's own tile ids, as
+    /// they were saved before command tiles existed. The panel must show them
+    /// in the order the old code showed them, through the same storage the
+    /// live launcher reads.
+    private static func savedBuiltinOrderContracts(_ suite: TestSuite) {
+        let key = DefaultsKey.quickLauncherItemOrder
+        let defaults = UserDefaults.standard
+        let before = defaults.object(forKey: key)
+        defer { if let before { defaults.set(before, forKey: key) } else { defaults.removeObject(forKey: key) } }
+
+        for stored in ["screenRecorder,keepAwake,cleaner",
+                       "scratchpad,not-a-tile,media,keepAwake",
+                       "",
+                       QuickLauncherItem.allCases.reversed().map(\.rawValue).joined(separator: ",")] {
+            defaults.set(stored, forKey: key)
+            let launcher = QuickLauncherService(environment: .init(
+                isAvailable: { _ in true },
+                itemOrder: { PanelLayout.itemOrder(QuickLauncherItem.self, key: key) },
+                islandShowsTools: { false },
+                collapseIsland: {},
+                showCameraInIsland: { false },
+                perform: { _ in },
+                after: { _, _ in },
+                savedTileOrder: { PanelLayout.rawItemOrder(key: key) },
+                saveTileOrder: { PanelLayout.setRawItemOrder($0, key: key) }))
+            let expected = PanelLayout.itemOrder(QuickLauncherItem.self, key: key)
+            suite.expect(launcher.visibleTiles == expected.map(QuickLauncherTile.builtin)
+                             && launcher.visibleItems == expected,
+                         "a stored order of the app's own tiles shows in the same order as before (\(stored))")
+        }
+
+        // And one spelled out, so the check does not lean on the same code twice.
+        defaults.set("screenRecorder,keepAwake,cleaner", forKey: key)
+        let spelled = QuickLauncherService(environment: .init(
+            isAvailable: { _ in true },
+            itemOrder: { PanelLayout.itemOrder(QuickLauncherItem.self, key: key) },
+            islandShowsTools: { false },
+            collapseIsland: {},
+            showCameraInIsland: { false },
+            perform: { _ in },
+            after: { _, _ in },
+            savedTileOrder: { PanelLayout.rawItemOrder(key: key) },
+            saveTileOrder: { PanelLayout.setRawItemOrder($0, key: key) }))
+        suite.expect(Array(spelled.visibleItems.prefix(3)) == [.screenRecorder, .keepAwake, .cleaner]
+                         && spelled.visibleItems.count == QuickLauncherItem.allCases.count,
+                     "a stored order puts its tiles first, and the tiles it does not name after them")
     }
 
     private static func tiles(_ suite: TestSuite) {

@@ -112,6 +112,9 @@ is that notice. Add an entry for every change to upstream files.
   - `main.swift`: registers the sample tool, in a build made with `--define=vitruvian_sample_tool=true` only.
   - `Services/MenuPanel/PanelLayoutStore.swift`: `PanelOrderItem` no longer implies `CaseIterable`; `rawItemOrder` and `setRawItemOrder` read and write a saved order without dropping ids no enum names. Each conforming enum now states `CaseIterable` itself.
   - `Core/QuickTools/QuickToolsSupport.swift`: `tileOrder` and `savedTileOrder`, the Quick panel's order with tiles no enum names.
+  - `Services/QuickTools/QuickLauncherService.swift`: the grid holds `QuickLauncherTile`s, the app's own tiles plus registry commands no tile runs; a reorder keeps the place of a tile that is not showing.
+  - `UI/QuickLauncher/QuickLauncherView.swift`: draws a command tile from the registry and redraws when the registry changes.
+  - `Services/Notch/NotchIslandServices.swift`, `Services/Notch/NotchService.swift`, `Services/Notch/NotchEventBindings.swift`: the island counts tiles of both kinds and resizes when the registry changes.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.
