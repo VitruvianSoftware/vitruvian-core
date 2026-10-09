@@ -43,12 +43,12 @@ struct NexusAgentSessionRow: View {
 
     var body: some View {
         Button {
-            session.resume(summary, configuration: engine.configuration)
+            resume()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: summary.isArchived ? "archivebox" : "bubble.left.and.text.bubble.right")
                     .foregroundStyle(NexusAgentTheme.warmCoral)
-                Text(summary.title.isEmpty ? strings.untitledSession : summary.title)
+                Text(displayedTitle)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                 Spacer(minLength: 8)
@@ -87,9 +87,18 @@ struct NexusAgentSessionRow: View {
         }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
+            // The standalone's menu, for every provider's conversations:
+            // Resume is a click on the row, and Copy Title takes what the
+            // row shows.
+            Button(strings.resumeSession) { resume() }
+            Button(strings.copySessionTitle) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(displayedTitle, forType: .string)
+            }
             // Only agy's conversations can be deleted; the engine refuses
             // any other provider's, so the item is not offered for them.
             if engine.activeProvider.id == NexusAgentCLIProvider.antigravity.id {
+                Divider()
                 Button(role: .destructive) {
                     session.delete(summary, configuration: engine.configuration)
                 } label: {
@@ -97,6 +106,16 @@ struct NexusAgentSessionRow: View {
                 }
             }
         }
+    }
+
+    /// The title as the row shows it: a conversation with none gets the
+    /// app's word for that.
+    private var displayedTitle: String {
+        summary.title.isEmpty ? strings.untitledSession : summary.title
+    }
+
+    private func resume() {
+        session.resume(summary, configuration: engine.configuration)
     }
 
     @ViewBuilder

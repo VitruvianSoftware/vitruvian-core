@@ -45,7 +45,7 @@ class AppState: ObservableObject {
     init() {
         let bot = BotManager()
         // The bot manager owns the shared engine; settings are read and saved through it.
-        let config = ConfigManager(engine: bot.engine)
+        let config = ConfigManager(engine: bot.engine, host: bot.host)
         let updater = UpdateChecker()
         ConfigManager.shared = config
         self.botManager = bot

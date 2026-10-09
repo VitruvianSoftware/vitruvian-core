@@ -348,6 +348,32 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         session.refreshSessions(configuration: configuration)
     }
 
+    /// The host's saved providers, or its choice among them, changed without
+    /// the engine being asked: an app whose settings page saves them itself
+    /// calls this afterwards, so the chat follows without a new engine.
+    ///
+    /// The chat moves to the provider the host now names, as it is now
+    /// listed (an edited command included). A choice that names a provider
+    /// no longer listed is given up for Antigravity and the host is told,
+    /// which is what the standalone's Settings did when the chosen provider
+    /// was removed. Nothing is published when nothing changed.
+    public func providersChanged() {
+        let listed = providers
+        if let id = host.chosenProviderID, !listed.contains(where: { $0.id == id }) {
+            host.chosenProviderID = NexusAgentCLIProvider.antigravity.id
+        }
+        let next = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: listed)
+        let previous = configuration.activeProvider
+        guard next != previous else { return }
+        configuration.activeProvider = next
+        agentPath = locateProgram(of: next)
+        // Another provider, or the same one now run another way, has other
+        // conversations; a changed name or flag does not.
+        if next.id != previous.id || next.route != previous.route {
+            session.refreshSessions(configuration: configuration)
+        }
+    }
+
     /// Where the program that runs `provider`'s turns is, for the page to
     /// say when it is missing. For a command of the user's own that is the
     /// first word of its template, looked for where the session will look

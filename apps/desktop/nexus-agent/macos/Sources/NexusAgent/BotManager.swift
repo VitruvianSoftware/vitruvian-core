@@ -33,12 +33,24 @@ class BotManager: ObservableObject {
     @Published var pid: Int32? = nil
 
     /// The shared engine, also used by `ConfigManager` to read and save `.env`.
-    let engine: NexusAgentEngine
+    let engine: StandaloneEngine
+
+    /// The engine's host, which keeps this app's saved providers.
+    /// `ConfigManager` writes them through it.
+    let host: StandaloneHost
 
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
-        engine = NexusAgentEngine(environment: .live, host: StandaloneHost())
+        let host = StandaloneHost()
+        let engine = StandaloneEngine(environment: .live, host: host)
+        // A notification about a finished turn carries the conversation it
+        // was in, so a click on it can come back to that one.
+        host.openConversation = { [weak engine] in
+            (engine?.session.conversationID, engine?.session.sessionTitle)
+        }
+        self.host = host
+        self.engine = engine
 
         // The engine changes its state on the main thread, and each of these
         // hands over the new value as it changes.

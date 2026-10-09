@@ -67,6 +67,9 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// A row's buttons.
     public var archiveSession: String
     public var unarchiveSession: String
+    /// A row's menu: open the conversation, and copy its title.
+    public var resumeSession: String
+    public var copySessionTitle: String
     /// The button that deletes every conversation of the working folder,
     /// and what it says after one click, while it waits for the second.
     public var clearAll: String
@@ -201,6 +204,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         archivedSuffix: String = ")",
         archiveSession: String = "Archive session",
         unarchiveSession: String = "Unarchive session",
+        resumeSession: String = "Resume",
+        copySessionTitle: String = "Copy Title",
         clearAll: String = "Clear All",
         clearAllConfirm: String = "Confirm?",
         agentEnvironment: String = "Agent Environment",
@@ -291,6 +296,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         self.archivedSuffix = archivedSuffix
         self.archiveSession = archiveSession
         self.unarchiveSession = unarchiveSession
+        self.resumeSession = resumeSession
+        self.copySessionTitle = copySessionTitle
         self.clearAll = clearAll
         self.clearAllConfirm = clearAllConfirm
         self.agentEnvironment = agentEnvironment

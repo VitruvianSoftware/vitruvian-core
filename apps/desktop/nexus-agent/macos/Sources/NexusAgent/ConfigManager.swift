@@ -20,6 +20,7 @@
 
 import SwiftUI
 import Foundation
+import Combine
 import NexusAgentCore
 
 // MARK: - CLI Provider Model
@@ -55,6 +56,23 @@ struct CLIProvider: Codable, Identifiable, Equatable {
     )
 
     static let builtIns: [CLIProvider] = [.antigravity, .claude, .ollama]
+
+    init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool) {
+        self.id = id
+        self.name = name
+        self.commandTemplate = commandTemplate
+        self.isBuiltIn = isBuiltIn
+    }
+
+    /// The same provider as the shared code holds it: field for field.
+    init(_ shared: NexusAgentCLIProvider) {
+        self.init(id: shared.id, name: shared.name,
+                  commandTemplate: shared.commandTemplate, isBuiltIn: shared.isBuiltIn)
+    }
+
+    var shared: NexusAgentCLIProvider {
+        NexusAgentCLIProvider(id: id, name: name, commandTemplate: commandTemplate, isBuiltIn: isBuiltIn)
+    }
 }
 
 /// Reads and writes the bot's .env configuration file.
@@ -77,17 +95,39 @@ class ConfigManager: ObservableObject {
     @Published var hotkeyKey: String = "g"
     @Published var hotkeyModifiers: Int = 0  // NSEvent.ModifierFlags raw value
 
-    // AI Backend providers (stored in UserDefaults)
-    @Published var providers: [CLIProvider] = CLIProvider.builtIns
-    @Published var activeProviderId: UUID = CLIProvider.antigravity.id
+    // AI Backend providers.
+    //
+    // There is one record of them, and this class keeps no copy of it: the
+    // chat chooses a provider through the engine, and a copy here would put
+    // the old choice back on the next save. Reading goes through the engine;
+    // a change is written through the host, at once, and the engine is told
+    // so the chat follows. The views bind to these as they always did.
+
+    /// The built-in providers, then the user's own.
+    var providers: [CLIProvider] {
+        get { engine.providers.map { CLIProvider($0) } }
+        set {
+            objectWillChange.send()
+            host.savedProviders = newValue.map(\.shared)
+            // Also falls back to Antigravity if the chosen provider was removed.
+            engine.providersChanged()
+        }
+    }
+
+    var activeProviderId: UUID {
+        get { engine.activeProvider.id }
+        set {
+            objectWillChange.send()
+            host.chosenProviderID = newValue
+            engine.providersChanged()
+        }
+    }
 
     // Update preferences
     @Published var autoCheckUpdates: Bool = true
 
     /// The currently selected provider.
-    var activeProvider: CLIProvider {
-        providers.first { $0.id == activeProviderId } ?? CLIProvider.antigravity
-    }
+    var activeProvider: CLIProvider { CLIProvider(engine.activeProvider) }
     
     var hotkeyDisplayString: String {
         var parts: [String] = []
@@ -105,9 +145,13 @@ class ConfigManager: ObservableObject {
 
     /// Reads and writes `.env` by the rules this app shares with Vitruvian.
     private let engine: NexusAgentEngine
+    /// Keeps the saved providers and the chosen one.
+    private let host: StandaloneHost
+    private var cancellables: Set<AnyCancellable> = []
 
-    init(engine: NexusAgentEngine) {
+    init(engine: NexusAgentEngine, host: StandaloneHost) {
         self.engine = engine
+        self.host = host
 
         // Load preferences from UserDefaults
         autoStart = UserDefaults.standard.bool(forKey: "autoStart")
@@ -124,60 +168,36 @@ class ConfigManager: ObservableObject {
             autoCheckUpdates = UserDefaults.standard.bool(forKey: "autoCheckUpdates")
         }
 
-        // Load providers from UserDefaults
-        loadProviders()
+        // A built-in list from before the Gemini CLI became Antigravity
+        // holds the retired `gemini -p …` template for the same provider.
+        // The list's key was bumped to v3 to drop those once; the old one is
+        // removed here. The user's own providers are under another key.
+        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
+
+        // The chat chooses a provider through the engine, not through this
+        // class, and Settings must show it. The publisher fires just before
+        // the engine takes the new value, which is when SwiftUI wants to
+        // be told.
+        engine.$configuration
+            .map(\.activeProvider)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         load()
     }
 
     // MARK: - Provider Persistence
 
-    private func loadProviders() {
-        // Load user-defined (non-built-in) providers
-        if let data = UserDefaults.standard.data(forKey: "customProviders"),
-           let custom = try? JSONDecoder().decode([CLIProvider].self, from: data) {
-            // Merge built-ins (always fresh) + user custom providers
-            providers = CLIProvider.builtIns + custom.filter { !$0.isBuiltIn }
-        } else {
-            providers = CLIProvider.builtIns
-        }
-
-        // Load saved built-in templates (user may have edited them).
-        //
-        // The key is versioned: a v2 blob holds the retired Gemini CLI
-        // template for what is now the Antigravity provider (same UUID), and
-        // restoring it would show `gemini -p …` in Settings for a binary that
-        // no longer runs. Bumping to v3 drops those once; the user's own
-        // custom providers live under a separate key and are untouched.
-        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
-        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v3"),
-           let saved = try? JSONDecoder().decode([CLIProvider].self, from: data) {
-            for saved in saved {
-                if let idx = providers.firstIndex(where: { $0.id == saved.id }) {
-                    providers[idx].commandTemplate = saved.commandTemplate
-                }
-            }
-        }
-
-        // Load active provider
-        if let uuidString = UserDefaults.standard.string(forKey: "activeProviderId"),
-           let uuid = UUID(uuidString: uuidString) {
-            activeProviderId = uuid
-        } else {
-            activeProviderId = CLIProvider.antigravity.id
-        }
-    }
-
+    /// Writes the record as it stands: both lists and the choice. Every
+    /// change is already written when it is made, so this adds nothing for
+    /// a user who has saved before; on a first save it puts the three keys
+    /// in place, as this app always has.
     func saveProviders() {
-        let custom = providers.filter { !$0.isBuiltIn }
-        let builtIn = providers.filter { $0.isBuiltIn }
-        if let data = try? JSONEncoder().encode(custom) {
-            UserDefaults.standard.set(data, forKey: "customProviders")
-        }
-        if let data = try? JSONEncoder().encode(builtIn) {
-            UserDefaults.standard.set(data, forKey: "builtInProviders_v3")
-        }
-        UserDefaults.standard.set(activeProviderId.uuidString, forKey: "activeProviderId")
+        host.savedProviders = engine.providers
+        host.chosenProviderID = engine.activeProvider.id
+        engine.providersChanged()
     }
 
     // MARK: - Load .env
