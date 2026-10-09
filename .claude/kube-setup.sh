@@ -175,9 +175,10 @@ fi
 # invisible to it. It used to claim "reachable" unconditionally, which sent
 # agents at a cluster they could not reach once TS_AUTHKEY had been revoked.
 #
-# Claude Code runs a group's hooks in parallel, so tailscale-up.sh may still be
-# joining the tailnet here: wait while it runs (it gives `tailscale up` 30s),
-# then report the state it left.
+# .claude/session-start.sh runs tailscale-up.sh to completion first, but this
+# may also run beside it (Claude Code runs an event's hooks in parallel), so if
+# tailscale-up.sh is still joining the tailnet, wait while it runs (it gives
+# `tailscale up` 30s), then report the state it left.
 written="kube-setup: kubeconfig written (context 'lab')"
 help="see docs/admin/claude-code-cloud-sessions.md, Kubernetes access"
 

@@ -19,29 +19,33 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Guard for the cluster status line .claude/kube-setup.sh prints at session
-# start: the only word an agent gets on whether kubectl will work. It drives the
-# real hook against fake tailscale and kubectl binaries and checks the line says
-# "reachable" only when the apiserver answered, and why not otherwise (a revoked
-# TS_AUTHKEY, no tailscaled, a rejected LAB_SA_TOKEN, a silent apiserver).
-name: Kube Setup Hook Test
+# Guard for .claude/session-start.sh, the one SessionStart hook for cloud
+# sessions. It runs cloud-bootstrap.sh, tailscale-up.sh and kube-setup.sh in
+# order, because each needs what the one before it made, and Claude Code runs an
+# event's hooks in parallel. The test checks the order on fake steps, and that
+# settings.json runs the wrapper and none of the steps as a hook of its own.
+name: Session Start Hook Test
 
 on:
   pull_request:
     paths:
-      - ".claude/kube-setup.sh"
       - ".claude/session-start.sh"
       - ".claude/settings.json"
-      - "tools/ci/kube-setup_test.sh"
-      - ".github/workflows/kube-setup-test.yaml"
+      - ".claude/tailscale-up.sh"
+      - ".claude/kube-setup.sh"
+      - "tools/cloud-bootstrap/cloud-bootstrap.sh"
+      - "tools/ci/session-start_test.sh"
+      - ".github/workflows/session-start-test.yaml"
   push:
     branches: [main]
     paths:
-      - ".claude/kube-setup.sh"
       - ".claude/session-start.sh"
       - ".claude/settings.json"
-      - "tools/ci/kube-setup_test.sh"
-      - ".github/workflows/kube-setup-test.yaml"
+      - ".claude/tailscale-up.sh"
+      - ".claude/kube-setup.sh"
+      - "tools/cloud-bootstrap/cloud-bootstrap.sh"
+      - "tools/ci/session-start_test.sh"
+      - ".github/workflows/session-start-test.yaml"
 
 permissions:
   contents: read
@@ -55,5 +59,5 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run the kube-setup hook tests
-        run: bash tools/ci/kube-setup_test.sh
+      - name: Run the session-start hook tests
+        run: bash tools/ci/session-start_test.sh

@@ -27,8 +27,8 @@
 #   bazel run //tools/cloud-bootstrap:whoami          # report (gate; non-zero if incomplete)
 #   bazel run //tools/cloud-bootstrap:profiles        # list the profiles
 #
-# It is also the SessionStart hook (.claude/settings.json), which is how it
-# actually runs: a cloud session starts as a bare Ubuntu box with git/go/node but
+# It is also the first step of the SessionStart hook (.claude/session-start.sh),
+# which is how it actually runs: a cloud session starts as a bare Ubuntu box with git/go/node but
 # no bazel, no gh, no gcloud, no pulumi — and no credentials for any of them.
 #
 # ---------------------------------------------------------------------------
