@@ -17,6 +17,9 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+//
+// Shared by the standalone Nexus Agent app and the Nexus Agent feature of the
+// Vitruvian desktop app. Written for the shared library.
 
 import Foundation
 
@@ -71,9 +74,10 @@ extension NexusAgentCLIProvider {
     }
 }
 
-/// What the standalone app does when a turn ends: whether its "done" sound
-/// plays, and the system notification, if one is due. Decided here, apart
-/// from the doing, so the decision can be tested.
+/// What the standalone app does when a turn ends, or stops to ask for
+/// approval: whether its "done" sound plays, and the system notification,
+/// if one is due. Decided here, apart from the doing, so the decision can
+/// be tested; the app posts the title and body exactly as given.
 public struct NexusAgentTurnAnnouncement: Equatable, Sendable {
     public var playsSound: Bool
     public var notificationTitle: String?
@@ -93,17 +97,26 @@ public struct NexusAgentTurnAnnouncement: Equatable, Sendable {
     /// The sound is for a reply that arrived with nothing wrong, whether or
     /// not the chat is on screen. The notification is only for a user who
     /// cannot see the chat: a failed turn is "Failed" with the start of
-    /// what went wrong; any other turn with a reply is "Done" with the
-    /// reply's first line that is not blank. A turn that ended with no
-    /// reply and no failure says nothing.
+    /// what went wrong, in the words of the chat's error bubble
+    /// (`failureDetail`; the notice's text if it has none); any other turn
+    /// with a reply is "Done" with the reply's first line that is not
+    /// blank. A turn that ended with no reply and no failure says nothing.
+    ///
+    /// Nor does a turn marked failed with neither words for the failure
+    /// nor a reply. That is a turn the user stopped before any of it
+    /// arrived: the program ended on the stop signal, which reads as a
+    /// bad exit, but the user did it themselves and nothing failed.
     public static func finished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool,
                                 strings: NexusAgentHostStrings) -> NexusAgentTurnAnnouncement {
         let reply = notice.text
         var announcement = NexusAgentTurnAnnouncement(playsSound: notice.endedCleanly && !reply.isEmpty)
         guard !isChatVisible else { return announcement }
         if notice.failed {
+            let detail = notice.failureDetail ?? ""
+            let wentWrong = detail.isEmpty ? reply : detail
+            guard !wentWrong.isEmpty else { return announcement }
             announcement.notificationTitle = strings.failedTitle(provider: notice.providerName)
-            announcement.notificationBody = String(reply.prefix(bodyLimit))
+            announcement.notificationBody = String(wentWrong.prefix(bodyLimit))
         } else if !reply.isEmpty {
             let firstLine = reply.components(separatedBy: .newlines)
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? reply
@@ -111,5 +124,21 @@ public struct NexusAgentTurnAnnouncement: Equatable, Sendable {
             announcement.notificationBody = String(firstLine.prefix(bodyLimit))
         }
         return announcement
+    }
+
+    /// What the standalone does when a turn stops to ask whether it may
+    /// use a tool. The chat shows the request with its Allow button, so a
+    /// user looking at it is told nothing more. One who cannot see the
+    /// chat gets a notification, or the turn would wait unseen for a
+    /// click: the provider's name with the host's "approval required"
+    /// words (the ones Vitruvian's notch notice uses), and the tool and
+    /// what it wants to run, cut like any other body. No sound of the
+    /// app's own.
+    public static func needsApproval(_ notice: NexusAgentTurnNotice, isChatVisible: Bool,
+                                     strings: NexusAgentHostStrings) -> NexusAgentTurnAnnouncement {
+        guard !isChatVisible else { return NexusAgentTurnAnnouncement(playsSound: false) }
+        return NexusAgentTurnAnnouncement(playsSound: false,
+                                          notificationTitle: strings.approvalRequiredTitle(provider: notice.providerName),
+                                          notificationBody: String(notice.text.prefix(bodyLimit)))
     }
 }

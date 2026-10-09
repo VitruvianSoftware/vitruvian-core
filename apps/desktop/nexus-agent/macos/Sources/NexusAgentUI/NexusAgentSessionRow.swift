@@ -95,6 +95,9 @@ struct NexusAgentSessionRow: View {
             // row shows.
             Button(strings.resumeSession) { resume() }
                 .disabled(session.isClearingSessions)
+            // For a conversation with no title that is the placeholder
+            // ("Untitled"), not nothing: the standalone's menu copied the
+            // placeholder too, and this is left as it was.
             Button(strings.copySessionTitle) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(displayedTitle, forType: .string)

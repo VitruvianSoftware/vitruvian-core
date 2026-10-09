@@ -49,6 +49,9 @@ class BotManager: ObservableObject {
         host.openConversation = { [weak engine] in
             (engine?.session.conversationID, engine?.session.sessionTitle)
         }
+        // A turn waiting for approval is announced only when the chat is
+        // out of sight, which the engine knows.
+        host.chatIsVisible = { [weak engine] in engine?.isChatVisible ?? false }
         self.host = host
         self.engine = engine
 

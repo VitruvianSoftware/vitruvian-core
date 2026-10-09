@@ -36,6 +36,12 @@ final class StandaloneHost: NexusAgentHost {
     /// knows no engine.
     var openConversation: (() -> (id: String?, title: String?))?
 
+    /// Whether the chat is on screen, for a turn that stops to ask for
+    /// approval: the engine says so when a turn ends, but not then. Set by
+    /// whoever builds the engine, to the engine's own answer; until it is
+    /// set no window shows the engine's turns, and the answer is no.
+    var chatIsVisible: (() -> Bool)?
+
     /// This app has no setting for the bot folder: it is always the standard one.
     var configuredBotDirectory: String { "" }
 
@@ -106,23 +112,32 @@ final class StandaloneHost: NexusAgentHost {
 
     var strings: NexusAgentHostStrings { NexusAgentHostStrings() }
 
-    /// This app's chat never told the user about a turn waiting for
-    /// approval other than in the chat itself, and still does not.
-    func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {}
+    /// A turn stopped to ask whether it may use a tool. This app's own
+    /// chat never asked: it always let agy skip its prompts. The shared
+    /// chat honours the approval mode, so a turn out of sight can now sit
+    /// waiting for an Allow click nobody sees, and the user is told with a
+    /// notification. Whether one is due, and its words, are the shared
+    /// rule, which is tested.
+    func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {
+        post(NexusAgentTurnAnnouncement.needsApproval(notice, isChatVisible: chatIsVisible?() ?? false,
+                                                      strings: strings))
+    }
 
     /// What this app's own chat did when a reply ended: the "done" sound
     /// for a good reply, and a notification when the chat is out of sight.
-    /// Whether each is due is the shared rule, which is tested; the
-    /// notification manager words the title itself, as it always has, from
-    /// the provider's name and whether the turn failed.
+    /// Whether each is due, and the notification's title and body, are the
+    /// shared rule, which is tested; the title comes out as this app has
+    /// always worded it, the provider's name and "Done" or "Failed".
     func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {
-        let announcement = NexusAgentTurnAnnouncement.finished(notice, isChatVisible: isChatVisible,
-                                                               strings: strings)
+        post(NexusAgentTurnAnnouncement.finished(notice, isChatVisible: isChatVisible, strings: strings))
+    }
+
+    /// Does what the shared rule decided, with its words as given.
+    private func post(_ announcement: NexusAgentTurnAnnouncement) {
         if announcement.playsSound { NSSound(named: "Tink")?.play() }
-        guard let body = announcement.notificationBody else { return }
+        guard let title = announcement.notificationTitle, let body = announcement.notificationBody else { return }
         let conversation = openConversation?()
-        BackgroundNotificationManager.shared.notifyCompletion(
-            preview: body, isError: notice.failed, providerName: notice.providerName,
-            sessionUUID: conversation?.id, sessionTitle: conversation?.title)
+        BackgroundNotificationManager.shared.notify(
+            title: title, body: body, sessionUUID: conversation?.id, sessionTitle: conversation?.title)
     }
 }

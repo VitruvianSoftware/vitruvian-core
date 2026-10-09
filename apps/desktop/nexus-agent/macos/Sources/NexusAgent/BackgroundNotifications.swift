@@ -44,9 +44,18 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
     ///   - preview: A short preview of the response text
     ///   - isError: Whether the generation failed
     func notifyCompletion(preview: String, isError: Bool = false, providerName: String = "NexusAgent", sessionUUID: String? = nil, sessionTitle: String? = nil) {
+        notify(title: isError ? "\(providerName) — Failed" : "\(providerName) — Done",
+               body: preview, sessionUUID: sessionUUID, sessionTitle: sessionTitle)
+    }
+
+    /// Send a notification about a turn with a title the caller worded.
+    /// The shared chat's host uses this, so that the title it posts is the
+    /// one the shared, tested rule gave it. A click on it comes back to the
+    /// session, as for any other.
+    func notify(title: String, body: String, sessionUUID: String? = nil, sessionTitle: String? = nil) {
         let content = UNMutableNotificationContent()
-        content.title = isError ? "\(providerName) — Failed" : "\(providerName) — Done"
-        content.body = String(preview.prefix(200))
+        content.title = title
+        content.body = String(body.prefix(200))
         content.sound = .default
         content.categoryIdentifier = "GENERATION_COMPLETE"
         // Embed session info so click-to-reopen lands on the right session

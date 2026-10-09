@@ -97,11 +97,16 @@ final class PermissionArgumentsTests: XCTestCase {
     /// The arguments one turn is started with. A model is always set, so
     /// Ollama has no list to ask for first.
     private func arguments(provider: NexusAgentCLIProvider, approval: NexusAgentApprovalMode,
-                           planMode: Bool) -> [String]? {
+                           planMode: Bool, worktree: Bool = false, resuming: String? = nil) -> [String]? {
         let world = World()
         let host = QuietHost()
         host.planMode = planMode
+        host.worktreeMode = worktree
         let session = NexusAgentQuickPromptSession(environment: world.environment, host: host)
+        if let resuming {
+            session.resume(NexusAgentSessionSummary(id: resuming, title: "Earlier", steps: 1, modified: nil),
+                           configuration: NexusAgentConfiguration(activeProvider: provider))
+        }
         session.send(Self.prompt,
                      configuration: NexusAgentConfiguration(approvalMode: approval, model: Self.model,
                                                             activeProvider: provider),
@@ -203,6 +208,56 @@ final class PermissionArgumentsTests: XCTestCase {
             }
         }
         XCTAssertEqual(cells, 32, "four ways to run, four modes, plan mode on and off")
+    }
+
+    /// The two things a turn can carry besides its approval mode. Each adds
+    /// its own flag and nothing else, so neither can let a turn skip the
+    /// agent's prompts outside yolo. agy has no worktree flag at all.
+    private static let extras: [(route: String, provider: NexusAgentCLIProvider,
+                                 worktree: [String], resume: String)] = [
+        ("agy", .antigravity, [], "--conversation"),
+        ("Claude", .claude, ["-w"], "--resume"),
+        ("Ollama", .ollama, ["-w"], "--resume"),
+    ]
+
+    /// `arguments` with one run of `flags` taken out, or nil if it is not there.
+    private static func removing(_ flags: [String], from arguments: [String]) -> [String]? {
+        guard !flags.isEmpty else { return arguments }
+        guard arguments.count >= flags.count else { return nil }
+        for start in 0...(arguments.count - flags.count)
+        where Array(arguments[start..<(start + flags.count)]) == flags {
+            return Array(arguments[..<start]) + Array(arguments[(start + flags.count)...])
+        }
+        return nil
+    }
+
+    func testWorktreeModeAddsOnlyItsOwnFlag() throws {
+        for row in Self.extras {
+            for mode in NexusAgentApprovalMode.allCases {
+                let cell = "\(row.route), \(mode.rawValue)"
+                let plain = try XCTUnwrap(arguments(provider: row.provider, approval: mode, planMode: false))
+                let inWorktree = try XCTUnwrap(arguments(provider: row.provider, approval: mode, planMode: false,
+                                                         worktree: true))
+                XCTAssertEqual(Self.removing(row.worktree, from: inWorktree), plain, cell)
+                XCTAssertEqual(Self.permissionArguments(in: inWorktree), Self.permissionArguments(in: plain), cell)
+                XCTAssertEqual(Self.skipsPermissionPrompts(inWorktree), mode == .yolo, cell)
+            }
+        }
+    }
+
+    func testAResumedConversationAddsOnlyItsOwnFlag() throws {
+        let id = "11111111-2222-3333-4444-555555555555"
+        for row in Self.extras {
+            for mode in NexusAgentApprovalMode.allCases {
+                let cell = "\(row.route), \(mode.rawValue)"
+                let plain = try XCTUnwrap(arguments(provider: row.provider, approval: mode, planMode: false))
+                let resumed = try XCTUnwrap(arguments(provider: row.provider, approval: mode, planMode: false,
+                                                      resuming: id))
+                XCTAssertEqual(Self.removing([row.resume, id], from: resumed), plain, cell)
+                XCTAssertEqual(Self.permissionArguments(in: resumed), Self.permissionArguments(in: plain), cell)
+                XCTAssertEqual(Self.skipsPermissionPrompts(resumed), mode == .yolo, cell)
+            }
+        }
     }
 
     /// Where the flags sit, for the two shapes that differ: Ollama's go

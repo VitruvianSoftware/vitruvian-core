@@ -161,6 +161,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// the agent is started with the answer, or the turn is stopped.
     private var awaitingModel = false
     private var reportedError = false
+    /// What the agent said went wrong this turn, as its error bubble shows
+    /// it; the last one, if it said so more than once.
+    private var reportedErrorText: String?
     /// Output that is not stream JSON (agy's own errors), kept for a failure.
     private var noise: [String] = []
     /// Everything a provider's own command has printed this turn, and
@@ -371,6 +374,12 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// The agy flags for this turn: plan mode overrides the bot's approval mode.
     public func turnConfiguration(_ configuration: NexusAgentConfiguration) -> NexusAgentConfiguration {
+        Self.turnConfiguration(configuration, planMode: planMode)
+    }
+
+    /// The same rule for a plan mode taken earlier than now.
+    private static func turnConfiguration(_ configuration: NexusAgentConfiguration,
+                                          planMode: Bool) -> NexusAgentConfiguration {
         var turn = configuration
         if planMode { turn.approvalMode = .plan }
         return turn
@@ -405,11 +414,16 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
             return
         }
+        // Plan mode and worktree mode are the user's as they stand now, when
+        // the prompt is sent. A turn that has to wait before it starts (see
+        // below) runs with these, whatever is switched while it waits: a
+        // prompt sent in plan mode must not start outside it.
+        let modes = TurnModes(plan: planMode, worktree: worktreeMode)
         let current = beginTurn(configuration: configuration, followsTranscript: true)
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         // Whatever is run as Ollama needs a model, not the built-in provider alone.
         guard configuration.activeProvider.route == .ollama, model.isEmpty else {
-            launch(text, configuration: configuration, agentPath: agentPath,
+            launch(text, configuration: configuration, agentPath: agentPath, modes: modes,
                    ollamaDefaultModel: NexusAgentSupport.ollamaFallbackModel, turn: current)
             return
         }
@@ -422,9 +436,15 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             let listing = await runProgram("ollama", ["list"])
             guard let self, self.awaitingModel, current == self.turn else { return }
             self.awaitingModel = false
-            self.launch(text, configuration: configuration, agentPath: agentPath,
+            self.launch(text, configuration: configuration, agentPath: agentPath, modes: modes,
                         ollamaDefaultModel: NexusAgentSupport.ollamaDefaultModel(fromList: listing), turn: current)
         }
+    }
+
+    /// The two switches of the chat as they stood when a prompt was sent.
+    private struct TurnModes: Sendable {
+        var plan: Bool
+        var worktree: Bool
     }
 
     /// Puts a new turn on screen as running: an empty reply to fill, the
@@ -436,6 +456,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         noise = []
         stoppedByUser = false
         reportedError = false
+        reportedErrorText = nil
         currentToolCalls = 0
         commandOutput = Data()
         commandErrors = Data()
@@ -500,10 +521,12 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             elapsedTimer?.invalidate()
             elapsedTimer = nil
             // The system's own words for why, as the standalone shows them.
-            replace(reply: error.localizedDescription, isError: true)
+            let reason = error.localizedDescription
+            replace(reply: reason, isError: true)
             lastFailedPrompt = text
             replyID = nil
-            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false))
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                        failureDetail: reason))
         }
     }
 
@@ -544,6 +567,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         var completedReply = ""
         var failed = false
         var endedCleanly = false
+        // The words of the error bubble, when the turn ends in one.
+        var failureDetail: String?
         if stoppedByUser || outcome == .stopped {
             // What arrived before the stop stays, as in any other turn.
             replace(reply: printed.isEmpty ? strings.replyStopped : printed, isError: false)
@@ -556,16 +581,19 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 completedReply = text
                 endedCleanly = true
             case .failed(let code, let errors):
-                replace(reply: errors.isEmpty ? strings.commandExited(status: code) : errors, isError: true)
+                let reason = errors.isEmpty ? strings.commandExited(status: code) : errors
+                replace(reply: reason, isError: true)
+                failureDetail = reason
                 failed = true
             case .noOutput, .stopped:
                 replace(reply: strings.commandNoOutput, isError: true)
+                failureDetail = strings.commandNoOutput
                 failed = true
             }
             if failed { lastFailedPrompt = messages.last(where: { $0.role == .user })?.text }
         }
         report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
-                                    failed: failed, endedCleanly: endedCleanly))
+                                    failed: failed, endedCleanly: endedCleanly, failureDetail: failureDetail))
         replyID = nil
     }
 
@@ -580,14 +608,17 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
     }
 
-    /// Starts the agent for a turn `send` has already put on screen.
+    /// Starts the agent for a turn `send` has already put on screen, in
+    /// the modes the prompt was sent in, not the ones set by now.
     private func launch(_ text: String, configuration: NexusAgentConfiguration, agentPath: String,
-                        ollamaDefaultModel: String, turn current: Int) {
-        let arguments = NexusAgentSupport.agentArguments(prompt: text, configuration: turnConfiguration(configuration),
-                                                         conversationID: conversationID,
-                                                         planMode: planMode,
-                                                         worktreeMode: worktreeMode,
-                                                         ollamaDefaultModel: ollamaDefaultModel)
+                        modes: TurnModes, ollamaDefaultModel: String, turn current: Int) {
+        let arguments = NexusAgentSupport.agentArguments(
+            prompt: text,
+            configuration: Self.turnConfiguration(configuration, planMode: modes.plan),
+            conversationID: conversationID,
+            planMode: modes.plan,
+            worktreeMode: modes.worktree,
+            ollamaDefaultModel: ollamaDefaultModel)
         let childEnvironment = NexusAgentSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
         do {
@@ -601,6 +632,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             elapsedTimer?.invalidate()
             elapsedTimer = nil
             replace(reply: strings.agentFailed, isError: true)
+            // Not reported to the host, as it never was: a host that shows
+            // every finished turn (Vitruvian's notch) would start showing
+            // this one. The bubble is the only word of it.
             replyID = nil
         }
     }
@@ -720,6 +754,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             }
             if let error {
                 reportedError = true
+                reportedErrorText = error
                 messages.append(NexusAgentChatMessage(role: .agent, text: error, isError: true))
             }
         }
@@ -745,6 +780,10 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         // True on the two paths below where nothing went wrong, which is
         // when the host plays its "done" sound.
         var endedCleanly = false
+        // The words of the turn's error bubble, when it has one: what agy
+        // said went wrong, or below, what is said for a bad exit. A turn
+        // the user stopped before anything arrived has no such bubble.
+        var failureDetail = reportedErrorText
         if stoppedByUser {
             if currentReplyText.isEmpty { replace(reply: strings.replyStopped, isError: false) }
         } else if currentReplyText.isEmpty {
@@ -755,6 +794,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             } else if status != 0 {
                 let detail = ([strings.agentFailed] + noise).joined(separator: "\n")
                 replace(reply: detail, isError: true)
+                failureDetail = detail
                 lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
             } else {
                 replace(reply: strings.emptyReply, isError: false)
@@ -768,7 +808,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             }
         }
         report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
-                                    failed: hadError, endedCleanly: endedCleanly))
+                                    failed: hadError, endedCleanly: endedCleanly,
+                                    failureDetail: hadError ? failureDetail : nil))
         replyID = nil
     }
 

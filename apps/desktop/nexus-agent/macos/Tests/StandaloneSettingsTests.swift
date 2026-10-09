@@ -393,8 +393,16 @@ final class StandaloneSettingsTests: XCTestCase {
 
     private let strings = NexusAgentHostStrings()
 
-    private func notice(_ text: String, failed: Bool = false, endedCleanly: Bool = true) -> NexusAgentTurnNotice {
-        NexusAgentTurnNotice(providerName: "Antigravity CLI", text: text, failed: failed, endedCleanly: endedCleanly)
+    private func notice(_ text: String, failed: Bool = false, endedCleanly: Bool = true,
+                        failureDetail: String? = nil) -> NexusAgentTurnNotice {
+        NexusAgentTurnNotice(providerName: "Antigravity CLI", text: text, failed: failed, endedCleanly: endedCleanly,
+                             failureDetail: failureDetail)
+    }
+
+    /// A failed turn as the session reports one: the reply (often none) as
+    /// the text, and what went wrong beside it.
+    private func failure(_ detail: String?, reply: String = "") -> NexusAgentTurnNotice {
+        notice(reply, failed: true, endedCleanly: false, failureDetail: detail)
     }
 
     func testAReplyThatFinishedOutOfSightIsANotificationAndTheSound() {
@@ -405,18 +413,43 @@ final class StandaloneSettingsTests: XCTestCase {
     }
 
     func testAFailureOutOfSightIsANotificationWithoutTheSound() {
-        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(notice("agy exited with code 1", failed: true, endedCleanly: false),
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(failure("The agent stopped with an error.\nquota exceeded"),
                                                            isChatVisible: false, strings: strings),
                        NexusAgentTurnAnnouncement(playsSound: false,
                                                   notificationTitle: "Antigravity CLI — Failed",
-                                                  notificationBody: "agy exited with code 1"))
+                                                  notificationBody: "The agent stopped with an error.\nquota exceeded"))
+    }
+
+    func testAFailureAfterPartOfAReplySaysWhatWentWrongNotTheReply() {
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(failure("Lost the connection", reply: "Half a reply"),
+                                                           isChatVisible: false, strings: strings),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Failed",
+                                                  notificationBody: "Lost the connection"))
+        // A failed notice with a text and no words for the failure, which
+        // the session does not send, still says something: the text.
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(failure(nil, reply: "Half a reply"),
+                                                           isChatVisible: false, strings: strings).notificationBody,
+                       "Half a reply")
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(failure("", reply: "Half a reply"),
+                                                           isChatVisible: false, strings: strings).notificationBody,
+                       "Half a reply", "empty words are no words")
+    }
+
+    /// What the session sends when the user stops a turn before any of it
+    /// arrived: marked failed (the program ended on a signal) with nothing
+    /// to say. The user did that themselves, so they are not told "Failed".
+    func testATurnStoppedWithNothingToShowSaysNothing() {
+        for visible in [true, false] {
+            XCTAssertEqual(NexusAgentTurnAnnouncement.finished(failure(nil), isChatVisible: visible, strings: strings),
+                           NexusAgentTurnAnnouncement(playsSound: false), "visible: \(visible)")
+        }
     }
 
     func testAReplyTheUserCanSeeIsOnlyTheSound() {
         XCTAssertEqual(NexusAgentTurnAnnouncement.finished(notice("All done."), isChatVisible: true, strings: strings),
                        NexusAgentTurnAnnouncement(playsSound: true))
-        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(notice("oops", failed: true, endedCleanly: false),
-                                                           isChatVisible: true, strings: strings),
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(failure("oops"), isChatVisible: true, strings: strings),
                        NexusAgentTurnAnnouncement(playsSound: false), "and a failure in sight is nothing more")
     }
 
@@ -437,12 +470,11 @@ final class StandaloneSettingsTests: XCTestCase {
                        "the first line that is not blank, cut as the old chat cut it")
 
         // A failure is not cut to a line: the start of the whole text, as before.
-        let failed = NexusAgentTurnAnnouncement.finished(notice("line one\nline two", failed: true, endedCleanly: false),
+        let failed = NexusAgentTurnAnnouncement.finished(failure("line one\nline two"),
                                                          isChatVisible: false, strings: strings)
         XCTAssertEqual(failed.notificationBody, "line one\nline two")
-        let longFailure = NexusAgentTurnAnnouncement.finished(
-            notice(String(repeating: "x", count: 500), failed: true, endedCleanly: false),
-            isChatVisible: false, strings: strings)
+        let longFailure = NexusAgentTurnAnnouncement.finished(failure(String(repeating: "x", count: 500)),
+                                                              isChatVisible: false, strings: strings)
         XCTAssertEqual(longFailure.notificationBody?.count, 200)
     }
 
@@ -460,5 +492,49 @@ final class StandaloneSettingsTests: XCTestCase {
         german.doneTitleSuffix = " — Fertig"
         XCTAssertEqual(NexusAgentTurnAnnouncement.finished(notice("ok"), isChatVisible: false, strings: german)
             .notificationTitle, "Antigravity CLI — Fertig")
+    }
+
+    /// The app posts the title this rule gives, so these are the words a
+    /// user reads. They are the ones this app's own chat always posted.
+    func testTheTitlesAreTheOnesTheOldChatPosted() {
+        let provider = "Claude Code"
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(
+            NexusAgentTurnNotice(providerName: provider, text: "ok", failed: false, endedCleanly: true),
+            isChatVisible: false, strings: strings).notificationTitle, "\(provider) — Done")
+        XCTAssertEqual(NexusAgentTurnAnnouncement.finished(
+            NexusAgentTurnNotice(providerName: provider, text: "", failed: true, endedCleanly: false,
+                                 failureDetail: "boom"),
+            isChatVisible: false, strings: strings).notificationTitle, "\(provider) — Failed")
+    }
+
+    // MARK: - What the user hears about a turn waiting for approval
+
+    private var waiting: NexusAgentTurnNotice {
+        NexusAgentTurnNotice(providerName: "Claude Code", text: "Bash: rm -rf /tmp/cache", failed: false,
+                             endedCleanly: false)
+    }
+
+    func testATurnWaitingForApprovalOutOfSightIsANotification() {
+        XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(waiting, isChatVisible: false, strings: strings),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Claude Code — Approval Required",
+                                                  notificationBody: "Bash: rm -rf /tmp/cache"))
+    }
+
+    func testATurnWaitingForApprovalInSightIsNothingMore() {
+        XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(waiting, isChatVisible: true, strings: strings),
+                       NexusAgentTurnAnnouncement(playsSound: false), "the chat itself shows the request")
+    }
+
+    func testAnApprovalNoticeUsesTheHostsWordsAndIsCutLikeAnyOther() {
+        var german = NexusAgentHostStrings()
+        german.approvalRequiredTitleSuffix = " — Freigabe nötig"
+        XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(waiting, isChatVisible: false, strings: german)
+            .notificationTitle, "Claude Code — Freigabe nötig")
+
+        var long = waiting
+        long.text = "Bash: " + String(repeating: "x", count: 500)
+        XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(long, isChatVisible: false, strings: strings)
+            .notificationBody?.count, NexusAgentTurnAnnouncement.bodyLimit)
     }
 }

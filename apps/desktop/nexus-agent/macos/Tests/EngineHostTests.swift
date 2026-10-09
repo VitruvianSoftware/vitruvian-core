@@ -1042,6 +1042,12 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(host.finished.last?.notice.failed, true)
         XCTAssertEqual(host.finished.last?.notice.endedCleanly, false)
         XCTAssertEqual(host.finished.last?.notice.text, "")
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Error: model 'm' not found",
+                       "the notice carries the words of the error bubble")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Agent — Failed",
+                                                  notificationBody: "Error: model 'm' not found"))
 
         // It said nothing at all: the exit status is the message.
         session.send("two", configuration: configuration, agentPath: nil)
@@ -1050,6 +1056,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.isError, true)
         XCTAssertEqual(session.lastFailedPrompt, "two")
         XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Process exited with code 3")
 
         // It succeeded with nothing to say: the standalone calls that an error too.
         session.send("three", configuration: configuration, agentPath: nil)
@@ -1060,6 +1067,8 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.lastFailedPrompt, "three")
         XCTAssertEqual(host.finished.last?.notice.failed, true)
         XCTAssertEqual(host.finished.last?.notice.endedCleanly, false)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "No output from provider")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice)?.notificationBody, "No output from provider")
 
         // It answered and THEN failed: the standalone shows the answer and no error.
         session.send("four", configuration: configuration, agentPath: nil)
@@ -1071,6 +1080,7 @@ final class EngineHostTests: XCTestCase {
         XCTAssertNil(session.lastFailedPrompt)
         XCTAssertEqual(host.finished.last?.notice.failed, false)
         XCTAssertEqual(host.finished.last?.notice.endedCleanly, true)
+        XCTAssertNil(host.finished.last?.notice.failureDetail, "no error bubble, so no words for one")
         XCTAssertEqual(host.finished.count, 4, "one report per turn")
         XCTAssertEqual(session.messages.count, 8, "one question and one answer per turn")
     }
@@ -1092,6 +1102,10 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.lastFailedPrompt, "hi")
         XCTAssertEqual(host.finished.count, 1)
         XCTAssertEqual(host.finished.first?.notice.failed, true)
+        XCTAssertEqual(host.finished.first?.notice.failureDetail, CocoaError(.fileNoSuchFile).localizedDescription,
+                       "and the notice carries them")
+        XCTAssertEqual(announcedOutOfSight(host.finished.first?.notice)?.notificationBody,
+                       CocoaError(.fileNoSuchFile).localizedDescription)
     }
 
     func testStoppingAnOwnCommandEndsIt() {
@@ -1111,6 +1125,10 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.isError, false)
         XCTAssertEqual(host.finished.count, 1)
         XCTAssertEqual(host.finished.first?.notice.endedCleanly, false)
+        // The user stopped it: nothing failed that has words, and a user
+        // who cannot see the chat is not told "Failed".
+        XCTAssertNil(host.finished.first?.notice.failureDetail)
+        XCTAssertEqual(announcedOutOfSight(host.finished.first?.notice), NexusAgentTurnAnnouncement(playsSound: false))
 
         // What had arrived before the stop stays.
         session.send("again", configuration: configuration, agentPath: nil)
@@ -1119,6 +1137,9 @@ final class EngineHostTests: XCTestCase {
         rig.commandExit?(15)
         XCTAssertEqual(session.messages.last?.text, "so far")
         XCTAssertEqual(host.finished.count, 2)
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice),
+                       NexusAgentTurnAnnouncement(playsSound: false, notificationTitle: "Agent — Done",
+                                                  notificationBody: "so far"))
 
         // A turn replaced by a new chat is not heard from again.
         session.send("third", configuration: configuration, agentPath: nil)
@@ -2226,6 +2247,19 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(host.approvals.first?.endedCleanly, false)
         XCTAssertTrue(host.finished.isEmpty, "the turn has not finished")
 
+        // What the standalone app makes of that notice: a notification when
+        // nobody can see the Allow button, nothing more when they can.
+        if let notice = host.approvals.first {
+            XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(notice, isChatVisible: false,
+                                                                    strings: host.strings),
+                           NexusAgentTurnAnnouncement(playsSound: false,
+                                                      notificationTitle: "Antigravity CLI — Approval Required",
+                                                      notificationBody: "Bash: ls -la"))
+            XCTAssertEqual(NexusAgentTurnAnnouncement.needsApproval(notice, isChatVisible: true,
+                                                                    strings: host.strings),
+                           NexusAgentTurnAnnouncement(playsSound: false))
+        }
+
         rig.agentExit?(0)
         engine.session.stopTranscriptFollower()
     }
@@ -2257,6 +2291,209 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(host.finished.first?.isChatVisible, true,
                        "with no engine there is no window to be away from")
         XCTAssertEqual(host.finished.first?.notice.providerName, host.strings.fallbackProviderName)
+    }
+
+    // MARK: A failed turn says why
+
+    /// What the standalone app does with a notice when its chat is out of sight.
+    private func announcedOutOfSight(_ notice: NexusAgentTurnNotice?) -> NexusAgentTurnAnnouncement? {
+        notice.map { NexusAgentTurnAnnouncement.finished($0, isChatVisible: false, strings: NexusAgentHostStrings()) }
+    }
+
+    func testAnAgentThatExitsBadlyReportsTheWordsOfItsErrorBubble() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        // Not stream JSON: agy's own complaint, which the bubble shows.
+        rig.agentOutput?(Data("agy: quota exceeded\n".utf8))
+        rig.agentExit?(1)
+        engine.session.stopTranscriptFollower()
+
+        let bubble = engine.session.messages.last
+        XCTAssertEqual(bubble?.isError, true)
+        XCTAssertEqual(bubble?.text, "The agent stopped with an error.\nagy: quota exceeded")
+        XCTAssertEqual(host.finished.count, 1)
+        let notice = host.finished.first?.notice
+        XCTAssertEqual(notice?.failed, true)
+        XCTAssertEqual(notice?.text, "", "the reply is still the reply: there was none")
+        XCTAssertEqual(notice?.failureDetail, bubble?.text, "the notice carries what the bubble says")
+        XCTAssertEqual(announcedOutOfSight(notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Failed",
+                                                  notificationBody: "The agent stopped with an error.\nagy: quota exceeded"))
+    }
+
+    func testAnErrorTheAgentReportsItselfIsTheFailuresWords() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        // With no reply: the error has a bubble of its own.
+        engine.session.send("one", configuration: engine.configuration, agentPath: "/fake/agy")
+        rig.agentOutput?(Data((#"{"event":"result","result":{"status":"error","error":"Quota exceeded"}}"# + "\n").utf8))
+        rig.agentExit?(1)
+        XCTAssertEqual(engine.session.messages.last?.text, "Quota exceeded")
+        XCTAssertEqual(engine.session.messages.last?.isError, true)
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Quota exceeded")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice)?.notificationBody, "Quota exceeded")
+
+        // After part of a reply: the notice keeps the reply as its text, and
+        // the notification still says what went wrong, not the half reply.
+        engine.session.send("two", configuration: engine.configuration, agentPath: "/fake/agy")
+        rig.agentOutput?(Data((#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Half a reply"}}"# + "\n").utf8))
+        rig.agentOutput?(Data((#"{"event":"result","result":{"status":"error","error":"Lost the connection"}}"# + "\n").utf8))
+        rig.agentExit?(1)
+        engine.session.stopTranscriptFollower()
+        XCTAssertEqual(host.finished.last?.notice.text, "Half a reply")
+        XCTAssertEqual(host.finished.last?.notice.failed, true)
+        XCTAssertEqual(host.finished.last?.notice.failureDetail, "Lost the connection")
+        XCTAssertEqual(announcedOutOfSight(host.finished.last?.notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Failed",
+                                                  notificationBody: "Lost the connection"))
+        XCTAssertEqual(host.finished.count, 2)
+    }
+
+    func testATurnThatEndedWellCarriesNoFailureWords() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        finishOneTurn(rig, session: engine.session, configuration: engine.configuration,
+                      reply: "All done.", status: 0)
+        XCTAssertNil(host.finished.first?.notice.failureDetail)
+    }
+
+    // MARK: A turn the user stopped is not a failure to announce
+
+    func testStoppingATurnBeforeAnythingArrivedAnnouncesNothing() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        engine.session.stop()
+        // The signal ends it; the exit arrives as it does from a real one.
+        rig.agentExit?(15)
+
+        XCTAssertEqual(engine.session.messages.last?.text, host.strings.replyStopped)
+        XCTAssertEqual(host.finished.count, 1)
+        let notice = host.finished.first?.notice
+        XCTAssertEqual(notice?.failed, true, "what the session sends is as it was: a bad exit with no reply")
+        XCTAssertEqual(notice?.text, "")
+        XCTAssertNil(notice?.failureDetail, "nothing went wrong that has words")
+        XCTAssertEqual(host.finished.first?.isChatVisible, false)
+        XCTAssertEqual(announcedOutOfSight(notice), NexusAgentTurnAnnouncement(playsSound: false),
+                       "the user stopped it: no \"Failed\" notification")
+    }
+
+    func testStoppingATurnAfterSomeOfItArrivedIsDoneWithItsFirstLine() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        rig.agentOutput?(Data((#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"So far so good\nand more"}}"# + "\n").utf8))
+        engine.session.stop()
+        rig.agentExit?(15)
+
+        XCTAssertEqual(host.finished.count, 1)
+        let notice = host.finished.first?.notice
+        XCTAssertEqual(notice?.failed, false)
+        XCTAssertEqual(notice?.endedCleanly, false)
+        XCTAssertNil(notice?.failureDetail)
+        XCTAssertEqual(announcedOutOfSight(notice),
+                       NexusAgentTurnAnnouncement(playsSound: false,
+                                                  notificationTitle: "Antigravity CLI — Done",
+                                                  notificationBody: "So far so good"))
+    }
+
+    // MARK: Plan mode is taken when the prompt is sent
+
+    /// Ollama with no model set waits for `ollama list` before it starts.
+    /// What the user switches while it waits is for the next turn.
+    func testPlanModeSwitchedOffWhileTheModelIsLookedUpStillRunsThatTurnInPlanMode() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        rig.holdsProgram = true
+        let host = RecordingHost()
+        host.planMode = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        XCTAssertTrue(session.planMode)
+
+        // Yolo in the settings: without plan mode this turn would skip every prompt.
+        session.send("tidy up", configuration: NexusAgentConfiguration(approvalMode: .yolo, activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        XCTAssertTrue(rig.agentRuns.isEmpty, "still waiting for the model")
+
+        session.planMode = false
+        rig.finishProgram()
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        let started = rig.agentRuns.first?.arguments ?? []
+        XCTAssertEqual(rig.agentRuns.count, 1)
+        XCTAssertEqual(PermissionArgumentsTests.permissionArguments(in: started), ["--permission-mode", "plan"],
+                       "the turn was sent in plan mode, and runs in it")
+        XCTAssertFalse(PermissionArgumentsTests.skipsPermissionPrompts(started))
+        XCTAssertTrue(started.contains(NexusAgentSupport.planModePrompt("tidy up")),
+                      "with plan mode's words in front of the prompt, as Ollama gets them")
+        rig.agentExit?(0)
+
+        // The next turn is sent with plan mode off, and is not in it.
+        session.send("again", configuration: NexusAgentConfiguration(approvalMode: .yolo, model: "m", activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        XCTAssertTrue(PermissionArgumentsTests.skipsPermissionPrompts(rig.agentRuns.last?.arguments ?? []))
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testPlanModeSwitchedOnWhileTheModelIsLookedUpDoesNotReachThatTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.holdsProgram = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        session.send("tidy up", configuration: NexusAgentConfiguration(approvalMode: .acceptEdits, activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.planMode = true
+        rig.finishProgram()
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        let started = rig.agentRuns.first?.arguments ?? []
+        XCTAssertEqual(PermissionArgumentsTests.permissionArguments(in: started), ["--permission-mode", "acceptEdits"])
+        XCTAssertTrue(started.contains("tidy up"), "the prompt as it was sent")
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testWorktreeModeSwitchedWhileTheModelIsLookedUpIsForTheNextTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.holdsProgram = true
+        let host = RecordingHost()
+        host.worktreeMode = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("tidy up", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.worktreeMode = false
+        rig.finishProgram()
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        XCTAssertTrue((rig.agentRuns.first?.arguments ?? []).contains("-w"), "sent in a worktree, run in one")
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
     }
 
     // MARK: - Text
