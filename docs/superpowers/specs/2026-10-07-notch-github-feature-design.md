@@ -200,6 +200,14 @@ Colour in the notch and on the mouse: **green** every check on `main` passed;
 **red** any check failed, timed out, was cancelled or needs action; **amber**
 anything still queued or running; **grey** no data yet or signed out.
 
+The mouse has one more state that the notch does not show: **awaiting
+approval**. Something in the watched set is paused until James approves it,
+for example a workflow run or deployment held at an environment approval gate.
+The mouse shows it as fast breathing blue (speed 9, the fastest). It is the
+one state that needs James to act right now, so it beats red on the mouse.
+The notch behaviour is unchanged by this state unless the implementation says
+otherwise.
+
 ## 4. Components
 
 ### 4.1 Desktop app (`apps/desktop/vitruvian`), by layer
@@ -292,6 +300,17 @@ PR-3.
 - **Aggregate** (for the mouse and the collapsed strip): red if any watched
   repository is red; else amber if any is amber; else green if all are
   green; else grey.
+- **Mouse priority:** the mouse adds awaiting approval on top of the
+  aggregate: **awaiting approval > red > amber > green > grey**. If anything
+  in the watched set is waiting for James's approval, the mouse breathes fast
+  blue (`breathe blue --speed 9`) even when another repository is red. When
+  the approval clears, the mouse falls back to the normal aggregate verdict.
+  Caveat: running and awaiting approval can both be blue breathing if the
+  running colour is set to blue; only the speed differs. The running default
+  is orange breathing at the CLI's default speed of 5 (the app sends
+  `breathe orange` with no `--speed`), so by default the two also differ in
+  colour. This rule is about the mouse only; the collapsed strip keeps the
+  aggregate above.
 - **PR set:** open PRs where `author == me` ∪ `requested_reviewers ∋ me` ∪
   `requested_teams ∩ my teams ≠ ∅` (decision 5), across watched repositories.
   Each row carries its own check verdict (same rules on the PR head), the
@@ -314,6 +333,7 @@ PR-3.
 | Mouse absent | Sink is a no-op; the preference toggle greys out with "no GravaStar mouse found". |
 | Webhook for a repository nobody watches | Buffered then aged out; no fan-out. |
 | App quits or signs out | Mouse lighting restored from the saved baseline. |
+| Approval is pending, then granted or rejected | Mouse breathes fast blue while it is pending, then falls back to the normal verdict (red, amber, green or grey) on the next update. |
 
 ## 7. Execution plan
 

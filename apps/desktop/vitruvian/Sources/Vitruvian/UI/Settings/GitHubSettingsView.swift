@@ -26,6 +26,10 @@ package struct GitHubSettingsView: View {
     @AppStorage(Preferences.githubMouseFailureColor) private var failureColor: String
     @AppStorage(Preferences.githubMouseFailureMode) private var failureMode: String
     @AppStorage(Preferences.githubMouseIdleBehavior) private var idleBehavior: String
+    @AppStorage(Preferences.githubMouseApprovalColor) private var approvalColor: String
+    @AppStorage(Preferences.githubMouseApprovalMode) private var approvalMode: String
+    @AppStorage(Preferences.githubMouseApprovalSpeed) private var approvalSpeed: Int
+    @AppStorage(Preferences.githubMouseBinaryPath) private var mouseBinaryPath: String
 
     private let colorOptions = ["green", "cyan", "blue", "purple", "magenta", "yellow", "orange", "red", "white", "pink"]
 
@@ -113,7 +117,7 @@ package struct GitHubSettingsView: View {
                                     .toggleStyle(TrailingSwitchToggleStyle())
                                     .onChange(of: mouseIndicator) { _, isEnabled in
                                         if isEnabled {
-                                            GitHubPeripheralSink.shared.update(verdict: service.summary.aggregate)
+                                            GitHubPeripheralSink.shared.update(summary: service.summary)
                                         } else {
                                             GitHubPeripheralSink.shared.restore()
                                         }
@@ -121,6 +125,37 @@ package struct GitHubSettingsView: View {
 
                                 if mouseIndicator {
                                     Divider()
+
+                                    mouseCommandSection
+
+                                    Divider()
+
+                                    // Awaiting approval: outranks the rows below
+                                    HStack {
+                                        Label("Awaiting Approval", systemImage: "hand.raised.fill")
+                                            .foregroundStyle(.blue)
+                                            .frame(width: 140, alignment: .leading)
+                                        Spacer()
+                                        Picker("Color", selection: $approvalColor) {
+                                            ForEach(colorOptions, id: \.self) { c in
+                                                Text(c.capitalized).tag(c)
+                                            }
+                                        }
+                                        .frame(width: 105)
+                                        .labelsHidden()
+                                        Picker("Style", selection: $approvalMode) {
+                                            Text("Solid").tag("fixed")
+                                            Text("Pulsing").tag("breathe")
+                                        }
+                                        .frame(width: 95)
+                                        .labelsHidden()
+                                        Button("Test") {
+                                            GitHubPeripheralSink.shared.signal(color: approvalColor, mode: approvalMode,
+                                                                               speed: approvalSpeed)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
 
                                     // Success
                                     HStack {
@@ -230,6 +265,53 @@ package struct GitHubSettingsView: View {
             auth.syncWithPreferences()
             if auth.isSignedIn { service.refresh() }
         }
+    }
+
+    // MARK: - Mouse Command
+
+    /// Where `gravastar-mouse` is, and whether one was found. Empty searches.
+    @ViewBuilder
+    private var mouseCommandSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(text.mouseCommand)
+                    .font(.subheadline)
+                Spacer()
+                TextField(GitHubMouseBinary.name, text: $mouseBinaryPath)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                Button(text.choose) { chooseMouseBinary() }
+                    .controlSize(.small)
+            }
+            Text(text.mouseCommandHint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            // A change to mouseBinaryPath redraws the view, so this line
+            // follows the field as the path is typed or chosen.
+            if let found = GitHubPeripheralSink.shared.locateBinary() {
+                Text(text.mouseCommandFound(found))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            } else {
+                Text(text.mouseCommandMissing)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func chooseMouseBinary() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".local/bin")
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        mouseBinaryPath = url.path
     }
 
     // MARK: - Account Section

@@ -107,6 +107,15 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
+  - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
+  - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.
+  - `GitHubSettingsView.swift`: a "Mouse command" field under Hardware & Mouse Lighting, with a Choose… button, a note on where it searches, and the path in use or how to install it. The words are in `NotchGitHubStrings.swift`, in every language.
+  - `Tests/GitHubCoreTests.swift`: `mouseBinaryResolution` covers the search order, `~` expansion, the fallback from a configured path that does not run, relative PATH entries, the no-binary case and the new strings.
+- **2026-10-08**: Unit tests that pass or fail the same on a Mac in use as on a CI runner:
+  - `Tests/RepositoryFeatureTests.swift`: the two checks that run a script against stand-in tools (`Tools/setup-signing.sh`, and `read_sleep_disabled` from `Tools/uninstall.sh`) start zsh with `-f`. Without it zsh reads `/etc/zshenv`, and where that file sets `PATH` (nix-darwin's does) the stand-ins were skipped and the script ran the Mac's real `security`, `codesign` and `pmset`.
+- **2026-10-08**: Awaiting-approval GitHub pipeline notification:
+  - Added `githubMouseApprovalColor`, `githubMouseApprovalMode`, and `githubMouseApprovalSpeed` preferences to `Defaults.swift` and `DefaultsKey.swift`.
 - **2026-10-08**: Tool registry, part 1 (`docs/superpowers/plans/2026-10-08-vitruvian-tool-registry.md`):
   - `Core/RadialMenu/RadialMenuSupport.swift`: `RadialMenuTool.command` names the built-in command each slice runs.
   - `main.swift`: installs the built-in tools and command handlers into `ToolRegistry` before the app runs.
@@ -2557,6 +2566,10 @@ is that notice. Add an entry for every change to upstream files.
   - upstream's checks on generated copies of the island are ported onto the
     real island, except two companion-yield cases (lingering music and the
     bridge fade) that need a seam the island does not have yet.
+- **2026-10-08**: Archived Antigravity sessions no longer show as active in Quick Prompt:
+  - `NexusAgentSessionSummary`: archived state now comes from agy's annotations (`annotations/<id>.pbtxt`, `archived:true`) instead of the index's `killed` column, which marks an aborted run; added `antigravityAnnotationIsArchived`, `antigravityAnnotation(_:archived:now:)`, `antigravityArchivedSessionIds(home:)` and `antigravitySummariesDatabase(home:)`, and `parse` takes the archived ids. The index and annotations are looked up in both of agy's data folders (`~/.gemini/antigravity`, `~/.gemini/antigravity-cli`);
+  - `NexusAgentService`: `archiveSession` / `unarchiveSession` write the annotation (`archived:true` + `archival_status_timestamp`, other fields kept) and no longer touch `killed`;
+  - `NexusAgentTests`: `sessionArchiving` covers annotation parsing, rewriting, and archive/unarchive against a throwaway home.
 
 ## Tracking and porting upstream
 

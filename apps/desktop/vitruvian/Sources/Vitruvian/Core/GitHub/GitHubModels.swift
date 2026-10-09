@@ -77,6 +77,13 @@ package enum CheckStatus: Sendable, Equatable {
         case .completed, .other: false
         }
     }
+
+    /// Paused until someone lets it go on. GitHub gives `waiting` to a
+    /// workflow run, and to the job's check run, that a deployment protection
+    /// rule holds back: an environment's required reviewers, its wait timer or
+    /// a custom rule. The status does not say which rule, nor who may approve.
+    /// It still counts as running, so the verdict stays amber.
+    package var isAwaitingApproval: Bool { self == .waiting }
 }
 
 /// How a finished check ended.
@@ -243,14 +250,20 @@ package struct GitHubSummary: Sendable, Equatable {
     /// Newest number first within a repository, repositories in watch order.
     package let pullRequests: [PullRequestRow]
     package let aggregate: Verdict
+    /// Whether a check on a watched repository's `main`, or on one of the pull
+    /// request rows, is paused for approval. Beside the verdict, not part of
+    /// it: the notch's colours do not change, the mouse puts this first.
+    package let awaitingApproval: Bool
 
     /// `watched` gives the order and the set; a watched repository with no
     /// state yet is grey, and a state for an unwatched one is left out.
     package init(states: [RepoKey: RepoState], watched: [RepoKey]) {
         var repositories: [Repository] = []
         var rows: [PullRequestRow] = []
+        var awaitingApproval = false
         for repo in watched {
             let state = states[repo]
+            if GitHubReducer.awaitsApproval(state) { awaitingApproval = true }
             let checks = state.map { Array($0.checks.values) } ?? []
             repositories.append(Repository(
                 repo: repo,
@@ -266,5 +279,6 @@ package struct GitHubSummary: Sendable, Equatable {
         self.repositories = repositories
         self.pullRequests = rows
         self.aggregate = GitHubReducer.aggregate(repositories.map(\.verdict))
+        self.awaitingApproval = awaitingApproval
     }
 }

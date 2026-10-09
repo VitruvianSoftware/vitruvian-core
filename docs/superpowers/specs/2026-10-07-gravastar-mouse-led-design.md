@@ -129,6 +129,14 @@ and no entitlements.
 
   Same colour code as James's diagrams: green passed, red failed, blue in
   flight, amber waiting.
+- **The Vitruvian app does not use this table for GitHub status.** Its GitHub
+  sink (`GitHubPeripheralSink`) calls the CLI directly (`breathe <color>` or
+  `color <color>`), with colours and modes from user preferences. Its one
+  extra state, **awaiting approval** (something is paused for James's
+  approval), is sent as `breathe blue --speed 9`: fast breathing blue, the
+  fastest speed (range 0-9). It has no `StatusSignal` case. On the mouse it
+  outranks everything: awaiting approval > red > amber > green > grey. See
+  `2026-10-07-notch-github-feature-design.md` section 5.
 - `protocol StatusIndicator { func signal(_: StatusSignal) throws; func restore() throws }`.
 - `MouseStatusIndicator: StatusIndicator` wraps `GravaStarMouse` + a
   `BaselineStore`. On `signal`, it reads the current config; if it is **not** one

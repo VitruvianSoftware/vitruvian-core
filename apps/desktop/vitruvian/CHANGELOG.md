@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.33.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.1...vitruvian-v3.33.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **vitruvian:** finish the unit test run on a Mac that is in use ([#2945](https://github.com/VitruvianSoftware/vitruvian-core/issues/2945)) ([975bd12](https://github.com/VitruvianSoftware/vitruvian-core/commit/975bd125c10209c55e8a7343eb9ee416cf1632b3))
+
+## [3.33.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.0...vitruvian-v3.33.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **desktop:** read Antigravity's archived state from its annotations, not the killed flag ([#2928](https://github.com/VitruvianSoftware/vitruvian-core/issues/2928)) ([64d62f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/64d62f8b4b5950825c773869a2394934293e3296))
+
+## [3.33.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.32.0...vitruvian-v3.33.0) (2026-10-08)
+
+
+### Features
+
+* **desktop:** add zero-click github cli auto-connect and launch hardware reconciliation ([#2926](https://github.com/VitruvianSoftware/vitruvian-core/issues/2926)) ([c758031](https://github.com/VitruvianSoftware/vitruvian-core/commit/c758031a22593cf349bcd3dd4223a4d97b23a15c))
+
 ## [3.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.31.0...vitruvian-v3.32.0) (2026-10-08)
 
 

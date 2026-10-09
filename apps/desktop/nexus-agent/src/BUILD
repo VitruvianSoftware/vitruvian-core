@@ -8,6 +8,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 ts_project(
     name = "typecheck",
     srcs = [
+        "annotations.js",
         "formatter.js",
         "sessions.js",
     ],
@@ -22,6 +23,12 @@ ts_project(
     deps = [
         "//apps/desktop/nexus-agent:node_modules/@types/node",
     ],
+)
+
+js_library(
+    name = "annotations",
+    srcs = ["annotations.js"],
+    visibility = ["//apps/desktop/nexus-agent/src:__pkg__"],
 )
 
 js_library(
@@ -40,6 +47,12 @@ js_library(
 # `node:test` runner (no jest/devDep plumbing). These run in the standard
 # `bazel test //...` lane, so nexus JS is finally covered in monorepo CI (#807).
 js_test(
+    name = "annotations_test",
+    data = [":annotations"],
+    entry_point = "annotations.test.js",
+)
+
+js_test(
     name = "formatter_test",
     data = [":formatter"],
     entry_point = "formatter.test.js",
@@ -56,6 +69,7 @@ js_library(
     srcs = ["agy.js"],
     visibility = ["//apps/desktop/nexus-agent/src:__pkg__"],
     deps = [
+        ":annotations",
         ":sessions",
     ],
 )
@@ -77,6 +91,7 @@ js_binary(
     name = "bot",
     data = [
         ":agy",
+        ":annotations",
         ":formatter",
         ":sessions",
         "//apps/desktop/nexus-agent:node_modules/dotenv",
@@ -91,6 +106,7 @@ pipeline_unit(
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
+        ":annotations_test",
         ":formatter_test",
         ":sessions_test",
         ":typecheck_typecheck_test",

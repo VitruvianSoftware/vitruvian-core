@@ -951,6 +951,10 @@ package enum DefaultsKey {
     package static let githubMouseFailureColor = "githubMouseFailureColor"
     package static let githubMouseFailureMode = "githubMouseFailureMode"
     package static let githubMouseIdleBehavior = "githubMouseIdleBehavior"
+    package static let githubMouseApprovalColor = "githubMouseApprovalColor"
+    package static let githubMouseApprovalMode = "githubMouseApprovalMode"
+    package static let githubMouseApprovalSpeed = "githubMouseApprovalSpeed"
+    package static let githubMouseBinaryPath = "githubMouseBinaryPath"
 
     /// Features hub availability layer, one key per AppFeature raw value.
     /// Registered true: unavailable features vanish from every surface and

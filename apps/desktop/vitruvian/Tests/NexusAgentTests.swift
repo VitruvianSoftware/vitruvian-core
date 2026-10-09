@@ -977,24 +977,27 @@ enum NexusAgentTests {
             UserDefaults.standard.removeObject(forKey: "vitruvian.claude.hiddenSessionIds")
         }
 
-        // 1. Antigravity parse with killed flag
+        // 1. Antigravity parse: archived comes from the annotations, never from `killed`
         let rows = """
         [
           {"conversation_id":"active-1","title":"Active task","preview":"Working on bug","step_count":3,"last_modified_time":"2026-10-06T10:00:00Z","killed":0},
-          {"conversation_id":"archived-1","title":"Old task","preview":"Old completed work","step_count":10,"last_modified_time":"2026-10-05T08:00:00Z","killed":1},
-          {"conversation_id":"default-1","title":"Default task","preview":"Fresh task","step_count":1,"last_modified_time":"2026-10-06T12:00:00Z"}
+          {"conversation_id":"archived-1","title":"Old task","preview":"Old completed work","step_count":10,"last_modified_time":"2026-10-05T08:00:00Z","killed":0},
+          {"conversation_id":"default-1","title":"Aborted task","preview":"Fresh task","step_count":1,"last_modified_time":"2026-10-06T12:00:00Z","killed":1}
         ]
         """
-        let parsed = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "")
+        let parsed = NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "", archivedIds: ["archived-1"])
         suite.expect(parsed.count == 3, "parses all 3 sessions regardless of archive status")
 
         let activeSession = parsed.first { $0.id == "active-1" }
         let archivedSession = parsed.first { $0.id == "archived-1" }
         let defaultSession = parsed.first { $0.id == "default-1" }
 
-        suite.expect(activeSession?.isArchived == false, "killed = 0 sets isArchived to false")
-        suite.expect(archivedSession?.isArchived == true, "killed = 1 sets isArchived to true")
-        suite.expect(defaultSession?.isArchived == false, "missing killed sets isArchived to false by default")
+        suite.expect(activeSession?.isArchived == false, "a session with no archived annotation is active")
+        suite.expect(archivedSession?.isArchived == true, "an archived annotation sets isArchived with killed = 0")
+        suite.expect(defaultSession?.isArchived == false, "killed = 1 is an aborted run, not an archived one")
+        suite.expect(NexusAgentSessionSummary.parse(Data(rows.utf8), directory: "").allSatisfy { !$0.isArchived },
+                     "nothing is archived without annotations")
+        suite.expect(!NexusAgentSessionSummary.query.contains("killed"), "the drawer's query no longer reads killed")
 
         // 2. Active vs Archived partitioning
         let activeList = parsed.filter { !$0.isArchived }
@@ -1024,7 +1027,68 @@ enum NexusAgentTests {
         // Clean up test key
         UserDefaults.standard.removeObject(forKey: "vitruvian.claude.hiddenSessionIds")
 
-        // 5. Session summary struct init
+        // 5. Antigravity annotations, in the shapes agy writes them
+        let isArchived = NexusAgentSessionSummary.antigravityAnnotationIsArchived
+        suite.expect(isArchived("archived:true archival_status_timestamp:{seconds:1787464769 nanos:503730000} marked_as_unread:false"),
+                     "archived:true is archived")
+        suite.expect(isArchived("title:\"Daily Briefing\"  archived: true  last_user_view_time:{seconds:1  nanos:2}"),
+                     "archived: true is archived")
+        suite.expect(!isArchived("last_user_view_time:{seconds:1790974412  nanos:316000000}"), "no archived field is active")
+        suite.expect(!isArchived("archived:false pinned:true"), "archived:false is active")
+        suite.expect(!isArchived("title:\"why is archived:true ignored\" pinned:true"), "a title cannot pass for the field")
+        suite.expect(!isArchived(""), "an empty annotation is active")
+
+        let stamp = Date(timeIntervalSince1970: 1_790_000_000.25)
+        let annotated = NexusAgentSessionSummary.antigravityAnnotation(
+            "title:\"T\"  last_user_view_time:{seconds:5  nanos:6}", archived: true, now: stamp)
+        suite.expect(annotated == "archived:true archival_status_timestamp:{seconds:1790000000 nanos:250000000} "
+                        + "title:\"T\"  last_user_view_time:{seconds:5  nanos:6}",
+                     "archiving adds archived and its timestamp and keeps the other fields")
+        suite.expect(NexusAgentSessionSummary.antigravityAnnotation(annotated, archived: true, now: stamp) == annotated,
+                     "archiving twice does not repeat the fields")
+        suite.expect(NexusAgentSessionSummary.antigravityAnnotation(annotated, archived: false, now: stamp)
+                        == "title:\"T\"  last_user_view_time:{seconds:5  nanos:6}",
+                     "unarchiving drops both archive fields and keeps the rest")
+
+        // 6. Antigravity archiving & unarchiving via service, against a throwaway home
+        let home = FileManager.default.temporaryDirectory.appending(path: "agy-archive-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let appData = home.appending(path: ".gemini/antigravity")
+        let cliData = home.appending(path: ".gemini/antigravity-cli")
+        for folder in [appData.appending(path: "annotations"), cliData.appending(path: "conversations")] {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try? "archived:true archival_status_timestamp:{seconds:1 nanos:2}"
+            .write(to: appData.appending(path: "annotations/was-archived.pbtxt"), atomically: true, encoding: .utf8)
+        try? "pinned:true".write(to: appData.appending(path: "annotations/seen.pbtxt"), atomically: true, encoding: .utf8)
+        FileManager.default.createFile(atPath: cliData.appending(path: "conversations/cli-1.db").path, contents: nil)
+        let archivedIds = { NexusAgentSessionSummary.antigravityArchivedSessionIds(home: home.path) }
+        suite.expect(archivedIds() == ["was-archived"], "only annotations marked archived count")
+
+        NexusAgentService.archiveSession(home: home.path, id: "seen", provider: .antigravity)
+        NexusAgentService.archiveSession(home: home.path, id: "brand-new", provider: .antigravity)
+        NexusAgentService.archiveSession(home: home.path, id: "cli-1", provider: .antigravity)
+        NexusAgentService.archiveSession(home: home.path, id: "../escape", provider: .antigravity)
+        suite.expect(archivedIds() == ["was-archived", "seen", "brand-new", "cli-1"],
+                     "archiveSession updates or creates the annotation")
+        let seen = (try? String(contentsOf: appData.appending(path: "annotations/seen.pbtxt"), encoding: .utf8)) ?? ""
+        suite.expect(seen.hasPrefix("archived:true archival_status_timestamp:{seconds:") && seen.hasSuffix(" pinned:true"),
+                     "archiveSession keeps the fields agy already wrote")
+        suite.expect(FileManager.default.fileExists(atPath: cliData.appending(path: "annotations/cli-1.pbtxt").path),
+                     "a CLI conversation is annotated beside its own data")
+        suite.expect(!FileManager.default.fileExists(atPath: home.appending(path: ".gemini/antigravity/escape.pbtxt").path),
+                     "an id cannot write outside the annotations folder")
+
+        for id in ["seen", "cli-1", "was-archived", "never-annotated"] {
+            NexusAgentService.unarchiveSession(home: home.path, id: id, provider: .antigravity)
+        }
+        suite.expect(archivedIds() == ["brand-new"], "unarchiveSession clears the annotation")
+        suite.expect((try? String(contentsOf: appData.appending(path: "annotations/seen.pbtxt"), encoding: .utf8)) == "pinned:true",
+                     "unarchiveSession leaves the other fields as they were")
+        suite.expect(!FileManager.default.fileExists(atPath: appData.appending(path: "annotations/never-annotated.pbtxt").path),
+                     "unarchiving a session with no annotation writes nothing")
+
+        // 7. Session summary struct init
         let explicitArchived = NexusAgentSessionSummary(id: "s-archived", title: "T", preview: "P", steps: 1, modified: nil, isArchived: true)
         let explicitActive = NexusAgentSessionSummary(id: "s-active", title: "T", preview: "P", steps: 1, modified: nil, isArchived: false)
         let defaultActive = NexusAgentSessionSummary(id: "s-default", title: "T", preview: "P", steps: 1, modified: nil)

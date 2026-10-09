@@ -69,7 +69,17 @@ case "${1:-}" in
   --remove)
     br="${2:?--remove needs a <branch>}"
     dest="${WT_ROOT}/$(slug "${br}")"
-    git worktree remove "${dest}"
+    output_root="${HOME}/.cache/bazel/worktrees/${REPO_NAME}-$(slug "${br}")"
+    if [ -d "${dest}" ] && [ -f "${dest}/user.bazelrc" ]; then
+      (cd "${dest}" && bazel shutdown 2>/dev/null || true)
+    fi
+    git worktree remove "${dest}" 2>/dev/null || git worktree remove --force "${dest}" 2>/dev/null || true
+    git worktree prune 2>/dev/null || true
+    if [ -d "${output_root}" ]; then
+      chmod -R u+w "${output_root}" 2>/dev/null || true
+      rm -rf "${output_root}"
+      echo "worktree: pruned Bazel cache ${output_root}"
+    fi
     echo "worktree: removed ${dest} (branch ${br} is kept; delete with 'git branch -D ${br}')"
     exit 0
     ;;

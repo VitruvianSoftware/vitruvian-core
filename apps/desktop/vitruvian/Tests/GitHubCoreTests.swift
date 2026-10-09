@@ -26,6 +26,9 @@ enum GitHubCoreTests {
         checkSuitesNeverHoldTheVerdictAmber(suite)
         // §5 Aggregate
         aggregateRanksRedAmberGreenGrey(suite)
+        // Awaiting approval
+        waitingCheckIsAwaitingApproval(suite)
+        approvalIsApartFromTheVerdict(suite)
         // §5 Scope of main
         onlyChecksOnTheDefaultBranchHeadCount(suite)
         pushToDefaultBranchResetsChecksToNoData(suite)
@@ -67,6 +70,12 @@ enum GitHubCoreTests {
         named("autoConnectSkipsATokenGitHubRejected", suite, autoConnectSkipsATokenGitHubRejected)
         named("keychainSaveFailureStillSignsIn", suite, keychainSaveFailureStillSignsIn)
         named("peripheralSinkForceRewritesSameVerdict", suite, peripheralSinkForceRewritesSameVerdict)
+        named("peripheralSinkVerdictCommandsAreUnchanged", suite, peripheralSinkVerdictCommandsAreUnchanged)
+        named("peripheralSinkApprovalOutranksRed", suite, peripheralSinkApprovalOutranksRed)
+        named("peripheralSinkApprovalDedupesAndClears", suite, peripheralSinkApprovalDedupesAndClears)
+        named("peripheralSinkApprovalFollowsPreferences", suite, peripheralSinkApprovalFollowsPreferences)
+        named("mouseBinaryResolution", suite, mouseBinaryResolution)
+        named("restSnapshotCarriesAWaitingRun", suite, restSnapshotCarriesAWaitingRun)
         // Notch Module & Quick Access
         notchModuleProperties(suite)
         notchContentEditorStyling(suite)
@@ -191,6 +200,56 @@ enum GitHubCoreTests {
         suite.expect(GitHubReducer.aggregate([.green, .green]) == .green, "all green is green")
         suite.expect(GitHubReducer.aggregate([.green, .grey]) == .grey, "green with grey is grey")
         suite.expect(GitHubReducer.aggregate([]) == .grey, "nothing watched is grey")
+    }
+
+    // MARK: - Awaiting approval
+
+    private static func workflowRun(_ id: Int64, sha: String = head, status: String,
+                                    conclusion: String? = nil) -> GitHubEvent.Kind {
+        .workflowRun(.init(id: id, name: "deploy", headSHA: sha, status: status, conclusion: conclusion, htmlURL: nil))
+    }
+
+    private static func summary(_ state: RepoState) -> GitHubSummary {
+        GitHubSummary(states: [repo: state], watched: [repo])
+    }
+
+    /// GitHub gives `waiting` to a run a deployment protection rule holds
+    /// back, and to that job's check run. No other status means that.
+    private static func waitingCheckIsAwaitingApproval(_ suite: TestSuite) {
+        suite.expect(summary(reduce([check(1), workflowRun(2, status: "waiting")])).awaitingApproval,
+                     "a waiting workflow run on main is awaiting approval")
+        suite.expect(summary(reduce([check(1), check(2, status: "waiting", conclusion: nil)])).awaitingApproval,
+                     "a waiting check run on main is awaiting approval")
+        for status in ["queued", "in_progress", "requested", "pending", "completed"] {
+            let conclusion: String? = status == "completed" ? "success" : nil
+            suite.expect(!summary(reduce([check(1), workflowRun(2, status: status, conclusion: conclusion)])).awaitingApproval,
+                         "\(status) is not awaiting approval")
+        }
+        suite.expect(!summary(state()).awaitingApproval && !summary(reduce([check(1)])).awaitingApproval,
+                     "no checks, or only finished ones, await nothing")
+        suite.expect(!GitHubSummary(states: [:], watched: [repo]).awaitingApproval
+                     && !GitHubReducer.awaitsApproval(nil as RepoState?),
+                     "a repository with no state awaits nothing")
+        suite.expect(!summary(reduce([check(1), workflowRun(2, sha: "old", status: "waiting")])).awaitingApproval,
+                     "a waiting run for another commit does not count, like any check off main's head")
+        let onPR = reduce([check(1), pr(7, author: "james"), workflowRun(2, sha: "pr-sha", status: "waiting")])
+        suite.expect(summary(onPR).awaitingApproval, "a waiting run on a tracked pull request's head counts")
+        suite.expect(!GitHubSummary(states: [repo: onPR], watched: [RepoKey(owner: "a", name: "b")]).awaitingApproval,
+                     "an unwatched repository's waiting run does not count")
+        let approved = reduce([check(1), workflowRun(2, status: "waiting"), workflowRun(2, status: "in_progress")])
+        suite.expect(!summary(approved).awaitingApproval && summary(approved).aggregate == .amber,
+                     "once approved the same run goes on, and nothing is awaiting approval")
+    }
+
+    /// The flag sits beside the verdict: the notch's colours stay as they were.
+    private static func approvalIsApartFromTheVerdict(_ suite: TestSuite) {
+        let waiting = summary(reduce([check(1), workflowRun(2, status: "waiting")]))
+        suite.expect(waiting.aggregate == .amber && waiting.repositories.first?.verdict == .amber
+                     && waiting.repositories.first?.running == 1,
+                     "a waiting run alone still reads amber and counts as running")
+        let failed = summary(reduce([check(1, conclusion: "failure"), workflowRun(2, status: "waiting")]))
+        suite.expect(failed.aggregate == .red && failed.awaitingApproval,
+                     "beside a failure the verdict stays red, and the approval is still reported")
     }
 
     // MARK: - Scope of main
@@ -775,6 +834,215 @@ enum GitHubCoreTests {
                      "red writes the configured failure color, breathing by default: \(commands)")
     }
 
+    /// A sink over defaults of its own, and the commands it has sent.
+    private final class SinkRig {
+        let defaults: UserDefaults
+        private let domain: String
+        private(set) var commands: [[String]] = []
+        private(set) var sink: GitHubPeripheralSink!
+
+        @MainActor
+        init(_ name: String) {
+            domain = "com.vitruviansoftware.vitruvian.tests.github.peripheral.\(name)"
+            defaults = UserDefaults(suiteName: domain)!
+            defaults.removePersistentDomain(forName: domain)
+            sink = GitHubPeripheralSink(defaults: defaults, executor: { [unowned self] in self.commands.append($0) })
+        }
+
+        func cleanUp() { defaults.removePersistentDomain(forName: domain) }
+    }
+
+    private static let approvalCommand = ["breathe", "blue", "--speed", "9"]
+
+    /// What each verdict sent before approvals existed, with no flag passed.
+    private static func peripheralSinkVerdictCommandsAreUnchanged(_ suite: TestSuite) {
+        let rig = SinkRig("verdicts")
+        defer { rig.cleanUp() }
+        rig.sink.update(verdict: .green)
+        rig.sink.update(verdict: .amber)
+        rig.sink.update(verdict: .red)
+        rig.sink.update(verdict: .grey)
+        suite.expect(rig.commands == [["color", "green"], ["breathe", "orange"], ["breathe", "red"], ["restore"]],
+                     "green, amber, red and grey send what they always did, with no speed: \(rig.commands)")
+        rig.defaults[Preferences.githubMouseIdleBehavior] = "off"
+        rig.sink.update(verdict: .grey)
+        suite.expect(rig.commands.last == ["off"], "grey turns the LED off when asked to: \(rig.commands)")
+        rig.sink.update(verdict: .amber, awaitingApproval: false)
+        suite.expect(rig.commands.last == ["breathe", "orange"],
+                     "running stays orange at the mouse's own speed, apart from the approval's blue at 9: \(rig.commands)")
+        let registered = Defaults.registeredDefaults
+        suite.expect(registered[Preferences.githubMouseApprovalColor.key] as? String == "blue"
+                     && registered[Preferences.githubMouseApprovalMode.key] as? String == "breathe"
+                     && registered[Preferences.githubMouseApprovalSpeed.key] as? Int == 9,
+                     "the approval signal is registered as blue, breathing, speed 9")
+        suite.expect(!SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseApprovalColor.key)
+                     && !SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseApprovalMode.key)
+                     && !SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseApprovalSpeed.key),
+                     "the approval signal is a portable setting, so a backup carries it")
+    }
+
+    private static func peripheralSinkApprovalOutranksRed(_ suite: TestSuite) {
+        let rig = SinkRig("approval-rank")
+        defer { rig.cleanUp() }
+        let failedAndWaiting = summary(reduce([check(1, conclusion: "failure"), workflowRun(2, status: "waiting")]))
+        suite.expect(failedAndWaiting.aggregate == .red, "the fixture is red: \(failedAndWaiting.aggregate)")
+        rig.sink.update(summary: failedAndWaiting)
+        suite.expect(rig.commands == [approvalCommand],
+                     "with a failure and a waiting run, the mouse gets the approval signal and no red: \(rig.commands)")
+        for verdict in Verdict.allCases {
+            let each = SinkRig("approval-rank-\(verdict)")
+            defer { each.cleanUp() }
+            each.sink.update(verdict: verdict, awaitingApproval: true)
+            suite.expect(each.commands == [approvalCommand], "approval outranks \(verdict): \(each.commands)")
+        }
+        let failedOnly = SinkRig("approval-rank-none")
+        defer { failedOnly.cleanUp() }
+        failedOnly.sink.update(summary: summary(reduce([check(1, conclusion: "failure")])))
+        suite.expect(failedOnly.commands == [["breathe", "red"]],
+                     "with nothing waiting, a failure is red as before: \(failedOnly.commands)")
+    }
+
+    private static func peripheralSinkApprovalDedupesAndClears(_ suite: TestSuite) {
+        let rig = SinkRig("approval-dedupe")
+        defer { rig.cleanUp() }
+        rig.sink.update(verdict: .amber)
+        rig.sink.update(verdict: .amber, awaitingApproval: true)
+        suite.expect(rig.commands == [["breathe", "orange"], approvalCommand],
+                     "an approval arriving under the same verdict writes: \(rig.commands)")
+        rig.sink.update(verdict: .amber, awaitingApproval: true)
+        suite.expect(rig.commands.count == 2, "the same approval state again writes nothing: \(rig.commands)")
+        rig.sink.update(verdict: .red, awaitingApproval: true)
+        suite.expect(rig.commands.count == 2,
+                     "a verdict moving behind a pending approval writes nothing, the mouse shows the same: \(rig.commands)")
+        rig.sink.update(verdict: .red, awaitingApproval: true, force: true)
+        suite.expect(rig.commands.count == 3 && rig.commands.last == approvalCommand,
+                     "forced, the approval writes again: \(rig.commands)")
+        rig.sink.update(verdict: .red, awaitingApproval: false)
+        suite.expect(rig.commands.count == 4 && rig.commands.last == ["breathe", "red"],
+                     "the approval cleared, the mouse falls back to the verdict: \(rig.commands)")
+        rig.sink.update(verdict: .red)
+        suite.expect(rig.commands.count == 4, "and that verdict dedupes again: \(rig.commands)")
+        rig.sink.update(verdict: .red, awaitingApproval: true)
+        rig.sink.update(verdict: .green)
+        suite.expect(Array(rig.commands.suffix(2)) == [approvalCommand, ["color", "green"]],
+                     "a second approval writes, and clears to whatever the verdict is by then: \(rig.commands)")
+        rig.sink.update(verdict: .grey, awaitingApproval: true)
+        rig.sink.update(verdict: .grey)
+        rig.sink.update(verdict: .grey, awaitingApproval: true)
+        suite.expect(Array(rig.commands.suffix(3)) == [approvalCommand, ["restore"], approvalCommand],
+                     "after the idle restore, an approval writes again: \(rig.commands)")
+    }
+
+    private static func peripheralSinkApprovalFollowsPreferences(_ suite: TestSuite) {
+        let rig = SinkRig("approval-preferences")
+        defer { rig.cleanUp() }
+        rig.defaults[Preferences.githubMouseApprovalColor] = " Cyan "
+        rig.defaults[Preferences.githubMouseApprovalSpeed] = 3
+        rig.sink.update(verdict: .green, awaitingApproval: true)
+        suite.expect(rig.commands.last == ["breathe", "cyan", "--speed", "3"],
+                     "the approval colour and speed come from the preferences: \(rig.commands)")
+        rig.defaults[Preferences.githubMouseApprovalSpeed] = 42
+        rig.sink.update(verdict: .green, awaitingApproval: true, force: true)
+        suite.expect(rig.commands.last == ["breathe", "cyan", "--speed", "9"],
+                     "a speed past the mouse's range is held to 9, which the mouse command accepts: \(rig.commands)")
+        rig.defaults[Preferences.githubMouseApprovalSpeed] = -1
+        rig.sink.update(verdict: .green, awaitingApproval: true, force: true)
+        suite.expect(rig.commands.last == ["breathe", "cyan", "--speed", "0"], "and one below it to 0: \(rig.commands)")
+        rig.defaults[Preferences.githubMouseApprovalMode] = "fixed"
+        rig.sink.update(verdict: .green, awaitingApproval: true, force: true)
+        suite.expect(rig.commands.last == ["color", "cyan"],
+                     "a solid approval colour takes no speed, the mouse command has none for it: \(rig.commands)")
+        rig.sink.signal(color: "red", mode: "breathe")
+        suite.expect(rig.commands.last == ["breathe", "red"], "a signal without a speed sends none: \(rig.commands)")
+    }
+
+    private static func mouseBinaryResolution(_ suite: TestSuite) {
+        let home = "/Users/test"
+        let path = ["PATH": "/usr/bin:relative/bin:/opt/tools/bin"]
+        func locate(_ configured: String, _ environment: [String: String] = [:], _ installed: Set<String>) -> String? {
+            GitHubMouseBinary.locate(configured: configured, environment: environment, home: home,
+                                     isExecutable: installed.contains)
+        }
+        suite.expect(locate("", [:], ["/Users/test/.local/bin/gravastar-mouse", "/opt/homebrew/bin/gravastar-mouse"])
+                     == "/Users/test/.local/bin/gravastar-mouse"
+                     && locate("", [:], ["/usr/local/bin/gravastar-mouse"]) == "/usr/local/bin/gravastar-mouse"
+                     && locate("", [:], ["/Users/test/bin/gravastar-mouse"]) == "/Users/test/bin/gravastar-mouse",
+                     "with nothing configured, the install locations are searched in order, under this user's home")
+        suite.expect(locate("", path, ["/opt/tools/bin/gravastar-mouse", "/Users/test/.local/bin/gravastar-mouse"])
+                     == "/opt/tools/bin/gravastar-mouse"
+                     && locate("", path, ["relative/bin/gravastar-mouse"]) == nil,
+                     "PATH is searched before the install locations, but never a relative entry")
+        suite.expect(locate(" ~/tools/gravastar-mouse ", path, ["/Users/test/tools/gravastar-mouse",
+                                                                "/opt/tools/bin/gravastar-mouse"])
+                     == "/Users/test/tools/gravastar-mouse"
+                     && locate("/custom/mouse", [:], ["/custom/mouse"]) == "/custom/mouse",
+                     "a configured path wins, with ~ expanded")
+        suite.expect(locate("/missing/mouse", [:], ["/opt/homebrew/bin/gravastar-mouse"])
+                     == "/opt/homebrew/bin/gravastar-mouse",
+                     "a configured path that does not run falls back to the search")
+        suite.expect(locate("", path, []) == nil && locate("/missing/mouse", path, []) == nil,
+                     "no binary anywhere finds nothing, so the sink leaves the mouse alone")
+        let registered = Defaults.registeredDefaults
+        suite.expect(registered[Preferences.githubMouseBinaryPath.key] as? String == "",
+                     "the binary path is registered empty, which searches")
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseBinaryPath.key),
+                     "where the binary is installed belongs to this Mac, so a backup leaves it out")
+        for language in AppLanguage.allCases {
+            let text = FeatureStrings.notchGitHub(language)
+            suite.expect(!text.mouseCommand.isEmpty && !text.mouseCommandHint.isEmpty && !text.choose.isEmpty
+                         && text.mouseCommandMissing.contains(GitHubMouseBinary.name)
+                         && text.mouseCommandFound("/opt/x/gravastar-mouse").contains("/opt/x/gravastar-mouse"),
+                         "Settings names the mouse command and the path in use in \(language)")
+        }
+    }
+
+    /// The path the app really takes: REST polling, not the relay. A run
+    /// paused at an environment's approval gate comes back from
+    /// `actions/runs` as `waiting`, and its job from `check-runs` likewise.
+    private static func restSnapshotCarriesAWaitingRun(_ suite: TestSuite) {
+        func snapshot(runStatus: String, jobStatus: String) -> RepoState? {
+            let transport = StubGitHubSnapshotTransport(bodies: [
+                "/repos/VitruvianSoftware/vitruvian-core": #"{"default_branch":"main"}"#,
+                "/repos/VitruvianSoftware/vitruvian-core/commits/main": #"{"sha":"aaaa"}"#,
+                "/repos/VitruvianSoftware/vitruvian-core/commits/aaaa/check-runs":
+                    #"{"check_runs":[{"id":1,"name":"build","head_sha":"aaaa","status":"completed","conclusion":"failure","html_url":null},"#
+                    + #"{"id":2,"name":"deploy","head_sha":"aaaa","status":"\#(jobStatus)","conclusion":null,"html_url":null}]}"#,
+                "/repos/VitruvianSoftware/vitruvian-core/actions/runs":
+                    #"{"workflow_runs":[{"id":3,"name":"release","head_sha":"aaaa","status":"\#(runStatus)","conclusion":null,"html_url":null},"#
+                    + #"{"id":4,"name":"release","head_sha":"older","status":"waiting","conclusion":null,"html_url":null}]}"#,
+                "/repos/VitruvianSoftware/vitruvian-core/pulls": "[]",
+            ])
+            let api = GitHubAPIClient(transport: transport, apiURL: URL(string: "https://api.example.test")!)
+            var result: RepoState?
+            var finished = false
+            Task { @MainActor in
+                result = try? await api.fetchSnapshot(repo: repo, token: "t")
+                finished = true
+            }
+            spin { finished }
+            return result
+        }
+        guard let paused = snapshot(runStatus: "waiting", jobStatus: "waiting") else {
+            suite.expect(false, "the snapshot with a waiting run did not come back")
+            return
+        }
+        suite.expect(paused.checks["workflow_run:3"]?.status == .waiting && paused.checks["check_run:2"]?.status == .waiting
+                     && paused.checks["workflow_run:4"] == nil,
+                     "the snapshot keeps the head's waiting run and job, and drops an older commit's: \(paused.checks.keys.sorted())")
+        let rig = SinkRig("rest")
+        defer { rig.cleanUp() }
+        rig.sink.update(summary: summary(paused), force: true)
+        suite.expect(summary(paused).aggregate == .red && rig.commands == [approvalCommand],
+                     "a polled snapshot with a failure and a paused run sends the approval signal: \(rig.commands)")
+        guard let running = snapshot(runStatus: "in_progress", jobStatus: "in_progress") else {
+            suite.expect(false, "the snapshot after approval did not come back")
+            return
+        }
+        rig.sink.update(summary: summary(running))
+        suite.expect(!summary(running).awaitingApproval && rig.commands.last == ["breathe", "red"],
+                     "the next snapshot after approval falls back to the verdict: \(rig.commands)")
+    }
+
     private static func notchModuleProperties(_ suite: TestSuite) {
         let module = NotchModule.github
         suite.expect(module.symbol == "arrow.triangle.branch", "github module uses arrow.triangle.branch symbol")
@@ -830,6 +1098,22 @@ private nonisolated final class StubGitHubUserTransport: GitHubAuthTransport, @u
             }
         }
         return (body, HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!)
+    }
+}
+
+/// Answers each path with the JSON given for it, 404 for any other.
+private nonisolated final class StubGitHubSnapshotTransport: GitHubAuthTransport, @unchecked Sendable {
+    private let bodies: [String: String]
+
+    init(bodies: [String: String]) {
+        self.bodies = bodies
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let url = request.url ?? URL(fileURLWithPath: "/")
+        let body = bodies[url.path]
+        return (Data((body ?? "{}").utf8),
+                HTTPURLResponse(url: url, statusCode: body == nil ? 404 : 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
     }
 }
 
