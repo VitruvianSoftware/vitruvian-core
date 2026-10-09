@@ -1,15 +1,14 @@
 // Modern JavaScript for Vitruvian Software site
-document.addEventListener('DOMContentLoaded', function() {
-  
+document.addEventListener("DOMContentLoaded", function () {
   // Add smooth scrolling to all anchor links
-  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
+  document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+    anchor.addEventListener("click", function (e) {
       e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
+      const target = document.querySelector(this.getAttribute("href"));
       if (target) {
         target.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
+          behavior: "smooth",
+          block: "start",
         });
       }
     });
@@ -18,31 +17,31 @@ document.addEventListener('DOMContentLoaded', function() {
   // Intersection Observer for fade-in animations
   const observerOptions = {
     threshold: 0.1,
-    rootMargin: '0px 0px -50px 0px'
+    rootMargin: "0px 0px -50px 0px",
   };
 
   const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
+    entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        entry.target.style.opacity = '1';
-        entry.target.style.transform = 'translateY(0)';
+        entry.target.style.opacity = "1";
+        entry.target.style.transform = "translateY(0)";
         observer.unobserve(entry.target);
       }
     });
   }, observerOptions);
 
   // Apply fade-in animation to cards and sections
-  document.querySelectorAll('.card, .fade-in-up').forEach(el => {
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(30px)';
-    el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+  document.querySelectorAll(".card, .fade-in-up").forEach((el) => {
+    el.style.opacity = "0";
+    el.style.transform = "translateY(30px)";
+    el.style.transition = "opacity 0.6s ease, transform 0.6s ease";
     observer.observe(el);
   });
 
   // Add parallax effect to hero background
-  const hero = document.querySelector('.hero');
+  const hero = document.querySelector(".hero");
   if (hero) {
-    window.addEventListener('scroll', () => {
+    window.addEventListener("scroll", () => {
       const scrolled = window.pageYOffset;
       const rate = scrolled * -0.5;
       hero.style.transform = `translateY(${rate}px)`;
@@ -50,23 +49,23 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Enhanced button hover effects
-  document.querySelectorAll('.button').forEach(button => {
-    button.addEventListener('mouseenter', function() {
-      this.style.transform = 'translateY(-2px) scale(1.02)';
+  document.querySelectorAll(".button").forEach((button) => {
+    button.addEventListener("mouseenter", function () {
+      this.style.transform = "translateY(-2px) scale(1.02)";
     });
-    
-    button.addEventListener('mouseleave', function() {
-      this.style.transform = 'translateY(0) scale(1)';
+
+    button.addEventListener("mouseleave", function () {
+      this.style.transform = "translateY(0) scale(1)";
     });
   });
 
   // Add typing effect to hero title (if present)
-  const heroTitle = document.querySelector('.hero h1');
-  if (heroTitle && heroTitle.textContent.includes('Vitruvian Software')) {
+  const heroTitle = document.querySelector(".hero h1");
+  if (heroTitle && heroTitle.textContent.includes("Vitruvian Software")) {
     const text = heroTitle.textContent;
-    heroTitle.textContent = '';
+    heroTitle.textContent = "";
     let i = 0;
-    
+
     const typeWriter = () => {
       if (i < text.length) {
         heroTitle.textContent += text.charAt(i);
@@ -74,20 +73,20 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(typeWriter, 50);
       }
     };
-    
+
     // Start typing effect after a short delay
     setTimeout(typeWriter, 500);
   }
 
   // Add ripple effect to buttons
-  document.querySelectorAll('.button').forEach(button => {
-    button.addEventListener('click', function(e) {
-      const ripple = document.createElement('span');
+  document.querySelectorAll(".button").forEach((button) => {
+    button.addEventListener("click", function (e) {
+      const ripple = document.createElement("span");
       const rect = this.getBoundingClientRect();
       const size = Math.max(rect.width, rect.height);
       const x = e.clientX - rect.left - size / 2;
       const y = e.clientY - rect.top - size / 2;
-      
+
       ripple.style.cssText = `
         position: absolute;
         width: ${size}px;
@@ -100,9 +99,9 @@ document.addEventListener('DOMContentLoaded', function() {
         animation: ripple 0.6s linear;
         pointer-events: none;
       `;
-      
+
       this.appendChild(ripple);
-      
+
       setTimeout(() => {
         ripple.remove();
       }, 600);
@@ -110,7 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Add CSS for ripple animation
-  const style = document.createElement('style');
+  const style = document.createElement("style");
   style.textContent = `
     @keyframes ripple {
       to {
@@ -135,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.head.appendChild(style);
 
   // Add scroll indicator for long pages
-  const scrollIndicator = document.createElement('div');
+  const scrollIndicator = document.createElement("div");
   scrollIndicator.style.cssText = `
     position: fixed;
     top: 0;
@@ -148,15 +147,17 @@ document.addEventListener('DOMContentLoaded', function() {
   `;
   document.body.appendChild(scrollIndicator);
 
-  window.addEventListener('scroll', () => {
-    const scrollPercent = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+  window.addEventListener("scroll", () => {
+    const scrollPercent =
+      (window.scrollY / (document.body.scrollHeight - window.innerHeight)) *
+      100;
     scrollIndicator.style.width = `${scrollPercent}%`;
   });
 
   // Add back to top button
-  const backToTop = document.createElement('button');
-  backToTop.innerHTML = '↑';
-  backToTop.setAttribute('aria-label', 'Back to top');
+  const backToTop = document.createElement("button");
+  backToTop.innerHTML = "↑";
+  backToTop.setAttribute("aria-label", "Back to top");
   backToTop.style.cssText = `
     position: fixed;
     bottom: 20px;
@@ -174,34 +175,34 @@ document.addEventListener('DOMContentLoaded', function() {
     transform: translateY(20px);
     z-index: 100;
   `;
-  
-  backToTop.addEventListener('click', () => {
+
+  backToTop.addEventListener("click", () => {
     window.scrollTo({
       top: 0,
-      behavior: 'smooth'
+      behavior: "smooth",
     });
   });
 
-  window.addEventListener('scroll', () => {
+  window.addEventListener("scroll", () => {
     if (window.scrollY > 300) {
-      backToTop.style.opacity = '1';
-      backToTop.style.transform = 'translateY(0)';
+      backToTop.style.opacity = "1";
+      backToTop.style.transform = "translateY(0)";
     } else {
-      backToTop.style.opacity = '0';
-      backToTop.style.transform = 'translateY(20px)';
+      backToTop.style.opacity = "0";
+      backToTop.style.transform = "translateY(20px)";
     }
   });
 
   document.body.appendChild(backToTop);
 
   // Add loading animation for images
-  document.querySelectorAll('img').forEach(img => {
+  document.querySelectorAll("img").forEach((img) => {
     if (!img.complete) {
-      img.style.opacity = '0';
-      img.style.transition = 'opacity 0.3s ease';
-      
-      img.addEventListener('load', () => {
-        img.style.opacity = '1';
+      img.style.opacity = "0";
+      img.style.transition = "opacity 0.3s ease";
+
+      img.addEventListener("load", () => {
+        img.style.opacity = "1";
       });
     }
   });
@@ -223,4 +224,4 @@ document.addEventListener('DOMContentLoaded', function() {
     
     Interested in contributing? We'd love to have you!
   `);
-}); 
+});
