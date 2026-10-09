@@ -175,6 +175,10 @@ swift_library(
         ":VitruvianCore",
         ":VitruvianDesign",
         ":VitruvianServices",
+        # The Nexus Agent chat view, shared with the standalone app. Only this
+        # module may depend on it: it is SwiftUI, and the layers below are not
+        # all views.
+        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
     ],
 )
 
@@ -565,14 +569,20 @@ py_test(
 )
 
 # Every change to the shared Nexus Agent sources must also change this folder,
-# or this app would never release it (bazel/pin_nexus_agent_shared.py).
-SHARED_NEXUS_AGENT = "//apps/desktop/nexus-agent/macos:shared_sources"
+# or this app would never release it (bazel/pin_nexus_agent_shared.py). Both
+# shared libraries are pinned: the engine and the chat view.
+SHARED_NEXUS_AGENT = [
+    "//apps/desktop/nexus-agent/macos:shared_sources",
+    "//apps/desktop/nexus-agent/macos:shared_ui_sources",
+]
+
+SHARED_NEXUS_AGENT_PATHS = ["$(rootpaths %s)" % group for group in SHARED_NEXUS_AGENT]
 
 py_binary(
     name = "pin_nexus_agent_shared",
     srcs = ["bazel/pin_nexus_agent_shared.py"],
-    args = ["$(rootpaths %s)" % SHARED_NEXUS_AGENT],
-    data = [SHARED_NEXUS_AGENT],
+    args = SHARED_NEXUS_AGENT_PATHS,
+    data = SHARED_NEXUS_AGENT,
     main = "bazel/pin_nexus_agent_shared.py",
 )
 
@@ -583,12 +593,8 @@ py_test(
     args = [
         "--check",
         "$(rootpath bazel/nexus_agent_shared.sha256)",
-        "$(rootpaths %s)" % SHARED_NEXUS_AGENT,
-    ],
-    data = [
-        "bazel/nexus_agent_shared.sha256",
-        SHARED_NEXUS_AGENT,
-    ],
+    ] + SHARED_NEXUS_AGENT_PATHS,
+    data = ["bazel/nexus_agent_shared.sha256"] + SHARED_NEXUS_AGENT,
     main = "bazel/pin_nexus_agent_shared.py",
 )
 

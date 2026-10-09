@@ -31,6 +31,32 @@ filegroup(
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
+# The shared chat view: the SwiftUI the Vitruvian desktop app shows its Nexus
+# Agent chat with, and which this app will use too. It takes the engine, its
+# text and what differs between the apps as inputs, so, like the core, it may
+# import no Vitruvian module. A module of its own so that the core stays free
+# of SwiftUI.
+swift_library(
+    name = "NexusAgentUI",
+    srcs = [":shared_ui_sources"],
+    features = ["swift.enable_v6"],
+    module_name = "NexusAgentUI",
+    target_compatible_with = ["@platforms//os:macos"],
+    visibility = [
+        "//apps/desktop/nexus-agent:__subpackages__",
+        "//apps/desktop/vitruvian:__pkg__",
+    ],
+    deps = [":NexusAgentCore"],
+)
+
+# As `shared_sources`: what NexusAgentUI compiles and what Vitruvian's pin
+# hashes are this one list.
+filegroup(
+    name = "shared_ui_sources",
+    srcs = glob(["Sources/NexusAgentUI/**/*.swift"]),
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+)
+
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
 # Swift has no Gazelle, so this BUILD file is hand-written. The library is
 # constrained to macOS so a Linux `bazel build //...` skips it instead of
@@ -40,7 +66,10 @@ swift_library(
     srcs = glob(["Sources/NexusAgent/**/*.swift"]),
     module_name = "NexusAgent",
     target_compatible_with = ["@platforms//os:macos"],
-    deps = [":NexusAgentCore"],
+    deps = [
+        ":NexusAgentCore",
+        ":NexusAgentUI",
+    ],
 )
 
 alias(
@@ -58,9 +87,11 @@ swift_test(
     srcs = glob(["Tests/**/*.swift"]),
     # EngineHostTests reads the shared sources to prove they name no app's
     # saved-settings key and only run tools that exist. SharedCasesTests reads
-    # the examples it shares with the bot's tests.
+    # the examples it shares with the bot's tests. ChatSymbolsTests reads the
+    # chat view's sources to prove every SF Symbol it draws exists.
     data = [
         ":shared_sources",
+        ":shared_ui_sources",
         "//apps/desktop/nexus-agent:testdata_files",
     ],
     tags = ["manual"],
