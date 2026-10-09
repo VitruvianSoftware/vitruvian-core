@@ -44,6 +44,26 @@ package enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
     }
 }
 
+extension QuickLauncherItem {
+    /// The registry command a tile runs. Nil for the utilities the panel
+    /// hosts inside itself, which run nothing outside it.
+    package var command: BuiltinCommand? {
+        switch self {
+        case .keepAwake: return .keepAwakeToggle
+        case .micMute: return .micMuteToggle
+        case .screenOCR: return .screenOCRCapture
+        case .screenshot: return .screenshotCapture
+        case .screenRecorder: return .screenRecorderToggle
+        case .colorPicker: return .colorPickerPick
+        case .cameraPreview: return .cameraPreviewShow
+        case .scratchpad: return .scratchpadShow
+        case .clipboard: return .clipboardHistoryShow
+        case .cleaning: return .cleaningModeActivate
+        case .windowLayout, .homebrew, .media, .urlCleaner, .uninstaller, .cleaner, .toggles: return nil
+        }
+    }
+}
+
 /// The floating quick panel: a small, pretty launcher with the user's
 /// favorite tools, summoned from anywhere with a global shortcut (⌃⌘V by
 /// default; V for Vitruvian). Fully customizable in place: items can be
@@ -92,19 +112,7 @@ package final class QuickLauncherService: ObservableObject {
                 collapseIsland: { NotchService.shared.collapse() },
                 showCameraInIsland: { CameraPreviewService.shared.showInNotchIfEnabled() },
                 perform: { item in
-                    switch item {
-                    case .keepAwake: KeepAwakeManager.shared.toggle()
-                    case .micMute: MicMuteService.shared.toggle()
-                    case .screenOCR: ScreenTextService.shared.capture()
-                    case .screenshot: ScreenshotService.shared.capture()
-                    case .screenRecorder: ScreenRecorderService.shared.toggle()
-                    case .colorPicker: ColorSamplerService.shared.pick()
-                    case .cameraPreview: CameraPreviewService.shared.show()
-                    case .scratchpad: ScratchpadService.shared.show()
-                    case .clipboard: ClipboardHistoryService.shared.showHistoryWindow()
-                    case .cleaning: CleaningModeManager.shared.activate()
-                    case .windowLayout, .homebrew, .media, .urlCleaner, .uninstaller, .cleaner, .toggles: break
-                    }
+                    if let command = item.command { ToolRegistry.shared.run(command.id) }
                 },
                 after: { delay, work in DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() } })
         }

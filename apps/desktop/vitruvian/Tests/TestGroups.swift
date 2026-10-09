@@ -36,6 +36,7 @@ enum TestGroups {
         "switcher-model",
         "agents",
         "features",
+        "platform",
         "utilities",
         "settings",
         "display-restoration",
@@ -161,6 +162,7 @@ enum TestGroups {
                 FeatureRuntimeContract.run(suite)
                 MenuPanelSectionGateContract.run(suite)
             }),
+            ("platform", { ToolPlatformTests.run(suite) }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
                 PortManagerRefreshTests.run(suite)
