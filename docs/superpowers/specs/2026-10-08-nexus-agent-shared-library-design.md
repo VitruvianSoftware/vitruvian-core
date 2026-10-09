@@ -203,6 +203,10 @@ green.
    `NexusAgentService` move, split so the app-specific parts (hotkey
    registration, window ownership, notch calls) stay behind `NexusAgentHost`.
    The standalone's `BotManager` and the rest of `ConfigManager` are replaced.
+   This lands as two pull requests: 2a moves the code and changes nothing a
+   user sees (`docs/superpowers/plans/2026-10-09-nexus-agent-shared-engine.md`);
+   2b switches the standalone over, which does change what its users see, and
+   lists every difference for review.
 3. **Move the chat view.** `NexusAgentQuickPromptView` becomes
    `NexusAgentUI`. The standalone deletes `QuickPromptWindow.swift` and hosts
    the shared view in its window. Before merging, both apps are compared
