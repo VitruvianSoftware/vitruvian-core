@@ -78,6 +78,13 @@ public struct NexusAgentHostStrings: Sendable {
     public var approvalRequiredTitleSuffix: String
     public var failedTitleSuffix: String
     public var doneTitleSuffix: String
+    /// Why the bot could not be started, or settings saved: one line per
+    /// `NexusAgentEngine.Problem`, for an app that has only a log to say it in.
+    public var problemMissingToken: String
+    public var problemMissingBot: String
+    public var problemMissingNode: String
+    public var problemStartFailed: String
+    public var problemSaveFailed: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -95,7 +102,12 @@ public struct NexusAgentHostStrings: Sendable {
                  usingToolSuffix: String = "…",
                  approvalRequiredTitleSuffix: String = " — Approval Required",
                  failedTitleSuffix: String = " — Failed",
-                 doneTitleSuffix: String = " — Done") {
+                 doneTitleSuffix: String = " — Done",
+                 problemMissingToken: String = "Add your Telegram bot token in Settings before starting the bot.",
+                 problemMissingBot: String = "The bot is not installed: src/bot.js was not found in the bot folder.",
+                 problemMissingNode: String = "Node.js was not found. Install Node, then start the bot again.",
+                 problemStartFailed: String = "The bot could not be started.",
+                 problemSaveFailed: String = "The settings could not be saved.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -113,6 +125,11 @@ public struct NexusAgentHostStrings: Sendable {
         self.approvalRequiredTitleSuffix = approvalRequiredTitleSuffix
         self.failedTitleSuffix = failedTitleSuffix
         self.doneTitleSuffix = doneTitleSuffix
+        self.problemMissingToken = problemMissingToken
+        self.problemMissingBot = problemMissingBot
+        self.problemMissingNode = problemMissingNode
+        self.problemStartFailed = problemStartFailed
+        self.problemSaveFailed = problemSaveFailed
     }
 
     /// The opening line of a resumed session; the step count is left out

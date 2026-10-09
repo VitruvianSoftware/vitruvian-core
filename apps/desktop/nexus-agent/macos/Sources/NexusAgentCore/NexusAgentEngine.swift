@@ -221,6 +221,19 @@ open class NexusAgentEngine: NSObject, ObservableObject {
 
     public var isBotInstalled: Bool { environment.fileExists(entryPointPath) }
 
+    /// The current problem in words, from the host's text as it is right now;
+    /// nil when there is none.
+    public var problemDescription: String? {
+        switch problem {
+        case nil: return nil
+        case .missingToken?: return host.strings.problemMissingToken
+        case .missingBot?: return host.strings.problemMissingBot
+        case .missingNode?: return host.strings.problemMissingNode
+        case .startFailed?: return host.strings.problemStartFailed
+        case .saveFailed?: return host.strings.problemSaveFailed
+        }
+    }
+
     // MARK: - App lifecycle
 
     /// The app took the feature away: nothing stays resident, the bot included.
