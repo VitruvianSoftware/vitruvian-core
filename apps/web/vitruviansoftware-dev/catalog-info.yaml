@@ -1,7 +1,7 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: site-vitruviansoftware-dev
+  name: vitruviansoftware-dev
   title: Vitruvian Software Open Source Site
   description: Jekyll site published to GitHub Pages at vitruviansoftware.dev — the public open-source presence for VitruvianSoftware
   tags:
