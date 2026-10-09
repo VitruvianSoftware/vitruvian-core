@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 ### Bug Fixes
 
 * **nexus-agent:** the standalone app runs the bot and saves .env through the shared engine ([#2972](https://github.com/VitruvianSoftware/vitruvian-core/issues/2972)) ([2a67077](https://github.com/VitruvianSoftware/vitruvian-core/commit/2a670774c6d5f5b9517949d7f56ebe962575dc48))
+* **vitruvian:** keep a run paused for approval when main moves on ([#2971](https://github.com/VitruvianSoftware/vitruvian-core/issues/2971)) ([98b7cbe](https://github.com/VitruvianSoftware/vitruvian-core/commit/98b7cbece32f1f3eee58f87b5d75c230ecc6eea4))
+* **vitruvian:** refuse a shortcut a Command Bar row holds, and let any tool's command have one ([#2975](https://github.com/VitruvianSoftware/vitruvian-core/issues/2975)) ([2b41f9f](https://github.com/VitruvianSoftware/vitruvian-core/commit/2b41f9f13ed5b3abac9d06ea74dd8f0b7d689cfc))
 
 ## [3.34.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.2...vitruvian-v3.34.3) (2026-10-09)
 
@@ -55,6 +57,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [3.33.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.0...vitruvian-v3.33.1) (2026-10-08)
 
+
+### Features
+
+* **desktop:** add awaiting-approval pipeline alert to GravaStar mouse RGB ([#2933](https://github.com/VitruvianSoftware/vitruvian-core/issues/2933)) ([5f4dfa9](https://github.com/VitruvianSoftware/vitruvian-core/commit/5f4dfa90d99aa102d1a3a8ff5d9eb5fa9bf9590d))
 
 ### Bug Fixes
 

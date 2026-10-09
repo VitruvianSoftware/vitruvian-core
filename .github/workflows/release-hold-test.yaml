@@ -35,6 +35,9 @@ on:
       - "tools/ci/release-hold_test.sh"
       - "tools/ci/release-beta-gate.sh"
       - "tools/ci/release-beta-gate_test.sh"
+      - "tools/ci/release-pr-dequeue.sh"
+      - "tools/ci/release-pr-dequeue_test.sh"
+      - ".github/workflows/vitruvian-release.yaml"
       - ".github/workflows/release-hold-test.yaml"
   push:
     branches: [main]
@@ -43,6 +46,9 @@ on:
       - "tools/ci/release-hold_test.sh"
       - "tools/ci/release-beta-gate.sh"
       - "tools/ci/release-beta-gate_test.sh"
+      - "tools/ci/release-pr-dequeue.sh"
+      - "tools/ci/release-pr-dequeue_test.sh"
+      - ".github/workflows/vitruvian-release.yaml"
       - ".github/workflows/release-hold-test.yaml"
 
 permissions:
@@ -62,3 +68,6 @@ jobs:
 
       - name: Run the release-beta-gate script tests
         run: bash tools/ci/release-beta-gate_test.sh
+
+      - name: Run the release-pr-dequeue script tests
+        run: bash tools/ci/release-pr-dequeue_test.sh
