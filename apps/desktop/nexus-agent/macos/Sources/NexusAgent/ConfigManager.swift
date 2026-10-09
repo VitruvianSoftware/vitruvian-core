@@ -188,29 +188,29 @@ class ConfigManager: ObservableObject {
     /// nothing overwrites what the user is typing in Settings.
     func load() {
         engine.load()
-        if let content = try? String(contentsOfFile: engine.envFilePath, encoding: .utf8) {
-            show(engine.configuration, fileValues: NexusAgentEnvFile.values(in: content))
+        if (try? String(contentsOfFile: engine.envFilePath, encoding: .utf8)) != nil {
+            show(engine.configuration)
         } else {
             // No .env yet: try .env.example as a template
             let examplePath = (engine.botDirectory as NSString).appendingPathComponent(".env.example")
             if let example = try? String(contentsOfFile: examplePath, encoding: .utf8) {
-                show(NexusAgentEnvFile.parse(example), fileValues: NexusAgentEnvFile.values(in: example))
+                show(NexusAgentEnvFile.parse(example))
             }
         }
     }
 
     /// Copies what the file says into the fields the views bind to.
-    private func show(_ configuration: NexusAgentConfiguration, fileValues: [String: String]) {
+    private func show(_ configuration: NexusAgentConfiguration) {
         botToken = configuration.botToken
         allowedUserIds = configuration.allowedUserIDs
         workingDirectory = configuration.workingDirectory
         model = configuration.model
         effort = configuration.effort.rawValue
-        // An approval mode line with nothing after the `=` shows this app's
-        // default, as it always has here. The shared reading alone would show
-        // "default" for it, which is how the bot itself takes an empty value.
-        let written = fileValues[NexusAgentEnvFile.approvalModeKey] ?? fileValues["GEMINI_APPROVAL_MODE"]
-        approvalMode = written == "" ? Self.defaultApprovalMode : configuration.approvalMode.rawValue
+        // Shown exactly as the bot reads it. A line with nothing after the `=`
+        // is "default" (ask each time) to the bot, so it is here too: showing
+        // YOLO for it meant the next save wrote `yolo` and silently let the
+        // bot skip every permission prompt.
+        approvalMode = configuration.approvalMode.rawValue
     }
 
     // MARK: - Save .env
