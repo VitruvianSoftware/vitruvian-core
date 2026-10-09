@@ -417,11 +417,31 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(engine.activeProvider, .antigravity)
     }
 
-    /// What the standalone app has in its saved settings today, byte for
-    /// byte as `JSONEncoder` wrote it from that app's own provider type: one
-    /// blob for the built-in providers (all three, edited or not) and one
-    /// for the user's own. The shared type must read both and show what
-    /// that app's Settings shows.
+    /// An edited built-in command is taken only from an entry that is itself
+    /// marked built-in, as the standalone reads it from its built-in blob. An
+    /// entry that merely carries a built-in's id, but is marked as the user's
+    /// own, changes nothing and is not listed a second time.
+    func testABuiltInsCommandIsTakenOnlyFromABuiltInEntry() {
+        var impostor = NexusAgentCLIProvider.claude
+        impostor.commandTemplate = "evil -p \"{prompt}\""
+        impostor.isBuiltIn = false
+        XCTAssertEqual(NexusAgentCLIProvider.available(saved: [impostor]), NexusAgentCLIProvider.builtIns,
+                       "an own entry with a built-in's id leaves the built-in as it is, and is not listed again")
+
+        var edited = NexusAgentCLIProvider.claude
+        edited.commandTemplate = "claude -p \"{prompt}\" --model {model}"
+        XCTAssertEqual(NexusAgentCLIProvider.available(saved: [impostor, edited]),
+                       [.antigravity, edited, .ollama], "the built-in entry still supplies the edit")
+        XCTAssertEqual(NexusAgentCLIProvider.available(saved: [edited, impostor]),
+                       [.antigravity, edited, .ollama], "whichever comes first")
+    }
+
+    /// What the standalone app has in its saved settings today: the same
+    /// fields and value shapes its `JSONEncoder` writes from that app's own
+    /// provider type (this sample is written by hand, and decoding does not
+    /// depend on the order of the keys): one blob for the built-in providers
+    /// (all three, edited or not) and one for the user's own. The shared
+    /// type must read both and show what that app's Settings shows.
     func testTheStandalonesStoredProvidersAreRead() throws {
         let builtInBlob = #"""
         [{"id":"00000000-0000-0000-0000-000000000001","name":"Gemini CLI","commandTemplate":"agy -p \"{prompt}\" --effort high","isBuiltIn":true},{"id":"00000000-0000-0000-0000-000000000003","name":"Claude Code","commandTemplate":"claude -p \"{prompt}\"","isBuiltIn":true},{"id":"00000000-0000-0000-0000-000000000002","name":"Ollama (claude)","commandTemplate":"ollama launch claude --model {model} -- -p \"{prompt}\"","isBuiltIn":true}]
@@ -1112,6 +1132,81 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(engine.agentPath, "/opt/homebrew/bin/ollama", "run as Ollama, so Ollama is what is looked for")
         engine.updateActiveProvider(ownProvider("claude -p {prompt}"))
         XCTAssertEqual(engine.agentPath, "/Users/rig/.local/bin/claude")
+    }
+
+    /// Claude and Ollama are looked for in the shared folders first, in their
+    /// order, so every program found before is found at the same path; only
+    /// if none is there is the standalone's own lookup tried.
+    func testClaudeAndOllamaAreAlsoLookedForWhereTheStandaloneLooks() {
+        func find(_ name: String, path: String = "", _ executables: Set<String>) -> String? {
+            NexusAgentSupport.locateChatProgram(named: name, environment: ["PATH": path], home: "/Users/rig",
+                                                isExecutable: { executables.contains($0) }, fileExists: { _ in false })
+        }
+        // Only in a folder the standalone adds: found now.
+        for folder in ["/opt/homebrew/sbin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
+            XCTAssertEqual(find("claude", [folder + "/claude"]), folder + "/claude")
+        }
+        XCTAssertEqual(find("ollama", path: "/custom/bin", ["/custom/bin/ollama"]), "/custom/bin/ollama", "and PATH")
+        // In a shared folder and an extra one: the shared folder, as before.
+        XCTAssertEqual(find("claude", ["/usr/bin/claude", "/usr/local/bin/claude"]), "/usr/local/bin/claude")
+        XCTAssertEqual(find("claude", ["/opt/homebrew/sbin/claude", "/opt/homebrew/bin/claude"]),
+                       "/opt/homebrew/bin/claude")
+        XCTAssertEqual(find("claude", path: "/custom/bin", ["/custom/bin/claude", "/usr/local/bin/claude"]),
+                       "/usr/local/bin/claude")
+        // The shared order is kept even where the standalone's differs.
+        XCTAssertEqual(find("claude", ["/opt/homebrew/bin/claude", "/Users/rig/.local/bin/claude"]),
+                       "/Users/rig/.local/bin/claude")
+        // Nothing anywhere: missing, as before.
+        XCTAssertNil(find("claude", path: "/custom/bin", []))
+    }
+
+    func testTheEngineFindsClaudeAndOllamaInTheStandalonesExtraFolders() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.executables = ["/usr/bin/claude", "/opt/homebrew/sbin/ollama"]
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+
+        engine.updateActiveProvider(.claude)
+        XCTAssertEqual(engine.agentPath, "/usr/bin/claude")
+        engine.updateActiveProvider(.ollama)
+        XCTAssertEqual(engine.agentPath, "/opt/homebrew/sbin/ollama")
+
+        rig.executables = ["/usr/bin/claude", "/usr/local/bin/claude"]
+        engine.updateActiveProvider(.claude)
+        XCTAssertEqual(engine.agentPath, "/usr/local/bin/claude", "a shared folder still wins")
+        rig.executables = []
+        engine.updateActiveProvider(.claude)
+        XCTAssertNil(engine.agentPath, "nothing found is still missing")
+        // Antigravity keeps its own lookup: the extra folders are not searched for agy.
+        rig.executables = ["/usr/bin/agy"]
+        engine.updateActiveProvider(.antigravity)
+        XCTAssertNil(engine.agentPath)
+    }
+
+    // MARK: - Listing Ollama's models has a time limit
+
+    /// A real but harmless program that runs too long is ended, and the
+    /// answer is nil, so the chat falls back to the fixed model name.
+    func testAProgramThatRunsTooLongIsEndedAndGivesNothing() async throws {
+        let started = Date()
+        let output = await NexusAgentEngine.runProgram(named: "/bin/sleep", arguments: ["5.4321"], timeLimit: 0.3)
+        XCTAssertNil(output)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "it did not wait for the sleep to finish")
+
+        let search = Process()
+        search.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        search.arguments = ["-f", "sleep 5.4321"]
+        search.standardOutput = FileHandle.nullDevice
+        try search.run()
+        search.waitUntilExit()
+        XCTAssertEqual(search.terminationStatus, 1, "no process is left running")
+    }
+
+    func testAProgramThatFinishesInTimeGivesItsOutput() async {
+        let output = await NexusAgentEngine.runProgram(named: "/bin/echo", arguments: ["hi"], timeLimit: 5)
+        XCTAssertEqual(output, "hi\n")
+        let defaulted = await NexusAgentEngine.runProgram(named: "/bin/echo", arguments: ["hi"])
+        XCTAssertEqual(defaulted, "hi\n", "with the usual limit")
     }
 
     /// The real launcher, with a harmless real program: `/bin/echo` prints

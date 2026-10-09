@@ -25,6 +25,7 @@
 import AppKit
 import Combine
 import Darwin
+import os
 
 /// Runs the Nexus Agent Telegram bot from its folder, edits the part of its
 /// `.env` a settings page shows, and holds the chat with the agent's CLI.
@@ -342,11 +343,21 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// when it runs it; the session finds it again for each turn, because
     /// the word may have the model in it.
     private func locateProgram(of provider: NexusAgentCLIProvider) -> String? {
-        guard provider.route == .custom else {
+        switch provider.route {
+        case .antigravity:
+            // agy keeps its own lookup, AGY_BIN included.
             return NexusAgentSupport.locateAgent(named: provider.executableName,
                                                  environment: environment.processEnvironment,
                                                  home: environment.home,
                                                  isExecutable: environment.isExecutable)
+        case .claude, .ollama:
+            return NexusAgentSupport.locateChatProgram(named: provider.executableName,
+                                                       environment: environment.processEnvironment,
+                                                       home: environment.home,
+                                                       isExecutable: environment.isExecutable,
+                                                       fileExists: environment.fileExists)
+        case .custom:
+            break
         }
         guard let command = NexusAgentSupport.providerCommand(template: provider.commandTemplate, prompt: "",
                                                               model: configuration.model),
@@ -582,7 +593,14 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// status is not looked at, as the standalone app has it. A bare name
     /// is looked for where that app looks; one found nowhere is still tried
     /// in Homebrew's folder, where it then fails to start and gives nil.
-    nonisolated private static func runProgram(named name: String, arguments: [String]) async -> String? {
+    ///
+    /// A program that has not ended after `timeLimit` seconds (20 for the
+    /// real lookups, as the standalone app gives `agy`) is terminated and
+    /// gives nil, so a hung program cannot leave a chat turn running for
+    /// ever or leak a process. The limit is a parameter only so a test can
+    /// use a short one.
+    nonisolated public static func runProgram(named name: String, arguments: [String],
+                                              timeLimit: TimeInterval = 20) async -> String? {
         let files = FileManager.default
         let path = NexusAgentSupport.executablePath(
             named: name,
@@ -604,9 +622,21 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                     continuation.resume(returning: nil)
                     return
                 }
+                // Standard error goes to the null device, so no pipe but the
+                // one being read can fill. Ending the program closes its
+                // output, which lets the read below finish.
+                let timedOut = OSAllocatedUnfairLock(initialState: false)
+                let watchdog = DispatchWorkItem {
+                    guard process.isRunning else { return }
+                    timedOut.withLock { $0 = true }
+                    process.terminate()
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeLimit, execute: watchdog)
                 let data = output.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
-                continuation.resume(returning: String(data: data, encoding: .utf8))
+                watchdog.cancel()
+                // Resumed here and at the failed start above, never twice.
+                continuation.resume(returning: timedOut.withLock { $0 } ? nil : String(data: data, encoding: .utf8))
             }
         }
     }

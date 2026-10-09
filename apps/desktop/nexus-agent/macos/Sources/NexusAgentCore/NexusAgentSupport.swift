@@ -128,13 +128,16 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
     /// are today, so a name saved by an older version does not come back.
     /// Then the user's own, in the order they were saved. An entry marked
     /// built-in that is not one of the three is left out: it is a provider
-    /// a later version took away.
+    /// a later version took away. A built-in's saved command is taken only
+    /// from an entry that is itself marked built-in, as the standalone app
+    /// reads it from its built-in list; an entry marked as the user's own
+    /// that carries a built-in's id changes nothing and is not listed.
     public static func available(saved: [NexusAgentCLIProvider]) -> [NexusAgentCLIProvider] {
         let builtInIDs = Set(builtIns.map(\.id))
         let edited = builtIns.map { builtIn -> NexusAgentCLIProvider in
             var provider = builtIn
             // The last saved copy wins, as it does where the standalone app reads them.
-            if let copy = saved.last(where: { $0.id == builtIn.id }) {
+            if let copy = saved.last(where: { $0.id == builtIn.id && $0.isBuiltIn }) {
                 provider.commandTemplate = copy.commandTemplate
             }
             return provider
@@ -653,6 +656,18 @@ public enum NexusAgentSupport {
         return searchDirectories(home: home)
             .map { ($0 as NSString).appendingPathComponent(binary) }
             .first(where: isExecutable)
+    }
+
+    /// Where the Claude or Ollama program is, looked for so that nothing
+    /// either app finds today is lost: first the install locations above,
+    /// in their order (so a program found there is found at the same path
+    /// as before), and only if it is in none of them, where the standalone
+    /// app's chat looks (`executablePath`: more folders, then PATH).
+    public static func locateChatProgram(named name: String, environment: [String: String], home: String,
+                                         isExecutable: (String) -> Bool, fileExists: (String) -> Bool) -> String? {
+        locateAgent(named: name, environment: environment, home: home, isExecutable: isExecutable)
+            ?? executablePath(named: name, pathVariable: environment["PATH"] ?? "",
+                              isExecutable: isExecutable, fileExists: fileExists)
     }
 
     /// Node from Homebrew or the official installer. macOS ships none.

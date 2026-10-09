@@ -33,6 +33,7 @@ enum NexusAgentTests {
         hostReadsLive(suite)
         hostRemembersProviders(suite)
         hostRemembersHistoryAndWorktreeMode(suite)
+        backupDoesNotCarryProviderCommands(suite)
         hostTurnNotices(suite)
         changesReachTheViews(suite)
     }
@@ -1019,6 +1020,17 @@ enum NexusAgentTests {
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentWorktreeMode)
                      && SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentChosenProvider),
                      "worktree mode and the chosen provider are settings a backup carries")
+    }
+
+    /// A saved provider's command is run as a program, so importing someone
+    /// else's backup must never be a way to install one. The choice of
+    /// provider (an id) is harmless and still travels.
+    private static func backupDoesNotCarryProviderCommands(_ suite: TestSuite) {
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(DefaultsKey.nexusAgentSavedProviders)
+                     && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentSavedProviders),
+                     "saved provider commands are not carried by a backup")
+        suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentChosenProvider),
+                     "the chosen provider still is")
     }
 
     /// What Vitruvian tells the user when a turn ends or waits: the notch
