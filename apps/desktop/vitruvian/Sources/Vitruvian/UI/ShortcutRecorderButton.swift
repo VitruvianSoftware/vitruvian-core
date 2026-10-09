@@ -321,7 +321,7 @@ package struct ShortcutPreferenceRow: View {
     private let includeInactiveConflicts: Bool
     private let reservesClearButtonSpace: Bool
     private let onChange: () -> Void
-    private let additionalConflict: (GlobalShortcut) -> String?
+    private let additionalConflict: ((GlobalShortcut) -> String?)?
     @AppStorage private var rawValue: String
     @State private var errorText: String?
     @State private var isRecording = false
@@ -338,7 +338,7 @@ package struct ShortcutPreferenceRow: View {
          superKeyModifiers: GlobalShortcutModifiers = .validMask,
          includeInactiveConflicts: Bool = false,
          reservesClearButtonSpace: Bool = false,
-         additionalConflict: @escaping (GlobalShortcut) -> String? = { _ in nil },
+         additionalConflict: ((GlobalShortcut) -> String?)? = nil,
          onChange: @escaping () -> Void) {
         self.role = role
         self.isEnabled = isEnabled
@@ -392,6 +392,11 @@ package struct ShortcutPreferenceRow: View {
                                 .accessibilityHidden(true)
                         }
                         Button(l10n.s.shortcutReset) {
+                            if let refusal = refusal(for: role.defaultShortcut) {
+                                errorText = refusal
+                                pendingTakeOver = nil
+                                return
+                            }
                             rawValue = role.defaultShortcut.storageValue
                             errorText = nil
                             pendingTakeOver = nil
@@ -422,6 +427,13 @@ package struct ShortcutPreferenceRow: View {
             if let pendingTakeOver {
                 SystemShortcutTakeOverOffer(shortcut: pendingTakeOver,
                                             onAccept: {
+                                                // The offer may have waited while
+                                                // another row took the combination.
+                                                if let refusal = refusal(for: pendingTakeOver) {
+                                                    errorText = refusal
+                                                    self.pendingTakeOver = nil
+                                                    return
+                                                }
                                                 rawValue = pendingTakeOver.storageValue
                                                 SystemShortcutTakeover.setTakeOver(role.storageKey, true)
                                                 self.pendingTakeOver = nil
@@ -447,19 +459,27 @@ package struct ShortcutPreferenceRow: View {
             superKeyModifiers: superKeyModifiers)
     }
 
+    /// The message when somebody else holds `shortcut`, or nil when it is
+    /// free. Recording, Reset and accepting a take-over all ask it. The
+    /// window-layout check is asked on every page, after any check the page
+    /// hands in, so a role cannot take a window-layout action's combination.
+    private func refusal(for shortcut: GlobalShortcut) -> String? {
+        let windowLayout: (GlobalShortcut) -> String? = {
+            AppFeature.windowLayout.isAvailable ? WindowLayoutService.shared.shortcutConflictTitle($0) : nil
+        }
+        guard case .refuse(let holder) = ShortcutConflicts.write(shortcut, holders: [
+            { GlobalShortcutRole.conflict(for: $0, excluding: role,
+                                          includeInactive: includeInactiveConflicts)?.title(l10n.s) },
+            { additionalConflict?($0) },
+            windowLayout,
+            { ShortcutConflicts.title(for: $0) },
+        ]) else { return nil }
+        return String(format: l10n.s.shortcutConflictFormat, holder)
+    }
+
     private func save(_ shortcut: GlobalShortcut) {
-        if let conflict = GlobalShortcutRole.conflict(for: shortcut,
-                                                      excluding: role,
-                                                      includeInactive: includeInactiveConflicts) {
-            errorText = String(format: l10n.s.shortcutConflictFormat, conflict.title(l10n.s))
-            return
-        }
-        if let conflict = additionalConflict(shortcut) {
-            errorText = String(format: l10n.s.shortcutConflictFormat, conflict)
-            return
-        }
-        if let conflict = ShortcutConflicts.title(for: shortcut) {
-            errorText = String(format: l10n.s.shortcutConflictFormat, conflict)
+        if let refusal = refusal(for: shortcut) {
+            errorText = refusal
             return
         }
         // Nothing claims this row's key, so accepting an offer would write an

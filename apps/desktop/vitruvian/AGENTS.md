@@ -137,8 +137,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   `GlobalShortcutRole.conflict`, `WindowLayoutService.shortcutConflictTitle`,
   then `ShortcutConflicts.title`, which covers rows and tool commands. A new
   list of shortcuts is added to `ShortcutConflicts`, not checked by hand at
-  each recorder. Reset buttons and accepting a macOS take-over do not run
-  these checks yet.
+  each recorder. A Reset button and an accepted macOS take-over write a
+  combination too, so they ask the same lists before they save (the role
+  and window-layout rows through `ShortcutConflicts.write`).
 - A hotkey registrar that is tied to no hub feature must be re-synced in
   `ShortcutCapture.end()`: recording releases every key the app holds, and
   only each feature's own sync gives them back. Leaving this out fails

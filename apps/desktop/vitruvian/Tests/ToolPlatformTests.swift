@@ -35,6 +35,7 @@ enum ToolPlatformTests {
         shortcutRegistrarOwnToolsOnly(suite)
         shortcutRegistrarSaving(suite)
         shortcutConflicts(suite)
+        shortcutWrites(suite)
         shortcutSections(suite)
         shortcutRowDecision(suite)
         shortcutRowCommit(suite)
@@ -512,6 +513,58 @@ enum ToolPlatformTests {
                      "an id saved twice is kept once")
         suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: [], previous: [], isWellFormed: wellFormed).isEmpty,
                      "nothing showing and nothing saved saves nothing")
+    }
+
+    /// Reset and an accepted macOS take-over write a combination just as a
+    /// recording does, so they ask the same holders, in the same order.
+    static func shortcutWrites(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        var asked: [String] = []
+        func holders(role: GlobalShortcut? = nil, layout: GlobalShortcut? = nil,
+                     rows: [String: GlobalShortcut] = [:]) -> [(GlobalShortcut) -> String?] {
+            [{ asked.append("role"); return $0 == role ? "Keep Awake" : nil },
+             { asked.append("layout"); return $0 == layout ? "Left Half" : nil },
+             { shortcut in
+                 asked.append("lists")
+                 return ShortcutConflicts.holder(of: shortcut, rows: rows, commands: [:],
+                                                 excludingRow: nil, excludingCommand: nil)
+                     .map { ShortcutConflicts.name(of: $0, rowTitle: { _ in "Mail" }, rowFallback: "",
+                                                   commandTitle: { _ in nil }) }
+             }]
+        }
+
+        suite.expect(ShortcutConflicts.write(optionB, holders: holders()) == .write
+                         && asked == ["role", "layout", "lists"],
+                     "a combination nobody holds is written, after every list was asked")
+        suite.expect(ShortcutConflicts.write(optionB, holders: holders(rows: ["app:mail": optionB]))
+                         == .refuse(holder: "Mail"),
+                     "a default a Command Bar row took meanwhile is not written back by Reset")
+        suite.expect(ShortcutConflicts.write(optionB, holders: holders(layout: optionB)) == .refuse(holder: "Left Half"),
+                     "a role's default a window-layout action took meanwhile is refused")
+        asked = []
+        suite.expect(ShortcutConflicts.write(optionB, holders: holders(role: optionB, layout: optionB,
+                                                                      rows: ["app:mail": optionB]))
+                         == .refuse(holder: "Keep Awake") && asked == ["role"],
+                     "the first list to hold it names the holder, as a recording does")
+        suite.expect(ShortcutConflicts.write(optionN, holders: holders(role: optionB)) == .write,
+                     "another combination being held refuses nothing")
+        asked = []
+        suite.expect(ShortcutConflicts.write(nil, holders: holders(role: optionB)) == .write && asked.isEmpty,
+                     "a default of no shortcut at all is always written")
+
+        // Reset is refused when another list holds the default, so a role's
+        // default must not also be a window-layout default, or one of the two
+        // could never be reset. (Role against role is checked with the roles.)
+        let layoutDefaults = WindowLayoutAction.allCases.compactMap(\.defaultShortcut)
+        let roleDefaults = Set(GlobalShortcutRole.allCases.map(\.defaultShortcut))
+        suite.expect(layoutDefaults.allSatisfy { !roleDefaults.contains($0) },
+                     "no role's default is a window-layout action's default")
+        suite.expect(!roleDefaults.contains(.windowDirectionalDefault)
+                         && !layoutDefaults.contains(.windowDirectionalDefault),
+                     "the directional key's default is nobody else's default")
+        suite.expect(Set(layoutDefaults).count == layoutDefaults.count,
+                     "no two window-layout actions share a default")
     }
 
     /// Review Focus 2 and 3: one combination, one owner, and what is saved
