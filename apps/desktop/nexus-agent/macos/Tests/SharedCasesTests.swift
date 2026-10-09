@@ -144,4 +144,59 @@ final class SharedCasesTests: XCTestCase {
         XCTAssertEqual(checked, cases.filter { $0.value != nil }.count, "every case with a value was checked")
         XCTAssertGreaterThan(checked, 0, "at least one case was checked")
     }
+
+    // MARK: - .env lines
+
+    func testEnvLinesAreReadAsDotenvReadsThem() {
+        let cases = loadCases("env-lines.json")
+        var checked = 0
+        for item in cases {
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let line = item["line"] as? String, let rawKey = item["key"], let rawValue = item["value"] else {
+                XCTFail("\(name): needs a line, a key and a value")
+                continue
+            }
+            let read = NexusAgentEnvFile.assignment(in: line)
+            if rawKey is NSNull, rawValue is NSNull {
+                XCTAssertNil(read.map { "\($0.key)=\($0.value)" }, "\(name): the line assigns nothing")
+            } else if let key = rawKey as? String, let value = rawValue as? String {
+                XCTAssertEqual(read?.key, key, "\(name): key")
+                XCTAssertEqual(read?.value, value, "\(name): value")
+            } else {
+                XCTFail("\(name): key and value are both strings, or both null")
+                continue
+            }
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
+
+    /// What the apps write must be what the file says they write, and must
+    /// read back as the value that was meant. The bot's test checks the same
+    /// lines with dotenv itself.
+    func testEnvValuesAreWrittenSoTheyReadBackUnchanged() {
+        let cases = loadCases("env-written-values.json")
+        var checked = 0
+        for item in cases {
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let value = item["value"] as? String, let line = item["line"] as? String else {
+                XCTFail("\(name): needs a value and a line")
+                continue
+            }
+            XCTAssertEqual(NexusAgentEnvFile.encoded(value), line, "\(name): what is written")
+            let read = NexusAgentEnvFile.assignment(in: "K=\(line)")?.value
+            if let lossy = item["lossy"] {
+                // No spelling carries this value. The day one does, this
+                // fails, and the case loses its `lossy` mark.
+                XCTAssertEqual(lossy as? Bool, true, "\(name): lossy is true or left out")
+                XCTAssertNotEqual(read, value, "\(name): marked lossy, but it reads back")
+            } else {
+                XCTAssertEqual(read, value, "\(name): what is read back")
+            }
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
 }

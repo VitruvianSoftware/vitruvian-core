@@ -31,6 +31,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// The package the bot loads `.env` with (bot.js: `import "dotenv/config"`).
+import dotenv from "dotenv";
+
 import { annotationIsArchived } from "./annotations.js";
 
 // agy.js reads the environment once, when it is imported, and loads the
@@ -91,6 +94,43 @@ test("approval modes: the bot passes agy the flags every shared example says", (
     );
     const mode = value === null ? whenAbsent : value;
     assert.deepEqual(approvalArgs(mode), args, name);
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+test(".env lines: dotenv reads every shared example as written", () => {
+  const cases = loadCases("env-lines.json");
+  let checked = 0;
+  for (const { name, line, key, value } of cases) {
+    assert.equal(typeof line, "string", `${name}: line is a string`);
+    assert.ok(
+      (key === null && value === null) ||
+        (typeof key === "string" && typeof value === "string"),
+      `${name}: key and value are both strings, or both null`,
+    );
+    const expected = key === null ? {} : { [key]: value };
+    assert.deepEqual(dotenv.parse(line), expected, name);
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+test(".env values: what the apps write, dotenv reads back as the same value", () => {
+  const cases = loadCases("env-written-values.json");
+  let checked = 0;
+  for (const { name, value, line, lossy } of cases) {
+    assert.equal(typeof value, "string", `${name}: value is a string`);
+    assert.equal(typeof line, "string", `${name}: line is a string`);
+    const read = dotenv.parse(`K=${line}`).K;
+    if (lossy === true) {
+      // No spelling carries this value. The day one does, this fails, and
+      // the case loses its `lossy` mark.
+      assert.notEqual(read, value, `${name}: marked lossy, but it reads back`);
+    } else {
+      assert.equal(lossy, undefined, `${name}: lossy is true or left out`);
+      assert.equal(read, value, name);
+    }
     checked += 1;
   }
   assert.equal(checked, cases.length);

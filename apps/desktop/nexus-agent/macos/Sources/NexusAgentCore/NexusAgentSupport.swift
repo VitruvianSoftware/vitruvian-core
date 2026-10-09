@@ -282,39 +282,165 @@ public enum NexusAgentEnvFile {
 
     // MARK: - Lines
 
-    /// `KEY=value` with dotenv's reading of the value: an optional `export`,
-    /// surrounding quotes removed, and an unquoted value ending at ` #`.
+    /// One line of `.env`, read as the bot's `dotenv` reads it. dotenv is the
+    /// authority: what it makes of a line is what the bot runs with, so this
+    /// follows it case for case, the odd ones included. The examples are
+    /// shared with the bot's tests, which run them through dotenv itself:
+    /// `apps/desktop/nexus-agent/testdata/env-lines.json`.
+    ///
+    /// In short: `KEY=value` or `KEY: value`, with an optional `export`; the
+    /// key is ASCII letters, digits, `_`, `.` and `-`; a value in matching
+    /// quotes (`'`, `"` or a backtick) keeps what is between them; any other
+    /// value ends at the first `#`, with or without a space before it.
+    ///
+    /// Only the first line of `line` is read. dotenv can carry a quoted value
+    /// across several lines; a one-line reader cannot, and does not try.
     public static func assignment(in line: String) -> (key: String, value: String)? {
-        var text = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !text.hasPrefix("#") else { return nil }
-        if text.hasPrefix("export ") {
-            text = String(text.dropFirst("export ".count)).trimmingCharacters(in: .whitespaces)
+        // dotenv matches one UTF-16 unit at a time and never looks at a
+        // letter's accents; scalars give the same answers here.
+        var text = Array(line.unicodeScalars)
+        if let end = text.firstIndex(where: { $0 == "\n" || $0 == "\r" }) {
+            text.removeSubrange(end...)
         }
-        guard let equals = text.firstIndex(of: "=") else { return nil }
-        let key = text[..<equals].trimmingCharacters(in: .whitespaces)
-        guard !key.isEmpty, key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." || $0 == "-" })
-        else { return nil }
-        var value = text[text.index(after: equals)...].trimmingCharacters(in: .whitespaces)
-        if let quote = value.first, quote == "\"" || quote == "'" || quote == "`",
-           value.count >= 2, let close = value.dropFirst().firstIndex(of: quote) {
-            value = String(value[value.index(after: value.startIndex)..<close])
-        } else if let comment = value.range(of: " #") {
-            value = value[..<comment.lowerBound].trimmingCharacters(in: .whitespaces)
+        var start = 0
+        while start < text.count, isSpace(text[start]) { start += 1 }
+        // `export KEY=value`. If no assignment follows the word, dotenv takes
+        // `export` for the key itself (`export=v`), so that is tried next.
+        let export = Array("export".unicodeScalars)
+        if text[start...].starts(with: export) {
+            var afterExport = start + export.count
+            if afterExport < text.count, isSpace(text[afterExport]) {
+                while afterExport < text.count, isSpace(text[afterExport]) { afterExport += 1 }
+                if let pair = keyAndValue(text, from: afterExport) { return pair }
+            }
         }
-        return (key, value)
+        return keyAndValue(text, from: start)
     }
 
-    /// A value as it can be written on one line. Line breaks are removed so a
-    /// pasted value can never smuggle in a second assignment, and a value
-    /// dotenv would otherwise cut or trim is quoted.
+    /// `KEY`, then `=` (spaces allowed before it) or `:` and a space, then
+    /// the value.
+    private static func keyAndValue(_ text: [Unicode.Scalar], from start: Int) -> (key: String, value: String)? {
+        var index = start
+        while index < text.count, isKeyCharacter(text[index]) { index += 1 }
+        guard index > start else { return nil }
+        let key = string(text[start..<index])
+        if index < text.count, text[index] == ":" {
+            guard index + 1 < text.count, isSpace(text[index + 1]) else { return nil }
+            index += 2
+        } else {
+            while index < text.count, isSpace(text[index]) { index += 1 }
+            guard index < text.count, text[index] == "=" else { return nil }
+            index += 1
+        }
+        return (key, value(text, from: index))
+    }
+
+    /// What follows the `=`, as dotenv takes it.
+    private static func value(_ text: [Unicode.Scalar], from start: Int) -> String {
+        var open = start
+        while open < text.count, isSpace(text[open]) { open += 1 }
+        var raw: ArraySlice<Unicode.Scalar>
+        if open < text.count, isQuote(text[open]), let close = closingQuote(text, open: open) {
+            raw = text[open...close]
+        } else {
+            // Not a quoted value (or not one dotenv accepts as such): it ends
+            // at the first `#`, wherever that is.
+            let end = text[start...].firstIndex(of: "#") ?? text.count
+            raw = text[start..<end]
+        }
+        while let first = raw.first, isSpace(first) { raw = raw.dropFirst() }
+        while let last = raw.last, isSpace(last) { raw = raw.dropLast() }
+        // dotenv decides on the first character BEFORE removing the quotes,
+        // and removes them whenever both ends match, even for a value it did
+        // not take as quoted above (`"a" "b"` loses its outer pair).
+        let first = raw.first
+        if raw.count >= 2, let first, isQuote(first), raw.last == first {
+            raw = raw.dropFirst().dropLast()
+        }
+        var value = string(raw)
+        if first == "\"" {
+            value = value.replacingOccurrences(of: "\\n", with: "\n")
+                .replacingOccurrences(of: "\\r", with: "\r")
+        }
+        return value
+    }
+
+    /// Where the quoted value opened at `open` closes, or nil if dotenv does
+    /// not read it as a quoted value. A quote of the same kind may sit inside
+    /// only after a backslash, and nothing but spaces and a `#` comment may
+    /// follow the closing one. Of the quotes that could close it, dotenv
+    /// takes the last that leaves the rest of the line acceptable.
+    private static func closingQuote(_ text: [Unicode.Scalar], open: Int) -> Int? {
+        let quote = text[open]
+        var candidates: [Int] = []
+        var index = open + 1
+        while index < text.count {
+            if text[index] == quote {
+                candidates.append(index)
+                let escaped = index - 1 > open && text[index - 1] == "\\"
+                if !escaped { break }
+            }
+            index += 1
+        }
+        return candidates.last { close in
+            var rest = close + 1
+            while rest < text.count, isSpace(text[rest]) { rest += 1 }
+            return rest == text.count || text[rest] == "#"
+        }
+    }
+
+    private static func isQuote(_ scalar: Unicode.Scalar) -> Bool {
+        scalar == "\"" || scalar == "'" || scalar == "`"
+    }
+
+    /// The characters dotenv allows in a key: JavaScript's `\w`, `.` and `-`.
+    private static func isKeyCharacter(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar {
+        case "a"..."z", "A"..."Z", "0"..."9", "_", ".", "-": return true
+        default: return false
+        }
+    }
+
+    /// JavaScript's `\s`, which is what dotenv skips and trims.
+    private static func isSpace(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x09...0x0D, 0x20, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func string(_ scalars: ArraySlice<Unicode.Scalar>) -> String {
+        var view = String.UnicodeScalarView()
+        view.append(contentsOf: scalars)
+        return String(view)
+    }
+
+    /// A value as it can be written on one line, so that the bot's dotenv
+    /// reads back exactly what was meant. Line breaks are removed so a pasted
+    /// value can never smuggle in a second assignment, and a value dotenv
+    /// would otherwise cut, trim or unquote is put in quotes.
+    ///
+    /// Which quotes is decided by reading the result back with
+    /// `assignment(in:)`, the same reading the shared examples hold to
+    /// dotenv's (`apps/desktop/nexus-agent/testdata/env-written-values.json`).
+    /// Single quotes come first, or double quotes for a value holding a
+    /// single quote; backticks carry a value that holds both. One kind of
+    /// value has no spelling at all: a `#` together with all three quote
+    /// characters. It is written in the first choice of quotes and the bot
+    /// reads it cut short; the shared examples keep that limit visible.
     public static func encoded(_ value: String) -> String {
         let flat = value.components(separatedBy: .newlines).joined()
+        func readsBack(_ written: String) -> Bool {
+            assignment(in: "K=\(written)")?.value == flat
+        }
         let needsQuotes = flat.contains("#") || flat.first == "\"" || flat.first == "'" || flat.first == "`"
             || flat != flat.trimmingCharacters(in: .whitespaces)
-        guard needsQuotes else { return flat }
-        // Single quotes are taken literally by dotenv; a value that holds one
-        // falls back to double quotes, which it only expands for \n.
-        return flat.contains("'") ? "\"\(flat)\"" : "'\(flat)'"
+        if !needsQuotes, readsBack(flat) { return flat }
+        let quotes = flat.contains("'") ? ["\"", "`", "'"] : ["'", "\"", "`"]
+        let spellings = quotes.map { "\($0)\(flat)\($0)" }
+        return spellings.first(where: readsBack) ?? spellings[0]
     }
 
     private static func assignments(for configuration: NexusAgentConfiguration) -> [String: String] {

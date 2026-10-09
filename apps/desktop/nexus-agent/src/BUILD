@@ -71,6 +71,7 @@ js_test(
     data = [
         ":agy",
         ":annotations",
+        "//apps/desktop/nexus-agent:node_modules/dotenv",
         "//apps/desktop/nexus-agent:testdata",
     ],
     entry_point = "shared-cases.test.js",

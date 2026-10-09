@@ -115,17 +115,17 @@ final class BotProviderEnvTests: XCTestCase {
         XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), "tool --flag=value {prompt}")
     }
 
-    func testATemplateWithAHashAndBothQuoteKindsIsAKnownLimit() {
+    func testATemplateWithAHashAndBothQuoteKindsSurvives() {
         var configuration = NexusAgentConfiguration(botToken: "1:a")
         let template = "tool \"a #1\" 'x'"
         configuration.botProvider = NexusAgentCLIProvider(
             id: UUID(), name: "Mine", commandTemplate: template, isBuiltIn: false)
         let saved = NexusAgentEnvFile.render(configuration, over: "TELEGRAM_BOT_TOKEN=1:a\n")
-        // dotenv-style quoting cannot carry a value that needs quoting and
-        // holds both quote characters, so the value comes back cut short. The
-        // old standalone wrote such values raw. This records the limit; it
-        // does not endorse it.
-        XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), "tool ")
-        XCTAssertNotEqual(value("CLI_COMMAND_TEMPLATE", in: saved), template)
+        // This used to come back cut short: neither single nor double quotes
+        // can carry a value that holds both. dotenv also takes backticks, and
+        // they can. What still cannot be written is kept, marked lossy, in
+        // the examples shared with the bot's tests
+        // (apps/desktop/nexus-agent/testdata/env-written-values.json).
+        XCTAssertEqual(value("CLI_COMMAND_TEMPLATE", in: saved), template)
     }
 }

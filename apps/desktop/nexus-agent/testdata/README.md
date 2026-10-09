@@ -9,6 +9,8 @@ changing a rule on one side fails the other side's tests.
 |---|---|
 | `archive-annotations.json` | which Antigravity annotation text marks a conversation archived |
 | `approval-modes.json` | which agy permission flags an `AGY_APPROVAL_MODE` value gives; `null` is the absent key |
+| `env-lines.json` | what one line of `.env` assigns, as the bot's `dotenv` reads it; `null` key and value mean nothing |
+| `env-written-values.json` | the text the apps write after the `=` for a value, which `dotenv` must read back as that value |
 
 ## Who reads them
 
@@ -24,6 +26,23 @@ Each test fails if a file is missing or has no cases, and neither skips a case.
 The bot is what actually runs. When the two sides disagree, the apps change to
 show and write what the bot will do. The expected values here come from
 running the bot's code, not from reading it.
+
+For `.env`, "the bot" means the `dotenv` package it loads the file with: the
+bot's test runs each line through `dotenv.parse`.
+
+## What is not here
+
+- **Values that run over several lines.** `dotenv` reads a quoted value that
+  continues on the next line, and lets the value start on the line after the
+  `=`. The apps read `.env` one line at a time and cannot do that, so
+  `env-lines.json` holds single lines only. The apps never write such a value:
+  they remove line breaks before writing.
+- **Values no spelling can carry.** A case in `env-written-values.json` marked
+  `"lossy": true` is a value that cannot be written on one line so that
+  `dotenv` reads it back: a `#` together with every quote character that could
+  have protected it. Both tests assert the bot reads something different for
+  it, so the limit stays visible. If a spelling is found, those assertions
+  fail and the mark comes off.
 
 ## Adding a case
 
