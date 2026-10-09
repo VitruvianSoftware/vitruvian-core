@@ -100,7 +100,9 @@ final class PortedRulesTests: XCTestCase {
 
     func testModes() {
         XCTAssertTrue(NexusAgentApprovalMode.parse(nil) == .yolo && NexusAgentApprovalMode.parse("") == .standard
-                      && NexusAgentApprovalMode.parse(" PLAN ") == .plan
+                      // The bot does not trim: padded with spaces, it is not a
+                      // mode it knows (testdata/approval-modes.json).
+                      && NexusAgentApprovalMode.parse(" PLAN ") == .standard
                       && NexusAgentApprovalMode.parse("accept_edits") == .acceptEdits
                       && NexusAgentApprovalMode.parse("auto_edit") == .acceptEdits
                       && NexusAgentApprovalMode.parse("bogus") == .standard,

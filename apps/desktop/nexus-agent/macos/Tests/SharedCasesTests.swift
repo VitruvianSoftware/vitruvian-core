@@ -74,4 +74,74 @@ final class SharedCasesTests: XCTestCase {
         XCTAssertEqual(checked, cases.count, "every case in the file was checked")
         XCTAssertGreaterThan(checked, 0, "at least one case was checked")
     }
+
+    // MARK: - Approval modes
+
+    /// One row of `approval-modes.json`. A nil value is the absent key (JSON
+    /// `null`).
+    private struct ApprovalCase {
+        let name: String
+        let value: String?
+        let args: [String]
+    }
+
+    private func approvalCases(line: UInt = #line) -> [ApprovalCase] {
+        let cases = loadCases("approval-modes.json", line: line)
+        let decoded: [ApprovalCase] = cases.compactMap { item in
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let args = item["args"] as? [String], let raw = item["value"],
+                  raw is NSNull || raw is String else {
+                XCTFail("\(name): needs a value (a string or null) and a list of args", line: line)
+                return nil
+            }
+            return ApprovalCase(name: name, value: raw as? String, args: args)
+        }
+        XCTAssertEqual(decoded.count, cases.count, "every case in the file was read", line: line)
+        return decoded
+    }
+
+    func testApprovalModesGiveTheFlagsTheBotPasses() {
+        let cases = approvalCases()
+        var checked = 0
+        for item in cases {
+            XCTAssertEqual(NexusAgentApprovalMode.parse(item.value).agyArguments, item.args, item.name)
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
+
+    /// Settings shows a mode the user may have spelled differently, then
+    /// writes its own spelling on save. That is only safe if the bot runs agy
+    /// with the same flags for the spelling written as for the one typed.
+    func testSavingAnApprovalModeNeverChangesWhatTheBotWillDo() {
+        let cases = approvalCases()
+        var flags: [String: [String]] = [:]
+        for item in cases {
+            if let value = item.value { flags[value] = item.args }
+        }
+        var checked = 0
+        for item in cases {
+            guard let typed = item.value else { continue }
+            let key = NexusAgentEnvFile.approvalModeKey
+            let before = "\(key)=\(NexusAgentEnvFile.encoded(typed))\n"
+            XCTAssertEqual(NexusAgentEnvFile.values(in: before)[key], typed,
+                           "\(item.name): the line under test carries the value as typed")
+
+            let saved = NexusAgentEnvFile.render(NexusAgentEnvFile.parse(before), over: before)
+            guard let written = NexusAgentEnvFile.values(in: saved)[key] else {
+                XCTFail("\(item.name): the saved file has no \(key)")
+                continue
+            }
+            guard let after = flags[written] else {
+                XCTFail("\(item.name): a save writes \"\(written)\", which the shared examples do not cover")
+                continue
+            }
+            XCTAssertEqual(after, item.args,
+                           "\(item.name): typed \"\(typed)\", saved as \"\(written)\"")
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.filter { $0.value != nil }.count, "every case with a value was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
 }

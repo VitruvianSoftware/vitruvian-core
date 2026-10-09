@@ -2615,6 +2615,7 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: The shared `.env` rule can write which program the bot runs (`CLI_PROVIDER`, `CLI_COMMAND_TEMPLATE`) when the app sets `NexusAgentConfiguration.botProvider`. This app does not set it, so its saves leave those lines alone, as before.
 - **2026-10-09**: The shared engine can describe its current problem in words (`problemDescription`), for an app that has only a log panel to show it in. Not used here.
 - **2026-10-09**: Comment only: `NexusAgentConfiguration.botProvider` says it is nil after the engine saves or loads.
+- **2026-10-09**: An approval mode in `.env` is now read exactly as the bot reads it: a value padded with spaces (which only reaches the bot from inside quotes, `" plan "`) is not a mode the bot knows, so it shows as Default here too and this app's own chat turns pass no permission flag for it. Capitals are still recognised, because the bot recognises them. The examples are shared with the bot's tests (`apps/desktop/nexus-agent/testdata/approval-modes.json`).
 
 ## Tracking and porting upstream
 

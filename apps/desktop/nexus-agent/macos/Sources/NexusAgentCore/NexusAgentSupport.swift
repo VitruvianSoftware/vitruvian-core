@@ -34,12 +34,19 @@ public enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
 
     public var id: String { rawValue }
 
-    /// The bot's own reading: an absent key means yolo, the retired Gemini
-    /// name and the underscore spelling mean accept-edits, and anything it
-    /// does not know (an empty value included) asks agy for its default.
+    /// The bot's own reading, and the bot is the authority: it is what runs.
+    /// An absent key means yolo, the retired Gemini name and the underscore
+    /// spelling mean accept-edits, and anything it does not know (an empty
+    /// value included) asks agy for its default. Capitals do not matter to
+    /// the bot, but spaces do: it does not trim, so ` plan ` (which only
+    /// reaches it from inside quotes) is not a mode. Showing it as Plan here
+    /// would promise something the bot will not do.
+    ///
+    /// The examples are shared with the bot's tests:
+    /// `apps/desktop/nexus-agent/testdata/approval-modes.json`.
     public static func parse(_ raw: String?) -> NexusAgentApprovalMode {
         guard let raw else { return .yolo }
-        switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
+        switch raw.lowercased() {
         case "yolo": return .yolo
         case "auto_edit", "accept-edits", "accept_edits": return .acceptEdits
         case "plan": return .plan

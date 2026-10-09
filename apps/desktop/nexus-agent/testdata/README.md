@@ -8,6 +8,7 @@ changing a rule on one side fails the other side's tests.
 | File | The rule |
 |---|---|
 | `archive-annotations.json` | which Antigravity annotation text marks a conversation archived |
+| `approval-modes.json` | which agy permission flags an `AGY_APPROVAL_MODE` value gives; `null` is the absent key |
 
 ## Who reads them
 

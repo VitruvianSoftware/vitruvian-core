@@ -28,8 +28,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { annotationIsArchived } from "./annotations.js";
+
+// agy.js reads the environment once, when it is imported, and loads the
+// session store from the working directory. Point it at a throwaway folder
+// and take the approval-mode keys out BEFORE importing, so the test never
+// touches a real store and sees the bot as it is with no mode in `.env`.
+process.env.AGY_WORKING_DIR = fs.mkdtempSync(
+  path.join(os.tmpdir(), "nexus-shared-cases-"),
+);
+delete process.env.AGY_APPROVAL_MODE;
+delete process.env.GEMINI_APPROVAL_MODE;
+const { approvalArgs, getChatSettings } = await import("./agy.js");
 
 /**
  * The cases of one shared file. A missing, unreadable or empty file fails the
@@ -59,6 +72,25 @@ test("archive annotations: the bot reads every shared example as written", () =>
   for (const { name, text, archived } of cases) {
     assert.equal(typeof archived, "boolean", `${name}: archived is a boolean`);
     assert.equal(annotationIsArchived(text), archived, name);
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+test("approval modes: the bot passes agy the flags every shared example says", () => {
+  const cases = loadCases("approval-modes.json");
+  // A chat nobody has changed the mode for: its mode is whatever the bot took
+  // from the environment when it loaded, which here had no mode in it.
+  const whenAbsent = getChatSettings(0).approvalMode;
+  let checked = 0;
+  for (const { name, value, args } of cases) {
+    assert.ok(Array.isArray(args), `${name}: args is a list`);
+    assert.ok(
+      value === null || typeof value === "string",
+      `${name}: value is a string, or null for an absent key`,
+    );
+    const mode = value === null ? whenAbsent : value;
+    assert.deepEqual(approvalArgs(mode), args, name);
     checked += 1;
   }
   assert.equal(checked, cases.length);

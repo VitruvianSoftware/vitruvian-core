@@ -69,6 +69,7 @@ js_test(
 js_test(
     name = "shared_cases_test",
     data = [
+        ":agy",
         ":annotations",
         "//apps/desktop/nexus-agent:testdata",
     ],
