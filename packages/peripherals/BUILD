@@ -104,6 +104,10 @@ macos_command_line_application(
     name = "gravastar-mouse",
     bundle_id = "com.vitruviansoftware.gravastar-mouse",
     minimum_os_version = "14.0",
+    # `manual`, like the app's fan helper: rules_apple resolves its Mac
+    # toolchain before target_compatible_with can skip it, so a Linux
+    # `bazel build //...` would fail on it. The app and publish.sh name it.
+    tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     visibility = ["//visibility:public"],
     deps = [":GravaStarMouseTool"],

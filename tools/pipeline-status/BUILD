@@ -28,6 +28,10 @@ sh_binary(
         "pipeline-status.sh",
         "//packages/peripherals:gravastar-mouse",
     ],
+    # `manual` because its data is: the mouse tool is a macOS command-line
+    # application, which a Linux `bazel build //...` cannot analyze.
+    # `bazel run` on a Mac is unaffected.
+    tags = ["manual"],
     visibility = ["//visibility:public"],
 )
 
