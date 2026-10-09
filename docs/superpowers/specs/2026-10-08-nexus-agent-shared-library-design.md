@@ -180,11 +180,12 @@ gives a manifest.
   green.
 - **Releases.** Each app releases when files under its own folder change. A
   fix made only in the shared code would therefore release the standalone and
-  not Vitruvian. Until that is automated, the rule is: a shared-code fix that
-  Vitruvian users should get carries a `fix(desktop):`-style footer for the
-  `vitruvian` component in the same PR (release-please's multi-component
-  commit footer). Step 1 proves this works on a real PR; if it does not, a
-  one-line change note in Vitruvian's folder is the fallback.
+  not Vitruvian, silently. The rule: every change to `NexusAgentCore` or
+  `NexusAgentUI` also adds its line to the change log in
+  `apps/desktop/vitruvian/UPSTREAM.md`, as every Nexus change does today.
+  That puts a Vitruvian file in the commit, so Vitruvian's release picks it
+  up. A CI check enforces it: a change under those two folders with no change
+  under `apps/desktop/vitruvian` fails.
 
 ## 9. Migration, in four steps
 
@@ -195,8 +196,8 @@ green.
    `NexusAgentQuickPromptLayout.swift` (about 1,400 lines, Foundation only)
    go to `NexusAgentCore`. The standalone's `AntigravityAnnotations` and the
    matching parts of `ConfigManager` are deleted in favour of them. Adds the
-   `swift build` guard, settles the language mode and proves the release
-   footer.
+   `swift build` guard and the release check from section 8, and settles
+   the language mode.
 2. **Move sessions and the bot runner.** `NexusAgentQuickPromptSession` and
    `NexusAgentService` move, split so the app-specific parts (hotkey
    registration, window ownership, notch calls) stay behind `NexusAgentHost`.
@@ -239,7 +240,7 @@ that can, and each would be its own design.
 |---|---|
 | The standalone's look changes in step 3 | Screen-by-screen comparison, differences listed for approval |
 | Mirror breaks again | `swift build` guard in this repository's CI |
-| A shared fix never reaches Vitruvian users | Release rule in section 8, proven in step 1 |
+| A shared fix never reaches Vitruvian users | Release rule in section 8, enforced by a CI check |
 | A moved file turns out to contain upstream code | Per-file check in every PR; such a file stays in Vitruvian behind the host |
 | Upstream sync gets harder | Moved files are VitruvianSoftware-only, which upstream never edits; `upstream.py` map updated per step |
 | Vitruvian now builds code from another app's folder | One narrow Bazel visibility grant; both apps' tests run on any change to the shared code |
@@ -257,8 +258,8 @@ that can, and each would be its own design.
 ## 13. Not verified
 
 - That the mirror's release runner can build a Swift 6 manifest (step 1).
-- That release-please's multi-component footer works with this repository's
-  per-app configs (step 1).
+- That a commit touching both folders appears in both apps' release notes
+  as expected (step 1 is the first real case).
 - Which `VitruvianDesign` pieces the chat view uses, one by one (step 3).
 - That the two chat views really match 1:1 today; #2883 says so, no one has
   compared them (step 3).
