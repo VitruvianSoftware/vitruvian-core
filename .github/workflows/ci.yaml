@@ -73,7 +73,7 @@ jobs:
       # the key is the BUILDBUDDY_API_KEY repo secret.
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # SAFETY INVARIANT (issue #81): affected-target selection needs the PR
@@ -293,7 +293,7 @@ jobs:
       # provably cannot affect it. Empty on PR/merge_group (falsy -> no effect).
       relevant: ${{ steps.gate.outputs.relevant }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # Need history so the path filter can diff against the merge-base.
@@ -383,7 +383,7 @@ jobs:
       # falls back to local execution (never slower, never incorrect).
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Select the pinned Xcode
@@ -469,7 +469,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # The gate below diffs against the merge-base / before-rev.
@@ -524,7 +524,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -565,7 +565,7 @@ jobs:
           - module: homelab
             path: apps/cli/homelab
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # merge_group diffs need the base_sha reachable locally.
@@ -605,7 +605,7 @@ jobs:
             module:
               - '${{ matrix.path }}/**'
               - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
@@ -648,7 +648,7 @@ jobs:
     env:
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -684,7 +684,7 @@ jobs:
               - 'infrastructure/pulumi/**'
               - '*/infra/**'
               - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
@@ -736,7 +736,7 @@ jobs:
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -845,7 +845,7 @@ jobs:
     env:
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # The push-lane gate below diffs against github.event.before; the
@@ -886,7 +886,7 @@ jobs:
               - 'packages/pulumi/examples/go-foundation/**'
               - 'packages/pulumi/library/**'
               - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
@@ -938,7 +938,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
