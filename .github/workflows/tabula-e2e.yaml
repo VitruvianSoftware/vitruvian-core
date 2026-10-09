@@ -122,10 +122,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name != 'schedule'
-        env:
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
-          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       # The hermetic Bazel stack (PostgreSQL, Redis, the JDK toolchain,
       # Chromium) plus coverage instrumentation can exhaust the ~14GB free on
@@ -254,10 +251,7 @@ jobs:
       # below are skipped and the job reports success fast (~10s).
       - name: Gate on changed paths
         id: gate
-        env:
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
-          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       # Coverage instrumentation is disk-heavy; reclaim the same unused SDKs as
       # the e2e job (see the free-disk-space composite for the rationale; the

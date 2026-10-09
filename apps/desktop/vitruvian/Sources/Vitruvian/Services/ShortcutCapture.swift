@@ -45,6 +45,9 @@ package enum ShortcutCapture {
         isCapturing = false
         AppSwitcher.shared.setCapturingShortcut(false)
         FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
+        // `begin` released these with every other quick tool key, and no
+        // feature's sync gives them back.
+        ToolShortcutRegistrar.shared.sync()
     }
 }
 

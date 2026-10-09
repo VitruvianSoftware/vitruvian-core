@@ -1,0 +1,58 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Gate on changed paths
+description: >-
+  Decides whether this commit's diff can affect the calling job, so a required
+  check can report green in seconds on a docs-only change instead of doing its
+  heavy work. Runs tools/ci/relevant-paths.sh (see its header for the rules and
+  the fail-safe: any doubt means "run"). This action exists so the "which commit
+  do I diff against on a PR, a push, or the merge queue" expressions live in one
+  place instead of being copied into every workflow. Needs the repo checked out
+  with enough history to reach the base commit. A caller that wants the gate on
+  only some events puts its own `if:` on the step; a skipped step leaves
+  `relevant` empty, which callers treat as "run".
+inputs:
+  ignore-regex:
+    description: >-
+      ERE matching paths that cannot affect the calling job. Empty uses the
+      script's default docs/gitops/markdown set, which suits the Bazel build
+      lanes. A caller MUST narrow it when that default is not inert for it (see
+      the license-check note in tools/ci/relevant-paths.sh).
+    required: false
+    default: ""
+outputs:
+  relevant:
+    description: "'false' only when every changed file matches the ignore set; otherwise 'true'."
+    value: ${{ steps.gate.outputs.relevant }}
+runs:
+  using: composite
+  steps:
+    - name: Run tools/ci/relevant-paths.sh
+      id: gate
+      shell: bash
+      env:
+        # pull_request diffs against the merge-base with the target branch;
+        # push against the commit main was at before; merge_group against the
+        # queue's base. Any other event sets neither, and the script runs safe.
+        BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+        BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+        IGNORE_REGEX: ${{ inputs.ignore-regex }}
+      run: bash tools/ci/relevant-paths.sh

@@ -131,6 +131,25 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   is (`QuickToolsSupport.savedTileOrder`); drop only what is not well formed.
 - To see a tool that is in no fixed list, build with
   `--define=vitruvian_sample_tool=true` (`Services/Platform/SampleTool.swift`).
+- A global shortcut lives in one of several lists: `GlobalShortcutRole` (and
+  the radial wheels it reads), window-layout actions, Command Bar rows, and
+  tool commands. Anything that records one asks all of them before it saves:
+  `GlobalShortcutRole.conflict`, `WindowLayoutService.shortcutConflictTitle`,
+  then `ShortcutConflicts.title`, which covers rows and tool commands. A new
+  list of shortcuts is added to `ShortcutConflicts`, not checked by hand at
+  each recorder. Reset buttons and accepting a macOS take-over do not run
+  these checks yet.
+- A hotkey registrar that is tied to no hub feature must be re-synced in
+  `ShortcutCapture.end()`: recording releases every key the app holds, and
+  only each feature's own sync gives them back. Leaving this out fails
+  silently, after the first shortcut the person records.
+- One of the app's own commands that already has a `GlobalShortcutRole` does
+  not also ask for the `shortcut` surface: that would give one action two
+  combinations.
+- `ToolShortcutRegistrar.assign` refuses a combination another tool command
+  has saved and returns why; it never moves one. Its hotkey ids run from
+  `ToolShortcutRegistrar.firstHotkeyID`, and `bazel/source_lints.py` keeps
+  that run clear of the others.
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and

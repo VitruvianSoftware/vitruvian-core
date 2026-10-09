@@ -117,37 +117,42 @@ package final class GitHubAPIClient {
             }
         }
 
-        // 4. Workflow runs on default branch
-        var runsComponents = URLComponents(url: repoBase.appendingPathComponent("actions/runs"), resolvingAgainstBaseURL: false)
-        runsComponents?.queryItems = [
-            URLQueryItem(name: "branch", value: defaultBranch),
-            URLQueryItem(name: "per_page", value: "10")
-        ]
-        if let runsURL = runsComponents?.url,
-           let (runData, runResp) = try? await send(url: runsURL, token: token), runResp.statusCode == 200 {
-            struct WorkflowRunsResponse: Decodable {
-                struct Item: Decodable {
-                    let id: Int64
-                    let name: String
-                    let head_sha: String
-                    let status: String
-                    let conclusion: String?
-                    let html_url: String?
-                }
-                let workflow_runs: [Item]
+        // 4. Workflow runs on default branch: the head commit's, plus any
+        // paused for approval on an earlier commit. A deploy often still
+        // waits at its gate after the next push has moved `main` on, and
+        // the newest ten runs alone would lose it, so those are asked for
+        // by status as well.
+        struct WorkflowRunsResponse: Decodable {
+            struct Item: Decodable {
+                let id: Int64
+                let name: String
+                let head_sha: String
+                let status: String
+                let conclusion: String?
+                let html_url: String?
             }
-            if let decoded = try? JSONDecoder().decode(WorkflowRunsResponse.self, from: runData) {
-                for item in decoded.workflow_runs where item.head_sha == headSHA {
-                    let run = CheckRun(
-                        key: "workflow_run:\(item.id)",
-                        name: item.name,
-                        headSHA: item.head_sha,
-                        status: CheckStatus(raw: item.status),
-                        conclusion: item.conclusion.map(CheckConclusion.init(raw:)),
-                        htmlURL: item.html_url.flatMap(URL.init(string:))
-                    )
-                    checks[run.key] = run
-                }
+            let workflow_runs: [Item]
+        }
+        for status in [nil, "waiting"] {
+            var runsComponents = URLComponents(url: repoBase.appendingPathComponent("actions/runs"), resolvingAgainstBaseURL: false)
+            runsComponents?.queryItems = [
+                URLQueryItem(name: "branch", value: defaultBranch),
+                URLQueryItem(name: "per_page", value: "10")
+            ] + (status.map { [URLQueryItem(name: "status", value: $0)] } ?? [])
+            guard let runsURL = runsComponents?.url,
+                  let (runData, runResp) = try? await send(url: runsURL, token: token), runResp.statusCode == 200,
+                  let decoded = try? JSONDecoder().decode(WorkflowRunsResponse.self, from: runData) else { continue }
+            for item in decoded.workflow_runs
+            where item.head_sha == headSHA || CheckStatus(raw: item.status).isAwaitingApproval {
+                let run = CheckRun(
+                    key: "workflow_run:\(item.id)",
+                    name: item.name,
+                    headSHA: item.head_sha,
+                    status: CheckStatus(raw: item.status),
+                    conclusion: item.conclusion.map(CheckConclusion.init(raw:)),
+                    htmlURL: item.html_url.flatMap(URL.init(string:))
+                )
+                checks[run.key] = run
             }
         }
 

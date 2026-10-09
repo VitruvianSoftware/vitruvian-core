@@ -22,14 +22,14 @@
 # heavy lane (build-test, tidy-check, conformance-check, license-check) uses to
 # no-op green without wedging a required check.
 #
-# The property this pins is the IGNORE_REGEX narrowing license-check depends on.
+# The property this pins is the ignore-regex narrowing license-check depends on.
 # The script's DEFAULT ignore set treats gitops/ as inert, which is right for the
 # Bazel build lanes but WRONG for license-check: addlicense does not ignore
 # gitops/ (those manifests carry MIT headers today) and //tools/license:{check,
 # verify} are `bazel run` sh_binaries with no sh_test, so neither `bazel test
 # //...` nor the nightly periodic-full-sweep would ever catch an unlicensed
 # gitops file that skipped the required check. The test reads the live
-# IGNORE_REGEX out of ci.yaml, so a drift to an unsafe set fails here.
+# ignore-regex out of ci.yaml, so a drift to an unsafe set fails here.
 
 name: Relevant Paths Test
 
@@ -39,7 +39,8 @@ on:
       - "tools/ci/relevant-paths.sh"
       - "tools/ci/relevant-paths_test.sh"
       - ".github/workflows/relevant-paths-test.yaml"
-      # The test asserts against the IGNORE_REGEX configured in ci.yaml, so a
+      - ".github/actions/changed-paths-gate/**"
+      # The test asserts against the ignore-regex configured in ci.yaml, so a
       # change there must re-run it.
       - ".github/workflows/ci.yaml"
       - ".github/workflows/tidy-check.yaml"
@@ -49,6 +50,7 @@ on:
       - "tools/ci/relevant-paths.sh"
       - "tools/ci/relevant-paths_test.sh"
       - ".github/workflows/relevant-paths-test.yaml"
+      - ".github/actions/changed-paths-gate/**"
       - ".github/workflows/ci.yaml"
       - ".github/workflows/tidy-check.yaml"
 

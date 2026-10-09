@@ -35,7 +35,11 @@
 # reports a status (it just finishes green in seconds when relevant=false) and
 # never leaves a merge-queue PR stuck "pending".
 #
-# Environment (set by the workflow — at least one must be provided):
+# Workflows call this through the ./.github/actions/changed-paths-gate action,
+# which fills these in for the event at hand; do not call the script directly
+# from a workflow.
+#
+# Environment (at least one of the first two must be provided):
 #   BASE_REF     github.base_ref, e.g. "main" (PR lane). Diff base is computed
 #                as the merge-base of origin/$BASE_REF and HEAD.
 #   BEFORE_REV   explicit before-revision (push/merge_group lanes). Used

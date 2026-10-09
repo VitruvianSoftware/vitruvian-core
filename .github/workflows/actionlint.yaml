@@ -107,11 +107,13 @@ jobs:
       # Every action from outside this repo is pinned to a full commit SHA
       # (with the version in a trailing comment, which Dependabot keeps in
       # step). A tag can be moved to different code after review; a commit
-      # cannot. Local `./` actions and reusable workflows are exempt.
+      # cannot. Local `./` actions and reusable workflows are exempt. The devx
+      # scaffold templates are checked too: Dependabot cannot see a `.tmpl`, and
+      # every repo devx creates starts from these pins.
       - name: Require commit-pinned actions
         run: |
           unpinned="$(grep -rnE '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*[^.#[:space:]]' \
-            .github/workflows .github/actions \
+            .github/workflows .github/actions apps/cli/devx/internal/scaffold/templates \
             | grep -vE '@[0-9a-f]{40}([[:space:]]|$)' || true)"
           if [ -n "$unpinned" ]; then
             echo "::error::Actions must be pinned to a full commit SHA, e.g. 'owner/action@<40-hex sha> # v1.2.3':"

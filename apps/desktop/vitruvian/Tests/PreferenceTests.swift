@@ -31,6 +31,7 @@ enum PreferenceTests {
         expectRegistered(Preferences.onboardingStep, suite)
         expectRegistered(Preferences.commandBarLinks, suite)
         expectRegistered(Preferences.commandBarRowShortcuts, suite)
+        expectRegistered(Preferences.toolCommandShortcuts, suite)
 
         let domain = "com.vitruviansoftware.vitruvian.tests.preference"
         let defaults = UserDefaults(suiteName: domain)!
