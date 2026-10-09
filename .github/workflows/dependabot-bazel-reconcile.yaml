@@ -98,7 +98,7 @@ jobs:
             # the repo already checked out onto the runner. The real checkout
             # -- the PR's head ref, with the minted token for an elevated push
             # -- follows once that token exists.
-            - uses: actions/checkout@v7.0.1
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                 persist-credentials: false
 
@@ -108,7 +108,7 @@ jobs:
               with:
                 private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
             # persist-credentials: allow (elevated App token for git push)
-            - uses: actions/checkout@v7.0.1
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                 ref: ${{ github.event.pull_request.head.ref }}
                 token: ${{ steps.app-token.outputs.token }}

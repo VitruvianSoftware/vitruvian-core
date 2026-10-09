@@ -571,7 +571,7 @@ func TestRenderArtifactUpload(t *testing.T) {
 	withJob, withoutJob := splitJob(t, got, "  unit-with-artifacts:", "  unit-without-artifacts:")
 
 	for _, want := range []string{
-		"uses: actions/upload-artifact@v7",
+		"uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2",
 		"name: alpha",
 		// Resolved through `bazel info`, not the workspace symlink: the unit's
 		// own flags decide which bin directory Bazel actually writes to.
