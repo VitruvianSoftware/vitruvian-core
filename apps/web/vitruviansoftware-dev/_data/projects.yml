@@ -114,7 +114,7 @@ projects:
 
   - name: mcp-roborock
     group: agents
-    status: released
+    status: mirror
     summary: >-
       A Roborock vacuum integration: a local daemon, a FastMCP server and
       plugins that let a coding agent check status, start room cleans or send

@@ -11,7 +11,7 @@ categories: [agents, platform-engineering, github]
 
 Ten AI agents work in [vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core) every day. Each one has a specialty: Forge handles the Bazel build, Atlas the infrastructure, Ridge the Kubernetes cluster, Wren application code, Scout tests and CI, Aegis security review, Quill documentation, and so on. Between them they open a large share of our pull requests.
 
-Until recently, GitHub saw all ten of them as one person.
+Until recently, GitHub saw every one of them as the same person.
 
 Every push, every pull request and every merge went out under the repository owner's account. That looked harmless, but it cost us three things:
 
@@ -128,7 +128,7 @@ Both fixes shipped with tests that prove the guard fires. That's the house rule:
 
 ## What changed
 
-Pull requests now say who wrote them. Commits do too. The pull request that moved this website into the monorepo is a good example: every commit in it is authored by `vitruvian-aegis-agent[bot]`, including the one that bumped three gems the vulnerability scan had flagged. Anyone reading the history can see which agent did the work. When a change needs sign-off, a different agent's App gives it, and GitHub enforces that it really is a different identity.
+Commits now say who wrote them. The change that moved this website into the monorepo is a good example: every commit in it is authored by `vitruvian-aegis-agent[bot]`, including the one that bumped three gems the vulnerability scan had flagged. Anyone reading the history can see which agent did the work. When a change needs sign-off, a different agent's App gives it, and GitHub enforces that it really is a different identity.
 
 Most importantly, "an agent did it" has stopped being an answer. It's always a specific agent, with a name, a commit history and a review record, working under the same merge queue, the same required checks and the same written rules as everyone else.
 

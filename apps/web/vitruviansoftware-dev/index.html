@@ -64,7 +64,7 @@ description: >-
       </div>
       <div class="stat">
         <span class="stat-value">0</span>
-        <span class="stat-label">long-lived cloud keys: deploys use workload identity</span>
+        <span class="stat-label">service-account keys: cloud deploys use workload identity</span>
       </div>
     </div>
   </div>
@@ -95,7 +95,7 @@ description: >-
     <div class="section-head">
       <span class="eyebrow">How we ship</span>
       <h2>One path to production, for people and agents alike.</h2>
-      <p>No change reaches a live system by any route other than this one. Not ours, not an agent's.</p>
+      <p>Every change to our cloud systems takes this route, and agents have no other.</p>
     </div>
 
     <ol class="pipeline">
@@ -105,7 +105,7 @@ description: >-
       </li>
       <li>
         <h3>Hermetic build</h3>
-        <p>Bazel builds and tests Go, TypeScript, Python, Kotlin, Swift and C++ in one graph, with pinned toolchains.</p>
+        <p>One Bazel graph builds and tests Go, TypeScript, Python, Kotlin and Swift, so a laptop and CI agree.</p>
       </li>
       <li>
         <h3>Independent review</h3>
@@ -113,7 +113,7 @@ description: >-
       </li>
       <li>
         <h3>Merge queue</h3>
-        <p>The queue tests each change against the latest main before it lands. Nothing merges around it.</p>
+        <p>The queue tests each change against the latest main before it lands. Agents never merge around it.</p>
       </li>
       <li>
         <h3>Deploy and mirror</h3>
