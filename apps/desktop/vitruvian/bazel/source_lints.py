@@ -2115,12 +2115,16 @@ def hotkey_id_claims(path, text):
                     )
                     continue
                 length = HOTKEY_ID_RUNS[first]
-                claims.append((first, None if length is None else first + length - 1, where))
+                claims.append(
+                    (first, None if length is None else first + length - 1, where)
+                )
             elif path in HOTKEY_ID_COUNTERS:
                 start, length = HOTKEY_ID_COUNTERS[path]
                 found = start.search(text)
                 if found is None:
-                    problems.append(f"{where}: the counter this id comes from is not set where expected")
+                    problems.append(
+                        f"{where}: the counter this id comes from is not set where expected"
+                    )
                     continue
                 first = int(found.group(1))
                 claims.append((first, first + length - 1, where))
@@ -2179,7 +2183,9 @@ def hotkey_ids_are_unique(repo):
         claims.extend(found)
         problems.extend(unread)
     if not claims:
-        problems.append("no QuickToolHotkey id was found: the scan no longer matches the code")
+        problems.append(
+            "no QuickToolHotkey id was found: the scan no longer matches the code"
+        )
     problems.extend(hotkey_id_clashes(claims))
     return problems
 
