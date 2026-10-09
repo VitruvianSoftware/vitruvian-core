@@ -32,6 +32,7 @@ enum ToolPlatformTests {
         shortcutRegistrarLimit(suite)
         shortcutRegistrarOwnToolsOnly(suite)
         shortcutRegistrarSaving(suite)
+        shortcutConflicts(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -504,6 +505,56 @@ enum ToolPlatformTests {
                      "an id saved twice is kept once")
         suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: [], previous: [], isWellFormed: wellFormed).isEmpty,
                      "nothing showing and nothing saved saves nothing")
+    }
+
+    /// Review Focus 2 and 3: one combination, one owner, and what is saved
+    /// holds whether or not its command is registered now.
+    static func shortcutConflicts(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let free = GlobalShortcut(keyCode: 0, modifiers: [.control])
+        let rows = ["app.bundle.mail": optionB]
+        let commands = ["dev.vitruvian.sample/hello": optionN, "com.acme.gone/open": free]
+        func holder(_ shortcut: GlobalShortcut, row: String? = nil, command: CommandID? = nil) -> ShortcutConflicts.Holder? {
+            ShortcutConflicts.holder(of: shortcut, rows: rows, commands: commands,
+                                     excludingRow: row, excludingCommand: command)
+        }
+        suite.expect(holder(optionB) == .commandBarRow("app.bundle.mail"),
+                     "a combination a Command Bar row holds is taken")
+        suite.expect(holder(optionN) == .toolCommand("dev.vitruvian.sample/hello"),
+                     "a combination a tool command holds is taken")
+        suite.expect(holder(free) == .toolCommand("com.acme.gone/open"),
+                     "a command that is not registered now still holds its combination")
+        suite.expect(holder(optionB, row: "app.bundle.mail") == nil
+                         && holder(optionN, command: SampleTool.hello) == nil,
+                     "a row or a command does not clash with itself")
+        suite.expect(holder(optionB, row: "app.bundle.notes") == .commandBarRow("app.bundle.mail")
+                         && holder(optionN, command: CommandID("com.acme.gone/open")) == .toolCommand("dev.vitruvian.sample/hello")
+                         && holder(optionB, command: SampleTool.hello) == .commandBarRow("app.bundle.mail")
+                         && holder(optionN, row: "app.bundle.mail") == .toolCommand("dev.vitruvian.sample/hello"),
+                     "leaving one row or command out frees no other holder's combination")
+        suite.expect(holder(GlobalShortcut(keyCode: 1, modifiers: [.command])) == nil,
+                     "a combination nothing holds is free")
+        suite.expect(ShortcutConflicts.holder(of: optionB, rows: [:], commands: ["not an id": optionB, " ": optionN],
+                                              excludingRow: nil, excludingCommand: nil) == .toolCommand("not an id")
+                         && ShortcutConflicts.holder(of: optionN, rows: [:], commands: [" ": optionN],
+                                                     excludingRow: nil, excludingCommand: nil) == nil,
+                     "a saved id no command can have still holds its combination; an entry with no id holds nothing")
+
+        // The name a refusal shows. It is never empty, whoever the holder is.
+        func name(_ holder: ShortcutConflicts.Holder) -> String {
+            ShortcutConflicts.name(of: holder,
+                                   rowTitle: { $0 == "app.bundle.mail" ? "Mail" : nil },
+                                   rowFallback: "Rows with their own shortcut",
+                                   commandTitle: { $0 == SampleTool.hello ? "Say hello" : nil })
+        }
+        suite.expect(name(.commandBarRow("app.bundle.mail")) == "Mail"
+                         && name(.toolCommand("dev.vitruvian.sample/hello")) == "Say hello",
+                     "a holder the app can name is named as its own row names it")
+        suite.expect(name(.commandBarRow("app.bundle.gone")) == "Rows with their own shortcut"
+                         && name(.toolCommand("com.acme.gone/open")) == "com.acme.gone/open"
+                         && name(.toolCommand("not an id")) == "not an id",
+                     "a holder the app cannot name now is still named: a row by the list it is in, a command by its id")
     }
 
     static func shortcutMap(_ suite: TestSuite) {

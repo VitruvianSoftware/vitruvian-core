@@ -170,6 +170,10 @@ package struct CutPasteSettings: View {
             renameError = String(format: l10n.s.shortcutConflictFormat, conflict)
             return
         }
+        if let conflict = ShortcutConflicts.title(for: shortcut) {
+            renameError = String(format: l10n.s.shortcutConflictFormat, conflict)
+            return
+        }
         // The offer is the last word on a combination: every other check has
         // already passed, so accepting it writes exactly what a save writes.
         switch SystemShortcutTakeoverSupport.recorderDecision(

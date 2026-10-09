@@ -228,6 +228,7 @@ package final class WindowLayoutService: ObservableObject {
             return role.title(L10n.shared.s)
         }
         return shortcutConflictTitle(shortcut, excluding: nil, includingDirectional: false)
+            ?? ShortcutConflicts.title(for: shortcut)
     }
 
     @discardableResult

@@ -800,6 +800,10 @@ package final class CommandBarService: ObservableObject {
            let title = WindowLayoutService.shared.shortcutConflictTitle(shortcut) {
             return String(format: strings.shortcutConflictFormat, title)
         }
+        // Rows were asked first, above. This adds tool commands.
+        if let title = ShortcutConflicts.title(for: shortcut, excludingRow: entry.stableKey) {
+            return String(format: strings.shortcutConflictFormat, title)
+        }
         return nil
     }
 
