@@ -110,7 +110,7 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: Tool registry, part 2 (`docs/superpowers/plans/2026-10-08-vitruvian-tool-registry-part-2.md`):
   - `Services/FeatureRuntime.swift`: a change of hub availability also tells `ToolRegistry`, so views that list commands redraw.
   - `main.swift`: registers the sample tool, in a build made with `--define=vitruvian_sample_tool=true` only.
-  - `Services/MenuPanel/PanelLayoutStore.swift`: `PanelOrderItem` no longer implies `CaseIterable`; `rawItemOrder` and `setRawItemOrder` read and write a saved order without dropping ids no enum names. Each conforming enum now states `CaseIterable` itself.
+  - `Services/MenuPanel/PanelLayoutStore.swift`: `PanelOrderItem` no longer implies `CaseIterable`; `rawItemOrder` and `setRawItemOrder` read and write a saved order without dropping ids no enum names. Each conforming enum now states `CaseIterable` itself (`Services/QuickTools/QuickTogglesService.swift`, `UI/MenuPanel/DiskSection.swift`, `UI/MenuPanel/MenuPanelView.swift`, `UI/MenuPanel/NetworkSection.swift`, `UI/MenuPanel/PowerSection.swift`, `UI/MenuPanel/SystemSection.swift`).
   - `Core/QuickTools/QuickToolsSupport.swift`: `tileOrder` and `savedTileOrder`, the Quick panel's order with tiles no enum names.
   - `Services/QuickTools/QuickLauncherService.swift`: the grid holds `QuickLauncherTile`s, the app's own tiles plus registry commands no tile runs; a reorder keeps the place of a tile that is not showing.
   - `UI/QuickLauncher/QuickLauncherView.swift`: draws a command tile from the registry and redraws when the registry changes.

@@ -417,6 +417,7 @@ enum ToolPlatformTests {
         suite.expect(shipped.extraCommands(on: .quickPanel).isEmpty && shipped.extraCommands(on: .radial).isEmpty,
                      "with only the app's own tools, no surface gains an entry")
     }
+
     static func sampleTool(_ suite: TestSuite) {
         let registry = ToolRegistry(isAvailable: { _ in true })
         BuiltinTools.install(into: registry)

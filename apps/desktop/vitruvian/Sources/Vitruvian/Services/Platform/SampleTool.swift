@@ -3,7 +3,6 @@
 
 import Foundation
 import VitruvianCore
-import VitruvianDesign
 
 /// A tool that is in none of the app's fixed lists, for checking by hand
 /// that a surface shows and runs one. `main.swift` registers it only in a
