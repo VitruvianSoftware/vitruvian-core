@@ -1164,14 +1164,10 @@ struct QuickPromptView: View {
     // Resize is now handled by QuickPromptWindowController.animateResize(expanded:)
 
     /// Resolve the working directory — must be called from main thread.
-    /// The agy binary: AGY_BIN, then the usual install locations, then PATH.
+    /// The agy binary: the same rule Settings reports (AGY_BIN if executable, then the usual
+    /// install locations), then a bare name for PATH to resolve.
     static func resolveAgyBinary() -> String {
-        if let explicit = ProcessInfo.processInfo.environment["AGY_BIN"], !explicit.isEmpty { return explicit }
-        for candidate in ["\(NSHomeDirectory())/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
-        where FileManager.default.isExecutableFile(atPath: candidate) {
-            return candidate
-        }
-        return "agy"
+        AgyInfo.locate() ?? "agy"
     }
 
     @MainActor static func resolveWorkingDirectory() -> URL {
