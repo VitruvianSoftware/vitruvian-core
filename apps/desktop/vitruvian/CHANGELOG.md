@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.34.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.3...vitruvian-v3.34.4) (2026-10-09)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the standalone app runs the bot and saves .env through the shared engine ([#2972](https://github.com/VitruvianSoftware/vitruvian-core/issues/2972)) ([2a67077](https://github.com/VitruvianSoftware/vitruvian-core/commit/2a670774c6d5f5b9517949d7f56ebe962575dc48))
+
 ## [3.34.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.2...vitruvian-v3.34.3) (2026-10-09)
 
 
