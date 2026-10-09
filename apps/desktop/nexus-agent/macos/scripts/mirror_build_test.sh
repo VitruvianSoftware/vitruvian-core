@@ -33,4 +33,4 @@ cp -RL "$pkg/Package.swift" "$pkg/Sources" "$work/"
 export HOME="$TEST_TMPDIR/home"
 mkdir -p "$HOME"
 xcrun swift build --package-path "$work" --scratch-path "$TEST_TMPDIR/build" \
-    --cache-path "$TEST_TMPDIR/cache" --disable-sandbox
+	--cache-path "$TEST_TMPDIR/cache" --disable-sandbox

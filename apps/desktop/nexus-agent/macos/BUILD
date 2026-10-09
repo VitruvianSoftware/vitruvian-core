@@ -104,7 +104,10 @@ sh_test(
     data = ["Package.swift"] + glob(["Sources/**"]),
     env_inherit = ["DEVELOPER_DIR"],
     # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
-    tags = ["local", "manual"],
+    tags = [
+        "local",
+        "manual",
+    ],
     target_compatible_with = ["@platforms//os:macos"],
 )
 

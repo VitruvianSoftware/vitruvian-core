@@ -1,0 +1,83 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Nexus Agent Mirror Toolchain
+
+# Builds the standalone Nexus Agent package exactly as its public mirror does:
+# the same runner image and the same two commands as build-macos in
+# apps/desktop/nexus-agent/.github/workflows/release.yml.
+#
+# Why this exists beside //apps/desktop/nexus-agent/macos:mirror_build_test:
+# that test runs on this repository's pinned Xcode, which is newer than the one
+# the mirror builds with. It catches a library missing from Package.swift. It
+# cannot catch code that only the newer Swift accepts. The mirror tags a
+# release BEFORE it builds, so such code would ship a release with no binaries.
+#
+# Only when the package changes, so it runs rarely. A standard GitHub-hosted
+# runner on a public repository is not billed. NOT a required check: a red run
+# here means "the next standalone release would fail to build".
+#
+# Keep `runs-on` and the build commands in step with release.yml.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/nexus-agent/macos/Package.swift'
+      - 'apps/desktop/nexus-agent/macos/Sources/**'
+      - '.github/workflows/nexus-agent-mirror-toolchain.yaml'
+  # Run it by hand after changing the mirror's runner image.
+  workflow_dispatch:
+
+# A newer push to the same pull request replaces the older run.
+concurrency:
+  group: nexus-agent-mirror-toolchain-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: checkout and build.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: swift build (${{ matrix.arch }})
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show the toolchain the mirror builds with
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+
+      - name: Build for ${{ matrix.arch }}
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          cd apps/desktop/nexus-agent/macos
+          swift build -c release --arch "$ARCH"

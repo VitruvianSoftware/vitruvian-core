@@ -50,7 +50,10 @@ def main():
 
     root = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if not root:
-        print("Run with: bazel run //apps/desktop/vitruvian:pin_nexus_agent_shared", file=sys.stderr)
+        print(
+            "Run with: bazel run //apps/desktop/vitruvian:pin_nexus_agent_shared",
+            file=sys.stderr,
+        )
         return 2
     Path(root, PIN).write_text(current + "\n")
     print(f"pinned {current[:12]} in {PIN}")
