@@ -118,6 +118,8 @@ is that notice. Add an entry for every change to upstream files.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.
   - `GitHubSettingsView.swift`: a "Mouse command" field under Hardware & Mouse Lighting, with a Choose… button, a note on where it searches, and the path in use or how to install it. The words are in `NotchGitHubStrings.swift`, in every language.
   - `Tests/GitHubCoreTests.swift`: `mouseBinaryResolution` covers the search order, `~` expansion, the fallback from a configured path that does not run, relative PATH entries, the no-binary case and the new strings.
+- **2026-10-08**: Unit tests that pass or fail the same on a Mac in use as on a CI runner:
+  - `Tests/RepositoryFeatureTests.swift`: the two checks that run a script against stand-in tools (`Tools/setup-signing.sh`, and `read_sleep_disabled` from `Tools/uninstall.sh`) start zsh with `-f`. Without it zsh reads `/etc/zshenv`, and where that file sets `PATH` (nix-darwin's does) the stand-ins were skipped and the script ran the Mac's real `security`, `codesign` and `pmset`.
 - **2026-10-08**: Awaiting-approval GitHub pipeline notification:
   - Added `githubMouseApprovalColor`, `githubMouseApprovalMode`, and `githubMouseApprovalSpeed` preferences to `Defaults.swift` and `DefaultsKey.swift`.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
