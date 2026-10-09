@@ -1,16 +1,29 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-# Pure, UI-free logic (version parse/compare) in its own module so the test binary
-# can link it WITHOUT the app's `@main` (App.swift), which would otherwise collide
-# with XCTest's own `main` ("duplicate symbol _main") (#807).
+# The shared core: built into this app AND into the Vitruvian desktop app
+# (docs/superpowers/specs/2026-10-08-nexus-agent-shared-library-design.md).
+# Swift 6 mode because Vitruvian's Core module is. Nothing here may import a
+# Vitruvian module: the dependency runs one way, MIT into GPL.
 swift_library(
     name = "NexusAgentCore",
     srcs = glob(["Sources/NexusAgentCore/**/*.swift"]),
+    features = ["swift.enable_v6"],
     module_name = "NexusAgentCore",
     target_compatible_with = ["@platforms//os:macos"],
+    visibility = [
+        "//apps/desktop/nexus-agent:__subpackages__",
+        "//apps/desktop/vitruvian:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "shared_sources",
+    srcs = glob(["Sources/NexusAgentCore/**/*.swift"]),
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
@@ -79,12 +92,26 @@ macos_application(
     deps = [":NexusAgentLib"],
 )
 
+sh_test(
+    name = "mirror_build_test",
+    size = "large",
+    srcs = ["scripts/mirror_build_test.sh"],
+    data = ["Package.swift"] + glob(["Sources/**"]),
+    env_inherit = ["DEVELOPER_DIR"],
+    # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
+    tags = ["local", "manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 pipeline_unit(
     name = "nexus-agent-macos",
     depends_on = ["nexus-agent-src"],
     persona = "frontend",
     runner = "xcode-27",
-    test_targets = [":NexusAgentTests"],
+    test_targets = [
+        ":NexusAgentTests",
+        ":mirror_build_test",
+    ],
     tier = "L1",
     timeout_minutes = 30,
 )
