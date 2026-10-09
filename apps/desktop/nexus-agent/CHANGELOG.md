@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.2...nexus-agent-v1.18.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the standalone app runs the bot and saves .env through the shared engine ([#2972](https://github.com/VitruvianSoftware/vitruvian-core/issues/2972)) ([2a67077](https://github.com/VitruvianSoftware/vitruvian-core/commit/2a670774c6d5f5b9517949d7f56ebe962575dc48))
+
 ## [1.18.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.1...nexus-agent-v1.18.2) (2026-10-09)
 
 
