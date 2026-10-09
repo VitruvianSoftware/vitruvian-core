@@ -287,8 +287,14 @@ package struct GitHubSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            // A change to mouseBinaryPath redraws the view, so this line
-            // follows the field as the path is typed or chosen.
+            // A change to mouseBinaryPath redraws the view, so these lines
+            // follow the field as the path is typed or chosen.
+            if GitHubPeripheralSink.shared.configuredBinaryIsIgnored() {
+                Text(text.mouseCommandIgnored)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let found = GitHubPeripheralSink.shared.locateBinary() {
                 HStack {
                     Text(text.mouseCommandFound(found))
