@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.3...nexus-agent-v1.18.4) (2026-10-09)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the bot and the apps are checked against one set of examples, and the apps read .env as the bot does ([#2980](https://github.com/VitruvianSoftware/vitruvian-core/issues/2980)) ([3755c2e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3755c2e87e6899f3697b2c13b1a257fdaef057dc))
+
 ## [1.18.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.18.2...nexus-agent-v1.18.3) (2026-10-09)
 
 
