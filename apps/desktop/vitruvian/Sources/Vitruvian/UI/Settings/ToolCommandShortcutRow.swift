@@ -132,6 +132,58 @@ package enum ToolCommandShortcutSave: Equatable {
         case .full: return .full
         }
     }
+
+    /// What a save does to the command's take-over of a macOS shortcut.
+    package enum TakeOver: Equatable {
+        /// The person accepted the offer: switch it on.
+        case accept
+        /// The combination is not one macOS answers: drop a take-over left
+        /// from the one before.
+        case clear
+        /// The combination already taken over, recorded again: leave it.
+        case keep
+    }
+
+    /// How a save ended, for the row to show.
+    package enum Outcome: Equatable {
+        case saved
+        /// Nothing was saved, and the take-over is as it was.
+        case refused(Refusal)
+    }
+
+    /// The step after `decide`: hands `shortcut` to the list of tool command
+    /// shortcuts through `assign`, whose answer is the last word.
+    ///
+    /// The take-over is written before the key is taken, because taking the
+    /// key is what reads it (`assign` re-syncs the registrar). It is written
+    /// only when it changes, and put back as it was if `assign` refuses.
+    ///
+    /// An offer can stay up while the person records on other rows, so by
+    /// the time it is accepted something else may hold the combination.
+    /// Accepting asks the holders again, in `decide`'s order, and refuses
+    /// before anything is written. The other two follow `decide` at once.
+    package static func commit(_ shortcut: GlobalShortcut, takeOver: TakeOver, checks: Checks,
+                               isTakenOver: () -> Bool, setTakeOver: (Bool) -> Void,
+                               assign: (GlobalShortcut) -> ShortcutMap.AssignmentIssue?) -> Outcome {
+        if takeOver == .accept,
+           let holder = checks.roleHolder(shortcut) ?? checks.windowLayoutHolder(shortcut)
+           ?? checks.otherHolder(shortcut) {
+            return .refused(.held(by: holder))
+        }
+        let was = isTakenOver()
+        let wanted: Bool
+        switch takeOver {
+        case .accept: wanted = true
+        case .clear: wanted = false
+        case .keep: wanted = was
+        }
+        if wanted != was { setTakeOver(wanted) }
+        if let issue = assign(shortcut) {
+            if wanted != was { setTakeOver(was) }
+            return .refused(refusal(for: issue, commandName: checks.commandName))
+        }
+        return .saved
+    }
 }
 
 /// What a tool command's row shows about its shortcut.
@@ -147,6 +199,28 @@ package struct ToolCommandShortcutRowState: Equatable {
         self.shortcut = shortcut
         self.isRefused = isRefused
         self.isActive = isActive
+    }
+
+    /// The one line under the row.
+    package enum Caption: Equatable {
+        /// Why the attempt just made was not saved.
+        case error(String)
+        /// The hint shown while the field is listening.
+        case recording
+        /// The saved key is one macOS would not give.
+        case unavailable
+    }
+
+    /// Which line the row shows. The error of the attempt just made comes
+    /// first, even when the saved key is also unavailable: it answers what
+    /// the person just did. The row clears it when the next recording starts
+    /// or a save succeeds, and the unavailable caption is back then. While a
+    /// take-over is offered, the offer stands in its place.
+    package func caption(error: String?, isRecording: Bool, isOfferingTakeOver: Bool) -> Caption? {
+        if let error { return .error(error) }
+        if isRecording { return .recording }
+        if isRefused, !isOfferingTakeOver { return .unavailable }
+        return nil
     }
 
     @MainActor package init(command id: CommandID, registry: ToolRegistry, registrar: ToolShortcutRegistrar) {
@@ -225,28 +299,31 @@ package struct ToolCommandShortcutRow: View {
                     .accessibilityLabel(l10n.s.shortcutClear)
                 }
             }
-            if let errorText {
-                Text(errorText)
+            switch state.caption(error: errorText, isRecording: isRecording,
+                                 isOfferingTakeOver: pendingTakeOver != nil) {
+            case .error(let text):
+                Text(text)
                     .font(.caption)
                     .foregroundStyle(.orange)
-            } else if isRecording {
+            case .recording:
                 Text(ShortcutRecordingCaption.text(l10n.s, canClear: true))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if state.isRefused, pendingTakeOver == nil {
+            case .unavailable:
                 // Read from the registrar each time, so it goes when macOS
                 // gives the key after all.
                 Text(l10n.s.shortcutUnavailable)
                     .font(.caption)
                     .foregroundStyle(.orange)
+            case .none:
+                EmptyView()
             }
             if let pendingTakeOver {
                 SystemShortcutTakeOverOffer(
                     shortcut: pendingTakeOver,
                     onAccept: {
                         self.pendingTakeOver = nil
-                        // On before the key is taken: the registrar's sync reads it.
-                        commit(pendingTakeOver, takeOver: true)
+                        commit(pendingTakeOver, takeOver: .accept)
                     },
                     onDismiss: {
                         self.pendingTakeOver = nil
@@ -275,9 +352,11 @@ package struct ToolCommandShortcutRow: View {
         registrar.assign(nil, to: id)
     }
 
-    private func save(_ shortcut: GlobalShortcut) {
+    /// What the rule asks of the rest of the app, read when it is asked.
+    private var checks: ToolCommandShortcutSave.Checks {
         let strings = l10n.s
-        let checks = ToolCommandShortcutSave.Checks(
+        let id = id
+        return ToolCommandShortcutSave.Checks(
             roleHolder: {
                 GlobalShortcutRole.conflict(for: $0, excluding: nil, includeInactive: true)?.title(strings)
             },
@@ -286,6 +365,9 @@ package struct ToolCommandShortcutRow: View {
             commandName: commandName,
             conflictsWithMacOS: { SystemShortcutTakeover.conflictsWithMacOS($0) },
             takenOver: SystemShortcutTakeover.isTakenOver(takeOverKey))
+    }
+
+    private func save(_ shortcut: GlobalShortcut) {
         switch ToolCommandShortcutSave.decide(shortcut, for: id, saved: registrar.shortcuts, checks: checks) {
         case .refuse(let refusal):
             errorText = message(refusal)
@@ -293,21 +375,21 @@ package struct ToolCommandShortcutRow: View {
             pendingTakeOver = shortcut
             errorText = nil
         case .save(let clearTakeOver):
-            commit(shortcut, takeOver: clearTakeOver ? false : nil)
+            commit(shortcut, takeOver: clearTakeOver ? .clear : .keep)
         }
     }
 
-    /// Hands `shortcut` to the registrar, whose answer is the last word: if
-    /// it refuses, nothing was saved, the row says why, and the take-over
-    /// choice is put back as it was. `takeOver` nil leaves that choice alone.
-    private func commit(_ shortcut: GlobalShortcut, takeOver: Bool?) {
-        let wasTakenOver = SystemShortcutTakeover.isTakenOver(takeOverKey)
-        if let takeOver, takeOver != wasTakenOver { SystemShortcutTakeover.setTakeOver(takeOverKey, takeOver) }
-        if let issue = registrar.assign(shortcut, to: id) {
-            if let takeOver, takeOver != wasTakenOver { SystemShortcutTakeover.setTakeOver(takeOverKey, wasTakenOver) }
-            errorText = message(ToolCommandShortcutSave.refusal(for: issue, commandName: commandName))
-        } else {
-            errorText = nil
+    /// Saves through `ToolCommandShortcutSave.commit`, and shows its answer.
+    private func commit(_ shortcut: GlobalShortcut, takeOver: ToolCommandShortcutSave.TakeOver) {
+        let key = takeOverKey
+        let outcome = ToolCommandShortcutSave.commit(
+            shortcut, takeOver: takeOver, checks: checks,
+            isTakenOver: { SystemShortcutTakeover.isTakenOver(key) },
+            setTakeOver: { SystemShortcutTakeover.setTakeOver(key, $0) },
+            assign: { registrar.assign($0, to: id) })
+        switch outcome {
+        case .saved: errorText = nil
+        case .refused(let refusal): errorText = message(refusal)
         }
     }
 }

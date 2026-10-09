@@ -371,7 +371,7 @@ MUTATIONS = [
      "Sources/Vitruvian/Services/Platform/ToolShortcutRegistrar.swift",
      "let id = CommandID(text), asking.contains(id),",
      "let id = CommandID(text),",
-     "a tool that registers gets the key its command was given, without being told to sync"),
+     "a shortcut whose command is not registered holds no key"),
     ("a command that is not registered frees its combination", "platform",
      "Sources/Vitruvian/Services/ShortcutConflicts.swift",
      "        if let command = ToolCommandShortcuts.holder(of: shortcut, in: named, excluding: excludingCommand) {\n            return .toolCommand(command)\n        }\n",
