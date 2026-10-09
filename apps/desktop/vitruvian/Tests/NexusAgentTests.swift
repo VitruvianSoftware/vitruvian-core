@@ -31,6 +31,7 @@ enum NexusAgentTests {
         antigravityTelemetry(suite)
         hostReadsLive(suite)
         hostRemembersProviders(suite)
+        hostRemembersHistoryAndWorktreeMode(suite)
         hostTurnNotices(suite)
         changesReachTheViews(suite)
     }
@@ -927,6 +928,47 @@ enum NexusAgentTests {
         suite.expect(service.save(next) && service.activeProvider == .claude, "and saving them")
         suite.expect(NexusAgentService(environment: rig.environment).activeProvider == .claude,
                      "the next launch starts on the chosen provider")
+    }
+
+    /// The prompts the arrows walk through and worktree mode outlive the
+    /// app: the host stores both, live, and the next Quick Prompt starts
+    /// with them. The prompts stay on this Mac.
+    private static func hostRemembersHistoryAndWorktreeMode(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let defaults = rig.defaults
+        let host = VitruvianNexusAgentHost(defaults: defaults)
+        suite.expect(host.promptHistory.isEmpty && !host.worktreeMode, "no history and no worktree mode to begin with")
+
+        host.promptHistory = ["one", "two"]
+        suite.expect(defaults[Preferences.nexusAgentPromptHistory] == ["one", "two"], "prompt history is saved through the host")
+        defaults[Preferences.nexusAgentPromptHistory] = ["three"]
+        suite.expect(host.promptHistory == ["three"], "changed history is seen without a restart")
+        host.worktreeMode = true
+        suite.expect(defaults[Preferences.nexusAgentWorktreeMode], "worktree mode is saved through the host")
+        defaults[Preferences.nexusAgentWorktreeMode] = false
+        suite.expect(!host.worktreeMode, "a changed worktree mode is seen without a restart")
+
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        suite.expect(session.promptHistory == ["three"] && !session.worktreeMode,
+                     "a new prompt starts with the remembered history")
+        session.send("four", configuration: NexusAgentConfiguration(), agentPath: nil)
+        session.send("three", configuration: NexusAgentConfiguration(), agentPath: nil)
+        session.worktreeMode = true
+        suite.expect(defaults[Preferences.nexusAgentPromptHistory] == ["three", "four"]
+                     && defaults[Preferences.nexusAgentWorktreeMode],
+                     "a sent prompt is remembered once, and worktree mode when it changes")
+        let later = NexusAgentQuickPromptSession(environment: rig.environment,
+                                                 host: VitruvianNexusAgentHost(defaults: defaults))
+        suite.expect(later.promptHistory == ["three", "four"] && later.worktreeMode,
+                     "the next launch has both")
+
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(DefaultsKey.nexusAgentPromptHistory)
+                     && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentPromptHistory),
+                     "what the user typed to the agent is not carried by a backup")
+        suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentWorktreeMode)
+                     && SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentChosenProvider),
+                     "worktree mode and the chosen provider are settings a backup carries")
     }
 
     /// What Vitruvian tells the user when a turn ends or waits: the notch

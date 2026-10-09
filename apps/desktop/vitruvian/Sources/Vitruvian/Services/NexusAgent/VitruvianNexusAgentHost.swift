@@ -51,6 +51,16 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
         }
     }
 
+    package var promptHistory: [String] {
+        get { defaults[Preferences.nexusAgentPromptHistory] }
+        set { defaults[Preferences.nexusAgentPromptHistory] = newValue }
+    }
+
+    package var worktreeMode: Bool {
+        get { defaults[Preferences.nexusAgentWorktreeMode] }
+        set { defaults[Preferences.nexusAgentWorktreeMode] = newValue }
+    }
+
     /// The archived Claude sessions as they are saved: always in the app's
     /// own defaults, whatever `defaults` this host was built with, which is
     /// where they have been kept since before there was a host.

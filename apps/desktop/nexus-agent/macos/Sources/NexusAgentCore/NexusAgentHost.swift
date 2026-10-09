@@ -40,6 +40,11 @@ public protocol NexusAgentHost: AnyObject {
     /// Providers beyond the built-in three: the user's own, and built-in
     /// ones whose command they edited.
     var savedProviders: [NexusAgentCLIProvider] { get set }
+    /// Prompts the user sent before, oldest first, for the up and down
+    /// arrows. The session hands over at most the twenty most recent.
+    var promptHistory: [String] { get set }
+    /// Worktree mode, remembered between launches.
+    var worktreeMode: Bool { get set }
     /// User-facing text, in the app's language right now.
     var strings: NexusAgentHostStrings { get }
     /// A turn paused for the user to approve a tool.

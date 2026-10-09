@@ -76,6 +76,19 @@ final class StandaloneHost: NexusAgentHost {
         UserDefaults.standard.set(data, forKey: key)
     }
 
+    /// The same keys the chat window keeps its prompt history and worktree
+    /// mode under, in the same shape: a list of text, oldest first, and a
+    /// yes or no.
+    var promptHistory: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "promptHistory") ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "promptHistory") }
+    }
+
+    var worktreeMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "worktreeMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "worktreeMode") }
+    }
+
     var strings: NexusAgentHostStrings { NexusAgentHostStrings() }
 
     // The chat window does not run on the engine yet and posts its own

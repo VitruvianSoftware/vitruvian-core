@@ -40,6 +40,11 @@ final class EngineHostTests: XCTestCase {
         var hiddenClaudeSessionIDs: [String] = []
         var chosenProviderID: UUID?
         var savedProviders: [NexusAgentCLIProvider] = []
+        var promptHistory: [String] = [] {
+            didSet { promptHistoryWrites += 1 }
+        }
+        var promptHistoryWrites = 0
+        var worktreeMode = false
         var strings = NexusAgentHostStrings()
         var approvals: [NexusAgentTurnNotice] = []
         var finished: [(notice: NexusAgentTurnNotice, isChatVisible: Bool)] = []
@@ -384,6 +389,101 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(written?.first?["id"] as? String, "8F2B6C1E-5D0A-4E7B-9C3F-1A2B3C4D5E6F")
         XCTAssertEqual(written?.first?["isBuiltIn"] as? Bool, false)
         XCTAssertEqual(try decoder.decode([NexusAgentCLIProvider].self, from: JSONEncoder().encode(custom)), custom)
+    }
+
+    // MARK: - Prompt history and worktree mode are kept by the host
+
+    /// Sends with no agent installed: the prompt is recorded and the turn
+    /// ends at once, so a test can send many in a row.
+    private func send(_ prompt: String, in session: NexusAgentQuickPromptSession) {
+        session.send(prompt, configuration: NexusAgentConfiguration(), agentPath: nil)
+    }
+
+    func testASessionStartsWithWhatTheHostKept() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.promptHistory = ["oldest", "newest"]
+        host.worktreeMode = true
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        XCTAssertEqual(session.promptHistory, ["oldest", "newest"])
+        XCTAssertEqual(session.historyIndex, -1, "no entry is selected until the user presses up")
+        XCTAssertTrue(session.worktreeMode)
+        XCTAssertEqual(host.promptHistoryWrites, 1, "loading writes nothing back")
+    }
+
+    func testASentPromptGoesToTheEndOfTheHistoryAndIsSaved() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        send("one", in: session)
+        send("  two  ", in: session)
+        // Oldest first, newest last: the order the standalone app stores,
+        // and the order the up arrow walks back through from the end.
+        XCTAssertEqual(session.promptHistory, ["one", "two"])
+        XCTAssertEqual(host.promptHistory, ["one", "two"])
+        XCTAssertEqual(session.historyIndex, -1)
+
+        // The next launch.
+        let later = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        XCTAssertEqual(later.promptHistory, ["one", "two"])
+    }
+
+    func testAPromptAlreadyInTheHistoryIsNotAddedAgain() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.promptHistory = ["one", "two"]
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let writes = host.promptHistoryWrites
+
+        // A repeat of the latest, and a repeat of an older one: neither is
+        // added, and neither moves to the end.
+        send("two", in: session)
+        send("one", in: session)
+        XCTAssertEqual(session.promptHistory, ["one", "two"])
+        XCTAssertEqual(host.promptHistory, ["one", "two"])
+        XCTAssertEqual(host.promptHistoryWrites, writes, "nothing changed, so nothing is written")
+
+        // Text that differs only by capitals is a different prompt.
+        send("One", in: session)
+        XCTAssertEqual(host.promptHistory, ["one", "two", "One"])
+    }
+
+    func testOnlyTheLastTwentyPromptsAreKept() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.promptHistory = (1...20).map { "p\($0)" }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        send("new", in: session)
+        XCTAssertEqual(host.promptHistory.count, 20)
+        XCTAssertEqual(host.promptHistory, (2...20).map { "p\($0)" } + ["new"], "the oldest is the one dropped")
+        // As in the standalone app, the running chat still has the dropped
+        // one until it is closed; only what is saved is cut to twenty.
+        XCTAssertEqual(session.promptHistory.count, 21)
+        XCTAssertEqual(NexusAgentQuickPromptSession(environment: rig.environment, host: host).promptHistory.count, 20)
+
+        send("newer", in: session)
+        XCTAssertEqual(host.promptHistory, (3...20).map { "p\($0)" } + ["new", "newer"])
+    }
+
+    func testWorktreeModeIsTheHosts() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        XCTAssertFalse(session.worktreeMode)
+        session.worktreeMode = true
+        XCTAssertTrue(host.worktreeMode, "the choice is remembered by the host, not by the session")
+        XCTAssertTrue(NexusAgentQuickPromptSession(environment: rig.environment, host: host).worktreeMode)
+        session.worktreeMode = false
+        XCTAssertFalse(host.worktreeMode)
     }
 
     // MARK: - Archived Claude sessions live in the host

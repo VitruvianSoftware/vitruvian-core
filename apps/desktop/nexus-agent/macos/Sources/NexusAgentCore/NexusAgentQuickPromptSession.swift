@@ -116,8 +116,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var lastFailedPrompt: String?
     /// Elapsed seconds during current active generation.
     @Published public private(set) var elapsedSeconds: Int = 0
-    /// History of sent prompts for Up/Down arrow navigation.
-    @Published public var promptHistory: [String] = []
+    /// History of sent prompts for Up/Down arrow navigation, oldest first.
+    /// It starts as what the host kept, and each new prompt is handed back.
+    @Published public var promptHistory: [String]
     @Published public var historyIndex: Int = -1
     /// Called when an agent turn completes, in place of telling the host
     /// directly: the engine sets it, to add whether its chat is on screen.
@@ -126,8 +127,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var planMode: Bool {
         didSet { host.planMode = planMode }
     }
-    /// Turns run with `-w` (isolated git worktree) while on.
-    @Published public var worktreeMode: Bool = false
+    /// Turns run with `-w` (isolated git worktree) while on. Remembered.
+    @Published public var worktreeMode: Bool {
+        didSet { host.worktreeMode = worktreeMode }
+    }
+    /// How many prompts the host is given to keep. The running chat holds
+    /// every prompt sent since it opened; only what is saved is cut.
+    public static let savedPromptHistoryLimit = 20
 
     @Published public private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
     @Published public var isFollowerActive: Bool = false
@@ -156,6 +162,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         self.environment = environment
         self.host = host
         self.planMode = host.planMode
+        self.worktreeMode = host.worktreeMode
+        self.promptHistory = host.promptHistory
     }
 
     /// Send is offered only for a prompt with text and no turn in flight.
@@ -317,7 +325,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         draft = ""
         mode = .chat
         messages.append(NexusAgentChatMessage(role: .user, text: text))
-        if !promptHistory.contains(text) { promptHistory.append(text) }
+        // A prompt the history already holds, anywhere in it, is neither
+        // added again nor moved to the end; a new one goes last and the
+        // host is given the most recent ones to keep.
+        if !promptHistory.contains(text) {
+            promptHistory.append(text)
+            host.promptHistory = Array(promptHistory.suffix(Self.savedPromptHistoryLimit))
+        }
         historyIndex = -1
         lastFailedPrompt = nil
         guard let agentPath else {

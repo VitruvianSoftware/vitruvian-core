@@ -730,6 +730,10 @@ package enum DefaultsKey {
     package static let nexusAgentChosenProvider = "nexusAgentChosenProvider"
     /// Providers beyond the three built in, and built-in ones with an edited command, as JSON.
     package static let nexusAgentSavedProviders = "nexusAgentSavedProviders"
+    /// Quick Prompt turns run in an isolated git worktree while on.
+    package static let nexusAgentWorktreeMode = "nexusAgentWorktreeMode"
+    // Private content, never exported: the last prompts the user sent.
+    package static let nexusAgentPromptHistory = "nexusAgentPromptHistory"
     // Machine state, never exported: a folder on this Mac.
     package static let nexusAgentBotDirectory = "nexusAgentBotDirectory"
     package static let panelUtilityNexusAgent = "panelUtilityNexusAgent"
