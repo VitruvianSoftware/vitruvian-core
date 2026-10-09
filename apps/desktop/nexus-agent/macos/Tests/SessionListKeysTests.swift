@@ -24,8 +24,8 @@ import NexusAgentCore
 
 /// The arrow keys and Return in the sessions drawer, as the standalone app's
 /// own chat handled them (`moveSelection` and the prompt's `onSubmit` in its
-/// `QuickPromptView`, removed in step 3c; see git history before
-/// `b14d76b54`). The view only calls these rules, so they are tested here
+/// `QuickPromptView`, removed in step 3c; last shipped in nexus-agent
+/// 1.19.0). The view only calls these rules, so they are tested here
 /// without one.
 final class SessionListKeysTests: XCTestCase {
     private typealias Keys = NexusAgentSessionListKeys

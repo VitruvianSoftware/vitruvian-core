@@ -249,14 +249,18 @@ class ConfigManager: ObservableObject {
     /// is no `.env` yet.
     ///
     /// Nothing is taken over unless `.env` is there to be read and has
-    /// something in it. The engine reads the file each time the chat is
-    /// shown, and when it is missing, unreadable or caught empty in the
-    /// middle of being rewritten, the engine holds an empty configuration:
-    /// no token, no whitelist, approval mode `yolo`. Following that would
+    /// something in it. This is for the file that has been DELETED while
+    /// the app runs. The engine keeps its settings when the file is there
+    /// but unreadable or blank; when the file is gone it rightly holds the
+    /// empty configuration (no token, no whitelist, approval mode `yolo`),
+    /// as the bot would. Settings is another matter: following that would
     /// blank every untouched field, and the next Save would write the
-    /// blanks: a bot anyone may use, skipping every permission prompt. The
-    /// record of what the engine held is not moved either, so the file's
-    /// return is compared with what Settings last saw in it.
+    /// blanks, a bot anyone may use that skips every permission prompt. So
+    /// the fields stay, and Save puts the file back. The same guard covers
+    /// a deleted file that comes back unreadable or blank, where the engine
+    /// has nothing left to keep and is empty still. The record of what the
+    /// engine held is not moved either, so the file's return is compared
+    /// with what Settings last saw in it.
     private func follow(_ fresh: EnvFields) {
         guard envFileHasText else { return }
         var shown = fields

@@ -69,6 +69,9 @@ final class EngineHostTests: XCTestCase {
         let state: String
         let ownsHome: Bool
         var files: [String: String] = [:]
+        /// Files that are there but cannot be read (no permission, or
+        /// caught in the middle of being rewritten).
+        var unreadable: Set<String> = []
         var agentRuns: [(path: String, arguments: [String], directory: String)] = []
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
@@ -174,7 +177,7 @@ final class EngineHostTests: XCTestCase {
                 stateDirectory: state,
                 isExecutable: { [unowned self] in executables.contains($0) },
                 fileExists: { [unowned self] in files[$0] != nil },
-                readFile: { [unowned self] in files[$0] },
+                readFile: { [unowned self] in unreadable.contains($0) ? nil : files[$0] },
                 readTail: { [unowned self] path, _ in files[path] },
                 writePrivateFile: { [unowned self] path, content in
                     files[path] = content
@@ -278,6 +281,137 @@ final class EngineHostTests: XCTestCase {
         host.configuredBotDirectory = ""
         engine.load()
         XCTAssertEqual(engine.configuration.botToken, "9:standard-folder")
+    }
+
+    // MARK: - Settings that cannot be read
+
+    private static let goodEnv = """
+        TELEGRAM_BOT_TOKEN=7:good
+        ALLOWED_USER_IDS=11,22
+        AGY_APPROVAL_MODE=default
+        AGY_MODEL=m-good
+
+        """
+
+    /// The four settings a lost file must not take away: without them the
+    /// bot is open to anyone and every permission prompt is skipped.
+    private func assertHoldsGoodSettings(_ engine: NexusAgentEngine, _ when: String,
+                                         file: StaticString = #filePath, line: UInt = #line) {
+        let held = engine.configuration
+        XCTAssertEqual(held.approvalMode, .standard, "approval mode, \(when)", file: file, line: line)
+        XCTAssertEqual(held.botToken, "7:good", "token, \(when)", file: file, line: line)
+        XCTAssertEqual(held.allowedUserIDs, "11,22", "whitelist, \(when)", file: file, line: line)
+        XCTAssertEqual(held.model, "m-good", "model, \(when)", file: file, line: line)
+    }
+
+    /// A settings file that is there but cannot be read, or reads as
+    /// blank, says nothing: what was read before is kept. Taking the empty
+    /// configuration instead meant approval mode `yolo`, so the chat's next
+    /// agy turn skipped every permission prompt.
+    func testSettingsThatCannotBeReadKeepTheOnesAlreadyLoaded() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let env = rig.defaultBot + "/.env"
+        rig.files[env] = Self.goodEnv
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.load()
+        assertHoldsGoodSettings(engine, "read from a good file")
+
+        rig.unreadable = [env]
+        engine.load()
+        assertHoldsGoodSettings(engine, "the file is there but cannot be read")
+
+        rig.unreadable = []
+        rig.files[env] = ""
+        engine.load()
+        assertHoldsGoodSettings(engine, "the file is empty")
+        rig.files[env] = "\n  \n\r\n"
+        engine.load()
+        assertHoldsGoodSettings(engine, "the file is only blank lines")
+
+        // A good file again, with another value: followed.
+        rig.files[env] = Self.goodEnv.replacingOccurrences(of: "AGY_MODEL=m-good", with: "AGY_MODEL=m-new")
+        engine.load()
+        XCTAssertEqual(engine.configuration.model, "m-new")
+        XCTAssertEqual(engine.configuration.approvalMode, .standard)
+    }
+
+    /// No file at all is not a file that cannot be read: it is a first
+    /// launch, or the user removed it, and the bot with no file has no
+    /// settings either. The engine holds the empty configuration, as before.
+    func testAMissingSettingsFileStillMeansNoSettings() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let env = rig.defaultBot + "/.env"
+        rig.files[env] = Self.goodEnv
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.load()
+        assertHoldsGoodSettings(engine, "read from a good file")
+
+        rig.files[env] = nil
+        engine.load()
+        XCTAssertEqual(engine.configuration.botToken, "")
+        XCTAssertEqual(engine.configuration.allowedUserIDs, "")
+        XCTAssertEqual(engine.configuration.model, "")
+        XCTAssertEqual(engine.configuration.approvalMode, NexusAgentConfiguration().approvalMode)
+
+        // And once the settings are gone, an unreadable file has nothing
+        // to keep: the removed file's settings do not come back.
+        rig.files[env] = Self.goodEnv
+        rig.unreadable = [env]
+        engine.load()
+        XCTAssertEqual(engine.configuration.botToken, "")
+    }
+
+    /// The very first read has nothing to keep, so a file that cannot be
+    /// read, or is blank, gives the empty configuration, as before.
+    func testAFirstReadThatFailsHasNothingToKeep() {
+        for blank in [false, true] {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            let env = rig.defaultBot + "/.env"
+            rig.files[env] = blank ? "\n" : Self.goodEnv
+            if !blank { rig.unreadable = [env] }
+            let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+            engine.load()
+            XCTAssertEqual(engine.configuration.botToken, "", blank ? "blank" : "unreadable")
+            XCTAssertEqual(engine.configuration.approvalMode, NexusAgentConfiguration().approvalMode)
+        }
+    }
+
+    /// What is kept is what THIS file said. When the host points the engine
+    /// at another folder whose file cannot be read, the first folder's
+    /// token and whitelist are not carried over to it.
+    func testSettingsAreNotKeptAcrossFolders() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        rig.files[rig.defaultBot + "/.env"] = Self.goodEnv
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        engine.load()
+        assertHoldsGoodSettings(engine, "read from the standard folder")
+
+        host.configuredBotDirectory = "~/elsewhere"
+        rig.files[rig.home + "/elsewhere/.env"] = "TELEGRAM_BOT_TOKEN=1:other\n"
+        rig.unreadable = [rig.home + "/elsewhere/.env"]
+        engine.load()
+        XCTAssertEqual(engine.configuration.botToken, "")
+    }
+
+    /// What a save wrote counts as read: the file going unreadable
+    /// afterwards does not lose it.
+    func testSavedSettingsAreKeptWhenTheFileThenCannotBeRead() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let env = rig.defaultBot + "/.env"
+        rig.files[rig.defaultBot] = ""
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.load()
+        XCTAssertTrue(engine.save(NexusAgentConfiguration(botToken: "7:good", allowedUserIDs: "11,22",
+                                                          approvalMode: .standard, model: "m-good")))
+        rig.unreadable = [env]
+        engine.load()
+        assertHoldsGoodSettings(engine, "saved, then the file cannot be read")
     }
 
     func testPlanModeIsTheHosts() {
@@ -789,8 +923,8 @@ final class EngineHostTests: XCTestCase {
     }
 
     /// Where a program named without a folder is looked for, as the
-    /// standalone app's own chat looked (removed in step 3c; see git history
-    /// before `b14d76b54`): the usual install folders first, then
+    /// standalone app's own chat looked (removed in step 3c; last shipped in
+    /// nexus-agent 1.19.0): the usual install folders first, then
     /// the folders on PATH, the first executable one winning.
     func testAProgramIsFoundWhereTheStandaloneLooks() {
         func find(_ name: String, path: String, executables: Set<String>, files: Set<String> = []) -> String? {

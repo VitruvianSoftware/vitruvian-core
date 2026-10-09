@@ -254,6 +254,10 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     private var managedPID: Int32?
     private var pollTimer: Timer?
     private var didAutoStart = false
+    /// The settings file the configuration held was really read from (or
+    /// written to), nil while nothing has been: `load()` keeps settings
+    /// only for the file they came from.
+    private var settingsReadFrom: String?
 
     /// A bot gets this long to stop on SIGTERM before it is killed.
     public static let stopGrace: TimeInterval = 3
@@ -340,9 +344,29 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     // MARK: - Configuration
 
     /// Reads the bot's `.env` and finds the agent, for the page.
+    ///
+    /// A file that is there but cannot be read, or reads as nothing but
+    /// blank lines (no permission, or caught in the middle of being
+    /// rewritten), says nothing: the settings last read from that same file
+    /// are kept. Taking the empty configuration for it would drop the token
+    /// and the whitelist and put the approval mode at its `yolo` default,
+    /// so the chat's next turn would skip every permission prompt.
+    ///
+    /// A file that is not there at all is different. That is a first
+    /// launch, or the user removed it, and the bot with no file has no
+    /// settings either: the configuration is the empty one. So it is on a
+    /// first read that fails, which has nothing to keep.
     public func load() {
-        configuration = withChosenProvider(
-            environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration())
+        let path = envFilePath
+        let text = environment.readFile(path)
+        let saysSomething = text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        if !saysSomething, environment.fileExists(path), settingsReadFrom == path {
+            // Only the chosen provider is asked for again, as on any load.
+            configuration = withChosenProvider(configuration)
+        } else {
+            configuration = withChosenProvider(text.map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration())
+            settingsReadFrom = saysSomething ? path : nil
+        }
         agentPath = locateProgram(of: configuration.activeProvider)
     }
 
@@ -424,6 +448,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             return false
         }
         configuration = withChosenProvider(NexusAgentEnvFile.parse(content))
+        // What was just written is what the file says.
+        settingsReadFrom = envFilePath
         problem = nil
         if isRunning { needsRestart = true }
         return true
