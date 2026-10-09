@@ -52,19 +52,11 @@ package enum CommandBarRowShortcuts {
         package init() {}
     }
 
-    package enum AssignmentIssue: Equatable {
-        case invalid
-        case occupied(String)
-        case full
-    }
+    package typealias AssignmentIssue = ShortcutMap.AssignmentIssue
 
     package static func assignmentIssue(_ shortcut: GlobalShortcut, for key: String,
                                 in shortcuts: [String: GlobalShortcut]) -> AssignmentIssue? {
-        guard isUsable(shortcut) else { return .invalid }
-        if let owner = self.key(for: shortcut, in: shortcuts), owner != key {
-            return .occupied(owner)
-        }
-        return hasRoom(for: key, in: shortcuts) ? nil : .full
+        ShortcutMap.assignmentIssue(shortcut, for: key, in: shortcuts, limit: limit)
     }
 
     /// The row an app is listed under in the bar: its bundle ID when it has
@@ -104,16 +96,11 @@ package enum CommandBarRowShortcuts {
     }
 
     package static func decode(_ raw: String?) -> [String: GlobalShortcut] {
-        guard let raw, let data = raw.data(using: .utf8),
-              let stored = try? JSONDecoder().decode([String: String].self, from: data)
-        else { return [:] }
-        return stored.compactMapValues(GlobalShortcut.init(storageValue:))
+        ShortcutMap.decode(raw)
     }
 
     package static func encode(_ shortcuts: [String: GlobalShortcut]) -> String? {
-        let stored = shortcuts.mapValues(\.storageValue)
-        guard let data = try? JSONEncoder().encode(stored) else { return nil }
-        return String(data: data, encoding: .utf8)
+        ShortcutMap.encode(shortcuts)
     }
 
     /// The map after binding (or clearing, with nil) one row. A combination
@@ -123,34 +110,24 @@ package enum CommandBarRowShortcuts {
     package static func setting(_ shortcut: GlobalShortcut?,
                         for key: String,
                         in shortcuts: [String: GlobalShortcut]) -> [String: GlobalShortcut] {
-        var next = shortcuts
-        guard let shortcut else {
-            next.removeValue(forKey: key)
-            return next
-        }
-        for (otherKey, other) in next where other == shortcut && otherKey != key {
-            next.removeValue(forKey: otherKey)
-        }
-        guard next[key] != nil || next.count < limit else { return next }
-        next[key] = shortcut
-        return next
+        ShortcutMap.setting(shortcut, for: key, in: shortcuts, limit: limit)
     }
 
     /// Whether one more row can still be bound. Asked before the keys are
     /// taken, so a full list can say so instead of swallowing the combination.
     package static func hasRoom(for key: String, in shortcuts: [String: GlobalShortcut]) -> Bool {
-        shortcuts[key] != nil || shortcuts.count < limit
+        ShortcutMap.hasRoom(for: key, in: shortcuts, limit: limit)
     }
 
     /// The row a combination belongs to, so the press can be routed without
     /// walking the whole catalog twice.
     package static func key(for shortcut: GlobalShortcut, in shortcuts: [String: GlobalShortcut]) -> String? {
-        shortcuts.first { $0.value == shortcut }?.key
+        ShortcutMap.key(for: shortcut, in: shortcuts)
     }
 
     /// Whether a combination is worth registering at all. A bare letter would
     /// take that letter away from every app on the Mac.
     package static func isUsable(_ shortcut: GlobalShortcut) -> Bool {
-        !shortcut.modifiers.isEmpty
+        ShortcutMap.isUsable(shortcut)
     }
 }

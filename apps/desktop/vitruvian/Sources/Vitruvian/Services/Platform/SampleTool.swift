@@ -21,7 +21,7 @@ package enum SampleTool {
                                 }) {
         guard registry.tool(id) == nil,
               let command = CommandDescriptor(id: hello, title: "Say hello", symbol: "hand.wave",
-                                              surfaces: [.radial, .quickPanel, .commandBar]),
+                                              surfaces: [.radial, .quickPanel, .commandBar, .shortcut]),
               let tool = ToolDescriptor(id: id, name: "Sample tool", symbol: "hand.wave", commands: [command])
         else { return }
         try? registry.register(tool)

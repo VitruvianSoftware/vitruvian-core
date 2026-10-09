@@ -2088,6 +2088,12 @@ HOTKEY_ID_COUNTERS = {
         re.compile(r"var next: UInt32 = (\d+)"),
         15,
     ),
+    # One per tool command shortcut, counted from `firstHotkeyID`, up to
+    # `ToolCommandShortcuts.limit`.
+    APP_PREFIX + "Services/Platform/ToolShortcutRegistrar.swift": (
+        re.compile(r"static let firstHotkeyID: UInt32 = (\d+)"),
+        64,
+    ),
 }
 _HOTKEY_ID = re.compile(r"QuickToolHotkey\(id:\s*([^)]*)\)")
 

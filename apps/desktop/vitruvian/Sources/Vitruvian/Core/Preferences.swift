@@ -897,6 +897,7 @@ package enum Preferences {
     package static let onboardingStep = Preference(DefaultsKey.onboardingStep, default: 0)
     package static let commandBarLinks = Preference(DefaultsKey.commandBarLinks, default: Data())
     package static let commandBarRowShortcuts = Preference(DefaultsKey.commandBarRowShortcuts, default: "")
+    package static let toolCommandShortcuts = Preference(DefaultsKey.toolCommandShortcuts, default: "")
 
     // GitHub in the notch
     package static let githubWatchedRepositories = Preference(

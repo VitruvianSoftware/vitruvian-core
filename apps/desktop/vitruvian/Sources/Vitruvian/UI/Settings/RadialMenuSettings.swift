@@ -514,11 +514,7 @@ package struct RadialMenuSettings: View {
         if let title = WindowLayoutService.shared.shortcutConflictTitle(shortcut) {
             return title
         }
-        guard AppFeature.commandBar.isAvailable,
-              let row = CommandBarRowShortcuts.key(for: shortcut, in: CommandBarService.shared.rowShortcuts)
-        else { return nil }
-        return CommandBarService.shared.entryTitle(forStableKey: row)
-            ?? FeatureStrings.commandBar(l10n.language).rowShortcutsTitle
+        return ShortcutConflicts.title(for: shortcut)
     }
 
     private func requestAccessibilityIfNeeded(_ on: Bool) {

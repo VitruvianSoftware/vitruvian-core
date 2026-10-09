@@ -367,6 +367,16 @@ MUTATIONS = [
      "            } else if isWellFormed(id) {\n                result.append(id)\n            }\n",
      "            }\n",
      "a tile that is not showing now keeps its place in the saved order"),
+    ("a switched-off tool keeps its key", "platform",
+     "Sources/Vitruvian/Services/Platform/ToolShortcutRegistrar.swift",
+     "let id = CommandID(text), asking.contains(id),",
+     "let id = CommandID(text),",
+     "a shortcut whose command is not registered holds no key"),
+    ("a command that is not registered frees its combination", "platform",
+     "Sources/Vitruvian/Services/ShortcutConflicts.swift",
+     "        if let command = ToolCommandShortcuts.holder(of: shortcut, in: named, excluding: excludingCommand) {\n            return .toolCommand(command)\n        }\n",
+     "",
+     "a combination a tool command holds is taken"),
 ]
 
 
