@@ -27,5 +27,8 @@ Then `cd` into the printed path and work there.
 - The generated `user.bazelrc` is picked up via `.bazelrc`'s
   `try-import %workspace%/user.bazelrc` and is never committed (`user.bazelrc` is
   gitignored). Edit or delete it freely.
+- `--remove` finds the worktree by the branch checked out in it, so it works
+  for a worktree made by hand under any directory name. It exits non-zero and
+  removes nothing when no worktree has that branch.
 - `--remove` deletes the worktree but keeps the branch (`git branch -D <branch>`
   to drop the branch too).
