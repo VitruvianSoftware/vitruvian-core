@@ -105,7 +105,10 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianCore",
     target_compatible_with = MACOS_ONLY,
-    deps = [":FanControlKit"],
+    deps = [
+        ":FanControlKit",
+        "//apps/desktop/nexus-agent/macos:NexusAgentCore",
+    ],
 )
 
 # Design/ is the VitruvianDesign module: the AppKit and SwiftUI building blocks

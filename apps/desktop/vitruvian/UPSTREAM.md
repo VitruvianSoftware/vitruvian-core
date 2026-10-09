@@ -30,6 +30,22 @@ What that means in practice:
   public mirror is the natural way to do that, and the mirror has to be in place
   before the first build goes out.
 
+### Files released under MIT by their copyright holder
+
+The rule above stands for everything upstream wrote. Files that
+VitruvianSoftware wrote alone can be released under another licence by
+VitruvianSoftware. On 2026-10-08 James approved doing that for Nexus Agent so
+the standalone app and this feature build from one copy
+(`docs/superpowers/specs/2026-10-08-nexus-agent-shared-library-design.md`).
+
+| Date | File, as it was named here | Now at |
+|---|---|---|
+| 2026-10-08 | `Core/NexusAgent/NexusAgentSupport.swift` | `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/` |
+| 2026-10-08 | `Core/NexusAgent/NexusAgentQuickPromptLayout.swift` | `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/` |
+
+Each file was checked before it left: its header named VitruvianSoftware
+alone and its history has no upstream author. Not legal advice.
+
 ## Trademarks and release blockers
 
 Upstream's [`TRADEMARKS.md`](TRADEMARKS.md) reserves the Vorssaint name, logo,
@@ -2576,6 +2592,7 @@ is that notice. Add an entry for every change to upstream files.
   - `NexusAgentSessionSummary`: archived state now comes from agy's annotations (`annotations/<id>.pbtxt`, `archived:true`) instead of the index's `killed` column, which marks an aborted run; added `antigravityAnnotationIsArchived`, `antigravityAnnotation(_:archived:now:)`, `antigravityArchivedSessionIds(home:)` and `antigravitySummariesDatabase(home:)`, and `parse` takes the archived ids. The index and annotations are looked up in both of agy's data folders (`~/.gemini/antigravity`, `~/.gemini/antigravity-cli`);
   - `NexusAgentService`: `archiveSession` / `unarchiveSession` write the annotation (`archived:true` + `archival_status_timestamp`, other fields kept) and no longer touch `killed`;
   - `NexusAgentTests`: `sessionArchiving` covers annotation parsing, rewriting, and archive/unarchive against a throwaway home.
+- **2026-10-08**: Nexus Agent's pure rules (`NexusAgentSupport`, `NexusAgentQuickPromptLayout`) moved to the shared `NexusAgentCore` library in `apps/desktop/nexus-agent` and are re-exported from `Core/NexusAgentCoreExport.swift`. No behaviour change.
 
 ## Tracking and porting upstream
 

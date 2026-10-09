@@ -1,26 +1,43 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 VitruvianSoftware
+// Copyright (c) 2026 VitruvianSoftware
 //
-// Adapted from the standalone Nexus Agent app (apps/desktop/nexus-agent,
-// MIT, Copyright (c) 2026 VitruvianSoftware): its .env handling, agy
-// discovery and stream-json reading, rewritten as pure, testable rules.
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Shared by the standalone Nexus Agent app and the Nexus Agent feature of the
+// Vitruvian desktop app. Written for Vitruvian and released under MIT by its
+// copyright holder on 2026-10-08 (apps/desktop/vitruvian/UPSTREAM.md).
 
 import Foundation
 
 /// How much the agent may do without asking, as the bot's `AGY_APPROVAL_MODE`
 /// spells it. The raw values are what the bot reads.
-package enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
+public enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
     case yolo
     case acceptEdits = "accept-edits"
     case plan
     case standard = "default"
 
-    package var id: String { rawValue }
+    public var id: String { rawValue }
 
     /// The bot's own reading: an absent key means yolo, the retired Gemini
     /// name and the underscore spelling mean accept-edits, and anything it
     /// does not know (an empty value included) asks agy for its default.
-    package static func parse(_ raw: String?) -> NexusAgentApprovalMode {
+    public static func parse(_ raw: String?) -> NexusAgentApprovalMode {
         guard let raw else { return .yolo }
         switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
         case "yolo": return .yolo
@@ -31,7 +48,7 @@ package enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
     }
 
     /// The agy flags for the mode, exactly as the bot passes them.
-    package var agyArguments: [String] {
+    public var agyArguments: [String] {
         switch self {
         case .yolo: return ["--dangerously-skip-permissions"]
         case .acceptEdits: return ["--mode", "accept-edits"]
@@ -41,7 +58,7 @@ package enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
     }
 
     /// The Claude Code permission mode corresponding to this approval mode.
-    package var claudePermissionMode: String {
+    public var claudePermissionMode: String {
         switch self {
         case .yolo: return "bypassPermissions"
         case .acceptEdits: return "acceptEdits"
@@ -52,53 +69,53 @@ package enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
 }
 
 /// agy's `--effort`; `automatic` leaves the choice to agy.
-package enum NexusAgentEffort: String, CaseIterable, Identifiable {
+public enum NexusAgentEffort: String, CaseIterable, Identifiable {
     case automatic = ""
     case low, medium, high
 
-    package var id: String { rawValue }
+    public var id: String { rawValue }
 
-    package static func parse(_ raw: String?) -> NexusAgentEffort {
+    public static func parse(_ raw: String?) -> NexusAgentEffort {
         NexusAgentEffort(rawValue: (raw ?? "").trimmingCharacters(in: .whitespaces).lowercased())
             ?? .automatic
     }
 }
 
 /// Represents a CLI backend that can handle prompts in Quick Prompt.
-package struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable {
-    package var id: UUID
-    package var name: String
-    package var commandTemplate: String
-    package var isBuiltIn: Bool
+public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var commandTemplate: String
+    public var isBuiltIn: Bool
 
-    package init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool = true) {
+    public init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool = true) {
         self.id = id
         self.name = name
         self.commandTemplate = commandTemplate
         self.isBuiltIn = isBuiltIn
     }
 
-    package static let antigravity = NexusAgentCLIProvider(
+    public static let antigravity = NexusAgentCLIProvider(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         name: "Antigravity CLI",
         commandTemplate: "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions"
     )
 
-    package static let claude = NexusAgentCLIProvider(
+    public static let claude = NexusAgentCLIProvider(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
         name: "Claude Code",
         commandTemplate: "claude -p \"{prompt}\""
     )
 
-    package static let ollama = NexusAgentCLIProvider(
+    public static let ollama = NexusAgentCLIProvider(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
         name: "Ollama (claude)",
         commandTemplate: "ollama launch claude --model {model} -- -p \"{prompt}\""
     )
 
-    package static let builtIns: [NexusAgentCLIProvider] = [.antigravity, .claude, .ollama]
+    public static let builtIns: [NexusAgentCLIProvider] = [.antigravity, .claude, .ollama]
 
-    package var executableName: String {
+    public var executableName: String {
         if id == Self.claude.id { return "claude" }
         if id == Self.ollama.id { return "ollama" }
         return "agy"
@@ -107,16 +124,16 @@ package struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable
 
 /// The part of the bot's `.env` the Settings page edits. Everything else in
 /// the file (the timeout, a custom provider, comments) is left as it was.
-package struct NexusAgentConfiguration: Equatable {
-    package var botToken: String
-    package var allowedUserIDs: String
-    package var workingDirectory: String
-    package var approvalMode: NexusAgentApprovalMode
-    package var model: String
-    package var effort: NexusAgentEffort
-    package var activeProvider: NexusAgentCLIProvider
+public struct NexusAgentConfiguration: Equatable {
+    public var botToken: String
+    public var allowedUserIDs: String
+    public var workingDirectory: String
+    public var approvalMode: NexusAgentApprovalMode
+    public var model: String
+    public var effort: NexusAgentEffort
+    public var activeProvider: NexusAgentCLIProvider
 
-    package init(botToken: String = "",
+    public init(botToken: String = "",
                  allowedUserIDs: String = "",
                  workingDirectory: String = "",
                  approvalMode: NexusAgentApprovalMode = .yolo,
@@ -133,17 +150,17 @@ package struct NexusAgentConfiguration: Equatable {
     }
 
     /// The placeholder the bot's example file ships with.
-    package static let placeholderToken = "your_bot_token_here"
+    public static let placeholderToken = "your_bot_token_here"
 
     /// The bot refuses to start without a real token.
-    package var isConfigured: Bool {
+    public var isConfigured: Bool {
         let token = botToken.trimmingCharacters(in: .whitespaces)
         return !token.isEmpty && token != Self.placeholderToken
     }
 
     /// The user ids the bot will answer, in order and without blanks. Empty
     /// means the bot answers anyone who finds it.
-    package var allowedUserIDList: [String] {
+    public var allowedUserIDList: [String] {
         allowedUserIDs.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -151,27 +168,27 @@ package struct NexusAgentConfiguration: Equatable {
 }
 
 /// Reads and writes the bot's `.env` the way its `dotenv` loader reads it.
-package enum NexusAgentEnvFile {
-    package static let tokenKey = "TELEGRAM_BOT_TOKEN"
-    package static let allowedUsersKey = "ALLOWED_USER_IDS"
-    package static let workingDirectoryKey = "AGY_WORKING_DIR"
-    package static let approvalModeKey = "AGY_APPROVAL_MODE"
-    package static let modelKey = "AGY_MODEL"
-    package static let effortKey = "AGY_EFFORT"
+public enum NexusAgentEnvFile {
+    public static let tokenKey = "TELEGRAM_BOT_TOKEN"
+    public static let allowedUsersKey = "ALLOWED_USER_IDS"
+    public static let workingDirectoryKey = "AGY_WORKING_DIR"
+    public static let approvalModeKey = "AGY_APPROVAL_MODE"
+    public static let modelKey = "AGY_MODEL"
+    public static let effortKey = "AGY_EFFORT"
 
     /// Pre-migration names the bot still honours when the AGY_ one is absent.
     /// Writing the file supersedes them, so they are dropped then: left in
     /// place, `GEMINI_THINKING=true` would keep forcing high effort after the
     /// page said otherwise.
-    package static let legacyKeys = ["GEMINI_WORKING_DIR", "GEMINI_APPROVAL_MODE",
+    public static let legacyKeys = ["GEMINI_WORKING_DIR", "GEMINI_APPROVAL_MODE",
                                      "GEMINI_MODEL", "GEMINI_THINKING"]
 
     /// The keys the page owns, in the order a new file lists them.
-    package static let managedKeys = [tokenKey, allowedUsersKey, workingDirectoryKey,
+    public static let managedKeys = [tokenKey, allowedUsersKey, workingDirectoryKey,
                                       approvalModeKey, modelKey, effortKey]
 
     /// Every `KEY=value` pair, later lines winning as they do for dotenv.
-    package static func values(in content: String) -> [String: String] {
+    public static func values(in content: String) -> [String: String] {
         var values: [String: String] = [:]
         for line in content.components(separatedBy: .newlines) {
             if let pair = assignment(in: line) {
@@ -181,7 +198,7 @@ package enum NexusAgentEnvFile {
         return values
     }
 
-    package static func parse(_ content: String) -> NexusAgentConfiguration {
+    public static func parse(_ content: String) -> NexusAgentConfiguration {
         let values = values(in: content)
         func compat(_ name: String) -> String? {
             values["AGY_\(name)"] ?? values["GEMINI_\(name)"]
@@ -203,7 +220,7 @@ package enum NexusAgentEnvFile {
     /// comments, its order and every key the page does not own; a key it
     /// lacks is added at the end. With no file yet, the bot's template is
     /// written, so the result matches what the standalone app produced.
-    package static func render(_ configuration: NexusAgentConfiguration, over existing: String?) -> String {
+    public static func render(_ configuration: NexusAgentConfiguration, over existing: String?) -> String {
         let wanted = assignments(for: configuration)
         guard let existing, !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return template(wanted)
@@ -244,7 +261,7 @@ package enum NexusAgentEnvFile {
 
     /// `KEY=value` with dotenv's reading of the value: an optional `export`,
     /// surrounding quotes removed, and an unquoted value ending at ` #`.
-    package static func assignment(in line: String) -> (key: String, value: String)? {
+    public static func assignment(in line: String) -> (key: String, value: String)? {
         var text = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !text.hasPrefix("#") else { return nil }
         if text.hasPrefix("export ") {
@@ -267,7 +284,7 @@ package enum NexusAgentEnvFile {
     /// A value as it can be written on one line. Line breaks are removed so a
     /// pasted value can never smuggle in a second assignment, and a value
     /// dotenv would otherwise cut or trim is quoted.
-    package static func encoded(_ value: String) -> String {
+    public static func encoded(_ value: String) -> String {
         let flat = value.components(separatedBy: .newlines).joined()
         let needsQuotes = flat.contains("#") || flat.first == "\"" || flat.first == "'" || flat.first == "`"
             || flat != flat.trimmingCharacters(in: .whitespaces)
@@ -323,14 +340,14 @@ package enum NexusAgentEnvFile {
 }
 
 /// Where the bot and the agent CLI live, and how the agent is asked.
-package enum NexusAgentSupport {
+public enum NexusAgentSupport {
     /// The bot's standard home, shared with the standalone app.
-    package static func defaultBotDirectory(home: String) -> String {
+    public static func defaultBotDirectory(home: String) -> String {
         (home as NSString).appendingPathComponent(".config/nexus-agent")
     }
 
     /// A configured folder, with `~` expanded, or the standard home.
-    package static func botDirectory(configured: String, home: String) -> String {
+    public static func botDirectory(configured: String, home: String) -> String {
         let trimmed = configured.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return defaultBotDirectory(home: home) }
         if trimmed == "~" { return home }
@@ -341,17 +358,17 @@ package enum NexusAgentSupport {
     }
 
     /// The bot's entry point inside its folder.
-    package static let botEntryPoint = "src/bot.js"
+    public static let botEntryPoint = "src/bot.js"
 
     /// Install locations an app launched from Finder does not have on its
     /// PATH, in the order they are tried.
-    package static func searchDirectories(home: String) -> [String] {
+    public static func searchDirectories(home: String) -> [String] {
         [(home as NSString).appendingPathComponent(".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
     }
 
     /// `AGY_BIN` or named executable first, then the usual install locations. Nil when none is
     /// executable, so the page can say so instead of failing at run time.
-    package static func locateAgent(named binary: String = "agy", environment: [String: String], home: String,
+    public static func locateAgent(named binary: String = "agy", environment: [String: String], home: String,
                                     isExecutable: (String) -> Bool) -> String? {
         if binary == "agy", let explicit = environment["AGY_BIN"]?.trimmingCharacters(in: .whitespaces),
            !explicit.isEmpty, isExecutable(explicit) {
@@ -363,7 +380,7 @@ package enum NexusAgentSupport {
     }
 
     /// Node from Homebrew or the official installer. macOS ships none.
-    package static func locateNode(home: String, isExecutable: (String) -> Bool) -> String? {
+    public static func locateNode(home: String, isExecutable: (String) -> Bool) -> String? {
         ["/opt/homebrew/bin/node", "/usr/local/bin/node",
          (home as NSString).appendingPathComponent(".local/bin/node")]
             .first(where: isExecutable)
@@ -371,7 +388,7 @@ package enum NexusAgentSupport {
 
     /// The child's environment: the app's own, the install locations put in
     /// front of PATH, and colour codes off so logs stay readable.
-    package static func childEnvironment(base: [String: String], home: String) -> [String: String] {
+    public static func childEnvironment(base: [String: String], home: String) -> [String: String] {
         var environment = base
         let current = base["PATH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         let existing = Set(current.split(separator: ":").map(String.init))
@@ -382,14 +399,14 @@ package enum NexusAgentSupport {
     }
 
     /// Check whether a folder contains a .git directory.
-    package static func isGitRepo(at url: URL) -> Bool {
+    public static func isGitRepo(at url: URL) -> Bool {
         let gitDir = url.appendingPathComponent(".git")
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: gitDir.path, isDirectory: &isDirectory)
     }
 
     /// One Quick Prompt turn: formatted per active provider.
-    package static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
+    public static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
                                        conversationID: String?,
                                        planMode: Bool = false,
                                        worktreeMode: Bool = false) -> [String] {
@@ -449,19 +466,19 @@ package enum NexusAgentSupport {
     }
 
     /// The last `count` non-empty lines of a log.
-    package static func tail(_ text: String, count: Int = 20) -> [String] {
+    public static func tail(_ text: String, count: Int = 20) -> [String] {
         guard count > 0 else { return [] }
         return Array(text.components(separatedBy: .newlines).filter { !$0.isEmpty }.suffix(count))
     }
 
     /// A PID file's process id, or nil when it holds anything else.
-    package static func processID(fromPIDFile text: String) -> Int32? {
+    public static func processID(fromPIDFile text: String) -> Int32? {
         guard let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0 else { return nil }
         return pid
     }
 
     /// `agy models` prints a "Fetching…" line, then `id<TAB>name` rows.
-    package static func parseModels(_ raw: String) -> [(id: String, name: String)] {
+    public static func parseModels(_ raw: String) -> [(id: String, name: String)] {
         raw.split(separator: "\n").compactMap { line in
             let text = line.trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty, !text.lowercased().hasPrefix("fetching") else { return nil }
@@ -473,20 +490,20 @@ package enum NexusAgentSupport {
 }
 
 /// An interactive tool execution approval request.
-package struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
-    package let id: String
-    package let toolName: String
-    package let commandOrPath: String
-    package var status: Status
+public struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let toolName: String
+    public let commandOrPath: String
+    public var status: Status
 
-    package enum Status: String, Sendable, Equatable {
+    public enum Status: String, Sendable, Equatable {
         case pending
         case approved
         case denied
         case sessionAllowed = "session_allowed"
     }
 
-    package init(
+    public init(
         id: String = UUID().uuidString,
         toolName: String,
         commandOrPath: String,
@@ -499,16 +516,16 @@ package struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
     }
 }
 
-package struct NexusAgentTurnMetrics: Equatable {
-    package var durationMs: Int?
-    package var inputTokens: Int?
-    package var outputTokens: Int?
-    package var cachedTokens: Int?
-    package var numTurns: Int?
-    package var toolCalls: Int?
-    package var totalCostUSD: Double?
+public struct NexusAgentTurnMetrics: Equatable {
+    public var durationMs: Int?
+    public var inputTokens: Int?
+    public var outputTokens: Int?
+    public var cachedTokens: Int?
+    public var numTurns: Int?
+    public var toolCalls: Int?
+    public var totalCostUSD: Double?
 
-    package init(
+    public init(
         durationMs: Int? = nil,
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
@@ -529,7 +546,7 @@ package struct NexusAgentTurnMetrics: Equatable {
 
 /// One line of `agy --output-format stream-json` or Claude Code stream-json, reduced to what the Quick
 /// Prompt shows.
-package enum NexusAgentStreamEvent: Equatable {
+public enum NexusAgentStreamEvent: Equatable {
     case started(conversationID: String?)
     case text(String)
     case tool(name: String, finished: Bool)
@@ -537,7 +554,7 @@ package enum NexusAgentStreamEvent: Equatable {
     case finished(status: String, response: String?, error: String?, conversationID: String?, metrics: NexusAgentTurnMetrics? = nil)
 
     /// Nil for blank lines, non-JSON noise and events the prompt ignores.
-    package static func parse(_ line: String) -> NexusAgentStreamEvent? {
+    public static func parse(_ line: String) -> NexusAgentStreamEvent? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -666,12 +683,12 @@ package enum NexusAgentStreamEvent: Equatable {
 
 /// Splits a byte stream into complete lines, holding a partial last line
 /// (and a UTF-8 sequence cut between reads) until the rest arrives.
-package struct NexusAgentLineBuffer {
+public struct NexusAgentLineBuffer {
     private var pending = Data()
 
-    package init() {}
+    public init() {}
 
-    package mutating func append(_ data: Data) -> [String] {
+    public mutating func append(_ data: Data) -> [String] {
         pending.append(data)
         var lines: [String] = []
         while let newline = pending.firstIndex(of: 0x0A) {
@@ -683,7 +700,7 @@ package struct NexusAgentLineBuffer {
     }
 
     /// What is left once the stream has ended.
-    package mutating func finish() -> String? {
+    public mutating func finish() -> String? {
         defer { pending = Data() }
         guard !pending.isEmpty else { return nil }
         return String(decoding: pending, as: UTF8.self)
@@ -691,15 +708,15 @@ package struct NexusAgentLineBuffer {
 }
 
 /// An active subagent executing in the current session.
-package struct NexusAgentActiveSubagent: Identifiable, Equatable, Sendable {
-    package let id: String
-    package let typeName: String
-    package let role: String
-    package let prompt: String
-    package let model: String
-    package let isRunning: Bool
+public struct NexusAgentActiveSubagent: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let typeName: String
+    public let role: String
+    public let prompt: String
+    public let model: String
+    public let isRunning: Bool
 
-    package init(
+    public init(
         id: String,
         typeName: String,
         role: String,
@@ -717,13 +734,13 @@ package struct NexusAgentActiveSubagent: Identifiable, Equatable, Sendable {
 }
 
 /// A tool execution step within an agent response.
-package struct NexusAgentToolStep: Identifiable, Equatable, Sendable {
-    package let id: String
-    package let title: String
-    package let detail: String?
-    package let isFinished: Bool
+public struct NexusAgentToolStep: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let detail: String?
+    public let isFinished: Bool
 
-    package init(
+    public init(
         id: String = UUID().uuidString,
         title: String,
         detail: String? = nil,
