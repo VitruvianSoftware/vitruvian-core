@@ -176,9 +176,9 @@ func concurrencyGroupExpr(phase int) string {
 // divergent pin here would be invisible: nobody reviews a generated file's
 // action versions by eye.
 const (
-	checkoutPin       = "actions/checkout@v7.0.1"
+	checkoutPin       = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
 	setupBazelAction  = "./.github/actions/setup-bazel"
-	uploadArtifactPin = "actions/upload-artifact@v7"
+	uploadArtifactPin = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
 	// selectXcodeAction pins the Xcode the macOS pipeline unit builds with.
 	selectXcodeAction = "./.github/actions/select-xcode"
 )
