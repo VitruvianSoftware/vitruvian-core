@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.34.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.2...vitruvian-v3.34.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **vitruvian:** say when the typed mouse command path is ignored ([#2968](https://github.com/VitruvianSoftware/vitruvian-core/issues/2968)) ([8c484e0](https://github.com/VitruvianSoftware/vitruvian-core/commit/8c484e058d9749f0393cd0201c6b90ba91ef10a8))
+
 ## [3.34.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.1...vitruvian-v3.34.2) (2026-10-09)
 
 
