@@ -42,26 +42,37 @@ UNDER_TEST="${SCRIPT_DIR}/relevant-paths.sh"
 # below always describe what CI actually does.
 REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)"
 CI_YAML="${REPO_ROOT}/.github/workflows/ci.yaml"
-FOUND="$(grep -cE "^\s+IGNORE_REGEX:" "${CI_YAML}" || true)"
+FOUND="$(grep -cE "^\s+ignore-regex:" "${CI_YAML}" || true)"
 if [ "${FOUND}" != "1" ]; then
-  echo "relevant-paths_test: expected exactly 1 IGNORE_REGEX in ci.yaml, found ${FOUND}." >&2
+  echo "relevant-paths_test: expected exactly 1 ignore-regex in ci.yaml, found ${FOUND}." >&2
   echo "  If another lane now narrows its ignore set too, extend this test to cover it." >&2
   exit 1
 fi
-LICENSE_IGNORE_REGEX="$(grep -E "^\s+IGNORE_REGEX:" "${CI_YAML}" | sed -E "s/^[^']*'(.*)'[[:space:]]*$/\1/")"
-echo "relevant-paths_test: license-check IGNORE_REGEX from ci.yaml = '${LICENSE_IGNORE_REGEX}'"
+LICENSE_IGNORE_REGEX="$(grep -E "^\s+ignore-regex:" "${CI_YAML}" | sed -E "s/^[^']*'(.*)'[[:space:]]*$/\1/")"
+echo "relevant-paths_test: license-check ignore-regex from ci.yaml = '${LICENSE_IGNORE_REGEX}'"
 
 # tidy-check narrows it too, for a different reason: //:tidy formats files
 # wherever they live, so only the file types it cannot touch may be skipped.
 TIDY_YAML="${REPO_ROOT}/.github/workflows/tidy-check.yaml"
-FOUND="$(grep -cE "^\s+IGNORE_REGEX:" "${TIDY_YAML}" || true)"
+FOUND="$(grep -cE "^\s+ignore-regex:" "${TIDY_YAML}" || true)"
 if [ "${FOUND}" != "1" ]; then
-  echo "relevant-paths_test: expected exactly 1 IGNORE_REGEX in tidy-check.yaml, found ${FOUND}." >&2
+  echo "relevant-paths_test: expected exactly 1 ignore-regex in tidy-check.yaml, found ${FOUND}." >&2
   exit 1
 fi
-TIDY_IGNORE_REGEX="$(grep -E "^\s+IGNORE_REGEX:" "${TIDY_YAML}" | sed -E "s/^[^']*'(.*)'[[:space:]]*$/\1/")"
-echo "relevant-paths_test: tidy-check IGNORE_REGEX from tidy-check.yaml = '${TIDY_IGNORE_REGEX}'"
+TIDY_IGNORE_REGEX="$(grep -E "^\s+ignore-regex:" "${TIDY_YAML}" | sed -E "s/^[^']*'(.*)'[[:space:]]*$/\1/")"
+echo "relevant-paths_test: tidy-check ignore-regex from tidy-check.yaml = '${TIDY_IGNORE_REGEX}'"
 echo
+
+# Workflows reach the script through .github/actions/changed-paths-gate, which
+# owns the "which commit do I diff against" expressions for every event. A
+# workflow that calls the script directly has to copy those expressions, and a
+# copy can go stale or miss an event without anything failing.
+DIRECT_CALLS="$(grep -rnE '^[[:space:]]*run:.*tools/ci/relevant-paths\.sh' "${REPO_ROOT}/.github/workflows" || true)"
+if [ -n "${DIRECT_CALLS}" ]; then
+  echo "relevant-paths_test: a workflow runs relevant-paths.sh directly; use ./.github/actions/changed-paths-gate instead:" >&2
+  echo "${DIRECT_CALLS}" >&2
+  exit 1
+fi
 
 PASS=0
 FAIL=0
