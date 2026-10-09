@@ -23,6 +23,7 @@ enum ToolPlatformTests {
         sampleTool(suite)
         tiles(suite)
         shortcutSurface(suite)
+        shortcutMap(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -495,5 +496,38 @@ enum ToolPlatformTests {
                      "an id saved twice is kept once")
         suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: [], previous: [], isWellFormed: wellFormed).isEmpty,
                      "nothing showing and nothing saved saves nothing")
+    }
+
+    static func shortcutMap(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let bare = GlobalShortcut(keyCode: 11, modifiers: [])
+
+        var map = ShortcutMap.setting(optionB, for: "a", in: [:], limit: 2)
+        suite.expect(map == ["a": optionB] && ShortcutMap.key(for: optionB, in: map) == "a",
+                     "a key gets its shortcut, and the shortcut finds its key")
+        suite.expect(ShortcutMap.decode(ShortcutMap.encode(map)) == map, "a map reads back what it wrote")
+        suite.expect(ShortcutMap.decode(nil).isEmpty && ShortcutMap.decode("not json").isEmpty
+                         && ShortcutMap.decode(#"{"a":"nonsense"}"#).isEmpty,
+                     "what cannot be read is no shortcut, and nothing crashes")
+
+        map = ShortcutMap.setting(optionB, for: "b", in: map, limit: 2)
+        suite.expect(map == ["b": optionB], "a combination given to another key moves to it")
+        map = ShortcutMap.setting(optionN, for: "a", in: map, limit: 2)
+        suite.expect(ShortcutMap.setting(GlobalShortcut(keyCode: 0, modifiers: [.control]), for: "c", in: map, limit: 2) == map
+                         && !ShortcutMap.hasRoom(for: "c", in: map, limit: 2)
+                         && ShortcutMap.hasRoom(for: "a", in: map, limit: 2),
+                     "a full map takes no new key, and an existing key can still change")
+        suite.expect(ShortcutMap.setting(nil, for: "a", in: map, limit: 2) == ["b": optionB],
+                     "clearing a key removes it")
+
+        suite.expect(ShortcutMap.assignmentIssue(bare, for: "a", in: map, limit: 2) == .invalid,
+                     "a bare key is refused: it would take that key from every app")
+        suite.expect(ShortcutMap.assignmentIssue(optionB, for: "a", in: map, limit: 2) == .occupied("b"),
+                     "a combination another key holds is refused, and names its holder")
+        suite.expect(ShortcutMap.assignmentIssue(GlobalShortcut(keyCode: 0, modifiers: [.control]), for: "c", in: map, limit: 2) == .full,
+                     "a full map says so")
+        suite.expect(ShortcutMap.assignmentIssue(optionN, for: "a", in: map, limit: 2) == nil,
+                     "a key may keep the combination it has")
     }
 }
