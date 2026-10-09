@@ -419,6 +419,7 @@ ROWS_ROOT=""
 ROWS_CHECKOUT=""
 ROWS_DEPENDABOT_ACTIONS=""
 ROWS_ACTION_PINS=""
+ROWS_GITLEAKS=""
 ROWS_TECHDOCS=""
 ROWS_PROJKIND=""
 
@@ -458,6 +459,7 @@ emit() {
     checkout)     ROWS_CHECKOUT="${ROWS_CHECKOUT}${_row}" ;;
     dependabot_actions) ROWS_DEPENDABOT_ACTIONS="${ROWS_DEPENDABOT_ACTIONS}${_row}" ;;
     action_pins)  ROWS_ACTION_PINS="${ROWS_ACTION_PINS}${_row}" ;;
+    gitleaks)     ROWS_GITLEAKS="${ROWS_GITLEAKS}${_row}" ;;
     techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
     projkind)     ROWS_PROJKIND="${ROWS_PROJKIND}${_row}" ;;
 
@@ -3695,6 +3697,78 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: secret-scan allowlist paths are live.
+#
+# .gitleaks.toml exempts a few files that look like secrets but are safe by
+# construction. Each exemption is a path regex. When the file moves and the
+# regex does not, the exemption silently stops applying. The PR scan only reads
+# the commits a change adds, so nothing notices -- until a full-tree scan (a
+# manual run of Supply Chain) reports the file as a leaked key. That is how
+# the Chrome extension manifest surfaced: it moved under apps/suites/ and the
+# allowlist still said ^tabula/extension/.
+#
+# So: every `paths` regex must match at least one file in the tree. A root
+# without a .gitleaks.toml has nothing to check and reports nothing.
+# ---------------------------------------------------------------------------
+check_gitleaks_allowlist_paths() {
+  [ -f "$ROOT/.gitleaks.toml" ] || return 0
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, re
+
+root = os.environ.get("ROOT", ".")
+text = open(os.path.join(root, ".gitleaks.toml"), encoding="utf-8").read()
+
+# `paths = ['''re''', ...]`, possibly over several lines. Comment lines are
+# dropped first so a commented-out example is not treated as live config.
+live = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+patterns = []
+for block in re.findall(r"(?m)^\s*paths\s*=\s*\[(.*?)\]", live, re.S):
+    patterns += re.findall(r"'''(.*?)'''", block, re.S)
+
+skip = {".git", "node_modules", ".cache", "dist", "build-output", ".pio"}
+files = []
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith("bazel-")]
+    for f in filenames:
+        files.append(os.path.relpath(os.path.join(dirpath, f), root).replace(os.sep, "/"))
+
+print(f"TOTAL\t{len(patterns)}")
+for pat in patterns:
+    try:
+        rx = re.compile(pat)
+    except re.error as e:
+        print(f"FAIL\t{pat}\tinvalid regex")
+        continue
+    if not any(rx.search(f) for f in files):
+        print(f"FAIL\t{pat}\tmatches no file")
+PY
+)"
+
+  local total_seen=0 has_failures=0
+  while IFS="$(printf '\t')" read -r status pat found; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL) total_seen="$pat" ;;
+      FAIL)
+        emit "gitleaks" "$GLYPH_FAIL" "$C_RED" ".gitleaks.toml" "$found" "matches a file" \
+          "allowlist path $pat" "point the path at where the file lives now, or delete the exemption"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_failures" -eq 0 ]; then
+    emit "gitleaks" "$GLYPH_OK" "$C_GREEN" ".gitleaks.toml" "${total_seen} path(s)" "matches a file" \
+      "every allowlisted path still matches a file" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -3801,6 +3875,7 @@ check_lab_hostnames_served
 check_checkout_credentials
 check_dependabot_action_coverage
 check_action_sha_pins
+check_gitleaks_allowlist_paths
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -3833,6 +3908,7 @@ print_group "Lab hostnames (every published *.lab.ipv1337.dev name has a Gateway
 print_group "Checkout credentials firewall (#1040: persist-credentials: false on read-only checkouts)" "$ROWS_CHECKOUT"
 print_group "Dependabot actions coverage (#814: exported mirror workflows in dependabot.yml)" "$ROWS_DEPENDABOT_ACTIONS"
 print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"
+print_group "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)" "$ROWS_GITLEAKS"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Chart-owned CRDs (turning a chart's CRD install off lets Argo CD prune them, deleting every object)" "$ROWS_CRDOWN"
