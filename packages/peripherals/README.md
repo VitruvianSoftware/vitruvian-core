@@ -30,8 +30,9 @@ Pick one; each gives you the same `gravastar-mouse` command.
 `publish.sh` builds and uploads these: the generated
 `.github/workflows/delivery-gravastar-mouse.yaml` runs it for every push to
 `main` (beta) and every release (production), and a release also updates
-`Formula/gravastar-mouse.rb` in `VitruvianSoftware/homebrew-tap` when the
-`HOMEBREW_TAP_TOKEN` secret is set. release-please cuts the releases
+`Formula/gravastar-mouse.rb` in `VitruvianSoftware/homebrew-tap`, pushed with a
+`vitruvian-copybara-sync` App token that the release job mints for that one
+repo. release-please cuts the releases
 (`release-please-config.json`, `.github/workflows/gravastar-mouse-release.yaml`).
 
 ## Use it

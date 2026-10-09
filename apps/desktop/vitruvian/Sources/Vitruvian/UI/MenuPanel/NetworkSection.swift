@@ -82,7 +82,7 @@ package struct NetworkSection: View {
         }
     }
 
-    private enum Block: String, PanelOrderItem { case speed, apps, totals, addresses, test }
+    private enum Block: String, PanelOrderItem, CaseIterable { case speed, apps, totals, addresses, test }
 
     private var visibleBlocks: [Block] {
         orderedBlocks.filter(isVisible)

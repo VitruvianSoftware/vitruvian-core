@@ -195,6 +195,14 @@ swift_library(
 
 # --- The app ------------------------------------------------------------------
 
+# A development build that registers the sample tool (Services/Platform/
+# SampleTool.swift), a tool outside every fixed list, so the surfaces can be
+# checked by hand:  --define=vitruvian_sample_tool=true
+config_setting(
+    name = "sample_tool",
+    define_values = {"vitruvian_sample_tool": "true"},
+)
+
 # Everything not yet in a module of its own. main.swift holds top-level code,
 # which rules_swift allows by not passing -parse-as-library when a main.swift
 # is present.
@@ -205,6 +213,10 @@ swift_library(
         ["Sources/Vitruvian/**/*.swift"],
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
     ),
+    copts = select({
+        ":sample_tool": ["-DVITRUVIAN_SAMPLE_TOOL"],
+        "//conditions:default": [],
+    }),
     # Swift 6 language mode since REFACTOR.md step 6zzj. Each of its closures
     # that checks for the main thread at run time runs there.
     features = ["swift.enable_v6"],

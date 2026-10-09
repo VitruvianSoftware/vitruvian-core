@@ -491,7 +491,7 @@ final class RecordingIslandServices: NotchIslandServices {
     var keepsCameraPrompt = false
     var activeUtility: QuickLauncherItem?
     var editingTools = false
-    var visibleTools: [QuickLauncherItem] = []
+    var visibleToolCount = 0
     var mediaPresented = false
     var mediaContentHeight: CGFloat?
     var offersMediaDrop = false

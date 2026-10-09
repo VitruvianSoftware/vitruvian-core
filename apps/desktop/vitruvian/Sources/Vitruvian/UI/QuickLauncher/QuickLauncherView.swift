@@ -12,11 +12,13 @@ package struct QuickLauncherView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
     @ObservedObject private var features = FeatureRuntime.shared
+    /// Redraws the grid when a tool registers, leaves, or is switched on or off.
+    @ObservedObject private var registry = ToolRegistry.shared
     @ObservedObject private var keepAwake = KeepAwakeManager.shared
     @ObservedObject private var micMute = MicMuteService.shared
     @ObservedObject private var recorder = ScreenRecorderService.shared
-    @State private var hoveredItem: QuickLauncherItem?
-    @State private var draggingItem: QuickLauncherItem?
+    @State private var hoveredItem: QuickLauncherTile?
+    @State private var draggingItem: QuickLauncherTile?
     /// Mirrors launcher.editingOptionsItem: the service owns it so Esc can
     /// close the card before leaving edit mode.
     private var optionsItem: QuickLauncherItem? { launcher.editingOptionsItem }
@@ -43,7 +45,7 @@ package struct QuickLauncherView: View {
             }
             if let utility = launcher.activeUtility, utility.feature.isAvailable {
                 hostedUtility(utility)
-            } else if launcher.visibleItems.isEmpty && !launcher.isEditing {
+            } else if launcher.visibleTiles.isEmpty && !launcher.isEditing {
                 emptyState
             } else {
                 grid
@@ -52,7 +54,7 @@ package struct QuickLauncherView: View {
                let optionsItem, hasQuickOptions(optionsItem) {
                 optionsCard(optionsItem)
             }
-            if launcher.activeUtility == nil, launcher.isEditing, !launcher.hiddenItems.isEmpty {
+            if launcher.activeUtility == nil, launcher.isEditing, !launcher.hiddenTiles.isEmpty {
                 hiddenTray
             }
             if notchSize == nil { footer }
@@ -62,6 +64,7 @@ package struct QuickLauncherView: View {
         .background { if notchSize == nil { HUDBackdrop(cornerRadius: 22, contrast: .high) } }
         .clipShape(RoundedRectangle(cornerRadius: notchSize == nil ? 22 : 0, style: .continuous))
         .onChange(of: features.revision, initial: true) { launcher.refreshAvailability() }
+        .onChange(of: registry.revision) { launcher.refreshAvailability() }
         .onChange(of: launcher.presentationID) { _, _ in
             hoveredItem = nil
             draggingItem = nil
@@ -199,23 +202,23 @@ package struct QuickLauncherView: View {
     /// tile in view.
     @ViewBuilder private var grid: some View {
         if let notchSize, !launcher.isEditing {
-            let rows = NotchLayout.railRows(count: launcher.visibleItems.count,
+            let rows = NotchLayout.railRows(count: launcher.visibleTiles.count,
                                             perRow: NotchLayout.railCapacity(width: notchSize.width, itemWidth: NotchLayout.toolWidth,
                                                                              spacing: NotchLayout.toolSpacing),
                                             rowHeight: NotchLayout.toolHeight, spacing: NotchLayout.toolSpacing, height: notchSize.height)
-            NotchRail(items: launcher.visibleItems, rows: rows, itemWidth: NotchLayout.toolWidth, width: notchSize.width,
+            NotchRail(items: launcher.visibleTiles, rows: rows, itemWidth: NotchLayout.toolWidth, width: notchSize.width,
                       spacing: NotchLayout.toolSpacing, rowSpacing: NotchLayout.toolSpacing,
                       scrollTarget: launcher.keyboardIndex.flatMap { index in
-                          launcher.visibleItems.indices.contains(index) ? launcher.visibleItems[index].id : nil
+                          launcher.visibleTiles.indices.contains(index) ? launcher.visibleTiles[index].id : nil
                       }) { item in
                 cell(item).frame(height: NotchLayout.toolHeight)
             }
         } else {
             LazyVGrid(columns: columns, spacing: notchSize == nil ? 10 : 6) {
-                ForEach(launcher.visibleItems) { item in
+                ForEach(launcher.visibleTiles) { item in
                     PanelReorderableItem(item: item,
                                          isEnabled: launcher.isEditing,
-                                         order: launcher.itemOrderBinding,
+                                         order: launcher.tileOrderBinding,
                                          dragging: $draggingItem) {
                         cell(item)
                     }
@@ -225,8 +228,8 @@ package struct QuickLauncherView: View {
     }
 
     @ViewBuilder
-    private func cell(_ item: QuickLauncherItem) -> some View {
-        let index = launcher.visibleItems.firstIndex(of: item)
+    private func cell(_ item: QuickLauncherTile) -> some View {
+        let index = launcher.visibleTiles.firstIndex(of: item)
         let isSelected = !launcher.isEditing && index != nil && index == launcher.selectedIndex
         let isHovered = hoveredItem == item
 
@@ -237,7 +240,7 @@ package struct QuickLauncherView: View {
                 // sits outside the tile's hit area.
                 if hasQuickOptions(item) {
                     withAnimation(.easeOut(duration: 0.15)) {
-                        launcher.editingOptionsItem = optionsItem == item ? nil : item
+                        launcher.editingOptionsItem = optionsItem == item.builtin ? nil : item.builtin
                     }
                 }
             } else {
@@ -271,7 +274,7 @@ package struct QuickLauncherView: View {
                         if hasQuickOptions(item) {
                             Image(systemName: "gearshape.circle.fill")
                                 .font(.system(size: 14))
-                                .foregroundStyle(.white, optionsItem == item ? Color.accentColor : Color.secondary)
+                                .foregroundStyle(.white, optionsItem == item.builtin ? Color.accentColor : Color.secondary)
                                 .frame(width: notchSize == nil ? 46 : 32, height: notchSize == nil ? 46 : 32, alignment: .topLeading)
                                 .offset(x: -7, y: -7)
                                 .help(l10n.s.menuSettings)
@@ -338,7 +341,7 @@ package struct QuickLauncherView: View {
                 .foregroundStyle(.secondary)
                 .tracking(0.5)
             FlowLayoutLite(spacing: 6) {
-                ForEach(launcher.hiddenItems) { item in
+                ForEach(launcher.hiddenTiles) { item in
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) {
                             launcher.setHidden(item, false)
@@ -474,6 +477,43 @@ package struct QuickLauncherView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(notchSize != nil ? .black : Color.primary.opacity(0.05))
         )
+    }
+
+    // MARK: - Tile metadata
+
+    private func title(for tile: QuickLauncherTile) -> String {
+        switch tile {
+        case .builtin(let item): return title(for: item)
+        case .command(let id):
+            return registry.title(for: id, language: l10n.language) ?? registry.command(id)?.title ?? id.name
+        }
+    }
+
+    private func icon(for tile: QuickLauncherTile) -> String {
+        switch tile {
+        case .builtin(let item): return icon(for: item)
+        case .command(let id): return registry.command(id)?.symbol ?? "puzzlepiece.extension"
+        }
+    }
+
+    /// A command tile has no state of its own to show.
+    private func isActive(_ tile: QuickLauncherTile) -> Bool {
+        tile.builtin.map { isActive($0) } ?? false
+    }
+
+    private func iconColor(_ tile: QuickLauncherTile) -> Color {
+        tile.builtin.map { iconColor($0) } ?? .primary.opacity(0.85)
+    }
+
+    private func iconBackground(_ tile: QuickLauncherTile, isSelected: Bool, isHovered: Bool) -> Color {
+        if let item = tile.builtin { return iconBackground(item, isSelected: isSelected, isHovered: isHovered) }
+        if notchSize != nil { return .white.opacity(isSelected || isHovered ? 0.14 : 0.065) }
+        return Color.primary.opacity(isSelected || isHovered ? 0.1 : 0.07)
+    }
+
+    /// Only the app's own tiles have an options card.
+    private func hasQuickOptions(_ tile: QuickLauncherTile) -> Bool {
+        tile.builtin.map { hasQuickOptions($0) } ?? false
     }
 
     // MARK: - Item metadata

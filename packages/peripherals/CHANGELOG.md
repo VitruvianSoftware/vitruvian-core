@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/gravastar-mouse-v0.1.1...gravastar-mouse-v0.1.2) (2026-10-09)
+
+
+### Features
+
+* **peripherals:** push the gravastar-mouse Homebrew formula with an App token ([#2956](https://github.com/VitruvianSoftware/vitruvian-core/issues/2956)) ([f831ec6](https://github.com/VitruvianSoftware/vitruvian-core/commit/f831ec643dc787c76e8b9ae5c203bdea25f99a8d))
+
 ## [0.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/gravastar-mouse-v0.1.0...gravastar-mouse-v0.1.1) (2026-10-09)
 
 

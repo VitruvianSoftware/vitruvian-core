@@ -502,7 +502,6 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: bash packages/peripherals/publish.sh
 
   # PROMOTION rung 1/1 — release-gated on a gravastar-mouse-v* release, never reached by a push.
@@ -528,6 +527,14 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
+      - name: Mint App token for the Homebrew tap
+        id: tap-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: homebrew-tap
+
       - name: Build and publish gravastar-mouse
         env:
           GRADE: production
@@ -535,7 +542,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
         run: bash packages/peripherals/publish.sh
 
   # ======== unit: oauth-user-inspector → development → nonproduction → production ========

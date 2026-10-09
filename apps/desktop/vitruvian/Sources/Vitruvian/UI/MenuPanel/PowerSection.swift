@@ -58,7 +58,7 @@ package struct PowerSection: View {
         }
     }
 
-    private enum Block: String, PanelOrderItem { case charge, temperature, system, adapter, battery, remaining, health, peripherals }
+    private enum Block: String, PanelOrderItem, CaseIterable { case charge, temperature, system, adapter, battery, remaining, health, peripherals }
 
     private var orderedBlocks: [Block] {
         _ = powerOrderRaw

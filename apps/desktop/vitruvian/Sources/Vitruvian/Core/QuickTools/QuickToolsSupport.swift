@@ -81,6 +81,43 @@ package enum QuickToolsSupport {
         ids.sorted().joined(separator: ",")
     }
 
+    /// The order to show `live` ids in. The saved order places every id it
+    /// names; an id it does not name goes after those, in the order given.
+    /// Ids the saved order names that are not live are passed over.
+    package static func tileOrder(live: [String], saved: [String]) -> [String] {
+        let rank = Dictionary(saved.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        return live.enumerated().sorted { left, right in
+            switch (rank[left.element], rank[right.element]) {
+            case let (leftRank?, rightRank?): return leftRank < rightRank
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return left.offset < right.offset
+            }
+        }.map(\.element)
+    }
+
+    /// The order to save after the person rearranged the tiles that are
+    /// showing. An id in the previous order that is not showing now (its tool
+    /// is switched off, or has not registered yet) keeps its place, so its
+    /// tile returns where it was left. An id that is not well formed is
+    /// dropped, and so is a repeat.
+    package static func savedTileOrder(afterMoving live: [String], previous saved: [String],
+                                       isWellFormed: (String) -> Bool) -> [String] {
+        let showing = Set(live)
+        var moved = live.makeIterator()
+        var seen = Set<String>()
+        var result: [String] = []
+        for id in saved where seen.insert(id).inserted {
+            if showing.contains(id) {
+                if let next = moved.next() { result.append(next) }
+            } else if isWellFormed(id) {
+                result.append(id)
+            }
+        }
+        while let next = moved.next() { result.append(next) }
+        return result
+    }
+
     /// One recognized line of screen text with its normalized position
     /// (bottom-left origin, as Vision reports it).
     package struct RecognizedLine {

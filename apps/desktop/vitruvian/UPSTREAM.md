@@ -125,6 +125,19 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: Tool registry, part 2 (`docs/superpowers/plans/2026-10-08-vitruvian-tool-registry-part-2.md`):
+  - `Services/FeatureRuntime.swift`: a change of hub availability also tells `ToolRegistry`, so views that list commands redraw.
+  - `main.swift`: registers the sample tool, in a build made with `--define=vitruvian_sample_tool=true` only.
+  - `Services/MenuPanel/PanelLayoutStore.swift`: `PanelOrderItem` no longer implies `CaseIterable`; `rawItemOrder` and `setRawItemOrder` read and write a saved order without dropping ids no enum names. Each conforming enum now states `CaseIterable` itself (`Services/QuickTools/QuickTogglesService.swift`, `UI/MenuPanel/DiskSection.swift`, `UI/MenuPanel/MenuPanelView.swift`, `UI/MenuPanel/NetworkSection.swift`, `UI/MenuPanel/PowerSection.swift`, `UI/MenuPanel/SystemSection.swift`).
+  - `Core/QuickTools/QuickToolsSupport.swift`: `tileOrder` and `savedTileOrder`, the Quick panel's order with tiles no enum names.
+  - `Services/QuickTools/QuickLauncherService.swift`: the grid holds `QuickLauncherTile`s, the app's own tiles plus registry commands no tile runs; a reorder keeps the place of a tile that is not showing.
+  - `UI/QuickLauncher/QuickLauncherView.swift`: draws a command tile from the registry and redraws when the registry changes.
+  - `Services/Notch/NotchIslandServices.swift`, `Services/Notch/NotchService.swift`, `Services/Notch/NotchEventBindings.swift`: the island counts tiles of both kinds and resizes when the registry changes.
+  - `Tests/QuickLauncherActionTests.swift`: `commandTileContracts` covers command tiles in the Quick panel (listing, running, hiding, a reorder that keeps a tile it cannot show) and `savedBuiltinOrderContracts` covers a saved order of the app's own tiles reading back unchanged.
+  - `Services/RadialMenu/RadialMenuService.swift`: the wheel's "what can run" rule is a static function that takes its registry.
+  - `UI/RadialMenu/RadialMenuView.swift`: `resolvedSymbolName` draws a command slice with its command's own symbol; `RadialToolChoice` is the editor's Tool picker.
+  - `UI/Settings/RadialMenuSettings.swift`, `UI/Settings/RadialMenuVisualCanvas.swift`: the editor's Tool picker lists registry commands no tool slice runs, and a command slice is edited as a Tool.
+  - `Tests/mutation_checks.py`: two mutations (a built-in command with no tile asking for the panel; a reorder forgetting a tile that is not showing).
 - **2026-10-09**: No two global hotkeys share an id:
   - `Services/QuickTools/ScreenCaptureService.swift`: the comment on the capture tools' hotkey ids says where the run starts and what keeps it clear; it claimed the hand-assigned ids ended at 24 after the Quick Prompt had been given 25. No code change in this file.
   - `bazel/source_lints.py`: `hotkey_ids_are_unique` fails when two `QuickToolHotkey` ids, or runs of ids, overlap.

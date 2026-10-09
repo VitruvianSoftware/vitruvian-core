@@ -490,17 +490,27 @@ package final class RadialMenuService: ObservableObject {
     /// Wheels only show what can actually run today: tools whose feature was
     /// uninstalled in the hub disappear instead of leaving a dead slice.
     private func availableItems(_ items: [RadialMenuItem]) -> [RadialMenuItem] {
+        Self.availableItems(items, registry: .shared)
+    }
+
+    /// The rule itself, with everything it reads handed in, so it can be
+    /// checked against a registry of doubles.
+    package static func availableItems(_ items: [RadialMenuItem], registry: ToolRegistry,
+                                       isFeatureAvailable: (AppFeature) -> Bool = { $0.isAvailable },
+                                       toolIsRunnable: (RadialMenuTool) -> Bool = { $0.isRunnable() })
+        -> [RadialMenuItem] {
         items.compactMap { item in
             var item = item
-            if let tool = item.tool, !tool.isRunnable() { return nil }
+            if let tool = item.tool, !toolIsRunnable(tool) { return nil }
             if item.kind == .command {
-                guard let id = item.commandID,
-                      ToolRegistry.shared.canRun(id) else { return nil }
+                guard let id = item.commandID, registry.canRun(id) else { return nil }
             }
-            if item.kind == .quickToggle, !AppFeature.quickToggles.isAvailable { return nil }
-            if item.kind == .windowLayout, !AppFeature.windowLayout.isAvailable { return nil }
+            if item.kind == .quickToggle, !isFeatureAvailable(.quickToggles) { return nil }
+            if item.kind == .windowLayout, !isFeatureAvailable(.windowLayout) { return nil }
             if item.kind == .submenu {
-                item.children = availableItems(item.children)
+                item.children = availableItems(item.children, registry: registry,
+                                               isFeatureAvailable: isFeatureAvailable,
+                                               toolIsRunnable: toolIsRunnable)
                 if item.children.isEmpty { return nil }
             }
             return item

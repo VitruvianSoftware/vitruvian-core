@@ -307,6 +307,10 @@ const (
 // credential is ever a GitHub secret.
 const gcpAuthAction = "./.github/actions/gcp-auth"
 
+// mintSyncAppTokenAction mints a vitruvian-copybara-sync App installation
+// token, for the pushes this repo's GITHUB_TOKEN cannot make.
+const mintSyncAppTokenAction = "./.github/actions/mint-sync-app-token"
+
 // orchestrateTimeout / orchestrateGraphTimeout bound the DECIDE job.
 //
 // The engine runs once per unit. In PATH-ONLY mode that is a `git diff` and a
@@ -782,8 +786,11 @@ func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
 // which builds the universal gravastar-mouse binary and attaches it to the
 // rolling beta prerelease or the release-please release. It follows
 // renderVitruvianPublishSteps without the app's signing identity: the tool is
-// signed ad hoc by rules_apple. HOMEBREW_TAP_TOKEN is empty until that secret
-// is set, and the script then skips the homebrew-tap formula.
+// signed ad hoc by rules_apple. Only the production grade writes the Homebrew
+// formula, so only it mints HOMEBREW_TAP_TOKEN: a vitruvian-copybara-sync App
+// token narrowed to homebrew-tap, which this repo's GITHUB_TOKEN cannot push
+// to. The mint fails the job if the App is not installed on that repo, so a
+// release never ships without its formula unnoticed.
 func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
@@ -796,6 +803,16 @@ func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("      - name: Set up Bazel\n")
 	fmt.Fprintf(b, "        uses: %s\n", setupBazelAction)
 	b.WriteString("\n")
+	if env == "production" {
+		b.WriteString("      - name: Mint App token for the Homebrew tap\n")
+		b.WriteString("        id: tap-token\n")
+		fmt.Fprintf(b, "        uses: %s\n", mintSyncAppTokenAction)
+		b.WriteString("        with:\n")
+		b.WriteString("          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}\n")
+		b.WriteString("          owner: VitruvianSoftware\n")
+		b.WriteString("          repositories: homebrew-tap\n")
+		b.WriteString("\n")
+	}
 	b.WriteString("      - name: Build and publish gravastar-mouse\n")
 	b.WriteString("        env:\n")
 	fmt.Fprintf(b, "          GRADE: %s\n", env)
@@ -803,7 +820,9 @@ func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
 	b.WriteString("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
-	b.WriteString("          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}\n")
+	if env == "production" {
+		b.WriteString("          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}\n")
+	}
 	b.WriteString("        run: bash packages/peripherals/publish.sh\n")
 }
 
