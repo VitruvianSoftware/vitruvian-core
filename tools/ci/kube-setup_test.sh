@@ -29,8 +29,7 @@
 # for each state, what it says on stdout: reachable only when kubectl got an
 # answer; otherwise NOT reachable with the reason; always exit 0; and the
 # ServiceAccount token never printed. Also checks it waits for a tailscale-up.sh
-# that is still joining (Claude Code runs the two hooks in parallel), and that
-# the hook is wired into .claude/settings.json.
+# that is still joining, and that the session-start hook runs it.
 
 set -uo pipefail
 
@@ -173,8 +172,15 @@ verdict "reports reachable once the join finishes" reachable
 if [ $((SECONDS - start)) -lt 30 ]; then pass "and does not wait past it"; else fail "waited $((SECONDS - start))s"; fi
 
 echo "wiring"
+# settings.json runs .claude/session-start.sh, which runs this hook last
+# (tools/ci/session-start_test.sh checks that wrapper's order).
 wired="$(jq -r '.hooks.SessionStart[]?.hooks[]? | select(.type == "command") | .command' "${SETTINGS}" 2>/dev/null)"
-case "${wired}" in *".claude/kube-setup.sh"*) pass "settings.json runs the hook at session start" ;; *) fail "hook is not wired into .claude/settings.json: '${wired}'" ;; esac
+# shellcheck disable=SC2016 # the wrapper's literal ${root}/<step> text
+if [[ "${wired}" == *".claude/session-start.sh"* ]] && grep -qF '"${root}/.claude/kube-setup.sh"' "${ROOT}/.claude/session-start.sh"; then
+  pass "the session-start hook runs it"
+else
+  fail "nothing runs it at session start: settings.json has '${wired}'"
+fi
 if [ -x "${HOOK}" ]; then pass "hook script is executable"; else fail "hook script is not executable"; fi
 
 echo

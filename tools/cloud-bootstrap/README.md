@@ -10,9 +10,9 @@ bazel run //tools/cloud-bootstrap:whoami     # what does this session actually h
 bazel run //tools/cloud-bootstrap:profiles   # list the declared profiles
 ```
 
-It normally runs by itself, as the first `SessionStart` hook in
-`.claude/settings.json`, ahead of `tailscale-up.sh` and `kube-setup.sh` — nobody
-types anything to bootstrap a session.
+It normally runs by itself, as the first step of the `SessionStart` hook
+(`.claude/session-start.sh`), which runs `tailscale-up.sh` and `kube-setup.sh`
+only after it finishes — nobody types anything to bootstrap a session.
 
 `:whoami` is how you check a *cloud* session from the outside: you cannot shell
 into one, so ask the agent to run it and report back. If bazel is unavailable for

@@ -12,8 +12,18 @@ to the tailnet, and the facts that generalise are: the cluster API is the HA nam
 ## Tooling and credentials: the profile
 
 A cloud session boots a bare Ubuntu box — `git`, `go`, `node`, `docker`, and none
-of this repo's CLI tooling or credentials. The first `SessionStart` hook,
-[`//tools/cloud-bootstrap`](../../tools/cloud-bootstrap/README.md), fixes both.
+of this repo's CLI tooling or credentials. The first step of the `SessionStart`
+hook, [`//tools/cloud-bootstrap`](../../tools/cloud-bootstrap/README.md), fixes
+both.
+
+The hook is one script, `.claude/session-start.sh`, registered in
+`.claude/settings.json`. It runs three steps in order: `cloud-bootstrap.sh`, then
+`.claude/tailscale-up.sh`, then `.claude/kube-setup.sh`. Each later step needs
+what the earlier ones made: the CLIs, and the `TS_AUTHKEY`, `LAB_SA_TOKEN` and
+`CLAUDE_SSH_KEY` that cloud-bootstrap fetches into `session.env`. Keep them in
+that one script. Claude Code runs every hook of an event in parallel, so as three
+separate hooks the later steps read `session.env` before cloud-bootstrap had
+written it. `tools/ci/session-start_test.sh` checks the order and the wiring.
 
 Two variables on the cloud environment drive it:
 
@@ -150,11 +160,10 @@ rarer. The failure names itself (`REAUTH LAPSED`).
 
 ## Kubernetes access
 Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
-Two `SessionStart` hooks wire this up automatically (registered in
-`.claude/settings.json`):
+The last two steps of the `SessionStart` hook wire this up automatically:
 - `.claude/tailscale-up.sh` — joins the tailnet (userspace networking; exposes a
   SOCKS5 proxy on `localhost:1055`, since the sandbox has no TUN device). The
-  binary itself comes from `//tools/cloud-bootstrap`; this hook only (re)starts
+  binary itself comes from `//tools/cloud-bootstrap`; this step only (re)starts
   the daemon, which the environment cache cannot snapshot.
 - `.claude/kube-setup.sh` — installs `kubectl` and writes `~/.kube/config`
   (context `lab`) pointed at `https://k8s-api.lab.ipv1337.dev:6443`, dialing the
@@ -165,9 +174,9 @@ the agent sees at session start: `apiserver reachable via SOCKS5 :1055` only whe
 the apiserver answered, and otherwise `apiserver is NOT reachable:` with the
 reason (tailscale not installed, `tailscaled` not running, the tailnet logged
 out with tailscaled's own error, `LAB_SA_TOKEN` rejected, or kubectl's error).
-The two hooks run in parallel, so it first waits for `tailscale-up.sh` to finish
-joining. That line is the only place a failure shows: a hook's stderr never
-reaches the agent. `tools/ci/kube-setup_test.sh` pins each case.
+If `tailscale-up.sh` is still joining (it runs first, but nothing stops the two
+being run side by side), it waits for that to finish. That line is the only place
+a failure shows: a hook's stderr never reaches the agent. `tools/ci/kube-setup_test.sh` pins each case.
 
 Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 
@@ -218,7 +227,7 @@ configure or troubleshoot a node directly when needed. Auth is a dedicated agent
 `tailscale ssh` falls back to regular ssh and fails on host keys — use the key
 path below.
 
-Wiring (automatic via the merged `SessionStart` hooks):
+Wiring (automatic via the `SessionStart` hook):
 - `kube-setup.sh` installs the private key from the `CLAUDE_SSH_KEY` env var into
   `~/.ssh/id_ed25519` each session, regenerates `id_ed25519.pub` from it, and writes
   `~/.ssh/config` (`StrictHostKeyChecking accept-new`, `GSSAPIAuthentication no`).

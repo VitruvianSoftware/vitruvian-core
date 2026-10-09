@@ -17,8 +17,8 @@ key, whose sole permission is reading that profile's secrets. Everything else
 comes from Secret Manager at session start, so there is one thing to rotate and a
 downstream token rotates with no environment edit at all.
 
-It is also registered as a SessionStart hook in .claude/settings.json, which is
-how it actually runs. The `bazel run` targets exist because the hook cannot be
+It is also the first step of the SessionStart hook, .claude/session-start.sh,
+which is how it actually runs. The `bazel run` targets exist because the hook cannot be
 the only way to exercise it -- `:whoami` is how an operator (or the agent) proves
 what the session actually holds without printing a single secret value.
 
