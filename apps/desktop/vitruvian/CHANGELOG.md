@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.34.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.1...vitruvian-v3.34.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **nexus-agent:** one copy of Nexus Agent's rules, shared by the standalone app and Vitruvian ([#2959](https://github.com/VitruvianSoftware/vitruvian-core/issues/2959)) ([3ff7e8f](https://github.com/VitruvianSoftware/vitruvian-core/commit/3ff7e8fccf05732d2fb9711b4a9d93a448d58954))
+
 ## [3.34.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.0...vitruvian-v3.34.1) (2026-10-09)
 
 
