@@ -1,25 +1,19 @@
 ---
+layout: page
+title: Page not found
 permalink: /404.html
-layout: default
+hero: false
+sitemap: false
 ---
 
-<style type="text/css" media="screen">
-  .container {
-    margin: 10px auto;
-    max-width: 600px;
-    text-align: center;
-  }
-  h1 {
-    margin: 30px 0;
-    font-size: 4em;
-    line-height: 1;
-    letter-spacing: -1px;
-  }
-</style>
-
-<div class="container">
-  <h1>404</h1>
-
-  <p><strong>Page not found :(</strong></p>
-  <p>The requested page could not be found.</p>
-</div>
+<section class="not-found">
+  <div class="container">
+    <div class="code" aria-hidden="true">404</div>
+    <h1>This page is not on the drawing.</h1>
+    <p class="lead">The link may be old, or the page may have moved when the site was rebuilt.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ '/' | relative_url }}">Go home</a>
+      <a class="btn" href="{{ '/blog/' | relative_url }}">Read the blog</a>
+    </div>
+  </div>
+</section>

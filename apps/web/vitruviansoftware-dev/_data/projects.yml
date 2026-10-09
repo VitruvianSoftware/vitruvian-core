@@ -1,0 +1,205 @@
+# Projects shown on the home page (featured: true) and the projects page.
+#
+# group:   which section of /projects/ the entry sits in (see `groups` below)
+# status:  released | mirror | in-development | template
+# repo:    the public repository, if the project has its own
+# source:  the path in the vitruvian-core monorepo, if it lives there
+# install: a one-line install command, shown on the card when present
+
+groups:
+  - id: devtools
+    title: Developer tools
+    blurb: Command-line tools for local development and homelab clusters, released through our Homebrew tap.
+  - id: infrastructure
+    title: Infrastructure as code
+    blurb: Reusable Pulumi building blocks and full Google Cloud foundations in Go and TypeScript.
+  - id: agents
+    title: Agents and MCP servers
+    blurb: Model Context Protocol servers and agent bridges that give AI tools real, reviewable access to the systems they work on.
+  - id: web
+    title: Web applications
+    blurb: Containerised services deployed to Cloud Run with keyless, per-app deploy identities.
+  - id: lab
+    title: In the monorepo
+    blurb: Newer work that lives in vitruvian-core and has not been split out into its own repository yet.
+
+projects:
+  - name: devx
+    group: devtools
+    featured: true
+    status: released
+    summary: >-
+      A local development orchestrator. One CLI provisions container VMs,
+      ephemeral databases and cloud emulators, local K3s clusters and
+      Cloudflare tunnel ingress, and starts everything in dependency order.
+    tags: [Go, Lima, Kubernetes, Cloudflare]
+    repo: https://github.com/VitruvianSoftware/devx
+    source: apps/cli/devx
+    install: brew install VitruvianSoftware/tap/devx
+
+  - name: homelab
+    group: devtools
+    featured: true
+    status: released
+    summary: >-
+      Declarative multi-node K3s clusters on macOS. Describe the nodes in one
+      file and homelab provisions Lima VZ virtual machines, networking and the
+      cluster to match.
+    tags: [Go, K3s, Lima VZ, macOS]
+    repo: https://github.com/VitruvianSoftware/homelab
+    source: apps/cli/homelab
+    install: brew install VitruvianSoftware/tap/homelab
+
+  - name: homebrew-tap
+    group: devtools
+    status: released
+    summary: >-
+      The Homebrew tap for Vitruvian tools: devx, homelab and our macOS
+      utilities, installable with one command.
+    tags: [Homebrew, Ruby]
+    repo: https://github.com/VitruvianSoftware/homebrew-tap
+
+  - name: pulumi-library
+    group: infrastructure
+    featured: true
+    status: released
+    summary: >-
+      Reusable Pulumi ComponentResources for Google Cloud, published as Go and
+      TypeScript packages: projects, networks, IAM, logging and the rest of an
+      enterprise landing zone.
+    tags: [Pulumi, Go, TypeScript, GCP]
+    repo: https://github.com/VitruvianSoftware/pulumi-library
+    source: packages/pulumi/library
+
+  - name: Pulumi Go foundation
+    group: infrastructure
+    status: released
+    summary: >-
+      The Google Cloud Enterprise Foundations Blueprint in Pulumi Go, with
+      parity to the upstream Terraform reference: bootstrap, org, environments,
+      networks and projects.
+    tags: [Pulumi, Go, GCP]
+    repo: https://github.com/VitruvianSoftware/pulumi_go-example-foundation
+
+  - name: Pulumi TypeScript foundation
+    group: infrastructure
+    status: released
+    summary: >-
+      The same Enterprise Foundations Blueprint in Pulumi TypeScript, for teams
+      that keep their infrastructure in the Node ecosystem.
+    tags: [Pulumi, TypeScript, GCP]
+    repo: https://github.com/VitruvianSoftware/pulumi_ts-example-foundation
+
+  - name: Aspect Workflows templates
+    group: infrastructure
+    status: template
+    summary: >-
+      Bazel starter workspaces for Go, TypeScript, Python, Rust, Java, Kotlin,
+      Scala, Swift, C++, Ruby and shell, with Backstage variants. vitruvian-core
+      itself was generated from the kitchen-sink template.
+    tags: [Bazel, Bzlmod, Backstage]
+    repo: https://github.com/VitruvianSoftware/kitchen-sink
+
+  - name: mcp-slack
+    group: agents
+    featured: true
+    status: mirror
+    summary: >-
+      A Slack MCP server with dual-token auth: around forty tools covering
+      channels, threads, search, files, user groups and Canvas editing, acting
+      as the bot or as you.
+    tags: [TypeScript, MCP, Slack]
+    repo: https://github.com/VitruvianSoftware/mcp-slack
+    source: apps/mcp/slack
+
+  - name: mcp-roborock
+    group: agents
+    status: released
+    summary: >-
+      A Roborock vacuum integration: a local daemon, a FastMCP server and
+      plugins that let a coding agent check status, start room cleans or send
+      the robot home.
+    tags: [Python, MCP, FastMCP]
+    repo: https://github.com/VitruvianSoftware/mcp-roborock
+    source: apps/mcp/roborock
+
+  - name: NexusAgent
+    group: agents
+    featured: true
+    status: mirror
+    summary: >-
+      A macOS menu bar app and Telegram bot that forwards your messages to a
+      locally installed AI coding CLI, so a full agent session is reachable
+      from your phone.
+    tags: [TypeScript, Swift, Telegram]
+    repo: https://github.com/VitruvianSoftware/nexus-agent
+    source: apps/desktop/nexus-agent
+
+  - name: OAuth User Inspector
+    group: web
+    featured: true
+    status: mirror
+    summary: >-
+      Sign in with an OAuth provider and see exactly what came back: decoded
+      tokens, claims, scopes and user info. React and Express in one container
+      on Cloud Run.
+    tags: [TypeScript, React, Cloud Run]
+    repo: https://github.com/VitruvianSoftware/oauth-user-inspector
+    source: apps/web/oauth-user-inspector
+
+  - name: Backstage developer portal
+    group: web
+    status: in-development
+    summary: >-
+      Our software catalog and TechDocs, plus a hosted MCP endpoint so agents
+      can query and register catalog entities over Streamable HTTP.
+    tags: [Backstage, TypeScript, MCP]
+    source: apps/web/backstage
+
+  - name: Tabula
+    group: lab
+    status: in-development
+    summary: >-
+      Browser tab management as a product: a TypeScript API on Cloud Run, an
+      MV3 extension, a web dashboard and a CLI, with per-PR preview
+      environments.
+    tags: [TypeScript, Cloud Run, MV3]
+    source: apps/suites/tabula
+
+  - name: Vitruvian design system
+    group: lab
+    status: in-development
+    summary: >-
+      The design language behind this site: a CSS token layer, React
+      components and a Storybook, with the same tokens mapped onto Jetpack
+      Compose.
+    tags: [CSS, React, Storybook]
+    source: packages/design-system
+
+  - name: HomeSpeaker
+    group: lab
+    status: in-development
+    summary: >-
+      A macOS menu bar app that reads short summaries aloud on Google Home and
+      Nest speakers: agent replies, new chat messages, or anything you type.
+    tags: [Swift, macOS, Google Home]
+    source: apps/desktop/home-speaker
+
+  - name: Vitruvian Remote
+    group: lab
+    status: in-development
+    summary: >-
+      An Android remote and observability console for a Mac, designed for
+      foldables: trackpad and media control alongside live CPU, thermals,
+      Lima VM and K3s dashboards.
+    tags: [Kotlin, Jetpack Compose, Android]
+    source: apps/mobile/android-remote
+
+  - name: ESP32-S3 desk companion
+    group: lab
+    status: in-development
+    summary: >-
+      Firmware that turns a 1.69 inch ESP32-S3 touch board into a desk
+      display for live Mac metrics and a USB and Bluetooth shortcut pad.
+    tags: [C++, ESP32-S3, USB HID]
+    source: apps/embedded/esp32-s3
