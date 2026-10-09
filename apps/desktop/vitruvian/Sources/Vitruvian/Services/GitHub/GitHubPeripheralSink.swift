@@ -12,7 +12,14 @@ package final class GitHubPeripheralSink {
 
     package static let shared = GitHubPeripheralSink()
 
-    private var lastVerdict: Verdict?
+    /// What the mouse was last told to show. An approval hides the verdict
+    /// behind it, so a verdict that moves while one is pending writes nothing.
+    private enum Shown: Equatable {
+        case awaitingApproval
+        case verdict(Verdict)
+    }
+
+    private var lastShown: Shown?
     private let mouseBinaryPath = "/Users/james/bin/gravastar-mouse"
     private let defaults: UserDefaults
     private let executor: Executor?
@@ -23,13 +30,29 @@ package final class GitHubPeripheralSink {
         self.executor = executor
     }
 
+    /// Shows what `summary` comes to: its approval flag first, else its
+    /// aggregate verdict.
+    package func update(summary: GitHubSummary, force: Bool = false) {
+        update(verdict: summary.aggregate, awaitingApproval: summary.awaitingApproval, force: force)
+    }
+
     /// Updates the GravaStar mouse RGB lighting based on the current aggregate verdict.
-    /// A repeated verdict writes nothing, unless `force`: the mouse keeps its
+    /// `awaitingApproval` outranks every verdict, red included; when it clears,
+    /// the next call writes the verdict again.
+    /// A repeated state writes nothing, unless `force`: the mouse keeps its
     /// last LED state across app restarts, so the first snapshot after launch
     /// always writes, even when it matches what this process last sent.
-    package func update(verdict: Verdict, force: Bool = false) {
-        guard force || verdict != lastVerdict else { return }
-        lastVerdict = verdict
+    package func update(verdict: Verdict, awaitingApproval: Bool = false, force: Bool = false) {
+        let shown: Shown = awaitingApproval ? .awaitingApproval : .verdict(verdict)
+        guard force || shown != lastShown else { return }
+        lastShown = shown
+
+        if awaitingApproval {
+            signal(color: defaults[Preferences.githubMouseApprovalColor],
+                   mode: defaults[Preferences.githubMouseApprovalMode],
+                   speed: defaults[Preferences.githubMouseApprovalSpeed])
+            return
+        }
 
         switch verdict {
         case .green:
@@ -55,11 +78,17 @@ package final class GitHubPeripheralSink {
     }
 
     /// Signals a specific color and mode (solid vs pulsing) on the mouse.
-    package func signal(color: String, mode: String) {
+    /// `speed` is the breathe speed, held to the mouse's 0-9; nil leaves it to
+    /// the mouse command, and a solid colour has none.
+    package func signal(color: String, mode: String, speed: Int? = nil) {
         let cleanColor = color.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let cleanMode = mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if cleanMode == "breathe" {
-            execute(arguments: ["breathe", cleanColor])
+            var arguments = ["breathe", cleanColor]
+            if let speed {
+                arguments += ["--speed", String(min(9, max(0, speed)))]
+            }
+            execute(arguments: arguments)
         } else {
             execute(arguments: ["color", cleanColor])
         }
@@ -67,7 +96,7 @@ package final class GitHubPeripheralSink {
 
     /// Restores the mouse lighting back to the user's personal baseline.
     package func restore() {
-        lastVerdict = nil
+        lastShown = nil
         execute(arguments: ["restore"])
     }
 

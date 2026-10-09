@@ -107,6 +107,8 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-08**: Awaiting-approval GitHub pipeline notification:
+  - Added `githubMouseApprovalColor`, `githubMouseApprovalMode`, and `githubMouseApprovalSpeed` preferences to `Defaults.swift` and `DefaultsKey.swift`.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
   - `GitHubAuthService.swift`: `syncWithPreferences()` signs in with the GitHub CLI login (`~/.config/gh/hosts.yml`) when nobody is signed in and no token is saved, except after an explicit `disconnect()` this session or for a token GitHub already answered 401 to. `finishSignIn` keeps the token in memory when the Keychain refuses to save it (ad-hoc builds lack the entitlement) instead of failing the sign-in. The `hosts.yml` location is an initializer parameter (`cliHostsURL`) so tests use their own file.
   - `GitHubPeripheralSink.swift`: `update(verdict:force:)` writes even an unchanged verdict when forced; an injectable `Executor` stands in for the mouse binary in tests.

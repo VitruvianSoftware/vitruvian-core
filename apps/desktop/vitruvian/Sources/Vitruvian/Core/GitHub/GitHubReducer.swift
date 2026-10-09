@@ -113,6 +113,20 @@ package enum GitHubReducer {
         return .grey
     }
 
+    /// Whether any of the checks is paused for approval (`waiting`). Asked
+    /// apart from the verdict, which a failed check beside it still makes red.
+    package static func awaitsApproval(_ checks: some Sequence<CheckRun>) -> Bool {
+        checks.contains { $0.status.isAwaitingApproval }
+    }
+
+    /// Whether `main`'s head or a tracked pull request's head has a check
+    /// paused for approval; false for a repository with no state.
+    package static func awaitsApproval(_ state: RepoState?) -> Bool {
+        guard let state else { return false }
+        return awaitsApproval(state.checks.values)
+            || state.pullRequests.values.contains { awaitsApproval($0.checks.values) }
+    }
+
     /// Whether a pull request is in the user's set: written by them, or their
     /// review or one of their teams' (in this repository's organisation) is
     /// requested.
