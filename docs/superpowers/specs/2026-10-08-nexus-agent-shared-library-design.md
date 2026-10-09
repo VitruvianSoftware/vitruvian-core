@@ -184,8 +184,9 @@ gives a manifest.
   `NexusAgentUI` also adds its line to the change log in
   `apps/desktop/vitruvian/UPSTREAM.md`, as every Nexus change does today.
   That puts a Vitruvian file in the commit, so Vitruvian's release picks it
-  up. A CI check enforces it: a change under those two folders with no change
-  under `apps/desktop/vitruvian` fails.
+  up. A pin enforces it: a file in Vitruvian's folder holds a hash of the
+  shared sources, and a test fails when they differ, so every shared change
+  carries a Vitruvian change in the same commit.
 
 ## 9. Migration, in four steps
 
@@ -240,7 +241,7 @@ that can, and each would be its own design.
 |---|---|
 | The standalone's look changes in step 3 | Screen-by-screen comparison, differences listed for approval |
 | Mirror breaks again | `swift build` guard in this repository's CI |
-| A shared fix never reaches Vitruvian users | Release rule in section 8, enforced by a CI check |
+| A shared fix never reaches Vitruvian users | Release rule in section 8, enforced by a pin test |
 | A moved file turns out to contain upstream code | Per-file check in every PR; such a file stays in Vitruvian behind the host |
 | Upstream sync gets harder | Moved files are VitruvianSoftware-only, which upstream never edits; `upstream.py` map updated per step |
 | Vitruvian now builds code from another app's folder | One narrow Bazel visibility grant; both apps' tests run on any change to the shared code |
