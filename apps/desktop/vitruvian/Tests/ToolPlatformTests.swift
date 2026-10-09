@@ -22,6 +22,7 @@ enum ToolPlatformTests {
         housekeeping(suite)
         sampleTool(suite)
         tiles(suite)
+        shortcutSurface(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -438,6 +439,17 @@ enum ToolPlatformTests {
 
         SampleTool.install(into: registry, say: { said.append($0) })
         suite.expect(registry.commands(on: .commandBar).count == 1, "installing the sample twice registers it once")
+    }
+
+    static func shortcutSurface(_ suite: TestSuite) {
+        let shipped = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: shipped)
+        suite.expect(shipped.commands(on: .shortcut).isEmpty,
+                     "the app's own commands keep the shortcuts they have, and ask for no second one")
+        SampleTool.install(into: shipped, say: { _ in })
+        suite.expect(shipped.commands(on: .shortcut).map(\.id) == [SampleTool.hello]
+                         && shipped.extraCommands(on: .shortcut).map(\.id) == [SampleTool.hello],
+                     "a tool outside the fixed lists can ask for a shortcut")
     }
 
     static func tiles(_ suite: TestSuite) {

@@ -66,6 +66,8 @@ package struct CommandID: Hashable, Sendable, CustomStringConvertible {
 /// asked for it.
 package enum ToolSurface: String, Sendable, CaseIterable {
     case commandBar, radial, quickPanel
+    /// A global shortcut the person records on the Shortcuts page.
+    case shortcut
 }
 
 /// Text a person will read: not empty, and not only spaces.

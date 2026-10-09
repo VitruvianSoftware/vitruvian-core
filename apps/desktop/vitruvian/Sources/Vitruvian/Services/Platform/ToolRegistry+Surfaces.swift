@@ -14,7 +14,9 @@ extension ToolRegistry {
         switch surface {
         case .radial: offered = Set(RadialMenuTool.allCases.map(\.command.id))
         case .quickPanel: offered = Set(QuickLauncherItem.allCases.compactMap { $0.command?.id })
-        case .commandBar: offered = []
+        // The app's own commands have their shortcuts through
+        // `GlobalShortcutRole` and do not ask for this surface.
+        case .commandBar, .shortcut: offered = []
         }
         return commands(on: surface).filter { !offered.contains($0.id) }
     }
