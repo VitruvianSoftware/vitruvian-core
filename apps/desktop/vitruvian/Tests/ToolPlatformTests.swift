@@ -29,6 +29,7 @@ enum ToolPlatformTests {
         shortcutRegistrarKeepsItsKeys(suite)
         shortcutRegistrarRecording(suite)
         shortcutRegistrarSwitchedOff(suite)
+        shortcutRegistrarRefusals(suite)
         shortcutRegistrarLimit(suite)
         shortcutRegistrarOwnToolsOnly(suite)
         shortcutRegistrarSaving(suite)
@@ -710,6 +711,8 @@ enum ToolPlatformTests {
     static func shortcutRegistrar(_ suite: TestSuite) {
         let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
         let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
+        let optionK = GlobalShortcut(keyCode: 40, modifiers: [.option])
         let bench = RegistrarBench()
         let registry = bench.registry
         let registrar = bench.registrar!
@@ -717,7 +720,7 @@ enum ToolPlatformTests {
         let hello = SampleTool.hello
 
         // Saved before its tool registers: nothing is held.
-        bench.saved = [hello.rawValue: optionB, "com.acme.gone/open": optionN, "not an id": optionB]
+        bench.saved = [hello.rawValue: optionB, "com.acme.gone/open": optionN, "not an id": optionK]
         registrar.sync()
         suite.expect(bench.live.isEmpty && bench.made.isEmpty,
                      "a shortcut whose command is not registered holds no key")
@@ -742,14 +745,14 @@ enum ToolPlatformTests {
                      "a tool that returns gets its key back")
 
         // Assigning and clearing.
-        registrar.assign(optionN, to: hello)
-        suite.expect(bench.saved[hello.rawValue] == optionN && bench.saved["com.acme.gone/open"] == nil
-                         && bench.saved["not an id"] == optionB
-                         && bench.live.count == 1 && bench.live[0].registered?.shortcut == optionN,
-                     "a combination given to a command moves to it, and its key follows")
+        suite.expect(registrar.assign(optionM, to: hello) == nil
+                         && bench.saved[hello.rawValue] == optionM && bench.saved["com.acme.gone/open"] == optionN
+                         && bench.saved["not an id"] == optionK
+                         && bench.live.count == 1 && bench.live[0].registered?.shortcut == optionM,
+                     "a free combination given to a command is saved, its key follows, and no other entry is touched")
         suite.expect(bench.takeOvers.isEmpty, "giving a shortcut leaves the take-over choice alone")
         registrar.assign(nil, to: hello)
-        suite.expect(bench.saved[hello.rawValue] == nil && bench.live.isEmpty && bench.saved["not an id"] == optionB,
+        suite.expect(bench.saved[hello.rawValue] == nil && bench.live.isEmpty && bench.saved["not an id"] == optionK,
                      "clearing a shortcut releases its key")
         suite.expect(bench.takeOvers == ["\(ToolCommandShortcuts.takeOverKey(for: hello))=false"],
                      "clearing a shortcut gives a macOS shortcut it took over back")
@@ -766,7 +769,7 @@ enum ToolPlatformTests {
         registrar.sync()
         suite.expect(registrar.refused.isEmpty && bench.live.count == 1, "a refusal clears when the key can be taken")
         bench.refusing = true
-        registrar.assign(optionN, to: hello)
+        registrar.assign(optionM, to: hello)
         suite.expect(registrar.refused == [hello], "a refusal is reported for a changed combination too")
         registrar.assign(nil, to: hello)
         suite.expect(registrar.refused.isEmpty, "a cleared shortcut is not reported as refused")
@@ -782,6 +785,17 @@ enum ToolPlatformTests {
             CommandDescriptor(id: open, title: "Open", symbol: "shippingbox", surfaces: [.shortcut])!,
         ])!)
         try? registry.setHandler(.init(title: { _ in "Open" }, isRunnable: { runnable }, run: { ran += 1 }), for: open)
+        // Its saved entry is not here to use it, and still blocks the combination.
+        let savedBefore = bench.saved
+        let savesBefore = bench.saves
+        let takeOversBefore = bench.takeOvers
+        suite.expect(registrar.assign(optionN, to: open) == .occupied("com.acme.gone/open")
+                         && bench.saved == savedBefore && bench.saves == savesBefore
+                         && bench.takeOvers == takeOversBefore
+                         && bench.saved[open.rawValue] == nil
+                         && !bench.live.contains { $0.registered?.shortcut == optionN },
+                     "a combination another command has saved is refused, even if that command is not here, and nothing changes")
+        bench.saved["com.acme.gone/open"] = nil
         registrar.assign(optionN, to: open)
         let openKey = bench.live.first { $0.registered?.shortcut == optionN }
         openKey?.onPress?()
@@ -801,6 +815,53 @@ enum ToolPlatformTests {
         try? registry.setHandler(.init(title: { _ in "Say hello" }, run: {}), for: hello)
         suite.expect(bench.live.isEmpty && bench.saved[hello.rawValue] == optionB,
                      "a command that no longer asks for a shortcut holds no key")
+    }
+
+    /// `assign` never moves a combination from one command to another, and
+    /// says why it refused.
+    static func shortcutRegistrarRefusals(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
+        let bench = RegistrarBench()
+        let hello = SampleTool.hello
+        SampleTool.install(into: bench.registry, say: { _ in })
+
+        // Full: every place is held by a command that is not here.
+        for index in 0 ..< ToolCommandShortcuts.limit {
+            bench.saved["com.acme.full/c\(index)"] = GlobalShortcut(keyCode: Int64(100 + index), modifiers: [.option])
+        }
+        let full = bench.saved
+        suite.expect(bench.registrar.assign(optionB, to: hello) == .full
+                         && bench.saved == full && bench.saves == 0 && bench.made.isEmpty && bench.takeOvers.isEmpty,
+                     "a 65th command is told the list is full, and nothing is saved or taken")
+
+        // A command that already has a place may change its shortcut on a full list.
+        bench.saved["com.acme.full/c0"] = nil
+        bench.saved[hello.rawValue] = optionM
+        suite.expect(bench.registrar.assign(optionB, to: hello) == nil
+                         && bench.saved[hello.rawValue] == optionB && bench.saved.count == ToolCommandShortcuts.limit
+                         && bench.live.count == 1 && bench.live[0].registered?.shortcut == optionB,
+                     "a command that already has a shortcut can change it when the list is full")
+
+        // Its own combination again: allowed, and the key it holds is left alone.
+        let key = bench.live.first
+        let made = bench.made.count
+        suite.expect(bench.registrar.assign(optionB, to: hello) == nil
+                         && bench.live.count == 1 && bench.live.first === key
+                         && key?.registrations == 1 && bench.made.count == made,
+                     "giving a command the combination it already has changes nothing and takes no key twice")
+
+        // No modifier.
+        let before = bench.saved
+        let saves = bench.saves
+        suite.expect(bench.registrar.assign(GlobalShortcut(keyCode: 11, modifiers: []), to: hello) == .invalid
+                         && bench.saved == before && bench.saves == saves && key?.registered?.shortcut == optionB,
+                     "a combination with no modifier is refused, and the command keeps what it had")
+
+        // Clearing always works, even on a full list.
+        suite.expect(bench.registrar.assign(nil, to: hello) == nil && bench.saved[hello.rawValue] == nil
+                         && bench.live.isEmpty,
+                     "clearing a shortcut succeeds")
     }
 
     /// A sync that changes nothing must not let go of a key: taking it again

@@ -131,15 +131,24 @@ package final class ToolShortcutRegistrar: ObservableObject {
         if refused != self.refused { self.refused = refused }
     }
 
-    /// Gives `id` a shortcut, or clears it with nil, and re-syncs. The caller
-    /// has already checked the combination is free; were another command
-    /// still holding it, it moves here, as a Command Bar row's does.
-    package func assign(_ shortcut: GlobalShortcut?, to id: CommandID) {
+    /// Gives `id` a shortcut, or clears it with nil, and re-syncs. It refuses,
+    /// and changes nothing, when the combination cannot be used, when another
+    /// command has it saved (even one that is switched off or not registered
+    /// here), or when the list is full: it never moves a combination away from
+    /// another command. The reason comes back; nil means it was done.
+    @discardableResult
+    package func assign(_ shortcut: GlobalShortcut?, to id: CommandID) -> ShortcutMap.AssignmentIssue? {
+        if let shortcut,
+           let issue = ShortcutMap.assignmentIssue(shortcut, for: id.rawValue, in: environment.shortcuts(),
+                                                   limit: ToolCommandShortcuts.limit) {
+            return issue
+        }
         objectWillChange.send()
         if shortcut == nil { environment.setTakeOver(ToolCommandShortcuts.takeOverKey(for: id), false) }
         environment.save(ShortcutMap.setting(shortcut, for: id.rawValue, in: environment.shortcuts(),
                                              limit: ToolCommandShortcuts.limit))
         sync()
+        return nil
     }
 
     /// The saved shortcuts that should be keys now, at most as many as the
