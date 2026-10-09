@@ -513,7 +513,7 @@ git commit -m "refactor(desktop): keep tool command shortcuts in a preference of
 - Consumes: `ToolCommandShortcuts`, `ShortcutMap`, `ToolRegistry` (`commands(on: .shortcut)`, `run`, `$revision`), `QuickToolHotkey`.
 - Produces:
   - `protocol ToolHotkey: AnyObject` (`onPress`, `sync(enabled:shortcut:storageKey:) -> Bool`, `unregister()`); `QuickToolHotkey` conforms.
-  - `ToolShortcutRegistrar` (`@MainActor`, `ObservableObject`): `shared`, `init(environment:)`, `Environment`, `firstHotkeyID` (2000), `shortcuts: [String: GlobalShortcut]`, `refused: Set<CommandID>` (published), `sync()`, `assign(_ shortcut: GlobalShortcut?, to id: CommandID)`.
+  - `ToolShortcutRegistrar` (`@MainActor`, `ObservableObject`): `shared`, `init(environment:)`, `Environment`, `firstHotkeyID` (1000; this plan first said 2000, which the radial wheels' open-ended run from 1700 already covers), `shortcuts: [String: GlobalShortcut]`, `refused: Set<CommandID>` (published), `sync()`, `assign(_ shortcut: GlobalShortcut?, to id: CommandID)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -654,7 +654,7 @@ package final class ToolShortcutRegistrar: ObservableObject {
 
     /// The first id of this registrar's run, clear of every other hotkey's
     /// (`hotkey_ids_are_unique` in bazel/source_lints.py).
-    package static let firstHotkeyID: UInt32 = 2000
+    package static let firstHotkeyID: UInt32 = 1000  // not 2000: the radial wheels' run starts at 1700 and has no end
 
     @MainActor
     package struct Environment {

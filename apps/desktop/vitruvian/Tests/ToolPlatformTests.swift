@@ -612,7 +612,7 @@ enum ToolPlatformTests {
                      "a command does not clash with itself")
         suite.expect(ToolCommandShortcuts.takeOverKey(for: hello) == "toolCommandShortcuts.dev.vitruvian.sample/hello",
                      "a command's take-over is kept under the name its hotkey is claimed with")
-        suite.expect(Preferences.toolCommandShortcuts.defaultValue.isEmpty && ToolCommandShortcuts.limit == 64,
+        suite.expect(Preferences.toolCommandShortcuts.defaultValue.isEmpty && ToolCommandShortcuts.limit == CommandBarRowShortcuts.limit,
                      "no command starts with a shortcut, and the list has the command bar's limit")
 
         // The preference itself: registered, backed up, and reading never rewrites it.
