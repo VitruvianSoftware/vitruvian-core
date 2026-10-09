@@ -71,6 +71,7 @@ updates:
       - "/apps/desktop/nexus-agent/.github/workflows"
       - "/apps/mcp/slack/.github/workflows"
       - "/apps/web/gods-eye-view/.github/workflows"
+      - "/apps/web/vitruviansoftware-dev/.github/workflows"
       - "/packages/pulumi/library/.github/workflows"
       - "/packages/pulumi/examples/go-foundation/.github/workflows"
       - "/packages/pulumi/examples/go-foundation/build"

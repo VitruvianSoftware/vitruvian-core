@@ -85,6 +85,11 @@ _IGNORE_GLOBS = [
     # one-way mirrors stay Apache-2.0.
     "packages/pulumi/library/**",
     "packages/pulumi/examples/**",
+    # The vitruviansoftware.dev Jekyll site is published content, not source.
+    # Pages, layouts and the stylesheet must START with Jekyll front matter
+    # (a header above it turns the file into a plain static asset), and a
+    # header in an include is served to every visitor on every page.
+    "apps/web/vitruviansoftware-dev/**",
     # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork (see its
     # UPSTREAM.md). Its upstream SPDX headers must stay verbatim and :add must
     # never write an MIT header into it.

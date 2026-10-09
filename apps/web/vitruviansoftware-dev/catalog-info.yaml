@@ -1,0 +1,28 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: site-vitruviansoftware-dev
+  title: Vitruvian Software Open Source Site
+  description: Jekyll site published to GitHub Pages at vitruviansoftware.dev — the public open-source presence for VitruvianSoftware
+  tags:
+    - website
+    - jekyll
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    vitruvian.dev/release-model: continuous-deploy
+    vitruvian.dev/environments: production
+  links:
+    - url: https://vitruviansoftware.dev/
+      title: Live site
+      icon: web
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/web/vitruviansoftware-dev
+      title: Source Tree
+      icon: github
+    - url: https://github.com/VitruvianSoftware/site-vitruviansoftware-dev/actions/workflows/jekyll.yml
+      title: Deploys (mirror repo)
+      icon: cloud
+spec:
+  type: website
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core

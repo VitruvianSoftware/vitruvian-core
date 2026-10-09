@@ -21,6 +21,7 @@ app type).
 |---|---|---|
 | [`tabula`](apps/suites/tabula/) | SaaS web service | Browser tab-management product: a TypeScript API on Cloud Run, an MV3 browser extension, a web dashboard, and a CLI. The most mature deploy in the repo. |
 | [`oauth-user-inspector`](apps/web/oauth-user-inspector/) | SaaS web service | Full-stack OAuth/token inspector (React + Vite frontend + Express backend) served as one container on Cloud Run. |
+| [`vitruviansoftware-dev`](apps/web/vitruviansoftware-dev/) | Website | The public [vitruviansoftware.dev](https://vitruviansoftware.dev) Jekyll site. Edited here, exported to its standalone repo, which publishes it on GitHub Pages. |
 | [`devx`](apps/cli/devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
 | [`homelab`](apps/cli/homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
 | [`mcp-slack`](apps/mcp/slack/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |

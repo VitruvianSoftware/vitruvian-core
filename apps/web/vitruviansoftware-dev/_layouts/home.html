@@ -1,0 +1,56 @@
+---
+layout: default
+---
+
+<div class="home">
+  {{ content }}
+
+  {%- if site.posts.size > 0 -%}
+    <div class="content-section">
+      <div class="wrapper">
+        <h2 class="text-center">Latest from Our Blog</h2>
+        <p class="text-center mb-2">Check out our latest insights and project updates</p>
+        
+        {%- assign latest_post = site.posts.first -%}
+        <div style="max-width: 800px; margin: 2rem auto;">
+          <article class="card fade-in-up">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+              <div>
+                {%- assign date_format = site.minima.date_format | default: "%b %-d, %Y" -%}
+                <span class="post-meta" style="color: var(--text-muted); font-size: 0.9rem;">{{ latest_post.date | date: date_format }}</span>
+                <div style="margin-top: 0.5rem;">
+                  {%- if latest_post.categories.size > 0 -%}
+                    {%- for category in latest_post.categories limit: 3 -%}
+                      <span style="background: var(--primary-accent); color: white; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; margin-right: 0.5rem;">{{ category }}</span>
+                    {%- endfor -%}
+                  {%- endif -%}
+                </div>
+              </div>
+            </div>
+            
+            <h3 style="margin-bottom: 1rem;">
+              <a href="{{ latest_post.url | relative_url }}" style="text-decoration: none; color: var(--text-color);">
+                {{ latest_post.title | escape }}
+              </a>
+            </h3>
+            
+            {%- if latest_post.excerpt -%}
+              <p style="color: var(--text-muted); margin-bottom: 1.5rem;">{{ latest_post.excerpt | markdownify | strip_html | truncate: 300 }}</p>
+            {%- endif -%}
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <a href="{{ latest_post.url | relative_url }}" class="button btn-accent">Read Full Article</a>
+                <a href="/blog/" class="button">View All Posts</a>
+              </div>
+              {%- if latest_post.author -%}
+                <span style="color: var(--text-muted); font-size: 0.9rem;">by {{ latest_post.author }}</span>
+              {%- endif -%}
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  {%- endif -%}
+
+</div> 
