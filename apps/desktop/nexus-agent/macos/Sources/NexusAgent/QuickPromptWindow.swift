@@ -1164,14 +1164,10 @@ struct QuickPromptView: View {
     // Resize is now handled by QuickPromptWindowController.animateResize(expanded:)
 
     /// Resolve the working directory — must be called from main thread.
-    /// The agy binary: AGY_BIN, then the usual install locations, then PATH.
+    /// The agy binary: the same rule Settings reports (AGY_BIN if executable, then the usual
+    /// install locations), then a bare name for PATH to resolve.
     static func resolveAgyBinary() -> String {
-        if let explicit = ProcessInfo.processInfo.environment["AGY_BIN"], !explicit.isEmpty { return explicit }
-        for candidate in ["\(NSHomeDirectory())/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
-        where FileManager.default.isExecutableFile(atPath: candidate) {
-            return candidate
-        }
-        return "agy"
+        AgyInfo.locate() ?? "agy"
     }
 
     @MainActor static func resolveWorkingDirectory() -> URL {
@@ -1603,7 +1599,7 @@ struct ChatWorkingDirectoryBadge: View {
 enum SessionFileReader {
     /// agy's data folders: the desktop app's, then the CLI's own.
     static var dataDirectories: [URL] {
-        AntigravityAnnotations.dataDirectories.map {
+        NexusAgentSessionSummary.antigravityDataDirectories.map {
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent($0)
         }
     }
@@ -1666,7 +1662,7 @@ enum SessionFileReader {
         ORDER BY last_modified_time DESC LIMIT 200;
         """)
         let wanted = "file://" + workingDirectory.standardizedFileURL.path
-        let archived = AntigravityAnnotations.archivedConversationIDs(in: dataDirectories)
+        let archived = NexusAgentSessionSummary.antigravityArchivedSessionIds(home: FileManager.default.homeDirectoryForCurrentUser.path)
         var sessions: [SessionInfo] = []
         for row in rows {
             guard let id = row["conversation_id"] as? String, !id.isEmpty, !archived.contains(id) else { continue }

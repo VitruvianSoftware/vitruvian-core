@@ -10,6 +10,9 @@
 #   :selftest             the assembled app's `--selftest` health check
 #   :fan_helper_selftest  the fan helper's own `--selftest`
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
+#   :nexus_agent_shared_pin_test
+#                         the shared Nexus Agent sources match the pin in
+#                         bazel/nexus_agent_shared.sha256 (Linux-safe)
 #   :source_lints_test    the rules over how the sources, build scripts and
 #                         tests are written (Linux-safe)
 #   :publish              builds the DMG and attaches it to a GitHub Release
@@ -105,7 +108,10 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianCore",
     target_compatible_with = MACOS_ONLY,
-    deps = [":FanControlKit"],
+    deps = [
+        ":FanControlKit",
+        "//apps/desktop/nexus-agent/macos:NexusAgentCore",
+    ],
 )
 
 # Design/ is the VitruvianDesign module: the AppKit and SwiftUI building blocks
@@ -527,6 +533,34 @@ py_test(
     main = "bazel/sync_sources.py",
 )
 
+# Every change to the shared Nexus Agent sources must also change this folder,
+# or this app would never release it (bazel/pin_nexus_agent_shared.py).
+SHARED_NEXUS_AGENT = "//apps/desktop/nexus-agent/macos:shared_sources"
+
+py_binary(
+    name = "pin_nexus_agent_shared",
+    srcs = ["bazel/pin_nexus_agent_shared.py"],
+    args = ["$(rootpaths %s)" % SHARED_NEXUS_AGENT],
+    data = [SHARED_NEXUS_AGENT],
+    main = "bazel/pin_nexus_agent_shared.py",
+)
+
+py_test(
+    name = "nexus_agent_shared_pin_test",
+    size = "small",
+    srcs = ["bazel/pin_nexus_agent_shared.py"],
+    args = [
+        "--check",
+        "$(rootpath bazel/nexus_agent_shared.sha256)",
+        "$(rootpaths %s)" % SHARED_NEXUS_AGENT,
+    ],
+    data = [
+        "bazel/nexus_agent_shared.sha256",
+        SHARED_NEXUS_AGENT,
+    ],
+    main = "bazel/pin_nexus_agent_shared.py",
+)
+
 # Rules over how all of the code is written, not what one piece of it does: an
 # API that never appears, every SF Symbol and system tool named, the build
 # script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
@@ -595,6 +629,7 @@ pipeline_unit(
         ":selftest",
         ":source_lints_test",
         ":sources_in_sync_test",
+        ":nexus_agent_shared_pin_test",
         ":unit_tests",
     ],
     tier = "L1",

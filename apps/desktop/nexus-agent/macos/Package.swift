@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 // Copyright (c) 2026 VitruvianSoftware
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -41,7 +41,9 @@ let package = Package(
         .executableTarget(
             name: "NexusAgent",
             dependencies: ["NexusAgentCore"],
-            path: "Sources/NexusAgent"
+            path: "Sources/NexusAgent",
+            // The app shell is Swift 5 code. Only the shared core is Swift 6.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
 )

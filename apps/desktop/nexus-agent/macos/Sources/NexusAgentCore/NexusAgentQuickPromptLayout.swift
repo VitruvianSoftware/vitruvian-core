@@ -1,16 +1,32 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 VitruvianSoftware
+// Copyright (c) 2026 VitruvianSoftware
 //
-// Adapted from the standalone Nexus Agent app (apps/desktop/nexus-agent,
-// MIT, Copyright (c) 2026 VitruvianSoftware): the geometry of its
-// Spotlight-style Quick Prompt, its session list and its reply formatting,
-// pulled out of the views so they can be tested.
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Shared by the standalone Nexus Agent app and the Nexus Agent feature of the
+// Vitruvian desktop app. Written for Vitruvian and released under MIT by its
+// copyright holder on 2026-10-08 (apps/desktop/vitruvian/UPSTREAM.md).
 
 import CoreGraphics
 import Foundation
 
 /// What the Quick Prompt panel is showing.
-package enum NexusAgentQuickPromptMode: Equatable, Sendable {
+public enum NexusAgentQuickPromptMode: Equatable, Sendable {
     /// The input pill on its own.
     case compact
     /// The pill with the recent-sessions drawer open under it.
@@ -20,21 +36,21 @@ package enum NexusAgentQuickPromptMode: Equatable, Sendable {
 }
 
 /// Every size and position of the Quick Prompt panel, in one place.
-package enum NexusAgentQuickPromptLayout {
-    package static let width: CGFloat = 680
-    package static let compactHeight: CGFloat = 72
-    package static let sessionsHeight: CGFloat = 340
-    package static let chatHeight: CGFloat = 500
-    package static let cornerRadius: CGFloat = 22
+public enum NexusAgentQuickPromptLayout {
+    public static let width: CGFloat = 680
+    public static let compactHeight: CGFloat = 72
+    public static let sessionsHeight: CGFloat = 340
+    public static let chatHeight: CGFloat = 500
+    public static let cornerRadius: CGFloat = 22
     /// Gap above the pill, as a share of the screen height (Spotlight's spot).
-    package static let topInsetFraction: CGFloat = 0.18
-    package static let chatMinimumSize = CGSize(width: 480, height: 300)
-    package static let chatMaximumSize = CGSize(width: 900, height: 800)
+    public static let topInsetFraction: CGFloat = 0.18
+    public static let chatMinimumSize = CGSize(width: 480, height: 300)
+    public static let chatMaximumSize = CGSize(width: 900, height: 800)
     /// The spring the panel resizes with.
-    package static let springStiffness: Double = 500
-    package static let springDamping: Double = 24
+    public static let springStiffness: Double = 500
+    public static let springDamping: Double = 24
 
-    package static func size(for mode: NexusAgentQuickPromptMode) -> CGSize {
+    public static func size(for mode: NexusAgentQuickPromptMode) -> CGSize {
         switch mode {
         case .compact: return CGSize(width: width, height: compactHeight)
         case .sessions: return CGSize(width: width, height: sessionsHeight)
@@ -43,10 +59,10 @@ package enum NexusAgentQuickPromptLayout {
     }
 
     /// Only the conversation can be resized by the user.
-    package static func isResizable(_ mode: NexusAgentQuickPromptMode) -> Bool { mode == .chat }
+    public static func isResizable(_ mode: NexusAgentQuickPromptMode) -> Bool { mode == .chat }
 
     /// Where the panel opens: centred, its top edge in the upper third.
-    package static func initialFrame(for mode: NexusAgentQuickPromptMode, screen: CGRect) -> CGRect {
+    public static func initialFrame(for mode: NexusAgentQuickPromptMode, screen: CGRect) -> CGRect {
         let size = size(for: mode)
         let top = screen.maxY - screen.height * topInsetFraction
         return clamp(CGRect(x: screen.midX - size.width / 2, y: top - size.height,
@@ -55,7 +71,7 @@ package enum NexusAgentQuickPromptLayout {
 
     /// The frame after switching to `mode`: the top edge and centre stay
     /// where the user left them, so the panel grows and shrinks downward.
-    package static func frame(for mode: NexusAgentQuickPromptMode, from current: CGRect,
+    public static func frame(for mode: NexusAgentQuickPromptMode, from current: CGRect,
                               screen: CGRect) -> CGRect {
         let size = size(for: mode)
         return clamp(CGRect(x: current.midX - size.width / 2, y: current.maxY - size.height,
@@ -71,15 +87,15 @@ package enum NexusAgentQuickPromptLayout {
 }
 
 /// One past agy conversation, as the sessions drawer lists it.
-package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
-    package let id: String
-    package let title: String
-    package let preview: String
-    package let steps: Int
-    package let modified: Date?
-    package let isArchived: Bool
+public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let preview: String
+    public let steps: Int
+    public let modified: Date?
+    public let isArchived: Bool
 
-    package init(id: String, title: String, preview: String = "", steps: Int, modified: Date?, isArchived: Bool = false) {
+    public init(id: String, title: String, preview: String = "", steps: Int, modified: Date?, isArchived: Bool = false) {
         self.id = id
         self.title = title
         self.preview = preview
@@ -89,7 +105,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// The SQL the drawer runs against agy's `conversation_summaries.db`.
-    package static let query = """
+    public static let query = """
     SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris \
     FROM conversation_summaries WHERE nesting_depth = 0 \
     ORDER BY last_modified_time DESC LIMIT 200;
@@ -100,7 +116,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     /// An empty `directory` keeps all workspaces. `archivedIds` are the
     /// conversations agy's annotations mark archived; the index's `killed`
     /// column means an aborted run, not an archived one.
-    package static func parse(_ data: Data, directory: String,
+    public static func parse(_ data: Data, directory: String,
                               archivedIds: Set<String> = []) -> [NexusAgentSessionSummary] {
         guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
         let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -135,10 +151,10 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     /// Where agy keeps its data under the home folder: the desktop app's
     /// folder, then the CLI's own. Each holds `conversations/` and, beside
     /// it, `annotations/<id>.pbtxt` with what the user did to a conversation.
-    package static let antigravityDataDirectories = [".gemini/antigravity", ".gemini/antigravity-cli"]
+    public static let antigravityDataDirectories = [".gemini/antigravity", ".gemini/antigravity-cli"]
 
     /// The first of agy's data folders that holds a conversation index.
-    package static func antigravitySummariesDatabase(home: String) -> String? {
+    public static func antigravitySummariesDatabase(home: String) -> String? {
         antigravityDataDirectories
             .map { (home as NSString).appendingPathComponent($0 + "/conversation_summaries.db") }
             .first { FileManager.default.fileExists(atPath: $0) }
@@ -163,14 +179,14 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
 
     /// Whether an annotation (protobuf text, `archived:true` or
     /// `archived: true`) marks its conversation archived.
-    package static func antigravityAnnotationIsArchived(_ text: String) -> Bool {
+    public static func antigravityAnnotationIsArchived(_ text: String) -> Bool {
         antigravityArchiveFields(text).compactMap(\.value).last == "true"
     }
 
     /// `text` with its archive state replaced and every other field kept.
     /// Archiving stamps `archival_status_timestamp` as agy does; unarchiving
     /// drops both fields, which is how agy writes a never-archived one.
-    package static func antigravityAnnotation(_ text: String, archived: Bool, now: Date) -> String {
+    public static func antigravityAnnotation(_ text: String, archived: Bool, now: Date) -> String {
         var rest = text
         for field in antigravityArchiveFields(text).reversed() { rest.removeSubrange(field.range) }
         rest = rest.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -183,7 +199,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// The conversations agy's annotations mark archived, across its data folders.
-    package static func antigravityArchivedSessionIds(home: String) -> Set<String> {
+    public static func antigravityArchivedSessionIds(home: String) -> Set<String> {
         var archived = Set<String>()
         for directory in antigravityDataDirectories {
             let annotations = (home as NSString).appendingPathComponent(directory + "/annotations")
@@ -199,7 +215,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// Discovers archived/hidden Claude session IDs across VS Code state and UserDefaults.
-    package static func claudeHiddenSessionIds(home: String) -> Set<String> {
+    public static func claudeHiddenSessionIds(home: String) -> Set<String> {
         var hiddenIds = Set<String>()
         if let local = UserDefaults.standard.stringArray(forKey: "vitruvian.claude.hiddenSessionIds") {
             hiddenIds.formUnion(local)
@@ -237,7 +253,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
 
     /// Converts a filesystem path to Claude Code's project directory slug by
     /// replacing every non-alphanumeric character with `-`.
-    package static func projectSlug(for path: String) -> String {
+    public static func projectSlug(for path: String) -> String {
         let chars = path.map { char -> Character in
             if char.isASCII && (char.isLetter || char.isNumber) {
                 return char
@@ -251,7 +267,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     /// Discovers and parses Claude Code session JSONL files in `~/.claude/projects/`.
     /// When `directory` is provided (and not home), checks `~/.claude/projects/<slug>`.
     /// Otherwise scans all project directories under `~/.claude/projects/`.
-    package static func parseClaudeSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
+    public static func parseClaudeSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
         let fileManager = FileManager.default
         let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
         guard fileManager.fileExists(atPath: claudeProjectsDir) else { return [] }
@@ -400,7 +416,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
 
     /// Formats a raw scheduled task name (e.g. `track-zitadel-login-2fa-fix`) into a human-readable title
     /// (e.g. `Track zitadel login 2fa fix`).
-    package static func formatTaskName(_ raw: String) -> String {
+    public static func formatTaskName(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let replaced = trimmed.replacingOccurrences(of: "-", with: " ")
                               .replacingOccurrences(of: "_", with: " ")
@@ -410,7 +426,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// Extracts a scheduled task name attribute from XML prompt strings.
-    package static func extractScheduledTaskName(_ raw: String) -> String? {
+    public static func extractScheduledTaskName(_ raw: String) -> String? {
         guard let taskRange = raw.range(of: "<scheduled-task") else { return nil }
         guard let closeTag = raw.range(of: ">", range: taskRange.lowerBound..<raw.endIndex) else { return nil }
         let tag = String(raw[taskRange.lowerBound..<closeTag.upperBound])
@@ -426,7 +442,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// Strips XML wrappers such as <USER_REQUEST>, <system-reminder>, and <scheduled-task> from user prompts.
-    package static func extractUserPrompt(_ raw: String) -> String {
+    public static func extractUserPrompt(_ raw: String) -> String {
         var text = raw
         if let start = text.range(of: "<USER_REQUEST>"),
            let end = text.range(of: "</USER_REQUEST>", range: start.upperBound..<text.endIndex) {
@@ -474,7 +490,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// Sessions whose title holds every word of `filter`, ignoring case.
-    package static func filter(_ sessions: [NexusAgentSessionSummary], by filter: String) -> [NexusAgentSessionSummary] {
+    public static func filter(_ sessions: [NexusAgentSessionSummary], by filter: String) -> [NexusAgentSessionSummary] {
         let words = filter.lowercased().split(whereSeparator: \.isWhitespace)
         guard !words.isEmpty else { return sessions }
         return sessions.filter { session in
@@ -485,7 +501,7 @@ package struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
 }
 
 /// A reply split into prose and fenced code, the way the chat draws it.
-package enum NexusAgentReplyBlock: Equatable, Sendable {
+public enum NexusAgentReplyBlock: Equatable, Sendable {
     /// Markdown prose, drawn with inline formatting.
     case text(String)
     /// A fenced code block; `language` is the word after the fence, if any.
@@ -493,7 +509,7 @@ package enum NexusAgentReplyBlock: Equatable, Sendable {
 
     /// Splits on ``` fences. An unclosed fence (a reply still streaming)
     /// is code up to the end.
-    package static func parse(_ reply: String) -> [NexusAgentReplyBlock] {
+    public static func parse(_ reply: String) -> [NexusAgentReplyBlock] {
         var blocks: [NexusAgentReplyBlock] = []
         var prose: [String] = []
         var code: [String]?
@@ -529,7 +545,7 @@ package enum NexusAgentReplyBlock: Equatable, Sendable {
 }
 
 /// Structured Markdown block elements parsed from prose.
-package enum NexusAgentMarkdownBlock: Equatable, Sendable {
+public enum NexusAgentMarkdownBlock: Equatable, Sendable {
     case heading(level: Int, text: String)
     case bulletItem(text: String)
     case numberedItem(number: String, text: String)
@@ -538,7 +554,7 @@ package enum NexusAgentMarkdownBlock: Equatable, Sendable {
     case paragraph(text: String)
 
     /// Parses a markdown text string into structured blocks.
-    package static func parse(_ text: String) -> [NexusAgentMarkdownBlock] {
+    public static func parse(_ text: String) -> [NexusAgentMarkdownBlock] {
         var blocks: [NexusAgentMarkdownBlock] = []
         var paragraphLines: [String] = []
         var quoteLines: [String] = []

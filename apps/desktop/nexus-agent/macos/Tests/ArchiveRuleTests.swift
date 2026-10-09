@@ -22,39 +22,40 @@ import XCTest
 
 import NexusAgentCore
 
-final class AntigravityAnnotationsTests: XCTestCase {
+final class ArchiveRuleTests: XCTestCase {
+    private typealias Layout = NexusAgentSessionSummary
+
     func testArchivedInTheShapesAgyWrites() {
-        XCTAssertTrue(AntigravityAnnotations.isArchived(
+        XCTAssertTrue(Layout.antigravityAnnotationIsArchived(
             "archived:true archival_status_timestamp:{seconds:1787464769 nanos:503730000} marked_as_unread:false"))
-        XCTAssertTrue(AntigravityAnnotations.isArchived(
+        XCTAssertTrue(Layout.antigravityAnnotationIsArchived(
             #"title:"Daily Briefing"  archived: true  last_user_view_time:{seconds:1  nanos:2}"#))
     }
 
     func testNotArchivedWithoutTheField() {
-        XCTAssertFalse(AntigravityAnnotations.isArchived("last_user_view_time:{seconds:1790974412  nanos:316000000}"))
-        XCTAssertFalse(AntigravityAnnotations.isArchived("archived:false pinned:true"))
-        XCTAssertFalse(AntigravityAnnotations.isArchived(""))
+        XCTAssertFalse(Layout.antigravityAnnotationIsArchived("last_user_view_time:{seconds:1790974412  nanos:316000000}"))
+        XCTAssertFalse(Layout.antigravityAnnotationIsArchived("archived:false pinned:true"))
+        XCTAssertFalse(Layout.antigravityAnnotationIsArchived(""))
     }
 
     func testATitleCannotPassForTheField() {
-        XCTAssertFalse(AntigravityAnnotations.isArchived(#"title:"why is archived:true ignored" pinned:true"#))
+        XCTAssertFalse(Layout.antigravityAnnotationIsArchived(#"title:"why is archived:true ignored" pinned:true"#))
     }
 
     func testArchivedIDsAcrossDataDirectories() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("agy-annotations-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
-        let app = home.appendingPathComponent("antigravity")
-        let cli = home.appendingPathComponent("antigravity-cli")
+        let app = home.appendingPathComponent(".gemini/antigravity/annotations")
+        let cli = home.appendingPathComponent(".gemini/antigravity-cli/annotations")
         for directory in [app, cli] {
-            try FileManager.default.createDirectory(at: directory.appendingPathComponent("annotations"),
-                                                    withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
-        try "archived:true".write(to: app.appendingPathComponent("annotations/a.pbtxt"), atomically: true, encoding: .utf8)
-        try "pinned:true".write(to: app.appendingPathComponent("annotations/b.pbtxt"), atomically: true, encoding: .utf8)
-        try "archived: true".write(to: cli.appendingPathComponent("annotations/c.pbtxt"), atomically: true, encoding: .utf8)
-        try "archived:true".write(to: cli.appendingPathComponent("annotations/notes.txt"), atomically: true, encoding: .utf8)
+        try "archived:true".write(to: app.appendingPathComponent("a.pbtxt"), atomically: true, encoding: .utf8)
+        try "pinned:true".write(to: app.appendingPathComponent("b.pbtxt"), atomically: true, encoding: .utf8)
+        try "archived: true".write(to: cli.appendingPathComponent("c.pbtxt"), atomically: true, encoding: .utf8)
+        try "archived:true".write(to: cli.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
 
-        XCTAssertEqual(AntigravityAnnotations.archivedConversationIDs(in: [app, cli]), ["a", "c"])
-        XCTAssertEqual(AntigravityAnnotations.archivedConversationIDs(in: [home.appendingPathComponent("missing")]), [])
+        XCTAssertEqual(Layout.antigravityArchivedSessionIds(home: home.path), ["a", "c"])
+        XCTAssertEqual(Layout.antigravityArchivedSessionIds(home: home.appendingPathComponent("missing").path), [])
     }
 }
