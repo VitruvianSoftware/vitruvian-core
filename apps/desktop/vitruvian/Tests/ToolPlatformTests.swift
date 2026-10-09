@@ -16,6 +16,7 @@ enum ToolPlatformTests {
         builtinTools(suite)
         registry(suite)
         radial(suite)
+        quickPanel(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -206,5 +207,24 @@ enum ToolPlatformTests {
         let data = try? JSONEncoder().encode(saved)
         let loaded = data.flatMap { try? JSONDecoder().decode([RadialMenuItem].self, from: $0) }
         suite.expect(loaded == saved, "a wheel with a command slice saves and loads unchanged")
+    }
+
+    static func quickPanel(_ suite: TestSuite) {
+        let expected: [QuickLauncherItem: BuiltinCommand] = [
+            .keepAwake: .keepAwakeToggle, .micMute: .micMuteToggle, .screenOCR: .screenOCRCapture,
+            .screenshot: .screenshotCapture, .screenRecorder: .screenRecorderToggle,
+            .colorPicker: .colorPickerPick, .cameraPreview: .cameraPreviewShow,
+            .scratchpad: .scratchpadShow, .clipboard: .clipboardHistoryShow, .cleaning: .cleaningModeActivate,
+        ]
+        for item in QuickLauncherItem.allCases {
+            suite.expect(item.command == expected[item], "\(item.rawValue) runs the command it always ran")
+            if let command = item.command {
+                suite.expect(command.feature == item.feature, "\(item.rawValue)'s command belongs to its feature")
+            }
+        }
+        let hosted: Set<QuickLauncherItem> = [.windowLayout, .homebrew, .media, .urlCleaner, .uninstaller,
+                                              .cleaner, .toggles]
+        suite.expect(Set(QuickLauncherItem.allCases.filter { $0.command == nil }) == hosted,
+                     "only the utilities the panel hosts itself have no command")
     }
 }
