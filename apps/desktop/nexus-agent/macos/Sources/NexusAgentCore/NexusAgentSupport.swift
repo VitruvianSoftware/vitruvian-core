@@ -132,6 +132,14 @@ public struct NexusAgentConfiguration: Equatable {
     public var model: String
     public var effort: NexusAgentEffort
     public var activeProvider: NexusAgentCLIProvider
+    /// The program the bot should run, written to `.env` on save. Nil leaves
+    /// the file's own `CLI_PROVIDER` and `CLI_COMMAND_TEMPLATE` lines alone,
+    /// which is what an app that does not manage the bot's provider wants.
+    /// Reading a file never fills it in: an app that sets it holds the choice
+    /// itself. So after the engine saves or loads, `engine.configuration`'s
+    /// copy is nil. Keep your own choice and set it on every save; do not
+    /// compare your draft against the engine's copy, or save that copy back.
+    public var botProvider: NexusAgentCLIProvider?
 
     public init(botToken: String = "",
                  allowedUserIDs: String = "",
@@ -139,7 +147,8 @@ public struct NexusAgentConfiguration: Equatable {
                  approvalMode: NexusAgentApprovalMode = .yolo,
                  model: String = "",
                  effort: NexusAgentEffort = .automatic,
-                 activeProvider: NexusAgentCLIProvider = .antigravity) {
+                 activeProvider: NexusAgentCLIProvider = .antigravity,
+                 botProvider: NexusAgentCLIProvider? = nil) {
         self.botToken = botToken
         self.allowedUserIDs = allowedUserIDs
         self.workingDirectory = workingDirectory
@@ -147,6 +156,7 @@ public struct NexusAgentConfiguration: Equatable {
         self.model = model
         self.effort = effort
         self.activeProvider = activeProvider
+        self.botProvider = botProvider
     }
 
     /// The placeholder the bot's example file ships with.
@@ -175,6 +185,10 @@ public enum NexusAgentEnvFile {
     public static let approvalModeKey = "AGY_APPROVAL_MODE"
     public static let modelKey = "AGY_MODEL"
     public static let effortKey = "AGY_EFFORT"
+    /// Which program the bot runs: `agy`, or `custom` with the template below.
+    /// Owned by the page only when the configuration sets `botProvider`.
+    public static let providerKey = "CLI_PROVIDER"
+    public static let commandTemplateKey = "CLI_COMMAND_TEMPLATE"
 
     /// Pre-migration names the bot still honours when the AGY_ one is absent.
     /// Writing the file supersedes them, so they are dropped then: left in
@@ -245,7 +259,9 @@ public enum NexusAgentEnvFile {
                 output.append(line)
             }
         }
-        let missing = managedKeys.filter { !written.contains($0) }
+        // The provider lines count as owned only when the app chose one.
+        let owned = managedKeys + (configuration.botProvider == nil ? [] : [providerKey, commandTemplateKey])
+        let missing = owned.filter { !written.contains($0) }
         if !missing.isEmpty {
             if output.last.map({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? false {
                 output.append("")
@@ -295,7 +311,7 @@ public enum NexusAgentEnvFile {
     }
 
     private static func assignments(for configuration: NexusAgentConfiguration) -> [String: String] {
-        [
+        var wanted = [
             tokenKey: configuration.botToken.trimmingCharacters(in: .whitespaces),
             allowedUsersKey: configuration.allowedUserIDList.joined(separator: ","),
             workingDirectoryKey: configuration.workingDirectory.trimmingCharacters(in: .whitespaces),
@@ -303,6 +319,14 @@ public enum NexusAgentEnvFile {
             modelKey: configuration.model.trimmingCharacters(in: .whitespaces),
             effortKey: configuration.effort.rawValue,
         ]
+        if let provider = configuration.botProvider {
+            // The built-in agent is the bot's own default; anything else is
+            // run from its command template.
+            let builtIn = provider.id == NexusAgentCLIProvider.antigravity.id
+            wanted[providerKey] = builtIn ? "agy" : "custom"
+            wanted[commandTemplateKey] = builtIn ? "" : provider.commandTemplate
+        }
+        return wanted
     }
 
     private static func template(_ values: [String: String]) -> String {
@@ -330,10 +354,10 @@ public enum NexusAgentEnvFile {
         \(effortKey)=\(value(effortKey))
 
         # AI backend provider: agy or custom
-        CLI_PROVIDER=agy
+        \(providerKey)=\(encoded(values[providerKey] ?? "agy"))
 
         # Command template for custom provider ({prompt} and {model} are substituted at runtime)
-        CLI_COMMAND_TEMPLATE=
+        \(commandTemplateKey)=\(value(commandTemplateKey))
 
         """
     }

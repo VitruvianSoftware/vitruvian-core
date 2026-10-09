@@ -65,7 +65,7 @@ class ConfigManager: ObservableObject {
     @Published var botToken: String = ""
     @Published var allowedUserIds: String = ""
     @Published var workingDirectory: String = ""
-    @Published var approvalMode: String = "yolo"
+    @Published var approvalMode: String = ConfigManager.defaultApprovalMode
     @Published var model: String = ""
     /// agy --effort (low|medium|high); empty means agy's default.
     @Published var effort: String = ""
@@ -100,11 +100,14 @@ class ConfigManager: ObservableObject {
         return parts.joined()
     }
 
-    private var envFilePath: String {
-        NSHomeDirectory() + "/.config/nexus-agent/.env"
-    }
+    /// What the approval mode shows when `.env` does not say.
+    private static let defaultApprovalMode = "yolo"
 
-    init() {
+    /// Reads and writes `.env` by the rules this app shares with Vitruvian.
+    private let engine: NexusAgentEngine
+
+    init(engine: NexusAgentEngine) {
+        self.engine = engine
 
         // Load preferences from UserDefaults
         autoStart = UserDefaults.standard.bool(forKey: "autoStart")
@@ -179,87 +182,60 @@ class ConfigManager: ObservableObject {
 
     // MARK: - Load .env
 
+    /// Called once, at launch. The engine reads `.env` again when polling
+    /// starts and when the bot is started (the 2-second timer only refreshes
+    /// status and the log), but the fields below are filled only here, so
+    /// nothing overwrites what the user is typing in Settings.
     func load() {
-        guard FileManager.default.fileExists(atPath: envFilePath),
-              let content = try? String(contentsOfFile: envFilePath, encoding: .utf8) else {
-            // Try .env.example as a template
-            let examplePath = NSHomeDirectory() + "/.config/nexus-agent/.env.example"
+        engine.load()
+        if let content = try? String(contentsOfFile: engine.envFilePath, encoding: .utf8) {
+            show(engine.configuration, fileValues: NexusAgentEnvFile.values(in: content))
+        } else {
+            // No .env yet: try .env.example as a template
+            let examplePath = (engine.botDirectory as NSString).appendingPathComponent(".env.example")
             if let example = try? String(contentsOfFile: examplePath, encoding: .utf8) {
-                parseEnv(example)
+                show(NexusAgentEnvFile.parse(example), fileValues: NexusAgentEnvFile.values(in: example))
             }
-            return
         }
-        parseEnv(content)
     }
 
-    private func parseEnv(_ content: String) {
-        for line in content.components(separatedBy: .newlines) {
-            // An empty value is skipped, as before: the field keeps its default.
-            guard let (key, value) = NexusAgentEnvFile.assignment(in: line), !value.isEmpty else { continue }
-
-            switch key {
-            case "TELEGRAM_BOT_TOKEN":
-                botToken = value
-            case "ALLOWED_USER_IDS":
-                allowedUserIds = value
-            case "AGY_WORKING_DIR", "GEMINI_WORKING_DIR":
-                workingDirectory = value
-            case "AGY_APPROVAL_MODE", "GEMINI_APPROVAL_MODE":
-                approvalMode = value == "auto_edit" ? "accept-edits" : value
-            case "AGY_MODEL", "GEMINI_MODEL":
-                model = value
-            case "AGY_EFFORT":
-                effort = ["low", "medium", "high"].contains(value.lowercased()) ? value.lowercased() : ""
-            case "GEMINI_THINKING":
-                if value.lowercased() == "true" { effort = "high" }
-            default:
-                break
-            }
-        }
+    /// Copies what the file says into the fields the views bind to.
+    private func show(_ configuration: NexusAgentConfiguration, fileValues: [String: String]) {
+        botToken = configuration.botToken
+        allowedUserIds = configuration.allowedUserIDs
+        workingDirectory = configuration.workingDirectory
+        model = configuration.model
+        effort = configuration.effort.rawValue
+        // An approval mode line with nothing after the `=` shows this app's
+        // default, as it always has here. The shared reading alone would show
+        // "default" for it, which is how the bot itself takes an empty value.
+        let written = fileValues[NexusAgentEnvFile.approvalModeKey] ?? fileValues["GEMINI_APPROVAL_MODE"]
+        approvalMode = written == "" ? Self.defaultApprovalMode : configuration.approvalMode.rawValue
     }
 
     // MARK: - Save .env
 
-    func save() {
+    /// Returns whether the `.env` was written. The preferences and the hotkey
+    /// are saved either way.
+    @discardableResult
+    func save() -> Bool {
+        var configuration = NexusAgentConfiguration(
+            botToken: botToken,
+            allowedUserIDs: allowedUserIds,
+            workingDirectory: workingDirectory,
+            approvalMode: .parse(approvalMode),
+            model: model,
+            effort: .parse(effort))
+        // Which program the bot runs is this app's own saved choice. It is
+        // handed over on every save: the engine does not keep it, and forgets
+        // it each time it reads the file.
         let provider = activeProvider
-        let isAntigravity = provider.id == CLIProvider.antigravity.id
-        let cliProvider = isAntigravity ? "agy" : "custom"
-        let cliTemplate = isAntigravity ? "" : provider.commandTemplate
-
-        let content = """
-        # Telegram Bot Token (get from @BotFather on Telegram)
-        TELEGRAM_BOT_TOKEN=\(botToken)
-
-        # Comma-separated list of allowed Telegram user IDs
-        ALLOWED_USER_IDS=\(allowedUserIds)
-
-        # Working directory for the Antigravity CLI (agy)
-        AGY_WORKING_DIR=\(workingDirectory)
-
-        # Max execution time per prompt in milliseconds
-        AGY_TIMEOUT_MS=300000
-
-        # Approval mode: yolo, accept-edits, plan, default
-        AGY_APPROVAL_MODE=\(approvalMode)
-
-        # Model (optional; `agy models` lists them)
-        AGY_MODEL=\(model)
-
-        # Reasoning effort: low, medium, high (empty = agy default)
-        AGY_EFFORT=\(effort)
-
-        # AI backend provider: agy or custom
-        CLI_PROVIDER=\(cliProvider)
-
-        # Command template for custom provider ({prompt} and {model} are substituted at runtime)
-        CLI_COMMAND_TEMPLATE=\(cliTemplate)
-        """
-
-        do {
-            try content.write(toFile: envFilePath, atomically: true, encoding: .utf8)
-        } catch {
-            print("Failed to save .env: \(error)")
-        }
+        configuration.botProvider = NexusAgentCLIProvider(
+            id: provider.id, name: provider.name,
+            commandTemplate: provider.commandTemplate, isBuiltIn: provider.isBuiltIn)
+        // A save that fails leaves the reason with the engine, which the log
+        // panel shows.
+        let saved = engine.save(configuration)
 
         // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")
@@ -275,6 +251,7 @@ class ConfigManager: ObservableObject {
             key: hotkeyKey,
             modifiers: NSEvent.ModifierFlags(rawValue: UInt(hotkeyModifiers))
         )
+        return saved
     }
 
     // MARK: - Validation

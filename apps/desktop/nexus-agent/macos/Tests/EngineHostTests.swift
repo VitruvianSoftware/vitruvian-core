@@ -372,6 +372,41 @@ final class EngineHostTests: XCTestCase {
         }
     }
 
+    func testEveryProblemHasWords() {
+        let strings = NexusAgentHostStrings()
+        XCTAssertEqual(strings.problemMissingToken, "Add your Telegram bot token in Settings before starting the bot.")
+        XCTAssertEqual(strings.problemMissingBot, "The bot is not installed: src/bot.js was not found in the bot folder.")
+        XCTAssertEqual(strings.problemMissingNode, "Node.js was not found. Install Node, then start the bot again.")
+        XCTAssertEqual(strings.problemStartFailed, "The bot could not be started.")
+        XCTAssertEqual(strings.problemSaveFailed, "The settings could not be saved.")
+    }
+
+    func testAStartThatCannotHappenSaysWhy() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        XCTAssertNil(engine.problemDescription, "nothing has gone wrong yet")
+
+        // No bot installed.
+        engine.start()
+        XCTAssertEqual(engine.problemDescription, host.strings.problemMissingBot)
+
+        // The bot is there but there is no token.
+        rig.files[rig.defaultBot + "/src/bot.js"] = ""
+        engine.start()
+        XCTAssertEqual(engine.problemDescription, host.strings.problemMissingToken)
+
+        // A token, but the rig has no executable Node.
+        rig.files[rig.defaultBot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n"
+        engine.start()
+        XCTAssertEqual(engine.problemDescription, host.strings.problemMissingNode)
+
+        // The words follow the host's text at the moment they are asked for.
+        host.strings.problemMissingNode = "Node fehlt."
+        XCTAssertEqual(engine.problemDescription, "Node fehlt.")
+    }
+
     // MARK: - The shared code stays free of any one app
 
     /// Where the shared sources are on this machine. Bazel runs the test in

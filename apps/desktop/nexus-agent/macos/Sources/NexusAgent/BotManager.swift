@@ -21,219 +21,75 @@
 import SwiftUI
 import Foundation
 import Combine
+import NexusAgentCore
 
-/// Manages the Node.js bot process lifecycle.
+/// What the views show about the Telegram bot, and the buttons they press.
+/// The work itself (starting Node, the PID file, the log) is the shared
+/// engine's; this class only mirrors the engine's state for SwiftUI.
 @MainActor
 class BotManager: ObservableObject {
     @Published var isRunning = false
     @Published var lastLogLines: [String] = []
     @Published var pid: Int32? = nil
 
-    private var process: Process?
-    private var logFileHandle: FileHandle?
-    private var logMonitorTimer: Timer?
-    private var lastLogModDate: Date?
-    private var lastLogFileSize: UInt64 = 0
+    /// The shared engine, also used by `ConfigManager` to read and save `.env`.
+    let engine: NexusAgentEngine
 
-    var botDirectory: String {
-        NSHomeDirectory() + "/.config/nexus-agent"
-    }
-    let logFilePath: String
-    let pidFilePath: String
+    private var cancellables: Set<AnyCancellable> = []
 
     init() {
+        engine = NexusAgentEngine(environment: .live, host: StandaloneHost())
 
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("NexusAgent")
-        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        // The engine changes its state on the main thread, and each of these
+        // hands over the new value as it changes.
+        engine.$isRunning
+            .sink { [weak self] running in self?.isRunning = running }
+            .store(in: &cancellables)
+        engine.$pid
+            .sink { [weak self] pid in self?.pid = pid }
+            .store(in: &cancellables)
+        // The log panel is rebuilt when either the log or the problem
+        // changes. A publisher fires just before the engine's property takes
+        // the new value, so the rebuild waits one turn of the main queue and
+        // then reads the engine, which by then holds both.
+        Publishers.CombineLatest(engine.$logLines, engine.$problem)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshLogLines() }
+            .store(in: &cancellables)
 
-        logFilePath = appSupport.appendingPathComponent("bot.log").path
-        pidFilePath = appSupport.appendingPathComponent(".bot.pid").path
-
-        // Check if bot is already running from a previous session
-        checkExistingProcess()
-        startLogMonitor()
+        // Status and log stay live for as long as the app runs, so polling is
+        // started once here and never stopped.
+        engine.startPolling()
     }
 
-
+    /// The engine's log lines, then why the bot could not start or the
+    /// settings could not be saved, when there is such a problem: the log
+    /// panel is the only place this app has to say it.
+    private func refreshLogLines() {
+        var lines = engine.logLines
+        if let problem = engine.problemDescription {
+            lines.append(problem)
+        }
+        if lastLogLines != lines {
+            lastLogLines = lines
+        }
+    }
 
     // MARK: - Process Control
 
     func start() {
-        guard !isRunning else { return }
-
-        if botDirectory.isEmpty || !FileManager.default.fileExists(atPath: "\(botDirectory)/src/bot.js") {
-            appendLog("Bot source directory not configured. Please set the 'Bot Source' path in Settings.")
-            return
-        }
-
-        let proc = Process()
-
-        // Find node binary — .app bundles don't inherit shell PATH
-        let nodePaths = [
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
-            "/usr/bin/node",
-        ]
-        let nodeBin = nodePaths.first { FileManager.default.fileExists(atPath: $0) } ?? "/opt/homebrew/bin/node"
-
-        proc.executableURL = URL(fileURLWithPath: nodeBin)
-        proc.arguments = ["src/bot.js"]
-        proc.currentDirectoryURL = URL(fileURLWithPath: botDirectory)
-
-        // Redirect stdout/stderr to log file
-        FileManager.default.createFile(atPath: logFilePath, contents: nil)
-        let logFile = FileHandle(forWritingAtPath: logFilePath)
-        proc.standardOutput = logFile
-        proc.standardError = logFile
-
-        // Inherit environment and ensure Homebrew paths are in PATH
-        var env = ProcessInfo.processInfo.environment
-        let existingPath = env["PATH"] ?? ""
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:\(existingPath)"
-        env["NO_COLOR"] = "1"
-        proc.environment = env
-
-        proc.terminationHandler = { [weak self] _ in
-            Task { @MainActor in
-                self?.isRunning = false
-                self?.pid = nil
-                self?.cleanPidFile()
-            }
-        }
-
-        do {
-            try proc.run()
-            process = proc
-            pid = proc.processIdentifier
-            isRunning = true
-            writePidFile(proc.processIdentifier)
-            appendLog("Bot started (PID \(proc.processIdentifier))")
-        } catch {
-            appendLog("Failed to start bot: \(error.localizedDescription)")
-        }
+        engine.start()
     }
 
     func stop() {
-        // Try managed process first
-        if let proc = process, proc.isRunning {
-            proc.terminate()
-
-            // Wait briefly for graceful shutdown
-            DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
-                if proc.isRunning {
-                    proc.interrupt()
-                }
-            }
-            process = nil
-        }
-
-        // Also kill by PID file (handles processes started by bot.sh)
-        if let existingPid = readPidFile() {
-            kill(existingPid, SIGTERM)
-        }
-
-        // Kill any orphan processes
-        let killTask = Process()
-        killTask.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        killTask.arguments = ["-f", "node src/bot.js"]
-        try? killTask.run()
-        killTask.waitUntilExit()
-
-        isRunning = false
-        pid = nil
-        cleanPidFile()
-        appendLog("Bot stopped")
+        engine.stop()
     }
 
     func restart() {
-        stop()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            self.start()
-        }
-    }
-
-    // MARK: - Log Monitoring
-
-    private func startLogMonitor() {
-        logMonitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.readRecentLogs()
-                self?.checkExistingProcess()
-            }
-        }
-    }
-
-    private func readRecentLogs() {
-        guard FileManager.default.fileExists(atPath: logFilePath) else { return }
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: logFilePath) {
-            let modDate = attrs[.modificationDate] as? Date
-            let fileSize = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
-            if let lastDate = lastLogModDate, lastDate == modDate, lastLogFileSize == fileSize {
-                return
-            }
-            lastLogModDate = modDate
-            lastLogFileSize = fileSize
-        }
-        guard let data = FileManager.default.contents(atPath: logFilePath) else { return }
-        let text = String(data: data, encoding: .utf8) ?? ""
-        let lines = text.components(separatedBy: .newlines).filter { !$0.isEmpty }
-        let newLines = Array(lines.suffix(20))
-        if lastLogLines != newLines {
-            lastLogLines = newLines
-        }
+        engine.restart()
     }
 
     func openLogs() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: logFilePath))
-    }
-
-    // MARK: - PID File Management
-
-    private func checkExistingProcess() {
-        if let existingPid = readPidFile() {
-            // Check if process is actually running
-            if kill(existingPid, 0) == 0 {
-                if !isRunning || pid != existingPid {
-                    isRunning = true
-                    pid = existingPid
-                }
-            } else {
-                cleanPidFile()
-                if isRunning || pid != nil {
-                    isRunning = false
-                    pid = nil
-                }
-            }
-        } else if isRunning || pid != nil {
-            isRunning = false
-            pid = nil
-        }
-    }
-
-    private func readPidFile() -> Int32? {
-        guard let data = FileManager.default.contents(atPath: pidFilePath),
-              let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let pid = Int32(text) else { return nil }
-        return pid
-    }
-
-    private func writePidFile(_ pid: Int32) {
-        try? "\(pid)".write(toFile: pidFilePath, atomically: true, encoding: .utf8)
-    }
-
-    private func cleanPidFile() {
-        try? FileManager.default.removeItem(atPath: pidFilePath)
-    }
-
-    private func appendLog(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        lastLogLines.append("[\(timestamp)] \(message)")
-        if lastLogLines.count > 20 {
-            lastLogLines.removeFirst(lastLogLines.count - 20)
-        }
-    }
-
-    deinit {
-        logMonitorTimer?.invalidate()
+        engine.openLog()
     }
 }
