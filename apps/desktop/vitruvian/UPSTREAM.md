@@ -107,6 +107,12 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: The app carries the GravaStar mouse command and offers it as an MCP server:
+  - `BUILD`: `//packages/peripherals:gravastar-mouse` (MIT) goes into `Contents/Helpers` through `additional_contents`, and the `vitruvian` delivery unit also follows `packages/peripherals/`. `Tools/package-release.sh` signs it with the other nested code.
+  - `GitHubMouseBinary.swift`: `locate` tries that copy right after the configured path; `mcpConfig(binary:)` builds the `mcpServers` JSON for `gravastar-mouse mcp`.
+  - `GitHubPeripheralSink.swift`: passes the bundle's copy to `locate`.
+  - `GitHubSettingsView.swift` and `NotchGitHubStrings.swift`: the Mouse command hint names the copy inside the app, and a Copy MCP Config button copies the JSON for the command found, in every language.
+  - `Tests/GitHubCoreTests.swift`: the bundled copy's place in the search order, the MCP JSON and the new label.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.

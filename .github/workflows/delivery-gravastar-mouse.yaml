@@ -55,11 +55,11 @@
 # renaming or deleting a delivery() declaration shows up as a DIFF in this
 # generated file, which is what makes tidy-check's regeneration assertion
 # mean something even for a unit that renders no job yet.
-#   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
-#       paths:  apps/desktop/vitruvian/ packages/peripherals/
+#   - gravastar-mouse  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
+#       paths:  packages/peripherals/
 #       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
 
-name: delivery-vitruvian
+name: delivery-gravastar-mouse
 
 on:
   push:
@@ -75,7 +75,7 @@ on:
         type: choice
         required: true
         options:
-          - vitruvian
+          - gravastar-mouse
       environment:
         description: Target environment (single-env break-glass redeploy)
         type: choice
@@ -182,7 +182,7 @@ jobs:
       # phase). The affected_* pairs are the convenience form a job-level
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
-      affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
+      affected_gravastar_mouse: ${{ steps.manifest.outputs.affected_gravastar_mouse }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -199,7 +199,7 @@ jobs:
         id: durable-base
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: delivery-vitruvian.yaml
+          WORKFLOW_FILE: delivery-gravastar-mouse.yaml
           LEGACY_WORKFLOW_FILE: delivery.yaml
         # Reads THIS workflow's last successful push run and uses its head
         # sha as the diff base, so a run evicted by this app's
@@ -213,7 +213,7 @@ jobs:
         id: unit-bases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: delivery-vitruvian.yaml
+          WORKFLOW_FILE: delivery-gravastar-mouse.yaml
           LEGACY_WORKFLOW_FILE: delivery.yaml
         # Refines the single base above, which is a RUN-level verdict: a run
         # whose delivery jobs were all skipped still concludes success and
@@ -242,7 +242,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: vitruvian
+          ORCHESTRATE_UNITS: gravastar-mouse
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@v7
@@ -254,20 +254,20 @@ jobs:
           # signed off before the legacy path is deleted.
           retention-days: 30
 
-  # ======== unit: vitruvian → beta → production ========
-  # Declared in apps/desktop/vitruvian/BUILD; break-glass target: //apps/desktop/vitruvian:publish
+  # ======== unit: gravastar-mouse → beta → production ========
+  # Declared in packages/peripherals/BUILD; break-glass target: //packages/peripherals:publish
   # Transcribed from .github/workflows/vitruvian-release.yaml job "package" (that job no longer exists; see git history).
 
   # The push rung: delivers on an affected push. The later rungs are
   # release-gated promotions and do not chain behind this one.
-  vitruvian-beta:
+  gravastar-mouse-beta:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian' && inputs.environment == 'beta'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_gravastar_mouse == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse' && inputs.environment == 'beta'))
     concurrency:
-      group: delivery-vitruvian-beta
+      group: delivery-gravastar-mouse-beta
       cancel-in-progress: false
     runs-on: xcode-27
-    timeout-minutes: 60
+    timeout-minutes: 45
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
     permissions:
@@ -283,35 +283,24 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      # Imports the Developer ID identity into a temporary keychain; a
-      # no-op when the secrets are not set.
-      - name: Import the signing identity
-        env:
-          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
-
-      - name: Build, package and publish the DMG
+      - name: Build and publish gravastar-mouse
         env:
           GRADE: beta
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Cache-only: reuse the build the macOS pipeline unit cached.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
-          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
-        run: bash apps/desktop/vitruvian/publish.sh
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: bash packages/peripherals/publish.sh
 
-  # PROMOTION rung 1/1 — release-gated on a vitruvian-v* release, never reached by a push.
-  vitruvian-production:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian' && inputs.environment == 'production'))
+  # PROMOTION rung 1/1 — release-gated on a gravastar-mouse-v* release, never reached by a push.
+  gravastar-mouse-production:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'gravastar-mouse-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse' && inputs.environment == 'production'))
     concurrency:
-      group: delivery-vitruvian-production
+      group: delivery-gravastar-mouse-production
       cancel-in-progress: false
     runs-on: xcode-27
-    timeout-minutes: 60
+    timeout-minutes: 45
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
     permissions:
@@ -327,23 +316,12 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      # Imports the Developer ID identity into a temporary keychain; a
-      # no-op when the secrets are not set.
-      - name: Import the signing identity
-        env:
-          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
-
-      - name: Build, package and publish the DMG
+      - name: Build and publish gravastar-mouse
         env:
           GRADE: production
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Cache-only: reuse the build the macOS pipeline unit cached.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
-          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
-        run: bash apps/desktop/vitruvian/publish.sh
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: bash packages/peripherals/publish.sh

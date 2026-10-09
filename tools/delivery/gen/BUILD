@@ -81,6 +81,7 @@ go_test(
         "//apps/desktop/vitruvian:publish.sh",
         "//apps/embedded/esp32-s3:publish.sh",
         "//apps/suites/tabula/extension:publish-dev-latest.sh",
+        "//packages/peripherals:publish.sh",
         "//tools/charts:publish.sh",
         "//apps/suites/tabula/infra/app:cmd/revname/main.go",
         "//tools/ci:require-dev-soak.sh",

@@ -1,0 +1,73 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please for the gravastar-mouse command (packages/peripherals): authors
+# the release PR from conventional commits under packages/peripherals/ and,
+# when that PR merges, cuts the GitHub Release tagged gravastar-mouse-vX.Y.Z.
+#
+# This is RELEASE MACHINERY, not delivery (the same split as
+# iot-esp32-s3-release.yaml): it publishes no artifact. The release it cuts is
+# what the generated delivery-gravastar-mouse.yaml's `gravastar-mouse-production`
+# rung listens for, and the beta rolling prerelease is that unit's push rung.
+name: gravastar-mouse-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/peripherals/**"
+      - ".github/workflows/gravastar-mouse-release.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # Never cancel a release run; serialize them on the branch so rapid merges
+    # to main cannot race the release PR / tag creation (issue #461).
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
+      # `uses: ./...` without the repo already checked out onto the runner.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks. No fallback: a
+      # GITHUB_TOKEN-authored release PR can never enter the merge queue.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: packages/peripherals/release-please-config.json
+          manifest-file: packages/peripherals/.release-please-manifest.json
+          target-branch: main
