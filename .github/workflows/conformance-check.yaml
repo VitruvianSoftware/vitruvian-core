@@ -79,10 +79,9 @@ jobs:
       - name: Gate on changed paths (PR only)
         id: gate
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          IGNORE_REGEX: '^docs/|\.md$'
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
+        with:
+          ignore-regex: '^docs/|\.md$'
 
       - name: Install Bazel
         if: steps.gate.outputs.relevant != 'false'

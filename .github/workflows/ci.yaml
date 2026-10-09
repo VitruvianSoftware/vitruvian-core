@@ -98,10 +98,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name != 'merge_group'
-        env:
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
-          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || '' }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       # Everything from here to the tripwire is setup for the affected-targets
       # step, so it carries the same condition that step does (#2841): always
@@ -311,9 +308,7 @@ jobs:
       - name: Gate on changed paths (push lane)
         id: gate
         if: github.event_name == 'push'
-        env:
-          BEFORE_REV: ${{ github.event.before }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       - name: Detect macOS-relevant changes
         id: changes
@@ -487,7 +482,7 @@ jobs:
       # reports (it is a REQUIRED check -- skipping it would wedge the queue
       # "pending"), only the Bazel steps are gated.
       #
-      # IGNORE_REGEX is deliberately NARROWER than the script default, which
+      # ignore-regex is deliberately NARROWER than the script default, which
       # also treats gitops/ as inert. addlicense does not ignore gitops/ (those
       # manifests carry MIT headers today) and //tools/license:{check,verify}
       # are `bazel run` sh_binaries with no sh_test, so `bazel test //...` and
@@ -499,11 +494,9 @@ jobs:
       # extensions.
       - name: Gate on changed paths
         id: gate
-        env:
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
-          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-          IGNORE_REGEX: '^docs/|\.md$'
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
+        with:
+          ignore-regex: '^docs/|\.md$'
       - name: Set up Bazel
         if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
@@ -591,9 +584,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name == 'push'
-        env:
-          BEFORE_REV: ${{ github.event.before }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       - name: Detect ${{ matrix.module }}-relevant changes
         id: changes
@@ -669,9 +660,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name == 'push'
-        env:
-          BEFORE_REV: ${{ github.event.before }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       - name: Detect IaC-relevant changes
         id: changes
@@ -757,9 +746,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name == 'push'
-        env:
-          BEFORE_REV: ${{ github.event.before }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       - name: Detect Go changes
         id: changes
@@ -871,9 +858,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name == 'push'
-        env:
-          BEFORE_REV: ${{ github.event.before }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       - name: Detect example/library changes
         id: changes
@@ -959,9 +944,7 @@ jobs:
       - name: Gate on changed paths
         id: gate
         if: github.event_name == 'push'
-        env:
-          BEFORE_REV: ${{ github.event.before }}
-        run: bash tools/ci/relevant-paths.sh
+        uses: ./.github/actions/changed-paths-gate
 
       - name: Detect Butane-relevant changes
         id: changes
