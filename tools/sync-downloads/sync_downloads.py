@@ -85,13 +85,17 @@ def get_latest_release(repo, tag_prefix=None, token=None):
             return data
 
     # Multi-component monorepo or prefix search
-    refs = fetch_json(f"repos/{repo}/git/matching-refs/tags/{tag_prefix or ''}", token=token)
+    refs = fetch_json(
+        f"repos/{repo}/git/matching-refs/tags/{tag_prefix or ''}", token=token
+    )
     if not refs:
         # Fallback to listing releases
         releases = fetch_json(f"repos/{repo}/releases?per_page=50", token=token)
         if releases:
             for r in releases:
-                if not r.get("prerelease") and (not tag_prefix or r.get("tag_name", "").startswith(tag_prefix)):
+                if not r.get("prerelease") and (
+                    not tag_prefix or r.get("tag_name", "").startswith(tag_prefix)
+                ):
                     return r
         return None
 
@@ -134,9 +138,9 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
         # Replace version: "..." right after id: nexus-agent
         updated_content = re.sub(
             r'(id:\s*nexus-agent[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{tag}\g<2>',
+            rf"\g<1>{tag}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
         # Update asset URLs and sizes
         for asset in rel_nexus.get("assets", []):
@@ -145,75 +149,79 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
             url = asset.get("browser_download_url", "")
             if "arm64.dmg" in name:
                 updated_content = re.sub(
-                    r'(label:\s*Apple Silicon DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Apple Silicon DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
             elif "universal.dmg" in name:
                 updated_content = re.sub(
-                    r'(label:\s*Universal DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Universal DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
             elif "x86_64.dmg" in name:
                 updated_content = re.sub(
-                    r'(label:\s*Intel x86_64 DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Intel x86_64 DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
             elif "universal.zip" in name:
                 updated_content = re.sub(
-                    r'(label:\s*Universal ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Universal ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
 
     # 2. Vitruvian Desktop (Monorepo: vitruvian-v*)
-    rel_vitruvian = get_latest_release("VitruvianSoftware/vitruvian-core", tag_prefix="vitruvian-v", token=token)
+    rel_vitruvian = get_latest_release(
+        "VitruvianSoftware/vitruvian-core", tag_prefix="vitruvian-v", token=token
+    )
     if rel_vitruvian:
         tag = rel_vitruvian.get("tag_name", "").replace("vitruvian-v", "")
         print(f"✓ Vitruvian Desktop: v{tag}")
         updated_content = re.sub(
             r'(id:\s*vitruvian-desktop[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{tag}\g<2>',
+            rf"\g<1>{tag}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
         for asset in rel_vitruvian.get("assets", []):
             if asset.get("name", "").endswith(".dmg"):
                 url = asset.get("browser_download_url", "")
                 size_str = format_size(asset.get("size", 0))
                 updated_content = re.sub(
-                    r'(id:\s*vitruvian-desktop[\s\S]*?label:\s*macOS DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*macOS DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
 
     # 3. HomeSpeaker (Monorepo: home-speaker-v*)
-    rel_speaker = get_latest_release("VitruvianSoftware/vitruvian-core", tag_prefix="home-speaker-v", token=token)
+    rel_speaker = get_latest_release(
+        "VitruvianSoftware/vitruvian-core", tag_prefix="home-speaker-v", token=token
+    )
     if rel_speaker:
         tag = rel_speaker.get("tag_name", "").replace("home-speaker-v", "")
         print(f"✓ HomeSpeaker: v{tag}")
         updated_content = re.sub(
             r'(id:\s*home-speaker[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{tag}\g<2>',
+            rf"\g<1>{tag}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
         for asset in rel_speaker.get("assets", []):
             if asset.get("name", "").endswith(".zip"):
                 url = asset.get("browser_download_url", "")
                 size_str = format_size(asset.get("size", 0))
                 updated_content = re.sub(
-                    r'(id:\s*home-speaker[\s\S]*?label:\s*macOS ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(id:\s*home-speaker[\s\S]*?label:\s*macOS ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
 
     # 4. devx (Standalone repo: VitruvianSoftware/devx)
@@ -223,9 +231,9 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
         print(f"✓ devx: v{tag}")
         updated_content = re.sub(
             r'(id:\s*devx[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{tag}\g<2>',
+            rf"\g<1>{tag}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
 
     # 5. homelab (Standalone repo: VitruvianSoftware/homelab)
@@ -235,47 +243,51 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
         print(f"✓ homelab: v{tag}")
         updated_content = re.sub(
             r'(id:\s*homelab[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{tag}\g<2>',
+            rf"\g<1>{tag}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
 
     # 6. gravastar-mouse (Monorepo: gravastar-mouse-v*)
-    rel_mouse = get_latest_release("VitruvianSoftware/vitruvian-core", tag_prefix="gravastar-mouse-v", token=token)
+    rel_mouse = get_latest_release(
+        "VitruvianSoftware/vitruvian-core", tag_prefix="gravastar-mouse-v", token=token
+    )
     if rel_mouse:
         tag_name = rel_mouse.get("tag_name", "")
         ver = tag_name.replace("gravastar-mouse-v", "")
         print(f"✓ gravastar-mouse: v{ver}")
         updated_content = re.sub(
             r'(id:\s*gravastar-mouse[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{ver}\g<2>',
+            rf"\g<1>{ver}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
         updated_content = re.sub(
-            r'(id:\s*gravastar-mouse[\s\S]*?releases_url:\s*https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/)[^\n]+',
-            rf'\g<1>{tag_name}',
+            r"(id:\s*gravastar-mouse[\s\S]*?releases_url:\s*https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/)[^\n]+",
+            rf"\g<1>{tag_name}",
             updated_content,
-            count=1
+            count=1,
         )
 
     # 7. esp32-s3 (Monorepo: esp32-s3-v*)
-    rel_esp = get_latest_release("VitruvianSoftware/vitruvian-core", tag_prefix="esp32-s3-v", token=token)
+    rel_esp = get_latest_release(
+        "VitruvianSoftware/vitruvian-core", tag_prefix="esp32-s3-v", token=token
+    )
     if rel_esp:
         tag_name = rel_esp.get("tag_name", "")
         ver = tag_name.replace("esp32-s3-v", "")
         print(f"✓ esp32-s3: v{ver}")
         updated_content = re.sub(
             r'(id:\s*esp32-s3[\s\S]*?version:\s*")[^"]+(")',
-            rf'\g<1>{ver}\g<2>',
+            rf"\g<1>{ver}\g<2>",
             updated_content,
-            count=1
+            count=1,
         )
         updated_content = re.sub(
-            r'(id:\s*esp32-s3[\s\S]*?releases_url:\s*https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/)[^\n]+',
-            rf'\g<1>{tag_name}',
+            r"(id:\s*esp32-s3[\s\S]*?releases_url:\s*https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/)[^\n]+",
+            rf"\g<1>{tag_name}",
             updated_content,
-            count=1
+            count=1,
         )
         for asset in rel_esp.get("assets", []):
             name = asset.get("name", "")
@@ -283,31 +295,31 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
             url = asset.get("browser_download_url", "")
             if name == "esp32-s3-mac-controller.zip":
                 updated_content = re.sub(
-                    r'(label:\s*Mac Controller ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Mac Controller ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
             elif name == "firmware.bin":
                 updated_content = re.sub(
-                    r'(label:\s*Firmware Binary[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Firmware Binary[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
             elif name == "bootloader.bin":
                 updated_content = re.sub(
-                    r'(label:\s*Bootloader Binary[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Bootloader Binary[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
             elif name == "partitions.bin":
                 updated_content = re.sub(
-                    r'(label:\s*Partition Table[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+',
-                    rf'\g<1>{url}\g<2>{size_str}',
+                    r"(label:\s*Partition Table[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
-                    count=1
+                    count=1,
                 )
 
     if original_content == updated_content:
@@ -340,11 +352,23 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Synchronize vitruviansoftware.dev downloads catalog with latest releases")
-    parser.add_argument("--file", default=DEFAULT_CATALOG, help=f"Path to downloads.yml (default: {DEFAULT_CATALOG})")
-    parser.add_argument("--dry-run", action="store_true", help="Print diff without modifying file")
-    parser.add_argument("--check", action="store_true", help="Exit 1 if catalog is out of date")
-    parser.add_argument("--token", help="GitHub token for API queries (or uses ambient gh / GH_TOKEN)")
+    parser = argparse.ArgumentParser(
+        description="Synchronize vitruviansoftware.dev downloads catalog with latest releases"
+    )
+    parser.add_argument(
+        "--file",
+        default=DEFAULT_CATALOG,
+        help=f"Path to downloads.yml (default: {DEFAULT_CATALOG})",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print diff without modifying file"
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="Exit 1 if catalog is out of date"
+    )
+    parser.add_argument(
+        "--token", help="GitHub token for API queries (or uses ambient gh / GH_TOKEN)"
+    )
     args = parser.parse_args()
 
     # Locate relative to repo root if path is not absolute
@@ -352,11 +376,17 @@ def main():
     if not os.path.isabs(catalog_path):
         root = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
         if not root:
-            root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+            root = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+            ).stdout.strip()
         if root:
             catalog_path = os.path.join(root, catalog_path)
 
-    sys.exit(sync_catalog(catalog_path, dry_run=args.dry_run, check=args.check, token=args.token))
+    sys.exit(
+        sync_catalog(
+            catalog_path, dry_run=args.dry_run, check=args.check, token=args.token
+        )
+    )
 
 
 if __name__ == "__main__":
