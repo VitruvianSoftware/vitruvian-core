@@ -1,0 +1,32 @@
+---
+layout: page
+title: Blog
+permalink: /blog/
+eyebrow: Blog
+heading: The engineering log.
+lead: >-
+  Notes from building developer tools, platforms and agent workflows in
+  public: what we tried, what broke, and the guardrails we wrote afterwards.
+description: >-
+  Engineering writing from Vitruvian Software on developer tooling, platform
+  engineering, monorepos and AI coding agents.
+---
+
+<section class="section">
+  <div class="container">
+    <ul class="post-list">
+      {%- for post in site.posts -%}
+      <li class="post-item{% if forloop.first %} is-featured{% endif %}">
+        <time class="post-date" datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %-d, %Y" }}</time>
+        <div>
+          <h2><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h2>
+          <p>{{ post.description | default: post.excerpt | strip_html | truncatewords: 50 }}</p>
+          <a class="text-link" href="{{ post.url | relative_url }}">Read the post</a>
+        </div>
+      </li>
+      {%- endfor -%}
+    </ul>
+
+    <p class="mt-6 muted">Subscribe with <a href="{{ '/feed.xml' | relative_url }}">RSS</a>.</p>
+  </div>
+</section>

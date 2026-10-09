@@ -1,0 +1,133 @@
+---
+layout: page
+title: Engineering
+permalink: /engineering/
+eyebrow: Engineering
+heading: How the platform behind our projects works.
+lead: >-
+  One monorepo holds the applications, the infrastructure that runs them, the
+  pipelines that ship them and the guardrails that keep agents honest. Here is
+  how the pieces fit.
+description: >-
+  How Vitruvian Software builds and ships: a Bazel monorepo, Pulumi and GitOps
+  for infrastructure, keyless deploys, Copybara mirrors and AI agents with
+  their own GitHub identities.
+---
+
+<section class="section">
+  <div class="container">
+    <div class="grid grid-2">
+      <div>
+        <span class="eyebrow">01 &middot; Build</span>
+        <h2>One build graph for every language.</h2>
+        <p class="muted">vitruvian-core is a Bazel workspace on Bzlmod with Aspect rulesets. Go, TypeScript, Python, Kotlin and Swift build and test from the same graph, mostly on hermetic, version-pinned toolchains, so a green build on a laptop means the same thing as a green build in CI.</p>
+      </div>
+      <ul class="checklist">
+        <li><strong>One version per dependency</strong> per ecosystem, enforced across the repo.</li>
+        <li><strong>Gazelle generates BUILD files</strong> from source, so the graph follows the code.</li>
+        <li><strong>A presubmit planner</strong> tests only what a change can affect.</li>
+        <li><strong>Remote cache and execution</strong> are available, never required.</li>
+        <li><strong>Every tool is a <code>bazel run</code> target</strong>, so agents and people use the same entry points.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="grid grid-2">
+      <div>
+        <span class="eyebrow">02 &middot; Infrastructure</span>
+        <h2>Everything as code. No click-ops.</h2>
+        <p class="muted">Cloud projects, deploy identities, DNS and even this repository's own GitHub settings are Pulumi programs written in Go. The homelab cluster reconciles from git through Argo CD. If it is not in a commit, it does not exist.</p>
+      </div>
+      <ul class="checklist">
+        <li><strong>Pulumi in Go</strong> for Google Cloud, GitHub and Cloudflare, applied only by CI.</li>
+        <li><strong>Argo CD app-of-apps</strong> for the K3s platform: Cilium, Envoy Gateway, Zitadel, CloudNativePG, MinIO.</li>
+        <li><strong>Observability as code</strong>: Prometheus, Thanos, Grafana, Loki, Tempo and OpenTelemetry.</li>
+        <li><strong>An enterprise GCP foundation</strong> built from our own Pulumi library.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="grid grid-2">
+      <div>
+        <span class="eyebrow">03 &middot; Delivery</span>
+        <h2>Keyless deploys, through one gate.</h2>
+        <p class="muted">Every change lands through the merge queue, which tests it against the latest main. Deploys authenticate with Workload Identity Federation, so there are no service-account keys to leak, and each app deploys into its own project behind its own GitHub Environment.</p>
+      </div>
+      <ul class="checklist">
+        <li><strong>Squash-only main</strong> behind a merge queue. Agents do not push to main or merge around the queue; the maintainer's break-glass raises an alert.</li>
+        <li><strong>Per-app GCP projects</strong> and deploy identities, scoped to one service each.</li>
+        <li><strong>Post-merge verification</strong>: work is not done until the pipelines on main are green.</li>
+        <li><strong>Secrets never in git</strong>: Secret Manager at runtime, sealed-secrets in the cluster.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="grid grid-2">
+      <div>
+        <span class="eyebrow">04 &middot; Distribution</span>
+        <h2>Edit once, mirror out.</h2>
+        <p class="muted">The monorepo is the single source of truth. Copybara exports each project to its own public repository on every merge, one way. Outside contributions come back as labelled pull requests that are imported for review here, so history never forks.</p>
+      </div>
+      <ul class="checklist">
+        <li><strong>Ten standalone repositories</strong> kept in sync automatically.</li>
+        <li><strong>release-please</strong> versions each component from its conventional commits; CLIs install from our Homebrew tap.</li>
+        <li><strong>This website</strong> is one of them: edited in the monorepo, published by its mirror.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="grid grid-2">
+      <div>
+        <span class="eyebrow">05 &middot; Agents</span>
+        <h2>AI agents as accountable teammates.</h2>
+        <p class="muted">A team of specialist agents (build, infrastructure, cluster operations, application code, testing, security, documentation) works in the repo every day. Each acts under its own GitHub App, follows the same rules as a person, and is stopped by guardrails when it tries a shortcut.</p>
+        <p><a class="text-link" href="{{ '/blog/2026/10/09/every-ai-agent-gets-its-own-github-identity/' | relative_url }}">Read how the identities work</a></p>
+      </div>
+      <ul class="checklist">
+        <li><strong>One GitHub App per agent</strong>, so authorship and approvals are real.</li>
+        <li><strong>One-hour installation tokens</strong> minted on demand; private keys stay in the vault.</li>
+        <li><strong>A shared, vendor-neutral AGENTS.md</strong> read by every coding tool we use.</li>
+        <li><strong>Guardrails from real incidents</strong>, each with a test that proves it fires.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Stack</span>
+      <h2>What we reach for.</h2>
+    </div>
+    <div class="grid grid-4">
+      <div class="plate">
+        <h3>Languages</h3>
+        <ul class="tags"><li class="tag">Go</li><li class="tag">TypeScript</li><li class="tag">Python</li><li class="tag">Kotlin</li><li class="tag">Swift</li><li class="tag">C++</li></ul>
+      </div>
+      <div class="plate">
+        <h3>Build and ship</h3>
+        <ul class="tags"><li class="tag">Bazel</li><li class="tag">GitHub Actions</li><li class="tag">Copybara</li><li class="tag">GoReleaser</li><li class="tag">release-please</li></ul>
+      </div>
+      <div class="plate">
+        <h3>Cloud and cluster</h3>
+        <ul class="tags"><li class="tag">Google Cloud</li><li class="tag">Cloud Run</li><li class="tag">K3s</li><li class="tag">Cilium</li><li class="tag">Argo CD</li><li class="tag">Cloudflare</li></ul>
+      </div>
+      <div class="plate">
+        <h3>Agents</h3>
+        <ul class="tags"><li class="tag">MCP</li><li class="tag">GitHub Apps</li><li class="tag">Backstage</li><li class="tag">OpenTelemetry</li></ul>
+      </div>
+    </div>
+  </div>
+</section>

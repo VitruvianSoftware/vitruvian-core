@@ -3,6 +3,7 @@ layout: post
 title: "Introducing ADK Agents: Your AI-Powered DevOps Companion"
 date: 2025-06-22 01:00:00 +0000
 categories: ai devops agents productivity
+permalink: /ai/devops/agents/productivity/2025/06/22/introducing-adk-agents-your-ai-powered-devops-companion.html
 author: "Vitruvian Software Team"
 excerpt: "Meet ADK Agents - the intelligent DevOps assistant that understands your codebase, executes commands safely, and helps you ship better software faster. Built on Google's ADK framework with developer productivity at its core."
 ---

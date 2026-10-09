@@ -1,0 +1,32 @@
+---
+layout: default
+---
+{%- assign words = content | number_of_words -%}
+{%- assign minutes = words | divided_by: 220 | plus: 1 -%}
+<article>
+  <header class="article-header">
+    <div class="container">
+      <a class="eyebrow" href="{{ '/blog/' | relative_url }}">Blog</a>
+      <h1>{{ page.title | escape }}</h1>
+      {%- if page.description -%}<p class="article-dek">{{ page.description }}</p>{%- endif -%}
+      <div class="article-meta">
+        <span><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%B %-d, %Y" }}</time></span>
+        <span>{{ minutes }} min read</span>
+        {%- if page.author -%}<span>{{ page.author }}</span>{%- endif -%}
+      </div>
+    </div>
+  </header>
+
+  <div class="container article-body">
+    <div class="prose">
+      {{ content }}
+    </div>
+
+    <footer class="article-foot">
+      {%- if page.previous -%}
+        <a class="text-link" href="{{ page.previous.url | relative_url }}">Previous: {{ page.previous.title }}</a>
+      {%- else -%}<span></span>{%- endif -%}
+      <a class="text-link" href="{{ '/blog/' | relative_url }}">All posts</a>
+    </footer>
+  </div>
+</article>

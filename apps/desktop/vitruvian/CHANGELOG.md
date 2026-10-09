@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.35.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.5...vitruvian-v3.35.0) (2026-10-09)
+
+
+### Features
+
+* **desktop:** the Nexus Agent chat remembers its provider, runs custom commands, keeps history and deletes conversations ([#2995](https://github.com/VitruvianSoftware/vitruvian-core/issues/2995)) ([cb30998](https://github.com/VitruvianSoftware/vitruvian-core/commit/cb309989409f0aabd37273109c26e465409317f5))
+
+## [3.34.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.4...vitruvian-v3.34.5) (2026-10-09)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the bot and the apps are checked against one set of examples, and the apps read .env as the bot does ([#2980](https://github.com/VitruvianSoftware/vitruvian-core/issues/2980)) ([3755c2e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3755c2e87e6899f3697b2c13b1a257fdaef057dc))
+
 ## [3.34.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.3...vitruvian-v3.34.4) (2026-10-09)
 
 
