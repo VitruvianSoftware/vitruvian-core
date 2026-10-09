@@ -47,7 +47,7 @@ final class StandaloneHost: NexusAgentHost {
 
     var startsBotAtLaunch: Bool { UserDefaults.standard.bool(forKey: "autoStart") }
 
-    /// The same key the chat window keeps plan mode under.
+    /// The key this app's chat has always kept plan mode under.
     var planMode: Bool {
         get { UserDefaults.standard.bool(forKey: "planMode") }
         set { UserDefaults.standard.set(newValue, forKey: "planMode") }
@@ -97,9 +97,9 @@ final class StandaloneHost: NexusAgentHost {
         UserDefaults.standard.set(data, forKey: key)
     }
 
-    /// The same keys the chat window keeps its prompt history and worktree
-    /// mode under, in the same shape: a list of text, oldest first, and a
-    /// yes or no.
+    /// The keys this app's chat has always kept its prompt history and
+    /// worktree mode under, in the same shape: a list of text, oldest
+    /// first, and a yes or no.
     var promptHistory: [String] {
         get { UserDefaults.standard.stringArray(forKey: "promptHistory") ?? [] }
         set { UserDefaults.standard.set(newValue, forKey: "promptHistory") }
@@ -132,8 +132,18 @@ final class StandaloneHost: NexusAgentHost {
         post(NexusAgentTurnAnnouncement.finished(notice, isChatVisible: isChatVisible, strings: strings))
     }
 
+    /// Takes the place of the sound and the notification when set: it is
+    /// handed what the shared rule decided, and nothing is played or posted.
+    /// The app never sets it. It is for a run of this app's wiring that
+    /// must stay silent and has no notification centre to post to.
+    var announce: ((NexusAgentTurnAnnouncement) -> Void)?
+
     /// Does what the shared rule decided, with its words as given.
     private func post(_ announcement: NexusAgentTurnAnnouncement) {
+        if let announce {
+            announce(announcement)
+            return
+        }
         if announcement.playsSound { NSSound(named: "Tink")?.play() }
         guard let title = announcement.notificationTitle, let body = announcement.notificationBody else { return }
         let conversation = openConversation?()

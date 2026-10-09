@@ -55,8 +55,6 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
-    static let builtIns: [CLIProvider] = [.antigravity, .claude, .ollama]
-
     init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool) {
         self.id = id
         self.name = name
@@ -78,8 +76,6 @@ struct CLIProvider: Codable, Identifiable, Equatable {
 /// Reads and writes the bot's .env configuration file.
 @MainActor
 class ConfigManager: ObservableObject {
-    /// Shared instance — set during app init for cross-component access.
-    static var shared: ConfigManager!
     @Published var botToken: String = ""
     @Published var allowedUserIds: String = ""
     @Published var workingDirectory: String = ""
@@ -88,8 +84,6 @@ class ConfigManager: ObservableObject {
     /// agy --effort (low|medium|high); empty means agy's default.
     @Published var effort: String = ""
     @Published var autoStart: Bool = false
-
-
 
     // Hotkey config (stored in UserDefaults, not .env)
     @Published var hotkeyKey: String = "g"
@@ -129,17 +123,6 @@ class ConfigManager: ObservableObject {
     /// The currently selected provider.
     var activeProvider: CLIProvider { CLIProvider(engine.activeProvider) }
     
-    var hotkeyDisplayString: String {
-        var parts: [String] = []
-        let mods = NSEvent.ModifierFlags(rawValue: UInt(hotkeyModifiers))
-        if mods.contains(.control) { parts.append("⌃") }
-        if mods.contains(.option) { parts.append("⌥") }
-        if mods.contains(.shift) { parts.append("⇧") }
-        if mods.contains(.command) { parts.append("⌘") }
-        parts.append(hotkeyKey.uppercased())
-        return parts.joined()
-    }
-
     /// What the approval mode shows when `.env` does not say.
     private static let defaultApprovalMode = "yolo"
 
@@ -148,6 +131,67 @@ class ConfigManager: ObservableObject {
     /// Keeps the saved providers and the chosen one.
     private let host: StandaloneHost
     private var cancellables: Set<AnyCancellable> = []
+
+    /// The six values of `.env` that Settings shows, as text.
+    private struct EnvFields {
+        var botToken = ""
+        var allowedUserIds = ""
+        var workingDirectory = ""
+        var approvalMode = ""
+        var model = ""
+        var effort = ""
+
+        init() {}
+
+        init(_ configuration: NexusAgentConfiguration) {
+            botToken = configuration.botToken
+            allowedUserIds = configuration.allowedUserIDs
+            workingDirectory = configuration.workingDirectory
+            // Shown exactly as the bot reads it. A line with nothing after the `=`
+            // is "default" (ask each time) to the bot, so it is here too: showing
+            // YOLO for it meant the next save wrote `yolo` and silently let the
+            // bot skip every permission prompt.
+            approvalMode = configuration.approvalMode.rawValue
+            model = configuration.model
+            effort = configuration.effort.rawValue
+        }
+
+        /// Each of the six, to go through them one by one.
+        static let each: [WritableKeyPath<EnvFields, String>] = [
+            \.botToken, \.allowedUserIds, \.workingDirectory, \.approvalMode, \.model, \.effort,
+        ]
+    }
+
+    /// The six fields the views bind to, read and set together. Setting
+    /// leaves alone a field that already holds its value, so the views are
+    /// told only of a real change.
+    private var fields: EnvFields {
+        get {
+            var values = EnvFields()
+            values.botToken = botToken
+            values.allowedUserIds = allowedUserIds
+            values.workingDirectory = workingDirectory
+            values.approvalMode = approvalMode
+            values.model = model
+            values.effort = effort
+            return values
+        }
+        set {
+            if botToken != newValue.botToken { botToken = newValue.botToken }
+            if allowedUserIds != newValue.allowedUserIds { allowedUserIds = newValue.allowedUserIds }
+            if workingDirectory != newValue.workingDirectory { workingDirectory = newValue.workingDirectory }
+            if approvalMode != newValue.approvalMode { approvalMode = newValue.approvalMode }
+            if model != newValue.model { model = newValue.model }
+            if effort != newValue.effort { effort = newValue.effort }
+        }
+    }
+
+    /// What the fields were last filled with, or last saved as: a field
+    /// that still holds this has not been touched by the user since.
+    private var untouched = EnvFields()
+    /// The engine's configuration as it last stood, to tell which of its
+    /// values a change changed.
+    private var engineHeld = EnvFields()
 
     init(engine: NexusAgentEngine, host: StandaloneHost) {
         self.engine = engine
@@ -186,6 +230,42 @@ class ConfigManager: ObservableObject {
             .store(in: &cancellables)
 
         load()
+
+        // The chat saves the model and the working folder through the
+        // engine, and the engine reads `.env` again each time the chat is
+        // shown. Settings follows: otherwise it would go on showing the old
+        // value and write it back on its next save.
+        engineHeld = EnvFields(engine.configuration)
+        engine.$configuration
+            .dropFirst()
+            .sink { [weak self] configuration in self?.follow(EnvFields(configuration)) }
+            .store(in: &cancellables)
+    }
+
+    /// Takes over the values the engine's configuration has just changed,
+    /// but never one the user is editing: a field is refreshed only if it
+    /// still holds what it was last filled with. A value the engine did not
+    /// change is left alone too, which keeps the template shown when there
+    /// is no `.env` yet.
+    private func follow(_ fresh: EnvFields) {
+        var shown = fields
+        for field in EnvFields.each {
+            let value = fresh[keyPath: field]
+            if value != engineHeld[keyPath: field], shown[keyPath: field] == untouched[keyPath: field] {
+                shown[keyPath: field] = value
+            }
+            if shown[keyPath: field] == value {
+                untouched[keyPath: field] = value
+            }
+        }
+        fields = shown
+        engineHeld = fresh
+    }
+
+    /// The fields as they stand, which is what an untouched field holds
+    /// from now on.
+    private func markFieldsUntouched() {
+        untouched = fields
     }
 
     // MARK: - Provider Persistence
@@ -202,10 +282,12 @@ class ConfigManager: ObservableObject {
 
     // MARK: - Load .env
 
-    /// Called once, at launch. The engine reads `.env` again when polling
-    /// starts and when the bot is started (the 2-second timer only refreshes
-    /// status and the log), but the fields below are filled only here, so
-    /// nothing overwrites what the user is typing in Settings.
+    /// Called once, at launch, and fills every field. The engine reads
+    /// `.env` again when polling starts, when the bot is started and when
+    /// the chat is shown (the 2-second timer only refreshes status and the
+    /// log); after this a field follows the engine only while the user has
+    /// not touched it (`follow`), so nothing overwrites what is being typed
+    /// in Settings.
     func load() {
         engine.load()
         if (try? String(contentsOfFile: engine.envFilePath, encoding: .utf8)) != nil {
@@ -217,20 +299,12 @@ class ConfigManager: ObservableObject {
                 show(NexusAgentEnvFile.parse(example))
             }
         }
+        markFieldsUntouched()
     }
 
     /// Copies what the file says into the fields the views bind to.
     private func show(_ configuration: NexusAgentConfiguration) {
-        botToken = configuration.botToken
-        allowedUserIds = configuration.allowedUserIDs
-        workingDirectory = configuration.workingDirectory
-        model = configuration.model
-        effort = configuration.effort.rawValue
-        // Shown exactly as the bot reads it. A line with nothing after the `=`
-        // is "default" (ask each time) to the bot, so it is here too: showing
-        // YOLO for it meant the next save wrote `yolo` and silently let the
-        // bot skip every permission prompt.
-        approvalMode = configuration.approvalMode.rawValue
+        fields = EnvFields(configuration)
     }
 
     // MARK: - Save .env
@@ -256,6 +330,9 @@ class ConfigManager: ObservableObject {
         // A save that fails leaves the reason with the engine, which the log
         // panel shows.
         let saved = engine.save(configuration)
+        // What was just written is what the fields hold: they count as
+        // untouched again, and follow the chat's next change.
+        if saved { markFieldsUntouched() }
 
         // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")

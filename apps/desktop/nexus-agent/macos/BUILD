@@ -32,10 +32,10 @@ filegroup(
 )
 
 # The shared chat view: the SwiftUI the Vitruvian desktop app shows its Nexus
-# Agent chat with, and which this app will use too. It takes the engine, its
-# text and what differs between the apps as inputs, so, like the core, it may
-# import no Vitruvian module. A module of its own so that the core stays free
-# of SwiftUI.
+# Agent chat with, and this app its own (ChatWindowController.swift hosts it).
+# It takes the engine, its text and what differs between the apps as inputs,
+# so, like the core, it may import no Vitruvian module. A module of its own so
+# that the core stays free of SwiftUI.
 swift_library(
     name = "NexusAgentUI",
     srcs = [":shared_ui_sources"],

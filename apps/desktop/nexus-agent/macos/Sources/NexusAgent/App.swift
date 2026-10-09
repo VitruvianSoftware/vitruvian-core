@@ -47,10 +47,13 @@ class AppState: ObservableObject {
         // The bot manager owns the shared engine; settings are read and saved through it.
         let config = ConfigManager(engine: bot.engine, host: bot.host)
         let updater = UpdateChecker()
-        ConfigManager.shared = config
         self.botManager = bot
         self.configManager = config
         self.updateChecker = updater
+
+        // The chat window shows the engine's chat, and tells the engine
+        // whether it is on screen.
+        QuickPromptWindowController.shared.configure(engine: bot.engine)
 
         // Register global hotkey for Quick Prompt (⌘+Shift+G)
         QuickPromptWindowController.shared.registerHotkey()

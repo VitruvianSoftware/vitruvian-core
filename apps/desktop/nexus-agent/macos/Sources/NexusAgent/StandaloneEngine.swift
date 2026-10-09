@@ -26,9 +26,9 @@ import NexusAgentCore
 /// is due.
 @MainActor
 final class StandaloneEngine: NexusAgentEngine {
-    /// Answers from the chat window. The window controller sets it when it
-    /// hosts the shared chat; until then no window shows the engine's
-    /// turns, and the answer is no.
+    /// Answers from the chat window. The window controller sets it at
+    /// launch (`QuickPromptWindowController.configure`); until then no
+    /// window shows the engine's turns, and the answer is no.
     var chatIsVisible: (() -> Bool)?
 
     override var isChatVisible: Bool { chatIsVisible?() ?? false }

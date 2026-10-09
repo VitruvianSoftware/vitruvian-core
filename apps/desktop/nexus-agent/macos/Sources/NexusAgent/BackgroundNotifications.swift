@@ -39,15 +39,6 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
     
-    /// Send a notification that a background generation completed.
-    /// - Parameters:
-    ///   - preview: A short preview of the response text
-    ///   - isError: Whether the generation failed
-    func notifyCompletion(preview: String, isError: Bool = false, providerName: String = "NexusAgent", sessionUUID: String? = nil, sessionTitle: String? = nil) {
-        notify(title: isError ? "\(providerName) — Failed" : "\(providerName) — Done",
-               body: preview, sessionUUID: sessionUUID, sessionTitle: sessionTitle)
-    }
-
     /// Send a notification about a turn with a title the caller worded.
     /// The shared chat's host uses this, so that the title it posts is the
     /// one the shared, tested rule gave it. A click on it comes back to the
@@ -86,10 +77,13 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
             
             DispatchQueue.main.async {
                 if let uuid = uuid {
-                    // Resume the specific session that completed
+                    // Back to the conversation the turn was in: the one the
+                    // chat still holds, or resumed from the list.
                     QuickPromptWindowController.shared.resumeSession(0, uuid: uuid, title: title ?? "Chat")
                 } else {
-                    // Fallback: open sessions view
+                    // A turn with no conversation to name (a provider's own
+                    // command): the chat still holds it. With nothing in
+                    // the chat, the recent sessions open instead.
                     QuickPromptWindowController.shared.show(startExpanded: true)
                 }
             }
