@@ -18,6 +18,11 @@ MainActor.assumeIsolated { ServiceViews.install(UIServiceViewFactory()) }
 // The app's own tools and commands, in the registry before any surface
 // lists or runs one. Top-level code runs on the main thread.
 MainActor.assumeIsolated { BuiltinTools.install() }
+#if VITRUVIAN_SAMPLE_TOOL
+// A tool outside every fixed list, for checking the surfaces by hand. Only
+// a build made with --define=vitruvian_sample_tool=true has it.
+MainActor.assumeIsolated { SampleTool.install() }
+#endif
 // The island calls back into the services that follow it through these, so
 // it names none of them. Top-level code runs on the main thread.
 MainActor.assumeIsolated {

@@ -19,6 +19,7 @@ enum ToolPlatformTests {
         quickPanel(suite)
         commandBar(suite)
         housekeeping(suite)
+        sampleTool(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -330,5 +331,26 @@ enum ToolPlatformTests {
                      "a built-in command asks for the panel only when a tile runs it")
         suite.expect(shipped.extraCommands(on: .quickPanel).isEmpty && shipped.extraCommands(on: .radial).isEmpty,
                      "with only the app's own tools, no surface gains an entry")
+    }
+    static func sampleTool(_ suite: TestSuite) {
+        let registry = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: registry)
+        suite.expect(registry.tool(SampleTool.id) == nil,
+                     "the app's own tools do not include the sample")
+
+        var said: [String] = []
+        SampleTool.install(into: registry, say: { said.append($0) })
+        suite.expect(registry.extraCommands(on: .quickPanel).map(\.id) == [SampleTool.hello]
+                         && registry.extraCommands(on: .radial).map(\.id) == [SampleTool.hello]
+                         && registry.commands(on: .commandBar).map(\.id) == [SampleTool.hello],
+                     "the sample is the one tool outside every fixed list, on all three surfaces")
+        suite.expect(registry.run(SampleTool.hello) && said.count == 1 && !said[0].isEmpty,
+                     "running the sample says something once")
+        suite.expect(registry.name(for: SampleTool.id, language: .systemDefault)?.isEmpty == false
+                         && registry.title(for: SampleTool.hello, language: .systemDefault)?.isEmpty == false,
+                     "the sample has a name and a title to show")
+
+        SampleTool.install(into: registry, say: { said.append($0) })
+        suite.expect(registry.commands(on: .commandBar).count == 1, "installing the sample twice registers it once")
     }
 }

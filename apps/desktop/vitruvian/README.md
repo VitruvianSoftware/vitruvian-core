@@ -100,6 +100,13 @@ open /tmp/vitruvian/Vitruvian.app
 The bundle is signed ad hoc. macOS ties Accessibility and Screen Recording
 grants to the exact binary, so they have to be granted again after each rebuild.
 
+To check a surface with a tool that is in none of the app's fixed lists, build
+with the sample tool registered. No release build has it:
+
+```sh
+bazel build --config=macos-app --define=vitruvian_sample_tool=true //apps/desktop/vitruvian:Vitruvian
+```
+
 The macOS targets are tagged `manual`, so a Linux `bazel build //...` skips them.
 CI builds and tests them in the `vitruvian-desktop-macos` pipeline unit on the
 `xcode-27` runner.
