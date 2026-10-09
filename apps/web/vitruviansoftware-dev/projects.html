@@ -1,0 +1,46 @@
+---
+layout: page
+title: Projects
+permalink: /projects/
+eyebrow: Projects
+heading: Everything we build, in one place.
+lead: >-
+  Released tools have their own repositories, mirrored one way from the
+  vitruvian-core monorepo where they are developed. Newer work lives in the
+  monorepo until it is ready to stand alone.
+description: >-
+  Open-source projects from Vitruvian Software: devx, homelab, Pulumi
+  foundations for Google Cloud, MCP servers and AI agent tooling.
+---
+
+{%- for group in site.data.projects.groups -%}
+<section class="section" id="{{ group.id }}">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">{{ forloop.index | prepend: '0' }}</span>
+      <h2>{{ group.title }}</h2>
+      <p>{{ group.blurb }}</p>
+    </div>
+    <div class="grid grid-3">
+      {%- assign members = site.data.projects.projects | where: "group", group.id -%}
+      {%- for project in members -%}
+        {%- include project-card.html project=project -%}
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+{%- endfor -%}
+
+<section class="section">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <h2>Contributing</h2>
+        <p>Issues and pull requests are welcome on any mirror. Accepted changes are imported into the monorepo for review, then exported back, so the history stays in one place.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn" href="{{ site.monorepo }}/blob/main/CONTRIBUTING.md">Read CONTRIBUTING.md</a>
+      </div>
+    </div>
+  </div>
+</section>

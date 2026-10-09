@@ -1,0 +1,193 @@
+---
+layout: default
+title: Open-source developer tooling and platform engineering
+description: >-
+  Vitruvian Software builds open-source developer tooling, cloud foundations as
+  code, and AI agents that work under the same review rules as engineers.
+---
+
+<section class="hero">
+  <div class="container">
+    <div>
+      <span class="eyebrow">Open source, built in public</span>
+      <h1>Developer tooling and platforms, <em>engineered to be trusted.</em></h1>
+      <p class="lead">
+        We build local-first developer tools, Google Cloud foundations as code, and AI agents
+        that open pull requests under their own names. All of it ships from one public monorepo,
+        through one merge queue.
+      </p>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="{{ '/projects/' | relative_url }}">Explore the projects</a>
+        <a class="btn" href="{{ site.monorepo }}">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          vitruvian-core on GitHub
+        </a>
+      </div>
+    </div>
+
+    <div class="plate terminal" aria-label="Example: an agent ships a change">
+      <div class="terminal-bar">
+        <span class="terminal-dots"><i></i><i></i><i></i></span>
+        <span>agent session</span>
+      </div>
+<pre class="terminal-body"><span class="c"># Wren takes its own identity, not a human's</span>
+<span class="p">$</span> eval "$(bazel run //tools/agent-app -- env wren)"
+<span class="p">$</span> gh pr create --fill
+  <span class="ok">✓</span> opened by <span class="s">vitruvian-wren-agent[bot]</span>
+
+<span class="c"># A different agent reviews it</span>
+  <span class="ok">✓</span> approved by <span class="s">vitruvian-aegis-agent[bot]</span>
+
+<span class="p">$</span> bazel run //tools/watch-pr
+  <span class="ok">●</span> bazel test //...       <span class="ok">passed</span>
+  <span class="ok">●</span> merge queue           <span class="ok">landed</span>
+  <span class="w">●</span> post-merge pipeline   <span class="w">running</span>
+<span class="p">$</span> <span class="cursor"></span></pre>
+    </div>
+  </div>
+</section>
+
+<section class="section-tight">
+  <div class="container">
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-value">1</span>
+        <span class="stat-label">public monorepo for every app, pipeline and cluster</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">10</span>
+        <span class="stat-label">standalone repos, mirrored one way from it</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">10</span>
+        <span class="stat-label">AI agents, each with its own GitHub identity</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">0</span>
+        <span class="stat-label">service-account keys: cloud deploys use workload identity</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head-row">
+      <div class="section-head">
+        <span class="eyebrow">Projects</span>
+        <h2>Tools we use every day, released for everyone.</h2>
+        <p>Each one started as something we needed. They are maintained in the monorepo and published to their own repositories.</p>
+      </div>
+      <a class="text-link" href="{{ '/projects/' | relative_url }}">All projects</a>
+    </div>
+
+    <div class="grid grid-3">
+      {%- assign featured = site.data.projects.projects | where: "featured", true -%}
+      {%- for project in featured -%}
+        {%- include project-card.html project=project -%}
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">How we ship</span>
+      <h2>One path to production, for people and agents alike.</h2>
+      <p>Every change to our cloud systems takes this route, and agents have no other.</p>
+    </div>
+
+    <ol class="pipeline">
+      <li>
+        <h3>Isolated worktree</h3>
+        <p>Every change starts on its own branch in its own git worktree, so parallel sessions never share a checkout.</p>
+      </li>
+      <li>
+        <h3>Hermetic build</h3>
+        <p>One Bazel graph builds and tests Go, TypeScript, Python, Kotlin and Swift, so a laptop and CI agree.</p>
+      </li>
+      <li>
+        <h3>Independent review</h3>
+        <p>A second identity approves. Agents review each other as GitHub Apps; nobody approves their own work.</p>
+      </li>
+      <li>
+        <h3>Merge queue</h3>
+        <p>The queue tests each change against the latest main before it lands. Agents never merge around it.</p>
+      </li>
+      <li>
+        <h3>Deploy and mirror</h3>
+        <p>Pipelines deploy with short-lived credentials, and Copybara exports each project to its public repository.</p>
+      </li>
+    </ol>
+
+    <p class="mt-6"><a class="text-link" href="{{ '/engineering/' | relative_url }}">How the platform works</a></p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Principles</span>
+      <h2>Named for Vitruvius, who said a building must be strong, useful and beautiful.</h2>
+      <p>Two thousand years later it is still a good test for software.</p>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="principle">
+        <span class="principle-latin">Firmitas</span>
+        <span class="principle-en">Strength</span>
+        <p>Reproducible builds, everything as code, and a guard written for every incident so the same failure cannot happen twice.</p>
+      </div>
+      <div class="principle">
+        <span class="principle-latin">Utilitas</span>
+        <span class="principle-en">Utility</span>
+        <p>We build what removes friction from our own work first: one command to bring up a stack, one to tear it down.</p>
+      </div>
+      <div class="principle">
+        <span class="principle-latin">Venustas</span>
+        <span class="principle-en">Beauty</span>
+        <p>Clear interfaces, honest documentation, and one design language shared across our apps, from this site to the Android remote.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head-row">
+      <div class="section-head">
+        <span class="eyebrow">Writing</span>
+        <h2>From the engineering log.</h2>
+      </div>
+      <a class="text-link" href="{{ '/blog/' | relative_url }}">All posts</a>
+    </div>
+
+    <ul class="post-list">
+      {%- for post in site.posts limit: 3 -%}
+      <li class="post-item">
+        <time class="post-date" datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %-d, %Y" }}</time>
+        <div>
+          <h3><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h3>
+          <p>{{ post.description | default: post.excerpt | strip_html | truncatewords: 40 }}</p>
+          <a class="text-link" href="{{ post.url | relative_url }}">Read</a>
+        </div>
+      </li>
+      {%- endfor -%}
+    </ul>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <h2>Read the code, not the brochure.</h2>
+        <p>Every tool, pipeline, guardrail and incident fix described on this site is in vitruvian-core, in the open.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="{{ site.monorepo }}">Browse the monorepo</a>
+      </div>
+    </div>
+  </div>
+</section>

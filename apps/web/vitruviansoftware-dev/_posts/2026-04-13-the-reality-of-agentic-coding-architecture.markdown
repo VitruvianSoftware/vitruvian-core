@@ -3,6 +3,7 @@ layout: post
 title:  "The Reality of Agentic Coding Architecture"
 date:   2026-04-13 12:00:00 -0500
 categories: architecture ai
+permalink: /architecture/ai/2026/04/13/the-reality-of-agentic-coding-architecture.html
 ---
 
 The era of "chat wrappers" is completely dead. As of Q2 2026, the transition from basic text-generation LLMs to fully autonomous agentic code workflows is accelerating rapidly. However, a stark divide is emerging between teams trying to prompt their way to success and those engineering rigorous, deterministic architectural patterns.

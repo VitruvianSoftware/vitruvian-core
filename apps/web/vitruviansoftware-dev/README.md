@@ -38,9 +38,24 @@ Then open <http://localhost:4000>.
 
 | Path | What it holds |
 |---|---|
-| `index.markdown`, `about.markdown`, `*.md` | Pages |
-| `_posts/` | Blog posts, named `YYYY-MM-DD-title.markdown` |
-| `_layouts/`, `_includes/` | Page templates, header and footer |
-| `assets/`, `images/`, `js/` | Stylesheet, scripts and images |
+| `index.html`, `projects.html`, `engineering.html`, `blog.html`, `about.html` | Pages |
+| `tech-stack.html`, `contributions.html` | Redirects from URLs the previous site used |
+| `_data/projects.yml` | Every project card on the site; edit a project here, once |
+| `_posts/` | Blog posts, named `YYYY-MM-DD-title.md`; set `description` for the listing |
+| `_layouts/`, `_includes/` | Page, post and card templates, header, footer, brand mark |
+| `assets/css/main.css` | The stylesheet, built on the Vitruvian design tokens |
+| `assets/js/main.js` | Theme toggle and mobile menu |
 | `_config.yml` | Site title, navigation and plugins |
 | `.github/workflows/jekyll.yml` | The build-and-deploy workflow that runs in the standalone repository |
+
+## Constraints
+
+Production builds with `actions/jekyll-build-pages`, which uses the
+`github-pages` gem: Jekyll 3, safe mode, whitelisted plugins only. So:
+
+- the stylesheet is plain CSS, not Sass, because that gem's Sass compiler
+  rejects modern CSS;
+- no custom plugins (redirects are plain HTML pages for that reason);
+- colours, type and spacing come from
+  [`packages/design-system/src/tokens.css`](../../../packages/design-system/src/tokens.css).
+  Keep the copies in `main.css` in step when the tokens change.
