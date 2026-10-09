@@ -1286,8 +1286,11 @@ enum RepositoryFeatureTests {
             (try? FileManager.default.createDirectory(atPath: signingHome, withIntermediateDirectories: true)) != nil,
             (try? FileManager.default.createDirectory(atPath: signingTemp, withIntermediateDirectories: true)) != nil,
         ].allSatisfy { $0 }
+        // -f: zsh reads /etc/zshenv for every script, and where that file
+        // sets PATH (nix-darwin's does) the stand-ins below are never found;
+        // the script then runs the Mac's real security and codesign.
         let signingSetup = BoundedProcessRunner.run(
-            "/bin/zsh", ["Tools/setup-signing.sh"], timeout: 60, maxOutputBytes: 16_384,
+            "/bin/zsh", ["-f", "Tools/setup-signing.sh"], timeout: 60, maxOutputBytes: 16_384,
             environment: ["HOME": signingHome, "TMPDIR": signingTemp, "PATH": signingStubs.path + ":/usr/bin:/bin",
                           "STUB_LOG": signingLog, "STUB_STATE": signingScratch.path])
         let signingCalls = ((try? String(contentsOf: URL(fileURLWithPath: signingLog), encoding: .utf8)) ?? "")
@@ -1433,7 +1436,9 @@ enum RepositoryFeatureTests {
             let reported = report.map { (try? $0.write(toFile: pmsetReport, atomically: true, encoding: .utf8)) != nil } ?? true
             let sleepRead = BoundedProcessRunner.run(
                 "/bin/zsh",
-                ["-c", #"source <(sed -n '/^read_sleep_disabled() {$/,/^}$/p' Tools/uninstall.sh) && read_sleep_disabled"#],
+                // -f, as for setup-signing.sh above: a PATH from /etc/zshenv
+                // would reach the Mac's real pmset instead of the stand-in.
+                ["-f", "-c", #"source <(sed -n '/^read_sleep_disabled() {$/,/^}$/p' Tools/uninstall.sh) && read_sleep_disabled"#],
                 timeout: 10, maxOutputBytes: 1_024,
                 environment: ["PATH": pmsetStubs.path + ":/usr/bin:/bin", "PMSET_REPORT": pmsetReport])
             let scriptReads = String(decoding: sleepRead.output, as: UTF8.self)

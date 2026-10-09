@@ -107,6 +107,8 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-08**: Unit tests that pass or fail the same on a Mac in use as on a CI runner:
+  - `Tests/RepositoryFeatureTests.swift`: the two checks that run a script against stand-in tools (`Tools/setup-signing.sh`, and `read_sleep_disabled` from `Tools/uninstall.sh`) start zsh with `-f`. Without it zsh reads `/etc/zshenv`, and where that file sets `PATH` (nix-darwin's does) the stand-ins were skipped and the script ran the Mac's real `security`, `codesign` and `pmset`.
 - **2026-10-08**: Awaiting-approval GitHub pipeline notification:
   - Added `githubMouseApprovalColor`, `githubMouseApprovalMode`, and `githubMouseApprovalSpeed` preferences to `Defaults.swift` and `DefaultsKey.swift`.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
