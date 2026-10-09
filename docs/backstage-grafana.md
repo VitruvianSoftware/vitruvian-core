@@ -151,7 +151,7 @@ Six catalog components have no dashboard card, and none of it is an oversight:
   `/metrics` returns the frontend's `index.html`, because the SPA catch-all
   handles any unrouted path. Giving it a dashboard means enabling a metrics
   endpoint and adding a scrape target first.
-- **`site-vitruviansoftware-dev`** is a static GitHub Pages site; there is
+- **`vitruviansoftware-dev`** is a static GitHub Pages site; there is
   nothing to scrape.
 
 On the Grafana side, **Longhorn** and **Elasticsearch** dashboards exist for

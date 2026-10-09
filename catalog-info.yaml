@@ -50,6 +50,7 @@ spec:
     - ./apps/mcp/roborock/catalog-info.yaml
     - ./apps/desktop/nexus-agent/catalog-info.yaml
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
+    - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/android-remote/catalog-info.yaml
     - ./apps/suites/tabula/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
@@ -109,37 +110,6 @@ spec:
     - https://github.com/VitruvianSoftware/backstage-scala/blob/main/catalog-info.yaml
     - https://github.com/VitruvianSoftware/backstage-shell/blob/main/catalog-info.yaml
     - https://github.com/VitruvianSoftware/backstage-swift/blob/main/catalog-info.yaml
----
-# site-vitruviansoftware-dev is the one repo here with no catalog-info.yaml of
-# its own, so its Component is declared inline. Move it into that repo if it
-# ever grows its own metadata.
-apiVersion: backstage.io/v1alpha1
-kind: Component
-metadata:
-  name: site-vitruviansoftware-dev
-  title: Vitruvian Software Site
-  description: Vitruvian Software open source landing portal and technical documentation site
-  annotations:
-    github.com/project-slug: VitruvianSoftware/site-vitruviansoftware-dev
-    backstage.io/techdocs-ref: dir:.
-    vitruvian.dev/release-model: cloudflare-pages
-    vitruvian.dev/environments: production
-    vitruvian.dev/deploy-workflow: deploy.yaml
-  links:
-    - url: https://vitruviansoftware.dev
-      title: Live Site
-      icon: web
-    - url: https://github.com/VitruvianSoftware/site-vitruviansoftware-dev
-      title: Source Code
-      icon: github
-    - url: https://github.com/VitruvianSoftware/site-vitruviansoftware-dev/releases
-      title: Releases & Deployments
-      icon: cloud
-spec:
-  type: website
-  lifecycle: production
-  owner: platform-team
-  system: vitruvian-core
 
 # ==============================================================================
 # DOMAINS (folded from architecture/catalog-info.yaml)
