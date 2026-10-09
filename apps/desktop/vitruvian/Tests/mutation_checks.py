@@ -347,6 +347,16 @@ MUTATIONS = [
      "process.arguments = [\"-c\", \"features.plugins=false\", \"app-server\"]",
      "process.arguments = [\"app-server\"]",
      "a conversation starts Codex's server with its plugins off"),
+    ("radial slice runs another tool's command", "platform",
+     "Sources/Vitruvian/Core/RadialMenu/RadialMenuSupport.swift",
+     "        case .screenshot: return .screenshotCapture\n",
+     "        case .screenshot: return .screenRecorderToggle\n",
+     "every radial tool runs the command of its own feature"),
+    ("switched-off tool still runs", "platform",
+     "Sources/Vitruvian/Services/Platform/ToolRegistry.swift",
+     "        guard isToolAvailable(id.tool) else { return false }\n",
+     "",
+     "a command of a switched-off tool neither lists nor runs"),
 ]
 
 

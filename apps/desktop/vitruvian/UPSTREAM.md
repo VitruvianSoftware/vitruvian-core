@@ -110,6 +110,12 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-09**: No two global hotkeys share an id:
   - `Services/QuickTools/ScreenCaptureService.swift`: the comment on the capture tools' hotkey ids says where the run starts and what keeps it clear; it claimed the hand-assigned ids ended at 24 after the Quick Prompt had been given 25. No code change in this file.
   - `bazel/source_lints.py`: `hotkey_ids_are_unique` fails when two `QuickToolHotkey` ids, or runs of ids, overlap.
+- **2026-10-09**: The app carries the GravaStar mouse command and offers it as an MCP server:
+  - `BUILD`: `//packages/peripherals:gravastar-mouse` (MIT) goes into `Contents/Helpers` through `additional_contents`, and the `vitruvian` delivery unit also follows `packages/peripherals/`. `Tools/package-release.sh` signs it with the other nested code.
+  - `GitHubMouseBinary.swift`: `locate` tries that copy right after the configured path; `mcpConfig(binary:)` builds the `mcpServers` JSON for `gravastar-mouse mcp`.
+  - `GitHubPeripheralSink.swift`: passes the bundle's copy to `locate`.
+  - `GitHubSettingsView.swift` and `NotchGitHubStrings.swift`: the Mouse command hint names the copy inside the app, and a Copy MCP Config button copies the JSON for the command found, in every language.
+  - `Tests/GitHubCoreTests.swift`: the bundled copy's place in the search order, the MCP JSON and the new label.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.
@@ -119,6 +125,16 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/RepositoryFeatureTests.swift`: the two checks that run a script against stand-in tools (`Tools/setup-signing.sh`, and `read_sleep_disabled` from `Tools/uninstall.sh`) start zsh with `-f`. Without it zsh reads `/etc/zshenv`, and where that file sets `PATH` (nix-darwin's does) the stand-ins were skipped and the script ran the Mac's real `security`, `codesign` and `pmset`.
 - **2026-10-08**: Awaiting-approval GitHub pipeline notification:
   - Added `githubMouseApprovalColor`, `githubMouseApprovalMode`, and `githubMouseApprovalSpeed` preferences to `Defaults.swift` and `DefaultsKey.swift`.
+- **2026-10-08**: Tool registry, part 1 (`docs/superpowers/plans/2026-10-08-vitruvian-tool-registry.md`):
+  - `Core/RadialMenu/RadialMenuSupport.swift`: `RadialMenuTool.command` names the built-in command each slice runs.
+  - `main.swift`: installs the built-in tools and command handlers into `ToolRegistry` before the app runs.
+  - `Core/RadialMenu/RadialMenuSupport.swift`: `RadialMenuItem.Kind.command` and `commandID`, a slice that runs any registry command by id.
+  - `Services/RadialMenu/RadialMenuService.swift`: tool slices run through `ToolRegistry` instead of a private switch; a `command` slice whose command cannot run is left off the wheel.
+  - `UI/RadialMenu/RadialMenuView.swift`, `UI/Settings/RadialMenuSettings.swift`, `UI/Settings/RadialMenuVisualCanvas.swift`: arms for the `command` kind.
+  - `Services/QuickTools/QuickLauncherService.swift`: `QuickLauncherItem.command`; the live `perform` runs it through `ToolRegistry` instead of a private switch.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `toolEntries` adds a row for each registry command that asks for the bar; none of the app's own commands do.
+  - `Tests/mutation_checks.py`: two mutations for the registry wiring (a radial slice mapped to another tool's command; a switched-off tool that still runs).
+  - `Services/CommandBar/CommandBarCatalog.swift`: `toolEntries` offers only commands that can run now, and files each row under its tool's localised name.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
   - `GitHubAuthService.swift`: `syncWithPreferences()` signs in with the GitHub CLI login (`~/.config/gh/hosts.yml`) when nobody is signed in and no token is saved, except after an explicit `disconnect()` this session or for a token GitHub already answered 401 to. `finishSignIn` keeps the token in memory when the Keychain refuses to save it (ad-hoc builds lack the entitlement) instead of failing the sign-in. The `hosts.yml` location is an initializer parameter (`cliHostsURL`) so tests use their own file.
   - `GitHubPeripheralSink.swift`: `update(verdict:force:)` writes even an unchanged verdict when forced; an injectable `Executor` stands in for the mouse binary in tests.

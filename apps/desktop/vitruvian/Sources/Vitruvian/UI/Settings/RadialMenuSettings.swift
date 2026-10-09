@@ -682,6 +682,7 @@ private struct RadialItemRow: View {
         case .url: return text.kindURL
         case .shortcut: return text.kindShortcut
         case .tool: return text.kindTool
+        case .command: return text.kindTool
         case .quickToggle: return FeatureStrings.quickToggles(L10n.shared.language).pageTitle
         case .windowLayout: return FeatureStrings.windowLayout(L10n.shared.language).title
         case .media: return text.kindMedia
@@ -952,6 +953,7 @@ private struct RadialItemEditor: View {
             if kind != .url { item.customIconData = nil }
             switch kind {
             case .tool: item.payload = availableTools.first?.rawValue ?? ""
+            case .command: item.payload = ToolRegistry.shared.commands(on: .radial).first?.id.rawValue ?? ""
             case .quickToggle: item.payload = availableQuickToggles.first?.rawValue ?? ""
             case .windowLayout: item.payload = WindowLayoutAction.leftHalf.rawValue
             case .media: item.payload = RadialMenuMediaKey.playPause.rawValue
@@ -1053,6 +1055,13 @@ private struct RadialItemEditor: View {
                 ForEach(availableTools) { tool in
                     Text(tool.feature.hubTitle(l10n.s, hub: FeatureStrings.hub(l10n.language)))
                         .tag(tool.rawValue)
+                }
+            }
+        case .command:
+            Picker(text.toolLabel, selection: $item.payload) {
+                ForEach(ToolRegistry.shared.commands(on: .radial), id: \.id) { command in
+                    Text(ToolRegistry.shared.title(for: command.id, language: l10n.language) ?? command.title)
+                        .tag(command.id.rawValue)
                 }
             }
         case .quickToggle:

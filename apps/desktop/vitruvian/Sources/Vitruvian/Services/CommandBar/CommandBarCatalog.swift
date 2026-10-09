@@ -191,6 +191,7 @@ package enum CommandBarCatalog {
         entries.append(contentsOf: actionEntries(s, language: language, bar: bar,
                                                  automationDenied: automationDenied))
         entries.append(contentsOf: toggleEntries(s, language: language, bar: bar))
+        entries.append(contentsOf: toolEntries(registry: .shared, language: language))
         entries.append(contentsOf: systemAnswerEntries(s, bar: bar))
         entries.append(contentsOf: settingsEntries(s, language: language, bar: bar))
         entries.append(contentsOf: snippetEntries(bar))
@@ -198,6 +199,27 @@ package enum CommandBarCatalog {
             CommandBarLinks.decode(UserDefaults.standard[Preferences.commandBarLinks]),
             bar: bar))
         return entries
+    }
+
+    // MARK: - Registry commands
+
+    /// A row for each registry command that asked for the bar and can run
+    /// now. The bar records a use before it runs a row, so a command that
+    /// cannot run gets no row. The app's own commands do not ask: their rows
+    /// are the hand-built ones above, with their arguments, confirmations and
+    /// live states.
+    @MainActor
+    package static func toolEntries(registry: ToolRegistry, language: AppLanguage) -> [CommandBarEntry] {
+        registry.commands(on: .commandBar).filter { registry.canRun($0.id) }.map { command in
+            let title = registry.title(for: command.id, language: language) ?? command.title
+            return CommandBarEntry(
+                id: "tool.\(command.id.rawValue)",
+                title: title,
+                subtitle: registry.name(for: command.id.tool, language: language) ?? "",
+                keywords: title,
+                icon: .symbol(command.symbol),
+                run: { _ in registry.run(command.id) })
+        }
     }
 
     /// The human name of the area a feature lives in, the same words the hub

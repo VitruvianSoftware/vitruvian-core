@@ -71,6 +71,18 @@ public struct CLIRunner {
             out(CLI.usage)
             return 0
         }
+        if invocation.command == .version {
+            out(CLI.version)
+            return 0
+        }
+        if invocation.command == .mcp {
+            // stdout carries the protocol now; the server captures what each
+            // tool call prints instead.
+            MCPServer(runner: self, baselinePath: invocation.baselinePath)
+                .serve(readLine: { Swift.readLine(strippingNewline: true) },
+                       write: { FileHandle.standardOutput.write(Data(($0 + "\n").utf8)) })
+            return 0
+        }
         let store = invocation.baselinePath.map { BaselineStore(url: URL(fileURLWithPath: $0)) } ?? BaselineStore()
         do {
             try execute(invocation, store: store)
@@ -87,7 +99,7 @@ public struct CLIRunner {
         let indicator = MouseStatusIndicator(mouse: mouse, store: store)
 
         switch invocation.command {
-        case .help:
+        case .help, .mcp, .version:
             out(CLI.usage)
         case let .status(json):
             let config = try mouse.readLighting()

@@ -102,6 +102,7 @@ package final class GitHubPeripheralSink {
     /// The mouse command this Mac would run now, or nil when none is installed.
     package func locateBinary() -> String? {
         GitHubMouseBinary.locate(configured: defaults[Preferences.githubMouseBinaryPath],
+                                 bundled: GitHubMouseBinary.bundled(in: Bundle.main.bundlePath),
                                  environment: ProcessInfo.processInfo.environment,
                                  home: NSHomeDirectory(),
                                  isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })

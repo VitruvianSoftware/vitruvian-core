@@ -348,6 +348,9 @@ macos_application(
         ":" + FAN_HELPER_ID: "Library/LaunchServices",
         "Resources/com.vitruviansoftware.vitruvian.fan-control.plist": "Library/LaunchDaemons",
         ":libVitruvianNowPlaying": "Frameworks",
+        # The GravaStar mouse command (MIT, packages/peripherals), which the
+        # GitHub status light runs; GitHubMouseBinary.bundled finds it here.
+        "//packages/peripherals:gravastar-mouse": "Helpers",
     },
     bundle_id = BUNDLE_ID,
     infoplists = [
@@ -620,7 +623,12 @@ delivery(
     ],
     # Path-only mode: this regex IS the unit's complete trigger set
     # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
-    extra_paths = ["apps/desktop/vitruvian/"],
+    # The app carries the GravaStar mouse command (Contents/Helpers), so a
+    # change to packages/peripherals is a change to the app too.
+    extra_paths = [
+        "apps/desktop/vitruvian/",
+        "packages/peripherals/",
+    ],
     # No GitHub Environment: the publish binds none; it uploads with the run's
     # own GITHUB_TOKEN under a job-level contents: write.
     github_environment = "",

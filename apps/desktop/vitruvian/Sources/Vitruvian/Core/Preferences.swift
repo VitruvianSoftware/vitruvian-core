@@ -936,8 +936,8 @@ package enum Preferences {
         DefaultsKey.githubMouseApprovalMode, default: "breathe")
     package static let githubMouseApprovalSpeed = Preference(
         DefaultsKey.githubMouseApprovalSpeed, default: 9)
-    /// The `gravastar-mouse` command, for an install outside PATH and the
-    /// usual locations. Empty searches for it (`GitHubMouseBinary.locate`).
+    /// The `gravastar-mouse` command, to use another than the app's own copy.
+    /// Empty searches for it (`GitHubMouseBinary.locate`).
     package static let githubMouseBinaryPath = Preference(
         DefaultsKey.githubMouseBinaryPath, default: "")
 }
