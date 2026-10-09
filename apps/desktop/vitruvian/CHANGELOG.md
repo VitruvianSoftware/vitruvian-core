@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.35.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.35.0...vitruvian-v3.35.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **vitruvian:** Reset and an accepted macOS take-over no longer bind a shortcut twice ([#2989](https://github.com/VitruvianSoftware/vitruvian-core/issues/2989)) ([becab38](https://github.com/VitruvianSoftware/vitruvian-core/commit/becab3883d7ab60276c2525459de17f23b7c6d1d))
+
 ## [3.35.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.34.5...vitruvian-v3.35.0) (2026-10-09)
 
 
