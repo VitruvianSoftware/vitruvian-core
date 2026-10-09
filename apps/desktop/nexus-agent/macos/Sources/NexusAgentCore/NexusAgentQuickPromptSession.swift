@@ -1,36 +1,52 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 VitruvianSoftware
+// Copyright (c) 2026 VitruvianSoftware
 //
-// Adapted from the standalone Nexus Agent app (apps/desktop/nexus-agent,
-// MIT, Copyright (c) 2026 VitruvianSoftware): the streaming chat of its
-// Quick Prompt window: the pill, the recent-sessions drawer and the chat.
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Shared by the standalone Nexus Agent app and the Nexus Agent feature of the
+// Vitruvian desktop app. Written for Vitruvian and released under MIT by its
+// copyright holder on 2026-10-09 (apps/desktop/vitruvian/UPSTREAM.md).
 
 import AppKit
 import Foundation
-import VitruvianCore
 
 /// One bubble in the Quick Prompt.
-package struct NexusAgentChatMessage: Identifiable, Equatable {
-    package enum Role: Equatable { case user, agent }
+public struct NexusAgentChatMessage: Identifiable, Equatable {
+    public enum Role: Equatable { case user, agent }
 
-    package let id: UUID
-    package let role: Role
-    package var text: String
-    package var isError: Bool
-    package var durationMs: Int?
-    package var inputTokens: Int?
-    package var outputTokens: Int?
-    package var cachedTokens: Int?
-    package var numTurns: Int?
-    package var toolCalls: Int?
-    package var modelName: String?
-    package var stopReason: String?
-    package var toolSteps: [NexusAgentToolStep]?
-    package var thinkingText: String?
-    package var totalCostUSD: Double?
-    package var approvalRequest: NexusAgentApprovalRequest?
+    public let id: UUID
+    public let role: Role
+    public var text: String
+    public var isError: Bool
+    public var durationMs: Int?
+    public var inputTokens: Int?
+    public var outputTokens: Int?
+    public var cachedTokens: Int?
+    public var numTurns: Int?
+    public var toolCalls: Int?
+    public var modelName: String?
+    public var stopReason: String?
+    public var toolSteps: [NexusAgentToolStep]?
+    public var thinkingText: String?
+    public var totalCostUSD: Double?
+    public var approvalRequest: NexusAgentApprovalRequest?
 
-    package init(
+    public init(
         id: UUID = UUID(),
         role: Role,
         text: String,
@@ -68,10 +84,10 @@ package struct NexusAgentChatMessage: Identifiable, Equatable {
 }
 
 /// A running agent turn, as the session can stop it.
-package struct NexusAgentRunningAgent {
-    package var terminate: () -> Void
+public struct NexusAgentRunningAgent {
+    public var terminate: () -> Void
 
-    package init(terminate: @escaping () -> Void) {
+    public init(terminate: @escaping () -> Void) {
         self.terminate = terminate
     }
 }
@@ -80,42 +96,42 @@ package struct NexusAgentRunningAgent {
 /// JSON and continues the conversation agy named on the first one, so the
 /// agent keeps the context until New chat.
 @MainActor
-package final class NexusAgentQuickPromptSession: ObservableObject {
-    @Published package var messages: [NexusAgentChatMessage] = []
-    @Published package private(set) var isRunning = false
+public final class NexusAgentQuickPromptSession: ObservableObject {
+    @Published public var messages: [NexusAgentChatMessage] = []
+    @Published public private(set) var isRunning = false
     /// The tool the agent is using right now, if any.
-    @Published package private(set) var activity: String?
-    @Published package private(set) var conversationID: String?
-    @Published package var draft = ""
+    @Published public private(set) var activity: String?
+    @Published public private(set) var conversationID: String?
+    @Published public var draft = ""
     /// Bumped when the prompt is shown, so the view puts the caret back.
-    @Published package var focusSerial = 0
-    @Published package private(set) var mode: NexusAgentQuickPromptMode = .compact
-    @Published package private(set) var sessions: [NexusAgentSessionSummary] = []
-    @Published package var sessionFilter = ""
+    @Published public var focusSerial = 0
+    @Published public private(set) var mode: NexusAgentQuickPromptMode = .compact
+    @Published public private(set) var sessions: [NexusAgentSessionSummary] = []
+    @Published public var sessionFilter = ""
     /// The active session's title when resumed from the drawer.
-    @Published package private(set) var sessionTitle: String?
+    @Published public private(set) var sessionTitle: String?
     /// True while viewing or continuing a resumed conversation.
-    @Published package private(set) var isResumed = false
+    @Published public private(set) var isResumed = false
     /// The last prompt that failed, allowing 1-click retry.
-    @Published package var lastFailedPrompt: String?
+    @Published public var lastFailedPrompt: String?
     /// Elapsed seconds during current active generation.
-    @Published package private(set) var elapsedSeconds: Int = 0
+    @Published public private(set) var elapsedSeconds: Int = 0
     /// History of sent prompts for Up/Down arrow navigation.
-    @Published package var promptHistory: [String] = []
-    @Published package var historyIndex: Int = -1
+    @Published public var promptHistory: [String] = []
+    @Published public var historyIndex: Int = -1
     /// Called when an agent turn completes, in place of telling the host
     /// directly: the engine sets it, to add whether its chat is on screen.
-    package var onTurnFinished: ((NexusAgentTurnNotice) -> Void)?
+    public var onTurnFinished: ((NexusAgentTurnNotice) -> Void)?
     /// Turns run with `--mode plan` (read-only) while on. Remembered.
-    @Published package var planMode: Bool {
+    @Published public var planMode: Bool {
         didSet { host.planMode = planMode }
     }
     /// Turns run with `-w` (isolated git worktree) while on.
-    @Published package var worktreeMode: Bool = false
+    @Published public var worktreeMode: Bool = false
 
-    @Published package private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
-    @Published package var isFollowerActive: Bool = false
-    package weak var engine: NexusAgentEngine?
+    @Published public private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
+    @Published public var isFollowerActive: Bool = false
+    public weak var engine: NexusAgentEngine?
     private var followerTimer: Timer?
     private var lastTranscriptModDate: Date?
     private var lastTranscriptSize: UInt64?
@@ -136,23 +152,23 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     /// Output that is not stream JSON (agy's own errors), kept for a failure.
     private var noise: [String] = []
 
-    package init(environment: NexusAgentEngine.Environment, host: any NexusAgentHost) {
+    public init(environment: NexusAgentEngine.Environment, host: any NexusAgentHost) {
         self.environment = environment
         self.host = host
         self.planMode = host.planMode
     }
 
     /// Send is offered only for a prompt with text and no turn in flight.
-    package var canSend: Bool {
+    public var canSend: Bool {
         !isRunning && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    package var filteredSessions: [NexusAgentSessionSummary] {
+    public var filteredSessions: [NexusAgentSessionSummary] {
         NexusAgentSessionSummary.filter(sessions, by: sessionFilter)
     }
 
     /// Opens the drawer with a fresh list from the active provider, or closes it again.
-    package func toggleSessions(configuration: NexusAgentConfiguration) {
+    public func toggleSessions(configuration: NexusAgentConfiguration) {
         if mode == .sessions {
             mode = messages.isEmpty ? .compact : .chat
             return
@@ -164,14 +180,14 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Refreshes the session list using the active provider.
-    package func refreshSessions(configuration: NexusAgentConfiguration) {
+    public func refreshSessions(configuration: NexusAgentConfiguration) {
         sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
                                             host.hiddenClaudeSessionIDs)
     }
 
     /// Archives a session and reloads the drawer list. A session with no
     /// engine does the engine's work itself, with its own home and host.
-    package func archive(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+    public func archive(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
         if let engine {
             engine.archiveSession(summary, configuration: configuration)
         } else {
@@ -182,7 +198,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Unarchives a session and reloads the drawer list.
-    package func unarchive(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+    public func unarchive(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
         if let engine {
             engine.unarchiveSession(summary, configuration: configuration)
         } else {
@@ -193,7 +209,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Starts watching the transcript file for live updates while in chat mode.
-    package func startTranscriptFollower(provider: NexusAgentCLIProvider? = nil) {
+    public func startTranscriptFollower(provider: NexusAgentCLIProvider? = nil) {
         if let provider { self.activeProvider = provider }
         guard let convID = conversationID, !convID.isEmpty, mode == .chat else { return }
         stopTranscriptFollower()
@@ -207,7 +223,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Stops watching the transcript file.
-    package func stopTranscriptFollower() {
+    public func stopTranscriptFollower() {
         followerTimer?.invalidate()
         followerTimer = nil
         isFollowerActive = false
@@ -216,7 +232,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Checks the transcript file for updates and refreshes messages and active subagents.
-    package func checkTranscriptUpdates() {
+    public func checkTranscriptUpdates() {
         guard let convID = conversationID, !convID.isEmpty else { return }
         let provider = activeProvider ?? .antigravity
         guard let path = environment.transcriptPath(convID, provider) else { return }
@@ -251,7 +267,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Continues a past conversation: the next turn passes its id to the active provider.
-    package func resume(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration = NexusAgentConfiguration()) {
+    public func resume(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration = NexusAgentConfiguration()) {
         stop()
         turn += 1
         running = nil
@@ -285,7 +301,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// The agy flags for this turn: plan mode overrides the bot's approval mode.
-    package func turnConfiguration(_ configuration: NexusAgentConfiguration) -> NexusAgentConfiguration {
+    public func turnConfiguration(_ configuration: NexusAgentConfiguration) -> NexusAgentConfiguration {
         var turn = configuration
         if planMode { turn.approvalMode = .plan }
         return turn
@@ -295,7 +311,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Starts a turn with the bot's own settings. A turn that cannot start
     /// says why in the conversation.
-    package func send(_ prompt: String, configuration: NexusAgentConfiguration, agentPath: String?) {
+    public func send(_ prompt: String, configuration: NexusAgentConfiguration, agentPath: String?) {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRunning else { return }
         draft = ""
@@ -351,7 +367,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Ends the turn in flight; what arrived so far stays.
-    package func stop() {
+    public func stop() {
         guard isRunning else { return }
         stoppedByUser = true
         stopTranscriptFollower()
@@ -360,7 +376,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
         running?.terminate()
     }
 
-    package func newChat() {
+    public func newChat() {
         stop()
         stopTranscriptFollower()
         activeSubagents = []
@@ -381,7 +397,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// The bot's folder setting, `~` expanded; home when unset or gone.
-    package func workingDirectory(for configuration: NexusAgentConfiguration) -> String {
+    public func workingDirectory(for configuration: NexusAgentConfiguration) -> String {
         let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
         guard !configured.isEmpty else { return environment.home }
         let expanded = NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
@@ -389,7 +405,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// The folder for recent sessions: empty when unset so all workspaces match.
-    package func sessionsDirectory(for configuration: NexusAgentConfiguration) -> String {
+    public func sessionsDirectory(for configuration: NexusAgentConfiguration) -> String {
         let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
         guard !configured.isEmpty else { return "" }
         let expanded = NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
@@ -462,7 +478,7 @@ package final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Resolves an interactive tool execution approval request.
-    package func decideApproval(messageID: UUID, decision: NexusAgentApprovalRequest.Status) {
+    public func decideApproval(messageID: UUID, decision: NexusAgentApprovalRequest.Status) {
         guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return }
         messages[idx].approvalRequest?.status = decision
     }

@@ -42,6 +42,8 @@ the standalone app and this feature build from one copy
 |---|---|---|
 | 2026-10-08 | `Core/NexusAgent/NexusAgentSupport.swift` | `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/` |
 | 2026-10-08 | `Core/NexusAgent/NexusAgentQuickPromptLayout.swift` | `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/` |
+| 2026-10-09 | `Services/NexusAgent/NexusAgentService.swift` (in part: the engine) | `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/` |
+| 2026-10-09 | `Services/NexusAgent/NexusAgentQuickPromptSession.swift` | `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/` |
 
 Each file was checked before it left: its header named VitruvianSoftware
 alone and its history has no upstream author. Not legal advice.
@@ -2597,6 +2599,7 @@ is that notice. Add an entry for every change to upstream files.
   - `NexusAgentTests`: `sessionArchiving` covers annotation parsing, rewriting, and archive/unarchive against a throwaway home.
 - **2026-10-08**: Nexus Agent's pure rules (`NexusAgentSupport`, `NexusAgentQuickPromptLayout`) moved to the shared `NexusAgentCore` library in `apps/desktop/nexus-agent` and are re-exported from `Core/NexusAgentCoreExport.swift`. No behaviour change.
 - **2026-10-09**: `NexusAgentService` split in place, ahead of moving its app-neutral half to the shared library: `NexusAgentEngine` (new file) holds the bot runner, the `.env`, agent turns, the session list and archiving; `NexusAgentService` is now its subclass with the floating window, the shortcut and notch docking. The engine and `NexusAgentQuickPromptSession` reach this app only through the `NexusAgentHost` protocol (new file), which `VitruvianNexusAgentHost` (new file) answers from `Preferences`, the translations, `Notifier` and `NotchService`. In the shared `NexusAgentCore`, `NexusAgentSessionSummary.claudeHiddenSessionIds` and `parseClaudeSessions` now take the app's list of archived Claude sessions (`appHidden`) instead of reading this app's `vitruvian.claude.hiddenSessionIds` key themselves; the engine hands them the host's list, which is that same key. No behaviour change.
+- **2026-10-09**: Nexus Agent's bot runner, `.env` handling, agent turns, session list and chat session state moved to the shared `NexusAgentCore` library as `NexusAgentEngine` and `NexusAgentQuickPromptSession`. `NexusAgentService` here is now a subclass that adds the floating window, the shortcut and notch docking, and `VitruvianNexusAgentHost` answers the engine from this app's settings, translations and notch. No behaviour change.
 
 ## Tracking and porting upstream
 

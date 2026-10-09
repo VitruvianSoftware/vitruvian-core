@@ -1,11 +1,32 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 VitruvianSoftware
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Shared by the standalone Nexus Agent app and the Nexus Agent feature of the
+// Vitruvian desktop app. Written for Vitruvian and released under MIT by its
+// copyright holder on 2026-10-09 (apps/desktop/vitruvian/UPSTREAM.md).
 
 import Foundation
 
 /// What the shared Nexus Agent code asks the app it runs in.
 @MainActor
-package protocol NexusAgentHost: AnyObject {
+public protocol NexusAgentHost: AnyObject {
     /// The bot folder as the user configured it; empty means the standard one.
     var configuredBotDirectory: String { get }
     /// Whether the bot starts with the app.
@@ -28,37 +49,37 @@ package protocol NexusAgentHost: AnyObject {
 /// Text that wraps a name (a tool, a provider, a session title) is kept as
 /// the pieces around it, so every field is plain text a translation can
 /// replace; the functions below put the pieces back together.
-package struct NexusAgentHostStrings: Sendable {
+public struct NexusAgentHostStrings: Sendable {
     /// The title of a session that has none.
-    package var untitledSession: String
+    public var untitledSession: String
     /// The agent's CLI is not installed.
-    package var missingAgent: String
+    public var missingAgent: String
     /// The agent's CLI could not start, or stopped with an error and no reply.
-    package var agentFailed: String
+    public var agentFailed: String
     /// The user stopped a reply before any of it arrived.
-    package var replyStopped: String
+    public var replyStopped: String
     /// The turn ended well with nothing to show.
-    package var emptyReply: String
+    public var emptyReply: String
     /// What the provider is called when no engine is there to name it.
-    package var fallbackProviderName: String
+    public var fallbackProviderName: String
     /// The line a resumed session opens with when its transcript cannot be
     /// read: prefix, title, `resumedAfterTitle`, the step count if any,
     /// `resumedBeforeProvider`, the provider, `resumedSuffix`.
-    package var resumedPrefix: String
-    package var resumedAfterTitle: String
-    package var resumedStepsPrefix: String
-    package var resumedStepsSuffix: String
-    package var resumedBeforeProvider: String
-    package var resumedSuffix: String
+    public var resumedPrefix: String
+    public var resumedAfterTitle: String
+    public var resumedStepsPrefix: String
+    public var resumedStepsSuffix: String
+    public var resumedBeforeProvider: String
+    public var resumedSuffix: String
     /// Around the name of the tool that is waiting for approval.
-    package var usingToolPrefix: String
-    package var usingToolSuffix: String
+    public var usingToolPrefix: String
+    public var usingToolSuffix: String
     /// After the provider's name, in the title of a notice about a turn.
-    package var approvalRequiredTitleSuffix: String
-    package var failedTitleSuffix: String
-    package var doneTitleSuffix: String
+    public var approvalRequiredTitleSuffix: String
+    public var failedTitleSuffix: String
+    public var doneTitleSuffix: String
 
-    package init(untitledSession: String = "Untitled",
+    public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
                  agentFailed: String = "The agent stopped with an error.",
                  replyStopped: String = "Reply stopped.",
@@ -96,43 +117,43 @@ package struct NexusAgentHostStrings: Sendable {
 
     /// The opening line of a resumed session; the step count is left out
     /// when there is none.
-    package func resumedSession(title: String, steps: Int, provider: String) -> String {
+    public func resumedSession(title: String, steps: Int, provider: String) -> String {
         let stepCount = steps > 0 ? "\(resumedStepsPrefix)\(steps)\(resumedStepsSuffix)" : ""
         return "\(resumedPrefix)\(title)\(resumedAfterTitle)\(stepCount)\(resumedBeforeProvider)\(provider)\(resumedSuffix)"
     }
 
-    package func usingTool(_ name: String) -> String {
+    public func usingTool(_ name: String) -> String {
         "\(usingToolPrefix)\(name)\(usingToolSuffix)"
     }
 
-    package func approvalRequiredTitle(provider: String) -> String {
+    public func approvalRequiredTitle(provider: String) -> String {
         "\(provider)\(approvalRequiredTitleSuffix)"
     }
 
-    package func failedTitle(provider: String) -> String {
+    public func failedTitle(provider: String) -> String {
         "\(provider)\(failedTitleSuffix)"
     }
 
-    package func doneTitle(provider: String) -> String {
+    public func doneTitle(provider: String) -> String {
         "\(provider)\(doneTitleSuffix)"
     }
 }
 
 /// What the session knows about a turn at the moment it tells the app.
-package struct NexusAgentTurnNotice: Sendable {
+public struct NexusAgentTurnNotice: Sendable {
     /// The CLI that ran the turn, as the user knows it.
-    package var providerName: String
+    public var providerName: String
     /// For a turn that ended, the whole reply. For one waiting on approval,
     /// the tool and what it wants to run.
-    package var text: String
+    public var text: String
     /// The agent reported an error, or stopped badly with no reply.
-    package var failed: Bool
+    public var failed: Bool
     /// The turn ran to its own end with nothing wrong: not stopped by the
     /// user, no error, a clean exit. Narrower than `!failed`, which also
     /// covers a stopped turn and a bad exit after a reply.
-    package var endedCleanly: Bool
+    public var endedCleanly: Bool
 
-    package init(providerName: String, text: String, failed: Bool, endedCleanly: Bool) {
+    public init(providerName: String, text: String, failed: Bool, endedCleanly: Bool) {
         self.providerName = providerName
         self.text = text
         self.failed = failed

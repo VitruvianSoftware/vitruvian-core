@@ -1,14 +1,30 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 VitruvianSoftware
+// Copyright (c) 2026 VitruvianSoftware
 //
-// Adapted from the standalone Nexus Agent app (apps/desktop/nexus-agent,
-// MIT, Copyright (c) 2026 VitruvianSoftware): its BotManager and
-// ConfigManager, folded into one class with injected effects.
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Shared by the standalone Nexus Agent app and the Nexus Agent feature of the
+// Vitruvian desktop app. Written for Vitruvian and released under MIT by its
+// copyright holder on 2026-10-09 (apps/desktop/vitruvian/UPSTREAM.md).
 
 import AppKit
 import Combine
 import Darwin
-import VitruvianCore
 
 /// Runs the Nexus Agent Telegram bot from its folder, edits the part of its
 /// `.env` a settings page shows, and holds the chat with the agent's CLI.
@@ -20,58 +36,58 @@ import VitruvianCore
 /// from a `NexusAgentHost`; the window the chat is shown in belongs to a
 /// subclass, which says whether it is on screen through `isChatVisible`.
 @MainActor
-package class NexusAgentEngine: NSObject, ObservableObject {
+open class NexusAgentEngine: NSObject, ObservableObject {
     /// Why the last start or save did not happen, as the page reports it.
-    package enum Problem: Equatable {
+    public enum Problem: Equatable {
         case missingToken, missingBot, missingNode, startFailed, saveFailed
     }
 
     /// Everything the service touches outside itself. `live` is the real
     /// file system, processes and preferences; tests pass doubles.
     @MainActor
-    package struct Environment {
-        package var defaults: UserDefaults
-        package var home: String
-        package var processEnvironment: [String: String]
+    public struct Environment {
+        public var defaults: UserDefaults
+        public var home: String
+        public var processEnvironment: [String: String]
         /// Shared with the standalone app: its PID file and log live here.
-        package var stateDirectory: String
-        package var isExecutable: (String) -> Bool
-        package var fileExists: (String) -> Bool
-        package var readFile: (String) -> String?
+        public var stateDirectory: String
+        public var isExecutable: (String) -> Bool
+        public var fileExists: (String) -> Bool
+        public var readFile: (String) -> String?
         /// The last `limit` bytes of a file, for the log.
-        package var readTail: (_ path: String, _ limit: Int) -> String?
+        public var readTail: (_ path: String, _ limit: Int) -> String?
         /// Writes atomically, readable by the user alone: the file holds a token.
-        package var writePrivateFile: (_ path: String, _ content: String) -> Bool
-        package var removeFile: (String) -> Void
+        public var writePrivateFile: (_ path: String, _ content: String) -> Bool
+        public var removeFile: (String) -> Void
         /// True only for a live process whose executable is Node, so a stale
         /// PID file reused by another program is never signalled.
-        package var isBotProcess: (Int32) -> Bool
-        package var signal: (_ pid: Int32, _ signal: Int32) -> Void
+        public var isBotProcess: (Int32) -> Bool
+        public var signal: (_ pid: Int32, _ signal: Int32) -> Void
         /// Starts Node on the bot with its output appended to the log, and
         /// reports the exit on the main actor. Returns the process id.
-        package var launchBot: (_ node: String, _ directory: String, _ logPath: String,
+        public var launchBot: (_ node: String, _ directory: String, _ logPath: String,
                                 _ environment: [String: String],
                                 _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> Int32
-        package var schedule: (_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) -> Void
-        package var openFile: (String) -> Void
+        public var schedule: (_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) -> Void
+        public var openFile: (String) -> Void
         /// Runs one agy turn in `directory`, delivering its output in order and
         /// then its exit status, both on the main actor.
-        package var launchAgent: (_ path: String, _ arguments: [String], _ directory: String,
+        public var launchAgent: (_ path: String, _ arguments: [String], _ directory: String,
                                   _ environment: [String: String],
                                   _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
                                   _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
         /// agy's or claude's recent conversations for a folder, newest first.
         /// The last argument is the app's list of archived Claude sessions.
-        package var listSessions: (_ directory: String, _ provider: NexusAgentCLIProvider,
+        public var listSessions: (_ directory: String, _ provider: NexusAgentCLIProvider,
                                    _ hiddenClaudeSessionIDs: [String]) -> [NexusAgentSessionSummary]
         /// Reads past conversation turns, if present.
-        package var readTranscript: (_ id: String, _ provider: NexusAgentCLIProvider) -> [NexusAgentChatMessage]?
+        public var readTranscript: (_ id: String, _ provider: NexusAgentCLIProvider) -> [NexusAgentChatMessage]?
         /// Resolves the absolute path to a transcript file if it exists.
-        package var transcriptPath: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
+        public var transcriptPath: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
         /// Reads the full raw content of a transcript file.
-        package var readTranscriptRaw: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
+        public var readTranscriptRaw: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
 
-        package init(defaults: UserDefaults,
+        public init(defaults: UserDefaults,
                      home: String,
                      processEnvironment: [String: String],
                      stateDirectory: String,
@@ -116,7 +132,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
             self.readTranscriptRaw = readTranscriptRaw
         }
 
-        package static var live: Environment {
+        public static var live: Environment {
             let home = NSHomeDirectory()
             return Environment(
                 defaults: .standard,
@@ -145,21 +161,21 @@ package class NexusAgentEngine: NSObject, ObservableObject {
         }
     }
 
-    @Published package private(set) var isRunning = false
-    @Published package private(set) var pid: Int32?
-    @Published package private(set) var logLines: [String] = []
-    @Published package private(set) var configuration = NexusAgentConfiguration()
-    @Published package private(set) var problem: Problem?
+    @Published public private(set) var isRunning = false
+    @Published public private(set) var pid: Int32?
+    @Published public private(set) var logLines: [String] = []
+    @Published public private(set) var configuration = NexusAgentConfiguration()
+    @Published public private(set) var problem: Problem?
     /// Saved while the bot runs: it reads its `.env` only at start.
-    @Published package private(set) var needsRestart = false
-    @Published package private(set) var agentPath: String?
+    @Published public private(set) var needsRestart = false
+    @Published public private(set) var agentPath: String?
 
-    package var activeProvider: NexusAgentCLIProvider {
+    public var activeProvider: NexusAgentCLIProvider {
         get { configuration.activeProvider }
         set { updateActiveProvider(newValue) }
     }
 
-    package let session: NexusAgentQuickPromptSession
+    public let session: NexusAgentQuickPromptSession
     private let environment: Environment
     private let host: any NexusAgentHost
     /// The bot this app launched, as opposed to one adopted from the PID file.
@@ -168,9 +184,9 @@ package class NexusAgentEngine: NSObject, ObservableObject {
     private var didAutoStart = false
 
     /// A bot gets this long to stop on SIGTERM before it is killed.
-    package static let stopGrace: TimeInterval = 3
+    public static let stopGrace: TimeInterval = 3
 
-    package init(environment: Environment, host: any NexusAgentHost) {
+    public init(environment: Environment, host: any NexusAgentHost) {
         self.environment = environment
         self.host = host
         session = NexusAgentQuickPromptSession(environment: environment, host: host)
@@ -187,28 +203,28 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
     /// Whether the user can see the chat right now. The engine has no
     /// window, so a subclass that shows one overrides this.
-    package var isChatVisible: Bool { false }
+    open var isChatVisible: Bool { false }
 
     // MARK: - Paths
 
-    package var botDirectory: String {
+    public var botDirectory: String {
         NexusAgentSupport.botDirectory(configured: host.configuredBotDirectory,
                                        home: environment.home)
     }
 
-    package var envFilePath: String { (botDirectory as NSString).appendingPathComponent(".env") }
-    package var logPath: String { (environment.stateDirectory as NSString).appendingPathComponent("bot.log") }
-    package var pidFilePath: String { (environment.stateDirectory as NSString).appendingPathComponent(".bot.pid") }
+    public var envFilePath: String { (botDirectory as NSString).appendingPathComponent(".env") }
+    public var logPath: String { (environment.stateDirectory as NSString).appendingPathComponent("bot.log") }
+    public var pidFilePath: String { (environment.stateDirectory as NSString).appendingPathComponent(".bot.pid") }
     private var entryPointPath: String {
         (botDirectory as NSString).appendingPathComponent(NexusAgentSupport.botEntryPoint)
     }
 
-    package var isBotInstalled: Bool { environment.fileExists(entryPointPath) }
+    public var isBotInstalled: Bool { environment.fileExists(entryPointPath) }
 
     // MARK: - App lifecycle
 
     /// The app took the feature away: nothing stays resident, the bot included.
-    package func stopAfterUninstall() {
+    public func stopAfterUninstall() {
         stopPolling()
         session.stop()
         if isRunning || managedPID != nil { stop() }
@@ -217,7 +233,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
     /// Once per launch, and only when asked for: a bot already running
     /// (started by the standalone app, say) is adopted instead.
-    package func startOncePerLaunch() {
+    public func startOncePerLaunch() {
         if !didAutoStart {
             didAutoStart = true
             refreshStatus()
@@ -229,7 +245,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
     /// The bot outlives the app, as it does the standalone one; only the
     /// reply in flight belongs to this process.
-    package func stopForQuit() {
+    public func stopForQuit() {
         session.stop()
         stopPolling()
     }
@@ -237,7 +253,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
     // MARK: - Configuration
 
     /// Reads the bot's `.env` and finds the agent, for the page.
-    package func load() {
+    public func load() {
         configuration = environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration()
         agentPath = NexusAgentSupport.locateAgent(named: configuration.activeProvider.executableName,
                                                   environment: environment.processEnvironment,
@@ -246,7 +262,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
     }
 
 
-    package func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
+    public func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
         configuration.activeProvider = provider
         agentPath = NexusAgentSupport.locateAgent(named: provider.executableName,
                                                   environment: environment.processEnvironment,
@@ -257,7 +273,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
     /// Writes the page's values into the `.env`, keeping the rest of it.
     @discardableResult
-    package func save(_ next: NexusAgentConfiguration) -> Bool {
+    public func save(_ next: NexusAgentConfiguration) -> Bool {
         guard environment.fileExists(botDirectory) else {
             problem = .missingBot
             return false
@@ -277,7 +293,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
     /// Brings `isRunning` in line with the processes: the one this app
     /// launched, or the one the PID file names if it is still Node.
-    package func refreshStatus() {
+    public func refreshStatus() {
         if let managedPID {
             setRunning(managedPID)
             return
@@ -292,7 +308,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
         setRunning(nil)
     }
 
-    package func start() {
+    public func start() {
         refreshStatus()
         guard !isRunning else { return }
         load()
@@ -322,7 +338,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
     /// SIGTERM, then SIGKILL if the bot is still there after the grace
     /// period. Only the recorded bot is signalled, never a match by name.
-    package func stop(then next: (@MainActor () -> Void)? = nil) {
+    public func stop(then next: (@MainActor () -> Void)? = nil) {
         refreshStatus()
         guard let target = pid else {
             next?()
@@ -336,11 +352,11 @@ package class NexusAgentEngine: NSObject, ObservableObject {
         awaitExit(of: target, remaining: Self.stopGrace, then: next)
     }
 
-    package func restart() {
+    public func restart() {
         stop { [weak self] in self?.start() }
     }
 
-    package func openLog() {
+    public func openLog() {
         guard environment.fileExists(logPath) else { return }
         environment.openFile(logPath)
     }
@@ -380,7 +396,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
     // MARK: - Polling
 
     /// Only while the page is up: nothing polls at rest.
-    package func startPolling() {
+    public func startPolling() {
         load()
         refreshStatus()
         readLog()
@@ -395,7 +411,7 @@ package class NexusAgentEngine: NSObject, ObservableObject {
         pollTimer = timer
     }
 
-    package func stopPolling() {
+    public func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
     }
@@ -518,12 +534,12 @@ package class NexusAgentEngine: NSObject, ObservableObject {
 
 extension NexusAgentEngine {
     /// Sends the draft as one Quick Prompt turn with the bot's settings.
-    package func sendQuickPrompt() {
+    public func sendQuickPrompt() {
         session.send(session.draft, configuration: configuration, agentPath: agentPath)
     }
 
     /// Retries the last failed prompt if any.
-    package func retryQuickPrompt() {
+    public func retryQuickPrompt() {
         guard let prompt = session.lastFailedPrompt else { return }
         session.send(prompt, configuration: configuration, agentPath: agentPath)
     }
@@ -557,7 +573,7 @@ extension NexusAgentEngine {
 
     /// Reads conversation transcript from ~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl
     /// or ~/.claude/projects/*/<id>.jsonl
-    package nonisolated static func readTranscript(home: String, conversationID: String, provider: NexusAgentCLIProvider = .antigravity) -> [NexusAgentChatMessage]? {
+    public nonisolated static func readTranscript(home: String, conversationID: String, provider: NexusAgentCLIProvider = .antigravity) -> [NexusAgentChatMessage]? {
         let fileManager = FileManager.default
         if provider.id == NexusAgentCLIProvider.claude.id {
             let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
@@ -597,7 +613,7 @@ extension NexusAgentEngine {
         return nil
     }
 
-    package nonisolated static func parseClaudeTranscript(_ content: String) -> [NexusAgentChatMessage]? {
+    public nonisolated static func parseClaudeTranscript(_ content: String) -> [NexusAgentChatMessage]? {
         var messages: [NexusAgentChatMessage] = []
         for line in content.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -687,7 +703,7 @@ extension NexusAgentEngine {
         return messages.isEmpty ? nil : messages
     }
 
-    package nonisolated static func parseTranscript(_ content: String) -> [NexusAgentChatMessage]? {
+    public nonisolated static func parseTranscript(_ content: String) -> [NexusAgentChatMessage]? {
         var messages: [NexusAgentChatMessage] = []
         for line in content.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -720,7 +736,7 @@ extension NexusAgentEngine {
         return messages.isEmpty ? nil : messages
     }
 
-    package nonisolated static func transcriptPath(home: String, conversationID: String, provider: NexusAgentCLIProvider) -> String? {
+    public nonisolated static func transcriptPath(home: String, conversationID: String, provider: NexusAgentCLIProvider) -> String? {
         let fileManager = FileManager.default
         if provider.id == NexusAgentCLIProvider.claude.id {
             let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
@@ -756,7 +772,7 @@ extension NexusAgentEngine {
         return nil
     }
 
-    package nonisolated static func parseActiveSubagents(from transcriptContent: String) -> [NexusAgentActiveSubagent] {
+    public nonisolated static func parseActiveSubagents(from transcriptContent: String) -> [NexusAgentActiveSubagent] {
         var spawned: [NexusAgentActiveSubagent] = []
         var completedSubagents: Set<String> = []
 
@@ -872,30 +888,30 @@ extension NexusAgentEngine {
         return spawned.filter { !completedSubagents.contains($0.id) }
     }
 
-    package nonisolated static func extractUserPrompt(_ raw: String) -> String {
+    public nonisolated static func extractUserPrompt(_ raw: String) -> String {
         NexusAgentSessionSummary.extractUserPrompt(raw)
     }
 
     // MARK: - Session Archiving
 
-    package func archiveSession(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+    public func archiveSession(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
         Self.archiveSession(home: environment.home, id: summary.id, provider: configuration.activeProvider, host: host)
     }
 
-    package func unarchiveSession(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+    public func unarchiveSession(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
         Self.unarchiveSession(home: environment.home, id: summary.id, provider: configuration.activeProvider, host: host)
     }
 
     /// Archives with the host's list of hidden Claude sessions. Static, so a
     /// session built without an engine does the same work.
-    package static func archiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
+    public static func archiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
                                        host: any NexusAgentHost) {
         archiveSession(home: home, id: id, provider: provider,
                        hiddenClaudeSessionIDs: { host.hiddenClaudeSessionIDs },
                        saveHiddenClaudeSessionIDs: { host.hiddenClaudeSessionIDs = $0 })
     }
 
-    package static func unarchiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
+    public static func unarchiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
                                          host: any NexusAgentHost) {
         unarchiveSession(home: home, id: id, provider: provider,
                          hiddenClaudeSessionIDs: { host.hiddenClaudeSessionIDs },
@@ -904,7 +920,7 @@ extension NexusAgentEngine {
 
     /// The list of hidden Claude sessions is the app's to keep, so it is
     /// read and saved through the two closures, and only for Claude.
-    nonisolated package static func archiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
+    nonisolated public static func archiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
                                                    hiddenClaudeSessionIDs: () -> [String],
                                                    saveHiddenClaudeSessionIDs: ([String]) -> Void) {
         if provider.id == NexusAgentCLIProvider.antigravity.id {
@@ -919,7 +935,7 @@ extension NexusAgentEngine {
         }
     }
 
-    nonisolated package static func unarchiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
+    nonisolated public static func unarchiveSession(home: String, id: String, provider: NexusAgentCLIProvider,
                                                      hiddenClaudeSessionIDs: () -> [String],
                                                      saveHiddenClaudeSessionIDs: ([String]) -> Void) {
         if provider.id == NexusAgentCLIProvider.antigravity.id {
