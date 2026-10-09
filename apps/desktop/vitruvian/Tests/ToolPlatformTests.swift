@@ -13,6 +13,7 @@ enum ToolPlatformTests {
         ids(suite)
         descriptors(suite)
         builtins(suite)
+        builtinTools(suite)
         registry(suite)
     }
 
@@ -87,6 +88,31 @@ enum ToolPlatformTests {
                                           run: { [unowned self] in self.ran.append(id.rawValue) }),
                                     for: id)
         }
+    }
+
+    static func builtinTools(_ suite: TestSuite) {
+        let registry = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: registry)
+
+        for feature in AppFeature.allCases {
+            suite.expect(registry.tool(ToolID(feature.rawValue)!)?.feature == feature,
+                         "\(feature.rawValue) is registered as a tool under its own id")
+        }
+        for command in BuiltinCommand.allCases {
+            suite.expect(registry.command(command.id) != nil && registry.hasHandler(for: command.id),
+                         "\(command.rawValue) has a descriptor and a handler")
+            suite.expect(registry.title(for: command.id, language: .systemDefault)?.isEmpty == false,
+                         "\(command.rawValue) has a title")
+        }
+        suite.expect(Set(registry.commands(on: .radial).map(\.id)) == Set(BuiltinCommand.allCases.map(\.id)),
+                     "every built-in command can sit on a wheel")
+        suite.expect(registry.commands(on: .commandBar).isEmpty,
+                     "built-in commands leave the bar to its hand-built rows")
+
+        // Installing again must not disturb what is there.
+        BuiltinTools.install(into: registry)
+        suite.expect(registry.commands(on: .radial).count == BuiltinCommand.allCases.count,
+                     "installing twice registers nothing twice")
     }
 
     static func registry(_ suite: TestSuite) {

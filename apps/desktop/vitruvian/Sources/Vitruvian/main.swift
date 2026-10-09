@@ -15,6 +15,9 @@ NotchControlItem.keyboardLightIsSupported = { keyboardLightIsSupported }
 // Services show their SwiftUI content through this, so it is in place before
 // anything below can present. Top-level code runs on the main thread.
 MainActor.assumeIsolated { ServiceViews.install(UIServiceViewFactory()) }
+// The app's own tools and commands, in the registry before any surface
+// lists or runs one. Top-level code runs on the main thread.
+MainActor.assumeIsolated { BuiltinTools.install() }
 // The island calls back into the services that follow it through these, so
 // it names none of them. Top-level code runs on the main thread.
 MainActor.assumeIsolated {
