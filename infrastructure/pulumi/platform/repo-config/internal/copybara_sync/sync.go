@@ -88,6 +88,12 @@ type syncedProject struct {
 
 	// Description is the repository description used when CreateRepo is true.
 	Description string
+
+	// UnprotectedMirror marks an EXISTING one-way mirror whose main branch had no
+	// branch protection when it was onboarded. The read-only protection is then
+	// created rather than adopted: pulumi.Import of a protection that does not
+	// exist fails the whole update.
+	UnprotectedMirror bool
 }
 
 // syncedProjects is the source of truth for which components have sync auth
@@ -146,6 +152,18 @@ var syncedProjects = []syncedProject{
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Roborock vacuum integration, local daemon, FastMCP server, and plugins for Claude Code and Antigravity",
+	},
+	{
+		// Export-only mirror for the vitruviansoftware.dev website
+		// (apps/web/vitruviansoftware-dev). The repo already exists and stays the
+		// GitHub Pages publisher for the custom domain: the monorepo exports the
+		// subtree and the mirror's own jekyll.yml builds and deploys it. Name
+		// uppercase-snakes to SITE_VITRUVIANSOFTWARE_DEV_SYNC_SSH_KEY, consumed by
+		// copybara-export-site-vitruviansoftware-dev.yaml.
+		Name:              "site-vitruviansoftware-dev",
+		StandaloneRepo:    "site-vitruviansoftware-dev",
+		OneWay:            true,
+		UnprotectedMirror: true,
 	},
 }
 
@@ -276,11 +294,14 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 					return err
 				}
 				repoNodeID = pulumi.String(mirrorRepo.NodeId)
-				bpOpts = append(bpOpts, pulumi.Import(pulumi.ID(project.StandaloneRepo+":main")))
+				if !project.UnprotectedMirror {
+					bpOpts = append(bpOpts, pulumi.Import(pulumi.ID(project.StandaloneRepo+":main")))
+				}
 			}
 
-			// ADOPT via pulumi.Import (id "<repo>:main") for brownfield repos,
-			// or create natively for newly declared repositories.
+			// ADOPT via pulumi.Import (id "<repo>:main") for brownfield repos that
+			// already carry the protection, or create natively for newly declared
+			// repositories and for mirrors onboarded without one (UnprotectedMirror).
 			_, err = github.NewBranchProtection(ctx, fmt.Sprintf("%s-mirror-readonly", project.Name), &github.BranchProtectionArgs{
 				RepositoryId:      repoNodeID,
 				Pattern:           pulumi.String("main"),
