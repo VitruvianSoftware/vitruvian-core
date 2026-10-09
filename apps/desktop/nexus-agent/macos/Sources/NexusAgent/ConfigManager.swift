@@ -247,7 +247,18 @@ class ConfigManager: ObservableObject {
     /// still holds what it was last filled with. A value the engine did not
     /// change is left alone too, which keeps the template shown when there
     /// is no `.env` yet.
+    ///
+    /// Nothing is taken over unless `.env` is there to be read and has
+    /// something in it. The engine reads the file each time the chat is
+    /// shown, and when it is missing, unreadable or caught empty in the
+    /// middle of being rewritten, the engine holds an empty configuration:
+    /// no token, no whitelist, approval mode `yolo`. Following that would
+    /// blank every untouched field, and the next Save would write the
+    /// blanks: a bot anyone may use, skipping every permission prompt. The
+    /// record of what the engine held is not moved either, so the file's
+    /// return is compared with what Settings last saw in it.
     private func follow(_ fresh: EnvFields) {
+        guard envFileHasText else { return }
         var shown = fields
         for field in EnvFields.each {
             let value = fresh[keyPath: field]
@@ -260,6 +271,12 @@ class ConfigManager: ObservableObject {
         }
         fields = shown
         engineHeld = fresh
+    }
+
+    /// Whether `.env` can be read right now and holds more than blank lines.
+    private var envFileHasText: Bool {
+        guard let text = try? String(contentsOfFile: engine.envFilePath, encoding: .utf8) else { return false }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The fields as they stand, which is what an untouched field holds

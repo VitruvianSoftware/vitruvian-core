@@ -789,7 +789,8 @@ final class EngineHostTests: XCTestCase {
     }
 
     /// Where a program named without a folder is looked for, as the
-    /// standalone app's chat looks: the usual install folders first, then
+    /// standalone app's own chat looked (removed in step 3c; see git history
+    /// before `b14d76b54`): the usual install folders first, then
     /// the folders on PATH, the first executable one winning.
     func testAProgramIsFoundWhereTheStandaloneLooks() {
         func find(_ name: String, path: String, executables: Set<String>, files: Set<String> = []) -> String? {

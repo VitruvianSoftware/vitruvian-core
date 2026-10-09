@@ -35,6 +35,23 @@ This is the step users of the standalone see. The pull request description carri
 | A repeated follow-up prompt | Stored in history twice | Stored once |
 | Diagrams | None | Drawn with a script loaded from a public CDN, as in Vitruvian |
 | The hint shown while ⌘ is held | Shown | Gone |
+| Esc with the model-name editor open | Closed just the editor | Dismisses the window, or stops a running reply |
+| ⌘N and New Chat | Re-centred the panel; ⌘N worked only in a conversation | The panel shrinks in place; ⌘N also works from the pill and the session list |
+| The clock button in the chat header | Replaced the conversation with the session list | Opens the session list over the conversation, and returns to it |
+| Opening a conversation | A cross-fade into a larger window | The panel springs larger; no cross-fade |
+| ⌘W in Settings | Also closed the chat | Closes Settings only |
+| Light appearance | The chat followed the system, light or dark | The chat is always dark, also when the Mac is in light appearance. Menus opened from it are dark too |
+| The header title | The conversation's title, or "Chat" | "Agent Quick Prompt" |
+| The chat's folder picker and model badge | Saved the whole of Settings, unsaved edits included | Save only that one value |
+| Hand edits to `.env` | Settings kept its launch values and wrote them back on the next save | Settings picks them up when the chat is shown, for fields not being edited. A missing, empty or unreadable `.env` changes nothing in Settings |
+| Clicking a notification that names no conversation | Opened the recent sessions | Shows the chat as it stands; the recent sessions only if the chat is empty |
+| Reduce Motion | The resize spring always ran | Skips the resize spring |
+| A conversation's transcript on disk | Never read | Followed while the panel shows that conversation; nothing reads it while the panel is hidden |
+| A chat that was dragged or resized by hand | Closing the chat discarded it, so there was nothing to put back | The conversation is kept, but each fresh show returns to the default size and the centre of the screen |
+| Typing in the top field with the session list open | Filtered the list | Is a prompt, and Return sends it; the field keeps its "Ask …" words. The list has its own filter field |
+| A first launch with no `.env` | The chat always ran agy with permission prompts skipped | The same until Settings is saved with another approval mode (the example file says `yolo`) |
+| Provider edits in Settings | Used by the chat at once, but kept only if Save was pressed | Used by the chat at once and saved as they are made; `.env` is still written on Save |
+| Notifications while the chat is out of sight | None for a turn waiting for approval | One for a turn waiting for approval; none for a reply that ends with no text |
 | Hotkey, menu bar, Settings, updater, bot control | — | Unchanged |
 
 Kept, by adding to the shared view in Task 1: Clear All for a folder's conversations (with its confirmation), arrow keys and Return in the session list, the session row's context menu.

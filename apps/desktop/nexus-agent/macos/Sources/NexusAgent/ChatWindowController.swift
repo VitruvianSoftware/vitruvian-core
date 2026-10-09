@@ -48,27 +48,10 @@ class QuickPromptPanel: NSPanel {
 // MARK: - Backdrop
 
 /// What is drawn behind the chat: the popover material this app's chat
-/// window has always had, blurring whatever is under the panel, light or
-/// dark with the system.
-///
-/// The shared chat draws its cards and borders as faint white over the
-/// backdrop, which shows on a dark surface and vanishes on a light one. So
-/// in the light appearance the material, which is close to white there, is
-/// dimmed a little: enough for the cards and the input field to stand out
-/// from it, while the text stays dark on a light grey.
-private struct ChatBackdrop: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    /// How much black is laid over the light material.
-    static let lightDimming = 0.16
-
-    var body: some View {
-        ChatBackdropMaterial()
-            .overlay(Color.black.opacity(colorScheme == .dark ? 0 : Self.lightDimming))
-    }
-}
-
-private struct ChatBackdropMaterial: NSViewRepresentable {
+/// window has always had, blurring whatever is under the panel. It is the
+/// dark material whatever the system's appearance, because the panel is
+/// always dark (see `ensureWindow`).
+private struct ChatBackdrop: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .popover
@@ -108,6 +91,7 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
     /// there is no chat to show and `show()` does nothing.
     private var engine: StandaloneEngine?
     private var modeObserver: AnyCancellable?
+    private var responderObserver: NSKeyValueObservation?
 
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
@@ -317,7 +301,10 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
                 // The folder picker counts as a click outside the panel,
                 // which hides it; this brings it back.
                 showWindow: { [weak self] in self?.show() },
-                offersClearAll: true))
+                offersClearAll: true,
+                // Text typed in the top field is a prompt, also with the
+                // session list open, so the field goes on saying so.
+                keepsPromptPlaceholderOverSessions: true))
     }
 
     /// The screen a fresh panel opens on: the one with the keyboard focus,
@@ -351,6 +338,12 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.hasShadow = true
+        // Always dark, also when the Mac is in the light appearance. The
+        // shared chat draws its cards, borders and secondary text for a dark
+        // surface (Vitruvian's is dark in both appearances); on the light
+        // material the timestamps and the stats line were close to
+        // unreadable. A menu opened from the panel is dark too.
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.delegate = self
 
         // Use a plain transparent container as contentView. macOS draws its
@@ -383,7 +376,44 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
         modeObserver = engine.session.$mode.removeDuplicates().dropFirst().sink { [weak self] mode in
             self?.modeChanged(to: mode)
         }
+        // The caret stays in the chat. When the first prompt is sent, the
+        // pill's field, which has the caret, gives way to the conversation,
+        // and the caret is left with the window: nothing typed next would
+        // land anywhere. It is looked at one turn of the main queue later,
+        // when the conversation's own field is there to take it.
+        responderObserver = panel.observe(\.firstResponder) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.returnCaretIfLost() }
+        }
         return panel
+    }
+
+    /// Puts the caret back in the chat's prompt if no field has it while the
+    /// chat is on show. A field that took the caret meanwhile keeps it (the
+    /// model name's editor, the sessions filter).
+    private func returnCaretIfLost() {
+        guard let window, let hostingView, isChatVisible, window.firstResponder === window,
+              let field = Self.promptField(in: hostingView) else { return }
+        window.makeFirstResponder(field)
+    }
+
+    /// The chat's prompt: the highest field that can be typed in. That is
+    /// the pill's, also over the sessions drawer and its filter; in a
+    /// conversation the follow-up bar is the only one.
+    private static func promptField(in view: NSView) -> NSTextField? {
+        var found: NSTextField?
+        var foundTop = -CGFloat.greatestFiniteMagnitude
+        func look(in view: NSView) {
+            if let field = view as? NSTextField, field.isEditable, !field.isHiddenOrHasHiddenAncestor {
+                let top = field.convert(field.bounds, to: nil).maxY
+                if top > foundTop {
+                    found = field
+                    foundTop = top
+                }
+            }
+            view.subviews.forEach(look)
+        }
+        look(in: view)
+        return found
     }
 
     private func modeChanged(to mode: NexusAgentQuickPromptMode) {
@@ -650,9 +680,8 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
     /// showing the panel is all there is to do. Otherwise it is resumed from
     /// the active provider's list, if it is still there; if it is not, the
     /// panel is shown as it stands. A turn in flight in another conversation
-    /// is never ended for this. The index and the title are no longer
-    /// needed: the list has the title.
-    func resumeSession(_ index: Int, uuid: String, title: String) {
+    /// is never ended for this.
+    func resumeSession(uuid: String) {
         show()
         guard let engine else { return }
         let session = engine.session
@@ -715,11 +744,22 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
     private func addClickOutsideMonitor() {
         removeClickOutsideMonitor()
         clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let window = self?.window, window.isVisible else { return }
             DispatchQueue.main.async {
-                self?.dismiss()
+                self?.clickedOutside()
             }
         }
+    }
+
+    /// Whether a click outside the panel is being watched for. It is while
+    /// the panel is shown unpinned, and at no other time.
+    var watchesClicksOutside: Bool { clickOutsideMonitor != nil }
+
+    /// A click landed outside the panel: the panel goes, as Spotlight's
+    /// does, unless it is pinned or already away. This is all the monitor
+    /// above does with a click.
+    func clickedOutside() {
+        guard !isPinned, window?.isVisible == true else { return }
+        dismiss()
     }
 
     private func removeClickOutsideMonitor() {

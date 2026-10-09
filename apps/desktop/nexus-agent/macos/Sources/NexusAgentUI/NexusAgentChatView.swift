@@ -92,7 +92,10 @@ public struct NexusAgentChatView: View {
     }
 
     private var contextualPlaceholder: String {
-        if session.mode == .sessions {
+        // Over an open session list the field shows the filter's words
+        // unless the app asks for the prompt's own: what is typed here is a
+        // prompt either way (the list's filter is the field under it).
+        if session.mode == .sessions, !chrome.keepsPromptPlaceholderOverSessions {
             return strings.sessionsFilter
         }
         let providerName = engine.activeProvider.name.components(separatedBy: " ").first ?? strings.fallbackProviderName
@@ -408,7 +411,10 @@ public struct NexusAgentChatView: View {
             engine.save(next)
         }
         // A click in the folder panel counts as a click outside the prompt,
-        // which hides it; bring it back to where the user was.
+        // which hides it; the app is asked to show it again. Where it comes
+        // back is the app's to say, and need not be where the user was: the
+        // standalone's panel, once hidden (it is not while pinned), opens
+        // as on any fresh show, centred near the top of the screen.
         chrome.showWindow()
     }
 

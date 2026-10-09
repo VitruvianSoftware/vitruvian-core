@@ -73,13 +73,12 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         if response.notification.request.content.categoryIdentifier == "GENERATION_COMPLETE" {
             let userInfo = response.notification.request.content.userInfo
             let uuid = userInfo["sessionUUID"] as? String
-            let title = userInfo["sessionTitle"] as? String
             
             DispatchQueue.main.async {
                 if let uuid = uuid {
                     // Back to the conversation the turn was in: the one the
                     // chat still holds, or resumed from the list.
-                    QuickPromptWindowController.shared.resumeSession(0, uuid: uuid, title: title ?? "Chat")
+                    QuickPromptWindowController.shared.resumeSession(uuid: uuid)
                 } else {
                     // A turn with no conversation to name (a provider's own
                     // command): the chat still holds it. With nothing in
