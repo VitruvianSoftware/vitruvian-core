@@ -38,9 +38,15 @@ let package = Package(
             name: "NexusAgentCore",
             path: "Sources/NexusAgentCore"
         ),
+        // The shared chat view. Swift 6 mode, as the core.
+        .target(
+            name: "NexusAgentUI",
+            dependencies: ["NexusAgentCore"],
+            path: "Sources/NexusAgentUI"
+        ),
         .executableTarget(
             name: "NexusAgent",
-            dependencies: ["NexusAgentCore"],
+            dependencies: ["NexusAgentCore", "NexusAgentUI"],
             path: "Sources/NexusAgent",
             // The app shell is Swift 5 code. Only the shared core is Swift 6.
             swiftSettings: [.swiftLanguageMode(.v5)]

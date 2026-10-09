@@ -4,6 +4,7 @@
 import Combine
 import Darwin
 import Foundation
+import NexusAgentUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -36,6 +37,7 @@ enum NexusAgentTests {
         backupDoesNotCarryProviderCommands(suite)
         hostTurnNotices(suite)
         changesReachTheViews(suite)
+        sharedChatWiring(suite)
     }
 
     // MARK: - Wiring
@@ -1129,6 +1131,75 @@ enum NexusAgentTests {
         before = sessionChanges
         service.session.draft = "hello"
         suite.expect(sessionChanges > before, "typing in the chat tells the views the session changed")
+    }
+
+    // MARK: - The shared chat view's wiring
+
+    /// The chat is the shared `NexusAgentChatView`; this app's
+    /// `NexusAgentQuickPromptView` hands it the service, the text and what
+    /// surrounds the chat. These check what it hands over, without drawing:
+    /// a button wired to nothing, or text built for the wrong language,
+    /// would not show in any other test.
+    private static func sharedChatWiring(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        let floating = NexusAgentQuickPromptView.chrome(for: service, embeddedInNotch: false)
+        let embedded = NexusAgentQuickPromptView.chrome(for: service, embeddedInNotch: true)
+
+        // The pin is one value, seen from the chat and from the service.
+        suite.expect(floating.isPinned?.wrappedValue == false && !service.isPinned,
+                     "the chat's pin starts where the service's is, unpinned")
+        floating.isPinned?.wrappedValue = true
+        suite.expect(service.isPinned, "pinning in the chat pins the service's window")
+        suite.expect(embedded.isPinned?.wrappedValue == true, "and the chat in the notch shows the same pin")
+        service.isPinned = false
+        suite.expect(floating.isPinned?.wrappedValue == false, "unpinning the service shows in the chat")
+
+        // Both buttons are offered in the window and in the notch, as before the chat moved.
+        suite.expect(floating.isPinned != nil && embedded.isPinned != nil
+                     && floating.dockToNotch != nil && embedded.dockToNotch != nil,
+                     "the pin and the dock button are offered in the window and in the notch")
+        suite.expect(!floating.isEmbedded && embedded.isEmbedded,
+                     "the chat is told whether it is in the notch")
+        suite.expect(floating.dockToNotchHelp == "Dock into MacBook Notch (⌥⌘G)"
+                     && floating.errorScheme == "vitruvian-error",
+                     "the dock button's tooltip and the diagram's error scheme are this app's")
+
+        // The dock button reaches the service, which hands the chat to the notch.
+        let notch = NotchService.shared
+        let tabBefore = notch.agentTab
+        defer { notch.agentTab = tabBefore }
+        notch.agentTab = .telemetry
+        floating.dockToNotch?()
+        suite.expect(notch.agentTab == .chat, "the chat's dock button docks the service to the notch")
+
+        // The text follows the language it is asked for.
+        let english = NexusAgentQuickPromptView.strings(for: .enUS)
+        let german = NexusAgentQuickPromptView.strings(for: .de)
+        let own = FeatureStrings.nexusAgent(.de)
+        suite.expect(german.quickPromptTitle != english.quickPromptTitle && german.send != english.send,
+                     "a translated field differs between two languages")
+        suite.expect(german.pinWindow == english.pinWindow && german.permissionRequest == english.permissionRequest
+                     && german.permissionRequest == NexusAgentChatStrings().permissionRequest,
+                     "a field with no translation is the same English in both")
+        let handedOver: [(String, String)] = [
+            (german.quickPromptTitle, own.quickPromptTitle), (german.workingFolder, own.workingFolder),
+            (german.send, own.send), (german.stopReply, own.stopReply), (german.newChat, own.newChat),
+            (german.thinking, own.thinking), (german.working, own.working), (german.agentFailed, own.agentFailed),
+            (german.sessionsToggle, own.sessionsToggle), (german.planModeOn, own.planModeOn),
+            (german.planModeOff, own.planModeOff), (german.sessionsFilter, own.sessionsFilter),
+            (german.noSessions, own.noSessions), (german.untitledSession, own.untitledSession),
+            (german.pinWindow, own.pinWindow), (german.unpinWindow, own.unpinWindow),
+            (german.scrollToBottom, own.scrollToBottom), (german.newMessages, own.newMessages),
+            (german.retry, own.retry), (german.worktreeModeOn, own.worktreeModeOn),
+            (german.worktreeModeOff, own.worktreeModeOff), (german.worktreeContext, own.worktreeContext),
+            (german.planContext, own.planContext),
+        ]
+        suite.expect(handedOver.count == 23 && handedOver.allSatisfy { $0.0 == $0.1 },
+                     "each of the 23 fields this app has words for is handed over as its own text")
+        suite.expect(german.planModeOn != german.planModeOff && german.pinWindow != german.unpinWindow,
+                     "and no two of a pair were swapped for one another")
     }
 
     // MARK: - Antigravity Telemetry & Quota

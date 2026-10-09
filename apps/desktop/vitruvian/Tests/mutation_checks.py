@@ -377,6 +377,11 @@ MUTATIONS = [
      "        if let command = ToolCommandShortcuts.holder(of: shortcut, in: named, excluding: excludingCommand) {\n            return .toolCommand(command)\n        }\n",
      "",
      "a combination a tool command holds is taken"),
+    ("Reset writes a default somebody else holds", "platform",
+     "Sources/Vitruvian/Services/ShortcutConflicts.swift",
+     "            if let name = holder(shortcut) { return .refuse(holder: name) }\n",
+     "",
+     "a default a Command Bar row took meanwhile is not written back by Reset"),
 ]
 
 
