@@ -1381,6 +1381,72 @@ pre {
   -webkit-text-stroke: 1px var(--color-accent-text);
 }
 
+/* ───────────────────────────── downloads ────────────────────────────────── */
+.download-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.download-card .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.download-card .card-head h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.install-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.install-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-dim);
+}
+
+.download-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.btn-sm {
+  min-height: 38px;
+  padding: 0 var(--space-4);
+  font-size: 12px;
+}
+
+.btn-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.75;
+  margin-left: var(--space-1);
+}
+
+.category-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.category-jump .btn {
+  font-size: 12px;
+  min-height: 36px;
+  padding: 0 var(--space-4);
+}
+
 /* ───────────────────────────── utilities ────────────────────────────────── */
 .muted {
   color: var(--color-text-dim);

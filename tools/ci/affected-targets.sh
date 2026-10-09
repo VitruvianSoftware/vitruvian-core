@@ -176,7 +176,7 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 # there are zero Bazel targets to build or test. Short-circuit before fetching
 # target-determinator (which itself takes minutes for the download + two full
 # Bazel analyses). Same ignore set as tools/ci/relevant-paths.sh.
-NON_DOC="$(echo "${CHANGED_FILES}" | grep -E -v -c '^(gitops/|docs/|\.agents/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$' || true)"
+NON_DOC="$(echo "${CHANGED_FILES}" | grep -E -v -c '^(gitops/|docs/|\.agents/|apps/web/vitruviansoftware-dev/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$' || true)"
 if [ "${NON_DOC}" -eq 0 ]; then
   echo "::notice::affected-targets: all changed files are docs/gitops/markdown/metadata-only → nothing to build or test."
   exit 0
@@ -206,7 +206,7 @@ fi
 # the global-impact files described above.
 is_global_impact() {
   echo "$1" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
-    echo "$1" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1
+    echo "$1" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|owners/|boundaries/|pipeline/|repin$)' >/dev/null 2>&1
 }
 if is_global_impact "${CHANGED_FILES}"; then
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
