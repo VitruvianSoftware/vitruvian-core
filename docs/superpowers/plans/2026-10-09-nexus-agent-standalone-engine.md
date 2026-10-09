@@ -30,6 +30,9 @@ These are deliberate. Each is the standalone adopting the rule Vitruvian already
 | An approval mode the app does not know | Shown as typed | Shown as "Default" (ask each time), which is how the bot treats it; Save writes that |
 | A save that fails | Only printed to the console | Settings says it could not save, and the log panel gives the reason |
 | The reason a start could not happen | n/a | The line stays in the log panel until the next successful start or save |
+| Save & Restart when the save fails | Restarted the bot anyway | Does not restart; Settings says the save failed |
+| Open Logs with no log file yet | Asked macOS to open the path; with no file nothing opened, and no file was created | Does nothing |
+| A launch the system refuses | The system's error text in the log panel ("Failed to start bot: ...") | One plain line: the bot could not be started |
 | The bot's environment | Homebrew folders added to PATH | `~/.local/bin` and the Homebrew folders added; the bot gets no keyboard input (stdin is empty) |
 
 Unchanged, and worth knowing: an empty `AGY_APPROVAL_MODE=` line still shows as YOLO in Settings, and saving then writes `yolo`, although the bot treats an empty value as ask-each-time. That is the old behaviour; it changes with the chat window in step 3.

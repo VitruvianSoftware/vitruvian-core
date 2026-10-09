@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import SwiftUI
+import NexusAgentCore
 
 /// Settings window for configuring the bot's .env file.
 struct SettingsView: View {
@@ -28,6 +29,14 @@ struct SettingsView: View {
     @State private var showSaveConfirmation = false
     /// What the last Save returned; decides which message the confirmation shows.
     @State private var saveSucceeded = true
+    /// The failure line, worded at the moment the save failed. Reading the
+    /// engine's problem while drawing would show a later, unrelated one (a
+    /// failed Start, say) as the reason for this save.
+    @State private var saveFailureText = "Could not save .env"
+    /// Counts saves. An auto-hide timer only acts if no newer save has
+    /// happened since it was scheduled, so an old "Saved!" timer cannot hide
+    /// a later failure.
+    @State private var saveCounter = 0
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
@@ -310,42 +319,35 @@ struct SettingsView: View {
                 Spacer()
 
                 if showSaveConfirmation {
-                    Text(saveSucceeded ? "✅ Saved!" : saveFailureText)
-                        .font(.caption)
-                        .foregroundColor(saveSucceeded ? .green : .red)
-                        .transition(.opacity)
+                    if saveSucceeded {
+                        Text("✅ Saved!")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .transition(.opacity)
+                    } else {
+                        // Long reasons wrap rather than being cut off.
+                        Text(saveFailureText)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .transition(.opacity)
+                    }
                 }
 
                 Button("Save") {
-                    saveSucceeded = configManager.save()
-
-                    withAnimation {
-                        showSaveConfirmation = true
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        withAnimation {
-                            showSaveConfirmation = false
-                        }
-                    }
+                    showSaveResult(configManager.save())
                 }
                 .buttonStyle(.borderedProminent)
 
                 if botManager.isRunning {
                     Button("Save & Restart") {
                         // Restarting after a failed save would run the old settings.
-                        saveSucceeded = configManager.save()
-                        if saveSucceeded {
+                        let saved = configManager.save()
+                        if saved {
                             botManager.restart()
                         }
-
-                        withAnimation {
-                            showSaveConfirmation = true
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation {
-                                showSaveConfirmation = false
-                            }
-                        }
+                        showSaveResult(saved)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -357,13 +359,39 @@ struct SettingsView: View {
         .frame(minWidth: 520, maxWidth: .infinity, minHeight: 460, maxHeight: .infinity)
     }
 
-    /// Shown instead of "Saved!" when the `.env` could not be written, with
-    /// the engine's reason when it has one.
-    private var saveFailureText: String {
-        if let reason = botManager.engine.problemDescription {
-            return "Could not save .env: \(reason)"
+    /// Shows what a Save did. "Saved!" fades after two seconds; a failure
+    /// stays until the next save, because the person may not be looking when
+    /// it happens and nothing else on screen says the settings were lost.
+    private func showSaveResult(_ saved: Bool) {
+        saveSucceeded = saved
+        saveCounter += 1
+        let thisSave = saveCounter
+
+        if !saved {
+            saveFailureText = failureText(for: botManager.engine.problem)
         }
-        return "Could not save .env"
+        withAnimation {
+            showSaveConfirmation = true
+        }
+        guard saved else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            guard thisSave == saveCounter else { return }
+            withAnimation {
+                showSaveConfirmation = false
+            }
+        }
+    }
+
+    /// The line for a failed save. The generic save failure adds nothing
+    /// ("The settings could not be saved" would only repeat it, and the
+    /// hotkey and provider settings were saved), so only a more specific
+    /// reason, such as the bot folder being missing, is appended.
+    private func failureText(for problem: NexusAgentEngine.Problem?) -> String {
+        guard let problem, problem != .saveFailed,
+              let reason = botManager.engine.problemDescription else {
+            return "Could not save .env"
+        }
+        return "Could not save .env: \(reason)"
     }
 
     private var approvalModeHelp: String {
