@@ -364,6 +364,10 @@ package enum Preferences {
     package static let nexusAgentShortcutEnabled = Preference(DefaultsKey.nexusAgentShortcutEnabled, default: false)
     package static let nexusAgentAutoStart = Preference(DefaultsKey.nexusAgentAutoStart, default: false)
     package static let nexusAgentPlanMode = Preference(DefaultsKey.nexusAgentPlanMode, default: false)
+    /// Empty means no provider was ever chosen, which runs Antigravity.
+    package static let nexusAgentChosenProvider = Preference(DefaultsKey.nexusAgentChosenProvider, default: "")
+    /// Empty means none saved: the three built-in providers as they ship.
+    package static let nexusAgentSavedProviders = Preference(DefaultsKey.nexusAgentSavedProviders, default: Data())
     /// Empty means the bot's standard home, `~/.config/nexus-agent`.
     package static let nexusAgentBotDirectory = Preference(DefaultsKey.nexusAgentBotDirectory, default: "")
     package static let panelUtilityNexusAgent = Preference(DefaultsKey.panelUtilityNexusAgent, default: true)

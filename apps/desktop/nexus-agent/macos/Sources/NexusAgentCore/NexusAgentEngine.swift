@@ -175,6 +175,22 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         set { updateActiveProvider(newValue) }
     }
 
+    /// Built-in providers with the host's saved edits applied, then the
+    /// host's own providers. Asked of the host each time, never kept.
+    public var providers: [NexusAgentCLIProvider] {
+        NexusAgentCLIProvider.available(saved: host.savedProviders)
+    }
+
+    /// A configuration as it should be held: the file knows nothing of the
+    /// provider the chat uses, so whatever was just read or built gets the
+    /// one the host remembers. Every assignment to `configuration` from a
+    /// file goes through here, or the choice would fall back to Antigravity.
+    private func withChosenProvider(_ fresh: NexusAgentConfiguration) -> NexusAgentConfiguration {
+        var next = fresh
+        next.activeProvider = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
+        return next
+    }
+
     public let session: NexusAgentQuickPromptSession
     private let environment: Environment
     private let host: any NexusAgentHost
@@ -191,6 +207,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         self.host = host
         session = NexusAgentQuickPromptSession(environment: environment, host: host)
         super.init()
+        // Before any file is read the chat already runs the remembered provider.
+        configuration = withChosenProvider(configuration)
         session.engine = self
         // The closure keeps the host itself, so a turn that outlives the
         // engine is still reported. With no engine there is no window to be
@@ -267,15 +285,17 @@ open class NexusAgentEngine: NSObject, ObservableObject {
 
     /// Reads the bot's `.env` and finds the agent, for the page.
     public func load() {
-        configuration = environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration()
+        configuration = withChosenProvider(
+            environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration())
         agentPath = NexusAgentSupport.locateAgent(named: configuration.activeProvider.executableName,
                                                   environment: environment.processEnvironment,
                                                   home: environment.home,
                                                   isExecutable: environment.isExecutable)
     }
 
-
+    /// Switches the chat to `provider` and has the host remember it.
     public func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
+        host.chosenProviderID = provider.id
         configuration.activeProvider = provider
         agentPath = NexusAgentSupport.locateAgent(named: provider.executableName,
                                                   environment: environment.processEnvironment,
@@ -296,7 +316,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             problem = .saveFailed
             return false
         }
-        configuration = NexusAgentEnvFile.parse(content)
+        configuration = withChosenProvider(NexusAgentEnvFile.parse(content))
         problem = nil
         if isRunning { needsRestart = true }
         return true

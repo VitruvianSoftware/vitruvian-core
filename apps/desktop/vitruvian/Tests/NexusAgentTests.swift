@@ -30,6 +30,7 @@ enum NexusAgentTests {
         notchIntegration(suite)
         antigravityTelemetry(suite)
         hostReadsLive(suite)
+        hostRemembersProviders(suite)
         hostTurnNotices(suite)
         changesReachTheViews(suite)
     }
@@ -880,6 +881,52 @@ enum NexusAgentTests {
         suite.expect(host.strings.untitledSession
                      == FeatureStrings.nexusAgent(L10n.shared.language).untitledSession,
                      "text comes from the app's translations")
+    }
+
+    /// The provider the user chose, and any providers of their own, are
+    /// saved settings of this app: the host stores and returns both, live,
+    /// and a service built later starts on the same choice.
+    private static func hostRemembersProviders(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let defaults = rig.defaults
+        let host = VitruvianNexusAgentHost(defaults: defaults)
+        suite.expect(host.chosenProviderID == nil && host.savedProviders.isEmpty,
+                     "nothing is chosen or saved to begin with")
+
+        host.chosenProviderID = NexusAgentCLIProvider.claude.id
+        suite.expect(defaults[Preferences.nexusAgentChosenProvider] == NexusAgentCLIProvider.claude.id.uuidString,
+                     "the chosen provider is saved as its id")
+        defaults[Preferences.nexusAgentChosenProvider] = NexusAgentCLIProvider.ollama.id.uuidString
+        suite.expect(host.chosenProviderID == NexusAgentCLIProvider.ollama.id,
+                     "a changed choice is seen without a restart")
+        host.chosenProviderID = nil
+        suite.expect(defaults[Preferences.nexusAgentChosenProvider].isEmpty && host.chosenProviderID == nil,
+                     "no choice is saved as nothing")
+
+        let own = NexusAgentCLIProvider(id: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+                                        name: "My script", commandTemplate: "ask {prompt}", isBuiltIn: false)
+        host.savedProviders = [own]
+        suite.expect(VitruvianNexusAgentHost(defaults: defaults).savedProviders == [own],
+                     "the user's own providers are saved and read back")
+        defaults[Preferences.nexusAgentSavedProviders] = Data("not json".utf8)
+        suite.expect(host.savedProviders.isEmpty, "saved providers that cannot be read are none")
+        host.savedProviders = [own]
+
+        let service = NexusAgentService(environment: rig.environment)
+        suite.expect(service.activeProvider == .antigravity && service.providers == NexusAgentCLIProvider.builtIns + [own],
+                     "the service offers the built-in providers, then the user's own")
+        service.updateActiveProvider(.claude)
+        suite.expect(defaults[Preferences.nexusAgentChosenProvider] == NexusAgentCLIProvider.claude.id.uuidString,
+                     "choosing a provider in the chat saves it")
+        rig.installBot()
+        service.load()
+        suite.expect(service.activeProvider == .claude, "the choice survives reading the bot's settings again")
+        var next = service.configuration
+        next.model = "m"
+        suite.expect(service.save(next) && service.activeProvider == .claude, "and saving them")
+        suite.expect(NexusAgentService(environment: rig.environment).activeProvider == .claude,
+                     "the next launch starts on the chosen provider")
     }
 
     /// What Vitruvian tells the user when a turn ends or waits: the notch

@@ -1743,7 +1743,7 @@ private struct ModularProviderButtonView: View {
 
     var body: some View {
         Menu {
-            ForEach(NexusAgentCLIProvider.builtIns) { provider in
+            ForEach(service.providers) { provider in
                 Button {
                     service.updateActiveProvider(provider)
                 } label: {
@@ -1779,7 +1779,7 @@ private struct ChatProviderBadge: View {
 
     var body: some View {
         Menu {
-            ForEach(NexusAgentCLIProvider.builtIns) { provider in
+            ForEach(service.providers) { provider in
                 Button {
                     service.updateActiveProvider(provider)
                 } label: {

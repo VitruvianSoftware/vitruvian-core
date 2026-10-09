@@ -38,6 +38,8 @@ final class EngineHostTests: XCTestCase {
         var startsBotAtLaunch = false
         var planMode = false
         var hiddenClaudeSessionIDs: [String] = []
+        var chosenProviderID: UUID?
+        var savedProviders: [NexusAgentCLIProvider] = []
         var strings = NexusAgentHostStrings()
         var approvals: [NexusAgentTurnNotice] = []
         var finished: [(notice: NexusAgentTurnNotice, isChatVisible: Bool)] = []
@@ -220,6 +222,168 @@ final class EngineHostTests: XCTestCase {
         let other = NexusAgentEngine(environment: rig.environment, host: optedIn)
         other.startOncePerLaunch()
         XCTAssertEqual(other.problem, .missingBot)
+    }
+
+    // MARK: - The chosen provider, and the user's own providers, are the host's
+
+    func testTheActiveProviderIsAntigravityUntilOneIsChosen() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        XCTAssertEqual(engine.activeProvider, .antigravity)
+        engine.load()
+        XCTAssertEqual(engine.activeProvider, .antigravity)
+        XCTAssertNil(host.chosenProviderID, "reading the choice does not make one")
+    }
+
+    func testChoosingAProviderTellsTheHost() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.updateActiveProvider(.claude)
+        XCTAssertEqual(host.chosenProviderID, NexusAgentCLIProvider.claude.id)
+        XCTAssertEqual(engine.activeProvider, .claude)
+
+        // The property's setter is the same road.
+        engine.activeProvider = .ollama
+        XCTAssertEqual(host.chosenProviderID, NexusAgentCLIProvider.ollama.id)
+        XCTAssertEqual(engine.configuration.activeProvider, .ollama)
+    }
+
+    func testTheChosenProviderSurvivesEveryRereadOfTheFile() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        rig.files[rig.defaultBot] = ""
+        rig.files[rig.defaultBot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n"
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        engine.updateActiveProvider(.claude)
+
+        engine.load()
+        XCTAssertEqual(engine.activeProvider, .claude, "reading the file keeps the choice")
+        XCTAssertEqual(engine.configuration.botToken, "1:abc", "and still reads the file")
+
+        var next = engine.configuration
+        next.model = "some-model"
+        // What a settings page hands back may carry any provider; the host's choice wins.
+        next.activeProvider = .antigravity
+        XCTAssertTrue(engine.save(next))
+        XCTAssertEqual(engine.activeProvider, .claude, "saving keeps the choice")
+        XCTAssertEqual(engine.configuration.model, "some-model")
+        XCTAssertNil(engine.configuration.botProvider, "the bot's provider is still not read back")
+
+        // Starting reads the file again before it looks for the bot.
+        engine.start()
+        XCTAssertEqual(engine.problem, .missingBot)
+        XCTAssertEqual(engine.activeProvider, .claude, "starting keeps the choice")
+
+        engine.startPolling()
+        engine.stopPolling()
+        XCTAssertEqual(engine.activeProvider, .claude, "showing the page keeps the choice")
+
+        // The next launch: another engine, the same saved settings.
+        let relaunched = NexusAgentEngine(environment: rig.environment, host: host)
+        XCTAssertEqual(relaunched.activeProvider, .claude, "a new engine starts on the choice")
+        relaunched.load()
+        XCTAssertEqual(relaunched.activeProvider, .claude)
+    }
+
+    func testAnUnknownChosenProviderFallsBackToAntigravity() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.chosenProviderID = UUID(uuidString: "DEADBEEF-0000-0000-0000-000000000000")
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        XCTAssertEqual(engine.activeProvider, .antigravity)
+        engine.load()
+        XCTAssertEqual(engine.activeProvider, .antigravity)
+    }
+
+    func testAnEditedBuiltInKeepsItsPlace() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        var edited = NexusAgentCLIProvider.claude
+        edited.commandTemplate = "claude -p \"{prompt}\" --model {model}"
+        host.savedProviders = [edited]
+        host.chosenProviderID = edited.id
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        XCTAssertEqual(engine.providers, [.antigravity, edited, .ollama])
+        XCTAssertEqual(engine.activeProvider.commandTemplate, edited.commandTemplate,
+                       "the chosen provider is the edited copy, not the built-in")
+    }
+
+    func testOwnProvidersComeAfterTheBuiltIns() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let own = NexusAgentCLIProvider(id: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+                                        name: "My script", commandTemplate: "/usr/local/bin/ask {prompt}",
+                                        isBuiltIn: false)
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        XCTAssertEqual(engine.providers, NexusAgentCLIProvider.builtIns, "with nothing saved, the three built in")
+
+        // Read live: the list follows the host without a new engine.
+        host.savedProviders = [own]
+        XCTAssertEqual(engine.providers, [.antigravity, .claude, .ollama, own])
+
+        engine.updateActiveProvider(own)
+        XCTAssertEqual(host.chosenProviderID, own.id)
+        engine.load()
+        XCTAssertEqual(engine.activeProvider, own, "an own provider is remembered like a built-in")
+
+        // The user deletes it elsewhere: its id is now unknown.
+        host.savedProviders = []
+        engine.load()
+        XCTAssertEqual(engine.activeProvider, .antigravity)
+    }
+
+    /// What the standalone app has in its saved settings today, byte for
+    /// byte as `JSONEncoder` wrote it from that app's own provider type: one
+    /// blob for the built-in providers (all three, edited or not) and one
+    /// for the user's own. The shared type must read both and show what
+    /// that app's Settings shows.
+    func testTheStandalonesStoredProvidersAreRead() throws {
+        let builtInBlob = #"""
+        [{"id":"00000000-0000-0000-0000-000000000001","name":"Gemini CLI","commandTemplate":"agy -p \"{prompt}\" --effort high","isBuiltIn":true},{"id":"00000000-0000-0000-0000-000000000003","name":"Claude Code","commandTemplate":"claude -p \"{prompt}\"","isBuiltIn":true},{"id":"00000000-0000-0000-0000-000000000002","name":"Ollama (claude)","commandTemplate":"ollama launch claude --model {model} -- -p \"{prompt}\"","isBuiltIn":true}]
+        """#
+        let customBlob = #"""
+        [{"id":"8F2B6C1E-5D0A-4E7B-9C3F-1A2B3C4D5E6F","name":"Local llama","commandTemplate":"llama-cli -m {model} -p \"{prompt}\"","isBuiltIn":false},{"id":"00000000-0000-0000-0000-0000000000AA","name":"Not really built in","commandTemplate":"x","isBuiltIn":true}]
+        """#
+        let decoder = JSONDecoder()
+        let builtIn = try decoder.decode([NexusAgentCLIProvider].self, from: Data(builtInBlob.utf8))
+        let custom = try decoder.decode([NexusAgentCLIProvider].self, from: Data(customBlob.utf8))
+
+        var antigravity = NexusAgentCLIProvider.antigravity
+        antigravity.commandTemplate = "agy -p \"{prompt}\" --effort high"
+        let own = NexusAgentCLIProvider(id: UUID(uuidString: "8F2B6C1E-5D0A-4E7B-9C3F-1A2B3C4D5E6F")!,
+                                        name: "Local llama", commandTemplate: "llama-cli -m {model} -p \"{prompt}\"",
+                                        isBuiltIn: false)
+        // As the standalone's Settings lists them: a built-in keeps today's
+        // name and takes only the saved command; an entry marked built-in
+        // that is not one of the three is dropped.
+        let listed = NexusAgentCLIProvider.available(saved: builtIn + custom)
+        XCTAssertEqual(listed, [antigravity, .claude, .ollama, own])
+        // That app's choice when none is saved is Antigravity as listed,
+        // edited command included; an id it does not know is the built-in.
+        XCTAssertEqual(NexusAgentCLIProvider.chosen(id: nil, among: listed), antigravity)
+        XCTAssertEqual(NexusAgentCLIProvider.chosen(id: own.id, among: listed), own)
+        XCTAssertEqual(NexusAgentCLIProvider.chosen(id: UUID(), among: listed), .antigravity)
+
+        // And written back under the same four names, with the id as the
+        // capitals-and-dashes text that app's decoder expects.
+        let written = try JSONSerialization.jsonObject(with: JSONEncoder().encode([own])) as? [[String: Any]]
+        XCTAssertEqual(written?.count, 1)
+        XCTAssertEqual(written?.first.map { Set($0.keys) }, ["id", "name", "commandTemplate", "isBuiltIn"])
+        XCTAssertEqual(written?.first?["id"] as? String, "8F2B6C1E-5D0A-4E7B-9C3F-1A2B3C4D5E6F")
+        XCTAssertEqual(written?.first?["isBuiltIn"] as? Bool, false)
+        XCTAssertEqual(try decoder.decode([NexusAgentCLIProvider].self, from: JSONEncoder().encode(custom)), custom)
     }
 
     // MARK: - Archived Claude sessions live in the host

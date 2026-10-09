@@ -726,6 +726,10 @@ package enum DefaultsKey {
     package static let nexusAgentAutoStart = "nexusAgentAutoStart"
     /// Quick Prompt turns run agy in plan mode (read-only) while on.
     package static let nexusAgentPlanMode = "nexusAgentPlanMode"
+    /// The provider the Quick Prompt last ran, as its id's text; empty until one is chosen.
+    package static let nexusAgentChosenProvider = "nexusAgentChosenProvider"
+    /// Providers beyond the three built in, and built-in ones with an edited command, as JSON.
+    package static let nexusAgentSavedProviders = "nexusAgentSavedProviders"
     // Machine state, never exported: a folder on this Mac.
     package static let nexusAgentBotDirectory = "nexusAgentBotDirectory"
     package static let panelUtilityNexusAgent = "panelUtilityNexusAgent"

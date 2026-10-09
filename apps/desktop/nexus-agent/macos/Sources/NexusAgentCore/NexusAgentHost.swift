@@ -35,6 +35,11 @@ public protocol NexusAgentHost: AnyObject {
     var planMode: Bool { get set }
     /// Claude sessions the user archived here.
     var hiddenClaudeSessionIDs: [String] { get set }
+    /// The provider the user last chose, by id; nil if they never chose.
+    var chosenProviderID: UUID? { get set }
+    /// Providers beyond the built-in three: the user's own, and built-in
+    /// ones whose command they edited.
+    var savedProviders: [NexusAgentCLIProvider] { get set }
     /// User-facing text, in the app's language right now.
     var strings: NexusAgentHostStrings { get }
     /// A turn paused for the user to approve a tool.

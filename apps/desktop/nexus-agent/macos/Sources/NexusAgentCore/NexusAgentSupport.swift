@@ -122,6 +122,33 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
 
     public static let builtIns: [NexusAgentCLIProvider] = [.antigravity, .claude, .ollama]
 
+    /// The providers a user can pick from, given what the app has saved.
+    /// The three built in come first, in their fixed order, each with its
+    /// saved command if the user edited it; its id and name stay as they
+    /// are today, so a name saved by an older version does not come back.
+    /// Then the user's own, in the order they were saved. An entry marked
+    /// built-in that is not one of the three is left out: it is a provider
+    /// a later version took away.
+    public static func available(saved: [NexusAgentCLIProvider]) -> [NexusAgentCLIProvider] {
+        let builtInIDs = Set(builtIns.map(\.id))
+        let edited = builtIns.map { builtIn -> NexusAgentCLIProvider in
+            var provider = builtIn
+            // The last saved copy wins, as it does where the standalone app reads them.
+            if let copy = saved.last(where: { $0.id == builtIn.id }) {
+                provider.commandTemplate = copy.commandTemplate
+            }
+            return provider
+        }
+        return edited + saved.filter { !$0.isBuiltIn && !builtInIDs.contains($0.id) }
+    }
+
+    /// The provider with this id among `providers`. With no id (the user
+    /// never chose) that is Antigravity as listed, edited command included;
+    /// with an id nothing in the list has, it is Antigravity as built in.
+    public static func chosen(id: UUID?, among providers: [NexusAgentCLIProvider]) -> NexusAgentCLIProvider {
+        providers.first { $0.id == id ?? antigravity.id } ?? .antigravity
+    }
+
     public var executableName: String {
         if id == Self.claude.id { return "claude" }
         if id == Self.ollama.id { return "ollama" }

@@ -874,6 +874,8 @@ package enum Defaults {
         DefaultsKey.nexusAgentShortcut: Preferences.nexusAgentShortcut.defaultValue,
         DefaultsKey.nexusAgentAutoStart: Preferences.nexusAgentAutoStart.defaultValue,
         DefaultsKey.nexusAgentPlanMode: Preferences.nexusAgentPlanMode.defaultValue,
+        DefaultsKey.nexusAgentChosenProvider: Preferences.nexusAgentChosenProvider.defaultValue,
+        DefaultsKey.nexusAgentSavedProviders: Preferences.nexusAgentSavedProviders.defaultValue,
         DefaultsKey.nexusAgentBotDirectory: Preferences.nexusAgentBotDirectory.defaultValue,
         DefaultsKey.panelUtilityNexusAgent: Preferences.panelUtilityNexusAgent.defaultValue,
         DefaultsKey.screenshotShowCaptureMenuOnShortcut: Preferences.screenshotShowCaptureMenuOnShortcut.defaultValue,
