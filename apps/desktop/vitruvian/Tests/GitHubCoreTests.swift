@@ -990,6 +990,14 @@ enum GitHubCoreTests {
                      "the app's own copy comes after a configured path and before any other install")
         suite.expect(locate("", path, []) == nil && locate("/missing/mouse", path, [], bundled: app) == nil,
                      "no binary anywhere finds nothing, so the sink leaves the mouse alone")
+        func ignored(_ configured: String, _ installed: Set<String>) -> Bool {
+            GitHubMouseBinary.configuredIsIgnored(configured: configured, home: home, isExecutable: installed.contains)
+        }
+        suite.expect(ignored("/missing/mouse", ["/opt/homebrew/bin/gravastar-mouse"])
+                     && ignored("~/tools/gravastar-mouse", [])
+                     && !ignored("", []) && !ignored("   ", [])
+                     && !ignored(" ~/tools/gravastar-mouse ", ["/Users/test/tools/gravastar-mouse"]),
+                     "a configured path that does not run is reported as ignored; an empty or working one is not")
         let registered = Defaults.registeredDefaults
         suite.expect(registered[Preferences.githubMouseBinaryPath.key] as? String == "",
                      "the binary path is registered empty, which searches")
@@ -1004,6 +1012,7 @@ enum GitHubCoreTests {
             let text = FeatureStrings.notchGitHub(language)
             suite.expect(!text.mouseCommand.isEmpty && !text.mouseCommandHint.isEmpty && !text.choose.isEmpty
                          && !text.copyMCPConfig.isEmpty
+                         && !text.mouseCommandIgnored.isEmpty
                          && text.mouseCommandMissing.contains(GitHubMouseBinary.name)
                          && text.mouseCommandFound("/opt/x/gravastar-mouse").contains("/opt/x/gravastar-mouse"),
                          "Settings names the mouse command and the path in use in \(language)")
