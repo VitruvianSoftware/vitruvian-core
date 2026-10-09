@@ -116,6 +116,9 @@ is that notice. Add an entry for every change to upstream files.
   - `UI/QuickLauncher/QuickLauncherView.swift`: draws a command tile from the registry and redraws when the registry changes.
   - `Services/Notch/NotchIslandServices.swift`, `Services/Notch/NotchService.swift`, `Services/Notch/NotchEventBindings.swift`: the island counts tiles of both kinds and resizes when the registry changes.
   - `Tests/QuickLauncherActionTests.swift`: `commandTileContracts` covers command tiles in the Quick panel (listing, running, hiding, a reorder that keeps a tile it cannot show) and `savedBuiltinOrderContracts` covers a saved order of the app's own tiles reading back unchanged.
+  - `Services/RadialMenu/RadialMenuService.swift`: the wheel's "what can run" rule is a static function that takes its registry.
+  - `UI/RadialMenu/RadialMenuView.swift`: `resolvedSymbolName` draws a command slice with its command's own symbol; `RadialToolChoice` is the editor's Tool picker.
+  - `UI/Settings/RadialMenuSettings.swift`, `UI/Settings/RadialMenuVisualCanvas.swift`: the editor's Tool picker lists registry commands no tool slice runs, and a command slice is edited as a Tool.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.

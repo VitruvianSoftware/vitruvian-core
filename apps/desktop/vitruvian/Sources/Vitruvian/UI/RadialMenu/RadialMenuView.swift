@@ -357,7 +357,7 @@ private struct RadialChipView: View {
                 .interpolation(.high)
                 .frame(width: 34, height: 34)
         } else {
-            Image(systemName: item.effectiveSymbolName)
+            Image(systemName: item.resolvedSymbolName())
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(highlighted ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         }
@@ -490,6 +490,79 @@ extension RadialMenuItem {
 
     package var usesFileIcon: Bool {
         (kind == .app || kind == .file) && symbolName.isEmpty
+    }
+
+    /// The symbol to draw: the one the person chose, else for a command slice
+    /// its command's own, else what the kind draws by default. Core cannot
+    /// see the registry, so this lives here beside `displayName`.
+    @MainActor package func resolvedSymbolName(registry: ToolRegistry = .shared) -> String {
+        if symbolName.isEmpty, let commandID, let symbol = registry.command(commandID)?.symbol {
+            return symbol
+        }
+        return effectiveSymbolName
+    }
+}
+
+/// One entry of the editor's Tool picker: one of the app's tools, or a
+/// registry command no tool slice runs. The person is choosing a tool either
+/// way; which kind of slice that makes is the editor's business.
+package struct RadialToolChoice: Identifiable, Equatable {
+    package let tag: String
+    package let title: String
+    package var id: String { tag }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(tag: String, title: String) {
+        self.tag = tag
+        self.title = title
+    }
+
+    private static let toolPrefix = "tool:"
+    private static let commandPrefix = "command:"
+
+    /// The choice a slice is, or nil when it is not a tool of either kind.
+    package static func tag(of item: RadialMenuItem) -> String? {
+        switch item.kind {
+        case .tool: return toolPrefix + item.payload
+        case .command: return commandPrefix + item.payload
+        default: return nil
+        }
+    }
+
+    /// Makes `item` the slice a choice stands for.
+    package static func apply(_ tag: String, to item: inout RadialMenuItem) {
+        if tag.hasPrefix(commandPrefix) {
+            item.kind = .command
+            item.payload = String(tag.dropFirst(commandPrefix.count))
+        } else if tag.hasPrefix(toolPrefix) {
+            item.kind = .tool
+            item.payload = String(tag.dropFirst(toolPrefix.count))
+        }
+    }
+
+    /// The app's tools that can run, then the registry commands the wheel
+    /// may add that can run. `keeping` is the slice being edited: its own
+    /// choice stays in the list even when its command cannot run or is not
+    /// registered, so the picker always has its selection to show.
+    @MainActor package static func all(tools: [RadialMenuTool], registry: ToolRegistry = .shared,
+                                       keeping item: RadialMenuItem,
+                                       language: AppLanguage = L10n.shared.language) -> [RadialToolChoice] {
+        var choices = tools.map { tool in
+            RadialToolChoice(tag: toolPrefix + tool.rawValue,
+                             title: tool.feature.hubTitle(Strings.localized(language), hub: FeatureStrings.hub(language)))
+        }
+        for command in registry.extraCommands(on: .radial) where registry.canRun(command.id) {
+            choices.append(RadialToolChoice(tag: commandPrefix + command.id.rawValue,
+                                            title: registry.title(for: command.id, language: language) ?? command.title))
+        }
+        if let own = tag(of: item), !choices.contains(where: { $0.tag == own }) {
+            // A built-in tool that is switched off still has its own name.
+            let title = item.commandID.flatMap { registry.title(for: $0, language: language) }
+                ?? item.tool.map { $0.feature.hubTitle(Strings.localized(language), hub: FeatureStrings.hub(language)) }
+                ?? item.payload
+            choices.append(RadialToolChoice(tag: own, title: title))
+        }
+        return choices
     }
 }
 

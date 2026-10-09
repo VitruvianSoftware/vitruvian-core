@@ -749,7 +749,7 @@ private struct RadialItemRow: View {
                 .fill(Theme.spaceGradient)
                 .frame(width: 30, height: 30)
                 .overlay(
-                    Image(systemName: item.effectiveSymbolName)
+                    Image(systemName: item.resolvedSymbolName())
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                 )
@@ -804,6 +804,8 @@ private struct RadialItemEditor: View {
     let delete: (() -> Void)?
 
     @ObservedObject private var l10n = L10n.shared
+    /// Redraws the picker when a tool registers, leaves, or is switched on or off.
+    @ObservedObject private var registry = ToolRegistry.shared
     @Environment(\.dismiss) private var dismiss
     @State private var shortcutMessage: ShortcutMessage?
     @State private var isFetchingFavicon = false
@@ -840,6 +842,17 @@ private struct RadialItemEditor: View {
         AppFeature.quickToggles.isAvailable ? RadialMenuQuickToggle.allCases : []
     }
 
+    /// Every tool this slice could be: the app's own, and registry commands
+    /// no tool slice runs.
+    private var toolChoices: [RadialToolChoice] {
+        RadialToolChoice.all(tools: availableTools, registry: registry, keeping: item, language: l10n.language)
+    }
+
+    private var toolChoiceBinding: Binding<String> {
+        Binding(get: { RadialToolChoice.tag(of: item) ?? "" },
+                set: { RadialToolChoice.apply($0, to: &item) })
+    }
+
     private var urlIsInvalid: Bool {
         item.kind == .url && RadialMenuSupport.normalizedURL(item.payload) == nil
     }
@@ -861,7 +874,7 @@ private struct RadialItemEditor: View {
                     Text(text.kindFile).tag(RadialMenuItem.Kind.file)
                     Text(text.kindURL).tag(RadialMenuItem.Kind.url)
                     Text(text.kindShortcut).tag(RadialMenuItem.Kind.shortcut)
-                    if !availableTools.isEmpty {
+                    if !toolChoices.isEmpty {
                         Text(text.kindTool).tag(RadialMenuItem.Kind.tool)
                     }
                     if !availableQuickToggles.isEmpty {
@@ -943,17 +956,24 @@ private struct RadialItemEditor: View {
     }
 
     /// Changing the action type clears targets that no longer make sense but
-    /// keeps the custom name and icon.
+    /// keeps the custom name and icon. A command slice is shown as a Tool:
+    /// which kind of slice a tool makes is settled by the choice, below.
     private var kindBinding: Binding<RadialMenuItem.Kind> {
-        Binding(get: { item.kind }, set: { kind in
-            guard kind != item.kind else { return }
+        Binding(get: { item.kind == .command ? .tool : item.kind }, set: { kind in
+            let shown: RadialMenuItem.Kind = item.kind == .command ? .tool : item.kind
+            guard kind != shown else { return }
+            let firstTool = RadialToolChoice.all(tools: availableTools, registry: registry,
+                                                 keeping: RadialMenuItem(kind: .app),
+                                                 language: l10n.language).first
             item.kind = kind
             shortcutMessage = nil
             faviconStatus = nil
             if kind != .url { item.customIconData = nil }
             switch kind {
-            case .tool: item.payload = availableTools.first?.rawValue ?? ""
-            case .command: item.payload = ToolRegistry.shared.commands(on: .radial).first?.id.rawValue ?? ""
+            case .tool, .command:
+                item.payload = ""
+                // The first choice may be a command: applying it sets the kind too.
+                if let firstTool { RadialToolChoice.apply(firstTool.tag, to: &item) }
             case .quickToggle: item.payload = availableQuickToggles.first?.rawValue ?? ""
             case .windowLayout: item.payload = WindowLayoutAction.leftHalf.rawValue
             case .media: item.payload = RadialMenuMediaKey.playPause.rawValue
@@ -1050,18 +1070,10 @@ private struct RadialItemEditor: View {
                                        })
                     .frame(width: 108)
             }
-        case .tool:
-            Picker(text.toolLabel, selection: $item.payload) {
-                ForEach(availableTools) { tool in
-                    Text(tool.feature.hubTitle(l10n.s, hub: FeatureStrings.hub(l10n.language)))
-                        .tag(tool.rawValue)
-                }
-            }
-        case .command:
-            Picker(text.toolLabel, selection: $item.payload) {
-                ForEach(ToolRegistry.shared.commands(on: .radial), id: \.id) { command in
-                    Text(ToolRegistry.shared.title(for: command.id, language: l10n.language) ?? command.title)
-                        .tag(command.id.rawValue)
+        case .tool, .command:
+            Picker(text.toolLabel, selection: toolChoiceBinding) {
+                ForEach(toolChoices) { choice in
+                    Text(choice.title).tag(choice.tag)
                 }
             }
         case .quickToggle:

@@ -16,6 +16,7 @@ enum ToolPlatformTests {
         builtinTools(suite)
         registry(suite)
         radial(suite)
+        wheel(suite)
         quickPanel(suite)
         commandBar(suite)
         housekeeping(suite)
@@ -266,6 +267,89 @@ enum ToolPlatformTests {
         let data = try? JSONEncoder().encode(saved)
         let loaded = data.flatMap { try? JSONDecoder().decode([RadialMenuItem].self, from: $0) }
         suite.expect(loaded == saved, "a wheel with a command slice saves and loads unchanged")
+    }
+
+    static func wheel(_ suite: TestSuite) {
+        let world = World()
+        do {
+            try world.add("com.acme.deploys", "open", surfaces: [.radial])
+            try world.add("com.acme.paused", "wake", surfaces: [.radial], runnable: false)
+        } catch {
+            suite.expect(false, "registering two distinct tools succeeds, got \(error)")
+        }
+        let open = RadialMenuItem(kind: .command, payload: "com.acme.deploys/open")
+        let paused = RadialMenuItem(kind: .command, payload: "com.acme.paused/wake")
+        let gone = RadialMenuItem(kind: .command, payload: "com.acme.gone/open")
+        let app = RadialMenuItem(kind: .app, payload: "/Applications/Safari.app")
+        let screenshot = RadialMenuItem(kind: .tool, payload: RadialMenuTool.screenshot.rawValue)
+        let folder = RadialMenuItem(kind: .submenu, children: [gone, open])
+        let emptyFolder = RadialMenuItem(kind: .submenu, children: [gone, paused])
+
+        func shown(_ items: [RadialMenuItem], toolsRun: Bool = true) -> [RadialMenuItem] {
+            RadialMenuService.availableItems(items, registry: world.registry,
+                                             isFeatureAvailable: { _ in true },
+                                             toolIsRunnable: { _ in toolsRun })
+        }
+        suite.expect(shown([open, paused, gone, app]) == [open, app],
+                     "the wheel shows a command slice only while its command can run")
+        suite.expect(shown([screenshot]) == [screenshot] && shown([screenshot], toolsRun: false).isEmpty,
+                     "a built-in tool slice follows its own rule, as before")
+        let kept = shown([folder, emptyFolder])
+        suite.expect(kept.count == 1 && kept.first?.children == [open],
+                     "a folder keeps the slices that can run, and goes when none can")
+
+        // A command slice draws its command's own symbol unless the person chose one.
+        suite.expect(open.resolvedSymbolName(registry: world.registry) == "star",
+                     "a command slice draws its command's symbol")
+        var chosen = open
+        chosen.symbolName = "bolt"
+        suite.expect(chosen.resolvedSymbolName(registry: world.registry) == "bolt",
+                     "a symbol the person chose wins")
+        suite.expect(gone.resolvedSymbolName(registry: world.registry) == gone.defaultSymbolName
+                         && app.resolvedSymbolName(registry: world.registry) == app.effectiveSymbolName,
+                     "a slice with no command to ask draws what it drew before")
+
+        // The editor's Tool picker: the app's tools, then commands no tool slice runs.
+        let choices = RadialToolChoice.all(tools: [.screenshot, .keepAwake], registry: world.registry, keeping: gone)
+        suite.expect(choices.map(\.tag) == ["tool:screenshot", "tool:keepAwake", "command:com.acme.deploys/open",
+                                            "command:com.acme.gone/open"],
+                     "the Tool picker lists the app's tools, then runnable commands, then the slice's own missing one")
+        suite.expect(RadialToolChoice.all(tools: [.screenshot], registry: ToolRegistry(isAvailable: { _ in true }),
+                                          keeping: screenshot).map(\.tag) == ["tool:screenshot"],
+                     "with no command on offer, the Tool picker lists exactly the app's tools")
+        var edited = RadialMenuItem(kind: .tool, payload: RadialMenuTool.screenshot.rawValue)
+        RadialToolChoice.apply("command:com.acme.deploys/open", to: &edited)
+        suite.expect(edited.kind == .command && edited.payload == "com.acme.deploys/open",
+                     "choosing a command makes the slice a command slice")
+        RadialToolChoice.apply("tool:keepAwake", to: &edited)
+        suite.expect(edited.kind == .tool && edited.payload == "keepAwake", "choosing a tool makes it a tool slice again")
+        suite.expect(RadialToolChoice.tag(of: open) == "command:com.acme.deploys/open"
+                         && RadialToolChoice.tag(of: screenshot) == "tool:screenshot",
+                     "a slice knows which choice it is")
+
+        // A slice saved before the picker listed commands passes through it untouched,
+        // whether it is a built-in tool, a command that runs, or one that is not registered.
+        let named = RadialMenuItem(kind: .tool, name: "Shot", symbolName: "bolt", payload: RadialMenuTool.screenshot.rawValue)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys  // the default key order is not stable between two encodes
+        for saved in [named, screenshot, open, paused, gone] {
+            var through = saved
+            if let tag = RadialToolChoice.tag(of: saved) { RadialToolChoice.apply(tag, to: &through) }
+            let savedJSON = try? encoder.encode([saved])
+            suite.expect(savedJSON != nil && through == saved && (try? encoder.encode([through])) == savedJSON,
+                         "a \(saved.kind.rawValue) slice read as a choice and applied again saves as the same JSON")
+            let offered = RadialToolChoice.all(tools: [.screenshot], registry: world.registry, keeping: saved)
+            suite.expect(RadialToolChoice.tag(of: saved).map { tag in offered.contains { $0.tag == tag } } == true,
+                         "the Tool picker always has the choice the slice already is")
+        }
+        let keepAwake = RadialMenuItem(kind: .tool, payload: RadialMenuTool.keepAwake.rawValue)
+        let language = L10n.shared.language
+        suite.expect(RadialToolChoice.all(tools: [.screenshot], registry: world.registry, keeping: keepAwake).last?.title
+                         == RadialMenuTool.keepAwake.feature.hubTitle(Strings.localized(language),
+                                                                      hub: FeatureStrings.hub(language)),
+                     "a built-in tool that is switched off is still listed under its own name")
+        suite.expect(shown([gone]).isEmpty && RadialMenuSupport.isValidPayload(gone),
+                     "a slice whose command is not registered stays valid and is only left off the wheel")
     }
 
     static func quickPanel(_ suite: TestSuite) {
