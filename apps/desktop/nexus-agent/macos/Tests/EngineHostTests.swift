@@ -87,6 +87,8 @@ final class EngineHostTests: XCTestCase {
         var sqliteRuns: [(database: String, sql: String, readsRows: Bool)] = []
         var sqliteRows = ""
         var sqliteFails = false
+        /// When set, a statement that holds this text fails; the rest succeed.
+        var sqliteFailsWhenSQLHas: String?
         /// Every file the engine asked to have removed, in order.
         var removed: [String] = []
         var listedHidden: [[String]] = []
@@ -200,6 +202,7 @@ final class EngineHostTests: XCTestCase {
                 runSqlite: { [unowned self] database, sql, readsRows in
                     sqliteRuns.append((database, sql, readsRows))
                     if sqliteFails { return nil }
+                    if let marker = sqliteFailsWhenSQLHas, sql.contains(marker) { return nil }
                     return Data((readsRows ? sqliteRows : "").utf8)
                 })
         }
@@ -1229,14 +1232,15 @@ final class EngineHostTests: XCTestCase {
     /// A real but harmless program that runs too long is ended, and the
     /// answer is nil, so the chat falls back to the fixed model name.
     func testAProgramThatRunsTooLongIsEndedAndGivesNothing() async throws {
+        let seconds = uniqueSleepSeconds(5, test: 1)
         let started = Date()
-        let output = await NexusAgentEngine.runProgram(named: "/bin/sleep", arguments: ["5.4321"], timeLimit: 0.3)
+        let output = await NexusAgentEngine.runProgram(named: "/bin/sleep", arguments: [seconds], timeLimit: 0.3)
         XCTAssertNil(output)
         XCTAssertLessThan(Date().timeIntervalSince(started), 3, "it did not wait for the sleep to finish")
 
         let search = Process()
         search.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        search.arguments = ["-f", "sleep 5.4321"]
+        search.arguments = ["-f", "sleep " + seconds]
         search.standardOutput = FileHandle.nullDevice
         try search.run()
         search.waitUntilExit()
@@ -1248,6 +1252,16 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(output, "hi\n")
         let defaulted = await NexusAgentEngine.runProgram(named: "/bin/echo", arguments: ["hi"])
         XCTAssertEqual(defaulted, "hi\n", "with the usual limit")
+    }
+
+    /// A sleep length of about `seconds` that no other test, no other run of
+    /// the suite and no other checkout on this Mac has, so a search for the
+    /// process by its command line finds only that test's own. The fraction
+    /// is this process's id, a random number and the test's number, always
+    /// the same width, so no length is the start of another.
+    private func uniqueSleepSeconds(_ seconds: Int, test: Int) -> String {
+        let fraction = String(format: "%05d%05d%d", Int(getpid()) % 100_000, Int.random(in: 0..<100_000), test)
+        return "\(seconds).\(fraction)"
     }
 
     /// Whether any process has `marker` in its command line.
@@ -1274,7 +1288,7 @@ final class EngineHostTests: XCTestCase {
     /// (SIGTERM) still gives the caller its answer, nil, at the limit; and
     /// it is then killed outright after a short grace, so nothing is left.
     func testAProgramThatIgnoresTheStopStillGivesNothingAtTheLimitAndIsKilled() async {
-        let marker = "sleep 30.731"
+        let marker = "sleep " + uniqueSleepSeconds(30, test: 2)
         let started = Date()
         let output = await NexusAgentEngine.runProgram(
             named: "/bin/sh", arguments: ["-c", "trap '' TERM; exec \(marker)"], timeLimit: 0.3)
@@ -1289,7 +1303,7 @@ final class EngineHostTests: XCTestCase {
     /// A grandchild that outlives the program and keeps its output open
     /// must not keep the caller (or the thread reading) waiting either.
     func testAGrandchildHoldingTheOutputOpenDoesNotKeepTheCallerWaiting() async {
-        let marker = "sleep 30.7312"
+        let marker = "sleep " + uniqueSleepSeconds(30, test: 3)
         defer { _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", marker]) }
         let started = Date()
         // The shell ends at once; the sleep it started holds the output pipe.
@@ -1594,6 +1608,32 @@ final class EngineHostTests: XCTestCase {
         XCTAssertTrue(rig.sqliteRuns.dropFirst().allSatisfy { !$0.readsRows })
         XCTAssertEqual(rig.removed.count, deleted.count * 3)
         XCTAssertEqual(rig.listedHidden.count, listedBefore + 1, "the drawer's list is read again, once")
+    }
+
+    /// With the index locked every try waits out the busy timeout on the
+    /// main thread, so the first delete that fails ends the run.
+    func testClearAllStopsAtTheFirstDeleteThatFails() {
+        let rig = rigWithIndex(conversations: ["c-1", "c-2", "c-3", "c-4"])
+        defer { rig.tearDown() }
+        rig.sqliteRows = """
+        [{"conversation_id":"c-1","workspace_uris":"[]"},{"conversation_id":"c-2","workspace_uris":"[]"},
+         {"conversation_id":"c-3","workspace_uris":"[]"},{"conversation_id":"c-4","workspace_uris":"[]"}]
+        """
+        rig.sqliteFailsWhenSQLHas = "'c-2'"
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        let data = rig.home + "/.gemini/antigravity/conversations/"
+
+        let count = session.deleteAll(in: NexusAgentConfiguration())
+
+        XCTAssertEqual(count, 1, "only the one before the failure is counted")
+        XCTAssertEqual(rig.sqliteRuns.dropFirst().map(\.sql), [
+            "DELETE FROM conversation_summaries WHERE conversation_id = 'c-1';",
+            "DELETE FROM conversation_summaries WHERE conversation_id = 'c-2';",
+        ], "no delete was tried after the one that failed")
+        XCTAssertEqual(rig.removed, [data + "c-1.db", data + "c-1.db-wal", data + "c-1.db-shm"],
+                       "the first one's files went; nothing else was removed")
+        XCTAssertNotNil(rig.files[data + "c-2.db"])
+        XCTAssertNotNil(rig.files[data + "c-3.db"])
     }
 
     func testClearAllWithNoFolderSetIsTheHomeFolders() {

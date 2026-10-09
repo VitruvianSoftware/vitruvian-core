@@ -629,9 +629,10 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                     continuation.resume(returning: nil)
                     return
                 }
-                // Only the child keeps the write end. Standard error goes to
-                // the null device, so no pipe but the one being read can fill.
-                try? output.fileHandleForWriting.close()
+                // Starting the process has already closed this side's copy of
+                // the write end, so only the child holds it and its exit
+                // reaches the reader as end of output. Standard error goes
+                // to the null device, so no pipe but the one being read can fill.
                 let reader = output.fileHandleForReading
                 // True once the answer has been given, by whichever of the
                 // reading below and the watchdog gets there first. The one
@@ -1268,6 +1269,8 @@ extension NexusAgentEngine {
     /// top-level conversations recorded for exactly that folder, plus those
     /// with no folder recorded; not a nested, aborted or archived one, and
     /// not another folder's (`NexusAgentSessionSummary.idsToDeleteAll`).
+    /// It stops at the first one that cannot be deleted; the count is of
+    /// those deleted before it.
     @discardableResult
     public static func deleteAllSessions(directory: String, provider: NexusAgentCLIProvider,
                                          environment: Environment) -> Int {
@@ -1285,7 +1288,16 @@ extension NexusAgentEngine {
         let ids = NexusAgentSessionSummary.idsToDeleteAll(
             rows, directory: directory,
             archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
-        return ids.filter { deleteSession(id: $0, provider: provider, environment: environment) }
+        // One at a time, and the first failure ends it: with the index locked
+        // each try waits out the busy timeout on the main thread, so going
+        // on through 200 conversations would freeze the app for minutes.
+        // What was deleted before the failure stays deleted and is counted.
+        var deleted: [String] = []
+        for id in ids {
+            guard deleteSession(id: id, provider: provider, environment: environment) else { break }
+            deleted.append(id)
+        }
+        return deleted
     }
 
     /// The first of agy's data folders under the environment's home that
