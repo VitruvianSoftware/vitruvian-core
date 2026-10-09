@@ -132,6 +132,26 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   rule about how all of the code is written, not about what one piece of it
   does, is a lint: add it there, with a mutation that shows it fails.
 
+## Features that are also standalone apps
+
+Nexus Agent ships twice: as its own app (`apps/desktop/nexus-agent`) and as a
+feature here. The code both share lives in the standalone's folder, under MIT,
+and this app holds only what is specific to it.
+
+- Change a shared rule in `apps/desktop/nexus-agent/macos/Sources/NexusAgentCore`,
+  never by copying it back here.
+- Shared code takes its settings, text, theme and host hooks as inputs. It
+  never imports a `Vitruvian*` module.
+- `build.sh` and `Package.swift` here cannot see the shared library. Bazel is
+  the only build of this app; `build.sh` stays as the source list upstream's
+  tests read.
+- After changing shared code, run
+  `bazel run //apps/desktop/vitruvian:pin_nexus_agent_shared` and add a line to
+  the log in `UPSTREAM.md`. `nexus_agent_shared_pin_test` fails until you do.
+- Nothing upstream wrote may leave this folder. A file leaves only if
+  VitruvianSoftware wrote all of it, and `UPSTREAM.md` records it.
+- The next standalone app that becomes a feature here follows the same shape.
+
 ## Porting from upstream
 
 - Follow `UPSTREAM.md`, "Tracking and porting upstream". Start a port with

@@ -1114,7 +1114,7 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           extra_flags+=("--experimental_ui_max_stdouterr_bytes=-1")
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:nexus_agent_shared_pin_test //apps/desktop/vitruvian:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:nexus_agent_shared_pin_test //apps/desktop/vitruvian:unit_tests; else exit $rc; fi; }
 
   rdeps-map:
     name: plan/rdeps-map
