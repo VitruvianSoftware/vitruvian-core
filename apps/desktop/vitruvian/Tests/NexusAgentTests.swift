@@ -1031,6 +1031,23 @@ enum NexusAgentTests {
                      "saved provider commands are not carried by a backup")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentChosenProvider),
                      "the chosen provider still is")
+
+        // The way in matters as much as the way out: a file someone edited
+        // by hand can name saved providers, and those must not be restored.
+        let chosen = "AAAAAAAA-0000-0000-0000-00000000000A"
+        let hostile = Data(#"[{"id":"\#(chosen)","name":"x","commandTemplate":"sh -c {prompt}","isBuiltIn":false}]"#.utf8)
+        let incoming: [String: Any] = [
+            SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+            SettingsBackupSupport.settingsKey: [
+                DefaultsKey.nexusAgentSavedProviders: hostile,
+                DefaultsKey.nexusAgentChosenProvider: chosen,
+            ] as [String: Any],
+        ]
+        let restored = SettingsBackupSupport.sanitizedSettings(from: incoming)
+        suite.expect(restored != nil && restored?[DefaultsKey.nexusAgentSavedProviders] == nil,
+                     "saved provider commands in an incoming backup are dropped")
+        suite.expect(restored?[DefaultsKey.nexusAgentChosenProvider] as? String == chosen,
+                     "the chosen provider in an incoming backup is kept")
     }
 
     /// What Vitruvian tells the user when a turn ends or waits: the notch

@@ -225,10 +225,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Deletes an agy conversation for good and reloads the drawer list.
     /// Returns false, having changed nothing, for any other provider's.
+    /// If it was the conversation open in the chat, the chat is new: the
+    /// next prompt would otherwise try to resume one that is gone.
     @discardableResult
     public func delete(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) -> Bool {
         let deleted = NexusAgentEngine.deleteSession(id: summary.id, provider: configuration.activeProvider,
                                                      environment: environment)
+        if deleted, conversationID == summary.id { newChat() }
         refreshSessions(configuration: configuration)
         return deleted
     }
@@ -247,10 +250,12 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         let directory = configured.isEmpty
             ? environment.home
             : NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
-        let count = NexusAgentEngine.deleteAllSessions(directory: directory, provider: configuration.activeProvider,
-                                                       environment: environment)
+        let deleted = NexusAgentEngine.deletedSessionIDs(directory: directory, provider: configuration.activeProvider,
+                                                         environment: environment)
+        // As for one conversation: the open chat is new if it went too.
+        if let open = conversationID, deleted.contains(open) { newChat() }
         refreshSessions(configuration: configuration)
-        return count
+        return deleted.count
     }
 
     /// Starts watching the transcript file for live updates while in chat mode.
@@ -446,6 +451,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             prompt: planMode ? NexusAgentSupport.planModePrompt(text) : text,
             model: configuration.model) else {
             refuse(text, saying: strings.invalidCommandTemplate(template))
+            return
+        }
+        // A template that would take its program's name from the prompt has
+        // no program (see `providerCommand`): it is refused as a program
+        // that is not installed, naming the word as written.
+        guard !command.executable.isEmpty else {
+            refuse(text, saying: strings.commandNotFound(NexusAgentSupport.templateWords(template).first ?? ""))
             return
         }
         guard let path = NexusAgentSupport.executablePath(

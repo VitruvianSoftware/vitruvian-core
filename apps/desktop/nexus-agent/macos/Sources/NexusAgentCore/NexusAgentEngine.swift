@@ -193,7 +193,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                 },
                 runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) },
                 launchCommand: NexusAgentEngine.launchCommandProcess,
-                runSqlite: NexusAgentEngine.runSqliteProcess)
+                runSqlite: { NexusAgentEngine.runSqliteProcess($0, $1, $2) })
         }
     }
 
@@ -594,11 +594,18 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// is looked for where that app looks; one found nowhere is still tried
     /// in Homebrew's folder, where it then fails to start and gives nil.
     ///
-    /// A program that has not ended after `timeLimit` seconds (20 for the
-    /// real lookups, as the standalone app gives `agy`) is terminated and
-    /// gives nil, so a hung program cannot leave a chat turn running for
-    /// ever or leak a process. The limit is a parameter only so a test can
-    /// use a short one.
+    /// The limit is a hard one: `timeLimit` seconds after the start (20 for
+    /// the real lookups, as the standalone app gives `agy`) the caller is
+    /// given nil, whatever the program is doing, unless it has already
+    /// finished. That holds for a program that ignores a polite stop and for
+    /// one whose child keeps the output open: the answer does not wait for
+    /// either. At the limit the program is sent SIGTERM, and SIGKILL one
+    /// second later if it is still running, and the reading thread is told
+    /// to stop and ends within a moment (it never waits on the output
+    /// without a short time limit of its own). What is not guaranteed: a
+    /// grandchild that outlives the program is not looked for, so it may
+    /// keep running; it no longer holds anything up. The limit is a
+    /// parameter only so a test can use a short one.
     nonisolated public static func runProgram(named name: String, arguments: [String],
                                               timeLimit: TimeInterval = 20) async -> String? {
         let files = FileManager.default
@@ -622,22 +629,66 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                     continuation.resume(returning: nil)
                     return
                 }
-                // Standard error goes to the null device, so no pipe but the
-                // one being read can fill. Ending the program closes its
-                // output, which lets the read below finish.
-                let timedOut = OSAllocatedUnfairLock(initialState: false)
+                // Only the child keeps the write end. Standard error goes to
+                // the null device, so no pipe but the one being read can fill.
+                try? output.fileHandleForWriting.close()
+                let reader = output.fileHandleForReading
+                // True once the answer has been given, by whichever of the
+                // reading below and the watchdog gets there first. The one
+                // that flips it is the one that resumes the continuation,
+                // so it is resumed once, whatever the order of events.
+                let answered = OSAllocatedUnfairLock(initialState: false)
                 let watchdog = DispatchWorkItem {
-                    guard process.isRunning else { return }
-                    timedOut.withLock { $0 = true }
-                    process.terminate()
+                    guard claimAnswer(answered) else { return }
+                    // Give the answer first, so the caller is not kept
+                    // waiting by anything below.
+                    if process.isRunning { process.terminate() }
+                    continuation.resume(returning: nil)
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                        if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+                    }
                 }
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeLimit, execute: watchdog)
-                let data = output.fileHandleForReading.readDataToEndOfFile()
+
+                // Read in short turns, so a read never waits on a pipe that
+                // nothing will close: the watchdog's claim is seen within
+                // a tenth of a second and the loop ends.
+                var data = Data()
+                var chunk = [UInt8](repeating: 0, count: 4096)
+                var descriptor = pollfd(fd: reader.fileDescriptor, events: Int16(POLLIN), revents: 0)
+                while !answered.withLock({ $0 }) {
+                    descriptor.revents = 0
+                    let ready = Darwin.poll(&descriptor, 1, 100)
+                    if ready < 0 {
+                        if errno == EINTR { continue }
+                        break
+                    }
+                    if ready == 0 { continue }
+                    let count = Darwin.read(reader.fileDescriptor, &chunk, chunk.count)
+                    if count > 0 {
+                        data.append(contentsOf: chunk[0..<count])
+                    } else if count == 0 || (errno != EINTR && errno != EAGAIN) {
+                        break
+                    }
+                }
+                try? reader.close()
+                // The output has ended, so the program is ending; if it is
+                // not, the watchdog still ends it at the limit.
                 process.waitUntilExit()
                 watchdog.cancel()
-                // Resumed here and at the failed start above, never twice.
-                continuation.resume(returning: timedOut.withLock { $0 } ? nil : String(data: data, encoding: .utf8))
+                if claimAnswer(answered) {
+                    continuation.resume(returning: String(data: data, encoding: .utf8))
+                }
             }
+        }
+    }
+
+    /// Takes the right to give the answer, once: true for the first caller only.
+    nonisolated private static func claimAnswer(_ answered: OSAllocatedUnfairLock<Bool>) -> Bool {
+        answered.withLock { done in
+            if done { return false }
+            done = true
+            return true
         }
     }
 
@@ -1220,14 +1271,21 @@ extension NexusAgentEngine {
     @discardableResult
     public static func deleteAllSessions(directory: String, provider: NexusAgentCLIProvider,
                                          environment: Environment) -> Int {
+        deletedSessionIDs(directory: directory, provider: provider, environment: environment).count
+    }
+
+    /// The same, but gives back which conversations went, in order, so a
+    /// caller can tell whether the one it has open was among them.
+    static func deletedSessionIDs(directory: String, provider: NexusAgentCLIProvider,
+                                  environment: Environment) -> [String] {
         guard provider.id == NexusAgentCLIProvider.antigravity.id,
               let database = antigravityIndex(environment: environment),
               let rows = environment.runSqlite(database, NexusAgentSessionSummary.deleteAllQuery, true)
-        else { return 0 }
+        else { return [] }
         let ids = NexusAgentSessionSummary.idsToDeleteAll(
             rows, directory: directory,
             archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
-        return ids.filter { deleteSession(id: $0, provider: provider, environment: environment) }.count
+        return ids.filter { deleteSession(id: $0, provider: provider, environment: environment) }
     }
 
     /// The first of agy's data folders under the environment's home that
@@ -1241,10 +1299,20 @@ extension NexusAgentEngine {
 
     /// One piece of SQL through `/usr/bin/sqlite3`, the way the standalone
     /// app runs it. The SQL is one argument of its own; no shell reads it.
-    nonisolated private static func runSqliteProcess(_ database: String, _ sql: String, _ readsRows: Bool) -> Data? {
+    ///
+    /// agy may have its index open, and SQLite then fails at once with
+    /// "database is locked". So the statement waits up to `busyTimeout`
+    /// seconds (2 for the real calls; a parameter only so a test can use a
+    /// short one) for the lock to be let go before it gives up and gives
+    /// nil. The wait is asked for with a `-cmd` argument of its own, built
+    /// from a number, so nothing the SQL holds can reach it.
+    nonisolated public static func runSqliteProcess(_ database: String, _ sql: String, _ readsRows: Bool,
+                                                    busyTimeout: TimeInterval = 2) -> Data? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = (readsRows ? ["-json", "-readonly"] : []) + [database, sql]
+        let milliseconds = Int((max(0, busyTimeout) * 1000).rounded())
+        process.arguments = ["-cmd", ".timeout \(milliseconds)"]
+            + (readsRows ? ["-json", "-readonly"] : []) + [database, sql]
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice

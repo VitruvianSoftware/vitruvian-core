@@ -949,6 +949,47 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.lastFailedPrompt, "hi")
     }
 
+    /// A deliberate departure from the standalone: the prompt may not
+    /// become the program's name. It is refused the way a program that is
+    /// not installed is, and nothing is launched, even when the prompt names
+    /// a program that is installed.
+    func testAPromptNamingTheProgramIsRefusedLikeAMissingProgram() {
+        let rig = rigWithCommand()
+        defer { rig.tearDown() }
+        rig.executables.insert("/usr/bin/rm")
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        for template in ["{prompt} -rf x", "my{prompt} x"] {
+            session.send("rm", configuration: NexusAgentConfiguration(activeProvider: ownProvider(template)),
+                         agentPath: "/fake/agy")
+            XCTAssertTrue(rig.commandRuns.isEmpty, "nothing is launched for \(template)")
+            XCTAssertTrue(rig.agentRuns.isEmpty)
+            XCTAssertFalse(session.isRunning)
+            XCTAssertTrue(session.messages.last?.text.hasPrefix("Could not find '") == true, template)
+            XCTAssertTrue(session.messages.last?.text.hasSuffix("' in PATH. Is it installed?") == true, template)
+            XCTAssertEqual(session.messages.last?.isError, true)
+            XCTAssertEqual(session.lastFailedPrompt, "rm")
+        }
+
+        // The page, too, says there is no program to find.
+        let engine = NexusAgentEngine(environment: rig.environment, host: RecordingHost())
+        engine.updateActiveProvider(ownProvider("llm {prompt}"))
+        XCTAssertEqual(engine.agentPath, "/opt/homebrew/bin/llm")
+        engine.updateActiveProvider(ownProvider("{prompt} x"))
+        XCTAssertNil(engine.agentPath)
+
+        // A model in the program's name is still the user's own setting.
+        let rigWithModelProgram = rigWithCommand("/opt/homebrew/bin/m1")
+        defer { rigWithModelProgram.tearDown() }
+        let modelSession = NexusAgentQuickPromptSession(environment: rigWithModelProgram.environment, host: RecordingHost())
+        modelSession.send("hi", configuration: NexusAgentConfiguration(model: "m1",
+                                                                         activeProvider: ownProvider("{model} run {prompt}")),
+                          agentPath: nil)
+        XCTAssertEqual(rigWithModelProgram.commandRuns.first?.path, "/opt/homebrew/bin/m1")
+        XCTAssertEqual(rigWithModelProgram.commandRuns.first?.arguments, ["run", "hi"])
+        rigWithModelProgram.commandExit?(0)
+    }
+
     func testACommandThatFailsIsAFailedTurn() {
         let rig = rigWithCommand()
         defer { rig.tearDown() }
@@ -1209,6 +1250,55 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(defaulted, "hi\n", "with the usual limit")
     }
 
+    /// Whether any process has `marker` in its command line.
+    private func processExists(matching marker: String) -> Bool {
+        let search = Process()
+        search.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        search.arguments = ["-f", marker]
+        search.standardOutput = FileHandle.nullDevice
+        guard (try? search.run()) != nil else { return false }
+        search.waitUntilExit()
+        return search.terminationStatus == 0
+    }
+
+    /// Waits up to `seconds` for no process to carry `marker` any more.
+    private func waitForNoProcess(matching marker: String, seconds: Double) async -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while processExists(matching: marker), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return !processExists(matching: marker)
+    }
+
+    /// The limit is a hard one. A program that ignores the polite stop
+    /// (SIGTERM) still gives the caller its answer, nil, at the limit; and
+    /// it is then killed outright after a short grace, so nothing is left.
+    func testAProgramThatIgnoresTheStopStillGivesNothingAtTheLimitAndIsKilled() async {
+        let marker = "sleep 30.731"
+        let started = Date()
+        let output = await NexusAgentEngine.runProgram(
+            named: "/bin/sh", arguments: ["-c", "trap '' TERM; exec \(marker)"], timeLimit: 0.3)
+        XCTAssertNil(output)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "the caller did not wait for the program")
+
+        let gone = await waitForNoProcess(matching: marker, seconds: 4)
+        if !gone { _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", marker]) }
+        XCTAssertTrue(gone, "it was killed, not left to run out its 30 seconds")
+    }
+
+    /// A grandchild that outlives the program and keeps its output open
+    /// must not keep the caller (or the thread reading) waiting either.
+    func testAGrandchildHoldingTheOutputOpenDoesNotKeepTheCallerWaiting() async {
+        let marker = "sleep 30.7312"
+        defer { _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-f", marker]) }
+        let started = Date()
+        // The shell ends at once; the sleep it started holds the output pipe.
+        let output = await NexusAgentEngine.runProgram(
+            named: "/bin/sh", arguments: ["-c", "\(marker) & exit 0"], timeLimit: 0.3)
+        XCTAssertNil(output)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
     /// The real launcher, with a harmless real program: `/bin/echo` prints
     /// its arguments back. If the command went through a shell, the `;`,
     /// the `$(…)` and the quotes below would be acted on instead of printed.
@@ -1327,6 +1417,89 @@ final class EngineHostTests: XCTestCase {
         }
         XCTAssertTrue(rig.sqliteRuns.isEmpty)
         XCTAssertTrue(rig.removed.isEmpty)
+    }
+
+    /// A control character in an id (a NUL ends a path early in C, a
+    /// newline or a tab has no place in a file name) is refused as well.
+    func testAnIdWithAControlCharacterIsRefused() {
+        let rig = rigWithIndex()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        let ids = ["abc\u{0}def", "\u{0}", "abc\n", "abc\ndef", "abc\r", "\tabc", "abc\tdef", "abc\u{1B}[0m",
+                   "abc\u{7F}", "abc\u{85}"]
+        for id in ids {
+            XCTAssertFalse(NexusAgentSessionSummary.isPlainName(id), id.debugDescription)
+            XCTAssertFalse(session.delete(conversation(id), configuration: NexusAgentConfiguration()), id.debugDescription)
+        }
+        XCTAssertTrue(rig.sqliteRuns.isEmpty, "no SQL was run")
+        XCTAssertTrue(rig.removed.isEmpty, "and nothing was deleted")
+        // Ordinary ids, spaces and non-Latin letters included, are still fine.
+        for id in ["abc-1", "a b", "é", "会話-1", "it's"] {
+            XCTAssertTrue(NexusAgentSessionSummary.isPlainName(id), id)
+        }
+    }
+
+    // MARK: - Deleting the conversation that is open
+
+    func testDeletingTheOpenConversationStartsANewChat() {
+        let rig = rigWithIndex(conversations: ["open-1", "other-1"])
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        session.resume(conversation("open-1"))
+        defer { session.stopTranscriptFollower() }
+        XCTAssertEqual(session.conversationID, "open-1")
+        let messages = session.messages
+        XCTAssertFalse(messages.isEmpty)
+
+        // Another conversation: the open chat is left as it is.
+        XCTAssertTrue(session.delete(conversation("other-1"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(session.conversationID, "open-1")
+        XCTAssertEqual(session.messages, messages)
+        XCTAssertEqual(session.mode, .chat)
+
+        // A delete that did not happen leaves it alone too.
+        rig.sqliteFails = true
+        XCTAssertFalse(session.delete(conversation("open-1"), configuration: NexusAgentConfiguration()))
+        XCTAssertEqual(session.conversationID, "open-1")
+        rig.sqliteFails = false
+
+        // The open one: the chat is new, so the next prompt cannot resume a conversation that is gone.
+        XCTAssertTrue(session.delete(conversation("open-1"), configuration: NexusAgentConfiguration()))
+        XCTAssertNil(session.conversationID)
+        XCTAssertTrue(session.messages.isEmpty)
+        XCTAssertFalse(session.isResumed)
+        XCTAssertEqual(session.mode, .compact)
+    }
+
+    func testClearAllStartsANewChatOnlyIfTheOpenConversationWasAmongThem() {
+        let rig = rigWithIndex()
+        defer { rig.tearDown() }
+        rig.sqliteRows = """
+        [{"conversation_id":"open-1","workspace_uris":"[]"},{"conversation_id":"other-1","workspace_uris":"[]"}]
+        """
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        defer { session.stopTranscriptFollower() }
+
+        // Open, but in no list: untouched.
+        session.resume(conversation("elsewhere"))
+        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 2)
+        XCTAssertEqual(session.conversationID, "elsewhere")
+        XCTAssertFalse(session.messages.isEmpty)
+
+        // Open and deleted with the rest.
+        session.resume(conversation("open-1"))
+        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 2)
+        XCTAssertNil(session.conversationID)
+        XCTAssertTrue(session.messages.isEmpty)
+
+        // Open and in the list, but nothing could be deleted: it stays.
+        session.resume(conversation("open-1"))
+        rig.sqliteFails = true
+        XCTAssertEqual(session.deleteAll(in: NexusAgentConfiguration()), 0)
+        XCTAssertEqual(session.conversationID, "open-1")
+        XCTAssertFalse(session.messages.isEmpty)
+        rig.sqliteFails = false
     }
 
     func testOnlyAgyConversationsCanBeDeleted() {
@@ -1548,6 +1721,125 @@ final class EngineHostTests: XCTestCase {
         }
         XCTAssertTrue(files.fileExists(atPath: database))
         XCTAssertTrue(files.fileExists(atPath: data + "/annotations/archived.pbtxt"))
+    }
+
+    // MARK: A busy index
+
+    /// Runs `sqlite3` with these arguments and gives its exit status.
+    private func sqliteStatus(_ arguments: [String]) -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return -1 }
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
+    /// A second `sqlite3` that takes the write lock on `database` and keeps
+    /// it until it is ended, as agy does while it has the index open.
+    private func holdWriteLock(on database: String) throws -> Process {
+        let holder = Process()
+        holder.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        holder.arguments = [database]
+        let input = Pipe()
+        holder.standardInput = input
+        holder.standardOutput = FileHandle.nullDevice
+        holder.standardError = FileHandle.nullDevice
+        try holder.run()
+        input.fileHandleForWriting.write(Data(".timeout 5000\nBEGIN IMMEDIATE;\n".utf8))
+        // A write that gives up at once fails while the lock is held.
+        for _ in 0..<100 {
+            if sqliteStatus(["-cmd", ".timeout 0", database, "BEGIN IMMEDIATE; ROLLBACK;"]) != 0 { return holder }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        holder.terminate()
+        XCTFail("the lock was never taken")
+        return holder
+    }
+
+    /// An index with one conversation, with its three files, in a throwaway home.
+    private func realIndex(_ rig: Rig) throws -> (database: String, conversations: String) {
+        let data = rig.home + "/.gemini/antigravity"
+        let conversations = data + "/conversations"
+        try FileManager.default.createDirectory(atPath: conversations, withIntermediateDirectories: true)
+        let database = data + "/conversation_summaries.db"
+        XCTAssertEqual(sqlite(database, "CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY, title TEXT);"
+                              + "INSERT INTO conversation_summaries VALUES ('busy-1', 'T');"), "")
+        for suffix in [".db", ".db-wal", ".db-shm"] {
+            FileManager.default.createFile(atPath: conversations + "/busy-1" + suffix, contents: Data("x".utf8))
+        }
+        return (database, conversations)
+    }
+
+    private func realEnvironment(_ rig: Rig, busyTimeout: TimeInterval) -> NexusAgentEngine.Environment {
+        var environment = NexusAgentEngine.Environment.live
+        environment.home = rig.home
+        environment.listSessions = { _, _, _ in [] }
+        environment.runSqlite = { NexusAgentEngine.runSqliteProcess($0, $1, $2, busyTimeout: busyTimeout) }
+        return environment
+    }
+
+    /// agy has the index locked the whole time: the delete waits for the
+    /// busy timeout, then reports failure; the row is still there and so
+    /// are the conversation's files.
+    func testAnIndexThatStaysLockedKeepsTheConversationAndItsFiles() throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let index = try realIndex(rig)
+        let holder = try holdWriteLock(on: index.database)
+        defer { holder.terminate() }
+
+        let started = Date()
+        let deleted = NexusAgentEngine.deleteSession(id: "busy-1", provider: .antigravity,
+                                                     environment: realEnvironment(rig, busyTimeout: 0.4))
+        let waited = Date().timeIntervalSince(started)
+
+        XCTAssertFalse(deleted, "the delete reports that it did not happen")
+        XCTAssertGreaterThanOrEqual(waited, 0.3, "it waited for the lock before giving up")
+        XCTAssertLessThan(waited, 4)
+        for suffix in [".db", ".db-wal", ".db-shm"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: index.conversations + "/busy-1" + suffix),
+                          "busy-1\(suffix) is still there")
+        }
+        holder.terminate()
+        holder.waitUntilExit()
+        XCTAssertEqual(sqlite(index.database, "SELECT conversation_id FROM conversation_summaries;"), "busy-1",
+                       "and so is the row")
+    }
+
+    /// A lock that is let go of in time is waited for, not failed on.
+    func testAnIndexThatIsLockedBrieflyIsWaitedFor() throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let index = try realIndex(rig)
+        let holder = try holdWriteLock(on: index.database)
+        defer { holder.terminate() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { holder.terminate() }
+
+        let deleted = NexusAgentEngine.deleteSession(id: "busy-1", provider: .antigravity,
+                                                     environment: realEnvironment(rig, busyTimeout: 5))
+
+        XCTAssertTrue(deleted)
+        XCTAssertEqual(sqlite(index.database, "SELECT count(*) FROM conversation_summaries;"), "0")
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: index.conversations)) ?? ["x"], [],
+                       "the three files went with the row")
+    }
+
+    func testAnIndexThatIsNotLockedIsDeletedFromAtOnce() throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let index = try realIndex(rig)
+
+        let started = Date()
+        let deleted = NexusAgentEngine.deleteSession(id: "busy-1", provider: .antigravity,
+                                                     environment: realEnvironment(rig, busyTimeout: 2))
+
+        XCTAssertTrue(deleted)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.5, "no waiting when there is nothing to wait for")
+        XCTAssertEqual(sqlite(index.database, "SELECT count(*) FROM conversation_summaries;"), "0")
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: index.conversations)) ?? ["x"], [])
     }
 
     func testTheDeleteItemHasWords() {

@@ -742,11 +742,34 @@ public enum NexusAgentSupport {
     /// empty pair of quotes makes no word. The first word is the program,
     /// and is filled in like the rest.
     ///
-    /// One thing is NOT the standalone's. It fills `{prompt}` and then
+    /// Two things are NOT the standalone's. It fills `{prompt}` and then
     /// looks for `{model}` in the result, so a prompt that says `{model}`
     /// is altered. Here what was filled in is never read again.
+    ///
+    /// And the standalone fills `{prompt}` into the program's name too. That
+    /// is never useful, and it is the one way a prompt could choose what is
+    /// run, so here a template whose first word holds `{prompt}` has no
+    /// program: the executable comes back empty, which callers treat as a
+    /// program that cannot be found, and the arguments are filled as usual.
+    /// `{model}` in the first word is still filled in: it is the user's own
+    /// setting.
     public static func providerCommand(template: String, prompt: String,
                                        model: String) -> (executable: String, arguments: [String])? {
+        let words = templateWords(template)
+        guard !words.isEmpty else { return nil }
+
+        let filled = words.map {
+            fillingPlaceholders(in: $0, prompt: prompt, model: model.isEmpty ? templateFallbackModel : model)
+        }
+        // The mark is looked for in the template's word, before anything is
+        // put in, so no prompt or model can make or hide it.
+        let programTakesPrompt = words[0].contains("{prompt}")
+        return (programTakesPrompt ? "" : filled[0], Array(filled.dropFirst()))
+    }
+
+    /// A template cut into words, placeholders not yet filled in. Also how
+    /// the session names the program it could not find, as written.
+    static func templateWords(_ template: String) -> [String] {
         var words: [String] = []
         var current = ""
         var inSingle = false
@@ -766,12 +789,7 @@ public enum NexusAgentSupport {
             }
         }
         if !current.isEmpty { words.append(current) }
-        guard !words.isEmpty else { return nil }
-
-        let filled = words.map {
-            fillingPlaceholders(in: $0, prompt: prompt, model: model.isEmpty ? templateFallbackModel : model)
-        }
-        return (filled[0], Array(filled.dropFirst()))
+        return words
     }
 
     /// One word of a template with its placeholders replaced, reading the

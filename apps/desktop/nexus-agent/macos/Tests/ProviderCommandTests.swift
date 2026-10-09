@@ -81,7 +81,28 @@ final class ProviderCommandTests: XCTestCase {
         assertCommand("mytool a\tb", runs: "mytool", ["a\tb"], "only a space separates words, a tab does not")
         assertCommand("mytool a\\ b", runs: "mytool", ["a\\", "b"], "a backslash escapes nothing")
         assertCommand("{model} run {prompt}", runs: "m1", ["run", "hello"],
-                      "the program's own name is filled in like any other word")
+                      "{model} in the program's own name is filled in like any other word ({prompt} there is refused, below)")
+    }
+
+    /// A deliberate departure from the standalone, which fills `{prompt}`
+    /// into the program's name like any other word. That is never useful and
+    /// is the one way a prompt could choose what gets run, so here a
+    /// template whose first word holds `{prompt}` has no program at all.
+    /// `{model}` there stays, because the model is the user's own setting.
+    func testAPromptCanNeverChooseTheProgram() {
+        for template in ["{prompt} x", "{prompt}", "tool{prompt}", "{prompt}tool y {prompt}", "\"{prompt}\" x",
+                         "'a {prompt}' x", "{{prompt}model} x", "{model}{prompt} x"] {
+            let parsed = command(template, prompt: "rm")
+            XCTAssertEqual(parsed?.executable, "", "no program for \(template.debugDescription)")
+        }
+        // The rest of the line is still cut and filled as always.
+        XCTAssertEqual(command("{prompt} x {prompt}", prompt: "rm")?.arguments, ["x", "rm"])
+        // The prompt anywhere after the first word is as before, and so is a model in the first word.
+        assertCommand("mytool {prompt}", prompt: "rm", runs: "mytool", ["rm"])
+        assertCommand("mytool{model} {prompt}", runs: "mytoolm1", ["hello"])
+        assertCommand("{model}", runs: "m1", [])
+        // A prompt that merely mentions the mark does not make the program's name wrong.
+        assertCommand("mytool {prompt}", prompt: "{prompt}", runs: "mytool", ["{prompt}"])
     }
 
     func testAnEmptyModelBecomesTheStandalonesFixedOne() {

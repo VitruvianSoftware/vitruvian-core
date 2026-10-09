@@ -176,10 +176,13 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     }
 
     /// Whether `id` can safely name a conversation's files: one name with
-    /// no folder in it. A deletion is not acted on for any other id, since
-    /// the files removed are found by putting the id into a path.
+    /// no folder in it and no control character (a NUL cuts a path short in
+    /// C, and a new line or a tab has no place in a file name). A deletion
+    /// is not acted on for any other id, since the files removed are found
+    /// by putting the id into a path.
     public static func isPlainName(_ id: String) -> Bool {
         !id.isEmpty && id != "." && id != ".." && !id.contains("/") && id == (id as NSString).lastPathComponent
+            && !id.unicodeScalars.contains { $0.properties.generalCategory == .control }
     }
 
     /// The SQL "delete all" reads the index with, which is the standalone
