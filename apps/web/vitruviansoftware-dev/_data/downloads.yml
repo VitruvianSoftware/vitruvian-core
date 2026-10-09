@@ -18,7 +18,7 @@ categories:
     items:
       - id: nexus-agent
         name: NexusAgent
-        version: "1.18.4"
+        version: "1.19.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -27,37 +27,37 @@ categories:
         brew_cask: VitruvianSoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-universal.dmg
-            size: 3.8 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.19.0/NexusAgent-1.19.0-universal.dmg
+            size: 4.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-arm64.dmg
-            size: 2.8 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.19.0/NexusAgent-1.19.0-arm64.dmg
+            size: 3.0 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-x86_64.dmg
-            size: 2.9 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.19.0/NexusAgent-1.19.0-x86_64.dmg
+            size: 3.0 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-universal.zip
-            size: 3.8 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.19.0/NexusAgent-1.19.0-universal.zip
+            size: 4.0 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/nexus-agent
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
-        version: "3.34.5"
+        version: "3.35.1"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
         platforms: ["macOS"]
         downloads:
           - label: macOS DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.34.5/Vitruvian-3.34.5.dmg
-            size: 40.8 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.35.1/Vitruvian-3.35.1.dmg
+            size: 43.0 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-v
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
 
       - id: home-speaker
