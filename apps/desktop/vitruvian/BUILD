@@ -489,6 +489,8 @@ swift_test(
         ":VitruvianNowPlayingLib",
         ":VitruvianServices",
         ":VitruvianUI",
+        # NexusAgentTests checks what the app hands the shared chat view.
+        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
     ],
 )
 

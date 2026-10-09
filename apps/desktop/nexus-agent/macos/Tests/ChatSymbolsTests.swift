@@ -67,7 +67,9 @@ final class ChatSymbolsTests: XCTestCase {
 
     func testTheSourcesAreFound() {
         let names = Set(swiftFiles().map(\.name))
-        for expected in ["NexusAgentChatStrings.swift", "NexusAgentChatChrome.swift"] {
+        for expected in ["NexusAgentChatStrings.swift", "NexusAgentChatChrome.swift", "NexusAgentChatView.swift",
+                         "NexusAgentMessageBubble.swift", "NexusAgentCodeBlocks.swift",
+                         "NexusAgentChatControls.swift", "NexusAgentSessionRow.swift"] {
             XCTAssertTrue(names.contains(expected), "\(expected) is among the sources read: \(names.sorted())")
         }
     }
@@ -161,6 +163,7 @@ final class ChatSymbolsTests: XCTestCase {
     }
 
     func testEverySymbolTheChatDrawsExists() {
+        var all = Set<String>()
         for file in swiftFiles() {
             let findings = Self.symbolNames(in: file.text)
             XCTAssertEqual(findings.unreadable, [], "\(file.name) builds a symbol's name at run time, so it cannot be checked")
@@ -168,7 +171,12 @@ final class ChatSymbolsTests: XCTestCase {
                 XCTAssertNotNil(NSImage(systemSymbolName: name, accessibilityDescription: nil),
                                 "\(file.name) draws the SF Symbol \"\(name)\", which this macOS does not have")
             }
+            all.formUnion(findings.names)
         }
+        // The chat drew about forty different symbols when it moved here.
+        // Far fewer means the collector stopped seeing them, not that they
+        // went away.
+        XCTAssertGreaterThanOrEqual(all.count, 30, "the symbols found: \(all.sorted())")
     }
 
     /// The check above is only worth something if a wrong name fails it.
