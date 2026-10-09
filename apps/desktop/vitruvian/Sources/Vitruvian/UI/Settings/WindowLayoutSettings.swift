@@ -497,6 +497,11 @@ private struct WindowLayoutActionRow: View {
                 .help(l10n.s.shortcutClear)
                 .accessibilityLabel(l10n.s.shortcutClear)
                 Button(l10n.s.shortcutReset) {
+                    if let refusal = refusal(for: action.defaultShortcut) {
+                        errorText = refusal
+                        pendingTakeOver = nil
+                        return
+                    }
                     rawValue = action.defaultShortcut?.storageValue
                         ?? WindowLayoutAction.clearedShortcutStorageValue
                     errorText = nil
@@ -519,6 +524,13 @@ private struct WindowLayoutActionRow: View {
                 SystemShortcutTakeOverOffer(
                     shortcut: pendingTakeOver,
                     onAccept: {
+                        // The offer may have waited while another row took
+                        // the combination.
+                        if let refusal = refusal(for: pendingTakeOver) {
+                            errorText = refusal
+                            self.pendingTakeOver = nil
+                            return
+                        }
                         rawValue = pendingTakeOver.storageValue
                         SystemShortcutTakeover.setTakeOver(action.shortcutKey, true)
                         self.pendingTakeOver = nil
@@ -547,17 +559,21 @@ private struct WindowLayoutActionRow: View {
         WindowLayoutService.shared.syncWithPreferences()
     }
 
+    /// The message when somebody else holds `shortcut`, or nil when it is
+    /// free (or there is none). Recording, Reset and accepting a take-over
+    /// all ask it.
+    private func refusal(for shortcut: GlobalShortcut?) -> String? {
+        guard case .refuse(let holder) = ShortcutConflicts.write(shortcut, holders: [
+            { GlobalShortcutRole.conflict(for: $0, excluding: nil)?.title(l10n.s) },
+            { WindowLayoutService.shared.shortcutConflictTitle($0, excluding: action) },
+            { ShortcutConflicts.title(for: $0) },
+        ]) else { return nil }
+        return String(format: l10n.s.shortcutConflictFormat, holder)
+    }
+
     private func save(_ shortcut: GlobalShortcut) {
-        if let conflict = GlobalShortcutRole.conflict(for: shortcut, excluding: nil) {
-            errorText = String(format: l10n.s.shortcutConflictFormat, conflict.title(l10n.s))
-            return
-        }
-        if let conflict = WindowLayoutService.shared.shortcutConflictTitle(shortcut, excluding: action) {
-            errorText = String(format: l10n.s.shortcutConflictFormat, conflict)
-            return
-        }
-        if let conflict = ShortcutConflicts.title(for: shortcut) {
-            errorText = String(format: l10n.s.shortcutConflictFormat, conflict)
+        if let refusal = refusal(for: shortcut) {
+            errorText = refusal
             return
         }
         // The offer is the last word on a combination: every other check has

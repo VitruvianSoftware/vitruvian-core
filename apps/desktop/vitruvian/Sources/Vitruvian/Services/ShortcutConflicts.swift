@@ -48,6 +48,25 @@ package enum ShortcutConflicts {
         }
     }
 
+    /// What a row does with a combination it is about to write.
+    package enum Write: Equatable {
+        case write
+        /// Somebody holds it, by the name a refusal shows.
+        case refuse(holder: String)
+    }
+
+    /// Whether `shortcut` may be written. A recording, a Reset and an
+    /// accepted macOS take-over all write a combination, so each asks the
+    /// same lists in the same order, and the first to hold it is named. No
+    /// shortcut at all (a default that is empty) is held by nobody.
+    package static func write(_ shortcut: GlobalShortcut?, holders: [(GlobalShortcut) -> String?]) -> Write {
+        guard let shortcut else { return .write }
+        for holder in holders {
+            if let name = holder(shortcut) { return .refuse(holder: name) }
+        }
+        return .write
+    }
+
     /// The holder's name as the other shortcut rows would name it, or nil
     /// when the combination is free of both lists.
     ///

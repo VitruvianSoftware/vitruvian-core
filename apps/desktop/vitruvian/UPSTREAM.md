@@ -126,6 +126,10 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: Reset and an accepted macOS take-over no longer bind a combination twice:
+  - `UI/ShortcutRecorderButton.swift`, `UI/Settings/ShortcutsSettings.swift`, `UI/Settings/WindowLayoutSettings.swift`, `UI/Settings/CutPasteSettings.swift`: each row's three holder checks are one `refusal(for:)`, asked by recording as before and now also by Reset and by accepting a take-over offer. **Reset is refused, naming the holder, when another shortcut took the default meanwhile; so is accepting an offer whose combination was taken while the offer waited.**
+  - `UI/ShortcutRecorderButton.swift`: a role row that is handed no extra check asks the window-layout one, so a role recorded on its own feature page can no longer take a window-layout action's combination.
+  - `Tests/mutation_checks.py`: one mutation (Reset writing a default somebody else holds).
 - **2026-10-09**: This log is checked for being whole:
   - `bazel/source_lints.py`: `modification_log_is_whole` fails when a section of this file is gone or out of order, when the Modifications log has fewer than 260 dated entries, or when a merge conflict marker is left in. A merge resolution had cut 2,600 lines out of the file and every check stayed green.
   - `BUILD`: `source_lints_test` reads `UPSTREAM.md`.
