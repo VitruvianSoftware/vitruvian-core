@@ -549,7 +549,7 @@ package enum MenuPanelRowFeatures {
     package static var controls: [AppFeature] { ControlPanelItem.allCases.map(\.feature) }
 }
 
-private enum UtilityPanelItem: String, PanelOrderItem, Identifiable {
+private enum UtilityPanelItem: String, PanelOrderItem, CaseIterable, Identifiable {
     // Case order IS the default panel order (PanelLayout.itemOrder falls back
     // to allCases). Screenshot leads in 3.1.13; existing orders that predate it
     // are migrated once without disturbing the rest of the user's layout.
@@ -1128,7 +1128,7 @@ package struct UtilitiesSection: View {
     }
 }
 
-private enum ControlPanelItem: String, PanelOrderItem, Identifiable {
+private enum ControlPanelItem: String, PanelOrderItem, CaseIterable, Identifiable {
     case mouseScroll, linearScroll, focusFollowsMouse, mouseAcceleration, mouseNavigation, switcher, cutPaste, autoQuit, shelf, windowMaximize, dockPreview, keyDebounce,
          dockClick, dockClickHide, dockClickCycle, middleClick, textSnippets, radialMenu, mouseButtonShortcuts, superKey,
          mouseClickDebounce, notch, spacesOrder

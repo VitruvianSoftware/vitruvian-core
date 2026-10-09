@@ -9,7 +9,7 @@ import VitruvianDesign
 
 /// Everything the quick launcher can hold. Raw values are storage ids for
 /// the user's order and hidden set.
-package enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
+package enum QuickLauncherItem: String, PanelOrderItem, CaseIterable, Identifiable {
     // Case order is the default grid order; the cleaner comes second, right
     // after Keep awake, by the owner's decision. Saved orders are untouched
     // (a case added later joins a saved order at the end).

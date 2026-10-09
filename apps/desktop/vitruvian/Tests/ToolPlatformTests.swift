@@ -20,6 +20,7 @@ enum ToolPlatformTests {
         commandBar(suite)
         housekeeping(suite)
         sampleTool(suite)
+        tiles(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -352,5 +353,50 @@ enum ToolPlatformTests {
 
         SampleTool.install(into: registry, say: { said.append($0) })
         suite.expect(registry.commands(on: .commandBar).count == 1, "installing the sample twice registers it once")
+    }
+
+    static func tiles(_ suite: TestSuite) {
+        // A tile reads and writes one id, whichever kind it is.
+        let enumTile = QuickLauncherTile(rawValue: "screenshot")
+        let commandTile = QuickLauncherTile(rawValue: "dev.vitruvian.sample/hello")
+        suite.expect(enumTile == .builtin(.screenshot) && enumTile?.rawValue == "screenshot"
+                         && enumTile?.builtin == .screenshot && enumTile?.commandID == nil,
+                     "a built-in tile keeps the id users already have saved")
+        suite.expect(commandTile == .command(SampleTool.hello) && commandTile?.rawValue == "dev.vitruvian.sample/hello"
+                         && commandTile?.commandID == SampleTool.hello && commandTile?.builtin == nil,
+                     "a command tile is known by its command id")
+        for bad in ["", "notATile", "a/b/c", "not an id", "screenshot/"] {
+            suite.expect(QuickLauncherTile(rawValue: bad) == nil, "\(bad.debugDescription) is not a tile")
+        }
+
+        // Showing: the saved order decides; what it does not name goes after, in the order given.
+        suite.expect(QuickToolsSupport.tileOrder(live: ["a", "b", "x/1"], saved: []) == ["a", "b", "x/1"],
+                     "with nothing saved, tiles keep the order they come in")
+        suite.expect(QuickToolsSupport.tileOrder(live: ["a", "b", "x/1"], saved: ["x/1", "b", "gone/1", "a"])
+                         == ["x/1", "b", "a"],
+                     "a saved order places every tile it names")
+        suite.expect(QuickToolsSupport.tileOrder(live: ["a", "new", "b", "x/1"], saved: ["b", "a"])
+                         == ["b", "a", "new", "x/1"],
+                     "a tile the saved order does not name goes after those it does")
+
+        // Saving: an id that is not showing now keeps its place.
+        let wellFormed: (String) -> Bool = { QuickLauncherTile(rawValue: $0) != nil }
+        suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: ["screenshot", "keepAwake"],
+                                                      previous: ["keepAwake", "dev.vitruvian.sample/hello", "screenshot"],
+                                                      isWellFormed: wellFormed)
+                         == ["screenshot", "dev.vitruvian.sample/hello", "keepAwake"],
+                     "a tile that is not showing now keeps its place in the saved order")
+        suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: ["keepAwake", "screenshot"],
+                                                      previous: ["", "a/b/c", "not an id", "keepAwake"],
+                                                      isWellFormed: wellFormed)
+                         == ["keepAwake", "screenshot"],
+                     "a malformed id is dropped from the saved order, and the rest is kept")
+        suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: ["keepAwake"],
+                                                      previous: ["micMute", "micMute", "keepAwake"],
+                                                      isWellFormed: wellFormed)
+                         == ["micMute", "keepAwake"],
+                     "an id saved twice is kept once")
+        suite.expect(QuickToolsSupport.savedTileOrder(afterMoving: [], previous: [], isWellFormed: wellFormed).isEmpty,
+                     "nothing showing and nothing saved saves nothing")
     }
 }

@@ -5,7 +5,10 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-package protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue == String {}
+/// Something a person can reorder: it has a text id to save and to drag.
+/// An enum that conforms is `CaseIterable` in its own right; the Quick
+/// panel's tile is not an enum of cases, so the protocol does not ask.
+package protocol PanelOrderItem: RawRepresentable, Hashable where RawValue == String {}
 
 /// The major, user-customizable sections of the menu panel. Raw values are the
 /// stable identifiers persisted in the saved order and the collapsed set, so
@@ -142,7 +145,7 @@ package enum PanelLayout {
         defaults.set(ids.map(\.rawValue).joined(separator: ","), forKey: DefaultsKey.panelSectionOrder)
     }
 
-    package static func itemOrder<Item: PanelOrderItem>(_ type: Item.Type, key: String) -> [Item] {
+    package static func itemOrder<Item: PanelOrderItem & CaseIterable>(_ type: Item.Type, key: String) -> [Item] {
         let defaultOrder = type.allCases.map(\.rawValue)
         let raw = defaults.string(forKey: key) ?? ""
         return Defaults.sanitizedPanelItemOrder(raw, defaultOrder: defaultOrder).compactMap(Item.init(rawValue:))
@@ -154,6 +157,16 @@ package enum PanelLayout {
 
     package static func resetItemOrder(key: String) {
         defaults.removeObject(forKey: key)
+    }
+
+    /// The saved order as written, for a list that also holds ids no enum
+    /// names. Nothing is dropped here: the caller decides what is well formed.
+    package static func rawItemOrder(key: String) -> [String] {
+        (defaults.string(forKey: key) ?? "").split(separator: ",").map(String.init)
+    }
+
+    package static func setRawItemOrder(_ ids: [String], key: String) {
+        defaults.set(ids.joined(separator: ","), forKey: key)
     }
 
     package static func isShown(_ id: PanelSectionID) -> Bool {
