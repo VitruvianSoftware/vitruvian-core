@@ -367,6 +367,7 @@ package struct RadialMenuVisualCanvas: View {
         case .url: return text.kindURL
         case .shortcut: return text.kindShortcut
         case .tool: return text.kindTool
+        case .command: return text.kindTool
         case .quickToggle: return FeatureStrings.quickToggles(L10n.shared.language).pageTitle
         case .windowLayout: return FeatureStrings.windowLayout(L10n.shared.language).title
         case .media: return text.kindMedia

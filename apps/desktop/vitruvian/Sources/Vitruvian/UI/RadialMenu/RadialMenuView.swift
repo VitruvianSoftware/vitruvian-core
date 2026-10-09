@@ -460,6 +460,12 @@ extension RadialMenuItem {
         case .tool:
             guard let tool else { return text.kindTool }
             return tool.feature.hubTitle(L10n.shared.s, hub: FeatureStrings.hub(L10n.shared.language))
+        case .command:
+            guard let commandID else { return text.kindTool }
+            // Views draw on the main thread, where the registry lives.
+            return MainActor.assumeIsolated {
+                ToolRegistry.shared.title(for: commandID, language: L10n.shared.language)
+            } ?? text.kindTool
         case .quickToggle:
             return quickToggle?.radialTitle ?? FeatureStrings.quickToggles(L10n.shared.language).pageTitle
         case .windowLayout:

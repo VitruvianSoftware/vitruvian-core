@@ -493,6 +493,10 @@ package final class RadialMenuService: ObservableObject {
         items.compactMap { item in
             var item = item
             if let tool = item.tool, !tool.isRunnable() { return nil }
+            if item.kind == .command {
+                guard let id = item.commandID,
+                      MainActor.assumeIsolated({ ToolRegistry.shared.canRun(id) }) else { return nil }
+            }
             if item.kind == .quickToggle, !AppFeature.quickToggles.isAvailable { return nil }
             if item.kind == .windowLayout, !AppFeature.windowLayout.isAvailable { return nil }
             if item.kind == .submenu {
@@ -779,41 +783,23 @@ package final class RadialMenuService: ObservableObject {
             if let action = item.windowLayoutAction { run(action) }
         case .submenu:
             break
+        case .command:
+            if let id = item.commandID { run(id) }
         }
     }
 
     private func run(_ tool: RadialMenuTool) {
         guard tool.isRunnable() else { return }
+        run(tool.command.id)
+    }
+
+    private func run(_ id: CommandID) {
         // The same beat the quick panel gives screen-touching tools, so the
         // wheel is really gone before anything captures or presents.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            switch tool {
-            case .screenshot: ScreenshotService.shared.capture()
-            case .screenRecorder: ScreenRecorderService.shared.toggle()
-            case .colorPicker: ColorSamplerService.shared.pick()
-            case .screenOCR: ScreenTextService.shared.capture()
-            case .micMute: MicMuteService.shared.toggle()
-            case .clipboardHistory: ClipboardHistoryService.shared.showHistoryWindow()
-            case .quickLauncher: QuickLauncherService.shared.show()
-            case .cameraPreview: CameraPreviewService.shared.show()
-            case .scratchpad: ScratchpadService.shared.show()
-            case .shelf: ShelfService.shared.summon()
-            case .cleaner: Self.openSettings(at: .cleaner)
-            case .uninstaller: Self.openSettings(at: .uninstaller)
-            case .appUpdates:
-                AppUpdatesService.shared.check()
-                Self.openSettings(at: .appUpdates)
-            case .cleaningMode: CleaningModeManager.shared.activate()
-            case .keepAwake: KeepAwakeManager.shared.toggle()
-            }
+            // The main queue's block runs on the main thread.
+            MainActor.assumeIsolated { _ = ToolRegistry.shared.run(id) }
         }
-    }
-
-    // Every action runs from a main-queue block.
-    @MainActor
-    private static func openSettings(at page: SettingsPage) {
-        SettingsRouter.shared.page = page
-        appShell()?.openSettingsWindow()
     }
 
     private func run(_ action: RadialMenuQuickToggle) {

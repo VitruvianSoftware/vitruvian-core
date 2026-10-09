@@ -110,6 +110,9 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-08**: Tool registry, part 1 (`docs/superpowers/plans/2026-10-08-vitruvian-tool-registry.md`):
   - `Core/RadialMenu/RadialMenuSupport.swift`: `RadialMenuTool.command` names the built-in command each slice runs.
   - `main.swift`: installs the built-in tools and command handlers into `ToolRegistry` before the app runs.
+  - `Core/RadialMenu/RadialMenuSupport.swift`: `RadialMenuItem.Kind.command` and `commandID`, a slice that runs any registry command by id.
+  - `Services/RadialMenu/RadialMenuService.swift`: tool slices run through `ToolRegistry` instead of a private switch; a `command` slice whose command cannot run is left off the wheel.
+  - `UI/RadialMenu/RadialMenuView.swift`, `UI/Settings/RadialMenuSettings.swift`, `UI/Settings/RadialMenuVisualCanvas.swift`: arms for the `command` kind.
 - **2026-10-08**: Zero-click GitHub CLI sign-in, Keychain-less sign-in and LED reconcile on launch:
   - `GitHubAuthService.swift`: `syncWithPreferences()` signs in with the GitHub CLI login (`~/.config/gh/hosts.yml`) when nobody is signed in and no token is saved, except after an explicit `disconnect()` this session or for a token GitHub already answered 401 to. `finishSignIn` keeps the token in memory when the Keychain refuses to save it (ad-hoc builds lack the entitlement) instead of failing the sign-in. The `hosts.yml` location is an initializer parameter (`cliHostsURL`) so tests use their own file.
   - `GitHubPeripheralSink.swift`: `update(verdict:force:)` writes even an unchanged verdict when forced; an injectable `Executor` stands in for the mouse binary in tests.

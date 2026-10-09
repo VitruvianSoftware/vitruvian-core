@@ -258,6 +258,8 @@ package enum RadialMenuProfilePreset: String, CaseIterable, Identifiable {
 package struct RadialMenuItem: Codable, Identifiable, Equatable, Sendable {
     package enum Kind: String, Codable, CaseIterable, Sendable {
         case app, file, url, shortcut, tool, quickToggle, windowLayout, media, submenu
+        /// Any registry command, by id. Added last: raw values persist.
+        case command
     }
 
     package var id = UUID()
@@ -270,6 +272,12 @@ package struct RadialMenuItem: Codable, Identifiable, Equatable, Sendable {
 
     package var tool: RadialMenuTool? {
         kind == .tool ? RadialMenuTool(rawValue: payload) : nil
+    }
+
+    /// The registry command a `command` slice runs; nil when the payload is
+    /// not a well-formed command id.
+    package var commandID: CommandID? {
+        kind == .command ? CommandID(payload) : nil
     }
 
     package var mediaKey: RadialMenuMediaKey? {
@@ -303,6 +311,7 @@ package struct RadialMenuItem: Codable, Identifiable, Equatable, Sendable {
             default: return "playpause.fill"
             }
         case .submenu: return "ellipsis.circle"
+        case .command: return "puzzlepiece.extension"
         }
     }
 
@@ -756,6 +765,7 @@ package enum RadialMenuSupport {
         case .windowLayout: return item.windowLayoutAction != nil
         case .media: return item.mediaKey != nil
         case .submenu: return true
+        case .command: return item.commandID != nil
         }
     }
 

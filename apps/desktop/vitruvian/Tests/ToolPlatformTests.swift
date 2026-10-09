@@ -15,6 +15,7 @@ enum ToolPlatformTests {
         builtins(suite)
         builtinTools(suite)
         registry(suite)
+        radial(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -187,5 +188,23 @@ enum ToolPlatformTests {
         do { try registry.register(reborn) } catch { suite.expect(false, "a removed tool can register again, got \(error)") }
         suite.expect(!registry.hasHandler(for: open) && registry.commands(on: .commandBar).isEmpty && !registry.run(open),
                      "a tool registered again does not inherit the handlers of the one removed")
+    }
+
+    static func radial(_ suite: TestSuite) {
+        let item = RadialMenuItem(kind: .command, name: "Deploys", payload: "com.acme.deploys/open")
+        suite.expect(item.commandID == CommandID("com.acme.deploys/open"), "a command slice reads its command id")
+        suite.expect(RadialMenuItem(kind: .tool, payload: "com.acme.deploys/open").commandID == nil,
+                     "only a command slice has a command id")
+        suite.expect(RadialMenuSupport.isValidPayload(item), "a well-formed command id is a valid target")
+        for bad in ["", "noslash", "a/b/c"] {
+            suite.expect(!RadialMenuSupport.isValidPayload(RadialMenuItem(kind: .command, payload: bad)),
+                         "\(bad.debugDescription) is not a valid command target")
+        }
+        suite.expect(!item.effectiveSymbolName.isEmpty, "a command slice has a symbol to draw")
+
+        let saved = [item, RadialMenuItem(kind: .tool, payload: RadialMenuTool.screenshot.rawValue)]
+        let data = try? JSONEncoder().encode(saved)
+        let loaded = data.flatMap { try? JSONDecoder().decode([RadialMenuItem].self, from: $0) }
+        suite.expect(loaded == saved, "a wheel with a command slice saves and loads unchanged")
     }
 }
