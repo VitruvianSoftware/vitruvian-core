@@ -420,6 +420,7 @@ ROWS_CHECKOUT=""
 ROWS_DEPENDABOT_ACTIONS=""
 ROWS_ACTION_PINS=""
 ROWS_GITLEAKS=""
+ROWS_OCIBASE=""
 ROWS_TECHDOCS=""
 ROWS_PROJKIND=""
 
@@ -460,6 +461,7 @@ emit() {
     dependabot_actions) ROWS_DEPENDABOT_ACTIONS="${ROWS_DEPENDABOT_ACTIONS}${_row}" ;;
     action_pins)  ROWS_ACTION_PINS="${ROWS_ACTION_PINS}${_row}" ;;
     gitleaks)     ROWS_GITLEAKS="${ROWS_GITLEAKS}${_row}" ;;
+    ocibase)      ROWS_OCIBASE="${ROWS_OCIBASE}${_row}" ;;
     techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
     projkind)     ROWS_PROJKIND="${ROWS_PROJKIND}${_row}" ;;
 
@@ -3867,6 +3869,75 @@ check_deleted_workflow_references
 check_renovate_schedule
 check_chart_owned_crds
 check_project_kind_allowlist
+# ---------------------------------------------------------------------------
+# CHECK: container base images are not pulled from Docker Hub.
+#
+# Docker Hub limits anonymous pulls per IP address, and GitHub's hosted runners
+# share addresses with everyone else's builds. When the limit is hit the fetch
+# answers 429 and every build of an image on that base fails -- on main, in the
+# merge queue and on unrelated pull requests alike -- until Docker relents. On
+# 2026-10-09 that stopped Tabula's delivery for over half an hour.
+#
+# The images are pinned by digest, so the same bytes can come from any registry
+# that carries them. Docker's official images are also published on
+# public.ecr.aws/docker/library/, which has no such per-address limit.
+#
+# So: no oci.pull in MODULE.bazel may name Docker Hub, either spelled out
+# (docker.io, index.docker.io) or implied by a name with no registry host
+# ("ubuntu", "library/ubuntu"). A root without a MODULE.bazel reports nothing.
+# ---------------------------------------------------------------------------
+check_oci_base_registry() {
+  [ -f "$ROOT/MODULE.bazel" ] || return 0
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, re
+
+root = os.environ.get("ROOT", ".")
+text = open(os.path.join(root, "MODULE.bazel"), encoding="utf-8").read()
+
+# Comment lines are dropped first so a commented-out example is not live config.
+live = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+total = 0
+for block in re.findall(r"oci\.pull\((.*?)\n\)", live, re.S):
+    image = re.search(r'\bimage\s*=\s*"([^"]*)"', block)
+    name = re.search(r'\bname\s*=\s*"([^"]*)"', block)
+    if not image:
+        continue
+    total += 1
+    ref = image.group(1)
+    # The Docker reference rule: the first path segment is a registry host only if it
+    # has a dot or a port, or is "localhost". Anything else means Docker Hub.
+    first = ref.split("/", 1)[0]
+    has_host = "/" in ref and ("." in first or ":" in first or first == "localhost")
+    if not has_host or first in ("docker.io", "index.docker.io", "registry-1.docker.io"):
+        print(f"FAIL\t{name.group(1) if name else '?'}\t{ref}")
+print(f"TOTAL\t{total}")
+PY
+)"
+
+  local total_seen=0 has_failures=0
+  while IFS="$(printf '\t')" read -r status name found; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL) total_seen="$name" ;;
+      FAIL)
+        emit "ocibase" "$GLYPH_FAIL" "$C_RED" "MODULE.bazel" "$found" "not Docker Hub" \
+          "oci.pull $name is pulled from Docker Hub" "pull the same digest from public.ecr.aws/docker/library/<image> or another registry that carries it"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_failures" -eq 0 ]; then
+    emit "ocibase" "$GLYPH_OK" "$C_GREEN" "MODULE.bazel" "${total_seen} image(s)" "not Docker Hub" \
+      "no base image is pulled from Docker Hub" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
 check_naming_conventions
 check_owners
 check_root_directories
@@ -3876,6 +3947,7 @@ check_checkout_credentials
 check_dependabot_action_coverage
 check_action_sha_pins
 check_gitleaks_allowlist_paths
+check_oci_base_registry
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -3909,6 +3981,7 @@ print_group "Checkout credentials firewall (#1040: persist-credentials: false on
 print_group "Dependabot actions coverage (#814: exported mirror workflows in dependabot.yml)" "$ROWS_DEPENDABOT_ACTIONS"
 print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"
 print_group "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)" "$ROWS_GITLEAKS"
+print_group "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)" "$ROWS_OCIBASE"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Chart-owned CRDs (turning a chart's CRD install off lets Argo CD prune them, deleting every object)" "$ROWS_CRDOWN"

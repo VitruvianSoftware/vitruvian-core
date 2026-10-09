@@ -5,10 +5,14 @@ date: 2025-06-22 01:00:00 +0000
 categories: ai devops agents productivity
 permalink: /ai/devops/agents/productivity/2025/06/22/introducing-adk-agents-your-ai-powered-devops-companion.html
 author: "Vitruvian Software Team"
+archived: true
+archive_note: >-
+  ADK Agents is no longer publicly available, so the install steps have been
+  removed. The post is kept as a record of the project.
 excerpt: "Meet ADK Agents - the intelligent DevOps assistant that understands your codebase, executes commands safely, and helps you ship better software faster. Built on Google's ADK framework with developer productivity at its core."
 ---
 
-# Transform Your Daily Development Workflow with ADK Agents
+## Transform Your Daily Development Workflow with ADK Agents
 
 Ever wished you had a smart colleague who could instantly understand your codebase, help debug issues, automate tedious tasks, and guide you through complex DevOps workflows? **ADK Agents** is that colleague - an AI-powered DevOps assistant built specifically for developers who want to focus on building great software instead of wrestling with tooling.
 
@@ -135,41 +139,6 @@ Would you like me to implement these improvements?
 - **Extensible** with custom tools and integrations
 - **Cross-platform** support (Linux, macOS, Windows)
 
-## 🎯 Get Started in Minutes
-
-```bash
-# Use trunk version with uvx (recommended)
-export GOOGLE_API_KEY=YOUR_AI_STUDIO_API_TOKEN
-uvx --refresh --from git+https://github.com/VitruvianSoftware/adk-agents.git@main agent run agents.devops.agent
-
-# Install with uv
-uv pip install adk-agents
-
-# Or use pip
-pip install adk-agents
-
-# Run your first agent
-echo "Help me understand this codebase" | uv run agent run agents.devops
-
-# For interactive mode
-uv run agent run agents.devops
-
-# For web mode
-uv run agent web-packaged --host 0.0.0.0 --session_db_url "sqlite:///sessions.db"
-```
-
-### **Minimal Configuration**
-Create a simple `.env` file:
-```bash
-# Basic setup - just add your API key
-GOOGLE_API_KEY=your_key_here
-
-# Advanced users can customize further
-GEMINI_THINKING_ENABLE=true
-GEMINI_THINKING_INCLUDE_THOUGHTS=true
-GEMINI_THINKING_BUDGET=8192
-```
-
 ## 🌟 Why Developers Love ADK Agents
 
 > *"Finally, an AI tool that actually understands my code context. It's like having a senior developer available 24/7."* - **Sarah, Backend Engineer**
@@ -192,9 +161,7 @@ We're constantly improving ADK Agents based on developer feedback:
 ADK Agents is **open source and free** to use. Try it today and experience what it's like to have an AI-powered DevOps companion that truly understands your code and workflow.
 
 **🔗 Get Started:**
-- [GitHub Repository](https://github.com/VitruvianSoftware/adk-agents) - Star us if you find it useful!
 - [Documentation](https://adk-agents.vitruviansoftware.dev/) - Complete setup guides and examples
-- [Community Discord](#) - Join other developers using ADK Agents
 
 **Found this helpful? Share it with your team and follow us for more updates:**
 - [GitHub](https://github.com/VitruvianSoftware) 

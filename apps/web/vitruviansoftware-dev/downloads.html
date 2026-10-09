@@ -1,0 +1,136 @@
+---
+layout: page
+title: Downloads
+permalink: /downloads/
+eyebrow: Downloads
+heading: Packaged applications and Homebrew installs.
+lead: >-
+  Download native macOS applications, install developer CLIs through our official
+  Homebrew tap, or grab pre-compiled hardware firmware bundles.
+description: >-
+  Download packaged apps and Homebrew formulae from Vitruvian Software: NexusAgent,
+  Vitruvian Desktop, HomeSpeaker, devx, homelab, and ESP32-S3 firmware.
+---
+
+{%- assign tap = site.data.downloads.tap -%}
+<section class="section">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <span class="eyebrow">Homebrew Tap</span>
+        <h2>The Vitruvian Software Tap</h2>
+        <p>{{ tap.summary }}</p>
+        <div class="install-block" style="margin-top: var(--space-4);">
+          <span class="install-label">One-command setup</span>
+          <code class="install">{{ tap.command }}</code>
+        </div>
+      </div>
+      <div class="category-jump">
+        <a class="btn" href="#desktop">Desktop Apps</a>
+        <a class="btn" href="#cli">Developer CLI</a>
+        <a class="btn" href="#hardware">Firmware</a>
+        <a class="btn" href="{{ tap.repo }}">Tap Repository &rarr;</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{%- for category in site.data.downloads.categories -%}
+<section class="section" id="{{ category.id }}">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">{{ forloop.index | prepend: '0' }}</span>
+      <h2>{{ category.title }}</h2>
+      <p>{{ category.blurb }}</p>
+    </div>
+
+    <div class="grid grid-3">
+      {%- for item in category.items -%}
+      <article class="plate plate-live card download-card" id="{{ item.id }}">
+        <div class="card-head">
+          <h3>{{ item.name }}</h3>
+          <span class="status status-released">v{{ item.version }}</span>
+        </div>
+
+        <p>{{ item.summary }}</p>
+
+        {%- if item.platforms -%}
+        <ul class="tags">
+          {%- for p in item.platforms -%}
+          <li class="tag">{{ p }}</li>
+          {%- endfor -%}
+        </ul>
+        {%- endif -%}
+
+        <div class="card-foot">
+          {%- if item.brew_cask -%}
+          <div class="install-block">
+            <span class="install-label">Homebrew Cask</span>
+            <code class="install">brew install --cask {{ item.brew_cask }}</code>
+          </div>
+          {%- endif -%}
+
+          {%- if item.brew_formula -%}
+          <div class="install-block">
+            <span class="install-label">Homebrew Formula</span>
+            <code class="install">brew install {{ item.brew_formula }}</code>
+          </div>
+          {%- endif -%}
+
+          {%- if item.flash_command -%}
+          <div class="install-block">
+            <span class="install-label">Flash Command</span>
+            <code class="install">{{ item.flash_command }}</code>
+          </div>
+          {%- endif -%}
+
+          {%- if item.downloads -%}
+          <div class="download-list">
+            <span class="install-label">Direct Downloads</span>
+            <div class="btn-row">
+              {%- for dl in item.downloads -%}
+              <a class="btn btn-primary btn-sm" href="{{ dl.url }}" download>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>{{ dl.label }}</span>
+                {%- if dl.size -%}<span class="btn-meta">({{ dl.size }})</span>{%- endif -%}
+              </a>
+              {%- endfor -%}
+            </div>
+          </div>
+          {%- endif -%}
+
+          <div class="card-links">
+            {%- if item.releases_url -%}
+            <a class="text-link" href="{{ item.releases_url }}">Releases &amp; Changelog</a>
+            {%- endif -%}
+            {%- if item.source_url -%}
+            <a class="text-link" href="{{ item.source_url }}">Source</a>
+            {%- endif -%}
+          </div>
+        </div>
+      </article>
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+{%- endfor -%}
+
+<section class="section" id="source">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <span class="eyebrow">Build From Source</span>
+        <h2>Every tool builds from one monorepo.</h2>
+        <p>All applications, CLIs, firmware, and packages in the Vitruvian ecosystem are developed as code in the <code>vitruvian-core</code> monorepo with hermetic Bazel toolchains.</p>
+        <div class="install-block" style="margin-top: var(--space-4);">
+          <span class="install-label">Clone &amp; test</span>
+          <code class="install">git clone https://github.com/VitruvianSoftware/vitruvian-core.git &amp;&amp; bazel test //...</code>
+        </div>
+      </div>
+      <div class="btn-row">
+        <a class="btn" href="{{ site.monorepo }}">Browse vitruvian-core</a>
+        <a class="btn" href="{{ site.monorepo }}/blob/main/CONTRIBUTING.md">Contribution Guide</a>
+      </div>
+    </div>
+  </div>
+</section>

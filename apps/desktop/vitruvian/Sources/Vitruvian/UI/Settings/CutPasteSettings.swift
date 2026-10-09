@@ -98,6 +98,11 @@ package struct CutPasteSettings: View {
                         .frame(width: 108)
                         .disabled(!renameEnabled)
                         Button(l10n.s.shortcutReset) {
+                            if let refusal = renameRefusal(for: .finderRenameDefault) {
+                                renameError = refusal
+                                pendingRenameTakeOver = nil
+                                return
+                            }
                             renameShortcutRaw = GlobalShortcut.finderRenameDefault.storageValue
                             renameError = nil
                             pendingRenameTakeOver = nil
@@ -119,6 +124,13 @@ package struct CutPasteSettings: View {
                         SystemShortcutTakeOverOffer(
                             shortcut: pendingRenameTakeOver,
                             onAccept: {
+                                // The offer may have waited while another row
+                                // took the combination.
+                                if let refusal = renameRefusal(for: pendingRenameTakeOver) {
+                                    renameError = refusal
+                                    self.pendingRenameTakeOver = nil
+                                    return
+                                }
                                 renameShortcutRaw = pendingRenameTakeOver.storageValue
                                 SystemShortcutTakeover.setTakeOver(DefaultsKey.finderRenameShortcut, true)
                                 self.pendingRenameTakeOver = nil
@@ -161,17 +173,20 @@ package struct CutPasteSettings: View {
         }
     }
 
+    /// The message when somebody else holds `shortcut`, or nil when it is
+    /// free. Recording, Reset and accepting a take-over all ask it.
+    private func renameRefusal(for shortcut: GlobalShortcut) -> String? {
+        guard case .refuse(let holder) = ShortcutConflicts.write(shortcut, holders: [
+            { GlobalShortcutRole.conflict(for: $0, excluding: .finderRename)?.title(l10n.s) },
+            { WindowLayoutService.shared.shortcutConflictTitle($0) },
+            { ShortcutConflicts.title(for: $0) },
+        ]) else { return nil }
+        return String(format: l10n.s.shortcutConflictFormat, holder)
+    }
+
     private func saveRenameShortcut(_ shortcut: GlobalShortcut) {
-        if let conflict = GlobalShortcutRole.conflict(for: shortcut, excluding: .finderRename) {
-            renameError = String(format: l10n.s.shortcutConflictFormat, conflict.title(l10n.s))
-            return
-        }
-        if let conflict = WindowLayoutService.shared.shortcutConflictTitle(shortcut) {
-            renameError = String(format: l10n.s.shortcutConflictFormat, conflict)
-            return
-        }
-        if let conflict = ShortcutConflicts.title(for: shortcut) {
-            renameError = String(format: l10n.s.shortcutConflictFormat, conflict)
+        if let refusal = renameRefusal(for: shortcut) {
+            renameError = refusal
             return
         }
         // The offer is the last word on a combination: every other check has

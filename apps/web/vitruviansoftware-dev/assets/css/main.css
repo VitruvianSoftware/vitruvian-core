@@ -440,6 +440,19 @@ pre {
   color: var(--color-on-accent);
 }
 
+/* On the light board the steel fill is too pale for light text (3.7:1), so
+   filled controls take the darker steel there. */
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .skip-link {
+  background: var(--color-accent-text);
+  border-color: var(--color-accent-text);
+}
+
+[data-theme="light"] .btn-primary:hover {
+  background: #2f4660;
+  border-color: #2f4660;
+}
+
 .btn svg {
   width: 16px;
   height: 16px;
@@ -486,6 +499,10 @@ pre {
   color: var(--color-text-dim);
   border: 1px solid var(--color-line);
   background: var(--color-surface-2);
+}
+
+[data-theme="light"] .tag {
+  color: #4a545a;
 }
 
 .status {
@@ -731,7 +748,7 @@ pre {
 }
 
 .terminal-body .c {
-  color: #6b757c;
+  color: #808b92;
 }
 
 .terminal-body .ok {
@@ -1128,6 +1145,37 @@ pre {
   margin-bottom: 0;
 }
 
+/* A post marked `archived: true` carries this note above its body, and a
+   small flag beside its title in the post lists. */
+.archive-note {
+  max-width: var(--measure);
+  margin: 0 0 var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-left: 2px solid var(--color-warn);
+  background: var(--color-surface);
+  color: var(--color-text-dim);
+  font-size: 0.95rem;
+}
+
+.archive-note strong {
+  color: var(--color-text);
+}
+
+.archived-flag {
+  display: inline-block;
+  margin-left: var(--space-3);
+  padding: 2px var(--space-3);
+  vertical-align: middle;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-divider);
+}
+
 .prose :not(pre) > code {
   padding: 1px 6px;
   background: var(--color-surface-2);
@@ -1199,7 +1247,7 @@ pre {
 .highlight .cm,
 .highlight .cs,
 .highlight .cp {
-  color: #6b757c;
+  color: #808b92;
   font-style: italic;
 }
 
@@ -1364,6 +1412,72 @@ pre {
   -webkit-text-stroke: 1px var(--color-accent-text);
 }
 
+/* ───────────────────────────── downloads ────────────────────────────────── */
+.download-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.download-card .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.download-card .card-head h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.install-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.install-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-dim);
+}
+
+.download-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.btn-sm {
+  min-height: 38px;
+  padding: 0 var(--space-4);
+  font-size: 12px;
+}
+
+.btn-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.75;
+  margin-left: var(--space-1);
+}
+
+.category-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.category-jump .btn {
+  font-size: 12px;
+  min-height: 36px;
+  padding: 0 var(--space-4);
+}
+
 /* ───────────────────────────── utilities ────────────────────────────────── */
 .muted {
   color: var(--color-text-dim);
@@ -1507,6 +1621,31 @@ pre {
 
   .footer-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* The hero terminal's longest line is wider than a phone. Wrap it, so the
+     first thing a visitor sees is not text cut off at the edge. */
+  .terminal-body {
+    padding: var(--space-4);
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Links that stand alone get a finger-sized target. */
+  .text-link,
+  .card h3 a,
+  .post-item h2 a,
+  .post-item h3 a,
+  .footer-grid a,
+  .footer-bottom a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+
+  .footer-grid li {
+    margin-bottom: 0;
   }
 }
 

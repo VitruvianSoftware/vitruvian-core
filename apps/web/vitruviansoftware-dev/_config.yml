@@ -31,6 +31,8 @@ social:
 navigation:
   - title: Projects
     url: /projects/
+  - title: Downloads
+    url: /downloads/
   - title: Engineering
     url: /engineering/
   - title: Blog
@@ -47,6 +49,12 @@ defaults:
     values:
       layout: post
       author: Vitruvian Software
+  # The preview image a link to any page shows when shared. A page can set its
+  # own `image:` to override it.
+  - scope:
+      path: ""
+    values:
+      image: /assets/img/social-card.png
 
 markdown: kramdown
 kramdown:
@@ -56,6 +64,7 @@ kramdown:
 plugins:
   - jekyll-feed
   - jekyll-seo-tag
+  - jekyll-sitemap
 
 feed:
   path: feed.xml

@@ -867,6 +867,63 @@ case_gitleaks_allowlist_comment_ignored() {
   rm -rf "$root"
 }
 
+# --- check_oci_base_registry --------------------------------------------------
+# Docker Hub rate-limits anonymous pulls from shared runner addresses, so a base
+# image fetched from it can fail every build that uses it.
+ocibase_line() {
+  printf '%s\n' "$1" | awk '
+    /^Container base images/ {in_s=1; next}
+    in_s && /^[A-Za-z]/ && !/^ / {in_s=0}
+    in_s && index($0, "MODULE.bazel") {print; exit}
+  '
+}
+
+# write_oci_pull <root> <image> — one digest-pinned oci.pull of that image.
+write_oci_pull() {
+  printf 'oci.pull(\n    name = "base",\n    digest = "sha256:abc",\n    image = "%s",\n)\n' "$2" \
+    > "$1/MODULE.bazel"
+}
+
+# The fixed state: the image comes from a registry named in the reference.
+case_oci_base_off_docker_hub() {
+  root="$(new_root)"
+  write_oci_pull "$root" 'public.ecr.aws/docker/library/ubuntu'
+  out="$(run_check "$root")"
+  expect "a base image from a named registry passes" \
+    "$(ocibase_line "$out")" "✓"
+  rm -rf "$root"
+}
+
+# The broken state: a bare name means Docker Hub.
+case_oci_base_bare_name_is_docker_hub() {
+  root="$(new_root)"
+  write_oci_pull "$root" 'ubuntu'
+  out="$(run_check "$root")"
+  expect "a bare image name is reported as a Docker Hub pull" \
+    "$(ocibase_line "$out")" "pulled from Docker Hub"
+  rm -rf "$root"
+}
+
+# Spelling the host out is still Docker Hub.
+case_oci_base_explicit_docker_hub() {
+  root="$(new_root)"
+  write_oci_pull "$root" 'index.docker.io/library/ubuntu'
+  out="$(run_check "$root")"
+  expect "an explicit Docker Hub host is reported as a failure" \
+    "$(ocibase_line "$out")" "pulled from Docker Hub"
+  rm -rf "$root"
+}
+
+# A commented-out example must not be read as live config.
+case_oci_base_comment_ignored() {
+  root="$(new_root)"
+  printf '# oci.pull(\n#     image = "ubuntu",\n# )\n' > "$root/MODULE.bazel"
+  out="$(run_check "$root")"
+  expect "a commented-out oci.pull is not checked" \
+    "$(ocibase_line "$out")" "0 image(s)"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
@@ -900,6 +957,10 @@ case_action_sha_pins_fails
 case_gitleaks_allowlist_path_live
 case_gitleaks_allowlist_path_stale
 case_gitleaks_allowlist_comment_ignored
+case_oci_base_off_docker_hub
+case_oci_base_bare_name_is_docker_hub
+case_oci_base_explicit_docker_hub
+case_oci_base_comment_ignored
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1
