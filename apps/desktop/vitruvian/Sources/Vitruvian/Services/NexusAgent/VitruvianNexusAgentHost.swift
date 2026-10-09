@@ -32,6 +32,35 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
         set { Self.savedHiddenClaudeSessionIDs = newValue }
     }
 
+    /// Saved as the id's text, so the preference stays a plain string.
+    package var chosenProviderID: UUID? {
+        get { UUID(uuidString: defaults[Preferences.nexusAgentChosenProvider]) }
+        set { defaults[Preferences.nexusAgentChosenProvider] = newValue?.uuidString ?? "" }
+    }
+
+    /// Saved as JSON. Nothing saved, or something that cannot be read, is
+    /// no providers of the user's own: the built-in three are still offered.
+    package var savedProviders: [NexusAgentCLIProvider] {
+        get {
+            (try? JSONDecoder().decode([NexusAgentCLIProvider].self,
+                                       from: defaults[Preferences.nexusAgentSavedProviders])) ?? []
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            defaults[Preferences.nexusAgentSavedProviders] = data
+        }
+    }
+
+    package var promptHistory: [String] {
+        get { defaults[Preferences.nexusAgentPromptHistory] }
+        set { defaults[Preferences.nexusAgentPromptHistory] = newValue }
+    }
+
+    package var worktreeMode: Bool {
+        get { defaults[Preferences.nexusAgentWorktreeMode] }
+        set { defaults[Preferences.nexusAgentWorktreeMode] = newValue }
+    }
+
     /// The archived Claude sessions as they are saved: always in the app's
     /// own defaults, whatever `defaults` this host was built with, which is
     /// where they have been kept since before there was a host.

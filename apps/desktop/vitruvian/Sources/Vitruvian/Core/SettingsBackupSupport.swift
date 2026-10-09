@@ -153,6 +153,12 @@ package enum SettingsBackupSupport {
         DefaultsKey.musicBlockReplacementPath,
         // Where the Nexus Agent bot is installed is a folder on this Mac.
         DefaultsKey.nexusAgentBotDirectory,
+        // What the user typed to the agent is private content, not a setting.
+        DefaultsKey.nexusAgentPromptHistory,
+        // A saved provider's command template is RUN as a program, so a backup
+        // must not carry it: importing someone else's file would install a
+        // command. The chosen provider (just an id) is harmless and travels.
+        DefaultsKey.nexusAgentSavedProviders,
         // So is where the GravaStar mouse command is installed.
         DefaultsKey.githubMouseBinaryPath,
         // A local watermark file is authority on this Mac, not portable data.

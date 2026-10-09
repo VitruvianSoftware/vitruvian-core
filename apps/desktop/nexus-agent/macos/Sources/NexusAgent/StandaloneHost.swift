@@ -41,6 +41,54 @@ final class StandaloneHost: NexusAgentHost {
         set { UserDefaults.standard.set(newValue, forKey: "hiddenClaudeSessionIds") }
     }
 
+    /// The same key Settings keeps the selected provider under, as the same
+    /// text: the id's capitals-and-dashes form.
+    var chosenProviderID: UUID? {
+        get { UserDefaults.standard.string(forKey: "activeProviderId").flatMap(UUID.init(uuidString:)) }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue.uuidString, forKey: "activeProviderId")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "activeProviderId")
+            }
+        }
+    }
+
+    /// The two lists Settings saves, joined: the built-in providers (whose
+    /// command the user may have edited) and the user's own. They are JSON
+    /// under the same keys, with the same four fields, as `ConfigManager`
+    /// reads and writes, so either side can read what the other wrote.
+    var savedProviders: [NexusAgentCLIProvider] {
+        get { Self.providers(forKey: "builtInProviders_v3") + Self.providers(forKey: "customProviders") }
+        set {
+            Self.save(newValue.filter(\.isBuiltIn), forKey: "builtInProviders_v3")
+            Self.save(newValue.filter { !$0.isBuiltIn }, forKey: "customProviders")
+        }
+    }
+
+    private static func providers(forKey key: String) -> [NexusAgentCLIProvider] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([NexusAgentCLIProvider].self, from: data)) ?? []
+    }
+
+    private static func save(_ providers: [NexusAgentCLIProvider], forKey key: String) {
+        guard let data = try? JSONEncoder().encode(providers) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    /// The same keys the chat window keeps its prompt history and worktree
+    /// mode under, in the same shape: a list of text, oldest first, and a
+    /// yes or no.
+    var promptHistory: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "promptHistory") ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "promptHistory") }
+    }
+
+    var worktreeMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "worktreeMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "worktreeMode") }
+    }
+
     var strings: NexusAgentHostStrings { NexusAgentHostStrings() }
 
     // The chat window does not run on the engine yet and posts its own

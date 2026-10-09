@@ -25,6 +25,7 @@
 import AppKit
 import Combine
 import Darwin
+import os
 
 /// Runs the Nexus Agent Telegram bot from its folder, edits the part of its
 /// `.env` a settings page shows, and holds the chat with the agent's CLI.
@@ -86,6 +87,25 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         public var transcriptPath: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
         /// Reads the full raw content of a transcript file.
         public var readTranscriptRaw: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
+        /// Runs a program to its end and gives back what it printed to
+        /// standard output, whatever its exit status; nil if it could not
+        /// be started. `name` is a bare name (`ollama`) or a full path.
+        /// It does not run on the main thread: the program may be slow.
+        public var runProgram: @Sendable (_ name: String, _ arguments: [String]) async -> String?
+        /// Runs a provider's own command in `directory`, as the program at
+        /// `path` with exactly these arguments: no shell reads them. What
+        /// it prints and what it writes to standard error are delivered
+        /// apart, each in order, and then its exit status, all on the main
+        /// actor. An exit by signal is reported as the signal's number.
+        public var launchCommand: (_ path: String, _ arguments: [String], _ directory: String,
+                                    _ environment: [String: String],
+                                    _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                    _ onErrorOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                    _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
+        /// Runs one piece of SQL against a SQLite file and gives back what
+        /// it printed, or nil if it failed. With `readsRows` the file is
+        /// opened read-only and the rows come back as JSON.
+        public var runSqlite: (_ database: String, _ sql: String, _ readsRows: Bool) -> Data?
 
         public init(defaults: UserDefaults,
                      home: String,
@@ -109,7 +129,17 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                      listSessions: @escaping (String, NexusAgentCLIProvider, [String]) -> [NexusAgentSessionSummary] = { _, _, _ in [] },
                      readTranscript: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentChatMessage]? = { _, _ in nil },
                      transcriptPath: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
-                     readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil }) {
+                     readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
+                     runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil },
+                     // Left out, no command can be started, and a turn that
+                     // needs one fails saying so.
+                     launchCommand: @escaping (String, [String], String, [String: String],
+                                               @escaping @MainActor @Sendable (Data) -> Void,
+                                               @escaping @MainActor @Sendable (Data) -> Void,
+                                               @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent
+                         = { _, _, _, _, _, _, _ in throw CocoaError(.featureUnsupported) },
+                     // Left out, every statement fails, so nothing is deleted.
+                     runSqlite: @escaping (String, String, Bool) -> Data? = { _, _, _ in nil }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -130,6 +160,9 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             self.readTranscript = readTranscript
             self.transcriptPath = transcriptPath
             self.readTranscriptRaw = readTranscriptRaw
+            self.runProgram = runProgram
+            self.launchCommand = launchCommand
+            self.runSqlite = runSqlite
         }
 
         public static var live: Environment {
@@ -157,7 +190,10 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                 readTranscriptRaw: { id, provider in
                     guard let path = NexusAgentEngine.transcriptPath(home: home, conversationID: id, provider: provider) else { return nil }
                     return try? String(contentsOfFile: path, encoding: .utf8)
-                })
+                },
+                runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) },
+                launchCommand: NexusAgentEngine.launchCommandProcess,
+                runSqlite: { NexusAgentEngine.runSqliteProcess($0, $1, $2) })
         }
     }
 
@@ -175,6 +211,25 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         set { updateActiveProvider(newValue) }
     }
 
+    /// Built-in providers with the host's saved edits applied, then the
+    /// host's own providers. Asked of the host each time, never kept.
+    public var providers: [NexusAgentCLIProvider] {
+        NexusAgentCLIProvider.available(saved: host.savedProviders)
+    }
+
+    /// A configuration as it should be held: the file knows nothing of the
+    /// provider the chat uses, so whatever was just read or built gets the
+    /// one the host remembers. Every assignment to `configuration` from a
+    /// file goes through here, or the choice would fall back to Antigravity.
+    private func withChosenProvider(_ fresh: NexusAgentConfiguration) -> NexusAgentConfiguration {
+        var next = fresh
+        next.activeProvider = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
+        return next
+    }
+
+    /// The host's text as it is right now, for a view that shows some of it.
+    public var hostStrings: NexusAgentHostStrings { host.strings }
+
     public let session: NexusAgentQuickPromptSession
     private let environment: Environment
     private let host: any NexusAgentHost
@@ -191,6 +246,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         self.host = host
         session = NexusAgentQuickPromptSession(environment: environment, host: host)
         super.init()
+        // Before any file is read the chat already runs the remembered provider.
+        configuration = withChosenProvider(configuration)
         session.engine = self
         // The closure keeps the host itself, so a turn that outlives the
         // engine is still reported. With no engine there is no window to be
@@ -267,21 +324,48 @@ open class NexusAgentEngine: NSObject, ObservableObject {
 
     /// Reads the bot's `.env` and finds the agent, for the page.
     public func load() {
-        configuration = environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration()
-        agentPath = NexusAgentSupport.locateAgent(named: configuration.activeProvider.executableName,
-                                                  environment: environment.processEnvironment,
-                                                  home: environment.home,
-                                                  isExecutable: environment.isExecutable)
+        configuration = withChosenProvider(
+            environment.readFile(envFilePath).map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration())
+        agentPath = locateProgram(of: configuration.activeProvider)
     }
 
-
+    /// Switches the chat to `provider` and has the host remember it.
     public func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
+        host.chosenProviderID = provider.id
         configuration.activeProvider = provider
-        agentPath = NexusAgentSupport.locateAgent(named: provider.executableName,
-                                                  environment: environment.processEnvironment,
-                                                  home: environment.home,
-                                                  isExecutable: environment.isExecutable)
+        agentPath = locateProgram(of: provider)
         session.refreshSessions(configuration: configuration)
+    }
+
+    /// Where the program that runs `provider`'s turns is, for the page to
+    /// say when it is missing. For a command of the user's own that is the
+    /// first word of its template, looked for where the session will look
+    /// when it runs it; the session finds it again for each turn, because
+    /// the word may have the model in it.
+    private func locateProgram(of provider: NexusAgentCLIProvider) -> String? {
+        switch provider.route {
+        case .antigravity:
+            // agy keeps its own lookup, AGY_BIN included.
+            return NexusAgentSupport.locateAgent(named: provider.executableName,
+                                                 environment: environment.processEnvironment,
+                                                 home: environment.home,
+                                                 isExecutable: environment.isExecutable)
+        case .claude, .ollama:
+            return NexusAgentSupport.locateChatProgram(named: provider.executableName,
+                                                       environment: environment.processEnvironment,
+                                                       home: environment.home,
+                                                       isExecutable: environment.isExecutable,
+                                                       fileExists: environment.fileExists)
+        case .custom:
+            break
+        }
+        guard let command = NexusAgentSupport.providerCommand(template: provider.commandTemplate, prompt: "",
+                                                              model: configuration.model),
+              !command.executable.isEmpty else { return nil }
+        return NexusAgentSupport.executablePath(named: command.executable,
+                                                pathVariable: environment.processEnvironment["PATH"] ?? "",
+                                                isExecutable: environment.isExecutable,
+                                                fileExists: environment.fileExists)
     }
 
     /// Writes the page's values into the `.env`, keeping the rest of it.
@@ -296,7 +380,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             problem = .saveFailed
             return false
         }
-        configuration = NexusAgentEnvFile.parse(content)
+        configuration = withChosenProvider(NexusAgentEnvFile.parse(content))
         problem = nil
         if isRunning { needsRestart = true }
         return true
@@ -504,6 +588,111 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         return process.processIdentifier
     }
 
+    /// Runs a program on a background queue and returns its standard
+    /// output; what it prints to standard error is dropped and its exit
+    /// status is not looked at, as the standalone app has it. A bare name
+    /// is looked for where that app looks; one found nowhere is still tried
+    /// in Homebrew's folder, where it then fails to start and gives nil.
+    ///
+    /// The limit is a hard one: `timeLimit` seconds after the start (20 for
+    /// the real lookups, as the standalone app gives `agy`) the caller is
+    /// given nil, whatever the program is doing, unless it has already
+    /// finished. That holds for a program that ignores a polite stop and for
+    /// one whose child keeps the output open: the answer does not wait for
+    /// either. At the limit the program is sent SIGTERM, and SIGKILL one
+    /// second later if it is still running, and the reading thread is told
+    /// to stop and ends within a moment (it never waits on the output
+    /// without a short time limit of its own). What is not guaranteed: a
+    /// grandchild that outlives the program is not looked for, so it may
+    /// keep running; it no longer holds anything up. The limit is a
+    /// parameter only so a test can use a short one.
+    nonisolated public static func runProgram(named name: String, arguments: [String],
+                                              timeLimit: TimeInterval = 20) async -> String? {
+        let files = FileManager.default
+        let path = NexusAgentSupport.executablePath(
+            named: name,
+            pathVariable: ProcessInfo.processInfo.environment["PATH"] ?? "",
+            isExecutable: { files.isExecutableFile(atPath: $0) },
+            fileExists: { files.fileExists(atPath: $0) })
+            ?? (name.hasPrefix("/") ? name : "/opt/homebrew/bin/" + name)
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                let output = Pipe()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
+                process.standardOutput = output
+                process.standardError = FileHandle.nullDevice
+                do {
+                    try process.run()
+                } catch {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                // Starting the process has already closed this side's copy of
+                // the write end, so only the child holds it and its exit
+                // reaches the reader as end of output. Standard error goes
+                // to the null device, so no pipe but the one being read can fill.
+                let reader = output.fileHandleForReading
+                // True once the answer has been given, by whichever of the
+                // reading below and the watchdog gets there first. The one
+                // that flips it is the one that resumes the continuation,
+                // so it is resumed once, whatever the order of events.
+                let answered = OSAllocatedUnfairLock(initialState: false)
+                let watchdog = DispatchWorkItem {
+                    guard claimAnswer(answered) else { return }
+                    // Give the answer first, so the caller is not kept
+                    // waiting by anything below.
+                    if process.isRunning { process.terminate() }
+                    continuation.resume(returning: nil)
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                        if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+                    }
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeLimit, execute: watchdog)
+
+                // Read in short turns, so a read never waits on a pipe that
+                // nothing will close: the watchdog's claim is seen within
+                // a tenth of a second and the loop ends.
+                var data = Data()
+                var chunk = [UInt8](repeating: 0, count: 4096)
+                var descriptor = pollfd(fd: reader.fileDescriptor, events: Int16(POLLIN), revents: 0)
+                while !answered.withLock({ $0 }) {
+                    descriptor.revents = 0
+                    let ready = Darwin.poll(&descriptor, 1, 100)
+                    if ready < 0 {
+                        if errno == EINTR { continue }
+                        break
+                    }
+                    if ready == 0 { continue }
+                    let count = Darwin.read(reader.fileDescriptor, &chunk, chunk.count)
+                    if count > 0 {
+                        data.append(contentsOf: chunk[0..<count])
+                    } else if count == 0 || (errno != EINTR && errno != EAGAIN) {
+                        break
+                    }
+                }
+                try? reader.close()
+                // The output has ended, so the program is ending; if it is
+                // not, the watchdog still ends it at the limit.
+                process.waitUntilExit()
+                watchdog.cancel()
+                if claimAnswer(answered) {
+                    continuation.resume(returning: String(data: data, encoding: .utf8))
+                }
+            }
+        }
+    }
+
+    /// Takes the right to give the answer, once: true for the first caller only.
+    nonisolated private static func claimAnswer(_ answered: OSAllocatedUnfairLock<Bool>) -> Bool {
+        answered.withLock { done in
+            if done { return false }
+            done = true
+            return true
+        }
+    }
+
     /// Output is read on a thread of its own until EOF, and each chunk is
     /// queued to the main thread before the exit is, so the session sees the
     /// whole reply before the turn ends.
@@ -539,6 +728,65 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         return NexusAgentRunningAgent(terminate: {
             // agy leads a process group of its own; signalling the group
             // also ends the tools it started, which hold the pipe open.
+            if getpgid(pid) == pid { _ = kill(-pid, SIGTERM) }
+            process.terminate()
+        })
+    }
+
+    /// A provider's own command. The program is started directly with its
+    /// arguments as given, never through a shell. Its two outputs have a
+    /// pipe and a reading thread each, so neither can fill up and stall
+    /// the other; the exit is queued to the main thread only after both
+    /// have been read to their end, so the session has everything first.
+    nonisolated private static func launchCommandProcess(_ path: String, _ arguments: [String], _ directory: String,
+                                                         _ environment: [String: String],
+                                                         _ onOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                                         _ onErrorOutput: @escaping @MainActor @Sendable (Data) -> Void,
+                                                         _ onExit: @escaping @MainActor @Sendable (Int32) -> Void) throws -> NexusAgentRunningAgent {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.environment = environment
+        // Nothing can be typed to it, so a command that waits to be asked
+        // something ends instead of hanging the turn.
+        process.standardInput = FileHandle.nullDevice
+        let output = Pipe()
+        let errors = Pipe()
+        process.standardOutput = output
+        process.standardError = errors
+        try process.run()
+        // Only the child keeps the write ends, so its exit reaches the readers as EOF.
+        try? output.fileHandleForWriting.close()
+        try? errors.fileHandleForWriting.close()
+        let outputReader = output.fileHandleForReading
+        let errorReader = errors.fileHandleForReading
+        let errorsRead = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            while true {
+                let chunk = errorReader.availableData
+                if chunk.isEmpty { break }
+                DispatchQueue.main.async { onErrorOutput(chunk) }
+            }
+            try? errorReader.close()
+            errorsRead.signal()
+        }
+        Thread.detachNewThread {
+            while true {
+                let chunk = outputReader.availableData
+                if chunk.isEmpty { break }
+                DispatchQueue.main.async { onOutput(chunk) }
+            }
+            try? outputReader.close()
+            errorsRead.wait()
+            process.waitUntilExit()
+            let status = process.terminationStatus
+            DispatchQueue.main.async { onExit(status) }
+        }
+        let pid = process.processIdentifier
+        return NexusAgentRunningAgent(terminate: {
+            // As for agy: a command that leads its own process group has
+            // the group signalled, so what it started ends with it.
             if getpgid(pid) == pid { _ = kill(-pid, SIGTERM) }
             process.terminate()
         })
@@ -985,6 +1233,105 @@ extension NexusAgentEngine {
             try? NexusAgentSessionSummary.antigravityAnnotation(text, archived: archived, now: now)
                 .write(toFile: path, atomically: true, encoding: .utf8)
         }
+    }
+
+    // MARK: - Deleting agy conversations
+
+    /// Deletes one agy conversation, as the standalone app does: its row
+    /// is taken out of the index, and then the three files agy keeps the
+    /// conversation in are removed from the `conversations` folder beside
+    /// that index. Its annotation and its transcript are left, as they are
+    /// there. Returns whether the row was taken out; if it was not, no
+    /// file is removed.
+    ///
+    /// Only the built-in Antigravity provider's conversations can be
+    /// deleted; any other provider is refused. So is an id that is not a
+    /// plain name, because the id goes into the paths of the files removed.
+    /// Everything is looked for under `environment.home`.
+    @discardableResult
+    public static func deleteSession(id: String, provider: NexusAgentCLIProvider,
+                                     environment: Environment) -> Bool {
+        guard provider.id == NexusAgentCLIProvider.antigravity.id,
+              NexusAgentSessionSummary.isPlainName(id),
+              let database = antigravityIndex(environment: environment),
+              environment.runSqlite(database, NexusAgentSessionSummary.deleteStatement(id: id), false) != nil
+        else { return false }
+        let conversations = ((database as NSString).deletingLastPathComponent as NSString)
+            .appendingPathComponent("conversations")
+        for suffix in [".db", ".db-wal", ".db-shm"] {
+            environment.removeFile((conversations as NSString).appendingPathComponent(id + suffix))
+        }
+        return true
+    }
+
+    /// Deletes every conversation the standalone app's "Clear All" would
+    /// for `directory`, one at a time, and returns how many. That is the
+    /// top-level conversations recorded for exactly that folder, plus those
+    /// with no folder recorded; not a nested, aborted or archived one, and
+    /// not another folder's (`NexusAgentSessionSummary.idsToDeleteAll`).
+    /// It stops at the first one that cannot be deleted; the count is of
+    /// those deleted before it.
+    @discardableResult
+    public static func deleteAllSessions(directory: String, provider: NexusAgentCLIProvider,
+                                         environment: Environment) -> Int {
+        deletedSessionIDs(directory: directory, provider: provider, environment: environment).count
+    }
+
+    /// The same, but gives back which conversations went, in order, so a
+    /// caller can tell whether the one it has open was among them.
+    static func deletedSessionIDs(directory: String, provider: NexusAgentCLIProvider,
+                                  environment: Environment) -> [String] {
+        guard provider.id == NexusAgentCLIProvider.antigravity.id,
+              let database = antigravityIndex(environment: environment),
+              let rows = environment.runSqlite(database, NexusAgentSessionSummary.deleteAllQuery, true)
+        else { return [] }
+        let ids = NexusAgentSessionSummary.idsToDeleteAll(
+            rows, directory: directory,
+            archivedIds: NexusAgentSessionSummary.antigravityArchivedSessionIds(home: environment.home))
+        // One at a time, and the first failure ends it: with the index locked
+        // each try waits out the busy timeout on the main thread, so going
+        // on through 200 conversations would freeze the app for minutes.
+        // What was deleted before the failure stays deleted and is counted.
+        var deleted: [String] = []
+        for id in ids {
+            guard deleteSession(id: id, provider: provider, environment: environment) else { break }
+            deleted.append(id)
+        }
+        return deleted
+    }
+
+    /// The first of agy's data folders under the environment's home that
+    /// holds a conversation index. SQLite is never run on a file that is
+    /// not there, because it would create one.
+    private static func antigravityIndex(environment: Environment) -> String? {
+        NexusAgentSessionSummary.antigravityDataDirectories
+            .map { (environment.home as NSString).appendingPathComponent($0 + "/conversation_summaries.db") }
+            .first(where: environment.fileExists)
+    }
+
+    /// One piece of SQL through `/usr/bin/sqlite3`, the way the standalone
+    /// app runs it. The SQL is one argument of its own; no shell reads it.
+    ///
+    /// agy may have its index open, and SQLite then fails at once with
+    /// "database is locked". So the statement waits up to `busyTimeout`
+    /// seconds (2 for the real calls; a parameter only so a test can use a
+    /// short one) for the lock to be let go before it gives up and gives
+    /// nil. The wait is asked for with a `-cmd` argument of its own, built
+    /// from a number, so nothing the SQL holds can reach it.
+    nonisolated public static func runSqliteProcess(_ database: String, _ sql: String, _ readsRows: Bool,
+                                                    busyTimeout: TimeInterval = 2) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        let milliseconds = Int((max(0, busyTimeout) * 1000).rounded())
+        process.arguments = ["-cmd", ".timeout \(milliseconds)"]
+            + (readsRows ? ["-json", "-readonly"] : []) + [database, sql]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? data : nil
     }
 
     nonisolated private static func runSqlite(database: String, sql: String) {

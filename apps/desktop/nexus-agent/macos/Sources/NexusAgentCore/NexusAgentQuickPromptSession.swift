@@ -116,8 +116,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var lastFailedPrompt: String?
     /// Elapsed seconds during current active generation.
     @Published public private(set) var elapsedSeconds: Int = 0
-    /// History of sent prompts for Up/Down arrow navigation.
-    @Published public var promptHistory: [String] = []
+    /// History of sent prompts for Up/Down arrow navigation, oldest first.
+    /// It starts as what the host kept, and each new prompt is handed back.
+    @Published public var promptHistory: [String]
     @Published public var historyIndex: Int = -1
     /// Called when an agent turn completes, in place of telling the host
     /// directly: the engine sets it, to add whether its chat is on screen.
@@ -126,8 +127,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var planMode: Bool {
         didSet { host.planMode = planMode }
     }
-    /// Turns run with `-w` (isolated git worktree) while on.
-    @Published public var worktreeMode: Bool = false
+    /// Turns run with `-w` (isolated git worktree) while on. Remembered.
+    @Published public var worktreeMode: Bool {
+        didSet { host.worktreeMode = worktreeMode }
+    }
+    /// How many prompts the host is given to keep. The running chat holds
+    /// every prompt sent since it opened; only what is saved is cut.
+    public static let savedPromptHistoryLimit = 20
 
     @Published public private(set) var activeSubagents: [NexusAgentActiveSubagent] = []
     @Published public var isFollowerActive: Bool = false
@@ -148,14 +154,23 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// Callbacks from a turn that has since been stopped or replaced are dropped.
     private var turn = 0
     private var stoppedByUser = false
+    /// True from the moment a turn asks Ollama which models it has until
+    /// the agent is started with the answer, or the turn is stopped.
+    private var awaitingModel = false
     private var reportedError = false
     /// Output that is not stream JSON (agy's own errors), kept for a failure.
     private var noise: [String] = []
+    /// Everything a provider's own command has printed this turn, and
+    /// everything it has written to standard error, kept apart.
+    private var commandOutput = Data()
+    private var commandErrors = Data()
 
     public init(environment: NexusAgentEngine.Environment, host: any NexusAgentHost) {
         self.environment = environment
         self.host = host
         self.planMode = host.planMode
+        self.worktreeMode = host.worktreeMode
+        self.promptHistory = host.promptHistory
     }
 
     /// Send is offered only for a prompt with text and no turn in flight.
@@ -206,6 +221,41 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                                               provider: configuration.activeProvider, host: host)
         }
         refreshSessions(configuration: configuration)
+    }
+
+    /// Deletes an agy conversation for good and reloads the drawer list.
+    /// Returns false, having changed nothing, for any other provider's.
+    /// If it was the conversation open in the chat, the chat is new: the
+    /// next prompt would otherwise try to resume one that is gone.
+    @discardableResult
+    public func delete(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) -> Bool {
+        let deleted = NexusAgentEngine.deleteSession(id: summary.id, provider: configuration.activeProvider,
+                                                     environment: environment)
+        if deleted, conversationID == summary.id { newChat() }
+        refreshSessions(configuration: configuration)
+        return deleted
+    }
+
+    /// Deletes every agy conversation of the working folder, as the
+    /// standalone app's "Clear All" does, and reloads the drawer list.
+    /// Returns how many went.
+    ///
+    /// The folder is the one the settings name, or home when they name
+    /// none. It is used as named even if it is gone, and never widened:
+    /// the drawer lists every folder's conversations when none is set,
+    /// but "all" here is always one folder's.
+    @discardableResult
+    public func deleteAll(in configuration: NexusAgentConfiguration) -> Int {
+        let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
+        let directory = configured.isEmpty
+            ? environment.home
+            : NexusAgentSupport.botDirectory(configured: configured, home: environment.home)
+        let deleted = NexusAgentEngine.deletedSessionIDs(directory: directory, provider: configuration.activeProvider,
+                                                         environment: environment)
+        // As for one conversation: the open chat is new if it went too.
+        if let open = conversationID, deleted.contains(open) { newChat() }
+        refreshSessions(configuration: configuration)
+        return deleted.count
     }
 
     /// Starts watching the transcript file for live updates while in chat mode.
@@ -268,6 +318,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Continues a past conversation: the next turn passes its id to the active provider.
     public func resume(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration = NexusAgentConfiguration()) {
+        // A turn still waiting for its model is dropped, not ended.
+        awaitingModel = false
         stop()
         turn += 1
         running = nil
@@ -317,26 +369,65 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         draft = ""
         mode = .chat
         messages.append(NexusAgentChatMessage(role: .user, text: text))
-        if !promptHistory.contains(text) { promptHistory.append(text) }
+        // A prompt the history already holds, anywhere in it, is neither
+        // added again nor moved to the end; a new one goes last and the
+        // host is given the most recent ones to keep.
+        if !promptHistory.contains(text) {
+            promptHistory.append(text)
+            host.promptHistory = Array(promptHistory.suffix(Self.savedPromptHistoryLimit))
+        }
         historyIndex = -1
         lastFailedPrompt = nil
+        // A command of the user's own is not agy: it has its own program,
+        // found from its template, and its own way of answering.
+        if configuration.activeProvider.route == .custom {
+            sendCommand(text, configuration: configuration)
+            return
+        }
         guard let agentPath else {
             messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
             return
         }
+        let current = beginTurn(configuration: configuration, followsTranscript: true)
+        let model = configuration.model.trimmingCharacters(in: .whitespaces)
+        // Whatever is run as Ollama needs a model, not the built-in provider alone.
+        guard configuration.activeProvider.route == .ollama, model.isEmpty else {
+            launch(text, configuration: configuration, agentPath: agentPath,
+                   ollamaDefaultModel: NexusAgentSupport.ollamaFallbackModel, turn: current)
+            return
+        }
+        // Ollama must be told a model and the settings name none, so it is
+        // asked which ones it has. That runs a program, so the turn waits
+        // for it off the main thread, already showing as running.
+        awaitingModel = true
+        let runProgram = environment.runProgram
+        Task { [weak self] in
+            let listing = await runProgram("ollama", ["list"])
+            guard let self, self.awaitingModel, current == self.turn else { return }
+            self.awaitingModel = false
+            self.launch(text, configuration: configuration, agentPath: agentPath,
+                        ollamaDefaultModel: NexusAgentSupport.ollamaDefaultModel(fromList: listing), turn: current)
+        }
+    }
+
+    /// Puts a new turn on screen as running: an empty reply to fill, the
+    /// clock started. Returns the turn's number, which its callbacks carry
+    /// so that those of a turn since stopped or replaced are dropped.
+    private func beginTurn(configuration: NexusAgentConfiguration, followsTranscript: Bool) -> Int {
         turn += 1
-        let current = turn
         buffer = NexusAgentLineBuffer()
         noise = []
         stoppedByUser = false
         reportedError = false
         currentToolCalls = 0
+        commandOutput = Data()
+        commandErrors = Data()
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
         replyID = reply.id
         messages.append(reply)
         isRunning = true
-        startTranscriptFollower(provider: configuration.activeProvider)
+        if followsTranscript { startTranscriptFollower(provider: configuration.activeProvider) }
         activity = nil
         elapsedSeconds = 0
         elapsedTimer?.invalidate()
@@ -345,10 +436,141 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 self?.elapsedSeconds += 1
             }
         }
+        return turn
+    }
+
+    /// One turn of a provider's own command, as the standalone app runs
+    /// one. The template gives the program and its arguments, with the
+    /// prompt as part of exactly one of them; the program is started
+    /// directly, never through a shell. A plain command has no plan flag,
+    /// so in plan mode the rules go in front of the prompt instead.
+    private func sendCommand(_ text: String, configuration: NexusAgentConfiguration) {
+        let template = configuration.activeProvider.commandTemplate
+        guard let command = NexusAgentSupport.providerCommand(
+            template: template,
+            prompt: planMode ? NexusAgentSupport.planModePrompt(text) : text,
+            model: configuration.model) else {
+            refuse(text, saying: strings.invalidCommandTemplate(template))
+            return
+        }
+        // A template that would take its program's name from the prompt has
+        // no program (see `providerCommand`): it is refused as a program
+        // that is not installed, naming the word as written.
+        guard !command.executable.isEmpty else {
+            refuse(text, saying: strings.commandNotFound(NexusAgentSupport.templateWords(template).first ?? ""))
+            return
+        }
+        guard let path = NexusAgentSupport.executablePath(
+            named: command.executable,
+            pathVariable: environment.processEnvironment["PATH"] ?? "",
+            isExecutable: environment.isExecutable,
+            fileExists: environment.fileExists) else {
+            refuse(text, saying: strings.commandNotFound(command.executable))
+            return
+        }
+        // A plain command keeps no transcript to follow.
+        let current = beginTurn(configuration: configuration, followsTranscript: false)
+        let childEnvironment = NexusAgentSupport.commandEnvironment(base: environment.processEnvironment,
+                                                                    fileExists: environment.fileExists)
+        do {
+            running = try environment.launchCommand(
+                path, command.arguments, workingDirectory(for: configuration), childEnvironment,
+                { [weak self] data in self?.receiveCommand(data, isErrors: false, turn: current) },
+                { [weak self] data in self?.receiveCommand(data, isErrors: true, turn: current) },
+                { [weak self] status in self?.commandDidExit(status, turn: current) })
+        } catch {
+            isRunning = false
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
+            // The system's own words for why, as the standalone shows them.
+            replace(reply: error.localizedDescription, isError: true)
+            lastFailedPrompt = text
+            replyID = nil
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false))
+        }
+    }
+
+    /// A turn that cannot even start says why in the conversation, and
+    /// leaves the prompt ready to be tried again.
+    private func refuse(_ prompt: String, saying reason: String) {
+        messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
+        lastFailedPrompt = prompt
+    }
+
+    private func receiveCommand(_ data: Data, isErrors: Bool, turn current: Int) {
+        guard current == turn else { return }
+        guard !isErrors else {
+            commandErrors.append(data)
+            return
+        }
+        commandOutput.append(data)
+        // The reply grows as the command prints. A piece can end in the
+        // middle of a letter; then the reply waits for the rest of it.
+        if let printed = String(data: commandOutput, encoding: .utf8) {
+            replace(reply: printed, isError: false)
+        }
+    }
+
+    private func commandDidExit(_ status: Int32, turn current: Int) {
+        guard current == turn else { return }
+        running = nil
+        isRunning = false
+        activity = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        elapsedSeconds = 0
+        let outcome = NexusAgentSupport.commandOutcome(output: commandOutput, errors: commandErrors, status: status)
+        let printed = String(data: commandOutput, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        commandOutput = Data()
+        commandErrors = Data()
+        var completedReply = ""
+        var failed = false
+        var endedCleanly = false
+        if stoppedByUser || outcome == .stopped {
+            // What arrived before the stop stays, as in any other turn.
+            replace(reply: printed.isEmpty ? strings.replyStopped : printed, isError: false)
+            completedReply = printed
+            failed = printed.isEmpty && status != 0
+        } else {
+            switch outcome {
+            case .reply(let text):
+                replace(reply: text, isError: false)
+                completedReply = text
+                endedCleanly = true
+            case .failed(let code, let errors):
+                replace(reply: errors.isEmpty ? strings.commandExited(status: code) : errors, isError: true)
+                failed = true
+            case .noOutput, .stopped:
+                replace(reply: strings.commandNoOutput, isError: true)
+                failed = true
+            }
+            if failed { lastFailedPrompt = messages.last(where: { $0.role == .user })?.text }
+        }
+        report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
+                                    failed: failed, endedCleanly: endedCleanly))
+        replyID = nil
+    }
+
+    /// Tells the app a turn ended.
+    private func report(_ notice: NexusAgentTurnNotice) {
+        if let onTurnFinished {
+            onTurnFinished(notice)
+        } else {
+            // Built without an engine there is no window to be away from:
+            // the host's in-app notice is due, its notification is not.
+            host.turnFinished(notice, isChatVisible: true)
+        }
+    }
+
+    /// Starts the agent for a turn `send` has already put on screen.
+    private func launch(_ text: String, configuration: NexusAgentConfiguration, agentPath: String,
+                        ollamaDefaultModel: String, turn current: Int) {
         let arguments = NexusAgentSupport.agentArguments(prompt: text, configuration: turnConfiguration(configuration),
                                                          conversationID: conversationID,
                                                          planMode: planMode,
-                                                         worktreeMode: worktreeMode)
+                                                         worktreeMode: worktreeMode,
+                                                         ollamaDefaultModel: ollamaDefaultModel)
         let childEnvironment = NexusAgentSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
         do {
@@ -374,9 +596,18 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         running?.terminate()
+        if awaitingModel {
+            // The agent has not started, so nothing will report an exit:
+            // the turn ends here, as a stopped one. The model's name, when
+            // it arrives, finds nothing waiting for it.
+            awaitingModel = false
+            agentDidExit(0, turn: turn)
+        }
     }
 
     public func newChat() {
+        // A turn still waiting for its model is dropped, not ended.
+        awaitingModel = false
         stop()
         stopTranscriptFollower()
         activeSubagents = []
@@ -519,15 +750,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 endedCleanly = true
             }
         }
-        let notice = NexusAgentTurnNotice(providerName: providerName, text: completedReply,
-                                          failed: hadError, endedCleanly: endedCleanly)
-        if let onTurnFinished {
-            onTurnFinished(notice)
-        } else {
-            // Built without an engine there is no window to be away from:
-            // the host's in-app notice is due, its notification is not.
-            host.turnFinished(notice, isChatVisible: true)
-        }
+        report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
+                                    failed: hadError, endedCleanly: endedCleanly))
         replyID = nil
     }
 

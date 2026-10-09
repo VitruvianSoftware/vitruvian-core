@@ -35,6 +35,16 @@ public protocol NexusAgentHost: AnyObject {
     var planMode: Bool { get set }
     /// Claude sessions the user archived here.
     var hiddenClaudeSessionIDs: [String] { get set }
+    /// The provider the user last chose, by id; nil if they never chose.
+    var chosenProviderID: UUID? { get set }
+    /// Providers beyond the built-in three: the user's own, and built-in
+    /// ones whose command they edited.
+    var savedProviders: [NexusAgentCLIProvider] { get set }
+    /// Prompts the user sent before, oldest first, for the up and down
+    /// arrows. The session hands over at most the twenty most recent.
+    var promptHistory: [String] { get set }
+    /// Worktree mode, remembered between launches.
+    var worktreeMode: Bool { get set }
     /// User-facing text, in the app's language right now.
     var strings: NexusAgentHostStrings { get }
     /// A turn paused for the user to approve a tool.
@@ -85,6 +95,18 @@ public struct NexusAgentHostStrings: Sendable {
     public var problemMissingNode: String
     public var problemStartFailed: String
     public var problemSaveFailed: String
+    /// A provider's own command that could not give a reply. The template
+    /// follows `invalidCommandTemplatePrefix`; the program's name goes
+    /// between the two `commandNotFound` pieces; the exit status follows
+    /// `commandExitedPrefix`.
+    public var invalidCommandTemplatePrefix: String
+    public var commandNotFoundPrefix: String
+    public var commandNotFoundSuffix: String
+    public var commandExitedPrefix: String
+    /// The command ran to its end and printed nothing.
+    public var commandNoOutput: String
+    /// The menu item that deletes a conversation.
+    public var deleteSession: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -107,7 +129,13 @@ public struct NexusAgentHostStrings: Sendable {
                  problemMissingBot: String = "The bot is not installed: src/bot.js was not found in the bot folder.",
                  problemMissingNode: String = "Node.js was not found. Install Node, then start the bot again.",
                  problemStartFailed: String = "The bot could not be started.",
-                 problemSaveFailed: String = "The settings could not be saved.") {
+                 problemSaveFailed: String = "The settings could not be saved.",
+                 invalidCommandTemplatePrefix: String = "Invalid command template: ",
+                 commandNotFoundPrefix: String = "Could not find '",
+                 commandNotFoundSuffix: String = "' in PATH. Is it installed?",
+                 commandExitedPrefix: String = "Process exited with code ",
+                 commandNoOutput: String = "No output from provider",
+                 deleteSession: String = "Delete") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -130,6 +158,24 @@ public struct NexusAgentHostStrings: Sendable {
         self.problemMissingNode = problemMissingNode
         self.problemStartFailed = problemStartFailed
         self.problemSaveFailed = problemSaveFailed
+        self.invalidCommandTemplatePrefix = invalidCommandTemplatePrefix
+        self.commandNotFoundPrefix = commandNotFoundPrefix
+        self.commandNotFoundSuffix = commandNotFoundSuffix
+        self.commandExitedPrefix = commandExitedPrefix
+        self.commandNoOutput = commandNoOutput
+        self.deleteSession = deleteSession
+    }
+
+    public func invalidCommandTemplate(_ template: String) -> String {
+        "\(invalidCommandTemplatePrefix)\(template)"
+    }
+
+    public func commandNotFound(_ program: String) -> String {
+        "\(commandNotFoundPrefix)\(program)\(commandNotFoundSuffix)"
+    }
+
+    public func commandExited(status: Int32) -> String {
+        "\(commandExitedPrefix)\(status)"
     }
 
     /// The opening line of a resumed session; the step count is left out

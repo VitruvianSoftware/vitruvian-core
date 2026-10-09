@@ -1743,7 +1743,7 @@ private struct ModularProviderButtonView: View {
 
     var body: some View {
         Menu {
-            ForEach(NexusAgentCLIProvider.builtIns) { provider in
+            ForEach(service.providers) { provider in
                 Button {
                     service.updateActiveProvider(provider)
                 } label: {
@@ -1779,7 +1779,7 @@ private struct ChatProviderBadge: View {
 
     var body: some View {
         Menu {
-            ForEach(NexusAgentCLIProvider.builtIns) { provider in
+            ForEach(service.providers) { provider in
                 Button {
                     service.updateActiveProvider(provider)
                 } label: {
@@ -2200,6 +2200,17 @@ private struct NexusAgentSessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+        .contextMenu {
+            // Only agy's conversations can be deleted; the engine refuses
+            // any other provider's, so the item is not offered for them.
+            if service.activeProvider.id == NexusAgentCLIProvider.antigravity.id {
+                Button(role: .destructive) {
+                    session.delete(summary, configuration: service.configuration)
+                } label: {
+                    Label(service.hostStrings.deleteSession, systemImage: "trash")
+                }
+            }
+        }
     }
 
     @ViewBuilder

@@ -26,10 +26,14 @@ enum NexusAgentTests {
         pinningAndRetry(suite)
         liveTranscriptAndSubagents(suite)
         sessionArchiving(suite)
+        sessionDeleting(suite)
         claudeEnhancementsAndApprovals(suite)
         notchIntegration(suite)
         antigravityTelemetry(suite)
         hostReadsLive(suite)
+        hostRemembersProviders(suite)
+        hostRemembersHistoryAndWorktreeMode(suite)
+        backupDoesNotCarryProviderCommands(suite)
         hostTurnNotices(suite)
         changesReachTheViews(suite)
     }
@@ -90,6 +94,9 @@ enum NexusAgentTests {
         var sessionList: [NexusAgentSessionSummary] = []
         var listedDirectories: [String] = []
         var listedProviders: [NexusAgentCLIProvider] = []
+        /// The SQL the service asked SQLite to run, and the files it asked to have removed.
+        var sqliteRuns: [String] = []
+        var removed: [String] = []
         let home = "/Users/rig"
         let state = "/Users/rig/Library/Application Support/NexusAgent"
         var bot: String { home + "/.config/nexus-agent" }
@@ -135,7 +142,10 @@ enum NexusAgentTests {
                     files[path] = content
                     return true
                 },
-                removeFile: { [unowned self] in files[$0] = nil },
+                removeFile: { [unowned self] in
+                    removed.append($0)
+                    files[$0] = nil
+                },
                 isBotProcess: { [unowned self] in aliveNode.contains($0) },
                 signal: { [unowned self] pid, signal in
                     signals.append((pid, signal))
@@ -176,8 +186,44 @@ enum NexusAgentTests {
                 readTranscriptRaw: { [unowned self] id, _ in
                     let path = (state as NSString).appendingPathComponent("transcripts/\(id).jsonl")
                     return files[path]
+                },
+                runSqlite: { [unowned self] _, sql, _ in
+                    sqliteRuns.append(sql)
+                    return Data()
                 })
         }
+    }
+
+    // MARK: - Deleting agy conversations
+
+    /// The drawer's Delete item goes through the shared session. The rules
+    /// are tested beside the shared code; here, that this app's service
+    /// does it in its own environment, refuses a Claude session, and that
+    /// the item has a label.
+    private static func sessionDeleting(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let data = rig.home + "/.gemini/antigravity"
+        rig.files[data + "/conversation_summaries.db"] = ""
+        let service = NexusAgentService(environment: rig.environment)
+        let summary = NexusAgentSessionSummary(id: "abc-1", title: "T", steps: 1, modified: nil)
+        let removedBefore = rig.removed.count
+        let listedBefore = rig.listedProviders.count
+
+        let deleted = service.session.delete(summary, configuration: service.configuration)
+        suite.expect(deleted
+                     && rig.sqliteRuns == ["DELETE FROM conversation_summaries WHERE conversation_id = 'abc-1';"]
+                     && Array(rig.removed.dropFirst(removedBefore)) == [data + "/conversations/abc-1.db",
+                                                                        data + "/conversations/abc-1.db-wal",
+                                                                        data + "/conversations/abc-1.db-shm"],
+                     "deleting an agy conversation takes its row out of the index and removes its three files")
+        suite.expect(rig.listedProviders.count == listedBefore + 1, "the drawer's list is read again after a delete")
+
+        service.updateActiveProvider(.claude)
+        let refused = !service.session.delete(summary, configuration: service.configuration)
+        suite.expect(refused && rig.sqliteRuns.count == 1 && rig.removed.count == removedBefore + 3,
+                     "a Claude session is not deleted")
+        suite.expect(service.hostStrings.deleteSession == "Delete", "the Delete item has a label")
     }
 
     private static func botLifecycle(_ suite: TestSuite) {
@@ -506,6 +552,13 @@ enum NexusAgentTests {
         let ollamaArgs = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil, planMode: true, worktreeMode: false)
         suite.expect(ollamaArgs.contains("launch") && ollamaArgs.contains("claude") && ollamaArgs.contains("--model") && ollamaArgs.contains("qwen2.5-coder:7b") && ollamaArgs.contains("--permission-mode"),
                      "ollama arguments launch claude with model and inner flags")
+        config.model = ""
+        let lookedUp = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil,
+                                                        ollamaDefaultModel: "llama3.2:latest")
+        let notLookedUp = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil)
+        suite.expect(Array(lookedUp.prefix(4)) == ["launch", "claude", "--model", "llama3.2:latest"]
+                     && Array(notLookedUp.prefix(4)) == ["launch", "claude", "--model", "qwen3"],
+                     "ollama with no model set runs the model it was found to have, or a fixed one, never \"default\"")
 
         // Provider switching triggers session refresh with selected provider
         let serviceRig = Rig()
@@ -880,6 +933,121 @@ enum NexusAgentTests {
         suite.expect(host.strings.untitledSession
                      == FeatureStrings.nexusAgent(L10n.shared.language).untitledSession,
                      "text comes from the app's translations")
+    }
+
+    /// The provider the user chose, and any providers of their own, are
+    /// saved settings of this app: the host stores and returns both, live,
+    /// and a service built later starts on the same choice.
+    private static func hostRemembersProviders(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let defaults = rig.defaults
+        let host = VitruvianNexusAgentHost(defaults: defaults)
+        suite.expect(host.chosenProviderID == nil && host.savedProviders.isEmpty,
+                     "nothing is chosen or saved to begin with")
+
+        host.chosenProviderID = NexusAgentCLIProvider.claude.id
+        suite.expect(defaults[Preferences.nexusAgentChosenProvider] == NexusAgentCLIProvider.claude.id.uuidString,
+                     "the chosen provider is saved as its id")
+        defaults[Preferences.nexusAgentChosenProvider] = NexusAgentCLIProvider.ollama.id.uuidString
+        suite.expect(host.chosenProviderID == NexusAgentCLIProvider.ollama.id,
+                     "a changed choice is seen without a restart")
+        host.chosenProviderID = nil
+        suite.expect(defaults[Preferences.nexusAgentChosenProvider].isEmpty && host.chosenProviderID == nil,
+                     "no choice is saved as nothing")
+
+        let own = NexusAgentCLIProvider(id: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+                                        name: "My script", commandTemplate: "ask {prompt}", isBuiltIn: false)
+        host.savedProviders = [own]
+        suite.expect(VitruvianNexusAgentHost(defaults: defaults).savedProviders == [own],
+                     "the user's own providers are saved and read back")
+        defaults[Preferences.nexusAgentSavedProviders] = Data("not json".utf8)
+        suite.expect(host.savedProviders.isEmpty, "saved providers that cannot be read are none")
+        host.savedProviders = [own]
+
+        let service = NexusAgentService(environment: rig.environment)
+        suite.expect(service.activeProvider == .antigravity && service.providers == NexusAgentCLIProvider.builtIns + [own],
+                     "the service offers the built-in providers, then the user's own")
+        service.updateActiveProvider(.claude)
+        suite.expect(defaults[Preferences.nexusAgentChosenProvider] == NexusAgentCLIProvider.claude.id.uuidString,
+                     "choosing a provider in the chat saves it")
+        rig.installBot()
+        service.load()
+        suite.expect(service.activeProvider == .claude, "the choice survives reading the bot's settings again")
+        var next = service.configuration
+        next.model = "m"
+        suite.expect(service.save(next) && service.activeProvider == .claude, "and saving them")
+        suite.expect(NexusAgentService(environment: rig.environment).activeProvider == .claude,
+                     "the next launch starts on the chosen provider")
+    }
+
+    /// The prompts the arrows walk through and worktree mode outlive the
+    /// app: the host stores both, live, and the next Quick Prompt starts
+    /// with them. The prompts stay on this Mac.
+    private static func hostRemembersHistoryAndWorktreeMode(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let defaults = rig.defaults
+        let host = VitruvianNexusAgentHost(defaults: defaults)
+        suite.expect(host.promptHistory.isEmpty && !host.worktreeMode, "no history and no worktree mode to begin with")
+
+        host.promptHistory = ["one", "two"]
+        suite.expect(defaults[Preferences.nexusAgentPromptHistory] == ["one", "two"], "prompt history is saved through the host")
+        defaults[Preferences.nexusAgentPromptHistory] = ["three"]
+        suite.expect(host.promptHistory == ["three"], "changed history is seen without a restart")
+        host.worktreeMode = true
+        suite.expect(defaults[Preferences.nexusAgentWorktreeMode], "worktree mode is saved through the host")
+        defaults[Preferences.nexusAgentWorktreeMode] = false
+        suite.expect(!host.worktreeMode, "a changed worktree mode is seen without a restart")
+
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        suite.expect(session.promptHistory == ["three"] && !session.worktreeMode,
+                     "a new prompt starts with the remembered history")
+        session.send("four", configuration: NexusAgentConfiguration(), agentPath: nil)
+        session.send("three", configuration: NexusAgentConfiguration(), agentPath: nil)
+        session.worktreeMode = true
+        suite.expect(defaults[Preferences.nexusAgentPromptHistory] == ["three", "four"]
+                     && defaults[Preferences.nexusAgentWorktreeMode],
+                     "a sent prompt is remembered once, and worktree mode when it changes")
+        let later = NexusAgentQuickPromptSession(environment: rig.environment,
+                                                 host: VitruvianNexusAgentHost(defaults: defaults))
+        suite.expect(later.promptHistory == ["three", "four"] && later.worktreeMode,
+                     "the next launch has both")
+
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(DefaultsKey.nexusAgentPromptHistory)
+                     && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentPromptHistory),
+                     "what the user typed to the agent is not carried by a backup")
+        suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentWorktreeMode)
+                     && SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentChosenProvider),
+                     "worktree mode and the chosen provider are settings a backup carries")
+    }
+
+    /// A saved provider's command is run as a program, so importing someone
+    /// else's backup must never be a way to install one. The choice of
+    /// provider (an id) is harmless and still travels.
+    private static func backupDoesNotCarryProviderCommands(_ suite: TestSuite) {
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(DefaultsKey.nexusAgentSavedProviders)
+                     && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentSavedProviders),
+                     "saved provider commands are not carried by a backup")
+        suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.nexusAgentChosenProvider),
+                     "the chosen provider still is")
+
+        // The way in matters as much as the way out: a file someone edited
+        // by hand can name saved providers, and those must not be restored.
+        let chosen = "AAAAAAAA-0000-0000-0000-00000000000A"
+        let hostile = Data(#"[{"id":"\#(chosen)","name":"x","commandTemplate":"sh -c {prompt}","isBuiltIn":false}]"#.utf8)
+        let incoming: [String: Any] = [
+            SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+            SettingsBackupSupport.settingsKey: [
+                DefaultsKey.nexusAgentSavedProviders: hostile,
+                DefaultsKey.nexusAgentChosenProvider: chosen,
+            ] as [String: Any],
+        ]
+        let restored = SettingsBackupSupport.sanitizedSettings(from: incoming)
+        suite.expect(restored != nil && restored?[DefaultsKey.nexusAgentSavedProviders] == nil,
+                     "saved provider commands in an incoming backup are dropped")
+        suite.expect(restored?[DefaultsKey.nexusAgentChosenProvider] as? String == chosen,
+                     "the chosen provider in an incoming backup is kept")
     }
 
     /// What Vitruvian tells the user when a turn ends or waits: the notch
