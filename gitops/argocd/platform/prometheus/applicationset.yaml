@@ -172,6 +172,44 @@ spec:
                   rules:
                   - expr: sum by (namespace, pod, container) (irate(container_cpu_usage_seconds_total{image!=""}[5m]))
                     record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate
+
+                # ── Graphs on Backstage component pages ──────────────────────
+                # The Backstage Prometheus tab graphs whatever `prometheus.io/rule` in a
+                # catalog-info.yaml names. It splits that annotation on "," and "|" and
+                # puts the text in the URL unencoded, so it can only carry a plain metric
+                # name -- no selector, no function. Each graph therefore needs a recording
+                # rule whose NAME is the whole query. One set per app, named
+                # <app>:<what>; //tools/conformance:check fails if an annotation names a
+                # rule that is not here.
+                #
+                # requests_per_second comes from the Envoy Gateway route, split by status
+                # class (2xx, 4xx, ...). cpu_cores and memory_bytes are per pod and cover
+                # the app container only, not its database. ready_pods counts every ready
+                # pod in the namespace.
+                - name: backstage-graphs
+                  rules:
+                  - record: backstage:requests_per_second
+                    expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/backstage/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
+                  - record: backstage:cpu_cores
+                    expr: sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="backstage", container="backstage-backend"})
+                  - record: backstage:memory_bytes
+                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="backstage", container="backstage-backend"})
+                  - record: buzz:requests_per_second
+                    expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/buzz/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
+                  - record: buzz:cpu_cores
+                    expr: sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="buzz", container="relay"})
+                  - record: buzz:memory_bytes
+                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="buzz", container="relay"})
+                  - record: mcp_slack:requests_per_second
+                    expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/mcp-slack/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
+                  - record: mcp_slack:ready_pods
+                    expr: sum by (namespace) (kube_pod_status_ready{namespace="mcp-slack", condition="true"})
+                  - record: storybook:requests_per_second
+                    expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/storybook/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
+                  - record: storybook:ready_pods
+                    expr: sum by (namespace) (kube_pod_status_ready{namespace="storybook", condition="true"})
+                  - record: whoami:ready_pods
+                    expr: sum by (namespace) (kube_pod_status_ready{namespace="whoami", condition="true"})
               alerting_rules.yml:
                 groups:
 
