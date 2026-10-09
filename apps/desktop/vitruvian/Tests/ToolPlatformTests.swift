@@ -151,7 +151,15 @@ enum ToolPlatformTests {
         let before = registry.revision
         registry.unregister(ToolID("com.acme.deploys")!)
         suite.expect(registry.tool(open.tool) == nil && registry.command(open) == nil && !registry.run(open)
-                         && registry.commands(on: .commandBar).isEmpty && registry.revision > before,
+                         && registry.commands(on: .commandBar).isEmpty && registry.revision > before
+                         && !registry.hasHandler(for: open),
                      "an unregistered tool takes its commands and handlers with it")
+
+        let reborn = ToolDescriptor(id: open.tool, name: "com.acme.deploys", symbol: "star", commands: [
+            CommandDescriptor(id: open, title: "plain open", symbol: "star", surfaces: [.radial, .commandBar]),
+        ])!
+        do { try registry.register(reborn) } catch { suite.expect(false, "a removed tool can register again, got \(error)") }
+        suite.expect(!registry.hasHandler(for: open) && registry.commands(on: .commandBar).isEmpty && !registry.run(open),
+                     "a tool registered again does not inherit the handlers of the one removed")
     }
 }

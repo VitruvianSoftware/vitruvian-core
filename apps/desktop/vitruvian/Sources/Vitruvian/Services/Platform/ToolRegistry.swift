@@ -36,7 +36,9 @@ package final class ToolRegistry: ObservableObject {
         case unknownCommand(CommandID)
     }
 
-    /// Bumped on every change, so a view that lists commands redraws.
+    /// Bumped when a tool is registered or removed or a handler is set, and
+    /// on nothing else. Hub availability and a handler's `isRunnable` can
+    /// change without it.
     @Published package private(set) var revision = 0
 
     private let isAvailable: (AppFeature) -> Bool
@@ -81,8 +83,9 @@ package final class ToolRegistry: ObservableObject {
     package func hasHandler(for id: CommandID) -> Bool { handlers[id] != nil }
 
     /// What a surface offers now: commands that asked for it, whose tool is
-    /// switched on in the hub and that something can run. In registration
-    /// order, then the tool's own order.
+    /// switched on in the hub and that have a handler. In registration
+    /// order, then the tool's own order. A listed command may not be
+    /// runnable: a surface asks `canRun` before offering it as runnable.
     package func commands(on surface: ToolSurface) -> [CommandDescriptor] {
         order.compactMap { tools[$0] }
             .filter { isToolAvailable($0.id) }
