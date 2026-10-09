@@ -18,6 +18,7 @@ enum ToolPlatformTests {
         radial(suite)
         quickPanel(suite)
         commandBar(suite)
+        housekeeping(suite)
     }
 
     static func ids(_ suite: TestSuite) {
@@ -41,7 +42,7 @@ enum ToolPlatformTests {
     static func descriptors(_ suite: TestSuite) {
         let tool = ToolID("screenshot")!
         let capture = CommandDescriptor(id: CommandID(tool: tool, name: "capture")!, title: "Capture",
-                                        symbol: "camera.viewfinder", surfaces: [.radial])
+                                        symbol: "camera.viewfinder", surfaces: [.radial])!
         let made = ToolDescriptor(id: tool, name: "Screenshot", symbol: "camera.viewfinder", commands: [capture])
         suite.expect(made?.feature == .screenshot, "a bundled tool finds its feature by id")
         suite.expect(ToolDescriptor(id: ToolID("com.acme.deploys")!, name: "Deploys", symbol: "shippingbox",
@@ -49,7 +50,7 @@ enum ToolPlatformTests {
                      "an outside tool has no feature")
 
         let stray = CommandDescriptor(id: CommandID("colorPicker/pick")!, title: "Pick", symbol: "eyedropper",
-                                      surfaces: [.radial])
+                                      surfaces: [.radial])!
         suite.expect(ToolDescriptor(id: tool, name: "Screenshot", symbol: "camera.viewfinder",
                                     commands: [stray]) == nil,
                      "a tool cannot declare another tool's command")
@@ -84,7 +85,7 @@ enum ToolPlatformTests {
         func add(_ toolID: String, _ name: String, surfaces: Set<ToolSurface>, runnable: Bool = true) throws {
             let tool = ToolID(toolID)!
             let id = CommandID(tool: tool, name: name)!
-            let command = CommandDescriptor(id: id, title: "plain \(name)", symbol: "star", surfaces: surfaces)
+            let command = CommandDescriptor(id: id, title: "plain \(name)", symbol: "star", surfaces: surfaces)!
             try registry.register(ToolDescriptor(id: tool, name: toolID, symbol: "star", commands: [command])!)
             try registry.setHandler(.init(title: { [unowned self] _ in "\(self.language) \(name)" },
                                           isRunnable: { runnable },
@@ -238,7 +239,7 @@ enum ToolPlatformTests {
                      "an unregistered tool takes its commands and handlers with it")
 
         let reborn = ToolDescriptor(id: open.tool, name: "com.acme.deploys", symbol: "star", commands: [
-            CommandDescriptor(id: open, title: "plain open", symbol: "star", surfaces: [.radial, .commandBar]),
+            CommandDescriptor(id: open, title: "plain open", symbol: "star", surfaces: [.radial, .commandBar])!,
         ])!
         do { try registry.register(reborn) } catch { suite.expect(false, "a removed tool can register again, got \(error)") }
         suite.expect(!registry.hasHandler(for: open) && registry.commands(on: .commandBar).isEmpty && !registry.run(open),
@@ -282,5 +283,52 @@ enum ToolPlatformTests {
                                               .cleaner, .toggles]
         suite.expect(Set(QuickLauncherItem.allCases.filter { $0.command == nil }) == hosted,
                      "only the utilities the panel hosts itself have no command")
+    }
+
+    static func housekeeping(_ suite: TestSuite) {
+        // Ids and descriptors refuse what would mislead later.
+        suite.expect(ToolID("com..acme") == nil, "an id cannot hold two dots in a row")
+        suite.expect(CommandID("screenshot/a..b") == nil, "a command name cannot hold two dots in a row")
+        let tool = ToolID("com.acme.deploys")!
+        let open = CommandID(tool: tool, name: "open")!
+        suite.expect(CommandDescriptor(id: open, title: " ", symbol: "star", surfaces: [.radial]) == nil
+                         && CommandDescriptor(id: open, title: "Open", symbol: "", surfaces: [.radial]) == nil,
+                     "a command needs a title and a symbol")
+        suite.expect(ToolDescriptor(id: tool, name: "", symbol: "star", commands: []) == nil
+                         && ToolDescriptor(id: tool, name: "Deploys", symbol: " ", commands: []) == nil,
+                     "a tool needs a name and a symbol")
+        suite.expect(ToolDescriptor(id: ToolID("notAFeature")!, name: "X", symbol: "star", commands: []) == nil,
+                     "an id with no dot must name one of the app's own features")
+        suite.expect(ToolDescriptor(id: ToolID("screenshot")!, name: "X", symbol: "star", commands: []) != nil,
+                     "an id that names a feature is one of the app's own tools")
+
+        // A change of hub availability is something a surface can see.
+        let world = World()
+        let before = world.registry.revision
+        world.registry.noteAvailabilityChanged()
+        suite.expect(world.registry.revision == before + 1, "a hub change is a change surfaces can see")
+
+        // A surface offers a registry command only when its own fixed list does not.
+        do {
+            try world.add("screenshot", "capture", surfaces: [.radial, .quickPanel, .commandBar])
+            try world.add("com.acme.deploys", "open", surfaces: [.radial, .quickPanel, .commandBar])
+        } catch {
+            suite.expect(false, "registering two distinct tools succeeds, got \(error)")
+        }
+        suite.expect(world.registry.extraCommands(on: .radial).map(\.id.rawValue) == ["com.acme.deploys/open"],
+                     "the wheel is offered only what no built-in tool slice runs")
+        suite.expect(world.registry.extraCommands(on: .quickPanel).map(\.id.rawValue) == ["com.acme.deploys/open"],
+                     "the panel is offered only what no built-in tile runs")
+        suite.expect(world.registry.extraCommands(on: .commandBar).count == 2,
+                     "the bar has no fixed list of commands to hold back")
+
+        // The app's own tools, as a release build registers them.
+        let shipped = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: shipped)
+        let tiles = Set(QuickLauncherItem.allCases.compactMap { $0.command?.id })
+        suite.expect(Set(shipped.commands(on: .quickPanel).map(\.id)) == tiles,
+                     "a built-in command asks for the panel only when a tile runs it")
+        suite.expect(shipped.extraCommands(on: .quickPanel).isEmpty && shipped.extraCommands(on: .radial).isEmpty,
+                     "with only the app's own tools, no surface gains an entry")
     }
 }

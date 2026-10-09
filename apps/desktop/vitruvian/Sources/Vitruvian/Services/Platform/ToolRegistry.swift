@@ -35,8 +35,9 @@ package final class ToolRegistry: ObservableObject {
         case unknownTool(ToolID)
     }
 
-    /// Bumped when a tool is registered or removed or a handler or a name is
-    /// set, and on nothing else. Hub availability and a handler's `isRunnable` can
+    /// Bumped when a tool is registered or removed, a handler or a name is
+    /// set, or the hub says a tool was switched on or off
+    /// (`noteAvailabilityChanged`). A handler's own `isRunnable` can still
     /// change without it.
     @Published package private(set) var revision = 0
 
@@ -78,6 +79,13 @@ package final class ToolRegistry: ObservableObject {
         order.removeAll { $0 == id }
         names[id] = nil
         tool.commands.forEach { handlers[$0.id] = nil }
+        revision += 1
+    }
+
+    /// Called by the feature runtime when a tool is switched on or off in the
+    /// hub, so a view that lists commands redraws. Never call this while a
+    /// view is being drawn.
+    package func noteAvailabilityChanged() {
         revision += 1
     }
 

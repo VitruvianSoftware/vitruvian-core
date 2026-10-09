@@ -26,7 +26,8 @@ package struct ToolID: Hashable, Sendable, CustomStringConvertible {
     /// Ids are read back from saved state, so anything else is refused here
     /// instead of being trusted later.
     static func isValidPart(_ text: String) -> Bool {
-        guard !text.isEmpty, text.count <= maxLength, !text.hasPrefix("."), !text.hasSuffix(".") else {
+        guard !text.isEmpty, text.count <= maxLength, !text.hasPrefix("."), !text.hasSuffix("."),
+              !text.contains("..") else {
             return false
         }
         return text.unicodeScalars.allSatisfy { scalar in
@@ -67,6 +68,11 @@ package enum ToolSurface: String, Sendable, CaseIterable {
     case commandBar, radial, quickPanel
 }
 
+/// Text a person will read: not empty, and not only spaces.
+private func isPresentable(_ text: String) -> Bool {
+    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+}
+
 /// One command, as data. `title` is the plain fallback; a bundled tool's
 /// title comes from its handler, in the current language.
 package struct CommandDescriptor: Equatable, Sendable {
@@ -75,8 +81,10 @@ package struct CommandDescriptor: Equatable, Sendable {
     package let symbol: String
     package let surfaces: Set<ToolSurface>
 
-    // Spelled out because a memberwise initializer never leaves its module.
-    package init(id: CommandID, title: String, symbol: String, surfaces: Set<ToolSurface>) {
+    /// Nil without a title and a symbol: a command a surface lists must have
+    /// something to show.
+    package init?(id: CommandID, title: String, symbol: String, surfaces: Set<ToolSurface>) {
+        guard isPresentable(title), isPresentable(symbol) else { return nil }
         self.id = id
         self.title = title
         self.symbol = symbol
@@ -91,11 +99,15 @@ package struct ToolDescriptor: Equatable, Sendable {
     package let symbol: String
     package let commands: [CommandDescriptor]
 
-    /// Nil when a command belongs to another tool or is declared twice, so a
-    /// tool that exists is always consistent.
+    /// Nil when a command belongs to another tool or is declared twice, when
+    /// the name or symbol is empty, or when an id with no dot names none of
+    /// the app's own features. So a tool that exists is always consistent,
+    /// and an outside tool can never pass for one of ours.
     package init?(id: ToolID, name: String, symbol: String, commands: [CommandDescriptor]) {
         guard commands.allSatisfy({ $0.id.tool == id }),
-              Set(commands.map(\.id)).count == commands.count else { return nil }
+              Set(commands.map(\.id)).count == commands.count,
+              isPresentable(name), isPresentable(symbol),
+              !id.isBundledForm || AppFeature(rawValue: id.rawValue) != nil else { return nil }
         self.id = id
         self.name = name
         self.symbol = symbol

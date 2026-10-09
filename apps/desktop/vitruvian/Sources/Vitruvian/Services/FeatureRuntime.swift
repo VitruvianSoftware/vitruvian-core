@@ -52,6 +52,7 @@ package final class FeatureRuntime: ObservableObject {
                 // The Command Bar drops rows of features that just left the
                 // hub, so a pin cannot linger as a bare id.
                 availabilityDidChange: {
+                    ToolRegistry.shared.noteAvailabilityChanged()
                     CommandBarService.shared.noteHubChange()
                     if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
                 },
