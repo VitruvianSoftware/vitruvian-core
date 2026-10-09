@@ -32,6 +32,9 @@ public enum CLICommand: Equatable, Sendable {
     case set(LightingConfig)
     case signal(StatusSignal, restoreAfter: Duration?)
     case restore
+    /// Serve the commands as MCP tools on stdin/stdout (`MCPServer`).
+    case mcp
+    case version
     case help
 }
 
@@ -58,6 +61,10 @@ public struct UsageError: Error, Equatable, CustomStringConvertible {
 }
 
 public enum CLI {
+    /// The tool's version, reported by `--version` and to MCP clients.
+    /// release-please bumps it (packages/peripherals in release-please-config.json).
+    public static let version = "0.1.0" // x-release-please-version
+
     public static let usage = """
     usage: gravastar-mouse [--trace] [--baseline PATH] <command> [options]
 
@@ -70,6 +77,8 @@ public enum CLI {
       set --mode M [--color C] [--speed N] [--brightness N]
       signal <working|success|failure|warning|attention|off> [--restore-after SECONDS]
       restore                                        put back the lighting saved before the last signal
+      mcp                                            serve these commands as MCP tools over stdio
+      version                                        print the version (also --version)
 
     <color> is a name (red green blue cyan magenta purple yellow orange white pink)
     or hex (#00ffcc). N is 0-9. Modes: off rainbow breathe fixed neon
@@ -84,7 +93,7 @@ public enum CLI {
         var options: [String: String] = [:]
         var flags: Set<String> = []
         let valued: Set<String> = ["--brightness", "--speed", "--mode", "--color", "--restore-after", "--baseline"]
-        let boolean: Set<String> = ["--json", "--trace", "--help"]
+        let boolean: Set<String> = ["--json", "--trace", "--help", "--version"]
 
         var index = 0
         while index < arguments.count {
@@ -114,6 +123,9 @@ public enum CLI {
         let baseline = options.removeValue(forKey: "--baseline")
         if flags.contains("--help") {
             return Invocation(command: .help, trace: trace, baselinePath: baseline)
+        }
+        if flags.contains("--version") {
+            return Invocation(command: .version, trace: trace, baselinePath: baseline)
         }
 
         let name = positionals.first ?? "status"
@@ -182,6 +194,12 @@ public enum CLI {
         case "restore":
             try expectArgs(0, "")
             command = .restore
+        case "mcp":
+            try expectArgs(0, "")
+            command = .mcp
+        case "version":
+            try expectArgs(0, "")
+            command = .version
         case "help":
             command = .help
         default:

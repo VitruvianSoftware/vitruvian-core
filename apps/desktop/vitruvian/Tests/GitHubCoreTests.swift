@@ -959,8 +959,9 @@ enum GitHubCoreTests {
     private static func mouseBinaryResolution(_ suite: TestSuite) {
         let home = "/Users/test"
         let path = ["PATH": "/usr/bin:relative/bin:/opt/tools/bin"]
-        func locate(_ configured: String, _ environment: [String: String] = [:], _ installed: Set<String>) -> String? {
-            GitHubMouseBinary.locate(configured: configured, environment: environment, home: home,
+        func locate(_ configured: String, _ environment: [String: String] = [:], _ installed: Set<String>,
+                    bundled: String? = nil) -> String? {
+            GitHubMouseBinary.locate(configured: configured, bundled: bundled, environment: environment, home: home,
                                      isExecutable: installed.contains)
         }
         suite.expect(locate("", [:], ["/Users/test/.local/bin/gravastar-mouse", "/opt/homebrew/bin/gravastar-mouse"])
@@ -980,16 +981,29 @@ enum GitHubCoreTests {
         suite.expect(locate("/missing/mouse", [:], ["/opt/homebrew/bin/gravastar-mouse"])
                      == "/opt/homebrew/bin/gravastar-mouse",
                      "a configured path that does not run falls back to the search")
-        suite.expect(locate("", path, []) == nil && locate("/missing/mouse", path, []) == nil,
+        let app = GitHubMouseBinary.bundled(in: "/Applications/Vitruvian.app")
+        suite.expect(app == "/Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse"
+                     && locate("", path, [app, "/opt/tools/bin/gravastar-mouse"], bundled: app) == app
+                     && locate("/custom/mouse", path, [app, "/custom/mouse"], bundled: app) == "/custom/mouse"
+                     && locate("", path, ["/opt/tools/bin/gravastar-mouse"], bundled: app)
+                        == "/opt/tools/bin/gravastar-mouse",
+                     "the app's own copy comes after a configured path and before any other install")
+        suite.expect(locate("", path, []) == nil && locate("/missing/mouse", path, [], bundled: app) == nil,
                      "no binary anywhere finds nothing, so the sink leaves the mouse alone")
         let registered = Defaults.registeredDefaults
         suite.expect(registered[Preferences.githubMouseBinaryPath.key] as? String == "",
                      "the binary path is registered empty, which searches")
         suite.expect(SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseBinaryPath.key),
                      "where the binary is installed belongs to this Mac, so a backup leaves it out")
+        let config = GitHubMouseBinary.mcpConfig(binary: app)
+        let decoded = (try? JSONSerialization.jsonObject(with: Data(config.utf8))) as? [String: Any]
+        let server = (decoded?["mcpServers"] as? [String: Any])?["gravastar-mouse"] as? [String: Any]
+        suite.expect(server?["command"] as? String == app && server?["args"] as? [String] == ["mcp"],
+                     "the copied MCP config runs the command found, as `gravastar-mouse mcp`: \(config)")
         for language in AppLanguage.allCases {
             let text = FeatureStrings.notchGitHub(language)
             suite.expect(!text.mouseCommand.isEmpty && !text.mouseCommandHint.isEmpty && !text.choose.isEmpty
+                         && !text.copyMCPConfig.isEmpty
                          && text.mouseCommandMissing.contains(GitHubMouseBinary.name)
                          && text.mouseCommandFound("/opt/x/gravastar-mouse").contains("/opt/x/gravastar-mouse"),
                          "Settings names the mouse command and the path in use in \(language)")

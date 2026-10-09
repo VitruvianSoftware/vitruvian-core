@@ -29,9 +29,11 @@
 # constrained to macOS so a Linux `bazel build //...` skips it rather than
 # failing to find an Apple toolchain.
 
-load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_command_line_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # The pure codec: frames, checksums, the lighting record. No IOKit.
@@ -82,14 +84,33 @@ swift_library(
     ],
 )
 
-# bazel run //packages/peripherals:gravastar-mouse -- signal success
-swift_binary(
-    name = "gravastar-mouse",
+# The executable's top-level code (main.swift), as a library so the
+# command-line application below can sign it. Package.swift's
+# GravaStarMouseTool executable target.
+swift_library(
+    name = "GravaStarMouseTool",
     srcs = glob(["Sources/gravastar-mouse/**/*.swift"]),
     module_name = "GravaStarMouseTool",
     target_compatible_with = ["@platforms//os:macos"],
-    visibility = ["//visibility:public"],
     deps = [":GravaStarCLI"],
+)
+
+# bazel run --config=macos-app //packages/peripherals:gravastar-mouse -- signal success
+#
+# A signed command-line tool rather than a bare swift_binary: the Vitruvian app
+# carries it in Contents/Helpers (codesign --deep checks every nested binary),
+# and the release build makes it universal with --macos_cpus (publish.sh).
+macos_command_line_application(
+    name = "gravastar-mouse",
+    bundle_id = "com.vitruviansoftware.gravastar-mouse",
+    minimum_os_version = "14.0",
+    # `manual`, like the app's fan helper: rules_apple resolves its Mac
+    # toolchain before target_compatible_with can skip it, so a Linux
+    # `bazel build //...` would fail on it. The app and publish.sh name it.
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    visibility = ["//visibility:public"],
+    deps = [":GravaStarMouseTool"],
 )
 
 # No hardware needed: the device is a scripted MockTransport. macOS-only and
@@ -116,4 +137,52 @@ pipeline_unit(
     test_targets = [":PeripheralsTests"],
     tier = "L1",
     timeout_minutes = 30,
+)
+
+# Read by //tools/delivery/gen's guard that every `run:` in the generated
+# workflow points at a script that exists and is executable.
+exports_files(["publish.sh"])
+
+# Build the universal binary + upload it (and, for a release, the Homebrew
+# formula). The generated delivery workflow runs the script directly
+# (`bash packages/peripherals/publish.sh`); this target is the break-glass path
+# and what the delivery() below names as `run`.
+sh_binary(
+    name = "publish",
+    srcs = ["publish.sh"],
+    tags = ["manual"],
+)
+
+# Delivery unit: the gravastar-mouse release ladder.
+#   beta        on every affected push to main -> rolling prerelease
+#               gravastar-mouse-beta-latest (asset clobbered, tag moved to HEAD);
+#   production  on the release-please release gravastar-mouse-vX.Y.Z -> asset
+#               attached to that release, then the homebrew-tap formula.
+# The release-please machinery that cuts the production tag lives in
+# .github/workflows/gravastar-mouse-release.yaml (release machinery, not
+# delivery -- the same split as esp32-s3 and vitruvian).
+delivery(
+    # Not "gravastar-mouse": that is the binary's target, and gazelle reads
+    # this macro call as a rule of the same name.
+    name = "gravastar-mouse-publish",
+    app = "gravastar-mouse",
+    environments = [
+        "beta",
+        "production",
+    ],
+    # Path-only mode: this regex IS the unit's complete trigger set
+    # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
+    extra_paths = ["packages/peripherals/"],
+    # No GitHub Environment: the publish binds none; it uploads with the run's
+    # own GITHUB_TOKEN under a job-level contents: write.
+    github_environment = "",
+    kind = "publish",
+    # No job of its own preceded this unit. Its steps are vitruvian's publish
+    # job (Xcode, Bazel, one script) minus the app signing, so that is the
+    # provenance recorded.
+    legacy_job = "package",
+    legacy_workflow = ".github/workflows/vitruvian-release.yaml",
+    promotion = "release:gravastar-mouse-v",
+    render = "transcribed",
+    run = "//packages/peripherals:publish",
 )

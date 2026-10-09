@@ -120,6 +120,12 @@ is that notice. Add an entry for every change to upstream files.
   - `UI/RadialMenu/RadialMenuView.swift`: `resolvedSymbolName` draws a command slice with its command's own symbol; `RadialToolChoice` is the editor's Tool picker.
   - `UI/Settings/RadialMenuSettings.swift`, `UI/Settings/RadialMenuVisualCanvas.swift`: the editor's Tool picker lists registry commands no tool slice runs, and a command slice is edited as a Tool.
   - `Tests/mutation_checks.py`: two mutations (a built-in command with no tile asking for the panel; a reorder forgetting a tile that is not showing).
+- **2026-10-09**: The app carries the GravaStar mouse command and offers it as an MCP server:
+  - `BUILD`: `//packages/peripherals:gravastar-mouse` (MIT) goes into `Contents/Helpers` through `additional_contents`, and the `vitruvian` delivery unit also follows `packages/peripherals/`. `Tools/package-release.sh` signs it with the other nested code.
+  - `GitHubMouseBinary.swift`: `locate` tries that copy right after the configured path; `mcpConfig(binary:)` builds the `mcpServers` JSON for `gravastar-mouse mcp`.
+  - `GitHubPeripheralSink.swift`: passes the bundle's copy to `locate`.
+  - `GitHubSettingsView.swift` and `NotchGitHubStrings.swift`: the Mouse command hint names the copy inside the app, and a Copy MCP Config button copies the JSON for the command found, in every language.
+  - `Tests/GitHubCoreTests.swift`: the bundled copy's place in the search order, the MCP JSON and the new label.
 - **2026-10-09**: The GravaStar mouse command is found on any Mac, not at one person's home path:
   - `GitHubPeripheralSink.swift`: drops the hard-coded `/Users/james/bin/gravastar-mouse` and resolves the binary on each write through `GitHubMouseBinary.locate` (new, `Core/GitHub/GitHubMouseBinary.swift`): the `githubMouseBinaryPath` preference (`~` expanded), then absolute PATH entries, then `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and `~/bin`. With no binary it still does nothing.
   - Added the `githubMouseBinaryPath` preference (default empty, which searches) to `Preferences.swift`, `DefaultsKey.swift` and `Defaults.swift`, and to `SettingsBackupSupport.machineStateKeys`, since an install path belongs to one Mac.
