@@ -154,6 +154,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// Callbacks from a turn that has since been stopped or replaced are dropped.
     private var turn = 0
     private var stoppedByUser = false
+    /// True from the moment a turn asks Ollama which models it has until
+    /// the agent is started with the answer, or the turn is stopped.
+    private var awaitingModel = false
     private var reportedError = false
     /// Output that is not stream JSON (agy's own errors), kept for a failure.
     private var noise: [String] = []
@@ -276,6 +279,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Continues a past conversation: the next turn passes its id to the active provider.
     public func resume(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration = NexusAgentConfiguration()) {
+        // A turn still waiting for its model is dropped, not ended.
+        awaitingModel = false
         stop()
         turn += 1
         running = nil
@@ -359,10 +364,33 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 self?.elapsedSeconds += 1
             }
         }
+        guard configuration.activeProvider.id == NexusAgentCLIProvider.ollama.id, model.isEmpty else {
+            launch(text, configuration: configuration, agentPath: agentPath,
+                   ollamaDefaultModel: NexusAgentSupport.ollamaFallbackModel, turn: current)
+            return
+        }
+        // Ollama must be told a model and the settings name none, so it is
+        // asked which ones it has. That runs a program, so the turn waits
+        // for it off the main thread, already showing as running.
+        awaitingModel = true
+        let runProgram = environment.runProgram
+        Task { [weak self] in
+            let listing = await runProgram("ollama", ["list"])
+            guard let self, self.awaitingModel, current == self.turn else { return }
+            self.awaitingModel = false
+            self.launch(text, configuration: configuration, agentPath: agentPath,
+                        ollamaDefaultModel: NexusAgentSupport.ollamaDefaultModel(fromList: listing), turn: current)
+        }
+    }
+
+    /// Starts the agent for a turn `send` has already put on screen.
+    private func launch(_ text: String, configuration: NexusAgentConfiguration, agentPath: String,
+                        ollamaDefaultModel: String, turn current: Int) {
         let arguments = NexusAgentSupport.agentArguments(prompt: text, configuration: turnConfiguration(configuration),
                                                          conversationID: conversationID,
                                                          planMode: planMode,
-                                                         worktreeMode: worktreeMode)
+                                                         worktreeMode: worktreeMode,
+                                                         ollamaDefaultModel: ollamaDefaultModel)
         let childEnvironment = NexusAgentSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
         do {
@@ -388,9 +416,18 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         running?.terminate()
+        if awaitingModel {
+            // The agent has not started, so nothing will report an exit:
+            // the turn ends here, as a stopped one. The model's name, when
+            // it arrives, finds nothing waiting for it.
+            awaitingModel = false
+            agentDidExit(0, turn: turn)
+        }
     }
 
     public func newChat() {
+        // A turn still waiting for its model is dropped, not ended.
+        awaitingModel = false
         stop()
         stopTranscriptFollower()
         activeSubagents = []

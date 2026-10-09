@@ -632,11 +632,55 @@ public enum NexusAgentSupport {
         return FileManager.default.fileExists(atPath: gitDir.path, isDirectory: &isDirectory)
     }
 
-    /// One Quick Prompt turn: formatted per active provider.
+    /// Where a program is, as the standalone app's chat finds one. A full
+    /// path is taken as given if anything is there. A bare name is looked
+    /// for in the usual install folders and then in the folders of
+    /// `pathVariable` (the PATH an app launched from Finder has is short),
+    /// and the first one that can be run wins.
+    public static func executablePath(named name: String, pathVariable: String,
+                                       isExecutable: (String) -> Bool,
+                                       fileExists: (String) -> Bool) -> String? {
+        if name.hasPrefix("/") {
+            return fileExists(name) ? name : nil
+        }
+        let installFolders = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
+                              "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        var seen = Set<String>()
+        return (installFolders + pathVariable.split(separator: ":").map(String.init))
+            .filter { seen.insert($0).inserted }
+            .map { ($0 as NSString).appendingPathComponent(name) }
+            .first(where: isExecutable)
+    }
+
+    /// The model Ollama is run with when none is set and none can be found.
+    public static let ollamaFallbackModel = "qwen3"
+
+    /// The model to run Ollama with when the settings name none: the first
+    /// one `ollama list` reports. `output` is what that command printed, or
+    /// nil if it could not be run. The first row is the table's header and
+    /// is passed over; the name is the first word of the first row after
+    /// it that is not empty. Anything else gives the fallback.
+    ///
+    /// Read exactly as the standalone app reads it, oddities included: the
+    /// first row is dropped whatever it holds, and if the first row with
+    /// anything on it begins with a space, the rows after it are not tried.
+    public static func ollamaDefaultModel(fromList output: String?) -> String {
+        guard let output else { return ollamaFallbackModel }
+        let rows = output.components(separatedBy: "\n").dropFirst()
+        guard let first = rows.first(where: { !$0.isEmpty }) else { return ollamaFallbackModel }
+        let name = first.components(separatedBy: .whitespaces).first ?? ""
+        return name.isEmpty ? ollamaFallbackModel : name
+    }
+
+    /// One Quick Prompt turn: formatted per active provider. Ollama must be
+    /// told a model: `ollamaDefaultModel` is the one to use when the
+    /// settings name none, which the caller looks up (see
+    /// `ollamaDefaultModel(fromList:)`) so that this stays a plain function.
     public static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
                                        conversationID: String?,
                                        planMode: Bool = false,
-                                       worktreeMode: Bool = false) -> [String] {
+                                       worktreeMode: Bool = false,
+                                       ollamaDefaultModel: String = NexusAgentSupport.ollamaFallbackModel) -> [String] {
         if configuration.activeProvider.id == NexusAgentCLIProvider.claude.id {
             var args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
@@ -660,7 +704,7 @@ public enum NexusAgentSupport {
         }
         if configuration.activeProvider.id == NexusAgentCLIProvider.ollama.id {
             let model = configuration.model.trimmingCharacters(in: .whitespaces)
-            let args = ["launch", "claude", "--model", model.isEmpty ? "default" : model]
+            let args = ["launch", "claude", "--model", model.isEmpty ? ollamaDefaultModel : model]
             var innerArgs = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
                 innerArgs += ["--permission-mode", "plan",

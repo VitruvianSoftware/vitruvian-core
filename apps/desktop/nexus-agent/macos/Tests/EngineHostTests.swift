@@ -70,6 +70,31 @@ final class EngineHostTests: XCTestCase {
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
         var listedHidden: [[String]] = []
+        /// Every program the engine asked to run for its output, and what
+        /// the pretend program prints (nil: it could not be started).
+        var programRuns: [(name: String, arguments: [String])] = []
+        var programOutput: String?
+        /// While true the pretend program does not finish until `finishProgram` is called.
+        var holdsProgram = false
+        private var heldProgram: CheckedContinuation<Void, Never>?
+
+        func finishProgram() {
+            holdsProgram = false
+            heldProgram?.resume()
+            heldProgram = nil
+        }
+
+        /// Lets work queued on the main actor run until `done`, or for about two seconds.
+        func wait(until done: () -> Bool) async {
+            for _ in 0..<2000 where !done() {
+                try? await Task.sleep(nanoseconds: 1_000_000)
+            }
+        }
+
+        /// Gives work that should NOT happen the time to happen, so a test can see that it did not.
+        func settle() async {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
 
         init(realHome: Bool = false) {
             defaults = UserDefaults(suiteName: domain)!
@@ -133,6 +158,13 @@ final class EngineHostTests: XCTestCase {
                     guard provider.id == NexusAgentCLIProvider.claude.id else { return [] }
                     return NexusAgentSessionSummary.parseClaudeSessions(home: home, directory: directory,
                                                                         appHidden: hidden)
+                },
+                runProgram: { @MainActor [unowned self] name, arguments in
+                    programRuns.append((name, arguments))
+                    if holdsProgram {
+                        await withCheckedContinuation { heldProgram = $0 }
+                    }
+                    return programOutput
                 })
         }
     }
@@ -484,6 +516,217 @@ final class EngineHostTests: XCTestCase {
         XCTAssertTrue(NexusAgentQuickPromptSession(environment: rig.environment, host: host).worktreeMode)
         session.worktreeMode = false
         XCTAssertFalse(host.worktreeMode)
+    }
+
+    // MARK: - Ollama's model when none is set
+
+    /// What `ollama list` prints: a header row, then one model a row.
+    private let ollamaListing = """
+        NAME               ID              SIZE      MODIFIED
+        llama3.2:latest    a80c4f17acd5    2.0 GB    3 days ago
+        qwen3:8b           500a1f067a9f    5.2 GB    2 weeks ago
+
+        """
+
+    func testTheFirstModelOllamaListsIsItsDefault() {
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(fromList: ollamaListing), "llama3.2:latest")
+        XCTAssertEqual(NexusAgentSupport.ollamaFallbackModel, "qwen3")
+
+        // Nothing to choose from: the fixed name the standalone app falls back to.
+        let fallback = NexusAgentSupport.ollamaFallbackModel
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(fromList: nil), fallback, "ollama could not be run")
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(fromList: ""), fallback, "it printed nothing")
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(
+            fromList: "NAME    ID    SIZE    MODIFIED\n"), fallback, "it has no models")
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(
+            fromList: "NAME    ID    SIZE    MODIFIED\n\n\nmistral:7b    f974a74358d6    4.1 GB    1 day ago\n"),
+                       "mistral:7b", "blank rows before the first model are passed over")
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(fromList: "NAME\nphi3\tabc\n"), "phi3",
+                       "a name ends at a tab as well as at a space")
+    }
+
+    /// Ported as the standalone app has it, though each looks like a
+    /// mistake: the first row is dropped whatever it holds, and a first
+    /// model row that begins with a space gives up instead of reading on.
+    func testTheOllamaListingIsReadAsTheStandaloneReadsIt() {
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(fromList: "llama3.2:latest a80c\nqwen3:8b 500a\n"),
+                       "qwen3:8b", "with no header row the first model is the one passed over")
+        XCTAssertEqual(NexusAgentSupport.ollamaDefaultModel(fromList: "NAME ID\n llama3.2:latest a80c\nqwen3:8b 500a\n"),
+                       NexusAgentSupport.ollamaFallbackModel,
+                       "a row that begins with a space has no name, and the rows after it are not tried")
+    }
+
+    func testOllamaArgumentsNeverNameAModelCalledDefault() {
+        var configuration = NexusAgentConfiguration(activeProvider: .ollama)
+        // The caller looked a model up.
+        XCTAssertEqual(Array(NexusAgentSupport.agentArguments(prompt: "hi", configuration: configuration,
+                                                              conversationID: nil,
+                                                              ollamaDefaultModel: "llama3.2:latest").prefix(5)),
+                       ["launch", "claude", "--model", "llama3.2:latest", "--"])
+        // The caller did not: the fixed fallback, never the word "default".
+        let plain = NexusAgentSupport.agentArguments(prompt: "hi", configuration: configuration, conversationID: nil)
+        XCTAssertEqual(Array(plain.prefix(5)), ["launch", "claude", "--model", "qwen3", "--"])
+        // A model in the settings always wins, spaces around it removed.
+        configuration.model = "  gemma3:4b "
+        XCTAssertEqual(Array(NexusAgentSupport.agentArguments(prompt: "hi", configuration: configuration,
+                                                              conversationID: nil,
+                                                              ollamaDefaultModel: "llama3.2:latest").prefix(5)),
+                       ["launch", "claude", "--model", "gemma3:4b", "--"])
+    }
+
+    func testOllamaWithNoModelSetRunsTheFirstModelItHas() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        XCTAssertTrue(session.isRunning, "the turn has begun while the model is looked up")
+        XCTAssertEqual(session.messages.map(\.role), [.user, .agent])
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        XCTAssertEqual(rig.programRuns.map(\.name), ["ollama"])
+        XCTAssertEqual(rig.programRuns.first?.arguments, ["list"])
+        XCTAssertEqual(rig.agentRuns.count, 1)
+        XCTAssertEqual(rig.agentRuns.first?.path, "/fake/ollama")
+        XCTAssertEqual(Array((rig.agentRuns.first?.arguments ?? []).prefix(7)),
+                       ["launch", "claude", "--model", "llama3.2:latest", "--", "-p", "hi"])
+
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(host.finished.count, 1)
+    }
+
+    func testOllamaFallsBackWhenItsModelsCannotBeListed() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = nil
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.agentRuns.isEmpty }
+
+        XCTAssertEqual(rig.programRuns.count, 1)
+        XCTAssertEqual(Array((rig.agentRuns.first?.arguments ?? []).prefix(5)),
+                       ["launch", "claude", "--model", "qwen3", "--"])
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testAModelThatIsSetIsUsedWithoutAskingOllama() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        session.send("hi", configuration: NexusAgentConfiguration(model: "gemma3:4b", activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        // No waiting: with nothing to look up the turn starts at once.
+        XCTAssertEqual(rig.agentRuns.count, 1)
+        XCTAssertEqual(Array((rig.agentRuns.first?.arguments ?? []).prefix(5)),
+                       ["launch", "claude", "--model", "gemma3:4b", "--"])
+        XCTAssertTrue(rig.programRuns.isEmpty)
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testOtherProvidersNeverAskOllama() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+
+        for provider in [NexusAgentCLIProvider.antigravity, .claude] {
+            session.send("hi", configuration: NexusAgentConfiguration(activeProvider: provider), agentPath: "/fake/cli")
+            rig.agentExit?(0)
+            session.stopTranscriptFollower()
+        }
+        XCTAssertEqual(rig.agentRuns.count, 2, "each turn started at once")
+        XCTAssertTrue(rig.programRuns.isEmpty)
+    }
+
+    func testStoppingWhileTheModelIsLookedUpEndsTheTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        rig.holdsProgram = true
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        XCTAssertTrue(session.isRunning)
+        XCTAssertTrue(rig.agentRuns.isEmpty)
+
+        // Nothing is running that could report an exit, so stopping ends the turn itself.
+        session.stop()
+        XCTAssertFalse(session.isRunning)
+        XCTAssertEqual(session.messages.last?.text, host.strings.replyStopped)
+        XCTAssertEqual(host.finished.count, 1)
+
+        // The answer arrives late: the stopped turn must not start the agent.
+        rig.finishProgram()
+        await rig.settle()
+        XCTAssertTrue(rig.agentRuns.isEmpty)
+        XCTAssertEqual(host.finished.count, 1)
+
+        // And the chat is usable again.
+        session.send("again", configuration: NexusAgentConfiguration(model: "m", activeProvider: .ollama),
+                     agentPath: "/fake/ollama")
+        XCTAssertEqual(rig.agentRuns.count, 1)
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+    }
+
+    func testANewChatWhileTheModelIsLookedUpDropsTheTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.holdsProgram = true
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.newChat()
+        XCTAssertFalse(session.isRunning)
+        XCTAssertTrue(session.messages.isEmpty)
+
+        rig.finishProgram()
+        await rig.settle()
+        XCTAssertTrue(rig.agentRuns.isEmpty, "the dropped turn never starts the agent")
+        XCTAssertTrue(session.messages.isEmpty)
+        XCTAssertTrue(host.finished.isEmpty, "a turn dropped by New chat is not reported, as before")
+    }
+
+    /// Where a program named without a folder is looked for, as the
+    /// standalone app's chat looks: the usual install folders first, then
+    /// the folders on PATH, the first executable one winning.
+    func testAProgramIsFoundWhereTheStandaloneLooks() {
+        func find(_ name: String, path: String, executables: Set<String>, files: Set<String> = []) -> String? {
+            NexusAgentSupport.executablePath(named: name, pathVariable: path,
+                                             isExecutable: { executables.contains($0) },
+                                             fileExists: { files.contains($0) })
+        }
+        let folders = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
+                       "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        // Each folder is found when it is the only one that has the program…
+        for folder in folders {
+            XCTAssertEqual(find("ollama", path: "", executables: [folder + "/ollama"]), folder + "/ollama")
+        }
+        // …and an earlier folder wins over every later one.
+        for (index, folder) in folders.enumerated() {
+            let present = Set(folders[index...].map { $0 + "/ollama" } + ["/custom/bin/ollama"])
+            XCTAssertEqual(find("ollama", path: "/custom/bin", executables: present), folder + "/ollama")
+        }
+        XCTAssertEqual(find("ollama", path: "/a:/custom/bin:/b", executables: ["/custom/bin/ollama", "/b/ollama"]),
+                       "/custom/bin/ollama", "then PATH, in its order")
+        XCTAssertNil(find("ollama", path: "/custom/bin", executables: []))
+        XCTAssertNil(find("ollama", path: "/custom/bin", executables: [], files: ["/custom/bin/ollama"]),
+                     "a file that cannot be run is not the program")
+        // A full path is taken as given if something is there, executable or not.
+        XCTAssertEqual(find("/opt/x/ollama", path: "", executables: [], files: ["/opt/x/ollama"]), "/opt/x/ollama")
+        XCTAssertNil(find("/opt/x/ollama", path: "", executables: ["/opt/x/ollama"]))
     }
 
     // MARK: - Archived Claude sessions live in the host

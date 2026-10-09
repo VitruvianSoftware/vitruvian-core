@@ -86,6 +86,11 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         public var transcriptPath: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
         /// Reads the full raw content of a transcript file.
         public var readTranscriptRaw: (_ id: String, _ provider: NexusAgentCLIProvider) -> String?
+        /// Runs a program to its end and gives back what it printed to
+        /// standard output, whatever its exit status; nil if it could not
+        /// be started. `name` is a bare name (`ollama`) or a full path.
+        /// It does not run on the main thread: the program may be slow.
+        public var runProgram: @Sendable (_ name: String, _ arguments: [String]) async -> String?
 
         public init(defaults: UserDefaults,
                      home: String,
@@ -109,7 +114,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                      listSessions: @escaping (String, NexusAgentCLIProvider, [String]) -> [NexusAgentSessionSummary] = { _, _, _ in [] },
                      readTranscript: @escaping (String, NexusAgentCLIProvider) -> [NexusAgentChatMessage]? = { _, _ in nil },
                      transcriptPath: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
-                     readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil }) {
+                     readTranscriptRaw: @escaping (String, NexusAgentCLIProvider) -> String? = { _, _ in nil },
+                     runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil }) {
             self.defaults = defaults
             self.home = home
             self.processEnvironment = processEnvironment
@@ -130,6 +136,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             self.readTranscript = readTranscript
             self.transcriptPath = transcriptPath
             self.readTranscriptRaw = readTranscriptRaw
+            self.runProgram = runProgram
         }
 
         public static var live: Environment {
@@ -157,7 +164,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                 readTranscriptRaw: { id, provider in
                     guard let path = NexusAgentEngine.transcriptPath(home: home, conversationID: id, provider: provider) else { return nil }
                     return try? String(contentsOfFile: path, encoding: .utf8)
-                })
+                },
+                runProgram: { await NexusAgentEngine.runProgram(named: $0, arguments: $1) })
         }
     }
 
@@ -522,6 +530,40 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             throw error
         }
         return process.processIdentifier
+    }
+
+    /// Runs a program on a background queue and returns its standard
+    /// output; what it prints to standard error is dropped and its exit
+    /// status is not looked at, as the standalone app has it. A bare name
+    /// is looked for where that app looks; one found nowhere is still tried
+    /// in Homebrew's folder, where it then fails to start and gives nil.
+    nonisolated private static func runProgram(named name: String, arguments: [String]) async -> String? {
+        let files = FileManager.default
+        let path = NexusAgentSupport.executablePath(
+            named: name,
+            pathVariable: ProcessInfo.processInfo.environment["PATH"] ?? "",
+            isExecutable: { files.isExecutableFile(atPath: $0) },
+            fileExists: { files.fileExists(atPath: $0) })
+            ?? (name.hasPrefix("/") ? name : "/opt/homebrew/bin/" + name)
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                let output = Pipe()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
+                process.standardOutput = output
+                process.standardError = FileHandle.nullDevice
+                do {
+                    try process.run()
+                } catch {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let data = output.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                continuation.resume(returning: String(data: data, encoding: .utf8))
+            }
+        }
     }
 
     /// Output is read on a thread of its own until EOF, and each chunk is

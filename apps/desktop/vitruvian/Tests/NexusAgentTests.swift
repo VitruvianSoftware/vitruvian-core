@@ -508,6 +508,13 @@ enum NexusAgentTests {
         let ollamaArgs = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil, planMode: true, worktreeMode: false)
         suite.expect(ollamaArgs.contains("launch") && ollamaArgs.contains("claude") && ollamaArgs.contains("--model") && ollamaArgs.contains("qwen2.5-coder:7b") && ollamaArgs.contains("--permission-mode"),
                      "ollama arguments launch claude with model and inner flags")
+        config.model = ""
+        let lookedUp = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil,
+                                                        ollamaDefaultModel: "llama3.2:latest")
+        let notLookedUp = NexusAgentSupport.agentArguments(prompt: "build", configuration: config, conversationID: nil)
+        suite.expect(Array(lookedUp.prefix(4)) == ["launch", "claude", "--model", "llama3.2:latest"]
+                     && Array(notLookedUp.prefix(4)) == ["launch", "claude", "--model", "qwen3"],
+                     "ollama with no model set runs the model it was found to have, or a fixed one, never \"default\"")
 
         // Provider switching triggers session refresh with selected provider
         let serviceRig = Rig()
