@@ -99,6 +99,14 @@ package final class GitHubPeripheralSink {
         execute(arguments: ["restore"])
     }
 
+    /// The mouse command this Mac would run now, or nil when none is installed.
+    package func locateBinary() -> String? {
+        GitHubMouseBinary.locate(configured: defaults[Preferences.githubMouseBinaryPath],
+                                 environment: ProcessInfo.processInfo.environment,
+                                 home: NSHomeDirectory(),
+                                 isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
     private func execute(arguments: [String]) {
         if let executor {
             executor(arguments)
@@ -106,11 +114,7 @@ package final class GitHubPeripheralSink {
         }
         // Looked up on every write, so a binary installed while the app runs
         // is picked up. Without one there is no mouse to drive.
-        guard let binary = GitHubMouseBinary.locate(configured: defaults[Preferences.githubMouseBinaryPath],
-                                                    environment: ProcessInfo.processInfo.environment,
-                                                    home: NSHomeDirectory(),
-                                                    isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
-        else { return }
+        guard let binary = locateBinary() else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = arguments

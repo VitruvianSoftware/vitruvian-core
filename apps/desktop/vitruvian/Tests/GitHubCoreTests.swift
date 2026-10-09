@@ -987,6 +987,13 @@ enum GitHubCoreTests {
                      "the binary path is registered empty, which searches")
         suite.expect(SettingsBackupSupport.machineStateKeys.contains(Preferences.githubMouseBinaryPath.key),
                      "where the binary is installed belongs to this Mac, so a backup leaves it out")
+        for language in AppLanguage.allCases {
+            let text = FeatureStrings.notchGitHub(language)
+            suite.expect(!text.mouseCommand.isEmpty && !text.mouseCommandHint.isEmpty && !text.choose.isEmpty
+                         && text.mouseCommandMissing.contains(GitHubMouseBinary.name)
+                         && text.mouseCommandFound("/opt/x/gravastar-mouse").contains("/opt/x/gravastar-mouse"),
+                         "Settings names the mouse command and the path in use in \(language)")
+        }
     }
 
     /// The path the app really takes: REST polling, not the relay. A run
