@@ -110,7 +110,7 @@ categories:
         platforms: ["macOS (Apple Silicon, Intel)"]
         brew_formula: VitruvianSoftware/tap/gravastar-mouse
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/gravastar-mouse-v0.1.2
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/tools/gravastar-mouse
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/peripherals/Sources/gravastar-mouse
 
   - id: hardware
     title: Embedded & Hardware Firmware
