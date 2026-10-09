@@ -80,7 +80,7 @@ package final class NexusAgentService: NexusAgentEngine, NSWindowDelegate {
 
     // MARK: - Quick Prompt
 
-    package var isQuickPromptVisible: Bool { panel?.isVisible == true }
+    package var isQuickPromptVisible: Bool { isChatVisible }
 
     package func toggleQuickPrompt() {
         if isQuickPromptVisible, panel?.isKeyWindow == true {

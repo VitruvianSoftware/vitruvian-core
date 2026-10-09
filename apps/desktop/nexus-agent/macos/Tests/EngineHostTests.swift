@@ -59,7 +59,6 @@ final class EngineHostTests: XCTestCase {
         let state: String
         let ownsHome: Bool
         var files: [String: String] = [:]
-        var pending: [@MainActor () -> Void] = []
         var agentRuns: [(path: String, arguments: [String], directory: String)] = []
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
@@ -84,10 +83,6 @@ final class EngineHostTests: XCTestCase {
         }
 
         var defaultBot: String { home + "/.config/nexus-agent" }
-
-        func drain() {
-            while !pending.isEmpty { pending.removeFirst()() }
-        }
 
         /// Writes a Claude session file where the app's Claude parser looks.
         func writeClaudeSession(id: String, prompt: String) {
@@ -115,7 +110,7 @@ final class EngineHostTests: XCTestCase {
                 isBotProcess: { _ in false },
                 signal: { _, _ in },
                 launchBot: { _, _, _, _, _ in throw CocoaError(.fileWriteUnknown) },
-                schedule: { [unowned self] _, work in pending.append(work) },
+                schedule: { _, _ in },
                 openFile: { _ in },
                 launchAgent: { [unowned self] path, arguments, directory, _, onOutput, onExit in
                     agentRuns.append((path, arguments, directory))
@@ -195,8 +190,13 @@ final class EngineHostTests: XCTestCase {
         let rig = Rig()
         defer { rig.tearDown() }
         let host = RecordingHost()
+        // The bot is installed in the standard folder only. The host points
+        // somewhere else, so if the engine looked in the standard folder
+        // (instead of asking the host) it would find a bot and not complain.
+        host.configuredBotDirectory = "~/elsewhere"
+        rig.files[rig.defaultBot + "/src/bot.js"] = ""
+        XCTAssertNil(rig.files[rig.home + "/elsewhere/src/bot.js"])
         let engine = NexusAgentEngine(environment: rig.environment, host: host)
-        XCTAssertNil(rig.files[rig.defaultBot + "/src/bot.js"])
 
         engine.start()
 
@@ -304,6 +304,31 @@ final class EngineHostTests: XCTestCase {
         XCTAssertTrue(host.approvals.isEmpty)
     }
 
+    func testAnApprovalIsReportedToTheHost() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+
+        engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
+        XCTAssertEqual(rig.agentRuns.count, 1)
+        // What Claude Code prints when it starts to use a tool.
+        let line = #"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"ls -la"}}}}"# + "\n"
+        rig.agentOutput?(Data(line.utf8))
+
+        // The notice goes out while the turn is still running, not at its end.
+        XCTAssertTrue(engine.session.isRunning)
+        XCTAssertEqual(host.approvals.count, 1, "exactly one notice for one request")
+        XCTAssertEqual(host.approvals.first?.providerName, NexusAgentCLIProvider.antigravity.name)
+        XCTAssertEqual(host.approvals.first?.text, "Bash: ls -la")
+        XCTAssertEqual(host.approvals.first?.failed, false)
+        XCTAssertEqual(host.approvals.first?.endedCleanly, false)
+        XCTAssertTrue(host.finished.isEmpty, "the turn has not finished")
+
+        rig.agentExit?(0)
+        engine.session.stopTranscriptFollower()
+    }
+
     func testAFailedTurnIsReportedAsFailed() {
         let rig = Rig()
         defer { rig.tearDown() }
@@ -335,7 +360,7 @@ final class EngineHostTests: XCTestCase {
 
     // MARK: - Text
 
-    func testDefaultTextIsEnglish() {
+    func testEveryDefaultTextIsFilledIn() {
         let fields = Mirror(reflecting: NexusAgentHostStrings()).children
         XCTAssertFalse(fields.isEmpty)
         for field in fields {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import Combine
 import Darwin
 import Foundation
 import VitruvianCore
@@ -30,6 +31,7 @@ enum NexusAgentTests {
         antigravityTelemetry(suite)
         hostReadsLive(suite)
         hostTurnNotices(suite)
+        changesReachTheViews(suite)
     }
 
     // MARK: - Wiring
@@ -926,6 +928,39 @@ enum NexusAgentTests {
                      && approval.notchSymbol == "hand.raised.fill" && !approval.playsSound
                      && approval.notificationTitle == nil,
                      "a turn waiting on approval shows the tool in the notch, named for its provider")
+    }
+
+    /// The service is an engine from another module with its own published
+    /// values added. SwiftUI redraws from `objectWillChange`, so a change to
+    /// either half, and to the chat session, has to reach it.
+    private static func changesReachTheViews(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.installBot()
+        let service = NexusAgentService(environment: rig.environment)
+        var serviceChanges = 0
+        var sessionChanges = 0
+        // Held until the end so the subscriptions last for every check.
+        let subscriptions: [AnyCancellable] = [
+            service.objectWillChange.sink { _ in serviceChanges += 1 },
+            service.session.objectWillChange.sink { _ in sessionChanges += 1 }
+        ]
+        defer { subscriptions.forEach { $0.cancel() } }
+
+        var before = serviceChanges
+        service.isPinned = true
+        suite.expect(serviceChanges > before,
+                     "a value the Vitruvian service adds (the pin) tells the views it changed")
+
+        before = serviceChanges
+        suite.expect(service.configuration.botToken.isEmpty, "the token is not read until the page loads")
+        service.load()
+        suite.expect(service.configuration.botToken == "1:real" && serviceChanges > before,
+                     "a value the shared engine owns (the settings) tells the views it changed")
+
+        before = sessionChanges
+        service.session.draft = "hello"
+        suite.expect(sessionChanges > before, "typing in the chat tells the views the session changed")
     }
 
     // MARK: - Antigravity Telemetry & Quota
