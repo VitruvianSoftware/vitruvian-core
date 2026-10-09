@@ -31,6 +31,8 @@ social:
 navigation:
   - title: Projects
     url: /projects/
+  - title: Downloads
+    url: /downloads/
   - title: Engineering
     url: /engineering/
   - title: Blog

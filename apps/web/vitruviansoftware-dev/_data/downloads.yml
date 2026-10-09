@@ -1,0 +1,141 @@
+# Downloads catalog for vitruviansoftware.dev.
+#
+# Categorized lists of packaged desktop applications, Homebrew formulae & casks,
+# and embedded hardware firmware releases.
+
+tap:
+  name: VitruvianSoftware/tap
+  repo: https://github.com/VitruvianSoftware/homebrew-tap
+  command: brew tap VitruvianSoftware/tap
+  summary: >-
+    The official Homebrew tap for Vitruvian Software applications and command-line tools.
+    Formulae and casks are built, verified, and updated with every release.
+
+categories:
+  - id: desktop
+    title: Desktop & Menu Bar Apps
+    blurb: Native macOS applications built for high-performance agent workflows, speech notifications, and menu bar control.
+    items:
+      - id: nexus-agent
+        name: NexusAgent
+        version: "1.18.4"
+        summary: >-
+          macOS menu bar companion for AI coding assistants. Bridges Claude Code,
+          Gemini Antigravity, and local LLMs to your phone via Telegram, with
+          native toast notifications and streaming output.
+        platforms: ["macOS Universal", "Apple Silicon", "Intel"]
+        brew_cask: VitruvianSoftware/tap/nexus-agent
+        downloads:
+          - label: Universal DMG
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-universal.dmg
+            size: 3.8 MB
+            arch: Universal
+          - label: Apple Silicon DMG
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-arm64.dmg
+            size: 2.8 MB
+            arch: arm64
+          - label: Intel x86_64 DMG
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-x86_64.dmg
+            size: 2.9 MB
+            arch: x86_64
+          - label: Universal ZIP
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.18.4/NexusAgent-1.18.4-universal.zip
+            size: 3.8 MB
+            arch: Universal
+        releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/nexus-agent
+
+      - id: vitruvian-desktop
+        name: Vitruvian Desktop
+        version: "3.34.5"
+        summary: >-
+          The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
+          multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
+        platforms: ["macOS"]
+        downloads:
+          - label: macOS DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.34.5/Vitruvian-3.34.5.dmg
+            size: 40.8 MB
+            arch: Universal
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-v
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
+
+      - id: home-speaker
+        name: HomeSpeaker
+        version: "1.10.0"
+        summary: >-
+          A macOS menu bar app that announces agent summaries, chat notifications, and spoken
+          briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
+        platforms: ["macOS"]
+        downloads:
+          - label: macOS ZIP
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.10.0/HomeSpeaker-1.10.0-macOS.zip
+            size: 3.5 MB
+            arch: macOS
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
+
+  - id: cli
+    title: Developer Tools & CLI
+    blurb: High-performance CLI tools for local development orchestration, declarative K3s clusters, and peripheral control.
+    items:
+      - id: devx
+        name: devx
+        version: "0.74.2"
+        summary: >-
+          A local development orchestrator. One CLI provisions container VMs, ephemeral
+          databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.
+        platforms: ["macOS (arm64, amd64)", "Linux (arm64, amd64)"]
+        brew_formula: VitruvianSoftware/tap/devx
+        releases_url: https://github.com/VitruvianSoftware/devx/releases
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/devx
+
+      - id: homelab
+        name: homelab
+        version: "1.6.1"
+        summary: >-
+          Declarative multi-node K3s clusters on macOS. Describe nodes in one file and homelab
+          provisions Lima VZ virtual machines, networking, and the cluster to match.
+        platforms: ["macOS (Apple Silicon, Intel)"]
+        brew_formula: VitruvianSoftware/tap/homelab
+        releases_url: https://github.com/VitruvianSoftware/homelab/releases
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/homelab
+
+      - id: gravastar-mouse
+        name: gravastar-mouse
+        version: "0.1.2"
+        summary: >-
+          Low-level USB/HID hardware configuration and battery telemetry CLI for GravaStar
+          wireless gaming mice on macOS.
+        platforms: ["macOS (Apple Silicon, Intel)"]
+        brew_formula: VitruvianSoftware/tap/gravastar-mouse
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/gravastar-mouse-v0.1.2
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/tools/gravastar-mouse
+
+  - id: hardware
+    title: Embedded & Hardware Firmware
+    blurb: Pre-compiled firmware binaries and companion controller tools for microcontroller displays and desk pads.
+    items:
+      - id: esp32-s3
+        name: ESP32-S3 Desk Companion
+        version: "0.1.12"
+        summary: >-
+          Firmware that turns a 1.69-inch ESP32-S3 touch board into a desk display for live Mac
+          metrics and a USB and Bluetooth shortcut macro pad.
+        platforms: ["ESP32-S3", "macOS"]
+        downloads:
+          - label: Mac Controller ZIP
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/esp32-s3-mac-controller.zip
+            size: 994 KB
+          - label: Firmware Binary
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/firmware.bin
+            size: 1.5 MB
+          - label: Bootloader Binary
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/bootloader.bin
+            size: 15 KB
+          - label: Partition Table
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/partitions.bin
+            size: 3 KB
+        flash_command: esptool.py write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 firmware.bin
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/esp32-s3-v0.1.12
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/esp32-s3
