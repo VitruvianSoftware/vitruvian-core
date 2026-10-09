@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.33.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.1...vitruvian-v3.33.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **vitruvian:** finish the unit test run on a Mac that is in use ([#2945](https://github.com/VitruvianSoftware/vitruvian-core/issues/2945)) ([975bd12](https://github.com/VitruvianSoftware/vitruvian-core/commit/975bd125c10209c55e8a7343eb9ee416cf1632b3))
+
 ## [3.33.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.33.0...vitruvian-v3.33.1) (2026-10-08)
 
 
