@@ -22,6 +22,7 @@ package enum BuiltinTools {
             guard let tool = ToolDescriptor(id: id, name: feature.rawValue, symbol: feature.symbolName,
                                             commands: commands) else { continue }
             try? registry.register(tool)
+            try? registry.setName(titleProvider(for: feature), for: id)
             for command in BuiltinCommand.allCases where command.feature == feature {
                 try? registry.setHandler(handler(for: command), for: command.id)
             }

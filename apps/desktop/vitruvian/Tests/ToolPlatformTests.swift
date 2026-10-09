@@ -98,10 +98,13 @@ enum ToolPlatformTests {
         do {
             try world.add("com.acme.deploys", "open", surfaces: [.commandBar])
             try world.add("screenshot", "capture", surfaces: [.radial])
+            try world.add("com.acme.paused", "wake", surfaces: [.commandBar], runnable: false)
         } catch {
-            suite.expect(false, "registering two distinct tools succeeds, got \(error)")
+            suite.expect(false, "registering three distinct tools succeeds, got \(error)")
         }
         let rows = CommandBarCatalog.toolEntries(registry: world.registry, language: .systemDefault)
+        suite.expect(!rows.contains { $0.id == "tool.com.acme.paused/wake" },
+                     "the bar offers only commands that can run now")
         suite.expect(rows.map(\.id) == ["tool.com.acme.deploys/open"],
                      "the bar lists the commands that asked for it, and only those")
         suite.expect(rows.first?.title == "first open" && rows.first?.subtitle == "com.acme.deploys",
@@ -123,6 +126,11 @@ enum ToolPlatformTests {
         for feature in AppFeature.allCases {
             suite.expect(registry.tool(ToolID(feature.rawValue)!)?.feature == feature,
                          "\(feature.rawValue) is registered as a tool under its own id")
+        }
+        for feature in AppFeature.allCases {
+            suite.expect(registry.name(for: ToolID(feature.rawValue)!, language: .systemDefault)
+                             == feature.hubTitle(Strings.localized(.systemDefault), hub: FeatureStrings.hub(.systemDefault)),
+                         "\(feature.rawValue) is named as the hub names it, not by its raw id")
         }
         for command in BuiltinCommand.allCases {
             suite.expect(registry.command(command.id) != nil && registry.hasHandler(for: command.id),
@@ -200,6 +208,28 @@ enum ToolPlatformTests {
         suite.expect(!registry.run(missing) && !registry.canRun(missing) && registry.title(for: missing, language: .systemDefault) == nil,
                      "an id nothing declared neither runs nor has a title")
 
+        let deploys = open.tool
+        suite.expect(registry.name(for: deploys, language: .systemDefault) == "com.acme.deploys",
+                     "a tool with no name provider is named by its descriptor")
+        suite.expect(registry.name(for: ToolID("com.acme.nothing")!, language: .systemDefault) == nil,
+                     "a tool nothing registered has no name")
+        let revisionBeforeName = registry.revision
+        do { try registry.setName({ [unowned world] _ in "\(world.language) deploys" }, for: deploys) } catch {
+            suite.expect(false, "naming a registered tool succeeds, got \(error)")
+        }
+        suite.expect(registry.name(for: deploys, language: .systemDefault) == "second deploys",
+                     "a tool's name comes from its provider")
+        world.language = "third"
+        suite.expect(registry.name(for: deploys, language: .systemDefault) == "third deploys",
+                     "a tool's name follows the language of the moment it is read")
+        suite.expect(registry.revision > revisionBeforeName, "naming a tool is a change surfaces can see")
+        world.language = "second"
+        var unnamed: ToolRegistry.RegistrationError?
+        do { try registry.setName({ _ in "ghost" }, for: ToolID("com.acme.ghost")!) } catch {
+            unnamed = error as? ToolRegistry.RegistrationError
+        }
+        suite.expect(unnamed == .unknownTool(ToolID("com.acme.ghost")!), "a name needs a registered tool")
+
         let before = registry.revision
         registry.unregister(ToolID("com.acme.deploys")!)
         suite.expect(registry.tool(open.tool) == nil && registry.command(open) == nil && !registry.run(open)
@@ -213,6 +243,8 @@ enum ToolPlatformTests {
         do { try registry.register(reborn) } catch { suite.expect(false, "a removed tool can register again, got \(error)") }
         suite.expect(!registry.hasHandler(for: open) && registry.commands(on: .commandBar).isEmpty && !registry.run(open),
                      "a tool registered again does not inherit the handlers of the one removed")
+        suite.expect(registry.name(for: open.tool, language: .systemDefault) == "com.acme.deploys",
+                     "a tool registered again does not inherit the name provider of the one removed")
     }
 
     static func radial(_ suite: TestSuite) {

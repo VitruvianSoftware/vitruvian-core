@@ -24,8 +24,8 @@ package enum BuiltinCommand: String, CaseIterable, Sendable {
     case cleaningModeActivate = "cleaningMode/activate"
     case keepAwakeToggle = "keepAwake/toggle"
 
-    /// Every raw value above parses and names a real feature; the
-    /// "built-in commands" test fails the build's tests otherwise.
+    /// Every raw value above parses and names a real feature; the `builtins`
+    /// checks in `ToolPlatformTests` fail the build's tests otherwise.
     package var id: CommandID { CommandID(rawValue)! }
 
     package var feature: AppFeature { AppFeature(rawValue: id.tool.rawValue)! }

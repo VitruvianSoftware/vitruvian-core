@@ -8,9 +8,7 @@ import VitruvianCore
 /// to list and tells it what to run, and names no tool's service.
 ///
 /// Main-actor isolated: every surface reads it on the main thread.
-/// `@preconcurrency` keeps the services that call it, which are not
-/// actor-isolated yet, free of diagnostics.
-@preconcurrency @MainActor
+@MainActor
 package final class ToolRegistry: ObservableObject {
     package static let shared = ToolRegistry(isAvailable: { $0.isAvailable })
 
@@ -34,10 +32,11 @@ package final class ToolRegistry: ObservableObject {
     package enum RegistrationError: Error, Equatable {
         case duplicateTool(ToolID)
         case unknownCommand(CommandID)
+        case unknownTool(ToolID)
     }
 
-    /// Bumped when a tool is registered or removed or a handler is set, and
-    /// on nothing else. Hub availability and a handler's `isRunnable` can
+    /// Bumped when a tool is registered or removed or a handler or a name is
+    /// set, and on nothing else. Hub availability and a handler's `isRunnable` can
     /// change without it.
     @Published package private(set) var revision = 0
 
@@ -45,6 +44,7 @@ package final class ToolRegistry: ObservableObject {
     private var order: [ToolID] = []
     private var tools: [ToolID: ToolDescriptor] = [:]
     private var handlers: [CommandID: Handler] = [:]
+    private var names: [ToolID: @MainActor (AppLanguage) -> String] = [:]
 
     package init(isAvailable: @escaping (AppFeature) -> Bool) {
         self.isAvailable = isAvailable
@@ -65,9 +65,18 @@ package final class ToolRegistry: ObservableObject {
         revision += 1
     }
 
+    /// Names a registered tool in the user's language, read each time it is
+    /// shown. A tool never named keeps the name its descriptor carries.
+    package func setName(_ name: @escaping @MainActor (AppLanguage) -> String, for id: ToolID) throws {
+        guard tools[id] != nil else { throw RegistrationError.unknownTool(id) }
+        names[id] = name
+        revision += 1
+    }
+
     package func unregister(_ id: ToolID) {
         guard let tool = tools.removeValue(forKey: id) else { return }
         order.removeAll { $0 == id }
+        names[id] = nil
         tool.commands.forEach { handlers[$0.id] = nil }
         revision += 1
     }
@@ -91,6 +100,13 @@ package final class ToolRegistry: ObservableObject {
             .filter { isToolAvailable($0.id) }
             .flatMap(\.commands)
             .filter { $0.surfaces.contains(surface) && handlers[$0.id] != nil }
+    }
+
+    /// A tool's name in a given language, or nil when it is not registered.
+    /// Its descriptor's name stands in until `setName` gives a localised one.
+    package func name(for id: ToolID, language: AppLanguage) -> String? {
+        guard let tool = tools[id] else { return nil }
+        return names[id]?(language) ?? tool.name
     }
 
     package func title(for id: CommandID, language: AppLanguage) -> String? {

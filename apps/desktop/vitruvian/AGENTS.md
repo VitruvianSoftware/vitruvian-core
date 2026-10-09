@@ -116,9 +116,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - An action a surface can trigger is a command. Add it as a `BuiltinCommand`
   case (`Core/Platform/BuiltinCommand.swift`) and give it a handler in
   `Services/Platform/BuiltinTools.swift`; the compiler asks for the handler.
-  The radial menu, the Quick panel and the command bar run and list commands
-  through `ToolRegistry`. Do not add a service call to a surface's own
-  switch.
+  The radial menu, the Quick panel and the command bar run commands through
+  `ToolRegistry`, and the command bar also lists them from it. Do not add a
+  service call to a surface's own switch.
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and

@@ -495,7 +495,7 @@ package final class RadialMenuService: ObservableObject {
             if let tool = item.tool, !tool.isRunnable() { return nil }
             if item.kind == .command {
                 guard let id = item.commandID,
-                      MainActor.assumeIsolated({ ToolRegistry.shared.canRun(id) }) else { return nil }
+                      ToolRegistry.shared.canRun(id) else { return nil }
             }
             if item.kind == .quickToggle, !AppFeature.quickToggles.isAvailable { return nil }
             if item.kind == .windowLayout, !AppFeature.windowLayout.isAvailable { return nil }
