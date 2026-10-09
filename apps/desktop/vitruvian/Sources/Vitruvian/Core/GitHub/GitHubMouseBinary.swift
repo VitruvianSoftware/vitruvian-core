@@ -44,6 +44,14 @@ package enum GitHubMouseBinary {
             .first(where: isExecutable)
     }
 
+    /// True when a path is configured and does not run, so `locate` passed
+    /// over it. Settings says so rather than naming another copy in silence.
+    package static func configuredIsIgnored(configured: String, home: String,
+                                            isExecutable: (String) -> Bool) -> Bool {
+        let trimmed = configured.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && !isExecutable(expandingTilde(trimmed, home: home))
+    }
+
     /// The `mcpServers` entry that runs `binary` as an MCP server
     /// (`gravastar-mouse mcp`), in the JSON shape MCP clients read.
     package static func mcpConfig(binary: String) -> String {
