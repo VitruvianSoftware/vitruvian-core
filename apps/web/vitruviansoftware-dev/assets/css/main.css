@@ -1145,6 +1145,37 @@ pre {
   margin-bottom: 0;
 }
 
+/* A post marked `archived: true` carries this note above its body, and a
+   small flag beside its title in the post lists. */
+.archive-note {
+  max-width: var(--measure);
+  margin: 0 0 var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-left: 2px solid var(--color-warn);
+  background: var(--color-surface);
+  color: var(--color-text-dim);
+  font-size: 0.95rem;
+}
+
+.archive-note strong {
+  color: var(--color-text);
+}
+
+.archived-flag {
+  display: inline-block;
+  margin-left: var(--space-3);
+  padding: 2px var(--space-3);
+  vertical-align: middle;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-divider);
+}
+
 .prose :not(pre) > code {
   padding: 1px 6px;
   background: var(--color-surface-2);

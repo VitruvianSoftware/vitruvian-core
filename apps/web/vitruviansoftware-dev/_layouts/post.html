@@ -13,11 +13,18 @@ layout: default
         <span><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%B %-d, %Y" }}</time></span>
         <span>{{ minutes }} min read</span>
         {%- if page.author -%}<span>{{ page.author }}</span>{%- endif -%}
+        {%- if page.archived -%}<span>Archived</span>{%- endif -%}
       </div>
     </div>
   </header>
 
   <div class="container article-body">
+    {%- if page.archived -%}
+    <aside class="archive-note" role="note">
+      <strong>Archived.</strong>
+      {{ page.archive_note | default: "This post describes something we no longer maintain. It is kept as a record." }}
+    </aside>
+    {%- endif -%}
     <div class="prose">
       {{ content }}
     </div>

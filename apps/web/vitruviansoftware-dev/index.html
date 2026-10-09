@@ -168,7 +168,7 @@ description: >-
       <li class="post-item">
         <time class="post-date" datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %-d, %Y" }}</time>
         <div>
-          <h3><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h3>
+          <h3><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>{%- if post.archived %} <span class="archived-flag">Archived</span>{% endif -%}</h3>
           <p>{{ post.description | default: post.excerpt | strip_html | truncatewords: 40 }}</p>
           <a class="text-link" href="{{ post.url | relative_url }}">Read</a>
         </div>
