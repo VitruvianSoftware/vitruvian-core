@@ -116,7 +116,8 @@ struct NexusAgentMermaidCard: View {
     }
 }
 
-/// A WKWebView rendering a Mermaid diagram via self-contained HTML.
+/// A WKWebView rendering a Mermaid diagram with the copy of Mermaid the app
+/// ships (`NexusAgentMermaidPage`). Nothing is fetched from the network.
 struct NexusAgentMermaidWebView: NSViewRepresentable {
     let source: String
     let isDark: Bool
@@ -124,14 +125,12 @@ struct NexusAgentMermaidWebView: NSViewRepresentable {
     let errorScheme: String
     let onRenderError: @MainActor () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(errorScheme: errorScheme, onRenderError: onRenderError)
+    func makeCoordinator() -> NexusAgentMermaidNavigationDelegate {
+        NexusAgentMermaidNavigationDelegate(errorScheme: errorScheme, onRenderError: onRenderError)
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.setValue(false, forKey: "drawsBackground")
+        let webView = NexusAgentMermaidPage.makeWebView(script: NexusAgentMermaidPage.bundledScript)
         webView.navigationDelegate = context.coordinator
         loadDiagram(in: webView)
         return webView
@@ -144,93 +143,7 @@ struct NexusAgentMermaidWebView: NSViewRepresentable {
     }
 
     private func loadDiagram(in webView: WKWebView) {
-        let escapedSource = source
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-        let theme = isDark ? "dark" : "default"
-        let html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          * { box-sizing: border-box; }
-          body {
-            margin: 0;
-            padding: 16px;
-            background: transparent;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow: auto;
-          }
-          .mermaid {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-          }
-          svg {
-            max-width: 100%;
-            height: auto;
-          }
-        </style>
-        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-        <script>
-          try {
-            mermaid.initialize({
-              startOnLoad: true,
-              theme: '\(theme)',
-              securityLevel: 'loose'
-            });
-          } catch(e) {
-            window.location.href = "\(errorScheme)://error";
-          }
-        </script>
-        </head>
-        <body>
-        <div class="mermaid">
-        \(escapedSource)
-        </div>
-        </body>
-        </html>
-        """
-        webView.loadHTMLString(html, baseURL: nil)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var errorScheme: String
-        var onRenderError: @MainActor () -> Void
-
-        init(errorScheme: String, onRenderError: @escaping @MainActor () -> Void) {
-            self.errorScheme = errorScheme
-            self.onRenderError = onRenderError
-        }
-
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            onRenderError()
-        }
-
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            onRenderError()
-        }
-
-        // The async form on purpose. The completion-handler form only counts
-        // as WebKit's method when its closure is annotated exactly as the SDK
-        // in use annotates it, and that differs between SDKs; written
-        // slightly off, it compiles with a warning and is never called.
-        func webView(_ webView: WKWebView,
-                     decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-            if let url = navigationAction.request.url, url.scheme == errorScheme {
-                onRenderError()
-                return .cancel
-            }
-            return .allow
-        }
+        NexusAgentMermaidPage.load(source: source, isDark: isDark, errorScheme: errorScheme, in: webView)
     }
 }
 

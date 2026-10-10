@@ -91,6 +91,11 @@ _IGNORE_GLOBS = [
     # (a header above it turns the file into a plain static asset), and a
     # header in an include is served to every visitor on every page.
     "apps/web/vitruviansoftware-dev/**",
+    # Nexus Agent's Mac app ships an unmodified copy of Mermaid (MIT, another
+    # holder) and Mermaid's licence text. :add must never write this repo's
+    # header into either; apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md is
+    # their notice.
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/**",
     # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork (see its
     # UPSTREAM.md). Its upstream SPDX headers must stay verbatim and :add must
     # never write an MIT header into it.

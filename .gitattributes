@@ -45,3 +45,8 @@ pnpm-lock.yaml  merge=binary
 # vitruviansoftware.dev ships one vendored, minified script; reformatting it
 # would turn a one-line upstream file into a hand-maintained fork.
 apps/web/vitruviansoftware-dev/js/canvas-nest.min.js rules-lint-ignored=true
+
+# Nexus Agent ships one vendored, minified script (Mermaid, which draws the
+# chat's diagrams) and its licence text; both must stay byte-identical to the
+# npm package they came from (apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md).
+apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/** rules-lint-ignored=true

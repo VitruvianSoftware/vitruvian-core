@@ -573,9 +573,11 @@ py_test(
 
 # Every change to the shared Nexus Agent sources must also change this folder,
 # or this app would never release it (bazel/pin_nexus_agent_shared.py). Both
-# shared libraries are pinned: the engine and the chat view.
+# shared libraries are pinned: the engine and the chat view, with the files the
+# chat view ships beside its code (the copy of Mermaid that draws diagrams).
 SHARED_NEXUS_AGENT = [
     "//apps/desktop/nexus-agent/macos:shared_sources",
+    "//apps/desktop/nexus-agent/macos:shared_ui_resources",
     "//apps/desktop/nexus-agent/macos:shared_ui_sources",
 ]
 

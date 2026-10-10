@@ -49,6 +49,16 @@ the standalone app and this feature build from one copy
 Each file was checked before it left: its header named VitruvianSoftware
 alone and its history has no upstream author. Not legal advice.
 
+### Third-party code the app ships
+
+Besides upstream's code and ours, the app bundle holds one piece of software
+written by others. It arrives with the shared Nexus Agent chat view, not from
+this folder.
+
+| What | Version | Licence | Where in the app | Notice |
+|---|---|---|---|---|
+| [Mermaid](https://github.com/mermaid-js/mermaid), which draws the diagrams in the Nexus Agent chat | 11.17.2, unmodified | MIT, which the GPL allows combining with | `Contents/Resources/mermaid.min.js`, with its licence text beside it as `mermaid-LICENSE.txt` | [`apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md`](../nexus-agent/THIRD_PARTY_NOTICES.md): where the file came from, its checksum, and the libraries built into it |
+
 ## Trademarks and release blockers
 
 Upstream's [`TRADEMARKS.md`](TRADEMARKS.md) reserves the Vorssaint name, logo,
@@ -140,6 +150,7 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/ClipboardFeatureTests.swift`: the link cleaner's four checks call the look where it lives now. Their expectations are unchanged.
   - `bazel/source_lints.py`: the URL cleaner's four files join `MIGRATED_TOOLS`. The rule now reads `@AppStorage(Preferences.x)`, and fails when a key a tool's views may bind is not declared by its manifest, or is not spelled alike in `DefaultsKey` and `Preferences`.
   - `Tests/mutation_checks.py`: four mutations (a rewrite after the clipboard changed under the look; a watch taking its own rewrite for a new copy; a tool reading a preference it did not declare; the host starting a tool that is switched off).
+- **2026-10-10**: Diagrams in the Nexus Agent chat are drawn with a copy of Mermaid 11.17.2 shipped in the app (`Contents/Resources/mermaid.min.js`, about 3.6 MB, MIT; see "Third-party code the app ships"), so nothing is fetched from the network and they work offline; before, the script came from a public CDN each time. The diagram's page can no longer load or open anything outside the app. What a user would notice: a diagram that cannot be read now shows the card's "could not draw" message with its source instead of Mermaid's own error picture, and markup or links written inside a diagram are shown as plain text.
 - **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
   - New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
   - `App/AppDelegate.swift`: stops the tools the host built, at quit.

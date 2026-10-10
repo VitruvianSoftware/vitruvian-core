@@ -90,7 +90,10 @@ done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
   grep -vE '^(packages/)?pulumi/(library|examples)/' |
   # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork: its upstream
   # headers must be kept verbatim (GPL), so it is exempt like pulumi/ above.
-  grep -vE '^apps/desktop/vitruvian/')
+  grep -vE '^apps/desktop/vitruvian/' |
+  # Nexus Agent's vendored copy of Mermaid: another holder's MIT file, shipped
+  # unmodified (apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md).
+  grep -vE '^apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/')
 
 if [ "${fail}" -ne 0 ]; then
   echo "license-verify: FAILED — first-party LICENSE files and source headers must be MIT + 'VitruvianSoftware'." >&2

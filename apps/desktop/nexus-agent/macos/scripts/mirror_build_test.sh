@@ -27,12 +27,18 @@
 # It then runs the tests with SwiftPM too. The copy is laid out as the mirror
 # is, `macos/` beside `testdata/`, because the tests find the shared examples
 # from their own file's path.
+#
+# Between the two it packages the build with scripts/bundle.sh, the way the
+# mirror's release does, and the tests then look for the copy of Mermaid in
+# that app: a resource SwiftPM built but the release left out would otherwise
+# show only as diagram cards that fail in a released app.
 set -euo pipefail
 
 app="$TEST_SRCDIR/$TEST_WORKSPACE/apps/desktop/nexus-agent"
 work="$TEST_TMPDIR/mirror/macos"
 mkdir -p "$work"
-cp -RL "$app/macos/Package.swift" "$app/macos/Sources" "$app/macos/Tests" "$work/"
+cp -RL "$app/macos/Package.swift" "$app/macos/Sources" "$app/macos/Tests" \
+	"$app/macos/Resources" "$app/macos/scripts" "$work/"
 cp -RL "$app/testdata" "$TEST_TMPDIR/mirror/"
 
 export HOME="$TEST_TMPDIR/home"
@@ -40,11 +46,21 @@ mkdir -p "$HOME"
 xcrun swift build --package-path "$work" --scratch-path "$TEST_TMPDIR/build" \
 	--cache-path "$TEST_TMPDIR/cache" --disable-sandbox
 
+# The app a release would ship, from that build. It is assembled and signed,
+# never opened.
+built="$(xcrun swift build --package-path "$work" --scratch-path "$TEST_TMPDIR/build" \
+	--cache-path "$TEST_TMPDIR/cache" --disable-sandbox --show-bin-path)"
+bash "$work/scripts/bundle.sh" "$built/NexusAgent" 0.0.0 "$TEST_TMPDIR/dist"
+packaged="$TEST_TMPDIR/dist/NexusAgent.app"
+codesign --verify --deep --strict "$packaged"
+echo "packaged app holds: $(cd "$packaged/Contents" && find Resources -type f | sort | tr '\n' ' ')"
+
 # Without Bazel's two variables, so the tests look where they do on the mirror
 # and not in this test's runfiles. CFFIXED_USER_HOME moves the home Foundation
 # reports as well: HOME alone does not.
 log="$TEST_TMPDIR/swift-test.log"
 if ! env -u TEST_SRCDIR -u TEST_WORKSPACE CFFIXED_USER_HOME="$HOME" \
+	NEXUS_AGENT_PACKAGED_APP="$packaged" \
 	xcrun swift test --package-path "$work" --scratch-path "$TEST_TMPDIR/build" \
 	--cache-path "$TEST_TMPDIR/cache" --disable-sandbox >"$log" 2>&1; then
 	cat "$log"
@@ -57,5 +73,15 @@ echo "swift test: ${summary:-no summary line}"
 if ! grep -qE 'Executed [1-9][0-9]* tests?, with 0 failures' <<<"$summary"; then
 	cat "$log"
 	echo "swift test ran no tests" >&2
+	exit 1
+fi
+
+# The test that looks in the packaged app skips itself when it is not told
+# where the app is, and a skip also exits 0: require that it looked.
+found="$(grep -E '^packaged app: found ' "$log" | tail -n 1 || true)"
+echo "${found:-packaged app: not looked at}"
+if [ -z "$found" ]; then
+	cat "$log"
+	echo "no test looked for the copy of Mermaid in the packaged app" >&2
 	exit 1
 fi
