@@ -162,7 +162,7 @@ enum TestGroups {
                 FeatureRuntimeContract.run(suite)
                 MenuPanelSectionGateContract.run(suite)
             }),
-            ("platform", { ToolPlatformTests.run(suite) }),
+            ("platform", { ToolPlatformTests.run(suite); ToolBrokerTests.run(suite) }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
                 PortManagerRefreshTests.run(suite)
