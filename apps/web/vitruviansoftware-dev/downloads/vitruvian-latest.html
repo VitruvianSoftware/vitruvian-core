@@ -1,0 +1,22 @@
+---
+layout: null
+permalink: /downloads/latest/vitruvian-desktop.dmg
+sitemap: false
+---
+{%- assign app = site.data.downloads.categories[0].items | where: "id", "vitruvian-desktop" | first -%}
+{%- assign dl = app.downloads | first -%}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Downloading Vitruvian Desktop...</title>
+    <link rel="canonical" href="{{ dl.url }}">
+    <meta http-equiv="refresh" content="0; url={{ dl.url }}">
+    <meta name="robots" content="noindex">
+  </head>
+  <body>
+    <p>Downloading latest Vitruvian Desktop release (v{{ app.version }})...</p>
+    <p>If your download does not start automatically, <a href="{{ dl.url }}">click here to download</a>.</p>
+    <script>window.location.replace("{{ dl.url }}");</script>
+  </body>
+</html>
