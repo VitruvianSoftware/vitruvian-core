@@ -43,9 +43,19 @@ package final class NexusAgentService: NexusAgentEngine, NSWindowDelegate {
     private var localClickMonitor: Any?
     private var outsideClickMonitor: Any?
 
-    package init(environment: Environment) {
+    /// The service as the app builds it: a turn is told to the user through
+    /// `VitruvianNexusAgentHost`.
+    package convenience init(environment: Environment) {
+        self.init(environment: environment, host: VitruvianNexusAgentHost(defaults: environment.defaults))
+    }
+
+    /// With a host of the caller's own. That is for a program that runs
+    /// this window with no user to tell (Tools/NexusAgentWindowRun.swift):
+    /// its host only keeps the notices, so a turn can end there with no
+    /// notch notice, no sound and no notification.
+    package override init(environment: Environment, host: any NexusAgentHost) {
         defaults = environment.defaults
-        super.init(environment: environment, host: VitruvianNexusAgentHost(defaults: environment.defaults))
+        super.init(environment: environment, host: host)
         hotkey.onPress = { [weak self] in self?.toggleQuickPrompt() }
     }
 

@@ -39,10 +39,18 @@ let package = Package(
             path: "Sources/NexusAgentCore"
         ),
         // The shared chat view. Swift 6 mode, as the core.
+        // Its resources are BUILD's `shared_ui_resources`, file for file.
+        // SwiftPM writes them to NexusAgent_NexusAgentUI.bundle beside the
+        // executable; scripts/bundle.sh copies that folder into the app, and
+        // NexusAgentMermaidPage looks for it by that name.
         .target(
             name: "NexusAgentUI",
             dependencies: ["NexusAgentCore"],
-            path: "Sources/NexusAgentUI"
+            path: "Sources/NexusAgentUI",
+            resources: [
+                .copy("Resources/mermaid.min.js"),
+                .copy("Resources/mermaid-LICENSE.txt"),
+            ]
         ),
         .executableTarget(
             name: "NexusAgent",
@@ -51,14 +59,14 @@ let package = Package(
             // The app shell is Swift 5 code. Only the shared core is Swift 6.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        // The same tests BUILD's NexusAgentTests runs, over the core only (the
-        // app has `@main`, so it cannot be linked into a test). Swift 5 mode
+        // The same tests BUILD's NexusAgentTests runs, over the two shared
+        // libraries (the app has `@main`, so it cannot be linked into a test). Swift 5 mode
         // because that is how Bazel compiles them. They find the shared
         // sources and `../testdata` from their own file's path, so nothing is
         // copied; `swift build` does not compile this target.
         .testTarget(
             name: "NexusAgentTests",
-            dependencies: ["NexusAgentCore"],
+            dependencies: ["NexusAgentCore", "NexusAgentUI"],
             path: "Tests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

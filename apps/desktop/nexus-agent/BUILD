@@ -25,6 +25,20 @@ filegroup(
     srcs = glob(["testdata/*.json"]),
 )
 
+# The mirror's release workflow. It never runs in this repository, so
+# //tools/ci:nexus_agent_release_rehearsal_test reads it to keep the rehearsal
+# (.github/workflows/nexus-agent-mirror-toolchain.yaml) running the same steps.
+#
+# A filegroup, not exports_files, on purpose: CI picks the tests to run by
+# asking what depends on the rules of each changed package
+# (tools/pipeline/plan), and a bare exported file is not a rule. Exported that
+# way, a change to release.yml alone would not run the test that reads it.
+filegroup(
+    name = "release_workflow",
+    srcs = [".github/workflows/release.yml"],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 sh_binary(
     name = "bot",
     srcs = ["bot.sh"],

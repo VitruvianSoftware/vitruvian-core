@@ -11,11 +11,13 @@
 // The folder is an absolute path; it is created. Each state is drawn as the
 // floating window and as the notch shows it, in the light and the dark
 // appearance, at two pixels per point. After those, each state is drawn once
-// more as the shared chat view looks with nothing of this app's around it
-// (the default text and chrome: no pin, no dock button, no backdrop, Clear
-// All offered), which is how the standalone Nexus Agent app starts from it.
-// Those files begin `standalone-`; they are for looking at, and are not part
-// of what this app's look is compared by. Two runs of the same code on the same
+// more as the standalone Nexus Agent app shows the shared chat view: its
+// English text, a pin, no dock button, Clear All offered, and always dark,
+// because that app's panel is dark whatever the system's appearance. So the
+// `-light` and `-dark` files of a state are expected to be the same picture;
+// a pair that differs shows something that follows the system and not the
+// panel. Those files begin `standalone-`; they are for looking at, and are
+// not part of what this app's look is compared by. Two runs of the same code on the same
 // Mac write identical files. Files from two Macs, or two macOS versions, are
 // not expected to match: fonts, colour handling and the first letter of the
 // user's name (the avatar beside a prompt) differ.
@@ -56,8 +58,9 @@
 // - A session list by provider. A row does not say which agent it belongs
 //   to, so the drawer's rows differ by title alone.
 // - The standalone app. The `standalone-` images are the shared view on this
-//   app's service and a flat plate; the standalone's own window, backdrop and
-//   settings are not here. The row's menu (Delete) opens on a right click and
+//   app's service and a flat dark plate, with the chrome that app passes
+//   copied here by hand (see `standaloneChrome`); the standalone's own
+//   window, blurred backdrop and settings are not here. The row's menu (Delete) opens on a right click and
 //   the Clear All button's "Confirm?" on a click, so neither is drawn.
 
 import AppKit
@@ -423,8 +426,8 @@ let scenarios: [Scenario] = [
 
 enum Form: String {
     case floating, notch
-    /// The shared view with its default text and chrome, as an app that
-    /// adds nothing of its own would show it.
+    /// The shared view with the text and chrome the standalone app gives
+    /// it, always dark as that app's panel is.
     case standalone
 
     /// This app's two, which are what a change to its look is checked by.
@@ -457,14 +460,21 @@ enum Form: String {
 enum Look: String, CaseIterable {
     case light, dark
 
-    var appearance: NSAppearance? { NSAppearance(named: self == .dark ? .darkAqua : .aqua) }
+    /// The appearance the view is drawn in. The standalone's panel is dark
+    /// whatever the system's appearance (`ensureWindow` in the standalone's
+    /// ChatWindowController.swift sets it), so its light image is drawn dark
+    /// as well: `light` there says only what the system was set to.
+    func appearance(_ form: Form) -> NSAppearance? {
+        NSAppearance(named: self == .dark || form == .standalone ? .darkAqua : .aqua)
+    }
 
     /// What stands behind the view: the notch's black, or a plain plate
     /// where the desktop would show through the floating window.
     func backing(_ form: Form) -> Color {
         switch (form, self) {
         case (.notch, .dark): return .black
-        case (_, .dark): return Color(white: 0.14)
+        // The standalone's backdrop is the dark material in both.
+        case (_, .dark), (.standalone, .light): return Color(white: 0.14)
         case (_, .light): return Color(white: 0.93)
         }
     }
@@ -499,6 +509,17 @@ func picture(of view: NSView, size: CGSize) -> Data {
 }
 
 var rigs: [Rig] = []
+
+/// The chrome the standalone app passes the shared view, copied from
+/// `chatView(for:)` in the standalone's ChatWindowController.swift (this tool
+/// cannot import that app's target; keep the two in step by hand): a pin,
+/// which starts off, no dock button, and Clear All in the sessions drawer.
+/// Its backdrop is a behind-window material private to that app, with
+/// nothing to blur here, so the backdrop is left clear over the dark plate.
+/// Its `showWindow` brings a real window forward and is left doing nothing.
+func standaloneChrome() -> NexusAgentChatChrome {
+    NexusAgentChatChrome(isPinned: .constant(false), offersClearAll: true)
+}
 
 struct Picture {
     var name: String
@@ -545,16 +566,16 @@ func pictures(of scenario: Scenario, form: Form, look: Look) -> [Picture]? {
                       size: size, backing: backing)
     case .standalone:
         // The shared view itself, on the same service, with the text and
-        // the chrome it has when an app passes none.
+        // the chrome the standalone app gives it.
         host = hosted(NexusAgentChatView(engine: service, strings: NexusAgentChatStrings(),
-                                         chrome: NexusAgentChatChrome()),
+                                         chrome: standaloneChrome()),
                       size: size, backing: backing)
     }
     // The window gives the view somewhere to live. It is never put on screen.
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless],
                           backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
-    window.appearance = look.appearance
+    window.appearance = look.appearance(form)
     host.frame = NSRect(origin: .zero, size: size)
     window.contentView = host
     defer {

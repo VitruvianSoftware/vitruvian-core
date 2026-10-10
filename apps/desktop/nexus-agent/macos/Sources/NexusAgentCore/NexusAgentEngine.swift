@@ -251,7 +251,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// found, naming that program; nil when it is there. The chat says the
     /// same in its error bubble when a prompt is sent.
     public var missingProgramText: String? {
-        agentPath == nil ? host.strings.missingProgram(of: configuration.activeProvider) : nil
+        agentPath == nil
+            ? host.strings.missingProgram(of: configuration.activeProvider, model: configuration.model) : nil
     }
 
     public let session: NexusAgentQuickPromptSession

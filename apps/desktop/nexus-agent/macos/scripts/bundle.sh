@@ -25,6 +25,12 @@ set -euo pipefail
 # Usage: ./bundle.sh <executable_path> <version> <output_dir>
 #
 # Example: ./bundle.sh .build/release/NexusAgent 1.2.0 ./dist
+#
+# The executable's own folder must also hold NexusAgent_NexusAgentUI.bundle, the
+# folder SwiftPM writes the chat view's resources to (the copy of Mermaid that
+# draws diagrams). It is copied into the app, and the script stops if it is
+# missing: an app without it builds, signs and opens, and only its diagram
+# cards fail.
 
 EXECUTABLE="${1:?Usage: bundle.sh <executable> <version> <output_dir>}"
 VERSION="${2:?Missing version argument}"
@@ -51,6 +57,21 @@ if [ -f "${RESOURCES_DIR}/AppIcon.icns" ]; then
 	cp "${RESOURCES_DIR}/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/"
 	echo "    ✓ Icon copied"
 fi
+
+# Copy the chat view's resources. NexusAgentMermaidPage looks for this folder,
+# by this name, in Contents/Resources. SwiftPM's older build engine puts the
+# files straight into it and its newer one under Contents/Resources; the app
+# looks in both.
+UI_RESOURCES="NexusAgent_NexusAgentUI.bundle"
+UI_RESOURCES_DIR="$(dirname "${EXECUTABLE}")/${UI_RESOURCES}"
+if [ ! -f "${UI_RESOURCES_DIR}/mermaid.min.js" ] &&
+	[ ! -f "${UI_RESOURCES_DIR}/Contents/Resources/mermaid.min.js" ]; then
+	echo "error: mermaid.min.js not found in ${UI_RESOURCES_DIR}." >&2
+	echo "       Keep ${UI_RESOURCES} beside the executable: SwiftPM writes both to the same folder." >&2
+	exit 1
+fi
+cp -R "${UI_RESOURCES_DIR}" "${APP_BUNDLE}/Contents/Resources/${UI_RESOURCES}"
+echo "    ✓ Chat resources copied"
 
 # Generate Info.plist with correct version
 cat >"${APP_BUNDLE}/Contents/Info.plist" <<EOF
