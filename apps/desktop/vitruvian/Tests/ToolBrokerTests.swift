@@ -17,6 +17,7 @@ enum ToolBrokerTests {
         preferences(suite)
         messages(suite)
         oneLook(suite)
+        clipboard(suite)
         host(suite)
         portManager(suite)
         manifestsAgree(suite)
@@ -30,8 +31,8 @@ enum ToolBrokerTests {
         var undeclared: [Capability] = []
     }
 
-    static func manifest(_ capabilities: [Capability]) -> ToolManifest {
-        ToolManifest(tool: ToolDescriptor(id: ToolID("portManager")!, name: "portManager", symbol: "network",
+    static func manifest(_ capabilities: [Capability], id: String = "portManager") -> ToolManifest {
+        ToolManifest(tool: ToolDescriptor(id: ToolID(id)!, name: id, symbol: "network",
                                           commands: [])!,
                      group: .tools,
                      capabilities: capabilities.map { CapabilityRequest($0, reason: "test")! },
@@ -483,5 +484,105 @@ enum ToolBrokerTests {
         result = look(rule())
         suite.expect(result?.replaced == nil && log.asked == ["types"] && board.pasteboardItems?.count == 2,
                      "a copy of several items is not read")
+    }
+
+    static func clipboard(_ suite: TestSuite) {
+        let rig = URLCleanerTests.CleanerRig()
+        defer { rig.close() }
+        rig.set(installed: true, enabled: false)
+        rig.defaults.set(true, forKey: AppFeature.portManager.availabilityKey)
+        let broker = rig.broker()
+        let tool = broker.services(for: manifest([.clipboardRead, .clipboardWrite, .clipboardRewrite],
+                                                 id: "urlCleaner")).clipboard
+        let other = broker.services(for: manifest([.clipboardRead, .clipboardRewrite])).clipboard
+        let none = broker.services(for: manifest([], id: "urlCleaner")).clipboard
+        // Marks whatever is copied, every time it is asked: a watch that
+        // took its own rewrite for a new copy would mark it twice.
+        let mark = ClipboardRewriteRule(readsText: { _ in true },
+                                        replacement: { ClipboardReplacement(text: $0 + "!", note: [$0]) },
+                                        dropsMarkup: { _, _ in true })
+        let never = ClipboardRewriteRule(readsText: { _ in false }, replacement: { _ in nil },
+                                         dropsMarkup: { _, _ in true })
+        var heard: [String] = []
+
+        suite.expect(none.readText { _ in heard.append("read") } == .notDeclared(.clipboardRead)
+                         && none.writeLink("x") { heard.append("wrote") } == .notDeclared(.clipboardWrite)
+                         && none.rewriteLinks(rule: mark) { _ in heard.append("rewrote") } == .notDeclared(.clipboardRewrite)
+                         && rig.lane.isEmpty && rig.started.isEmpty && heard.isEmpty,
+                     "a refused clipboard call does no work and calls nothing back")
+        let rewriteOnly = broker.services(for: manifest([.clipboardRewrite], id: "urlCleaner")).clipboard
+        suite.expect(rewriteOnly.rewriteLinks(rule: mark) { _ in } == .notDeclared(.clipboardRead) && rig.started.isEmpty,
+                     "watching reads what it rewrites, so it needs both capabilities")
+
+        rig.copy("hello")
+        var texts: [String?] = []
+        suite.expect(tool.readText { texts.append($0) } == nil && texts.isEmpty && rig.lane.count == 1,
+                     "reading waits for the clipboard lane")
+        rig.settle()
+        rig.board.clearContents()
+        tool.readText { texts.append($0) }
+        rig.settle()
+        suite.expect(texts == ["hello", nil],
+                     "a tool that asks for it reads the clipboard's text, and nothing from an empty one")
+
+        var wrote = 0
+        tool.writeLink("https://example.com/x") { wrote += 1 }
+        rig.settle()
+        suite.expect(rig.text == "https://example.com/x" && rig.board.string(forType: .URL) == "https://example.com/x"
+                         && rig.board.string(forType: .source) == Bundle.main.bundleIdentifier && wrote == 1,
+                     "a link a tool writes is on the clipboard as text and as a link, signed as the app's own")
+
+        rig.copy("abc")
+        suite.expect(tool.rewriteLinks(rule: mark) { heard.append($0.text) } == nil
+                         && rig.started.count == 1 && rig.started[0].interval == ClipboardWatcher.interval
+                         && rig.started[0].tolerance == ClipboardWatcher.tolerance && rig.lane.count == 1,
+                     "the first watch starts the one timer and takes one look, to know where the clipboard stands")
+        suite.expect(ClipboardWatcher.interval == 0.8 && ClipboardWatcher.tolerance == 0.25,
+                     "the clipboard is looked at every 0.8 seconds, give or take a quarter")
+        tool.rewriteLinks(rule: mark) { heard.append($0.text) }
+        other.rewriteLinks(rule: never) { _ in heard.append("other") }
+        suite.expect(rig.started.count == 1 && rig.ticks.count == 1,
+                     "a tool watched for already keeps its watch, and a second tool shares the timer")
+        rig.settle()
+        rig.tick()
+        rig.settle()
+        suite.expect(rig.text == "abc" && heard.isEmpty,
+                     "what was on the clipboard when a watch started is not a new copy")
+
+        rig.copy("def")
+        rig.tick()
+        suite.expect(rig.lane.count == 2 && rig.text == "def", "a tick puts one look per watching tool on the lane")
+        rig.settle()
+        rig.tick()
+        rig.settle()
+        suite.expect(rig.text == "def!" && heard == ["def!"],
+                     "a copy is rewritten once: the watch's own rewrite is not a new copy to it")
+
+        rig.copy("ghi")
+        rig.tick()
+        tool.writeLink("own")
+        rig.settle()
+        suite.expect(rig.text == "own" && heard == ["def!"], "a tool's own write calls off its look that was waiting")
+        rig.tick()
+        rig.settle()
+        suite.expect(rig.text == (URLCleanerTests.signingMovesTheCount() ? "own!" : "own"),
+                     "after its own write a tool's watch looks again only if signing the write moved the clipboard's count")
+
+        rig.copy("jkl")
+        rig.tick()
+        tool.stopRewritingLinks()
+        suite.expect(rig.ticks.count == 1, "the timer runs while any tool is watched for")
+        rig.settle()
+        suite.expect(rig.text == "jkl", "a look that was waiting when its watch stopped changes nothing")
+        rig.set(installed: false, enabled: false)
+        suite.expect(tool.rewriteLinks(rule: mark) { _ in } == .notInstalled,
+                     "a tool removed in the hub is refused a watch")
+        suite.expect(tool.readText { _ in heard.append("read") } == .notInstalled
+                         && tool.writeLink("x") == .notInstalled && rig.lane.isEmpty,
+                     "a tool removed in the hub can no longer read or write the clipboard")
+        other.stopRewritingLinks()
+        other.stopRewritingLinks()
+        suite.expect(rig.ticks.isEmpty && rig.stopped == 1,
+                     "the timer stops with the last watch, and stopping twice is safe")
     }
 }

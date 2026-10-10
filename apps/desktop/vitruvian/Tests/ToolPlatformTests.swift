@@ -70,7 +70,8 @@ enum ToolPlatformTests {
         suite.expect(Capability.allCases.allSatisfy { $0.ridesOn.isEmpty },
                      "no stage A capability rides on a macOS grant")
         suite.expect(Set(Capability.allCases.map(\.rawValue))
-                         == ["notify", "open", "processes", "clipboard.write", "storage"],
+                         == ["notify", "open", "processes", "clipboard.write", "storage", "clipboard.read",
+                             "clipboard.rewrite"],
                      "capabilities are named as the platform design names them")
     }
 

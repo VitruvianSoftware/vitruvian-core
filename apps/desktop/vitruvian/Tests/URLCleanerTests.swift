@@ -34,6 +34,11 @@ enum URLCleanerTests {
         var ticks: [Int: () -> Void] = [:]
         var started: [(interval: TimeInterval, tolerance: TimeInterval)] = []
         var stopped = 0
+        /// What a tool said on screen, as "symbol: message".
+        var said: [String] = []
+        /// The capabilities and preference keys a tool used without
+        /// declaring them.
+        var undeclared: [String] = []
 
         init() {
             let domain = "com.vitruviansoftware.vitruvian.tests.url-cleaner"
@@ -89,6 +94,33 @@ enum URLCleanerTests {
         }
 
         var text: String? { board.string(forType: .string) }
+
+        /// The clipboard, its lane and its timer, as the broker reaches them.
+        var watching: ClipboardWatcher.Environment {
+            ClipboardWatcher.Environment(
+                lane: { [self] in lane.append($0) },
+                main: { [self] work in main.append { MainActor.assumeIsolated { work() } } },
+                pasteboard: { [self] in board },
+                every: { [self] in startTimer($0, $1, $2) })
+        }
+
+        /// A broker whose hub, preferences, clipboard and screen are this
+        /// rig's.
+        @MainActor func broker() -> CapabilityBroker {
+            CapabilityBroker(
+                environment: .init(
+                    isInstalled: { [self] id in AppFeature(rawValue: id.rawValue)?.isAvailable(in: defaults) ?? true },
+                    isGranted: { _ in true },
+                    allows: { _, _ in true },
+                    reportUndeclared: { [self] _, capability in undeclared.append(capability.rawValue) }),
+                backings: .init(
+                    notify: .init(beep: {}, hud: { [self] icon, message in said.append("\(icon): \(message)") }),
+                    open: .init(open: { _ in true }),
+                    clipboard: .init(write: { _, _ in }, watching: watching),
+                    processes: .inert,
+                    storage: .init(read: { [self] in defaults.object(forKey: $0) },
+                                   undeclaredKey: { [self] in undeclared.append($0) })))
+        }
     }
 
     /// The cleaner over `rig`, and how the app re-decides whether it runs.

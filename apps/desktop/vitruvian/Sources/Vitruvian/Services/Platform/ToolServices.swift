@@ -21,7 +21,8 @@ package struct ToolServices {
     }
 
     package var clipboard: ClipboardAccess {
-        ClipboardAccess(gate: gate(.clipboardWrite), backing: broker.backings.clipboard)
+        ClipboardAccess(gate: { [broker, manifest] capability in broker.refusal(of: capability, for: manifest) },
+                        backing: broker.backings.clipboard, watcher: broker.clipboardWatcher, tool: manifest.id)
     }
 
     package var processes: ProcessesAccess {

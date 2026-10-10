@@ -89,10 +89,13 @@ package final class CapabilityBroker {
 
     package let environment: Environment
     package let backings: Backings
+    /// The one watch on the clipboard, shared by every tool that asks.
+    package let clipboardWatcher: ClipboardWatcher
 
     package init(environment: Environment, backings: Backings) {
         self.environment = environment
         self.backings = backings
+        self.clipboardWatcher = ClipboardWatcher(environment: backings.clipboard.watching)
     }
 
     /// The handle for one tool.
