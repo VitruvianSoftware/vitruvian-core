@@ -35,6 +35,11 @@ class PrometheusValuesTest(unittest.TestCase):
         sidecar = self.v["server"]["sidecarContainers"]["thanos-sidecar"]
         self.assertIn("--store.limits.request-series=150000", sidecar["args"])
 
+    def test_thanos_sidecar_has_memory_guard(self):
+        # The sidecar was OOM-killed alongside the Querier on 2026-10-10.
+        sidecar = self.v["server"]["sidecarContainers"]["thanos-sidecar"]
+        self.assertIn("--enable-auto-gomemlimit", sidecar["args"])
+
     def test_repeated_oom_kill_alert_exists(self):
         rules = [
             r

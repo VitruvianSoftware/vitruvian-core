@@ -148,6 +148,10 @@ spec:
                     # Same per-request cap as the Store Gateway (thanos appset):
                     # an all-series select must fail, not OOM the sidecar.
                     - --store.limits.request-series=150000
+                    # Set the Go soft memory limit from the 2Gi container limit, so
+                    # the collector runs before the kernel kills the sidecar (it
+                    # was OOM-killed with the Querier on 2026-10-10).
+                    - --enable-auto-gomemlimit
                   ports:
                     - name: grpc
                       containerPort: 10901
