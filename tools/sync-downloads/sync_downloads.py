@@ -145,6 +145,8 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
         # Update asset URLs and sizes
         for asset in rel_nexus.get("assets", []):
             name = asset.get("name", "")
+            if name.endswith(".sha256") or name.endswith(".sig"):
+                continue
             size_str = format_size(asset.get("size", 0))
             url = asset.get("browser_download_url", "")
             if "arm64.dmg" in name:
@@ -189,12 +191,53 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
             updated_content,
             count=1,
         )
+        has_vitruvian_universal_dmg = any(
+            "universal.dmg" in a.get("name", "")
+            for a in rel_vitruvian.get("assets", [])
+        )
         for asset in rel_vitruvian.get("assets", []):
-            if asset.get("name", "").endswith(".dmg"):
-                url = asset.get("browser_download_url", "")
-                size_str = format_size(asset.get("size", 0))
+            name = asset.get("name", "")
+            if name.endswith(".sha256") or name.endswith(".sig"):
+                continue
+            size_str = format_size(asset.get("size", 0))
+            url = asset.get("browser_download_url", "")
+            if "arm64.dmg" in name:
                 updated_content = re.sub(
-                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*macOS DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*Apple Silicon DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif "universal.dmg" in name:
+                updated_content = re.sub(
+                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*Universal DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif (
+                not has_vitruvian_universal_dmg
+                and name.endswith(".dmg")
+                and "arm64" not in name
+                and "x86_64" not in name
+                and "beta" not in name
+            ):
+                updated_content = re.sub(
+                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*Universal DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif "x86_64.dmg" in name:
+                updated_content = re.sub(
+                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*Intel x86_64 DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif "universal.zip" in name:
+                updated_content = re.sub(
+                    r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*Universal ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
                     rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
                     count=1,
@@ -213,12 +256,46 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
             updated_content,
             count=1,
         )
+        has_speaker_universal_zip = any(
+            "universal.zip" in a.get("name", "") for a in rel_speaker.get("assets", [])
+        )
         for asset in rel_speaker.get("assets", []):
-            if asset.get("name", "").endswith(".zip"):
-                url = asset.get("browser_download_url", "")
-                size_str = format_size(asset.get("size", 0))
+            name = asset.get("name", "")
+            if name.endswith(".sha256") or name.endswith(".sig"):
+                continue
+            size_str = format_size(asset.get("size", 0))
+            url = asset.get("browser_download_url", "")
+            if "arm64.dmg" in name:
                 updated_content = re.sub(
-                    r"(id:\s*home-speaker[\s\S]*?label:\s*macOS ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    r"(id:\s*home-speaker[\s\S]*?label:\s*Apple Silicon DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif "universal.dmg" in name:
+                updated_content = re.sub(
+                    r"(id:\s*home-speaker[\s\S]*?label:\s*Universal DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif "x86_64.dmg" in name:
+                updated_content = re.sub(
+                    r"(id:\s*home-speaker[\s\S]*?label:\s*Intel x86_64 DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif "universal.zip" in name:
+                updated_content = re.sub(
+                    r"(id:\s*home-speaker[\s\S]*?label:\s*Universal ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+            elif not has_speaker_universal_zip and name.endswith("-macOS.zip"):
+                updated_content = re.sub(
+                    r"(id:\s*home-speaker[\s\S]*?label:\s*Universal ZIP[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
                     rf"\g<1>{url}\g<2>{size_str}",
                     updated_content,
                     count=1,

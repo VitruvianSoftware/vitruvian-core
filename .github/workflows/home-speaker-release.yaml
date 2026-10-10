@@ -91,11 +91,20 @@ jobs:
       - name: Select the pinned Xcode
         uses: ./.github/actions/select-xcode
 
+      - name: Mint App token for the Homebrew tap
+        id: tap-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: homebrew-tap
+
       - name: Publish downloadable release package
         env:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
           # Optional: a Google Cloud "Desktop app" OAuth client with the Home
           # API enabled. When set, users can sign in without registering
           # their own project. Absent, the app still works via Settings >

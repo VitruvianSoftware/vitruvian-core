@@ -71,7 +71,7 @@ esac
 
 echo "=== vitruvian publish: grade=${GRADE} version=${VERSION} tag=${TAG} commit=${SHA} ==="
 
-flags=(--config=macos-app)
+flags=(--config=macos-app "--macos_cpus=arm64,x86_64")
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
 	# Cache-only (see --config=remotecache-ci): reuse the build the macOS
 	# pipeline unit already cached. Absent (a laptop, a fork), build locally.
@@ -86,17 +86,34 @@ fi
 
 rm -rf "${PKG}/dist"
 "${PKG}/Tools/package-release.sh" "${ROOT}/${ARCHIVE}"
-DMG="${PKG}/dist/Vitruvian-${APP_VERSION}.dmg"
-if [[ ! -f "${DMG}" ]]; then
-	echo "publish: package-release.sh did not produce ${DMG}" >&2
+if [[ ! -f "${PKG}/dist/Vitruvian-${APP_VERSION}-universal.dmg" ]]; then
+	echo "publish: package-release.sh did not produce Vitruvian-${APP_VERSION}-universal.dmg" >&2
 	exit 1
 fi
 
 WORK="${RUNNER_TEMP:-$(mktemp -d)}/vitruvian-dist"
 rm -rf "${WORK}"
 mkdir -p "${WORK}"
-cp "${DMG}" "${WORK}/${ASSET}"
-shasum -a 256 "${WORK}/${ASSET}"
+
+if [[ "${GRADE}" == "beta" ]]; then
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-universal.dmg" "${WORK}/Vitruvian-beta-universal.dmg"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-arm64.dmg" "${WORK}/Vitruvian-beta-arm64.dmg"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-x86_64.dmg" "${WORK}/Vitruvian-beta-x86_64.dmg"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-universal.zip" "${WORK}/Vitruvian-beta-universal.zip"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}.dmg" "${WORK}/Vitruvian-beta.dmg"
+else
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-universal.dmg" "${WORK}/Vitruvian-${VERSION}-universal.dmg"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-arm64.dmg" "${WORK}/Vitruvian-${VERSION}-arm64.dmg"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-x86_64.dmg" "${WORK}/Vitruvian-${VERSION}-x86_64.dmg"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}-universal.zip" "${WORK}/Vitruvian-${VERSION}-universal.zip"
+	cp "${PKG}/dist/Vitruvian-${APP_VERSION}.dmg" "${WORK}/Vitruvian-${VERSION}.dmg"
+fi
+
+for f in "${WORK}"/*; do
+	if [[ -f "$f" ]]; then
+		shasum -a 256 "$f"
+	fi
+done
 
 if [[ "${GRADE}" == "beta" ]]; then
 	gh release view "${TAG}" >/dev/null 2>&1 ||
@@ -106,7 +123,12 @@ if [[ "${GRADE}" == "beta" ]]; then
 			--notes "Rolling pre-release built automatically from commits landing on main."
 fi
 
-gh release upload "${TAG}" "${WORK}/${ASSET}" --clobber
+for f in "${WORK}"/*; do
+	if [[ -f "$f" ]]; then
+		echo "Uploading $(basename "$f")..."
+		gh release upload "${TAG}" "$f" --clobber
+	fi
+done
 
 if [[ "${GRADE}" == "beta" ]]; then
 	# Move the rolling tag to the commit whose DMG now sits on the release, so
@@ -119,7 +141,38 @@ if [[ "${GRADE}" == "beta" ]]; then
 Commit: ${SHA}
 Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-${ASSET} is built from main and is not a release. It is signed ad-hoc unless a Developer ID is configured, so macOS asks you to approve it on first launch (see the README's Install section)."
+Vitruvian is built from main and is not a release. It is signed ad-hoc unless a Developer ID is configured, so macOS asks you to approve it on first launch (see the README's Install section)."
+fi
+
+if [[ "${GRADE}" == "production" && -n "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+	TAP="VitruvianSoftware/homebrew-tap"
+	TAP_DIR="${WORK}/tap"
+	git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP}.git" "${TAP_DIR}"
+	mkdir -p "${TAP_DIR}/Casks"
+	UNIVERSAL_DMG_SHA="$(shasum -a 256 "${WORK}/Vitruvian-${VERSION}-universal.dmg" | cut -d' ' -f1)"
+	cat >"${TAP_DIR}/Casks/vitruvian.rb" <<EOF
+cask "vitruvian" do
+  version "${VERSION}"
+  sha256 "${UNIVERSAL_DMG_SHA}"
+
+  url "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v${VERSION}/Vitruvian-${VERSION}-universal.dmg"
+  name "Vitruvian"
+  desc "Desktop control hub for Vitruvian and AI coding sessions"
+  homepage "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian"
+
+  app "Vitruvian.app"
+end
+EOF
+	git -C "${TAP_DIR}" add Casks/vitruvian.rb
+	if git -C "${TAP_DIR}" diff --cached --quiet; then
+		echo "publish: ${TAP} already has vitruvian ${VERSION}"
+	else
+		git -C "${TAP_DIR}" -c user.name="github-actions[bot]" \
+			-c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+			commit -q -m "vitruvian ${VERSION}"
+		git -C "${TAP_DIR}" push -q origin HEAD
+		echo "publish: ${TAP} Casks/vitruvian.rb is now ${VERSION}"
+	fi
 fi
 
 echo "=== vitruvian publish complete: ${TAG} (${VERSION}, ${GRADE}) ==="
