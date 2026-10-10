@@ -91,7 +91,6 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
     /// there is no chat to show and `show()` does nothing.
     private var engine: StandaloneEngine?
     private var modeObserver: AnyCancellable?
-    private var responderObserver: NSKeyValueObservation?
 
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
@@ -301,10 +300,7 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
                 // The folder picker counts as a click outside the panel,
                 // which hides it; this brings it back.
                 showWindow: { [weak self] in self?.show() },
-                offersClearAll: true,
-                // Text typed in the top field is a prompt, also with the
-                // session list open, so the field goes on saying so.
-                keepsPromptPlaceholderOverSessions: true))
+                offersClearAll: true))
     }
 
     /// The screen a fresh panel opens on: the one with the keyboard focus,
@@ -376,44 +372,7 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
         modeObserver = engine.session.$mode.removeDuplicates().dropFirst().sink { [weak self] mode in
             self?.modeChanged(to: mode)
         }
-        // The caret stays in the chat. When the first prompt is sent, the
-        // pill's field, which has the caret, gives way to the conversation,
-        // and the caret is left with the window: nothing typed next would
-        // land anywhere. It is looked at one turn of the main queue later,
-        // when the conversation's own field is there to take it.
-        responderObserver = panel.observe(\.firstResponder) { [weak self] _, _ in
-            DispatchQueue.main.async { self?.returnCaretIfLost() }
-        }
         return panel
-    }
-
-    /// Puts the caret back in the chat's prompt if no field has it while the
-    /// chat is on show. A field that took the caret meanwhile keeps it (the
-    /// model name's editor, the sessions filter).
-    private func returnCaretIfLost() {
-        guard let window, let hostingView, isChatVisible, window.firstResponder === window,
-              let field = Self.promptField(in: hostingView) else { return }
-        window.makeFirstResponder(field)
-    }
-
-    /// The chat's prompt: the highest field that can be typed in. That is
-    /// the pill's, also over the sessions drawer and its filter; in a
-    /// conversation the follow-up bar is the only one.
-    private static func promptField(in view: NSView) -> NSTextField? {
-        var found: NSTextField?
-        var foundTop = -CGFloat.greatestFiniteMagnitude
-        func look(in view: NSView) {
-            if let field = view as? NSTextField, field.isEditable, !field.isHiddenOrHasHiddenAncestor {
-                let top = field.convert(field.bounds, to: nil).maxY
-                if top > foundTop {
-                    found = field
-                    foundTop = top
-                }
-            }
-            view.subviews.forEach(look)
-        }
-        look(in: view)
-        return found
     }
 
     private func modeChanged(to mode: NexusAgentQuickPromptMode) {
@@ -700,9 +659,10 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
 
     /// The keys that are the window's and not the chat's, pressed while the
     /// panel has the keyboard: ⌘W hides it, ⌘N starts a new chat, and Esc
-    /// stops the reply in flight when the conversation is on show and hides
-    /// the panel otherwise. Every other key is handed back for the chat
-    /// (Return, the arrows, typing). Returns nil for a key it took.
+    /// closes the model name's editor if it is open, else stops the reply
+    /// in flight when the conversation is on show, and hides the panel
+    /// otherwise. Every other key is handed back for the chat (Return, the
+    /// arrows, typing). Returns nil for a key it took.
     func handleKey(_ event: NSEvent) -> NSEvent? {
         guard let window, let engine, event.window === window else { return event }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -716,11 +676,10 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
         if isEscape {
             // Mid-composition Esc belongs to the input method.
             if let editor = window.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
-            let session = engine.session
-            if session.mode == .chat, session.isRunning {
-                session.stop()
-                return nil
-            }
+            // The chat's part of the key comes first, and is the shared
+            // session's to do. This monitor sees Esc before any field in
+            // the chat does, so the editor could not close itself.
+            if engine.session.pressEscape(stoppingReply: true) != .dismiss { return nil }
         }
         dismiss()
         return nil

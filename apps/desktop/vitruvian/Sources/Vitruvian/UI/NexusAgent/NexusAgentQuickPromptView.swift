@@ -22,6 +22,8 @@ package struct NexusAgentQuickPromptView: View {
 
     @ObservedObject private var service: NexusAgentService
     @ObservedObject private var l10n = L10n.shared
+    /// The island has been told that the model name's editor is open.
+    @State private var reportedEditorToNotch = false
 
     /// The app shows its one service. The snapshot tool
     /// (Tools/NexusAgentChatSnapshots.swift) hands in a service built over
@@ -35,6 +37,23 @@ package struct NexusAgentQuickPromptView: View {
         NexusAgentChatView(engine: service,
                            strings: Self.strings(for: l10n.language),
                            chrome: Self.chrome(for: service, embeddedInNotch: embeddedInNotch))
+            // Escape closes the model name's editor before the island.
+            .onChange(of: service.session.isEditingModel) { _, editing in reportEditorToNotch(editing) }
+            .onDisappear { reportEditorToNotch(false) }
+    }
+
+    /// In the notch, Escape is the island's key: it closes the layer a page
+    /// has reported before it closes the island, so the open editor is
+    /// reported as the Agents page's layer. The floating window asks the
+    /// session itself (`NexusAgentService`'s key monitor). The island is
+    /// only spoken to when there is something to say, so a chat that is
+    /// drawn with no island (the snapshot tool's) never reaches for it.
+    private func reportEditorToNotch(_ editing: Bool) {
+        guard embeddedInNotch, editing != reportedEditorToNotch else { return }
+        reportedEditorToNotch = editing
+        NotchService.shared.setPageLayer(.agents, close: editing ? { [service] in
+            _ = service.session.cancelInlineEditing()
+        } : nil)
     }
 
     /// The chat's text in `language`. The fields this app has words for come

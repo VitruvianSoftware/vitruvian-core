@@ -105,6 +105,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var draft = ""
     /// Bumped when the prompt is shown, so the view puts the caret back.
     @Published public var focusSerial = 0
+    /// True while the model's name is open for editing in the
+    /// conversation's header. The view shows its editor exactly while this
+    /// is true: it sets it on a click on the model's name, and clears it
+    /// when the name is saved or the header goes. It is kept here, and not
+    /// in the view, so that the window can ask what Esc means
+    /// (`pressEscape`) and close the editor (`cancelInlineEditing`).
+    @Published public var isEditingModel = false
     @Published public private(set) var mode: NexusAgentQuickPromptMode = .compact
     @Published public private(set) var sessions: [NexusAgentSessionSummary] = []
     /// True from the moment Clear All is asked for until its last delete
@@ -654,6 +661,37 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             awaitingModel = false
             agentDidExit(0, turn: turn)
         }
+    }
+
+    /// Closes whatever is being edited in place in the chat: the model's
+    /// name, which is the only such editor. True when one was open. The
+    /// view's editor goes with `isEditingModel`; what was typed in it is
+    /// not saved.
+    @discardableResult
+    public func cancelInlineEditing() -> Bool {
+        guard isEditingModel else { return false }
+        isEditingModel = false
+        return true
+    }
+
+    /// Esc, pressed in a window that shows this chat. The chat's own part
+    /// of the key is done here, as `NexusAgentEscapeKey` decides it: an
+    /// open editor is closed, or else the reply arriving in the
+    /// conversation on show is stopped. `.dismiss` comes back when there
+    /// was neither, and the key is then the window's.
+    ///
+    /// `stoppingReply` is false for a window whose Esc never stops a reply:
+    /// it closes, and the reply goes on arriving.
+    public func pressEscape(stoppingReply: Bool) -> NexusAgentEscapeKey.Action {
+        let action = NexusAgentEscapeKey.action(
+            inlineEditorOpen: isEditingModel,
+            replyToStop: stoppingReply && mode == .chat && isRunning)
+        switch action {
+        case .closeInlineEditor: cancelInlineEditing()
+        case .stopReply: stop()
+        case .dismiss: break
+        }
+        return action
     }
 
     public func newChat() {
