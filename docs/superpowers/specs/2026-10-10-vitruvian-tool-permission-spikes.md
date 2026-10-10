@@ -66,6 +66,12 @@ public headers. It needs no entitlement and no signing identity.
   It is one line at launch and it is the difference between a permission
   system and a notice.
 
+**Decided otherwise, 2026-10-10.** James chose the opposite: an outside tool
+is trusted like an app and is launched the ordinary way, so that it has the
+reach of a built-in feature. The finding above stands as a description of
+macOS; it is not used. See `2026-10-10-vitruvian-external-tools-design.md`,
+section 3.
+
 ## 4. Spike 2: can a sandbox hold a launched tool?
 
 `sandbox-exec` and the `sandbox_init` call behind it are marked deprecated and
