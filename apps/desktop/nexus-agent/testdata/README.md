@@ -9,6 +9,7 @@ changing a rule on one side fails the other side's tests.
 |---|---|
 | `archive-annotations.json` | which Antigravity annotation text marks a conversation archived |
 | `approval-modes.json` | which agy permission flags an `AGY_APPROVAL_MODE` value gives; `null` is the absent key |
+| `agy-flags.json` | which flags a whole `.env` gives agy after the prompt and the format: permission, model, then effort. The effort line is passed on as written, and a thinking line counts only when there is no effort to go by |
 | `env-lines.json` | what one line of `.env` assigns, as the bot's `dotenv` reads it; `null` key and value mean nothing |
 | `env-files.json` | what a whole `.env` file assigns, as `dotenv` reads it; a line ends only at `\n`, `\r` or `\r\n`, so a file's line endings and look-alike characters (U+2028, form feed) change nothing |
 | `env-written-values.json` | the text the apps write after the `=` for a value, which `dotenv` must read back as that value |
@@ -30,6 +31,28 @@ running the bot's code, not from reading it.
 
 For `.env`, "the bot" means the `dotenv` package it loads the file with: the
 bot's test runs each line through `dotenv.parse`.
+
+For `agy-flags.json` it means the bot started the way it starts: its modules
+loaded in a fresh process, over a folder holding the example's `.env`.
+
+## Where the apps do not follow the bot
+
+One difference is kept on purpose, and `agy-flags.json` records it instead of
+hiding it. The bot loads `.env` with `dotenv`, which never replaces a variable
+that is already set in the bot's process: there the process wins over the
+file, even when the variable is set to nothing. The Mac apps read the bot's
+settings from `.env` alone and never from their own process environment. They
+are started from the Dock or at login, so their environment is not the bot's
+and nobody sets it on purpose; reading it would let a stray variable change how
+an agent is run with nothing in Settings to show for it.
+
+So a case with an `environment` (variables set before the bot starts) has two
+answers: `args` is what the bot passes and the bot's test checks, `apps` is
+what the apps pass and the apps' test checks. A case without one has `args`
+only, and both sides must give it. In practice the two can only part ways for
+a bot that is started by hand, or by a service, with one of its settings
+exported: the apps then show and run what the file says, and that bot runs
+what its environment says.
 
 ## What is not here
 

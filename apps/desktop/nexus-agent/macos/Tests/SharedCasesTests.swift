@@ -272,4 +272,136 @@ final class SharedCasesTests: XCTestCase {
         XCTAssertEqual(checked, cases.count, "every case in the file was checked")
         XCTAssertGreaterThan(checked, 0, "at least one case was checked")
     }
+
+    // MARK: - agy flags
+
+    /// One row of `agy-flags.json`. `flags` is what the apps pass.
+    ///
+    /// Where the apps and the bot part ways: a row with an `environment`
+    /// sets variables in the bot's process before it starts, and the bot's
+    /// dotenv never replaces a variable that is already set, so there the
+    /// process wins over `.env`. The apps are started from the Dock or at
+    /// login, with an environment that is not the bot's and that nobody
+    /// sets on purpose, and they read the bot's settings from `.env` alone.
+    /// So such a row names what the apps pass in `apps`, the file's own
+    /// answer, and the bot's test checks `args`. With a file alone there is
+    /// no `apps`: the apps pass what the bot passes.
+    private struct FlagsCase {
+        let name: String
+        let env: String
+        let flags: [String]
+        let isOwnCommand: Bool
+        let setsProcessEnvironment: Bool
+    }
+
+    private func flagsCases(line: UInt = #line) -> [FlagsCase] {
+        let cases = loadCases("agy-flags.json", line: line)
+        let decoded: [FlagsCase] = cases.compactMap { item in
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let env = item["env"] as? String, let args = item["args"] as? [String] else {
+                XCTFail("\(name): needs an env and a list of args", line: line)
+                return nil
+            }
+            let hasEnvironment = item["environment"] != nil
+            let apps = item["apps"] as? [String]
+            guard hasEnvironment == (apps != nil) else {
+                XCTFail("\(name): a case has an apps list exactly when it has an environment", line: line)
+                return nil
+            }
+            if let custom = item["custom"], custom as? Bool != true {
+                XCTFail("\(name): custom is true or left out", line: line)
+                return nil
+            }
+            return FlagsCase(name: name, env: env, flags: apps ?? args, isOwnCommand: item["custom"] != nil,
+                             setsProcessEnvironment: hasEnvironment)
+        }
+        XCTAssertEqual(decoded.count, cases.count, "every case in the file was read", line: line)
+        return decoded
+    }
+
+    /// The flags a turn passes agy after the prompt and the format, for the
+    /// settings a `.env` gives.
+    private func agyFlags(for env: String, file: StaticString = #filePath, line: UInt = #line) -> [String] {
+        let arguments = NexusAgentSupport.agentArguments(prompt: "hi", configuration: NexusAgentEnvFile.parse(env),
+                                                         conversationID: nil)
+        XCTAssertEqual(Array(arguments.prefix(4)), ["-p", "hi", "--output-format", "stream-json"],
+                       "the flags follow the prompt and the format", file: file, line: line)
+        return Array(arguments.dropFirst(4))
+    }
+
+    func testAgyIsRunWithTheFlagsTheBotPasses() {
+        let cases = flagsCases()
+        var checked = 0
+        var ownCommands = 0
+        var withProcessEnvironment = 0
+        for item in cases {
+            if item.isOwnCommand {
+                // A command of the user's own is run from its template, and
+                // nothing of the effort or the thinking line is added to it.
+                let command = NexusAgentSupport.providerCommand(template: "print-arguments {prompt}",
+                                                                prompt: "hi", model: "")
+                XCTAssertEqual(command?.arguments, ["hi"] + item.flags, item.name)
+                ownCommands += 1
+            } else {
+                XCTAssertEqual(agyFlags(for: item.env), item.flags, item.name)
+            }
+            if item.setsProcessEnvironment { withProcessEnvironment += 1 }
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+        XCTAssertGreaterThan(ownCommands, 0, "a command of the user's own was checked")
+        XCTAssertGreaterThan(withProcessEnvironment, 0, "a case the bot's process environment decides was checked")
+    }
+
+    /// Saving from Settings with nothing changed must leave the bot running
+    /// agy with the flags it ran with before, whatever the effort line says
+    /// and however thinking was switched on. The page has no name for `HIGH`
+    /// or `max`, so this is where a save could quietly rewrite them.
+    func testSavingWithNothingChangedNeverChangesTheFlags() {
+        let cases = flagsCases().filter { !$0.isOwnCommand }
+        var checked = 0
+        for item in cases {
+            let saved = NexusAgentEnvFile.render(NexusAgentEnvFile.parse(item.env), over: item.env)
+            XCTAssertEqual(agyFlags(for: saved), item.flags, "\(item.name): after a save, which wrote\n\(saved)")
+            // A second save changes nothing more.
+            XCTAssertEqual(NexusAgentEnvFile.render(NexusAgentEnvFile.parse(saved), over: saved), saved,
+                           "\(item.name): saved twice")
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
+
+    /// Choosing an effort in Settings is the user's word, and it replaces
+    /// whatever the line said, a word the page has no name for included.
+    func testChoosingAnEffortReplacesWhateverTheLineSaid() {
+        for written in ["HIGH", "max", "' high '", "low", ""] {
+            let before = "AGY_APPROVAL_MODE=default\nAGY_EFFORT=\(written)\n"
+            for chosen in NexusAgentEffort.allCases where chosen != NexusAgentEnvFile.parse(before).effort {
+                var edited = NexusAgentEnvFile.parse(before)
+                edited.effort = chosen
+                let expected = chosen == .automatic ? [] : ["--effort", chosen.rawValue]
+                let turn = NexusAgentSupport.agentArguments(prompt: "hi", configuration: edited, conversationID: nil)
+                XCTAssertEqual(Array(turn.dropFirst(4)), expected, "written \(written), chosen \(chosen): the turn")
+                let saved = NexusAgentEnvFile.render(edited, over: before)
+                XCTAssertEqual(agyFlags(for: saved), expected, "written \(written), chosen \(chosen): the save")
+            }
+        }
+    }
+
+    /// The page has no control for the thinking line, so a save leaves it
+    /// where it is, with every other key the page does not own.
+    func testSavingKeepsTheThinkingLine() {
+        for value in ["true", "false", "TRUE", ""] {
+            let before = "# mine\nAGY_EFFORT=low\nAGY_THINKING=\(value)\nSOMETHING_ELSE=kept\n"
+            var edited = NexusAgentEnvFile.parse(before)
+            edited.model = "m2"
+            edited.effort = .medium
+            let after = NexusAgentEnvFile.values(in: NexusAgentEnvFile.render(edited, over: before))
+            XCTAssertEqual(after["AGY_THINKING"], value, "AGY_THINKING=\(value) after a save")
+            XCTAssertEqual(after["SOMETHING_ELSE"], "kept")
+            XCTAssertEqual(after[NexusAgentEnvFile.modelKey], "m2")
+        }
+    }
 }

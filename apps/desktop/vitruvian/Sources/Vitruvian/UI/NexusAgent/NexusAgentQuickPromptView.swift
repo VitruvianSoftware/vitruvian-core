@@ -24,21 +24,32 @@ package struct NexusAgentQuickPromptView: View {
     @ObservedObject private var l10n = L10n.shared
     /// The island has been told that the model name's editor is open.
     @State private var reportedEditorToNotch = false
+    /// Tells the island which layer the Agents page shows, with how to
+    /// close it, or nil for none.
+    private let setNotchLayer: @MainActor ((() -> Void)?) -> Void
 
     /// The app shows its one service. The snapshot tool
     /// (Tools/NexusAgentChatSnapshots.swift) hands in a service built over
-    /// fake files instead, so that it never reads the user's own.
-    package init(embeddedInNotch: Bool = false, service: NexusAgentService = .shared) {
+    /// fake files instead, so that it never reads the user's own. A test
+    /// hands in `setNotchLayer` to see what the island would be told.
+    package init(embeddedInNotch: Bool = false, service: NexusAgentService = .shared,
+                 setNotchLayer: @escaping @MainActor ((() -> Void)?) -> Void = {
+                     NotchService.shared.setPageLayer(.agents, close: $0)
+                 }) {
         self.embeddedInNotch = embeddedInNotch
         self.service = service
+        self.setNotchLayer = setNotchLayer
     }
 
     package var body: some View {
         NexusAgentChatView(engine: service,
                            strings: Self.strings(for: l10n.language),
                            chrome: Self.chrome(for: service, embeddedInNotch: embeddedInNotch))
-            // Escape closes the model name's editor before the island.
-            .onChange(of: service.session.isEditingModel) { _, editing in reportEditorToNotch(editing) }
+            // Escape closes the model name's editor before the island. The
+            // session is listened to directly: it is the session that
+            // publishes the editor opening, and this view observes only
+            // the service, so it is not drawn again when that happens.
+            .onReceive(service.session.$isEditingModel) { editing in reportEditorToNotch(editing) }
             .onDisappear { reportEditorToNotch(false) }
     }
 
@@ -51,7 +62,7 @@ package struct NexusAgentQuickPromptView: View {
     private func reportEditorToNotch(_ editing: Bool) {
         guard embeddedInNotch, editing != reportedEditorToNotch else { return }
         reportedEditorToNotch = editing
-        NotchService.shared.setPageLayer(.agents, close: editing ? { [service] in
+        setNotchLayer(editing ? { [service] in
             _ = service.session.cancelInlineEditing()
         } : nil)
     }

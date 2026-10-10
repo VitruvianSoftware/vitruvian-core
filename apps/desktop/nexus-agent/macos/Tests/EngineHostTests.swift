@@ -75,6 +75,8 @@ final class EngineHostTests: XCTestCase {
         var agentRuns: [(path: String, arguments: [String], directory: String)] = []
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
+        /// While true the agent cannot be started: the launch throws.
+        var agentCannotStart = false
         /// Programs the rig says can be run, for the lookups that ask.
         var executables: Set<String> = []
         /// A provider's own command, as the session asked for it to be run,
@@ -193,6 +195,7 @@ final class EngineHostTests: XCTestCase {
                 schedule: { _, _ in },
                 openFile: { _ in },
                 launchAgent: { [unowned self] path, arguments, directory, _, onOutput, onExit in
+                    if agentCannotStart { throw CocoaError(.fileNoSuchFile) }
                     agentRuns.append((path, arguments, directory))
                     agentOutput = onOutput
                     agentExit = onExit
@@ -2459,6 +2462,121 @@ final class EngineHostTests: XCTestCase {
                        NexusAgentTurnAnnouncement(playsSound: false,
                                                   notificationTitle: "Antigravity CLI — Failed",
                                                   notificationBody: "The agent stopped with an error.\nagy: quota exceeded"))
+    }
+
+    // MARK: - A turn that cannot be started is a failed turn
+
+    /// The agent's program is there but starting it fails. The chat says so
+    /// in an error bubble; with the chat out of sight that bubble is seen
+    /// by nobody, so the host is told too, in the bubble's words. The same
+    /// for every provider whose turns are run this way.
+    func testAnAgentThatCannotBeStartedIsAFailedTurn() {
+        let providers: [(NexusAgentCLIProvider, path: String, model: String)] = [
+            (.antigravity, "/fake/agy", ""), (.claude, "/fake/claude", ""), (.ollama, "/fake/ollama", "m"),
+        ]
+        for (provider, path, model) in providers {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            rig.agentCannotStart = true
+            let host = RecordingHost()
+            let engine = NexusAgentEngine(environment: rig.environment, host: host)
+            engine.updateActiveProvider(provider)
+            var configuration = engine.configuration
+            configuration.model = model
+
+            engine.session.send("do it", configuration: configuration, agentPath: path)
+            engine.session.stopTranscriptFollower()
+
+            XCTAssertFalse(engine.session.isRunning, provider.name)
+            XCTAssertTrue(rig.agentRuns.isEmpty, provider.name)
+            let bubble = engine.session.messages.last
+            XCTAssertEqual(bubble?.isError, true, provider.name)
+            XCTAssertEqual(bubble?.text, host.strings.agentFailed, provider.name)
+            XCTAssertEqual(host.finished.count, 1, "\(provider.name): the host is told, once")
+            let notice = host.finished.first?.notice
+            XCTAssertEqual(notice?.providerName, provider.name)
+            XCTAssertEqual(notice?.failed, true, provider.name)
+            XCTAssertEqual(notice?.endedCleanly, false, provider.name)
+            XCTAssertEqual(notice?.text, "", "\(provider.name): there was no reply")
+            XCTAssertEqual(notice?.failureDetail, bubble?.text, "\(provider.name): the notice carries what the bubble says")
+            XCTAssertEqual(announcedOutOfSight(notice),
+                           NexusAgentTurnAnnouncement(playsSound: false,
+                                                      notificationTitle: "\(provider.name) — Failed",
+                                                      notificationBody: host.strings.agentFailed),
+                           provider.name)
+
+            // The chat is usable again, and the next turn is reported as any other.
+            rig.agentCannotStart = false
+            engine.session.send("again", configuration: configuration, agentPath: path)
+            XCTAssertEqual(rig.agentRuns.count, 1, provider.name)
+            rig.agentExit?(0)
+            engine.session.stopTranscriptFollower()
+            XCTAssertEqual(host.finished.count, 2, provider.name)
+            XCTAssertEqual(host.finished.last?.notice.failed, false, provider.name)
+        }
+    }
+
+    /// The agent's program is not installed at all: the same failed turn,
+    /// in the words of the bubble that says it is missing.
+    func testAnAgentThatIsNotInstalledIsAFailedTurn() {
+        for provider in [NexusAgentCLIProvider.antigravity, .claude, .ollama] {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            let host = RecordingHost()
+            let engine = NexusAgentEngine(environment: rig.environment, host: host)
+            engine.updateActiveProvider(provider)
+
+            engine.session.send("do it", configuration: engine.configuration, agentPath: nil)
+
+            XCTAssertFalse(engine.session.isRunning, provider.name)
+            XCTAssertTrue(rig.agentRuns.isEmpty, provider.name)
+            XCTAssertTrue(rig.programRuns.isEmpty, "\(provider.name): nothing is asked of a program that is not there")
+            let bubble = engine.session.messages.last
+            XCTAssertEqual(bubble?.isError, true, provider.name)
+            XCTAssertEqual(bubble?.text, host.strings.missingAgent, provider.name)
+            XCTAssertEqual(host.finished.count, 1, "\(provider.name): the host is told, once")
+            let notice = host.finished.first?.notice
+            XCTAssertEqual(notice?.providerName, provider.name)
+            XCTAssertEqual(notice?.failed, true, provider.name)
+            XCTAssertEqual(notice?.endedCleanly, false, provider.name)
+            XCTAssertEqual(notice?.text, "", provider.name)
+            XCTAssertEqual(notice?.failureDetail, host.strings.missingAgent, provider.name)
+            XCTAssertEqual(announcedOutOfSight(notice)?.notificationBody, host.strings.missingAgent, provider.name)
+        }
+    }
+
+    /// A turn stopped while it was still waiting to start (Ollama being
+    /// asked for its models) never reaches the launch, so it is a stopped
+    /// turn and not a failed one, even when the launch would have failed.
+    func testATurnStoppedBeforeItStartsIsNotAFailedTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        rig.holdsProgram = true
+        rig.agentCannotStart = true
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.stop()
+        rig.finishProgram()
+        await rig.settle()
+
+        XCTAssertEqual(host.finished.count, 1, "the stop is the only thing reported")
+        XCTAssertEqual(host.finished.first?.notice.failed, false)
+        XCTAssertNil(host.finished.first?.notice.failureDetail)
+        XCTAssertEqual(session.messages.last?.text, host.strings.replyStopped)
+        XCTAssertEqual(session.messages.last?.isError, false)
+
+        // Dropped by New chat while waiting: nothing at all is reported.
+        rig.holdsProgram = true
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { rig.programRuns.count == 2 }
+        session.newChat()
+        rig.finishProgram()
+        await rig.settle()
+        XCTAssertEqual(host.finished.count, 1, "a turn dropped by New chat is not reported")
     }
 
     func testAnErrorTheAgentReportsItselfIsTheFailuresWords() {

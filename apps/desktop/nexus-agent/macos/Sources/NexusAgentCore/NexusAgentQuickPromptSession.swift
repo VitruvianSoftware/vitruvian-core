@@ -418,7 +418,12 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             return
         }
         guard let agentPath else {
-            messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
+            let reason = strings.missingAgent
+            messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
+            // With the chat out of sight nobody sees that bubble, so the
+            // host is told as it is of any other failed turn.
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                        failureDetail: reason))
             return
         }
         // Plan mode and worktree mode are the user's as they stand now, when
@@ -638,11 +643,14 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             stopTranscriptFollower()
             elapsedTimer?.invalidate()
             elapsedTimer = nil
-            replace(reply: strings.agentFailed, isError: true)
-            // Not reported to the host, as it never was: a host that shows
-            // every finished turn (Vitruvian's notch) would start showing
-            // this one. The bubble is the only word of it.
+            let reason = strings.agentFailed
+            replace(reply: reason, isError: true)
             replyID = nil
+            // A turn that could not start is a failed turn to the host, in
+            // the bubble's words: with the chat out of sight the bubble is
+            // seen by nobody, and the app would otherwise say nothing.
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                        failureDetail: reason))
         }
     }
 

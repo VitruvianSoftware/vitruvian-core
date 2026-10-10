@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import AppKit
 import Combine
 import Darwin
 import Foundation
 import NexusAgentUI
+import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -38,6 +40,7 @@ enum NexusAgentTests {
         hostTurnNotices(suite)
         changesReachTheViews(suite)
         sharedChatWiring(suite)
+        notchHearsOfTheModelEditor(suite)
     }
 
     // MARK: - Wiring
@@ -1210,6 +1213,76 @@ enum NexusAgentTests {
                      && english.newChatShortcut == " (⌘N)"
                      && english.environmentHint != NexusAgentChatStrings().environmentHint,
                      "the two lines that name this app's shortcuts are this app's, whatever the shared chat says by default")
+    }
+
+    // MARK: - The notch hears of the model name's editor
+
+    /// In the notch, Escape is the island's key: it closes a layer the
+    /// page has reported before it closes the island. The open editor is
+    /// such a layer, and it opens with a change to the chat SESSION alone;
+    /// nothing the service publishes changes with it. So the chat is drawn
+    /// here as the notch draws it, off screen, the editor is opened the way
+    /// a click on the model's name opens it, and what the island would be
+    /// told is recorded in place of telling it.
+    private static func notchHearsOfTheModelEditor(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        var layers: [(() -> Void)?] = []
+        var layersFromTheWindow = 0
+        func drawn(embeddedInNotch: Bool) -> NSHostingView<NexusAgentQuickPromptView> {
+            let host = NSHostingView(rootView: NexusAgentQuickPromptView(
+                embeddedInNotch: embeddedInNotch, service: service,
+                setNotchLayer: { if embeddedInNotch { layers.append($0) } else { layersFromTheWindow += 1 } }))
+            host.sizingOptions = []
+            host.frame = CGRect(x: 0, y: 0, width: 520, height: 420)
+            host.layoutSubtreeIfNeeded()
+            return host
+        }
+        /// Lets SwiftUI deliver what is due, until `done` or for `limit` seconds.
+        func wait(_ limit: TimeInterval = 2, until done: () -> Bool = { false }) {
+            let deadline = Date().addingTimeInterval(limit)
+            while !done(), Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            }
+        }
+
+        let inNotch = drawn(embeddedInNotch: true)
+        wait(0.3)
+        suite.expect(layers.isEmpty, "with no editor open the island is told of no layer")
+
+        service.session.isEditingModel = true
+        wait { !layers.isEmpty }
+        suite.expect(layers.count == 1 && layers.first.map { $0 != nil } == true,
+                     "opening the model name's editor in the notch tells the island of a layer to close")
+
+        // What Escape does in the island: it runs the layer's close.
+        if let close = layers.first.flatMap({ $0 }) { close() }
+        suite.expect(!service.session.isEditingModel, "closing that layer closes the editor")
+        wait { layers.count >= 2 }
+        suite.expect(layers.count == 2 && layers.last.map { $0 == nil } == true,
+                     "and the island is told the layer is gone, so the next Escape closes the island")
+
+        // Saved or cancelled from inside the chat: the same.
+        service.session.isEditingModel = true
+        wait { layers.count >= 3 }
+        service.session.isEditingModel = false
+        wait { layers.count >= 4 }
+        suite.expect(layers.count == 4 && layers[2] != nil && layers[3] == nil,
+                     "an editor closed from inside the chat is reported gone too")
+
+        // The floating window asks the session itself, and has no island.
+        // The chat drawn for the notch is still there, so each is counted
+        // apart: the same two changes reach the notch's and not the window's.
+        let floating = drawn(embeddedInNotch: false)
+        service.session.isEditingModel = true
+        wait { layers.count >= 5 }
+        service.session.isEditingModel = false
+        wait { layers.count >= 6 }
+        wait(0.3)
+        suite.expect(layers.count == 6 && layersFromTheWindow == 0,
+                     "the chat in its own window tells the island nothing")
+        withExtendedLifetime((inNotch, floating)) {}
     }
 
     // MARK: - Antigravity Telemetry & Quota
