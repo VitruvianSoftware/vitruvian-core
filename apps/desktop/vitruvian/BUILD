@@ -339,6 +339,54 @@ swift_binary(
     ],
 )
 
+# Shows the real Quick Prompt window for a few seconds and checks typing, Esc,
+# ⌘W and a diagram in it, with a stand-in agent and files held in memory
+# (Tools/NexusAgentWindowRun.swift says what is real and what stands in). A
+# developer's tool that puts a window on the screen, so it is run by hand and
+# is in no test or pipeline unit:
+#   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_window_run -- [<Vitruvian.zip>]
+# A script like the snapshot tool, compiled as main.swift the same way. It is
+# an app and not a plain program because the chat finds its copy of Mermaid in
+# the main bundle's resources, which is where rules_apple puts a library's
+# `data` for an app and nowhere a plain program looks.
+genrule(
+    name = "nexus_agent_window_run_main",
+    srcs = ["Tools/NexusAgentWindowRun.swift"],
+    outs = ["nexus_agent_window_run_src/main.swift"],
+    cmd = "cp $< $@",
+)
+
+swift_library(
+    name = "nexus_agent_window_run_lib",
+    package_name = SWIFT_PACKAGE,
+    srcs = [":nexus_agent_window_run_main"],
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    module_name = "NexusAgentWindowRun",
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":VitruvianCore",
+        ":VitruvianDesign",
+        ":VitruvianServices",
+        ":VitruvianUI",
+        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
+    ],
+)
+
+# Its own bundle identifier, so its settings are never the app's.
+macos_application(
+    name = "nexus_agent_window_run",
+    bundle_id = BUNDLE_ID + ".tools.nexus-agent-window-run",
+    infoplists = ["Tools/NexusAgentWindowRun-Info.plist"],
+    minimum_os_version = "14.0",
+    tags = ["manual"],
+    deps = [":nexus_agent_window_run_lib"],
+)
+
 genrule(
     name = "icons",
     srcs = glob(["Resources/Brand/*.png"]),
