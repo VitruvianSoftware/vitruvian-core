@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.15.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.1...oauth-user-inspector-v1.15.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **backstage:** CPU and memory for apps on the Docker nodes, and alerts scoped to each component ([#3028](https://github.com/VitruvianSoftware/vitruvian-core/issues/3028)) ([dd05e05](https://github.com/VitruvianSoftware/vitruvian-core/commit/dd05e0529235f95065b75b090f178a8526447c94))
+
 ## [1.15.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.0...oauth-user-inspector-v1.15.1) (2026-10-10)
 
 
