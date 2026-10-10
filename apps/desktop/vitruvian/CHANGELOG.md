@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.37.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.37.0...vitruvian-v3.37.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the caret follows the conversation, failures say why, and the apps read effort and thinking as the bot does ([#3034](https://github.com/VitruvianSoftware/vitruvian-core/issues/3034)) ([fb8ec9c](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb8ec9cb55c7f32ce3bb994d83647ac64adee40d))
+
 ## [3.37.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.36.0...vitruvian-v3.37.0) (2026-10-10)
 
 
