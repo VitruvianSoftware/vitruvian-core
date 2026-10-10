@@ -325,6 +325,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     // step 2.)
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
+        // Tools the host built stop here. A feature that has become a tool
+        // has no line of its own below.
+        ToolHost.shared.stopAll()
         CommandBarService.shared.restoreBorrowedInputSource()
         if AppFeature.notch.isAvailable { NotchService.shared.stop(restoreCapture: false) }
         // Quitting properly means the start worked, whenever it happened.

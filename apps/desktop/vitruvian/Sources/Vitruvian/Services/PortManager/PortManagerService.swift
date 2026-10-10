@@ -31,25 +31,41 @@ package final class PortManagerService: ObservableObject {
             self.main = main
         }
 
-        package static let system = Scanning(
-            listPIDs: { proc_listallpids($0, $1) },
-            startTime: { KillProcessService.startTime(for: $0) },
-            listing: { Shell.run("/usr/sbin/lsof", ["-nP", "+c0", "-iTCP", "-sTCP:LISTEN", "-F", "pcnPT"]) },
-            background: { DispatchQueue.global(qos: .userInitiated).async(execute: $0) },
-            main: { work in DispatchQueue.main.async { work() } })
+        /// A scan that reads through the broker's scanner. The list of PIDs
+        /// is a plain libc read that needs no trust; the start times and
+        /// the listing are the host's.
+        package init(scanner: ProcessScanner) {
+            self.init(listPIDs: { proc_listallpids($0, $1) },
+                      startTime: scanner.startTime,
+                      listing: scanner.listeningSocketsReport,
+                      background: { DispatchQueue.global(qos: .userInitiated).async(execute: $0) },
+                      main: { work in DispatchQueue.main.async { work() } })
+        }
     }
 
-    package static let shared = PortManagerService()
     @Published package private(set) var entries: [PortManagerEntry] = []
     @Published package var query = ""
     @Published package private(set) var isRefreshing = false
     @Published package private(set) var hasLoadedOnce = false
     @Published package private(set) var refreshFailed = false
 
-    private let scanning: Scanning
+    private let services: ToolServices?
+    /// The scan to run, asked for each time one starts: the broker checks
+    /// then. Nil when the scan is refused.
+    private let scanning: () -> Scanning?
 
-    package init(scanning: Scanning = .system) {
-        self.scanning = scanning
+    /// For tests of the scan itself, which hand in the process data.
+    package init(scanning: Scanning) {
+        self.services = nil
+        self.scanning = { scanning }
+    }
+
+    package init(services: ToolServices) {
+        self.services = services
+        self.scanning = {
+            guard case .success(let scanner) = services.processes.scanner() else { return nil }
+            return Scanning(scanner: scanner)
+        }
     }
 
     package var filteredEntries: [PortManagerEntry] {
@@ -62,7 +78,11 @@ package final class PortManagerService: ObservableObject {
         guard !isRefreshing else { return }
         isRefreshing = true
         refreshFailed = false
-        let scanning = scanning
+        guard let scanning = scanning() else {
+            refreshFailed = true
+            isRefreshing = false
+            return
+        }
         scanning.background {
             let result = Self.snapshot(scanning)
             scanning.main {
@@ -77,14 +97,36 @@ package final class PortManagerService: ObservableObject {
     }
 
     package func terminate(_ entry: PortManagerEntry, force: Bool) {
-        guard AppFeature.killProcess.isAvailable, let startedAt = entry.startedAt else { return }
-        KillProcessService.shared.kill(pid: entry.pid,
-                                       name: entry.processName,
-                                       startedAt: startedAt,
-                                       force: force) { [weak self] in
+        guard let services, let startedAt = entry.startedAt else { return }
+        services.processes.terminate(pid: entry.pid, name: entry.processName, startedAt: startedAt,
+                                     force: force) { [weak self] in
             self?.refresh()
         }
     }
+
+    /// Whether ending a process is offered at all.
+    package var canTerminate: Bool { services?.processes.canTerminate ?? false }
+
+    /// Whether the host refuses to end this entry's process.
+    package func isProtected(_ entry: PortManagerEntry) -> Bool {
+        services?.processes.isProtected(pid: entry.pid, name: entry.processName) ?? true
+    }
+
+    /// Puts `value` on the clipboard, and beeps if it did not take.
+    package func copy(_ value: String) {
+        guard let services else { return }
+        services.clipboard.write(value) { copied in
+            if !copied { services.notify.beep() }
+        }
+    }
+
+    /// Opens `url` in the browser, and beeps if it would not open.
+    package func open(_ url: URL) {
+        guard let services else { return }
+        if (try? services.open.url(url).get()) != true { services.notify.beep() }
+    }
+
+    package func stop() {}
 
     nonisolated private static func startTimes(_ scanning: Scanning) -> [pid_t: UInt64] {
         let estimatedCount = max(1, Int(scanning.listPIDs(nil, 0)))
@@ -125,4 +167,22 @@ package final class PortManagerService: ObservableObject {
         // A negative status code above (timeout) is the only infrastructure failure.
         return parsed
     }
+}
+
+extension PortManagerService: BundledTool {
+    package static let manifest: ToolManifest = {
+        let feature = AppFeature.portManager
+        guard let id = ToolID(feature.rawValue),
+              let tool = ToolDescriptor(id: id, name: feature.rawValue, symbol: feature.symbolName, commands: []),
+              let scan = CapabilityRequest(.processes, reason: "Lists what is listening on each port, and ends a process you pick."),
+              let copy = CapabilityRequest(.clipboardWrite, reason: "Copies a port, PID or address you pick."),
+              let open = CapabilityRequest(.open, reason: "Opens a local port in your browser."),
+              let beep = CapabilityRequest(.notify, reason: "Beeps when a copy or an open did not work."),
+              let manifest = ToolManifest(
+                  tool: tool, group: feature.group, capabilities: [scan, copy, open, beep],
+                  preferences: [PreferenceDeclaration(key: DefaultsKey.panelUtilityPortManager, default: .bool(true))],
+                  activation: [.onShown], enabledBy: nil)
+        else { preconditionFailure("the Port manager's manifest is not valid") }
+        return manifest
+    }()
 }

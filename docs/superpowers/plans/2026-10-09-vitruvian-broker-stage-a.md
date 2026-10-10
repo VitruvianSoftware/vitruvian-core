@@ -78,7 +78,7 @@ Failure modes most likely to reach a user. Each has a test in the task named, ex
 
 **Interfaces:**
 - Consumes: `ToolDescriptor`, `ToolID`, `FeatureGroup`, `AppPermission` (all in `Core`).
-- Produces: `Capability`, `CapabilityRequest`, `PreferenceValue`, `PreferenceDeclaration`, `Activation`, `ToolManifest`.
+- Produces: `Capability`, `CapabilityRequest`, `PreferenceDeclaration.Value` (nested: `Core` already has a `PreferenceValue` protocol), `PreferenceDeclaration`, `Activation`, `ToolManifest`.
 
 - [ ] **Step 1: Write the failing test**
 

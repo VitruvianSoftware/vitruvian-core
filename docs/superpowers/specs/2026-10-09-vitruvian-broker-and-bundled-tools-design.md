@@ -169,7 +169,7 @@ that the JSON schema in sub-project 3 is a transcription, not a redesign.
 | `tool` | `ToolDescriptor` (id, name, symbol, commands) | as today |
 | `group` | `FeatureGroup` | `AppFeature.group` |
 | `capabilities` | `[CapabilityRequest]`: a `Capability` and a reason | new |
-| `preferences` | `[PreferenceDeclaration]`: storage key, type, default | the keys the feature has today, unchanged |
+| `preferences` | `[PreferenceDeclaration]`: storage key and default (a `PreferenceDeclaration.Value`, which carries the type) | the keys the feature has today, unchanged |
 | `activation` | `[Activation]`: `.onLaunch`, `.onCommand`, `.onShown` | what `FeatureRuntime.actions(for:)` does today |
 | `enabledBy` | a preference key, or none | `AppFeature.enabledKeys` |
 | `runtime` | `.bundled` | fixed |
@@ -191,10 +191,13 @@ Rules a test enforces, because they compare against the app:
   macOS permission the feature declares is implied by a capability the
   manifest declares (`keystrokes` implies Accessibility, and so on), and the
   reverse. This is what stops the two descriptions drifting while both exist.
-- **A manifest's preferences are exactly the registered defaults that belong
-  to the tool**, with the same defaults. So settings backup keeps working with
-  no per-tool list, and the "forgot to add it to the backup" gap closes for
-  migrated tools.
+- **Every preference key a manifest declares is registered with the same
+  default, and no key belongs to two tools.** So settings backup keeps
+  working with no per-tool list, and the "forgot to add it to the backup" gap
+  closes for migrated tools. The test does not check "exactly the tool's
+  keys": nothing in the app says which registered key belongs to which
+  feature. The default's type in code is `PreferenceDeclaration.Value`; it is
+  nested because `Core` already has a `PreferenceValue` protocol.
 
 The reason text on a capability is not shown to anyone in this sub-project.
 It is still required, in English, because writing it is the cheapest check
@@ -219,6 +222,13 @@ package protocol BundledTool: AnyObject {
     func canRun(_ command: CommandID) -> Bool
 }
 ```
+
+**As built in stage A.** The protocol requires only `manifest`,
+`init(services:)` and `stop()`. `start`, `run`, `canRun`, the run rule below
+and the `FeatureRuntime` action arrive in stage B, with the first tool that
+needs them. The Port manager has no background work, so stage A's host only
+builds a tool on first use and stops every built tool at quit. The rest of
+this section describes the design those pieces grow into.
 
 A tool holds no singleton of its own and reaches for none. Everything it may
 touch arrives through `services`. The existing service class for each feature
@@ -274,8 +284,10 @@ Every operation runs the same three checks, in this order, before any work:
    the grant store says the user allows it. For a bundled tool the grant
    store always says yes (decision 6).
 
-A refusal is a value, `BrokerRefusal`, with one of those three reasons. The
-tool decides what to do: Paste as plain text beeps or asks for Accessibility
+A refusal is a value, `BrokerRefusal`, with one of four reasons: those three,
+and **unavailable**, when the host cannot offer the operation right now.
+Ending a process while the Kill process feature is not installed is the
+first case. The tool decides what to do: Paste as plain text beeps or asks for Accessibility
 once, exactly as today.
 
 The broker never shows UI of its own in this sub-project.
@@ -287,15 +299,18 @@ today, which is what keeps behaviour identical.
 
 | Capability | Operations | Rides on | Backed by | First needed by |
 |---|---|---|---|---|
-| `notify` | `hud(icon, message)`; `beep()` | none | `QuickToolHUD`, `NSSound` | Port manager |
+| `notify` | `hud(icon, message)`; `beep()`. Stage A builds `beep()` only. | none | `QuickToolHUD`, `NSSound` | Port manager |
 | `open` | `openURL(url)` | none | `NSWorkspace` | Port manager |
-| `processes` | `listeningPorts()`; `terminate(pid, startedAt, force)`; `isProtected(pid, name)` | none (admin prompt on demand) | `Shell` running `lsof`; `KillProcessService` | Port manager |
+| `processes` | `scanner()` (start times and the listening-sockets report); `canTerminate`; `isProtected(pid, name)`; `terminate(pid, name, startedAt, force)` | none (admin prompt on demand) | `Shell` running `lsof`; `KillProcessService` | Port manager |
 | `clipboard.write` | `write(text, kind)` | none | `GeneralPasteboardAccess` | Port manager |
 | `clipboard.read` | `readText()`; `changes` (a stream of change counts) | none | the lane; the broker's watcher | URL cleaner |
 | `clipboard.rewrite` | `rewrite(ifChangeCount:, with:)` | none | the lane; clipboard history's "ignore next change" | URL cleaner |
-| `storage` | `value(for:)`; `set(_:for:)`, for keys the manifest declares | none | `UserDefaults` | all three |
+| `storage` | `value(for:)`; `set(_:for:)`, for keys the manifest declares | none | `UserDefaults` | URL cleaner |
 | `hotkey` | `bind(role)`; `unbind(role)`; `onPress` | none | `QuickToolHotkey`, `SystemShortcutTakeover` | Paste as plain text |
 | `keystrokes` | `paste(text)`; `pressFrontAppMenuItem(matching:)` | Accessibility | `TransientPaste`; the Accessibility menu walk | Paste as plain text |
+
+The listening-sockets report is `lsof`'s text, not parsed ports. The parser
+and the stability rule are the tool's own logic and stay in its file.
 
 Notes on the ones that are not obvious:
 
@@ -351,8 +366,9 @@ views). In those files it fails on any of:
 is not on a short allow-list.
 
 The last one is the strong one: a migrated tool's files name no service
-singleton at all. The allow-list starts with the tool host and `L10n` (the
-language a view draws in) and grows only by review. The table of files grows
+singleton at all. The allow-list as built is `ToolHost`, `L10n` (the
+language a view draws in), `SettingsRouter` and `PanelInteractionState`. It
+grows only by review. The table of files grows
 by one row per migration, in the same pull request.
 
 One exception, checked by the same rule: a view may bind a preference with
@@ -433,9 +449,11 @@ release.
 
 | Stage | Builds | Migrates | Capabilities added |
 |---|---|---|---|
-| A | Manifest, tool interface, host, broker skeleton, both lints | Port manager | `notify`, `open`, `processes`, `clipboard.write`, `storage` |
-| B | The broker's clipboard watcher | URL cleaner | `clipboard.read`, `clipboard.rewrite` |
+| A | Manifest, tool interface, host, broker skeleton, both lints | Port manager | `notify`, `open`, `processes`, `clipboard.write` |
+| B | The broker's clipboard watcher, the host's start and stop, the `FeatureRuntime` action | URL cleaner | `storage`, `clipboard.read`, `clipboard.rewrite` |
 | C | Permission changes reaching the host | Paste as plain text | `hotkey`, `keystrokes` |
+
+Stage A is built; its by-hand checks are in its pull request.
 
 Stage A is the large one: it carries all the new structure and the feature
 with the least to move. B and C are mostly one capability and one feature

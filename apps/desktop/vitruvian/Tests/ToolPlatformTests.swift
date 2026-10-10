@@ -41,6 +41,36 @@ enum ToolPlatformTests {
         shortcutRowCommit(suite)
         shortcutRowAcceptsAStaleOffer(suite)
         shortcutRowState(suite)
+        manifests(suite)
+    }
+
+    static func manifests(_ suite: TestSuite) {
+        let tool = ToolDescriptor(id: ToolID("portManager")!, name: "portManager", symbol: "network", commands: [])!
+        let copy = CapabilityRequest(.clipboardWrite, reason: "Copies a port, PID or address you pick.")!
+        let scan = CapabilityRequest(.processes, reason: "Lists what is listening on a port.")!
+        let pref = PreferenceDeclaration(key: "panelUtilityPortManager", default: .bool(true))
+        func manifest(capabilities: [CapabilityRequest] = [copy, scan],
+                      preferences: [PreferenceDeclaration] = [pref],
+                      enabledBy: String? = nil) -> ToolManifest? {
+            ToolManifest(tool: tool, group: .tools, capabilities: capabilities, preferences: preferences,
+                         activation: [.onShown], enabledBy: enabledBy)
+        }
+
+        suite.expect(manifest()?.declares(.processes) == true && manifest()?.declares(.open) == false,
+                     "a manifest says which capabilities its tool asks for")
+        suite.expect(CapabilityRequest(.open, reason: "  ") == nil,
+                     "a capability with no reason is not a request")
+        suite.expect(manifest(capabilities: [copy, copy]) == nil,
+                     "a capability is listed once")
+        suite.expect(manifest(preferences: [pref, pref]) == nil,
+                     "a preference key is listed once")
+        suite.expect(manifest(enabledBy: "somethingElse") == nil
+                         && manifest(enabledBy: "panelUtilityPortManager") != nil,
+                     "the preference that enables a tool is one it declares")
+        suite.expect(Capability.allCases.allSatisfy { $0.ridesOn.isEmpty },
+                     "no stage A capability rides on a macOS grant")
+        suite.expect(Set(Capability.allCases.map(\.rawValue)) == ["notify", "open", "processes", "clipboard.write"],
+                     "capabilities are named as the platform design names them")
     }
 
     static func ids(_ suite: TestSuite) {

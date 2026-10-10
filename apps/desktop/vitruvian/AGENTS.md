@@ -151,6 +151,24 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   has saved and returns why; it never moves one. Its hotkey ids run from
   `ToolShortcutRegistrar.firstHotkeyID`, and `bazel/source_lints.py` keeps
   that run clear of the others.
+- A feature that has become a tool has a manifest (`ToolManifest`), conforms
+  to `BundledTool`, and is built by `ToolHost` with a `ToolServices`. It has
+  no `static let shared`. Everything outside its own logic, it reaches
+  through `services`: the clipboard, a link, a beep, the listening-sockets
+  report, ending a process. A view gets its tool with
+  `ToolHost.shared.tool(X.self)` and calls the tool, never a service.
+  `bazel/source_lints.py` holds the list of migrated tools and their files
+  (`MIGRATED_TOOLS`). Its rule
+  `migrated_tools_reach_services_through_the_broker` fails on a direct call
+  from one of those files, and `the_broker_names_no_tool` fails when a
+  broker file names a tool's type.
+- The broker (`Services/Platform/Broker/`) names no tool. An operation is
+  named for what it does to the system, never for the tool that wanted it,
+  and takes and returns plain values; a completion closure the tool passes
+  in stands for the reply. A capability is added with the first tool that
+  needs it.
+- Every broker operation calls its gate first and does nothing when refused.
+  A test for a new operation asserts that a refused call did no work.
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and

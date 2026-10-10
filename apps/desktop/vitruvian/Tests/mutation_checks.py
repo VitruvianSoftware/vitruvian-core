@@ -382,6 +382,16 @@ MUTATIONS = [
      "            if let name = holder(shortcut) { return .refuse(holder: name) }\n",
      "",
      "a default a Command Bar row took meanwhile is not written back by Reset"),
+    ("the broker does work for a tool that did not ask", "platform",
+     "Sources/Vitruvian/Services/Platform/Broker/CapabilityBroker.swift",
+     "        guard tool.declares(capability) else {\n            environment.reportUndeclared(tool.id, capability)\n            return .notDeclared(capability)\n        }\n",
+     "",
+     "a capability the manifest does not list is refused, and reported as a mistake"),
+    ("the Port manager ends a process the host does not offer to end", "platform",
+     "Sources/Vitruvian/Services/Platform/Broker/ProcessesAccess.swift",
+     "        guard backing.terminationAvailable() else { return .unavailable }\n",
+     "",
+     "without the Kill process feature, ending a process is not offered and does nothing"),
 ]
 
 
