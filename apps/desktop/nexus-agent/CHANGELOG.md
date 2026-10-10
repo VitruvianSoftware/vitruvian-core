@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.20.0...nexus-agent-v1.20.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the caret follows the conversation, failures say why, and the apps read effort and thinking as the bot does ([#3034](https://github.com/VitruvianSoftware/vitruvian-core/issues/3034)) ([fb8ec9c](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb8ec9cb55c7f32ce3bb994d83647ac64adee40d))
+
 ## [1.20.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.19.0...nexus-agent-v1.20.0) (2026-10-09)
 
 
