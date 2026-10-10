@@ -34,6 +34,10 @@ package struct ToolServices {
                       backing: broker.backings.storage)
     }
 
+    package var hotkey: HotkeyAccess {
+        HotkeyAccess(gate: gate(.hotkey), bindings: broker.hotkeys, tool: manifest.id)
+    }
+
     func gate(_ capability: Capability) -> () -> BrokerRefusal? {
         { [broker, manifest] in broker.refusal(of: capability, for: manifest) }
     }

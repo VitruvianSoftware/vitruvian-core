@@ -91,29 +91,35 @@ package final class CapabilityBroker {
         package var clipboard: ClipboardAccess.Backing
         package var processes: ProcessesAccess.Backing
         package var storage: StorageAccess.Backing
+        package var hotkey: HotkeyBindings.Environment
 
         package init(notify: NotifyAccess.Backing, open: OpenAccess.Backing, clipboard: ClipboardAccess.Backing,
-                     processes: ProcessesAccess.Backing, storage: StorageAccess.Backing = .inert) {
+                     processes: ProcessesAccess.Backing, storage: StorageAccess.Backing = .inert,
+                     hotkey: HotkeyBindings.Environment = .inert) {
             self.notify = notify
             self.open = open
             self.clipboard = clipboard
             self.processes = processes
             self.storage = storage
+            self.hotkey = hotkey
         }
 
         @MainActor package static let live = Backings(notify: .live, open: .live, clipboard: .live, processes: .live,
-                                                      storage: .live)
+                                                      storage: .live, hotkey: .live)
     }
 
     package let environment: Environment
     package let backings: Backings
     /// The one watch on the clipboard, shared by every tool that asks.
     package let clipboardWatcher: ClipboardWatcher
+    /// The global keys tools hold.
+    package let hotkeys: HotkeyBindings
 
     package init(environment: Environment, backings: Backings) {
         self.environment = environment
         self.backings = backings
         self.clipboardWatcher = ClipboardWatcher(environment: backings.clipboard.watching)
+        self.hotkeys = HotkeyBindings(environment: backings.hotkey)
     }
 
     /// The handle for one tool.

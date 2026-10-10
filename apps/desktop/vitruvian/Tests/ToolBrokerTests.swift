@@ -16,6 +16,7 @@ enum ToolBrokerTests {
         processes(suite)
         preferences(suite)
         messages(suite)
+        hotkeys(suite)
         oneLook(suite)
         clipboard(suite)
         host(suite)
@@ -264,6 +265,96 @@ enum ToolBrokerTests {
         suite.expect(broker.services(for: manifest([])).notify.hud(icon: "link", message: "x") == .notDeclared(.notify)
                          && said.count == 1,
                      "a refused message is not shown")
+    }
+
+    static func hotkeys(_ suite: TestSuite) {
+        let world = World()
+        var given = true
+        var saved = GlobalShortcut.pastePlainDefault
+        var made = 0
+        let key = ToolPlatformTests.FakeHotkey(id: 10, accepts: { given })
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in world.installed },
+                               isGranted: { world.granted.contains($0) },
+                               allows: { _, _ in world.allowed },
+                               reportUndeclared: { _, _ in }),
+            backings: .init(
+                notify: .init(beep: {}), open: .init(open: { _ in true }),
+                clipboard: .init(write: { _, _ in }), processes: .inert,
+                hotkey: .init(makeHotkey: { role in
+                    made += 1
+                    return role == .pastePlain ? key : nil
+                }, savedShortcut: { _ in saved })))
+        let owner = ToolID("pastePlain")!
+        let tool = broker.services(for: manifest([.hotkey], id: "pastePlain")).hotkey
+        let commandV = PastePlainTests.commandV
+        var presses = 0
+        var heard: [Bool] = []
+        func bind() -> BrokerRefusal? {
+            tool.bind(.pastePlain, onPress: { presses += 1 }, onRegistered: { heard.append($0) })
+        }
+
+        suite.expect(bind() == nil && key.registered?.shortcut == .pastePlainDefault
+                         && key.registered?.storageKey == DefaultsKey.pastePlainShortcut && heard == [true],
+                     "a tool that asks for it takes the key saved for its role, claimed under the role's own preference")
+        key.onPress?()
+        suite.expect(presses == 1, "a press of the key reaches the tool")
+        suite.expect(bind() == nil && key.registrations == 1 && made == 1 && heard == [true, true],
+                     "asking again while the key is held takes nothing twice, and makes no second hotkey")
+        saved = commandV
+        suite.expect(bind() == nil && key.registered?.shortcut == commandV && key.registrations == 2,
+                     "asking again after the saved combination changed takes the new one")
+        // What a shortcut recording does to every key the app holds.
+        key.unregister()
+        suite.expect(bind() == nil && key.registered?.shortcut == commandV,
+                     "asking again after the key was let go takes it back")
+        given = false
+        saved = .pastePlainDefault
+        suite.expect(bind() == nil && key.registered == nil && heard.last == false,
+                     "a combination macOS will not give is not a refusal: the tool hears that the key was not given")
+        given = true
+
+        // The host lets go of a key by its combination, and takes it again.
+        saved = commandV
+        _ = bind()
+        let before = heard.count
+        suite.expect(broker.hotkeys.release(of: ToolID("portManager")!, where: { _ in true }).isEmpty
+                         && broker.hotkeys.release(of: owner, where: { $0 == .pastePlainDefault }).isEmpty
+                         && key.registered != nil,
+                     "a key is let go only for the tool that holds it, and only when its combination is the one named")
+        suite.expect(broker.hotkeys.release(of: owner, where: { $0 == commandV }) == [.pastePlain]
+                         && key.registered == nil && heard.count == before,
+                     "the host can let go of a tool's key and keep what the tool asked for")
+        broker.hotkeys.retake([.pastePlain], for: owner)
+        suite.expect(key.registered?.shortcut == commandV && heard.count == before + 1 && heard.last == true,
+                     "and take it again, telling the tool how that went")
+
+        tool.unbind(.pastePlain)
+        tool.unbind(.pastePlain)
+        suite.expect(key.registered == nil, "giving a key back lets go of it, and doing so twice is safe")
+        broker.hotkeys.retake([.pastePlain], for: owner)
+        suite.expect(key.registered == nil && heard.count == before + 1,
+                     "a key the tool gave back in the meantime is not taken again")
+
+        // Refusals.
+        suite.expect(tool.bind(.clipboard, onPress: {}) == .unavailable && made == 1,
+                     "a tool takes only a key of its own feature")
+        let other = broker.services(for: manifest([.hotkey], id: "finderRename")).hotkey
+        suite.expect(other.bind(.finderRename, onPress: {}) == .unavailable && made == 2,
+                     "a role the host holds no key for is not offered")
+        let none = broker.services(for: manifest([], id: "pastePlain")).hotkey
+        suite.expect(none.bind(.pastePlain, onPress: { presses += 1 }) == .notDeclared(.hotkey)
+                         && key.registered == nil && made == 2,
+                     "a refused bind takes no key and makes no hotkey")
+        world.installed = false
+        let quiet = heard.count
+        suite.expect(bind() == .notInstalled && key.registered == nil && heard.count == quiet,
+                     "a tool removed in the hub is refused its key")
+        world.installed = true
+        _ = bind()
+        world.installed = false
+        tool.unbind(.pastePlain)
+        suite.expect(key.registered == nil, "but can always give one back")
     }
 
     final class ProbeTool: BundledTool {
