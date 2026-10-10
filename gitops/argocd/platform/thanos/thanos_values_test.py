@@ -33,6 +33,12 @@ def flag_value(args, name):
     return int(values[0])
 
 
+# The Querier's samples cap. The Prometheus sidecar cap must stay above it,
+# and ../prometheus/prometheus_values_test.py repeats this number to check
+# that. Change both together.
+QUERY_SAMPLES_CAP = 12_000_000
+
+
 class ThanosValuesTest(unittest.TestCase):
     def setUp(self):
         self.v = load_values()
@@ -73,6 +79,19 @@ class ThanosValuesTest(unittest.TestCase):
         self.assertGreater(flag_value(args, "--query.max-concurrent"), 0)
         # extraArgs replaces the chart default list; keep its log level.
         self.assertIn("--log.level=info", args)
+
+    def test_query_checks_the_caps_while_reading(self):
+        # Without it the caps fire only after every store's whole answer is
+        # in memory: one 7-day select held 1.5 GB before it was refused
+        # (2026-10-10).
+        args = self.v.get("query", {}).get("extraArgs", [])
+        self.assertIn("--grpc.proxy-strategy=lazy", args)
+
+    def test_query_samples_cap_is_the_one_the_sidecar_test_assumes(self):
+        args = self.v.get("query", {}).get("extraArgs", [])
+        self.assertEqual(
+            flag_value(args, "--store.limits.request-samples"), QUERY_SAMPLES_CAP
+        )
 
     def test_query_refuses_before_a_store_truncates(self):
         """The Querier's series cap is strictly below the per-store cap.
