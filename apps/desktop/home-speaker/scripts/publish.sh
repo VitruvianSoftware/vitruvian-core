@@ -100,7 +100,7 @@ ditto -c -k --keepParent dist/stage-universal/HomeSpeaker.app "dist/HomeSpeaker-
 
 echo "==> Generating SHA256 checksums"
 for f in dist/HomeSpeaker-${VERSION}-*.dmg dist/HomeSpeaker-${VERSION}-*.zip; do
-	shasum -a 256 "$f" > "${f}.sha256"
+	shasum -a 256 "$f" >"${f}.sha256"
 	cat "${f}.sha256"
 done
 
