@@ -9,8 +9,54 @@ import VitruvianDesign
 
 @MainActor
 package final class URLCleanerService: ObservableObject {
-    package static let shared = URLCleanerService()
+    package static let shared = URLCleanerService(environment: .live)
     nonisolated private static let urlType = NSPasteboard.PasteboardType(UTType.url.identifier)
+
+    /// What the cleaner reaches outside itself. The app's is the saved
+    /// preferences, the shared clipboard lane, the general pasteboard and a
+    /// run-loop timer. A test passes a suite and a pasteboard of its own, and
+    /// runs the lane, the main queue and the timer by hand.
+    package struct Environment {
+        /// Where the hub's switch, the cleaner's own switch and the rules
+        /// are saved.
+        package var defaults: UserDefaults
+        /// Runs work on the clipboard lane, off the main thread.
+        package var lane: (@escaping @Sendable () -> Void) -> Void
+        /// Hands work from the lane back to the main thread.
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        /// The pasteboard to watch, asked for on the lane.
+        package var pasteboard: @Sendable () -> NSPasteboard
+        /// Starts a repeating tick on the main thread, given its interval
+        /// and its tolerance. Calling the result stops it.
+        package var every: (TimeInterval, TimeInterval, @escaping @MainActor () -> Void) -> (() -> Void)
+
+        package init(defaults: UserDefaults,
+                     lane: @escaping (@escaping @Sendable () -> Void) -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     pasteboard: @escaping @Sendable () -> NSPasteboard,
+                     every: @escaping (TimeInterval, TimeInterval, @escaping @MainActor () -> Void) -> (() -> Void)) {
+            self.defaults = defaults
+            self.lane = lane
+            self.main = main
+            self.pasteboard = pasteboard
+            self.every = every
+        }
+
+        @MainActor package static let live = Environment(
+            defaults: .standard,
+            lane: { GeneralPasteboardAccess.shared.async($0) },
+            main: { work in DispatchQueue.main.async { work() } },
+            pasteboard: { .general },
+            every: { interval, tolerance, tick in
+                let timer = Timer(timeInterval: interval, repeats: true) { _ in
+                    // Added to the main run loop below, so it fires on the main thread.
+                    MainActor.assumeIsolated { tick() }
+                }
+                timer.tolerance = tolerance
+                RunLoop.main.add(timer, forMode: .common)
+                return { timer.invalidate() }
+            })
+    }
 
     @Published package private(set) var isRunning = false
     @Published package private(set) var lastCleaned: String?
@@ -43,15 +89,19 @@ package final class URLCleanerService: ObservableObject {
         package let cleaned: URLCleaning.Result?
     }
 
-    private var timer: Timer?
+    private let environment: Environment
+    private var stopTimer: (() -> Void)?
     private var lastChangeCount = 0
     private var pollInFlight = false
     private var pollToken: PollToken?
 
-    private init() {}
+    package init(environment: Environment) {
+        self.environment = environment
+    }
 
     package func syncWithPreferences() {
-        if AppFeature.urlCleaner.isAvailable, UserDefaults.standard[Preferences.urlCleanerEnabled] {
+        if AppFeature.urlCleaner.isAvailable(in: environment.defaults),
+           environment.defaults[Preferences.urlCleanerEnabled] {
             start()
         } else {
             stop()
@@ -59,7 +109,7 @@ package final class URLCleanerService: ObservableObject {
     }
 
     package func clean(_ text: String) -> URLCleaning.Result? {
-        URLCleaning.clean(text, rules: Self.rules)
+        URLCleaning.clean(text, rules: Self.rules(in: environment.defaults))
     }
 
     /// Writes on the shared lane and settles the change count on the main
@@ -69,36 +119,33 @@ package final class URLCleanerService: ObservableObject {
     package func copy(_ urlString: String) {
         cancelPoll()
         lastCleaned = urlString
-        GeneralPasteboardAccess.shared.async({
-            let changeCount = Self.writeToPasteboard(urlString)
+        let board = environment.pasteboard
+        let main = environment.main
+        environment.lane { [weak self] in
+            let pasteboard = board()
+            let changeCount = Self.writeToPasteboard(urlString, to: pasteboard)
             // Unlike a rewrite of what another app copied, this link is ours.
-            NSPasteboard.general.declareVitruvianSource()
-            return changeCount
-        }, then: { [weak self] changeCount in
-            guard let self else { return }
-            self.lastChangeCount = max(self.lastChangeCount, changeCount)
-        })
+            pasteboard.declareVitruvianSource()
+            main {
+                guard let self else { return }
+                self.lastChangeCount = max(self.lastChangeCount, changeCount)
+            }
+        }
     }
 
     package func stop() {
-        timer?.invalidate()
-        timer = nil
+        stopTimer?()
+        stopTimer = nil
         cancelPoll()
         isRunning = false
     }
 
     private func start() {
-        guard timer == nil else {
+        guard stopTimer == nil else {
             isRunning = true
             return
         }
-        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
-            // Added to the main run loop below, so it fires on the main thread.
-            MainActor.assumeIsolated { self?.cleanClipboardIfNeeded() }
-        }
-        timer.tolerance = 0.25
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        stopTimer = environment.every(0.8, 0.25) { [weak self] in self?.cleanClipboardIfNeeded() }
         isRunning = true
         baselinePasteboard()
     }
@@ -111,10 +158,12 @@ package final class URLCleanerService: ObservableObject {
         let token = PollToken()
         pollToken = token
         pollInFlight = true
-        GeneralPasteboardAccess.shared.async { [weak self] in
+        let board = environment.pasteboard
+        let main = environment.main
+        environment.lane { [weak self] in
             guard !token.isCancelled else { return }
-            let changeCount = NSPasteboard.general.changeCount
-            DispatchQueue.main.async {
+            let changeCount = board().changeCount
+            main {
                 guard let self, self.pollToken === token else { return }
                 self.pollToken = nil
                 self.pollInFlight = false
@@ -130,10 +179,15 @@ package final class URLCleanerService: ObservableObject {
         let token = PollToken()
         pollToken = token
         pollInFlight = true
-        GeneralPasteboardAccess.shared.async { [weak self] in
+        let board = environment.pasteboard
+        let main = environment.main
+        // UserDefaults is safe to use from any thread.
+        nonisolated(unsafe) let defaults = environment.defaults
+        environment.lane { [weak self] in
             guard !token.isCancelled else { return }
-            let result = Self.pollPasteboard(sinceChangeCount: sinceChangeCount, token: token)
-            DispatchQueue.main.async {
+            let result = Self.pollPasteboard(sinceChangeCount: sinceChangeCount, token: token,
+                                             pasteboard: board(), defaults: defaults)
+            main {
                 guard let self, self.pollToken === token else { return }
                 self.pollToken = nil
                 self.pollInFlight = false
@@ -151,9 +205,11 @@ package final class URLCleanerService: ObservableObject {
     /// and payload plus any rewrite is one serialized transaction.
     /// `pasteboard` and `rules` are the general pasteboard and the stored
     /// rules, except in the tests, which pass a private pasteboard.
+    /// `defaults` is where the stored rules are read when `rules` is nil.
     nonisolated package static func pollPasteboard(sinceChangeCount: Int, token: PollToken,
                                                    pasteboard: NSPasteboard = .general,
-                                                   rules: URLCleaning.Rules? = nil) -> PollResult? {
+                                                   rules: URLCleaning.Rules? = nil,
+                                                   defaults: UserDefaults = .standard) -> PollResult? {
         let changeCount = pasteboard.changeCount
         guard !token.isCancelled else { return nil }
         guard changeCount != sinceChangeCount else {
@@ -175,7 +231,7 @@ package final class URLCleanerService: ObservableObject {
               // The rewrite writes one item, so a copy of several is left alone.
               pasteboard.pasteboardItems?.count == 1,
               let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: urlType),
-              let cleaned = URLCleaning.clean(text, rules: rules ?? Self.rules),
+              let cleaned = URLCleaning.clean(text, rules: rules ?? Self.rules(in: defaults)),
               !cleaned.removed.isEmpty,
               !token.isCancelled else {
             return PollResult(changeCount: changeCount, cleaned: nil)
@@ -201,9 +257,8 @@ package final class URLCleanerService: ObservableObject {
         return PollResult(changeCount: rewrittenChangeCount, cleaned: cleaned)
     }
 
-    nonisolated private static var rules: URLCleaning.Rules {
-        let defaults = UserDefaults.standard
-        return URLCleaning.rules(
+    nonisolated private static func rules(in defaults: UserDefaults) -> URLCleaning.Rules {
+        URLCleaning.rules(
             globalNames: defaults[Preferences.urlCleanerCustomParameters],
             siteNames: defaults[Preferences.urlCleanerSiteParameters],
             disabledNames: defaults[Preferences.urlCleanerDisabledParameters])

@@ -126,6 +126,8 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-10**: Tool platform, the broker, stage B (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`):
+  - `Services/URLCleanerService.swift`: takes what it reaches outside itself (the saved preferences, the clipboard lane, the pasteboard, its timer) as an `Environment`, so its timer and its copy can be tested. Nothing it does changed.
 - **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
   - New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
   - `App/AppDelegate.swift`: stops the tools the host built, at quit.
