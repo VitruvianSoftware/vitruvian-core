@@ -354,6 +354,48 @@ already exist — this setup never creates repos):
    red run on the *mirror's* `main`.
 5. **Seed** the export baseline per §8b, then confirm the mirror matches the subtree.
 
+### 8g. Release, distribution & migration invariants
+
+Migrating or mirroring a standalone repo into the monorepo introduces several downstream
+invariants across releases, downloads, and documentation:
+
+1. **The Monorepo "Single Latest Release" Constraint & Vanity Endpoints:**
+   - Standalone repos represent a single product, so GitHub natively resolves `/releases/latest`
+     and `/releases/latest/download/<asset>`.
+   - In a multi-component monorepo, releases use prefix-namespaced tags (e.g. `vitruvian-v*`,
+     `esp32-s3-v*`). GitHub supports only **one global `latest` release tag** repo-wide, so
+     `/releases/latest` cannot route to multiple independent monorepo components.
+   - For downloadable apps (DMGs, binaries, zip packages), provide permanent vanity redirect
+     endpoints on `vitruviansoftware.dev` (e.g. `/downloads/latest/<component>.dmg` using HTML
+     meta-refresh / JavaScript redirect) rather than linking directly to version-pinned GitHub
+     release assets in documentation.
+
+2. **GitHub Releases Search Tokenization Quirks:**
+   - When linking users to a component's historical release list on GitHub, avoid hyphenated
+     prefix queries like `/releases?q=<comp>-v` (e.g., `?q=vitruvian-v`).
+   - GitHub's full-text search tokenizer treats punctuation and hyphens as word delimiters,
+     causing queries with trailing hyphens or sub-tokens to return zero search results. Use the
+     alphanumeric product stem (e.g., `?q=vitruvian`).
+
+3. **Subtree Path Divergence in Source Links:**
+   - Standalone documentation and packages link to `github.com/VitruvianSoftware/<comp>`.
+   - Once mirrored or migrated, all external links (in site catalogs, `_data/downloads.yml`,
+     READMEs, and blog posts) must be audited and updated to point to the canonical monorepo
+     subtree path: `github.com/VitruvianSoftware/vitruvian-core/tree/main/<path>`.
+
+4. **Root `.gitignore` Collisions with Component Tooling:**
+   - Support scripts and automation tools for a component must avoid directory names that collide
+     with root `.gitignore` patterns. For example, placing tools in `tools/site/` was silently
+     ignored by git due to an existing `.gitignore:site/` rule intended for Jekyll build output.
+     Place tools in distinct paths (e.g. `tools/sync-downloads/`).
+
+5. **Automated Catalog Synchronization (`tools/sync-downloads`):**
+   - In a hybrid ecosystem where some components are standalone and others are monorepo
+     subtrees, download catalogs (`_data/downloads.yml`) inevitably desynchronize on new releases.
+   - Wire any new downloadable component into `tools/sync-downloads/sync_downloads.py` (Bazel
+     target `//tools/sync-downloads:sync-downloads`) and the daily sync workflow
+     (`.github/workflows/site-sync-downloads.yaml`) to automate version, size, and URL updates.
+
 ---
 
 ## 9. Troubleshooting
