@@ -155,7 +155,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   to `BundledTool`, and is built by `ToolHost` with a `ToolServices`. It has
   no `static let shared`. Everything outside its own logic, it reaches
   through `services`: the clipboard, its preferences, a link, a beep or a
-  message, the listening-sockets report, ending a process. A view gets its tool with
+  message, the listening-sockets report, ending a process, a global
+  shortcut, a paste or a menu press in the app in front. A view gets its
+  tool with
   `ToolHost.shared.tool(X.self)` and calls the tool, never a service.
   `bazel/source_lints.py` holds the list of migrated tools and their files
   (`MIGRATED_TOOLS`). Its rule
@@ -171,12 +173,19 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - Every broker operation calls its gate first and does nothing when refused.
   A test for a new operation asserts that a refused call did no work.
 - A tool's background work is in `start()` and `stop()`, and `ToolHost`
-  calls them: at launch, when the hub installs or removes the tool, and when
-  its switch flips. A tool never asks whether it is installed or switched
-  on. The run rule is `ToolHost.shouldRun(installed:switchedOn:holdsGrants:)`;
-  no capability rides on a macOS grant yet, so its grants clause is tested
-  through that function alone. `start()` is called every time the host finds
-  the tool should run, so it must be safe to call twice. A new tool is added
+  calls them: at launch, when the hub installs or removes the tool, when
+  its switch flips, when a macOS grant its hub feature declares changes
+  (`FeatureRuntime.permissionDidChange`) and when a shortcut recording ends.
+  A tool never asks whether it is installed or switched on. The run rule is
+  `ToolHost.shouldRun(installed:switchedOn:holdsGrants:)`. A capability says
+  which macOS grants it rides on (`Capability.ridesOn`): `keystrokes` rides
+  on Accessibility, and nothing else rides on a grant yet. A tool must hold
+  those grants before the host starts it, unless its request says
+  `startsWithoutGrant` (`ToolManifest.grantsNeededToStart`): then the host
+  starts it anyway, and each operation of that capability is refused with
+  `notGranted` until the grant is there. `start()` is called every time
+  the host finds the tool should run, so it must be safe to call twice. A
+  new tool is added
   to `BundledTools.all` (`Services/Platform/BundledTools.swift`), and its
   arm in `FeatureRuntime.actions(for:in:)` returns `.tool(id)` when its
   manifest says `onLaunch`.
@@ -203,6 +212,38 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   key its manifest declares; there is no `set`. Its views may bind with
   `@AppStorage` the keys its row in `MIGRATED_TOOLS` lists, each of which
   the manifest must declare; `source_lints_test` fails on any other.
+- The broker asks macOS about a grant at the moment of each call
+  (`CapabilityBroker.Environment.live`). It does not read `Permissions`,
+  whose published value is false for a turn of the main thread after it is
+  first touched, so all through launch, and afterwards lags behind a change
+  by up to a poll. A tool that needs a grant for a piece of work asks
+  `services.keystrokes.refusal` before it reads or changes anything, and
+  has the person asked with `requestGrant()`.
+- A tool's shortcut that is a `GlobalShortcutRole` is taken with
+  `services.hotkey.bind(role, onPress:onRegistered:)` in `start()` and given
+  back with `unbind(role)` in `stop()`. The tool names its own role and
+  never sees a hotkey id: the id is in the broker's table,
+  `HotkeyBindings.Environment.live` (`Broker/HotkeyAccess.swift`), and
+  nowhere else, and `hotkey_ids_are_unique` reads it there. A role of
+  another feature, or one the table does not list, is refused. Such a tool
+  is tied to its hub feature, so the key comes back after a shortcut
+  recording through `FeatureRuntime.sync`, `ToolHost.sync` and `start()`: it
+  needs no line in `ShortcutCapture.end()`.
+- A tool reaches `Services/TransientPaste.swift` only through
+  `keystrokes.paste`. Do not edit that file to suit a tool: its delays are
+  tuned by hand against real apps, and it has no unit test. Text snippets
+  still call it directly. The paste itself lets go of the calling tool's
+  own key when that key is Command-V and takes it again after; a tool does
+  not. `pressFrontAppMenuItem(matching:)` takes key equivalents
+  (`MenuKeyEquivalent`), never titles. The walk is the host's
+  (`FrontAppMenu`); which equivalents count is the tool's.
+- `ToolHost.suspend(id)` stops one tool at once, whatever the run rule
+  says, and builds nothing. It is for the moments the app lets go of every
+  input it holds (`SelfUninstall`). The next `sync` starts it again.
+- A tool's section on a Settings page it shares with another feature is a
+  view in a file of its own, listed for the tool in `MIGRATED_TOOLS`. The
+  page decides whether it shows, and hands it what it may not read for
+  itself, such as a grant, as a plain value.
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and
