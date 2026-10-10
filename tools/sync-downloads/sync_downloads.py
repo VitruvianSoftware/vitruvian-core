@@ -399,6 +399,40 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
                     count=1,
                 )
 
+    # 8. android-remote (Monorepo: android-remote-v*)
+    rel_remote = get_latest_release(
+        "VitruvianSoftware/vitruvian-core", tag_prefix="android-remote-v", token=token
+    )
+    if rel_remote:
+        tag_name = rel_remote.get("tag_name", "")
+        ver = tag_name.replace("android-remote-v", "")
+        print(f"✓ Vitruvian Remote: v{ver}")
+        updated_content = re.sub(
+            r'(id:\s*android-remote[\s\S]*?version:\s*")[^"]+(")',
+            rf"\g<1>{ver}\g<2>",
+            updated_content,
+            count=1,
+        )
+        updated_content = re.sub(
+            r"(id:\s*android-remote[\s\S]*?releases_url:\s*https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/)[^\n]+",
+            rf"\g<1>{tag_name}",
+            updated_content,
+            count=1,
+        )
+        for asset in rel_remote.get("assets", []):
+            name = asset.get("name", "")
+            if name.endswith(".sha256") or name.endswith(".sig"):
+                continue
+            size_str = format_size(asset.get("size", 0))
+            url = asset.get("browser_download_url", "")
+            if name.endswith(".apk"):
+                updated_content = re.sub(
+                    r"(id:\s*android-remote[\s\S]*?label:\s*Android APK[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
+                    rf"\g<1>{url}\g<2>{size_str}",
+                    updated_content,
+                    count=1,
+                )
+
     if original_content == updated_content:
         print("\nAll package versions and download URLs are already up to date.")
         return 0
