@@ -90,9 +90,9 @@ cp -L "${BIN}" "${APP_DIR}/dist/${APK_NAME}"
 
 echo "==> Generating SHA256 checksum"
 if command -v sha256sum >/dev/null 2>&1; then
-	(cd "${APP_DIR}/dist" && sha256sum "${APK_NAME}" > "${APK_NAME}.sha256")
+	(cd "${APP_DIR}/dist" && sha256sum "${APK_NAME}" >"${APK_NAME}.sha256")
 else
-	(cd "${APP_DIR}/dist" && shasum -a 256 "${APK_NAME}" > "${APK_NAME}.sha256")
+	(cd "${APP_DIR}/dist" && shasum -a 256 "${APK_NAME}" >"${APK_NAME}.sha256")
 fi
 cat "${APP_DIR}/dist/${APK_NAME}.sha256"
 
