@@ -27,6 +27,8 @@ package enum BrokerRefusal: Error, Equatable, Sendable {
 /// capability.
 @MainActor
 package final class CapabilityBroker {
+    package static let shared = CapabilityBroker(environment: .live, backings: .live)
+
     package struct Environment {
         package var isInstalled: (ToolID) -> Bool
         package var isGranted: (AppPermission) -> Bool
@@ -45,6 +47,23 @@ package final class CapabilityBroker {
             self.allows = allows
             self.reportUndeclared = reportUndeclared
         }
+
+        /// The app as it is: a tool with the id of a hub feature follows
+        /// that feature; the two macOS grants the app watches are read
+        /// from `Permissions`; a compiled-in tool is always allowed.
+        @MainActor package static let live = Environment(
+            isInstalled: { id in AppFeature(rawValue: id.rawValue)?.isAvailable ?? true },
+            isGranted: { permission in
+                switch permission {
+                case .accessibility: return Permissions.shared.accessibility
+                case .screenRecording: return Permissions.shared.screenRecording
+                default: return true
+                }
+            },
+            allows: { _, _ in true },
+            reportUndeclared: { id, capability in
+                assertionFailure("\(id) used \(capability.rawValue) without declaring it")
+            })
     }
 
     /// What each capability calls to do its work.
@@ -61,6 +80,8 @@ package final class CapabilityBroker {
             self.clipboard = clipboard
             self.processes = processes
         }
+
+        @MainActor package static let live = Backings(notify: .live, open: .live, clipboard: .live, processes: .live)
     }
 
     package let environment: Environment

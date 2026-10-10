@@ -13,6 +13,7 @@ enum ToolBrokerTests {
         checks(suite)
         smallCapabilities(suite)
         processes(suite)
+        host(suite)
     }
 
     /// What the broker is told about the world, and what it reported.
@@ -173,5 +174,37 @@ enum ToolBrokerTests {
                          && none.processes.terminate(pid: 42, name: "node", startedAt: 7, force: false) {} == .notDeclared(.processes)
                          && kills.ended.count == 1,
                      "a tool that did not ask can end nothing, and is told every process is protected")
+    }
+
+    final class ProbeTool: BundledTool {
+        static let manifest = ToolBrokerTests.manifest([.notify])
+        static var built = 0
+        let services: ToolServices
+        var stops = 0
+        init(services: ToolServices) {
+            self.services = services
+            Self.built += 1
+        }
+        func stop() { stops += 1 }
+    }
+
+    static func host(_ suite: TestSuite) {
+        let recorder = Recorder()
+        ProbeTool.built = 0
+        let host = ToolHost(broker: bench(recorder: recorder))
+        suite.expect(host.built.isEmpty && ProbeTool.built == 0, "a tool nobody asked for is never built")
+
+        let first = host.tool(ProbeTool.self)
+        let second = host.tool(ProbeTool.self)
+        suite.expect(first === second && ProbeTool.built == 1 && host.built == [ProbeTool.manifest.id],
+                     "everyone who asks for a tool gets the same one")
+        suite.expect(first.services.notify.beep() == nil && recorder.beeps == 1,
+                     "a tool is handed services checked against its own manifest")
+        suite.expect(first.services.open.url(URL(string: "http://localhost")!) == .failure(.notDeclared(.open)),
+                     "and against nothing more")
+
+        host.stopAll()
+        host.stopAll()
+        suite.expect(first.stops == 2 && ProbeTool.built == 1, "quitting stops every built tool, and builds none")
     }
 }

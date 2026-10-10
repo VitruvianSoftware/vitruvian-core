@@ -128,6 +128,7 @@ is that notice. Add an entry for every change to upstream files.
 
 - **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
   - No upstream file is changed yet. New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
+  - `App/AppDelegate.swift`: stops the tools the host built, at quit.
 - **2026-10-09**: Reset and an accepted macOS take-over no longer bind a combination twice:
   - `UI/ShortcutRecorderButton.swift`, `UI/Settings/ShortcutsSettings.swift`, `UI/Settings/WindowLayoutSettings.swift`, `UI/Settings/CutPasteSettings.swift`: each row's three holder checks are one `refusal(for:)`, asked by recording as before and now also by Reset and by accepting a take-over offer. **Reset is refused, naming the holder, when another shortcut took the default meanwhile; so is accepting an offer whose combination was taken while the offer waited.**
   - `UI/ShortcutRecorderButton.swift`: a role row that is handed no extra check asks the window-layout one, so a role recorded on its own feature page can no longer take a window-layout action's combination.
