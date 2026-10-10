@@ -33,6 +33,12 @@ def flag_value(args, name):
     return int(values[0])
 
 
+# The Querier's samples cap. The Prometheus sidecar cap must stay above it,
+# and ../prometheus/prometheus_values_test.py repeats this number to check
+# that. Change both together.
+QUERY_SAMPLES_CAP = 12_000_000
+
+
 class ThanosValuesTest(unittest.TestCase):
     def setUp(self):
         self.v = load_values()
@@ -74,13 +80,27 @@ class ThanosValuesTest(unittest.TestCase):
         # extraArgs replaces the chart default list; keep its log level.
         self.assertIn("--log.level=info", args)
 
+    def test_query_checks_the_caps_while_reading(self):
+        # Without it the caps fire only after every store's whole answer is
+        # in memory: one 7-day select held 1.5 GB before it was refused
+        # (2026-10-10).
+        args = self.v.get("query", {}).get("extraArgs", [])
+        self.assertIn("--grpc.proxy-strategy=lazy", args)
+
+    def test_query_samples_cap_is_the_one_the_sidecar_test_assumes(self):
+        args = self.v.get("query", {}).get("extraArgs", [])
+        self.assertEqual(
+            flag_value(args, "--store.limits.request-samples"), QUERY_SAMPLES_CAP
+        )
+
     def test_query_refuses_before_a_store_truncates(self):
         """The Querier's series cap is strictly below the per-store cap.
 
-        A store that hits its own cap first hands back a cut-off result, and
-        the Querier (partial response is on) passes it along as a success
-        with a warning: a wrong number. When the Querier's cap is the lower
-        one, the query fails outright instead.
+        The Querier should be the one that refuses a select that is too big.
+        This does not stop a store from dropping out of a query: the Store
+        Gateway adds its cap up across blocks and refuses long selects on its
+        own, and with partial response on that reaches the panel as a warning
+        (see the known limitation in applicationset.yaml).
         """
         query = flag_value(
             self.v.get("query", {}).get("extraArgs", []),

@@ -148,6 +148,12 @@ spec:
                     # Same per-request cap as the Store Gateway (thanos appset):
                     # an all-series select must fail, not OOM the sidecar.
                     - --store.limits.request-series=150000
+                    # Stop sending once one select has returned this many samples (120 per
+                    # chunk, so 200,000 chunks). Keep it ABOVE the Querier cap (12,000,000):
+                    # a sidecar that stops here has already sent more than the Querier
+                    # accepts, so the query is refused, not cut off. It does not protect the
+                    # sidecar itself, which reads the whole answer before sending.
+                    - --store.limits.request-samples=24000000
                     # Set the Go soft memory limit from the 2Gi container limit, so
                     # the collector runs before the kernel kills the sidecar (it
                     # was OOM-killed with the Querier on 2026-10-10).

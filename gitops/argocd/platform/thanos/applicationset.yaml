@@ -122,11 +122,17 @@ spec:
               # --store.limits.request-series=50000 (per select). Above every
               # other select the committed dashboards make (the next largest is
               # under 18k) and below the 86k step select, which is now refused.
-              # It must stay BELOW the per-store cap (150k on the Store Gateway
-              # and on the Prometheus sidecars): a store that hits its own cap
-              # first returns a cut-off result that the Querier passes along as a
-              # success with a warning, which is a wrong number on a panel. With
-              # the lower cap here the Querier fails the query outright.
+              # Keep it BELOW the per-store cap (150k on the Store Gateway and on
+              # the Prometheus sidecars), so the Querier is the one that refuses.
+              #
+              # Known limitation, not fixed here: the lower cap does not stop a
+              # store from dropping out of a query. The Store Gateway adds up
+              # its series cap across every block it reads, so it refuses long
+              # selects well under 150k series (a 38k-series, 24h select was
+              # refused with "limit 150000 violated (got 189981)"). Partial
+              # response is on, so that refusal reaches the panel as a warning,
+              # not an error. Data older than what the sidecars hold (about 9.5
+              # days) can therefore come back incomplete with only a warning.
               #
               # --store.limits.request-samples=12000000 (per select). A series cap
               # cannot see the time range: a few thousand series over 30 days
@@ -151,6 +157,22 @@ spec:
               # does not make an oversized query fit, which is what the caps are
               # for.
               #
+              # --grpc.proxy-strategy=lazy. The two caps above are checked as
+              # series are handed to the query engine. By default ("eager") the
+              # Querier first reads every store's whole answer into memory, so
+              # the caps fired too late: on 2026-10-10 one 7-day select held
+              # 1.5 GB before it was refused, and a panel that runs two at once
+              # killed the Querier. With lazy it holds at most 20 answers per
+              # store at a time and refuses as soon as a cap is passed.
+              # The flag is hidden upstream (--help does not show it). If a
+              # later version drops it the Querier will not start, which is the
+              # cue to revisit this line.
+              # Before upgrading Thanos: from v0.41.0 stores send series in
+              # batches, and in v0.42.4 the limiter does not count batched
+              # messages, so these caps would silently stop applying. Do not
+              # upgrade past v0.40 without re-testing the caps (issue #2609
+              # tracks the upgrade).
+              #
               # Accepted consequences, until issue #2606 cuts that metric down
               # (only then can the caps be raised):
               #  - the "Slowest steps" panel shows a limit error at any range;
@@ -170,6 +192,7 @@ spec:
                 - --query.max-concurrent=4
                 - --store.limits.request-series=50000
                 - --store.limits.request-samples=12000000
+                - --grpc.proxy-strategy=lazy
               resources:
                 requests:
                   cpu: 100m
