@@ -252,11 +252,11 @@ repo_config (envs + WIF vars)
 - [ ] Each env serves 2xx on its `run.app` URL and its custom domain.
 - [ ] `GET /…/availability` (or equivalent) reports every provider/feature ready.
 - [ ] Confirm your commits actually landed on `origin/main`
-      (`git merge-base --is-ancestor <sha> origin/main`) and that your working
+      (`bazel run //tools/landed -- <pr#|branch|sha>`) and that your working
       checkout is not stale before declaring done.
-      > ⚠️ **Why:** "pushed to a PR" ≠ "in main", and a stale local checkout will
-      > happily show you a false reality. Reconcile against `origin/main`; do
-      > isolated work in a worktree.
+      > ⚠️ **Why:** `main` is squash-only, so branch SHAs *never* become ancestors
+      > of `main`. Using `git merge-base --is-ancestor` returns false for every
+      > merged PR. Use the `//tools/landed` tool, or check `git log --grep "(#N)" origin/main`.
 - [ ] Leave the old single-project deploy orphaned only with the owner's
       explicit OK; don't delete anything that isn't yours.
 
@@ -274,4 +274,9 @@ repo_config (envs + WIF vars)
 | OIDC client deleted on apply | **Create + own** the client; never import |
 | CI can't reach the IdP | NodePort on a node's tailscale IP (not the LB VIP / public edge) |
 | Redirect rejected despite creds | Register each env's exact redirect URI (trailing slash) in the provider console |
-| "Done" but not really | Verify the sha is an ancestor of `origin/main`; refresh your checkout |
+| "Done" but not really | Verify squash commit with `bazel run //tools/landed -- <pr#|branch|sha>`; refresh checkout |
+| Monorepo breaks `/releases/latest` | Stand up vanity redirects on `vitruviansoftware.dev/downloads/latest/<app>` (see [`copybara-sync.md`](../admin/copybara-sync.md#8g-release-distribution--migration-invariants)) |
+| GitHub release search returns 0 | Sanitize release search query to product stem (e.g. `?q=myapp` instead of `?q=myapp-v`) |
+| Broken repo links in docs/catalog | Rewrite standalone `github.com/.../<repo>` links to monorepo deep links `/tree/main/<path>` |
+| Tooling ignored by Git | Avoid directory paths colliding with root `.gitignore` rules (e.g. `tools/site/`) |
+| Stale download catalogs | Wire app into `//tools/sync-downloads:sync-downloads` and `site-sync-downloads.yaml` |
