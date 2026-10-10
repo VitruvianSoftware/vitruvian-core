@@ -92,20 +92,22 @@ package final class CapabilityBroker {
         package var processes: ProcessesAccess.Backing
         package var storage: StorageAccess.Backing
         package var hotkey: HotkeyBindings.Environment
+        package var keystrokes: KeystrokesAccess.Backing
 
         package init(notify: NotifyAccess.Backing, open: OpenAccess.Backing, clipboard: ClipboardAccess.Backing,
                      processes: ProcessesAccess.Backing, storage: StorageAccess.Backing = .inert,
-                     hotkey: HotkeyBindings.Environment = .inert) {
+                     hotkey: HotkeyBindings.Environment = .inert, keystrokes: KeystrokesAccess.Backing = .inert) {
             self.notify = notify
             self.open = open
             self.clipboard = clipboard
             self.processes = processes
             self.storage = storage
             self.hotkey = hotkey
+            self.keystrokes = keystrokes
         }
 
         @MainActor package static let live = Backings(notify: .live, open: .live, clipboard: .live, processes: .live,
-                                                      storage: .live, hotkey: .live)
+                                                      storage: .live, hotkey: .live, keystrokes: .live)
     }
 
     package let environment: Environment
@@ -114,12 +116,15 @@ package final class CapabilityBroker {
     package let clipboardWatcher: ClipboardWatcher
     /// The global keys tools hold.
     package let hotkeys: HotkeyBindings
+    /// The walk through the front app's menus, and the apps it remembers.
+    package let frontAppMenu: FrontAppMenu
 
     package init(environment: Environment, backings: Backings) {
         self.environment = environment
         self.backings = backings
         self.clipboardWatcher = ClipboardWatcher(environment: backings.clipboard.watching)
         self.hotkeys = HotkeyBindings(environment: backings.hotkey)
+        self.frontAppMenu = FrontAppMenu(environment: backings.keystrokes.menu)
     }
 
     /// The handle for one tool.

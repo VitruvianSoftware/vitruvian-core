@@ -17,6 +17,7 @@ enum ToolBrokerTests {
         preferences(suite)
         messages(suite)
         hotkeys(suite)
+        keystrokes(suite)
         oneLook(suite)
         clipboard(suite)
         host(suite)
@@ -355,6 +356,97 @@ enum ToolBrokerTests {
         world.installed = false
         tool.unbind(.pastePlain)
         suite.expect(key.registered == nil, "but can always give one back")
+    }
+
+    static func keystrokes(_ suite: TestSuite) {
+        let world = World()
+        var pastes: [(text: String, willPost: () -> Void, didPost: () -> Void)] = []
+        var asked = 0
+        var front: pid_t? = 7
+        let log = PastePlainTests.MenuLog()
+        let bar = PastePlainTests.editMenu(log, [PastePlainTests.item("Match", key: PastePlainTests.matchStyle, log)])
+        var given = true
+        var saved = PastePlainTests.commandV
+        let key = ToolPlatformTests.FakeHotkey(id: 10, accepts: { given })
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in world.installed },
+                               isGranted: { world.granted.contains($0) },
+                               allows: { _, _ in world.allowed },
+                               reportUndeclared: { _, _ in }),
+            backings: .init(
+                notify: .init(beep: {}), open: .init(open: { _ in true }),
+                clipboard: .init(write: { _, _ in }), processes: .inert,
+                hotkey: .init(makeHotkey: { _ in key }, savedShortcut: { _ in saved }),
+                keystrokes: .init(paste: { text, willPost, didPost in pastes.append((text, willPost, didPost)) },
+                                  requestGrant: { asked += 1 },
+                                  menu: .init(frontmostApp: { front }, menuBar: { _ in bar }))))
+        let services = broker.services(for: manifest([.keystrokes, .hotkey], id: "pastePlain"))
+        let tool = services.keystrokes
+        let wanted = [QuickToolsSupport.matchStyleEquivalent]
+
+        world.granted = []
+        suite.expect(tool.refusal == .notGranted(.accessibility)
+                         && tool.paste("x") == .notGranted(.accessibility)
+                         && tool.pressFrontAppMenuItem(matching: wanted) == .failure(.notGranted(.accessibility))
+                         && pastes.isEmpty && log.reads == 0,
+                     "without Accessibility a tool can neither paste nor press a menu item, and nothing is tried")
+        suite.expect(tool.requestGrant() == nil && asked == 1,
+                     "a tool that lacks the grant can have the person asked for it")
+        world.granted = [.accessibility]
+        suite.expect(tool.refusal == nil && tool.requestGrant() == nil && asked == 1,
+                     "with the grant held there is nothing to ask")
+
+        suite.expect(tool.pressFrontAppMenuItem(matching: wanted) == .success(true) && log.pressed == ["Match"],
+                     "a tool that asks for it has a menu item of the front app pressed, by its key equivalent")
+        front = nil
+        suite.expect(tool.pressFrontAppMenuItem(matching: wanted) == .success(false) && log.pressed == ["Match"],
+                     "and is told when nothing was pressed")
+
+        var heard: [Bool] = []
+        services.hotkey.bind(.pastePlain, onPress: {}, onRegistered: { heard.append($0) })
+        suite.expect(tool.paste("Plain words") == nil && pastes.count == 1 && pastes[0].text == "Plain words"
+                         && key.registered != nil,
+                     "a paste hands the text to the paste helper, and holds the tool's key until the paste is typed")
+        pastes[0].willPost()
+        suite.expect(key.registered == nil,
+                     "the tool's own key, when it is Command-V, is let go just before the paste is typed")
+        given = false
+        pastes[0].didPost()
+        suite.expect(key.registered == nil && heard == [true, false],
+                     "and asked for again once it is typed: the tool hears how that went")
+
+        given = true
+        saved = .pastePlainDefault
+        services.hotkey.bind(.pastePlain, onPress: {}, onRegistered: { heard.append($0) })
+        let taken = key.registrations
+        _ = tool.paste("again")
+        pastes[1].willPost()
+        suite.expect(key.registered != nil, "a key that is not Command-V is kept while the paste is typed")
+        pastes[1].didPost()
+        suite.expect(key.registrations == taken && heard.count == 3, "and nothing is taken again after it")
+
+        let none = broker.services(for: manifest([], id: "pastePlain")).keystrokes
+        suite.expect(none.refusal == .notDeclared(.keystrokes) && none.paste("x") == .notDeclared(.keystrokes)
+                         && none.requestGrant() == .notDeclared(.keystrokes)
+                         && none.pressFrontAppMenuItem(matching: wanted) == .failure(.notDeclared(.keystrokes))
+                         && pastes.count == 2 && asked == 1,
+                     "a tool that did not ask for keystrokes gets none, and nobody is asked on its behalf")
+        world.installed = false
+        world.granted = []
+        suite.expect(tool.requestGrant() == .notInstalled && tool.paste("x") == .notInstalled
+                         && asked == 1 && pastes.count == 2,
+                     "a tool removed in the hub can neither paste nor ask for the grant")
+
+        // The paste helper calls neither closure when the paste cannot
+        // start, and it never fails once the key has been let go.
+        world.installed = true
+        world.granted = [.accessibility]
+        saved = PastePlainTests.commandV
+        services.hotkey.bind(.pastePlain, onPress: {}, onRegistered: { heard.append($0) })
+        let held = key.registrations
+        _ = tool.paste("never typed")
+        suite.expect(pastes.count == 3 && key.registered?.shortcut == saved && key.registrations == held,
+                     "a paste that cannot start leaves the tool's own key held")
     }
 
     final class ProbeTool: BundledTool {
@@ -896,6 +988,14 @@ enum ToolBrokerTests {
         rig.settle()
         suite.expect(texts == ["hello", nil],
                      "a tool that asks for it reads the clipboard's text, and nothing from an empty one")
+        var plain: [String?] = []
+        rig.copy("words")
+        suite.expect(tool.readPlainText { plain.append($0) } == nil && plain.isEmpty && rig.lane.count == 1
+                         && none.readPlainText { plain.append($0) } == .notDeclared(.clipboardRead)
+                         && rig.lane.count == 1,
+                     "reading the clipboard's text without its formatting waits for the lane, and is refused as any read is")
+        rig.settle()
+        suite.expect(plain == ["words"], "and the text arrives once the lane has run")
 
         var wrote = 0
         tool.writeLink("https://example.com/x") { wrote += 1 }
