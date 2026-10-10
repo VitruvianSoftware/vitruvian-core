@@ -21,11 +21,17 @@ package struct ToolServices {
     }
 
     package var clipboard: ClipboardAccess {
-        ClipboardAccess(gate: gate(.clipboardWrite), backing: broker.backings.clipboard)
+        ClipboardAccess(gate: { [broker, manifest] capability in broker.refusal(of: capability, for: manifest) },
+                        backing: broker.backings.clipboard, watcher: broker.clipboardWatcher, tool: manifest.id)
     }
 
     package var processes: ProcessesAccess {
         ProcessesAccess(gate: gate(.processes), backing: broker.backings.processes)
+    }
+
+    package var storage: StorageAccess {
+        StorageAccess(gate: gate(.storage), keys: Set(manifest.preferences.map(\.key)),
+                      backing: broker.backings.storage)
     }
 
     func gate(_ capability: Capability) -> () -> BrokerRefusal? {

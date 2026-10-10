@@ -159,6 +159,14 @@ arguments and results are values that could be written as JSON. No closures
 that capture app state, no `NSPasteboard`, no `CGEvent`, no view types cross
 the broker.
 
+Two in-process forms stand in for messages. A completion closure the tool
+passes in is a reply. A `ClipboardRewriteRule` is a question the host asks the
+tool in the middle of one look at the clipboard, and waits for: its three
+functions take and return plain values, are `@Sendable`, and capture no app
+state. It is a function and not a message because the whole look must stay
+one job on the clipboard lane (section 7.2). Sub-project 3 decides how a tool
+in another process answers it.
+
 ## 5. The manifest
 
 `ToolManifest` in `Core`. Field names match section 6 of the parent design so
@@ -223,12 +231,18 @@ package protocol BundledTool: AnyObject {
 }
 ```
 
-**As built in stage A.** The protocol requires only `manifest`,
-`init(services:)` and `stop()`. `start`, `run`, `canRun`, the run rule below
-and the `FeatureRuntime` action arrive in stage B, with the first tool that
-needs them. The Port manager has no background work, so stage A's host only
-builds a tool on first use and stops every built tool at quit. The rest of
-this section describes the design those pieces grow into.
+**As built.** Stage A's protocol required only `manifest`, `init(services:)`
+and `stop()`, and its host only built a tool on first use and stopped every
+built tool at quit. Stage B added `start`, `run` and `canRun` to the
+protocol, and to the host the run rule (`ToolHost.shouldRun`),
+`ToolHost.sync`, `ToolHost.canRun` and `ToolHost.run`, with the
+`FeatureRuntime` action `tool(ToolID)`. `start` is called every time the host
+finds the tool should run, so it too must be safe to call twice. The host
+learns which tools exist from one list, `BundledTools.all`. The Port manager
+has no background work and no command: its `start` and `run` do nothing. The
+rule's grant clause is written and tested as a plain function, but no
+capability rides on a macOS grant until stage C, so no real tool reaches it
+yet; "the tool declared it can start without" is stage C's too.
 
 A tool holds no singleton of its own and reaches for none. Everything it may
 touch arrives through `services`. The existing service class for each feature
@@ -251,16 +265,28 @@ the host, and the tool's own arm in `actions(for:)` and `perform` goes.
 The exhaustive switches stay exhaustive: the arm now says "this one is a
 tool".
 
+As built, nothing watches the preferences. Whoever flips a tool's switch
+tells the host, as each caller told the service before: a view calls
+`ToolHost.shared.sync(X.self)`, and the command bar's toggle rows go through
+`FeatureRuntime.sync`. An observer would also fire for a settings restore and
+for `defaults write`, which do not re-sync today.
+
 **At quit** the host stops every running tool, in the reverse of start order.
 The tool's hand-written line leaves `AppDelegate`. Today that line builds the
 URL cleaner's singleton at quit even when the feature is not installed; the
 host never builds a tool it has not started.
 
-**Commands.** The host registers each manifest's commands with the registry
-and sets handlers that call the tool's `run` and `canRun`. `BuiltinTools`
-stops registering a tool the host owns. The two command-bar rows that exist
-keep their saved keys (`action.cleanURL`, `action.pastePlain`) as command
-ids, so nobody's reordered or hidden rows move. The Port manager has no
+**Commands.** `BuiltinTools` keeps registering every hub feature. For a
+feature that has a manifest it registers the manifest's descriptor and sets
+handlers that call the host's `canRun` and `run`, which call the tool's. It
+asks for the host only when a command is run or asked about, so registering
+builds no host and no tool. The command-bar rows that exist keep their saved
+ids, so nobody's reordered or hidden rows move. As built for the URL cleaner:
+the `action.cleanURL` row stays hand-built and runs the command
+`urlCleaner/cleanClipboard` through the registry. That command asks for no
+surface, or a second row would appear beside the first. The
+`selection.cleanLink` row calls two methods on the tool, `clean` and `copy`,
+because a command takes no argument. The Port manager has no
 command today and gets none: adding one adds a string in 15 languages and a
 row users did not ask for.
 
@@ -299,13 +325,13 @@ today, which is what keeps behaviour identical.
 
 | Capability | Operations | Rides on | Backed by | First needed by |
 |---|---|---|---|---|
-| `notify` | `hud(icon, message)`; `beep()`. Stage A builds `beep()` only. | none | `QuickToolHUD`, `NSSound` | Port manager |
+| `notify` | `hud(icon, message)`; `beep()`. Stage A built `beep()`, stage B `hud`. | none | `QuickToolHUD`, `NSSound` | Port manager |
 | `open` | `openURL(url)` | none | `NSWorkspace` | Port manager |
 | `processes` | `scanner()` (start times and the listening-sockets report); `canTerminate`; `isProtected(pid, name)`; `terminate(pid, name, startedAt, force)` | none (admin prompt on demand) | `Shell` running `lsof`; `KillProcessService` | Port manager |
-| `clipboard.write` | `write(text, kind)` | none | `GeneralPasteboardAccess` | Port manager |
-| `clipboard.read` | `readText()`; `changes` (a stream of change counts) | none | the lane; the broker's watcher | URL cleaner |
-| `clipboard.rewrite` | `rewrite(ifChangeCount:, with:)` | none | the lane; clipboard history's "ignore next change" | URL cleaner |
-| `storage` | `value(for:)`; `set(_:for:)`, for keys the manifest declares | none | `UserDefaults` | URL cleaner |
+| `clipboard.write` | `write(text, kind)`; `writeLink(link)`, a link as text and as a URL, signed as the app's own, first needed by the URL cleaner | none | `GeneralPasteboardAccess`; the broker's watcher | Port manager |
+| `clipboard.read` | `readText()` only. No plain stream of changes is built: none has a user. | none | the lane; the broker's watcher | URL cleaner |
+| `clipboard.rewrite` | `rewriteLinks(rule)`; `stopRewritingLinks()`. `rewriteLinks` also needs `clipboard.read`. | none | the lane; the broker's watcher | URL cleaner |
+| `storage` | `reader()`, which gives a value with `value(for:)`, for keys the manifest declares. No `set`. | none | `UserDefaults` | URL cleaner |
 | `hotkey` | `bind(role)`; `unbind(role)`; `onPress` | none | `QuickToolHotkey`, `SystemShortcutTakeover` | Paste as plain text |
 | `keystrokes` | `paste(text)`; `pressFrontAppMenuItem(matching:)` | Accessibility | `TransientPaste`; the Accessibility menu walk | Paste as plain text |
 
@@ -314,14 +340,27 @@ and the stability rule are the tool's own logic and stay in its file.
 
 Notes on the ones that are not obvious:
 
-- **`clipboard.rewrite`** is the answer to the URL cleaner's catch. The tool
-  is told "the clipboard changed, count N". It reads the text, decides, and
-  asks the broker to replace the contents **only if the count is still N**.
-  The broker does the read-check-clear-write on the clipboard lane, keeps a
-  foreign source marker and the remote-clipboard marker, and tells clipboard
-  history to ignore the change. All of that is today's code, moved behind one
-  operation. It is its own capability because replacing what the user copied
-  is a bigger thing to allow than reading it or adding to it.
+- **`clipboard.rewrite`** is the answer to the URL cleaner's catch.
+  Rewriting a copied link is one operation that carries a rule,
+  `clipboard.rewriteLinks(rule:)`. The tool hands the broker the rule. On
+  each tick of the broker's one timer, the broker runs one job on the
+  clipboard lane: read the count, ask the rule about the types, read the
+  text, ask the rule for a replacement, ask about the HTML when there is
+  any, check the count again, write. An earlier draft of this spec had three
+  steps instead (the tool is told of a change, reads the text, then asks for
+  a rewrite if the count is still the same). That was not built, because
+  three messages are not one job, and four things would change. Clipboard
+  history shares the lane and could read the raw link between two of the
+  steps. The text would be read before the types have said yes, so a
+  password or a large promised copy would be fetched only to be left alone.
+  Link parsing and the scan of the HTML would move to the main thread. And a
+  look still waiting when the cleaner is switched off could write. The
+  broker keeps a foreign source marker and the remote-clipboard marker. It
+  does **not** tell clipboard history to ignore the change. This spec said
+  it did and called that today's code; it never was. The cleaner never
+  called `ignoreNextChange`, and history records the cleaned link as a copy
+  of its own. It is its own capability because replacing what the user
+  copied is a bigger thing to allow than reading it or adding to it.
 - **`keystrokes.paste`** is `TransientPaste` unchanged, timings included.
   Text snippets keep calling `TransientPaste` directly; they are not a tool
   yet.
@@ -331,7 +370,12 @@ Notes on the ones that are not obvious:
 - **`processes.terminate`** carries the process's start time, as the call
   does today, so a recycled PID is never killed by mistake.
 - **`storage`** refuses a key the manifest did not declare. That one rule is
-  what makes a manifest's preference list true.
+  what makes a manifest's preference list true. It hands out a reader, a
+  value that can be read on any thread, because the cleaner reads its rules
+  on the clipboard lane at the moment a link is about to be cleaned. The
+  broker's checks run when the reader is handed out. There is no `set`:
+  nothing in the cleaner writes a preference, and its views bind them with
+  `@AppStorage`.
 
 Not offered yet, though the parent design lists them: `windows`,
 `screen.capture`, `audio.devices`, `calendar`, `files`, `metrics`, `network`,
@@ -419,7 +463,8 @@ Automated, in the existing `TestSuite` under the `platform` group:
   against fake services. A refused call does no work: the fake records zero
   calls.
 - **`clipboard.rewrite`**: replaced when the count matches; left alone when
-  it moved; foreign markers kept; clipboard history told to ignore.
+  it moved; foreign markers kept. Clipboard history is not told to ignore
+  (section 7.2), so there is nothing to test there.
 - **Host**: the start-and-stop table for each tool; stop is safe twice; quit
   stops in reverse order; a tool that was never started is never built.
 - **Per migration**: the feature's existing tests unchanged; the
@@ -434,9 +479,12 @@ Recorded in each pull request with the Mac and macOS version.
   ending a process works, including one that needs the admin prompt; with the
   Kill process feature removed, the end button does what it did before.
 - **URL cleaner**: copy a link with tracking parts and it is cleaned within a
-  second; clipboard history shows one entry, not two; copy from an app that
-  marks its source and the mark survives; switch the feature off and copying
-  is left alone.
+  second; clipboard history shows the entries it showed before the change;
+  copy from an app that marks its source and the mark survives; switch the
+  feature off and copying is left alone. History is compared with the build
+  before, not with "one entry", because the two features have a timer each:
+  when history's fires first it records the raw link, and then the cleaned
+  one.
 - **Paste as plain text**: the shortcut pastes plain text in an app with
   "Paste and Match Style" and in one without; the clipboard holds the
   original afterwards; with Accessibility revoked the press beeps or asks
@@ -450,10 +498,20 @@ release.
 | Stage | Builds | Migrates | Capabilities added |
 |---|---|---|---|
 | A | Manifest, tool interface, host, broker skeleton, both lints | Port manager | `notify`, `open`, `processes`, `clipboard.write` |
-| B | The broker's clipboard watcher, the host's start and stop, the `FeatureRuntime` action | URL cleaner | `storage`, `clipboard.read`, `clipboard.rewrite` |
-| C | Permission changes reaching the host | Paste as plain text | `hotkey`, `keystrokes` |
+| B (built) | The broker's clipboard watcher, the host's start, stop and commands, the `FeatureRuntime` action | URL cleaner | `storage`, `clipboard.read`, `clipboard.rewrite`; also `writeLink` in `clipboard.write` and `hud` in `notify` |
+| C | Permission changes reaching the host, with the first test of the run rule's grant clause; a tool that may start without its grant; `Permissions` in place before the host's first decision at launch | Paste as plain text | `hotkey`, `keystrokes` |
 
-Stage A is built; its by-hand checks are in its pull request.
+Stage A is built; its by-hand checks are in its pull request. Stage B is
+built; its pull request is not open yet, and its by-hand checks will be
+recorded there.
+
+Stage B also leaves these for stage C or later, each with the first tool
+that needs it: commands that take an argument; `storage.set`; a plain stream
+of clipboard changes; an observer for a preference changed from outside the
+app; `TransientPaste`'s call to clipboard history's `ignoreNextChange`, which
+is real there and belongs behind `keystrokes.paste`. Clipboard history and
+auto-clear keep a timer each until they migrate. How a tool in another
+process answers a `ClipboardRewriteRule` is sub-project 3's question.
 
 Stage A is the large one: it carries all the new structure and the feature
 with the least to move. B and C are mostly one capability and one feature
@@ -478,7 +536,10 @@ Each had a default. James accepted every one on 2026-10-09. They are
 decisions now. The stage A plan is
 `docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`; it changes
 three details of this spec, listed in its decisions table, and its last task
-brings this document in line.
+brings this document in line. The stage B plan is
+`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`; it changes
+five details of this spec, listed in its decisions table, and its last task
+does the same.
 
 1. **`processes` as a new capability** (decision 2). *Default: yes.*
 2. **Keep the Port manager's dependency on Kill process** (decision 3).

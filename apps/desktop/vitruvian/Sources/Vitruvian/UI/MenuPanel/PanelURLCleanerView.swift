@@ -9,7 +9,7 @@ import VitruvianServices
 
 package struct PanelURLCleanerView: View {
     @ObservedObject private var l10n = L10n.shared
-    @ObservedObject private var cleaner = URLCleanerService.shared
+    @ObservedObject private var cleaner = ToolHost.shared.tool(URLCleanerService.self)
     @AppStorage(Preferences.urlCleanerEnabled) private var autoClean: Bool
     // The service reads the rules itself. `result` reads them too, so a rule
     // changed in Settings while the panel sits beside it redraws the result.
@@ -59,7 +59,7 @@ package struct PanelURLCleanerView: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11.5, weight: .medium))
                 .onChange(of: autoClean) { _, _ in
-                    URLCleanerService.shared.syncWithPreferences()
+                    ToolHost.shared.sync(URLCleanerService.self)
                 }
             Text(l10n.s.urlCleanerEnableCaption)
                 .font(.system(size: 10))
@@ -145,15 +145,11 @@ package struct PanelURLCleanerView: View {
         }
     }
 
-    /// Through the shared lane: a direct read here would both race the
-    /// clipboard services on AppKit's pasteboard cache and hang the button
-    /// (and with it the app) on a promised flavour nobody renders any more.
+    /// The tool reads through the shared clipboard lane.
     private func paste() {
-        GeneralPasteboardAccess.shared.async({
-            NSPasteboard.general.string(forType: .string) ?? ""
-        }, then: { pasted in
+        cleaner.pasteboardText { pasted in
             self.input = pasted
-        })
+        }
     }
 
     private func copy() {

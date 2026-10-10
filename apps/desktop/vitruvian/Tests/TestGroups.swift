@@ -83,7 +83,7 @@ enum TestGroups {
                 SystemMonitorCPUTests.run(suite)
                 SystemMonitorPlanTests.run(suite)
             }),
-            ("clipboard", { ClipboardFeatureTests.run(suite) }),
+            ("clipboard", { ClipboardFeatureTests.run(suite); URLCleanerTests.run(suite) }),
             ("pointer-input", {
                 PointerOnDisplayContract.run(suite)
                 PointerInputFeatureTests.run(suite)

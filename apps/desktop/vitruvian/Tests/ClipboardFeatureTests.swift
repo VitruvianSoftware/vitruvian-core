@@ -120,9 +120,13 @@ enum ClipboardFeatureTests {
                      "an app that names itself is believed even while the panel holds the keys")
         // The link cleaner rewrites a copy in place; the app it named stays.
         let cleanerBoard = NSPasteboard.withUniqueName()
-        func poll() -> URLCleanerService.PollResult? {
-            URLCleanerService.pollPasteboard(sinceChangeCount: -1, token: URLCleanerService.PollToken(),
-                                             pasteboard: cleanerBoard, rules: URLCleaning.Rules.none)
+        func poll() -> (changeCount: Int, cleaned: URLCleaning.Result?)? {
+            ClipboardRewrite.poll(since: -1, token: ClipboardPollToken(),
+                                  rule: URLCleanerService.rewriteRule(rules: { .none }), pasteboard: cleanerBoard)
+                .map { poll in
+                    (changeCount: poll.changeCount,
+                     cleaned: poll.replaced.map { URLCleaning.Result(url: $0.text, removed: $0.note) })
+                }
         }
         cleanerBoard.clearContents()
         cleanerBoard.setString("com.example.reader", forType: .source)

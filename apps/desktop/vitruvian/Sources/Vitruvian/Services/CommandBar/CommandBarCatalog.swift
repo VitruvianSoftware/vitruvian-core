@@ -637,7 +637,8 @@ package enum CommandBarCatalog {
                 subtitle: area(.urlCleaner),
                 keywords: s.urlCleanerName,
                 icon: .symbol("link"),
-                run: { _ in cleanClipboardURL() }))
+                // The cleaner is a tool: its command runs through the registry.
+                run: { _ in ToolRegistry.shared.run(URLCleanerService.cleanClipboard) }))
         }
 
         if AppFeature.windowLayout.isAvailable {
@@ -1680,7 +1681,7 @@ package enum CommandBarCatalog {
             run: { _ in useInSearch(text) }))
 
         if AppFeature.urlCleaner.isAvailable,
-           let cleaned = URLCleanerService.shared.clean(text), cleaned.url != text {
+           let cleaned = ToolHost.shared.tool(URLCleanerService.self).clean(text), cleaned.url != text {
             entries.append(CommandBarEntry(
                 id: "selection.cleanLink",
                 title: bar.actionCleanURL,
@@ -1688,7 +1689,7 @@ package enum CommandBarCatalog {
                 keywords: L10n.shared.s.urlCleanerName,
                 icon: .symbol("link"),
                 run: { _ in
-                    URLCleanerService.shared.copy(cleaned.url)
+                    ToolHost.shared.tool(URLCleanerService.self).copy(cleaned.url)
                     QuickToolHUD.show(icon: "link", message: cleaned.removed.isEmpty
                         ? L10n.shared.s.urlCleanerCleaned
                         : String(format: L10n.shared.s.urlCleanerRemovedFormat,
@@ -1926,38 +1927,6 @@ package enum CommandBarCatalog {
                                           sidebarFeature: sidebarFeature)
             appShell()?.openSettingsWindow()
         }
-    }
-
-    /// Reads through the shared lane like every other clipboard row: a direct
-    /// main-thread read races the lane's readers and freezes the app on a
-    /// promised flavour nobody is left to render (issue #887).
-    @MainActor
-    private static func cleanClipboardURL() {
-        GeneralPasteboardAccess.shared.async({
-            NSPasteboard.general.string(forType: .string)
-        }, then: { raw in
-            let s = L10n.shared.s
-            guard let raw,
-                  !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                QuickToolHUD.show(icon: "link", message: s.urlCleanerNoURL)
-                return
-            }
-            let cleaned = URLCleanerService.shared.clean(raw)
-            switch URLCleaning.outcome(for: cleaned, input: raw) {
-            case .notAURL:
-                QuickToolHUD.show(icon: "link", message: s.urlCleanerNoURL)
-            case .unchanged:
-                QuickToolHUD.show(icon: "checkmark.circle", message: s.urlCleanerNoChange)
-            case .rewritten:
-                cleaned.map { URLCleanerService.shared.copy($0.url) }
-                QuickToolHUD.show(icon: "link", message: s.urlCleanerCleaned)
-            case .removed(let names):
-                cleaned.map { URLCleanerService.shared.copy($0.url) }
-                QuickToolHUD.show(icon: "link",
-                                  message: String(format: s.urlCleanerRemovedFormat,
-                                                  names.joined(separator: ", ")))
-            }
-        })
     }
 
     /// Brightness lands on the display under the pointer, the screen where

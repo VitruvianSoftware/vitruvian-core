@@ -6,19 +6,42 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Puts the app's own tools in the registry: one tool per hub feature, and a
-/// handler for each built-in command. This is the only place that knows
-/// which service call a built-in command runs.
+/// handler for each command. This is the only place that knows which service
+/// call a built-in command runs. A feature that has become a tool is
+/// registered from its manifest, and its commands run through the tool host.
 @MainActor
 package enum BuiltinTools {
     /// Called once from `main.swift`, before anything can present. Safe to
     /// call again: a tool already there is left alone.
-    package static func install(into registry: ToolRegistry = .shared) {
+    ///
+    /// `tools` are the features that have become tools. `host` is asked for
+    /// only when one of their commands is run or asked whether it can run,
+    /// never here: installing builds no host, no broker and no tool.
+    package static func install(into registry: ToolRegistry = .shared,
+                                tools: [any BundledTool.Type] = BundledTools.all,
+                                host: @escaping @MainActor () -> ToolHost = { .shared }) {
+        var manifests: [ToolID: ToolManifest] = [:]
+        for type in tools { manifests[type.manifest.id] = type.manifest }
         // A built-in command asks for the panel only when a tile runs it:
         // the others have no tile today, and listing them would put new
         // tiles in front of everyone.
         let tiled = Set(QuickLauncherItem.allCases.compactMap(\.command))
         for feature in AppFeature.allCases {
             guard let id = ToolID(feature.rawValue), registry.tool(id) == nil else { continue }
+            // A feature that has become a tool says what it is in its
+            // manifest, and its commands run through the tool host. Its
+            // commands are the manifest's alone: it has no `BuiltinCommand`.
+            if let manifest = manifests[id] {
+                try? registry.register(manifest.tool)
+                try? registry.setName(titleProvider(for: feature), for: id)
+                for command in manifest.tool.commands {
+                    try? registry.setHandler(.init(title: titleProvider(for: feature),
+                                                   isRunnable: { host().canRun(command.id) },
+                                                   run: { host().run(command.id) }),
+                                             for: command.id)
+                }
+                continue
+            }
             let own = BuiltinCommand.allCases.filter { $0.feature == feature }
             let commands = own.compactMap { command in
                 CommandDescriptor(id: command.id, title: feature.rawValue, symbol: feature.symbolName,

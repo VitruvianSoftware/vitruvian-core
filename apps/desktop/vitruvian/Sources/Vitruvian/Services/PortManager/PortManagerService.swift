@@ -126,7 +126,15 @@ package final class PortManagerService: ObservableObject {
         if (try? services.open.url(url).get()) != true { services.notify.beep() }
     }
 
+    /// Nothing runs in the background: the list is read when a view asks.
+    package func start() {}
+
     package func stop() {}
+
+    /// The Port manager has no command.
+    package func run(_ command: CommandID) {}
+
+    package func canRun(_ command: CommandID) -> Bool { false }
 
     nonisolated private static func startTimes(_ scanning: Scanning) -> [pid_t: UInt64] {
         let estimatedCount = max(1, Int(scanning.listPIDs(nil, 0)))

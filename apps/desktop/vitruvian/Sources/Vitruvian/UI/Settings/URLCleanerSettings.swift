@@ -36,7 +36,7 @@ package struct URLCleanerField: View {
 
 package struct URLCleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
-    @ObservedObject private var cleaner = URLCleanerService.shared
+    @ObservedObject private var cleaner = ToolHost.shared.tool(URLCleanerService.self)
     @AppStorage(Preferences.urlCleanerEnabled) private var enabled: Bool
     @AppStorage(Preferences.urlCleanerCustomParameters) private var globalNames: String
     @AppStorage(Preferences.urlCleanerSiteParameters) private var siteNames: String
@@ -63,7 +63,7 @@ package struct URLCleanerSettings: View {
             Section {
                 Toggle(l10n.s.urlCleanerEnable, isOn: $enabled)
                     .onChange(of: enabled) { _, _ in
-                        URLCleanerService.shared.syncWithPreferences()
+                        ToolHost.shared.sync(URLCleanerService.self)
                     }
                 Text(l10n.s.urlCleanerEnableCaption)
                     .font(.caption)
@@ -322,15 +322,11 @@ package struct URLCleanerSettings: View {
         storedRules.remove(name, from: site)
     }
 
-    /// Through the shared lane: a direct read here would both race the
-    /// clipboard services on AppKit's pasteboard cache and hang the button
-    /// (and with it the app) on a promised flavour nobody renders any more.
+    /// The tool reads through the shared clipboard lane.
     private func paste() {
-        GeneralPasteboardAccess.shared.async({
-            NSPasteboard.general.string(forType: .string) ?? ""
-        }, then: { pasted in
+        cleaner.pasteboardText { pasted in
             self.input = pasted
-        })
+        }
     }
 
     private var message: String {

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
+import AppKit
 import VitruvianCore
 import VitruvianServices
 
@@ -13,7 +14,13 @@ enum ToolBrokerTests {
         checks(suite)
         smallCapabilities(suite)
         processes(suite)
+        preferences(suite)
+        messages(suite)
+        oneLook(suite)
+        clipboard(suite)
         host(suite)
+        runRule(suite)
+        hostRunsTools(suite)
         portManager(suite)
         manifestsAgree(suite)
     }
@@ -26,8 +33,8 @@ enum ToolBrokerTests {
         var undeclared: [Capability] = []
     }
 
-    static func manifest(_ capabilities: [Capability]) -> ToolManifest {
-        ToolManifest(tool: ToolDescriptor(id: ToolID("portManager")!, name: "portManager", symbol: "network",
+    static func manifest(_ capabilities: [Capability], id: String = "portManager") -> ToolManifest {
+        ToolManifest(tool: ToolDescriptor(id: ToolID(id)!, name: id, symbol: "network",
                                           commands: [])!,
                      group: .tools,
                      capabilities: capabilities.map { CapabilityRequest($0, reason: "test")! },
@@ -178,16 +185,103 @@ enum ToolBrokerTests {
                      "a tool that did not ask can end nothing, and is told every process is protected")
     }
 
+    /// Saved values a fake reads, and what it was asked. Only the test's own
+    /// thread touches it.
+    nonisolated final class PreferenceBox: @unchecked Sendable {
+        var values: [String: Any] = [:]
+        var reads: [String] = []
+        var undeclared: [String] = []
+    }
+
+    static func preferences(_ suite: TestSuite) {
+        let box = PreferenceBox()
+        let world = World()
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in world.installed },
+                               isGranted: { world.granted.contains($0) },
+                               allows: { _, _ in world.allowed },
+                               reportUndeclared: { _, capability in world.undeclared.append(capability) }),
+            backings: .init(
+                notify: .init(beep: {}), open: .init(open: { _ in true }),
+                clipboard: .init(write: { _, _ in }), processes: .inert,
+                storage: .init(read: { key in
+                    box.reads.append(key)
+                    return box.values[key]
+                }, undeclaredKey: { box.undeclared.append($0) })))
+        let declared = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("urlCleaner")!, name: "urlCleaner", symbol: "link", commands: [])!,
+            group: .tools, capabilities: [CapabilityRequest(.storage, reason: "test")!],
+            preferences: [PreferenceDeclaration(key: DefaultsKey.urlCleanerEnabled, default: .bool(false)),
+                          PreferenceDeclaration(key: DefaultsKey.urlCleanerCustomParameters, default: .string(""))],
+            activation: [.onLaunch], enabledBy: DefaultsKey.urlCleanerEnabled)!
+
+        guard case .success(let reader) = broker.services(for: declared).storage.reader() else {
+            suite.expect(false, "a tool that asks for it gets a reader for its preferences")
+            return
+        }
+        suite.expect(reader.value(for: Preferences.urlCleanerEnabled) == false
+                         && box.reads == [DefaultsKey.urlCleanerEnabled],
+                     "a preference nothing saved reads as its default")
+        box.values[DefaultsKey.urlCleanerEnabled] = true
+        box.values[DefaultsKey.urlCleanerCustomParameters] = "ref"
+        suite.expect(reader.value(for: Preferences.urlCleanerEnabled)
+                         && reader.value(for: Preferences.urlCleanerCustomParameters) == "ref",
+                     "a tool reads the preferences its manifest declares")
+        box.values[DefaultsKey.urlCleanerCustomParameters] = 7
+        suite.expect(reader.value(for: Preferences.urlCleanerCustomParameters) == "",
+                     "a saved value of another type reads as the default")
+        let before = box.reads.count
+        suite.expect(reader.value(for: Preferences.urlCleanerSiteParameters) == "" && box.reads.count == before
+                         && box.undeclared == [DefaultsKey.urlCleanerSiteParameters],
+                     "a preference the manifest does not declare is not read, and is reported as a mistake")
+
+        if case .failure(let refusal) = broker.services(for: manifest([])).storage.reader() {
+            suite.expect(refusal == .notDeclared(.storage) && box.reads.count == before,
+                         "a tool that did not ask gets no reader")
+        } else {
+            suite.expect(false, "a tool that did not ask gets no reader")
+        }
+        world.installed = false
+        if case .failure(let refusal) = broker.services(for: declared).storage.reader() {
+            suite.expect(refusal == .notInstalled, "a tool removed in the hub gets no reader")
+        } else {
+            suite.expect(false, "a tool removed in the hub gets no reader")
+        }
+    }
+
+    static func messages(_ suite: TestSuite) {
+        var said: [String] = []
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in true }, isGranted: { _ in true }, allows: { _, _ in true },
+                               reportUndeclared: { _, _ in }),
+            backings: .init(
+                notify: .init(beep: {}, hud: { icon, message in said.append("\(icon): \(message)") }),
+                open: .init(open: { _ in true }), clipboard: .init(write: { _, _ in }), processes: .inert))
+        suite.expect(broker.services(for: manifest([.notify])).notify.hud(icon: "link", message: "Cleaned") == nil
+                         && said == ["link: Cleaned"],
+                     "a tool that asks for it can say something on screen")
+        suite.expect(broker.services(for: manifest([])).notify.hud(icon: "link", message: "x") == .notDeclared(.notify)
+                         && said.count == 1,
+                     "a refused message is not shown")
+    }
+
     final class ProbeTool: BundledTool {
         static let manifest = ToolBrokerTests.manifest([.notify])
         static var built = 0
         let services: ToolServices
+        var starts = 0
         var stops = 0
         init(services: ToolServices) {
             self.services = services
             Self.built += 1
         }
-        func stop() { stops += 1 }
+        func start() { starts += 1 }
+        func stop() {
+            stops += 1
+            ToolBrokerTests.events.append("portManager stop")
+        }
+        func run(_ command: CommandID) {}
+        func canRun(_ command: CommandID) -> Bool { false }
     }
 
     static func host(_ suite: TestSuite) {
@@ -208,6 +302,148 @@ enum ToolBrokerTests {
         host.stopAll()
         host.stopAll()
         suite.expect(first.stops == 2 && ProbeTool.built == 1, "quitting stops every built tool, and builds none")
+    }
+
+    /// What the probes below were asked, in order.
+    static var events: [String] = []
+
+    /// A tool with a switch and a command, to watch the host start, stop
+    /// and run it.
+    final class LifecycleProbe: BundledTool {
+        static let probe = CommandID("homebrew/probe")!
+        static let manifest = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("homebrew")!, name: "homebrew", symbol: "shippingbox",
+                                 commands: [CommandDescriptor(id: probe, title: "probe", symbol: "shippingbox",
+                                                              surfaces: [])!])!,
+            group: .tools, capabilities: [],
+            preferences: [PreferenceDeclaration(key: "probeSwitch", default: .bool(false))],
+            activation: [.onLaunch, .onCommand], enabledBy: "probeSwitch")!
+        static var built = 0
+        init(services: ToolServices) { Self.built += 1 }
+        func start() { ToolBrokerTests.events.append("start") }
+        func stop() { ToolBrokerTests.events.append("stop") }
+        func run(_ command: CommandID) { ToolBrokerTests.events.append("run \(command.name)") }
+        func canRun(_ command: CommandID) -> Bool { true }
+    }
+
+    /// The rule itself, against every combination of what it is told. A
+    /// tool with no switch is `nil`.
+    static func runRule(_ suite: TestSuite) {
+        for installed in [false, true] {
+            for switchedOn in [nil, false, true] as [Bool?] {
+                for holdsGrants in [false, true] {
+                    let runs = installed && switchedOn != false && holdsGrants
+                    let name = switchedOn.map { "switched \($0 ? "on" : "off")" } ?? "no switch"
+                    suite.expect(ToolHost.shouldRun(installed: installed, switchedOn: switchedOn,
+                                                    holdsGrants: holdsGrants) == runs,
+                                 "installed \(installed), \(name), grants held \(holdsGrants): the tool "
+                                     + (runs ? "should run" : "should not run"))
+                }
+            }
+        }
+        var asked: [String] = []
+        let stopsEarly = ToolHost.shouldRun(installed: false,
+                                            switchedOn: { asked.append("switch"); return true }(),
+                                            holdsGrants: { asked.append("grants"); return true }())
+        suite.expect(!stopsEarly && asked.isEmpty,
+                     "a tool that is not installed is not asked about its switch or its grants")
+    }
+
+    static func hostRunsTools(_ suite: TestSuite) {
+        let rig = URLCleanerTests.CleanerRig()
+        defer { rig.close() }
+        let feature = AppFeature.homebrew
+        let id = LifecycleProbe.manifest.id
+        let command = LifecycleProbe.probe
+        func set(installed: Bool, on: Bool) {
+            rig.defaults.set(installed, forKey: feature.availabilityKey)
+            rig.defaults.set(on, forKey: "probeSwitch")
+        }
+
+        // The run rule, against every combination.
+        for installed in [false, true] {
+            for on in [false, true] {
+                LifecycleProbe.built = 0
+                events = []
+                let host = ToolHost(broker: rig.broker(), tools: [LifecycleProbe.self])
+                set(installed: installed, on: on)
+                host.sync(id)
+                let runs = installed && on
+                suite.expect(host.shouldRun(LifecycleProbe.manifest) == runs && events == (runs ? ["start"] : [])
+                                 && LifecycleProbe.built == (runs ? 1 : 0) && host.running == (runs ? [id] : []),
+                             "installed \(installed), switched on \(on): the host "
+                                 + (runs ? "starts the tool" : "leaves the tool unbuilt"))
+            }
+        }
+
+        LifecycleProbe.built = 0
+        ProbeTool.built = 0
+        events = []
+        let host = ToolHost(broker: rig.broker(), tools: [LifecycleProbe.self, ProbeTool.self])
+        rig.defaults.set(false, forKey: AppFeature.portManager.availabilityKey)
+        set(installed: true, on: false)
+        host.sync(ProbeTool.manifest.id)
+        host.sync(id)
+        host.sync(ToolID("screenshot")!)
+        host.stopAll()
+        suite.expect(events.isEmpty && host.built.isEmpty && LifecycleProbe.built == 0 && ProbeTool.built == 0,
+                     "a tool that should not run and was never built is not built to be stopped")
+        rig.defaults.set(true, forKey: AppFeature.portManager.availabilityKey)
+        set(installed: true, on: true)
+        host.sync(ProbeTool.manifest.id)
+        host.sync(id)
+        host.sync(id)
+        suite.expect(events == ["start", "start"] && host.running == [ProbeTool.manifest.id, id]
+                         && LifecycleProbe.built == 1 && host.tool(ProbeTool.self).starts == 1,
+                     "deciding again while a tool runs starts the same tool again, as a sync always did")
+        set(installed: true, on: false)
+        host.sync(id)
+        host.sync(id)
+        suite.expect(events.suffix(2) == ["stop", "stop"] && host.running == [ProbeTool.manifest.id],
+                     "switching a tool off stops it, and stopping twice is safe")
+        set(installed: true, on: true)
+        host.sync(id)
+        events = []
+        host.stopAll()
+        suite.expect(events == ["stop", "portManager stop"] && host.running.isEmpty && LifecycleProbe.built == 1,
+                     "quitting stops what is running, last started first, and builds nothing")
+
+        // Commands.
+        set(installed: true, on: false)
+        events = []
+        suite.expect(host.canRun(command),
+                     "a command can run while the tool's switch is off: the switch is for background work")
+        host.run(command)
+        suite.expect(events == ["run probe"], "the host hands a command to its tool")
+        suite.expect(!host.canRun(CommandID("homebrew/unknown")!) && !host.canRun(CommandID("screenshot/capture")!),
+                     "the host runs only a command that a manifest it holds declares")
+
+        // The registry runs a tool's command through the host, which it
+        // reaches only when a command is run or asked about.
+        let registry = ToolRegistry(isAvailable: { $0.isAvailable(in: rig.defaults) })
+        var reached = 0
+        BuiltinTools.install(into: registry, tools: [LifecycleProbe.self, ProbeTool.self], host: {
+            reached += 1
+            return host
+        })
+        suite.expect(reached == 0 && LifecycleProbe.built == 1 && events == ["run probe"],
+                     "installing the built-in tools reaches for no host and builds no tool")
+        suite.expect(registry.tool(id) == LifecycleProbe.manifest.tool && registry.hasHandler(for: command)
+                         && registry.name(for: id, language: .systemDefault)
+                             == feature.hubTitle(Strings.localized(.systemDefault), hub: FeatureStrings.hub(.systemDefault)),
+                     "a tool the host holds is registered as its manifest describes it, under the hub's name")
+        suite.expect(ToolSurface.allCases.allSatisfy { surface in
+            !registry.commands(on: surface).contains { $0.id == command }
+        }, "a command that asks for no surface is listed on none")
+        suite.expect(reached == 0, "listing commands reaches for no host")
+        suite.expect(registry.run(command) && events == ["run probe", "run probe"] && reached > 0,
+                     "the registry runs a tool's command through the host")
+        set(installed: false, on: true)
+        host.run(command)
+        reached = 0
+        suite.expect(!host.canRun(command) && !registry.run(command) && events == ["run probe", "run probe"]
+                         && reached == 0,
+                     "a tool removed in the hub runs no command, and the registry says so before asking the host")
     }
 
     static func portManager(_ suite: TestSuite) {
@@ -297,7 +533,9 @@ enum ToolBrokerTests {
 
     /// A manifest and the `AppFeature` it stands beside describe one thing.
     static func manifestsAgree(_ suite: TestSuite) {
-        let manifests = [PortManagerService.manifest]
+        let manifests = [PortManagerService.manifest, URLCleanerService.manifest]
+        suite.expect(BundledTools.all.map { $0.manifest.id } == manifests.map(\.id),
+                     "every tool the host holds is checked here")
         let registry = ToolRegistry(isAvailable: { _ in true })
         BuiltinTools.install(into: registry)
         var keys: [String] = []
@@ -316,8 +554,193 @@ enum ToolBrokerTests {
                 (Defaults.registeredDefaults[declared.key] as? NSObject)
                     == (declared.defaultValue.defaultsValue as? NSObject)
             }, "\(manifest.id) declares each preference with the default the app registers")
+            suite.expect((manifest.enabledBy.map { [$0] } ?? []) == feature.enabledKeys,
+                         "\(manifest.id) is switched on by the key its feature names")
+            suite.expect(FeatureRuntime.actions(for: feature, in: .standard).contains(.tool(manifest.id))
+                             == manifest.activation.contains(.onLaunch),
+                         "\(manifest.id) is handed to the tool host at launch exactly when its manifest says so")
             keys += manifest.preferences.map(\.key)
         }
         suite.expect(Set(keys).count == keys.count, "no preference belongs to two tools")
+    }
+
+    /// What a rule was asked, in order. Only the test's own thread touches
+    /// it.
+    nonisolated final class RuleLog: @unchecked Sendable {
+        var asked: [String] = []
+    }
+
+    static func oneLook(_ suite: TestSuite) {
+        // Handed to the rules below, which the look calls on this thread.
+        nonisolated(unsafe) let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let log = RuleLog()
+        func rule(reads: Bool = true, replacement: String? = "clean", drops: Bool = true,
+                  during: @escaping @Sendable () -> Void = {}) -> ClipboardRewriteRule {
+            ClipboardRewriteRule(
+                readsText: { _ in
+                    log.asked.append("types")
+                    return reads
+                },
+                replacement: { text in
+                    log.asked.append("text \(text)")
+                    during()
+                    return replacement.map { ClipboardReplacement(text: $0, note: ["n"]) }
+                },
+                dropsMarkup: { _, text in
+                    log.asked.append("markup \(text)")
+                    return drops
+                })
+        }
+        func look(_ rule: ClipboardRewriteRule, token: ClipboardPollToken = ClipboardPollToken()) -> ClipboardPoll? {
+            log.asked = []
+            return ClipboardRewrite.poll(since: -1, token: token, rule: rule, pasteboard: board)
+        }
+        func copy(_ text: String, html: String? = nil) {
+            board.clearContents()
+            board.setString(text, forType: .string)
+            if let html { board.setString(html, forType: .html) }
+        }
+
+        copy("dirty")
+        var result = look(rule(reads: false))
+        suite.expect(result?.replaced == nil && log.asked == ["types"] && board.string(forType: .string) == "dirty",
+                     "a rule that says no to the types is never shown the text")
+        result = look(rule(replacement: nil))
+        suite.expect(result?.replaced == nil && log.asked == ["types", "text dirty"],
+                     "a rule that offers nothing leaves the copy alone")
+
+        copy("dirty", html: "<b>dirty</b>")
+        result = look(rule(replacement: nil))
+        suite.expect(log.asked == ["types", "text dirty"], "the HTML is not read for a copy the rule leaves alone")
+        result = look(rule(drops: false))
+        suite.expect(result?.replaced == nil && log.asked == ["types", "text dirty", "markup dirty"]
+                         && board.string(forType: .html) != nil,
+                     "a rule that will not drop the HTML leaves the copy alone")
+        result = look(rule())
+        suite.expect(result?.replaced == ClipboardReplacement(text: "clean", note: ["n"])
+                         && board.string(forType: .string) == "clean" && board.string(forType: .URL) == "clean"
+                         && board.string(forType: .html) == nil && result?.changeCount == board.changeCount,
+                     "a replacement is written as text and as a link, and the look answers with the count after it")
+
+        copy("dirty")
+        result = look(rule(during: {
+            board.clearContents()
+            board.setString("other", forType: .string)
+        }))
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "other",
+                     "a copy that changed while the rule was deciding is not overwritten")
+
+        copy("dirty")
+        let token = ClipboardPollToken()
+        result = look(rule(during: { token.cancel() }), token: token)
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "dirty",
+                     "a look called off while the rule was deciding writes nothing")
+
+        board.clearContents()
+        board.writeObjects(["a" as NSString, "b" as NSString])
+        result = look(rule())
+        suite.expect(result?.replaced == nil && log.asked == ["types"] && board.pasteboardItems?.count == 2,
+                     "a copy of several items is not read")
+    }
+
+    static func clipboard(_ suite: TestSuite) {
+        let rig = URLCleanerTests.CleanerRig()
+        defer { rig.close() }
+        rig.set(installed: true, enabled: false)
+        rig.defaults.set(true, forKey: AppFeature.portManager.availabilityKey)
+        let broker = rig.broker()
+        let tool = broker.services(for: manifest([.clipboardRead, .clipboardWrite, .clipboardRewrite],
+                                                 id: "urlCleaner")).clipboard
+        let other = broker.services(for: manifest([.clipboardRead, .clipboardRewrite])).clipboard
+        let none = broker.services(for: manifest([], id: "urlCleaner")).clipboard
+        // Marks whatever is copied, every time it is asked: a watch that
+        // took its own rewrite for a new copy would mark it twice.
+        let mark = ClipboardRewriteRule(readsText: { _ in true },
+                                        replacement: { ClipboardReplacement(text: $0 + "!", note: [$0]) },
+                                        dropsMarkup: { _, _ in true })
+        let never = ClipboardRewriteRule(readsText: { _ in false }, replacement: { _ in nil },
+                                         dropsMarkup: { _, _ in true })
+        var heard: [String] = []
+
+        suite.expect(none.readText { _ in heard.append("read") } == .notDeclared(.clipboardRead)
+                         && none.writeLink("x") { heard.append("wrote") } == .notDeclared(.clipboardWrite)
+                         && none.rewriteLinks(rule: mark) { _ in heard.append("rewrote") } == .notDeclared(.clipboardRewrite)
+                         && rig.lane.isEmpty && rig.started.isEmpty && heard.isEmpty,
+                     "a refused clipboard call does no work and calls nothing back")
+        let rewriteOnly = broker.services(for: manifest([.clipboardRewrite], id: "urlCleaner")).clipboard
+        suite.expect(rewriteOnly.rewriteLinks(rule: mark) { _ in } == .notDeclared(.clipboardRead) && rig.started.isEmpty,
+                     "watching reads what it rewrites, so it needs both capabilities")
+
+        rig.copy("hello")
+        var texts: [String?] = []
+        suite.expect(tool.readText { texts.append($0) } == nil && texts.isEmpty && rig.lane.count == 1,
+                     "reading waits for the clipboard lane")
+        rig.settle()
+        rig.board.clearContents()
+        tool.readText { texts.append($0) }
+        rig.settle()
+        suite.expect(texts == ["hello", nil],
+                     "a tool that asks for it reads the clipboard's text, and nothing from an empty one")
+
+        var wrote = 0
+        tool.writeLink("https://example.com/x") { wrote += 1 }
+        rig.settle()
+        suite.expect(rig.text == "https://example.com/x" && rig.board.string(forType: .URL) == "https://example.com/x"
+                         && rig.board.string(forType: .source) == Bundle.main.bundleIdentifier && wrote == 1,
+                     "a link a tool writes is on the clipboard as text and as a link, signed as the app's own")
+
+        rig.copy("abc")
+        suite.expect(tool.rewriteLinks(rule: mark) { heard.append($0.text) } == nil
+                         && rig.started.count == 1 && rig.started[0].interval == ClipboardWatcher.interval
+                         && rig.started[0].tolerance == ClipboardWatcher.tolerance && rig.lane.count == 1,
+                     "the first watch starts the one timer and takes one look, to know where the clipboard stands")
+        suite.expect(ClipboardWatcher.interval == 0.8 && ClipboardWatcher.tolerance == 0.25,
+                     "the clipboard is looked at every 0.8 seconds, give or take a quarter")
+        tool.rewriteLinks(rule: mark) { heard.append($0.text) }
+        other.rewriteLinks(rule: never) { _ in heard.append("other") }
+        suite.expect(rig.started.count == 1 && rig.ticks.count == 1,
+                     "a tool watched for already keeps its watch, and a second tool shares the timer")
+        rig.settle()
+        rig.tick()
+        rig.settle()
+        suite.expect(rig.text == "abc" && heard.isEmpty,
+                     "what was on the clipboard when a watch started is not a new copy")
+
+        rig.copy("def")
+        rig.tick()
+        suite.expect(rig.lane.count == 2 && rig.text == "def", "a tick puts one look per watching tool on the lane")
+        rig.settle()
+        rig.tick()
+        rig.settle()
+        suite.expect(rig.text == "def!" && heard == ["def!"],
+                     "a copy is rewritten once: the watch's own rewrite is not a new copy to it")
+
+        rig.copy("ghi")
+        rig.tick()
+        tool.writeLink("own")
+        rig.settle()
+        suite.expect(rig.text == "own" && heard == ["def!"], "a tool's own write calls off its look that was waiting")
+        rig.tick()
+        rig.settle()
+        suite.expect(rig.text == (URLCleanerTests.signingMovesTheCount() ? "own!" : "own"),
+                     "after its own write a tool's watch looks again only if signing the write moved the clipboard's count")
+
+        rig.copy("jkl")
+        rig.tick()
+        tool.stopRewritingLinks()
+        suite.expect(rig.ticks.count == 1, "the timer runs while any tool is watched for")
+        rig.settle()
+        suite.expect(rig.text == "jkl", "a look that was waiting when its watch stopped changes nothing")
+        rig.set(installed: false, enabled: false)
+        suite.expect(tool.rewriteLinks(rule: mark) { _ in } == .notInstalled,
+                     "a tool removed in the hub is refused a watch")
+        suite.expect(tool.readText { _ in heard.append("read") } == .notInstalled
+                         && tool.writeLink("x") == .notInstalled && rig.lane.isEmpty,
+                     "a tool removed in the hub can no longer read or write the clipboard")
+        other.stopRewritingLinks()
+        other.stopRewritingLinks()
+        suite.expect(rig.ticks.isEmpty && rig.stopped == 1,
+                     "the timer stops with the last watch, and stopping twice is safe")
     }
 }

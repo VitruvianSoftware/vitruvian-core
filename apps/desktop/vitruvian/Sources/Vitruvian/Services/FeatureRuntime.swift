@@ -366,7 +366,8 @@ package final class FeatureRuntime: ObservableObject {
         case .finderCutPaste: return [.finderCutPaste]
         case .finderRename: return [.finderRename]
         case .shelf: return [.shelf, .fileTools]
-        case .urlCleaner: return [.urlCleaner]
+        // A tool: the tool host decides whether it runs.
+        case .urlCleaner: return [.tool(URLCleanerService.manifest.id)]
         case .diskImageInstaller: return [.diskImageInstaller]
         case .mixer: return [.preciseVolumeRoller, .appVolumeMixer, .audioInputDevices]
         case .soundOutputSwitcher: return [.appVolumeMixer, .soundOutputSwitcher]
@@ -470,7 +471,6 @@ package final class FeatureRuntime: ObservableObject {
         case .finderCutPaste: FinderCutPaste.shared.syncWithPreferences()
         case .finderRename: FinderRenameService.shared.syncWithPreferences()
         case .shelf: ShelfService.shared.syncWithPreferences()
-        case .urlCleaner: URLCleanerService.shared.syncWithPreferences()
         case .diskImageInstaller: DiskImageInstallerService.shared.syncWithPreferences()
         case .preciseVolumeRoller: PreciseVolumeRollerService.shared.syncWithPreferences()
         case .appVolumeMixer: AppVolumeMixer.shared.syncWithPreferences()
@@ -517,6 +517,7 @@ package final class FeatureRuntime: ObservableObject {
         case .monitorPlan: SystemMonitor.shared.planDidChange()
         case .monitorAlerts: MonitorAlertService.shared.syncWithPreferences()
         case .fanControl: FanControlService.shared.syncWithPreferences()
+        case .tool(let id): ToolHost.shared.sync(id)
         }
     }
 }
@@ -524,14 +525,16 @@ package final class FeatureRuntime: ObservableObject {
 /// One thing a feature's binding does to a live service, named so a test can
 /// read a feature's bindings without bringing any service to life. Most sync
 /// a service with its preferences; the `stop…`, `cancel…`, `close…` and
-/// `reset…` ones tear down what an uninstalled feature left running.
-package enum FeatureBindingAction: Hashable, CaseIterable {
+/// `reset…` ones tear down what an uninstalled feature left running. `tool`
+/// hands a feature that has become a tool to the tool host, which decides
+/// whether it runs.
+package enum FeatureBindingAction: Hashable {
     case windowUseTracker, appSwitcher, dockPreview, dockClick, windowMaximizer, windowLayout, pointerDisplay
     case autoQuit, spacesOrder, scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration, mouseNavigation
     case mouseButtonShortcuts, middleClick, mouseClickDebounce, keyboardDebounce, quitProtection, superKey
     case textSnippets, snippetLibrary, clipboardHistory, clipboardAutoClear
     case fileTools, cancelMedia, closeMediaEditors
-    case pastePlain, finderCutPaste, finderRename, shelf, urlCleaner, diskImageInstaller
+    case pastePlain, finderCutPaste, finderRename, shelf, diskImageInstaller
     case preciseVolumeRoller, appVolumeMixer, audioInputDevices, soundOutputSwitcher, audioPriority
     case micMute, musicLaunchBlocker, keepAwake, hotkeys, brightness, extraBrightness, bluetoothSleep
     case quickLauncher, screenCapture, screenText, screenshot, screenRecorder, recentCaptures
@@ -542,6 +545,8 @@ package enum FeatureBindingAction: Hashable, CaseIterable {
     case scratchpad, commandBar, nexusAgent
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
     case appUpdates, monitorPlan, monitorAlerts, fanControl
+    /// A feature that has become a tool: the tool host starts or stops it.
+    case tool(ToolID)
 }
 
 /// The pointer and keyboard features a normal quit takes down at once, in
