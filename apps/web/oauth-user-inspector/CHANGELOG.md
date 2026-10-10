@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.15.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.0...oauth-user-inspector-v1.15.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **backstage:** the Prometheus graphs on component pages were always empty ([#3021](https://github.com/VitruvianSoftware/vitruvian-core/issues/3021)) ([a5cf945](https://github.com/VitruvianSoftware/vitruvian-core/commit/a5cf945ba50e2ada0da6d792884bd5ecee5f111d))
+
 ## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.14.2...oauth-user-inspector-v1.15.0) (2026-09-25)
 
 
