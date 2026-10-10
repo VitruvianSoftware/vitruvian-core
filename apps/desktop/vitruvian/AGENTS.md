@@ -154,8 +154,8 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - A feature that has become a tool has a manifest (`ToolManifest`), conforms
   to `BundledTool`, and is built by `ToolHost` with a `ToolServices`. It has
   no `static let shared`. Everything outside its own logic, it reaches
-  through `services`: the clipboard, a link, a beep, the listening-sockets
-  report, ending a process. A view gets its tool with
+  through `services`: the clipboard, its preferences, a link, a beep or a
+  message, the listening-sockets report, ending a process. A view gets its tool with
   `ToolHost.shared.tool(X.self)` and calls the tool, never a service.
   `bazel/source_lints.py` holds the list of migrated tools and their files
   (`MIGRATED_TOOLS`). Its rule
@@ -165,10 +165,44 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - The broker (`Services/Platform/Broker/`) names no tool. An operation is
   named for what it does to the system, never for the tool that wanted it,
   and takes and returns plain values; a completion closure the tool passes
-  in stands for the reply. A capability is added with the first tool that
+  in stands for the reply, and a `ClipboardRewriteRule` for a question the
+  host asks the tool. A capability is added with the first tool that
   needs it.
 - Every broker operation calls its gate first and does nothing when refused.
   A test for a new operation asserts that a refused call did no work.
+- A tool's background work is in `start()` and `stop()`, and `ToolHost`
+  calls them: at launch, when the hub installs or removes the tool, and when
+  its switch flips. A tool never asks whether it is installed or switched
+  on. The run rule is `ToolHost.shouldRun(installed:switchedOn:holdsGrants:)`;
+  no capability rides on a macOS grant yet, so its grants clause is tested
+  through that function alone. `start()` is called every time the host finds
+  the tool should run, so it must be safe to call twice. A new tool is added
+  to `BundledTools.all` (`Services/Platform/BundledTools.swift`), and its
+  arm in `FeatureRuntime.actions(for:in:)` returns `.tool(id)` when its
+  manifest says `onLaunch`.
+- Nothing watches the preferences. Code that flips a tool's switch tells the
+  host: a view calls `ToolHost.shared.sync(X.self)`, and the command bar's
+  toggle rows go through `FeatureRuntime.shared.sync`.
+- A tool's command is in its manifest, with the surfaces it asks for.
+  `BuiltinTools.install` registers every hub feature, a tool from its
+  manifest's descriptor, and wires each of its commands to `ToolHost.canRun`
+  and `ToolHost.run`. It builds no host and no tool: the host is asked for
+  when a command is first run or asked about. A row that existed before the
+  tool keeps its id and runs the command through `ToolRegistry`; the command
+  then asks for no surface, so no second row appears. A command takes no
+  argument: a row that needs one, such as the selected text, calls a method
+  on the tool.
+- The clipboard is looked at for tools in one place, `ClipboardWatcher`, on
+  one timer that runs while a tool asks. (Clipboard history and auto-clear
+  still have a timer each.) A tool that rewrites copies hands the broker a
+  `ClipboardRewriteRule` with `clipboard.rewriteLinks(rule:)`. Its functions
+  run on the clipboard lane in the middle of one look, so they take plain
+  values, answer at once and capture no app state. Besides a completion, it
+  is the only kind of function that crosses the broker.
+- A tool reads a preference through `services.storage.reader()`, and only a
+  key its manifest declares; there is no `set`. Its views may bind with
+  `@AppStorage` the keys its row in `MIGRATED_TOOLS` lists, each of which
+  the manifest must declare; `source_lints_test` fails on any other.
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and

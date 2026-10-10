@@ -127,6 +127,7 @@ GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This l
 is that notice. Add an entry for every change to upstream files.
 
 - **2026-10-10**: Tool platform, the broker, stage B (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`):
+  - New files, none with an upstream header: `Services/Platform/Broker/StorageAccess.swift` (a tool's preferences), `Services/Platform/Broker/ClipboardRewrite.swift` (one look at the clipboard), `Services/Platform/Broker/ClipboardWatcher.swift` (the one timer that looks, for the tools that ask), `Services/Platform/BundledTools.swift` (the list of tools), with their tests in `Tests/ToolBrokerTests.swift` and `Tests/URLCleanerTests.swift`.
   - `Services/URLCleanerService.swift`: takes what it reaches outside itself (the saved preferences, the clipboard lane, the pasteboard, its timer) as an `Environment`, so its timer and its copy can be tested. Nothing it does changed.
   - `Services/URLCleanerService.swift`: one look at the clipboard and the write that follows it moved, word for word, to `Services/Platform/Broker/ClipboardRewrite.swift`. The cleaner hands the look its three decisions (which types it touches, what a link becomes, whether the HTML may go) as a rule.
   - `Services/FeatureRuntime.swift`: one binding action, `tool`, hands a feature that has become a tool to the tool host. `FeatureBindingAction` is no longer `CaseIterable`; nothing read the list.
