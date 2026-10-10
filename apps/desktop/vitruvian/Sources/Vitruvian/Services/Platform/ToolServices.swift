@@ -24,6 +24,10 @@ package struct ToolServices {
         ClipboardAccess(gate: gate(.clipboardWrite), backing: broker.backings.clipboard)
     }
 
+    package var processes: ProcessesAccess {
+        ProcessesAccess(gate: gate(.processes), backing: broker.backings.processes)
+    }
+
     func gate(_ capability: Capability) -> () -> BrokerRefusal? {
         { [broker, manifest] in broker.refusal(of: capability, for: manifest) }
     }

@@ -52,11 +52,14 @@ package final class CapabilityBroker {
         package var notify: NotifyAccess.Backing
         package var open: OpenAccess.Backing
         package var clipboard: ClipboardAccess.Backing
+        package var processes: ProcessesAccess.Backing
 
-        package init(notify: NotifyAccess.Backing, open: OpenAccess.Backing, clipboard: ClipboardAccess.Backing) {
+        package init(notify: NotifyAccess.Backing, open: OpenAccess.Backing, clipboard: ClipboardAccess.Backing,
+                     processes: ProcessesAccess.Backing) {
             self.notify = notify
             self.open = open
             self.clipboard = clipboard
+            self.processes = processes
         }
     }
 

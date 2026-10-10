@@ -12,6 +12,7 @@ enum ToolBrokerTests {
     static func run(_ suite: TestSuite) {
         checks(suite)
         smallCapabilities(suite)
+        processes(suite)
     }
 
     /// What the broker is told about the world, and what it reported.
@@ -74,7 +75,8 @@ enum ToolBrokerTests {
                 clipboard: .init(write: { text, completion in
                     recorder.written.append(text)
                     completion(recorder.writes)
-                })))
+                }),
+                processes: .inert))
     }
 
     static func smallCapabilities(_ suite: TestSuite) {
@@ -106,5 +108,70 @@ enum ToolBrokerTests {
         world.installed = false
         suite.expect(all.notify.beep() == .notInstalled && recorder.beeps == before.0,
                      "a tool removed in the hub can no longer beep")
+    }
+
+    static func processes(_ suite: TestSuite) {
+        final class Kills {
+            var available = true
+            var ended: [(pid: pid_t, name: String, startedAt: UInt64, force: Bool)] = []
+            var protected: Set<pid_t> = [1]
+        }
+        let kills = Kills()
+        let world = World()
+        func services(_ capabilities: [Capability]) -> ToolServices {
+            CapabilityBroker(
+                environment: .init(isInstalled: { _ in world.installed },
+                                   isGranted: { world.granted.contains($0) },
+                                   allows: { _, _ in world.allowed },
+                                   reportUndeclared: { _, _ in }),
+                backings: .init(
+                    notify: .init(beep: {}), open: .init(open: { _ in true }),
+                    clipboard: .init(write: { _, _ in }),
+                    processes: .init(
+                        startTime: { $0 == 42 ? 7 : nil },
+                        listeningSocketsReport: { (0, "p42\n") },
+                        terminationAvailable: { kills.available },
+                        isProtected: { pid, _ in kills.protected.contains(pid) },
+                        terminate: { pid, name, startedAt, force, completion in
+                            kills.ended.append((pid, name, startedAt, force))
+                            completion()
+                        })))
+                .services(for: manifest(capabilities))
+        }
+        let tool = services([.processes])
+
+        guard case .success(let scanner) = tool.processes.scanner() else {
+            suite.expect(false, "a tool that asks for it gets a scanner")
+            return
+        }
+        suite.expect(scanner.startTime(42) == 7 && scanner.startTime(43) == nil
+                         && scanner.listeningSocketsReport().output == "p42\n",
+                     "the scanner reads start times and the listening sockets")
+        if case .failure(let refusal) = services([]).processes.scanner() {
+            suite.expect(refusal == .notDeclared(.processes), "a tool that did not ask gets no scanner")
+        } else {
+            suite.expect(false, "a tool that did not ask gets no scanner")
+        }
+
+        var finished = 0
+        suite.expect(tool.processes.canTerminate
+                         && tool.processes.terminate(pid: 42, name: "node", startedAt: 7, force: true) { finished += 1 } == nil
+                         && kills.ended.count == 1 && kills.ended[0].pid == 42 && kills.ended[0].name == "node"
+                         && kills.ended[0].startedAt == 7 && kills.ended[0].force && finished == 1,
+                     "ending a process passes its identity through and reports back")
+        suite.expect(tool.processes.isProtected(pid: 1, name: "launchd") && !tool.processes.isProtected(pid: 42, name: "node"),
+                     "the host says which processes may not be ended")
+
+        kills.available = false
+        suite.expect(!tool.processes.canTerminate
+                         && tool.processes.terminate(pid: 42, name: "node", startedAt: 7, force: false) { finished += 1 } == .unavailable
+                         && kills.ended.count == 1 && finished == 1,
+                     "without the Kill process feature, ending a process is not offered and does nothing")
+        kills.available = true
+        let none = services([])
+        suite.expect(!none.processes.canTerminate && none.processes.isProtected(pid: 42, name: "node")
+                         && none.processes.terminate(pid: 42, name: "node", startedAt: 7, force: false) {} == .notDeclared(.processes)
+                         && kills.ended.count == 1,
+                     "a tool that did not ask can end nothing, and is told every process is protected")
     }
 }
