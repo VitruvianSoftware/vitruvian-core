@@ -368,7 +368,7 @@ Each is a separate spec and plan. Each leaves the app shippable.
 
 | # | Sub-project | Delivers | Done when |
 |---|---|---|---|
-| 0 | **Foundations** | Developer ID signing and notarisation; a working update channel; a legal opinion on the process boundary and marketplace hosting; two spikes on a real Mac: whose permission grants a launched tool gets, and whether a sandbox profile can confine one | Permission grants survive an update; both spikes have written answers |
+| 0 | **Foundations** | Developer ID signing and notarisation; a working update channel; a legal opinion on the process boundary and marketplace hosting; two spikes on a real Mac: whose permission grants a launched tool gets, and whether a sandbox profile can confine one | Permission grants survive an update; both spikes have written answers. Spikes answered 2026-10-10 (`2026-10-10-vitruvian-tool-permission-spikes.md`): a launched tool gets the app's permissions unless it is launched to answer for itself, and a sandbox can hold it to a folder and off the network. Signing is dropped: no Developer ID. |
 | 1 | **Registry** | Descriptors, the registry, commands. Alerts, command bar, radial menu, Quick panel tiles and shortcuts read from it. No outside code | Part 1 (done): one command list; the radial menu, Quick panel and command bar run through the registry; a command in no fixed list can sit on a wheel and shows in the bar. Part 2 (done): Quick panel tiles and the wheel editor offer such commands too, and a development build has a sample tool to check them with. Part 3 (done): such commands can be given a shortcut on the Shortcuts page, and every recorder refuses a combination any other list holds. Saved user layouts are unchanged throughout |
 | 2 | **Broker and bundled tools** | The capability broker; the bundled tool interface; migrations 1 to 3, bundled | Three features have manifests and reach services only through the broker. Spec: `2026-10-09-vitruvian-broker-and-bundled-tools-design.md` |
 | 3 | **External runtime and SDK alpha** | Protocol 1; the runtime; the Swift client library; `vitruvian-tool init`, `run`, `validate`; consent screen; island notice, strip and page; migrations 4 and 5 as external tools shipped in the bundle | A sample tool written only from the public docs runs; killing it does not disturb the app |
@@ -435,7 +435,9 @@ default says.
    2 lands? *Default: keep porting; revisit after the first five migrations
    with real conflict numbers.*
 2. **Developer ID.** Fund an Apple Developer account now? *Default: yes;
-   sub-project 3 cannot ship without it.*
+   sub-project 3 cannot ship without it.* **Changed 2026-10-10: no.** James
+   will not pay for one. What that costs and what still holds is in
+   `2026-10-10-vitruvian-tool-permission-spikes.md`, section 5.
 3. **Legal opinion.** Commission one on the process boundary and on hosting
    third-party tools? *Default: yes, before sub-project 3 ships.*
 4. **SDK languages.** Swift first, TypeScript second? *Default: yes. Swift is
