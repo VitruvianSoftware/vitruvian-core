@@ -38,11 +38,11 @@ if [[ ! -d "$APP" ]]; then
     echo "✗ $APP not found" >&2
     exit 1
 fi
-xattr -cr "$APP"
+find "$APP" -exec xattr -c {} + 2>/dev/null || true
 codesign --verify --deep --strict "$APP"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
-OUT="dist/Vitruvian-$VERSION.dmg"
+OUT="${2:-dist/Vitruvian-$VERSION.dmg}"
 
 WORK="$(mktemp -d)"
 BACKGROUND="$WORK/dmg-background.png"
@@ -53,7 +53,7 @@ swift Tools/MakeDMGBackground.swift "$BACKGROUND"
 echo "▸ Staging DMG contents…"
 STAGING="$(mktemp -d)"
 ditto "$APP" "$STAGING/$APP_NAME.app"
-xattr -cr "$STAGING/$APP_NAME.app"
+find "$STAGING/$APP_NAME.app" -exec xattr -c {} + 2>/dev/null || true
 codesign --verify --deep --strict "$STAGING/$APP_NAME.app"
 ln -s /Applications "$STAGING/Applications"
 mkdir "$STAGING/.background"
@@ -153,7 +153,7 @@ fi
 MOUNT=""
 
 echo "▸ Compressing…"
-mkdir -p dist
+mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
 hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$OUT" -quiet
 

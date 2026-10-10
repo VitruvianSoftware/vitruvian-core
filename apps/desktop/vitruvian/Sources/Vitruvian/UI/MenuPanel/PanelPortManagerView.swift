@@ -8,7 +8,7 @@ import VitruvianServices
 
 package struct PanelPortManagerView: View {
     @ObservedObject private var l10n = L10n.shared
-    @ObservedObject private var service = PortManagerService.shared
+    @ObservedObject private var service = ToolHost.shared.tool(PortManagerService.self)
     @Environment(\.notchPresentation) private var inNotch
     @State private var pending: PortManagerEntry?
     @State private var force = false
@@ -187,17 +187,17 @@ package struct PanelPortManagerView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 4)
-            if AppFeature.killProcess.isAvailable {
+            if service.canTerminate {
                 HStack(spacing: 4) {
                     Button(strings.kill) { confirmTermination(entry, force: false) }
                         .buttonStyle(.bordered).controlSize(.mini)
                         .disabled(entry.startedAt == nil
-                                  || KillProcessService.isProtected(pid: entry.pid, name: entry.processName))
+                                  || service.isProtected(entry))
                     Button { confirmTermination(entry, force: true) } label: { Image(systemName: "bolt.fill") }
                         .buttonStyle(.bordered).controlSize(.mini)
                         .accessibilityLabel(strings.forceKill)
                         .disabled(entry.startedAt == nil
-                                  || KillProcessService.isProtected(pid: entry.pid, name: entry.processName))
+                                  || service.isProtected(entry))
                 }
             }
         }

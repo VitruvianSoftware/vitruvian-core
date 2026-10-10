@@ -1,0 +1,82 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Unit tests for the three mcp-slack alerts in
+# gitops/argocd/platform/prometheus/applicationset.yaml:
+# McpSlackSustained5xx, McpSlackIdpUnavailable and McpSlackSustainedForbidden.
+#
+# What is proven here is the LABELS a firing alert carries, not its tuning.
+# The Backstage page for mcp-slack lists an alert only when the alert's
+# namespace label is exactly "mcp-slack" (catalog annotation
+# prometheus.io/labels: namespace=mcp-slack). All three expressions are a
+# sum(), which drops every label, so the namespace has to be written on the
+# rule itself. Take it off a rule and that alert still fires and still
+# notifies, but silently disappears from the component page -- nothing else
+# would notice.
+#
+# The checks query ALERTS, the series Prometheus writes for every pending or
+# firing alert, rather than using alert_rule_test. alert_rule_test compares
+# annotations too, and these alerts carry paragraph-long descriptions; copying
+# them here would make this test fail on every wording change while saying
+# nothing about labels. ALERTS carries exactly the alert's labels, and
+# promtool compares the full label set, so a missing or extra label fails.
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ------------------------------------------------ McpSlackSustained5xx --
+  # Fires when more than half of the 2xx+5xx requests are 5xx, for 10m.
+  - interval: 1m
+    name: McpSlackSustained5xx fires with namespace=mcp-slack
+    input_series:
+      # 1 request/s of 5xx against 0.1/s of 2xx: about 91% failing.
+      - series: 'envoy_cluster_upstream_rq_xx{envoy_response_code_class="5",envoy_cluster_name="httproute/mcp-slack/mcp-slack/rule/0"}'
+        values: '0+60x30'
+      - series: 'envoy_cluster_upstream_rq_xx{envoy_response_code_class="2",envoy_cluster_name="httproute/mcp-slack/mcp-slack/rule/0"}'
+        values: '0+6x30'
+    promql_expr_test:
+      # Inside the 10m "for": pending, not firing.
+      - expr: ALERTS{alertname="McpSlackSustained5xx", alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertname="McpSlackSustained5xx", alertstate="firing"}
+        eval_time: 20m
+        exp_samples:
+          - labels: 'ALERTS{alertname="McpSlackSustained5xx", alertstate="firing", namespace="mcp-slack", severity="warning"}'
+            value: 1
+
+  # ---------------------------------------------- McpSlackIdpUnavailable --
+  # Fires on any sustained rate of 503s, for 10m.
+  - interval: 1m
+    name: McpSlackIdpUnavailable fires with namespace=mcp-slack
+    input_series:
+      - series: 'envoy_cluster_upstream_rq{envoy_response_code="503",envoy_cluster_name="httproute/mcp-slack/mcp-slack/rule/0"}'
+        values: '0+60x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="McpSlackIdpUnavailable", alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertname="McpSlackIdpUnavailable", alertstate="firing"}
+        eval_time: 20m
+        exp_samples:
+          - labels: 'ALERTS{alertname="McpSlackIdpUnavailable", alertstate="firing", namespace="mcp-slack", severity="warning"}'
+            value: 1
+
+  # ------------------------------------------ McpSlackSustainedForbidden --
+  # Fires on any sustained rate of 403s over a 15m window, for 30m.
+  - interval: 1m
+    name: McpSlackSustainedForbidden fires with namespace=mcp-slack
+    input_series:
+      - series: 'envoy_cluster_upstream_rq{envoy_response_code="403",envoy_cluster_name="httproute/mcp-slack/mcp-slack/rule/0"}'
+        values: '0+60x60'
+    promql_expr_test:
+      - expr: ALERTS{alertname="McpSlackSustainedForbidden", alertstate="firing"}
+        eval_time: 15m
+        exp_samples: []
+      - expr: ALERTS{alertname="McpSlackSustainedForbidden", alertstate="firing"}
+        eval_time: 45m
+        exp_samples:
+          - labels: 'ALERTS{alertname="McpSlackSustainedForbidden", alertstate="firing", namespace="mcp-slack", severity="warning"}'
+            value: 1

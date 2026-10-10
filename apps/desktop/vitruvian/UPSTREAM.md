@@ -126,6 +126,13 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
+  - New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
+  - `App/AppDelegate.swift`: stops the tools the host built, at quit.
+  - `Services/PortManager/PortManagerService.swift`: the Port manager is a tool. It has a manifest, is built by the tool host with the services that manifest allows, and scans, ends a process, copies, opens a link and beeps only through the broker. Its singleton and `Scanning.system` are gone.
+  - `UI/PortManager/PortManagerView.swift`, `UI/MenuPanel/PanelPortManagerView.swift`: get the tool from the host, and ask it what may be ended, to copy and to open, where they called `KillProcessService`, the pasteboard and `NSWorkspace`.
+  - `bazel/source_lints.py`: `migrated_tools_reach_services_through_the_broker` fails when a file of a migrated tool names a service the broker guards, a singleton other than the tool host and the UI's own state, or another tool's preference, or when a listed file is gone. `the_broker_names_no_tool` fails when a file under `Services/Platform/Broker/` names a tool's type.
+  - `Tests/mutation_checks.py`: two mutations (the broker working for a tool that did not ask; ending a process the host does not offer to end).
 - **2026-10-09**: Reset and an accepted macOS take-over no longer bind a combination twice:
   - `UI/ShortcutRecorderButton.swift`, `UI/Settings/ShortcutsSettings.swift`, `UI/Settings/WindowLayoutSettings.swift`, `UI/Settings/CutPasteSettings.swift`: each row's three holder checks are one `refusal(for:)`, asked by recording as before and now also by Reset and by accepting a take-over offer. **Reset is refused, naming the holder, when another shortcut took the default meanwhile; so is accepting an offer whose combination was taken while the offer waited.**
   - `UI/ShortcutRecorderButton.swift`: a role row that is handed no extra check asks the window-layout one, so a role recorded on its own feature page can no longer take a window-layout action's combination.
