@@ -1,6 +1,6 @@
 # Vitruvian tool platform: two permission spikes, and what they change
 
-**Date:** 2026-10-10 · **Status:** findings, for James · **Owner:** compass
+**Date:** 2026-10-10 · **Status:** findings; the roadmap change in section 5 accepted by James 2026-10-10 · **Owner:** compass
 **Parent:** `docs/superpowers/specs/2026-10-08-vitruvian-tool-platform-design.md`
 (section 8, "Capabilities and trust"; section 12, sub-project 0).
 
@@ -146,8 +146,8 @@ fixed constraint, not a step.
   marketplace aimed at everyone.
 - **No notarisation**, so nothing can vouch for a tool to a stranger.
 
-**What this suggests for the roadmap.** A proposal, for James to accept or
-change; the parent design is edited only to record the decision.
+**What this changes in the roadmap.** James accepted this table on
+2026-10-10. The parent design's section 12 says the same.
 
 | Sub-project | As designed | Without a Developer ID |
 |---|---|---|
