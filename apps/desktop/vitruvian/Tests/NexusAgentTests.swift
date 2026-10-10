@@ -38,6 +38,7 @@ enum NexusAgentTests {
         hostRemembersHistoryAndWorktreeMode(suite)
         backupDoesNotCarryProviderCommands(suite)
         hostTurnNotices(suite)
+        hostSaysWhyATurnFailed(suite)
         changesReachTheViews(suite)
         sharedChatWiring(suite)
         notchHearsOfTheModelEditor(suite)
@@ -96,6 +97,8 @@ enum NexusAgentTests {
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
         var agentTerminations = 0
+        /// While true the agent cannot be started: the launch throws.
+        var agentCannotStart = false
         var sessionList: [NexusAgentSessionSummary] = []
         var listedDirectories: [String] = []
         var listedProviders: [NexusAgentCLIProvider] = []
@@ -167,6 +170,7 @@ enum NexusAgentTests {
                 schedule: { [unowned self] _, work in pending.append(work) },
                 openFile: { [unowned self] in opened.append($0) },
                 launchAgent: { [unowned self] path, arguments, directory, _, onOutput, onExit in
+                    if agentCannotStart { throw CocoaError(.fileNoSuchFile) }
                     agentRuns.append((path, arguments, directory))
                     agentOutput = onOutput
                     agentExit = onExit
@@ -1101,6 +1105,133 @@ enum NexusAgentTests {
                      && approval.notchSymbol == "hand.raised.fill" && !approval.playsSound
                      && approval.notificationTitle == nil,
                      "a turn waiting on approval shows the tool in the notch, named for its provider")
+    }
+
+    /// A host that only keeps the notices the shared session hands it, so
+    /// a test can ask what Vitruvian would say about a real turn without
+    /// the notch, a sound or a notification being touched.
+    @MainActor
+    private final class NoticeKeepingHost: NexusAgentHost {
+        var configuredBotDirectory = ""
+        var startsBotAtLaunch = false
+        var planMode = false
+        var hiddenClaudeSessionIDs: [String] = []
+        var chosenProviderID: UUID?
+        var savedProviders: [NexusAgentCLIProvider] = []
+        var promptHistory: [String] = []
+        var worktreeMode = false
+        let strings: NexusAgentHostStrings
+        var finished: [NexusAgentTurnNotice] = []
+
+        init(strings: NexusAgentHostStrings) { self.strings = strings }
+
+        func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {}
+        func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) { finished.append(notice) }
+    }
+
+    /// A failed turn's notice carries the words of the chat's error bubble,
+    /// and Vitruvian shows them: in the notch, and in the notification when
+    /// the chat is out of sight. They are cut as a reply is: the first line
+    /// that is not blank, 80 characters in the notch and 200 in the
+    /// notification. The notices here are the ones the shared session sends
+    /// for real turns.
+    private static func hostSaysWhyATurnFailed(_ suite: TestSuite) {
+        typealias Host = VitruvianNexusAgentHost
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let strings = VitruvianNexusAgentHost(defaults: rig.defaults).strings
+        let host = NoticeKeepingHost(strings: strings)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let failedTitle = strings.failedTitle(provider: strings.fallbackProviderName)
+
+        // The agent's program is there, but starting it fails.
+        rig.agentCannotStart = true
+        session.send("one", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        session.stopTranscriptFollower()
+        rig.agentCannotStart = false
+        let launch = host.finished.last
+        suite.expect(host.finished.count == 1 && launch?.failed == true && launch?.text == ""
+                     && launch?.failureDetail == strings.agentFailed,
+                     "a turn that cannot start sends a failed notice with the bubble's words and no reply")
+        if let launch {
+            let hidden = Host.announcement(finished: launch, isChatVisible: false, strings: strings)
+            suite.expect(hidden.notchTitle == failedTitle && hidden.notchDetail == strings.agentFailed
+                         && hidden.notchSymbol == "exclamationmark.triangle.fill" && !hidden.playsSound,
+                         "a turn that cannot start says why in the notch: \"\(hidden.notchDetail)\"")
+            suite.expect(hidden.notificationTitle == failedTitle && hidden.notificationBody == strings.agentFailed,
+                         "and, away from the chat, in the notification: \"\(hidden.notificationBody ?? "nil")\"")
+            let visible = Host.announcement(finished: launch, isChatVisible: true, strings: strings)
+            suite.expect(visible.notchDetail == strings.agentFailed && visible.notificationTitle == nil
+                         && visible.notificationBody == nil,
+                         "with the chat on screen the notch still says why, and there is no notification")
+        }
+
+        // The agent ran, complained in its own words and exited badly.
+        session.newChat()
+        session.send("two", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        rig.agentOutput?(Data("agy: quota exceeded\n".utf8))
+        rig.agentExit?(1)
+        session.stopTranscriptFollower()
+        let badExit = host.finished.last
+        let bubble = session.messages.last
+        suite.expect(host.finished.count == 2 && badExit?.failed == true && bubble?.isError == true
+                     && badExit?.failureDetail == bubble?.text
+                     && bubble?.text == strings.agentFailed + "\nagy: quota exceeded",
+                     "a bad exit sends a failed notice with the bubble's words: \"\(badExit?.failureDetail ?? "nil")\"")
+        if let badExit {
+            let hidden = Host.announcement(finished: badExit, isChatVisible: false, strings: strings)
+            suite.expect(hidden.notchTitle == failedTitle && hidden.notchDetail == strings.agentFailed
+                         && hidden.notificationTitle == failedTitle
+                         && hidden.notificationBody == strings.agentFailed && !hidden.playsSound,
+                         "a bad exit shows the first line of what went wrong, in the notch and the notification: "
+                         + "\"\(hidden.notchDetail)\", \"\(hidden.notificationBody ?? "nil")\"")
+        }
+
+        // A turn that ends well is announced as it always was.
+        session.newChat()
+        session.send("three", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        rig.agentOutput?(Data(#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Hello\nand more"}}"#.utf8 + [0x0A]))
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+        let good = host.finished.last
+        suite.expect(host.finished.count == 3 && good?.failed == false && good?.failureDetail == nil
+                     && good?.text == "Hello\nand more",
+                     "a turn that ends well carries no words for a failure")
+        if let good {
+            let doneTitle = strings.doneTitle(provider: strings.fallbackProviderName)
+            let hidden = Host.announcement(finished: good, isChatVisible: false, strings: strings)
+            suite.expect(hidden == Host.TurnAnnouncement(notchTitle: doneTitle, notchDetail: "Hello",
+                                                         notchSymbol: "sparkles", playsSound: true,
+                                                         notificationTitle: doneTitle, notificationBody: "Hello"),
+                         "a turn that ends well is announced as before: \(hidden)")
+        }
+
+        // The cut, and which words win, on notices made by hand.
+        let english = NexusAgentHostStrings()
+        let long = String(repeating: "a", count: 300)
+        func failure(_ detail: String?, reply: String = "") -> Host.TurnAnnouncement {
+            Host.announcement(
+                finished: NexusAgentTurnNotice(providerName: "Claude", text: reply, failed: true, endedCleanly: false,
+                                               failureDetail: detail),
+                isChatVisible: false, strings: english)
+        }
+        let cut = failure("\n   \n" + long + "\nsecond line")
+        suite.expect(cut.notchDetail == String(long.prefix(80)) && cut.notificationBody == String(long.prefix(200)),
+                     "what went wrong is cut as a reply is: its first non-blank line, 80 characters in the notch and 200 in the notification")
+        let both = failure("Lost the connection", reply: "Half a reply\nand its second line")
+        suite.expect(both.notchDetail == "Lost the connection" && both.notificationBody == "Lost the connection"
+                     && both.notchTitle == "Claude — Failed" && both.notificationTitle == "Claude — Failed",
+                     "a failed turn with part of a reply and words for the failure shows the failure")
+        for none in [nil, "", " \n "] as [String?] {
+            let replyOnly = failure(none, reply: "Half a reply\nand its second line")
+            suite.expect(replyOnly.notchDetail == "Half a reply"
+                         && replyOnly.notificationBody == "Half a reply\nand its second line",
+                         "a failed turn with no words for the failure shows the reply, as before")
+            let neither = failure(none)
+            suite.expect(neither.notchTitle == "Claude — Failed" && neither.notchDetail.isEmpty
+                         && neither.notificationTitle == "Claude — Failed" && neither.notificationBody == "",
+                         "a failed turn with neither is announced as before, with nothing under the title")
+        }
     }
 
     /// The service is an engine from another module with its own published

@@ -1075,7 +1075,81 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.text, "Could not find 'llm' in PATH. Is it installed?")
         XCTAssertEqual(session.messages.last?.isError, true)
         XCTAssertEqual(session.lastFailedPrompt, "hi", "it can be tried again once the program is there")
-        XCTAssertTrue(host.finished.isEmpty, "no turn ran, so none is reported")
+        XCTAssertEqual(host.finished.map(\.notice.failed), [true],
+                       "the turn could not start, and the host is told so once, as of any failed turn")
+    }
+
+    /// A command of the user's own that is refused before anything runs:
+    /// its program is not installed, its template is empty, or its template
+    /// would take the program's name from the prompt. Each says why in an
+    /// error bubble, and with the chat out of sight nobody sees a bubble,
+    /// so each is a failed turn to the host too, in the bubble's words.
+    func testACommandRefusedBeforeItStartsIsAFailedTurn() {
+        let refusals: [(why: String, template: String, bubble: String)] = [
+            ("the program is not installed", "llm -m {model} \"{prompt}\"",
+             "Could not find 'llm' in PATH. Is it installed?"),
+            ("the template is empty", "  ", "Invalid command template:   "),
+            ("the prompt would name the program", "{prompt} -rf x",
+             "Could not find '{prompt}' in PATH. Is it installed?"),
+            ("the prompt would be part of the program's name", "my{prompt} x",
+             "Could not find 'my{prompt}' in PATH. Is it installed?"),
+        ]
+        for (why, template, words) in refusals {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            // The program the prompt names is there: it is the template
+            // that is refused, not a lookup that failed.
+            rig.executables = ["/usr/bin/rm", "/usr/bin/myrm"]
+            let host = RecordingHost()
+            let engine = NexusAgentEngine(environment: rig.environment, host: host)
+            engine.updateActiveProvider(ownProvider(template))
+
+            engine.session.send("rm", configuration: engine.configuration, agentPath: engine.agentPath)
+
+            XCTAssertTrue(rig.commandRuns.isEmpty, why)
+            XCTAssertTrue(rig.agentRuns.isEmpty, why)
+            XCTAssertFalse(engine.session.isRunning, why)
+            let bubble = engine.session.messages.last
+            XCTAssertEqual(bubble?.isError, true, why)
+            XCTAssertEqual(bubble?.text, words, why)
+            XCTAssertEqual(engine.session.lastFailedPrompt, "rm", why)
+            XCTAssertEqual(host.finished.count, 1, "\(why): the host is told, once")
+            let notice = host.finished.first?.notice
+            XCTAssertEqual(notice?.providerName, "My LLM", why)
+            XCTAssertEqual(notice?.failed, true, why)
+            XCTAssertEqual(notice?.endedCleanly, false, why)
+            XCTAssertEqual(notice?.text, "", "\(why): there was no reply")
+            XCTAssertEqual(notice?.failureDetail, words, "\(why): the notice carries what the bubble says")
+            XCTAssertEqual(announcedOutOfSight(notice),
+                           NexusAgentTurnAnnouncement(playsSound: false,
+                                                      notificationTitle: "My LLM — Failed",
+                                                      notificationBody: words),
+                           why)
+        }
+    }
+
+    /// After a refusal the chat is usable: once the program is installed
+    /// the same prompt runs, and that turn is reported as any other.
+    func testATurnAfterARefusedCommandIsReportedAsAnyOther() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let configuration = NexusAgentConfiguration(activeProvider: ownProvider("llm {prompt}"))
+
+        session.send("hi", configuration: configuration, agentPath: nil)
+        XCTAssertEqual(host.finished.map(\.notice.failed), [true])
+        XCTAssertEqual(host.finished.first?.isChatVisible, true,
+                       "with no engine there is no window to be away from")
+
+        rig.executables = ["/opt/homebrew/bin/llm"]
+        session.send("hi", configuration: configuration, agentPath: nil)
+        XCTAssertEqual(rig.commandRuns.count, 1)
+        rig.commandOutput?(Data("hello".utf8))
+        rig.commandExit?(0)
+        XCTAssertEqual(host.finished.map(\.notice.failed), [true, false], "one report per turn")
+        XCTAssertNil(host.finished.last?.notice.failureDetail)
+        XCTAssertNil(session.lastFailedPrompt)
     }
 
     func testACommandIsLookedForWhereTheStandaloneLooks() {

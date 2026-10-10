@@ -542,11 +542,17 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
     }
 
-    /// A turn that cannot even start says why in the conversation, and
-    /// leaves the prompt ready to be tried again.
+    /// A command that cannot even start says why in the conversation, and
+    /// leaves the prompt ready to be tried again. Whatever the reason (no
+    /// such program, an empty template, a template refused because the
+    /// prompt would name the program), the host is told as it is of any
+    /// other failed turn, in the bubble's words: with the chat out of
+    /// sight the bubble is seen by nobody.
     private func refuse(_ prompt: String, saying reason: String) {
         messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
         lastFailedPrompt = prompt
+        report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                    failureDetail: reason))
     }
 
     private func receiveCommand(_ data: Data, isErrors: Bool, turn current: Int) {

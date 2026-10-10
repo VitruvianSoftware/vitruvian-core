@@ -112,25 +112,40 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
     /// The notch always hears of it. The sound is for a turn that ended
     /// well. The system notification is for a user who is not looking at
     /// the chat, and says nothing for a turn that ended with no reply.
+    ///
+    /// A failed turn says why, where the notice has words for it
+    /// (`failureDetail`, the text of the chat's error bubble): they take
+    /// the place of the reply, which a failed turn often does not have, in
+    /// the notch and in the notification, cut as a reply's first line is.
+    /// A failed turn with no such words is told as it always was.
     nonisolated package static func announcement(finished notice: NexusAgentTurnNotice, isChatVisible: Bool,
                                                  strings: NexusAgentHostStrings) -> TurnAnnouncement {
         let name = notice.providerName
         let reply = notice.text
-        let firstLine = reply.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? reply
+        let firstLine = Self.firstLine(of: reply)
+        let detail = notice.failureDetail ?? ""
+        let whyItFailed = notice.failed && !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? Self.firstLine(of: detail) : nil
         var announcement = TurnAnnouncement(
             notchTitle: notice.failed ? strings.failedTitle(provider: name) : strings.doneTitle(provider: name),
-            notchDetail: String(firstLine.prefix(80)),
+            notchDetail: String((whyItFailed ?? firstLine).prefix(80)),
             notchSymbol: notice.failed ? "exclamationmark.triangle.fill" : "sparkles",
             playsSound: notice.endedCleanly)
         guard !isChatVisible else { return announcement }
         if notice.failed {
             announcement.notificationTitle = strings.failedTitle(provider: name)
-            announcement.notificationBody = String(reply.prefix(200))
+            announcement.notificationBody = String((whyItFailed ?? reply).prefix(200))
         } else if !reply.isEmpty {
             announcement.notificationTitle = strings.doneTitle(provider: name)
             announcement.notificationBody = String(firstLine.prefix(200))
         }
         return announcement
+    }
+
+    /// The first line of `text` that is not blank; all of it if it has none.
+    nonisolated private static func firstLine(of text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? text
     }
 
     package func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {

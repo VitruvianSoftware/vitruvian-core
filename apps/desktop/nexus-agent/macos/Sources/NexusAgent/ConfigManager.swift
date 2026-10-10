@@ -81,8 +81,22 @@ class ConfigManager: ObservableObject {
     @Published var workingDirectory: String = ""
     @Published var approvalMode: String = ConfigManager.defaultApprovalMode
     @Published var model: String = ""
-    /// agy --effort (low|medium|high); empty means agy's default.
+    /// The row of the effort picker that is selected, by its tag: empty for
+    /// agy's default, `low`, `medium` or `high`, or the `.env` line itself
+    /// when it is a word that is none of those (`max`). See `EnvFields`
+    /// for how the file's two lines become a row, and `save()` for how a
+    /// row becomes the two lines.
     @Published var effort: String = ""
+
+    /// The tags of the effort picker's four fixed rows.
+    static let namedEfforts = NexusAgentEffort.allCases.map(\.rawValue)
+
+    /// The `.env` effort line as written, when it is what is selected and
+    /// it is none of the four fixed rows: the picker then has one more
+    /// row, for it. Nil once a fixed row is picked, and the row goes.
+    var effortFromFile: String? {
+        Self.namedEfforts.contains(effort) ? nil : effort
+    }
     @Published var autoStart: Bool = false
 
     // Hotkey config (stored in UserDefaults, not .env)
@@ -153,7 +167,15 @@ class ConfigManager: ObservableObject {
             // bot skip every permission prompt.
             approvalMode = configuration.approvalMode.rawValue
             model = configuration.model
-            effort = configuration.effort.rawValue
+            // The row for what the file's two lines say, AGY_EFFORT and
+            // AGY_THINKING:
+            //   an effort that is a row's name, in any letter-case: that row
+            //   any other effort (`max`): a row of its own, as written
+            //   no effort, and thinking exactly `true`: High
+            //   no effort otherwise: agy default
+            // An effort line wins over the thinking line, as it does for
+            // the bot.
+            effort = configuration.unnamedEffort ?? configuration.effort.rawValue
         }
 
         /// Each of the six, to go through them one by one.
@@ -192,6 +214,10 @@ class ConfigManager: ObservableObject {
     /// The engine's configuration as it last stood, to tell which of its
     /// values a change changed.
     private var engineHeld = EnvFields()
+    /// The configuration the effort row was last filled from. It holds the
+    /// effort as the file says it, which the row alone does not: High may
+    /// be `HIGH`, or no effort line and `AGY_THINKING=true`.
+    private var effortRead = NexusAgentConfiguration()
 
     init(engine: NexusAgentEngine, host: StandaloneHost) {
         self.engine = engine
@@ -238,7 +264,7 @@ class ConfigManager: ObservableObject {
         engineHeld = EnvFields(engine.configuration)
         engine.$configuration
             .dropFirst()
-            .sink { [weak self] configuration in self?.follow(EnvFields(configuration)) }
+            .sink { [weak self] configuration in self?.follow(EnvFields(configuration), read: configuration) }
             .store(in: &cancellables)
     }
 
@@ -261,7 +287,7 @@ class ConfigManager: ObservableObject {
     /// has nothing left to keep and is empty still. The record of what the
     /// engine held is not moved either, so the file's return is compared
     /// with what Settings last saw in it.
-    private func follow(_ fresh: EnvFields) {
+    private func follow(_ fresh: EnvFields, read: NexusAgentConfiguration) {
         guard envFileHasText else { return }
         var shown = fields
         for field in EnvFields.each {
@@ -275,6 +301,8 @@ class ConfigManager: ObservableObject {
         }
         fields = shown
         engineHeld = fresh
+        // The row shows what the file now says: remember how it says it.
+        if shown.effort == fresh.effort { effortRead = read }
     }
 
     /// Whether `.env` can be read right now and holds more than blank lines.
@@ -326,6 +354,7 @@ class ConfigManager: ObservableObject {
     /// Copies what the file says into the fields the views bind to.
     private func show(_ configuration: NexusAgentConfiguration) {
         fields = EnvFields(configuration)
+        effortRead = configuration
     }
 
     // MARK: - Save .env
@@ -334,13 +363,24 @@ class ConfigManager: ObservableObject {
     /// are saved either way.
     @discardableResult
     func save() -> Bool {
-        var configuration = NexusAgentConfiguration(
-            botToken: botToken,
-            allowedUserIDs: allowedUserIds,
-            workingDirectory: workingDirectory,
-            approvalMode: .parse(approvalMode),
-            model: model,
-            effort: .parse(effort))
+        // The effort row becomes the file's two lines, AGY_EFFORT and
+        // AGY_THINKING, by the shared rule (`NexusAgentEnvFile.render`):
+        //   the row the file was read as, not changed: both lines stay as
+        //     they are (`HIGH` stays `HIGH`, `max` stays `max`, a High
+        //     that is `AGY_THINKING=true` stays an empty effort line)
+        //   Low, Medium or High, picked: AGY_EFFORT is that name, and
+        //     AGY_THINKING stays as it is, since the effort line wins
+        //   agy default, picked: AGY_EFFORT is empty, and an
+        //     AGY_THINKING=true becomes false, or it would still mean High
+        // Starting from what was read is what tells the first case from
+        // the others: setting the effort is the user's choice.
+        var configuration = effortRead
+        if EnvFields(effortRead).effort != effort { configuration.effort = .parse(effort) }
+        configuration.botToken = botToken
+        configuration.allowedUserIDs = allowedUserIds
+        configuration.workingDirectory = workingDirectory
+        configuration.approvalMode = .parse(approvalMode)
+        configuration.model = model
         // Which program the bot runs is this app's own saved choice. It is
         // handed over on every save: the engine does not keep it, and forgets
         // it each time it reads the file.
@@ -353,7 +393,10 @@ class ConfigManager: ObservableObject {
         let saved = engine.save(configuration)
         // What was just written is what the fields hold: they count as
         // untouched again, and follow the chat's next change.
-        if saved { markFieldsUntouched() }
+        if saved {
+            markFieldsUntouched()
+            effortRead = engine.configuration
+        }
 
         // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")
