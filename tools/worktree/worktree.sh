@@ -68,13 +68,38 @@ case "${1:-}" in
     ;;
   --remove)
     br="${2:?--remove needs a <branch>}"
-    dest="${WT_ROOT}/$(slug "${br}")"
+    # Where the branch is checked out, as git records it. A worktree made by
+    # hand, or under another WORKTREE_ROOT, is not at the path this tool would
+    # have chosen, so the path is looked up, not built from the name.
+    dest="$(git worktree list --porcelain | awk -v ref="refs/heads/${br}" '
+      /^worktree /{path = substr($0, 10)}
+      $1 == "branch" && $2 == ref {print path; exit}')"
+    if [ -z "${dest}" ]; then
+      echo "worktree: no worktree has branch ${br} checked out (see --list)" >&2
+      exit 1
+    fi
+    if [ "$(cd "${dest}" 2>/dev/null && pwd -P)" = "$(pwd -P)" ]; then
+      echo "worktree: ${br} is checked out in the primary checkout, which is not removed" >&2
+      exit 1
+    fi
     output_root="${HOME}/.cache/bazel/worktrees/${REPO_NAME}-$(slug "${br}")"
     if [ -d "${dest}" ] && [ -f "${dest}/user.bazelrc" ]; then
       (cd "${dest}" && bazel shutdown 2>/dev/null || true)
     fi
-    git worktree remove "${dest}" 2>/dev/null || git worktree remove --force "${dest}" 2>/dev/null || true
+    # git refuses a worktree with uncommitted or untracked files. This tool
+    # has always removed one anyway; it now says so.
+    if ! git worktree remove "${dest}" 2>/dev/null; then
+      if ! git worktree remove --force "${dest}"; then
+        echo "worktree: could not remove ${dest}" >&2
+        exit 1
+      fi
+      echo "worktree: ${dest} had uncommitted or untracked files; they were removed with it" >&2
+    fi
     git worktree prune 2>/dev/null || true
+    if [ -e "${dest}" ]; then
+      echo "worktree: ${dest} is still on disk after removal" >&2
+      exit 1
+    fi
     if [ -d "${output_root}" ]; then
       chmod -R u+w "${output_root}" 2>/dev/null || true
       rm -rf "${output_root}"
