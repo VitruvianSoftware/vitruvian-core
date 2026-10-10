@@ -23,14 +23,39 @@
 # Bazel is the build this repository runs, so a target missing from
 # Package.swift stayed green here while every mirror release failed
 # (2026-07-11 to 2026-08-20, #1511, #1851). This fails here instead.
+#
+# It then runs the tests with SwiftPM too. The copy is laid out as the mirror
+# is, `macos/` beside `testdata/`, because the tests find the shared examples
+# from their own file's path.
 set -euo pipefail
 
-pkg="$TEST_SRCDIR/$TEST_WORKSPACE/apps/desktop/nexus-agent/macos"
-work="$TEST_TMPDIR/pkg"
+app="$TEST_SRCDIR/$TEST_WORKSPACE/apps/desktop/nexus-agent"
+work="$TEST_TMPDIR/mirror/macos"
 mkdir -p "$work"
-cp -RL "$pkg/Package.swift" "$pkg/Sources" "$work/"
+cp -RL "$app/macos/Package.swift" "$app/macos/Sources" "$app/macos/Tests" "$work/"
+cp -RL "$app/testdata" "$TEST_TMPDIR/mirror/"
 
 export HOME="$TEST_TMPDIR/home"
 mkdir -p "$HOME"
 xcrun swift build --package-path "$work" --scratch-path "$TEST_TMPDIR/build" \
 	--cache-path "$TEST_TMPDIR/cache" --disable-sandbox
+
+# Without Bazel's two variables, so the tests look where they do on the mirror
+# and not in this test's runfiles. CFFIXED_USER_HOME moves the home Foundation
+# reports as well: HOME alone does not.
+log="$TEST_TMPDIR/swift-test.log"
+if ! env -u TEST_SRCDIR -u TEST_WORKSPACE CFFIXED_USER_HOME="$HOME" \
+	xcrun swift test --package-path "$work" --scratch-path "$TEST_TMPDIR/build" \
+	--cache-path "$TEST_TMPDIR/cache" --disable-sandbox >"$log" 2>&1; then
+	cat "$log"
+	exit 1
+fi
+
+# A run that found no tests also exits 0: require that some ran.
+summary="$(grep -E 'Executed [0-9]+ tests?, with 0 failures' "$log" | tail -n 1 || true)"
+echo "swift test: ${summary:-no summary line}"
+if ! grep -qE 'Executed [1-9][0-9]* tests?, with 0 failures' <<<"$summary"; then
+	cat "$log"
+	echo "swift test ran no tests" >&2
+	exit 1
+fi

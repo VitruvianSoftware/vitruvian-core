@@ -30,6 +30,9 @@ name: Nexus Agent Mirror Toolchain
 # cannot catch code that only the newer Swift accepts. The mirror tags a
 # release BEFORE it builds, so such code would ship a release with no binaries.
 #
+# It also runs the package's tests with that Swift, which the mirror's release
+# does not: the tests otherwise run only under Bazel, on the newer Xcode.
+#
 # Only when the package changes, so it runs rarely. A standard GitHub-hosted
 # runner on a public repository is not billed. NOT a required check: a red run
 # here means "the next standalone release would fail to build".
@@ -41,6 +44,8 @@ on:
     paths:
       - 'apps/desktop/nexus-agent/macos/Package.swift'
       - 'apps/desktop/nexus-agent/macos/Sources/**'
+      - 'apps/desktop/nexus-agent/macos/Tests/**'
+      - 'apps/desktop/nexus-agent/testdata/**'
       - '.github/workflows/nexus-agent-mirror-toolchain.yaml'
   # Run it by hand after changing the mirror's runner image.
   workflow_dispatch:
@@ -81,3 +86,15 @@ jobs:
           set -euo pipefail
           cd apps/desktop/nexus-agent/macos
           swift build -c release --arch "$ARCH"
+
+      # The mirror's release does not run the tests, so this is the one place
+      # they are compiled and run with its Swift. Once is enough: the runner
+      # is arm64. The pipe keeps the full log and the check below fails a run
+      # that found no tests, which `swift test` alone reports as a pass.
+      - name: Run the tests
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          cd apps/desktop/nexus-agent/macos
+          swift test 2>&1 | tee "$RUNNER_TEMP/swift-test.log"
+          grep -E 'Executed [1-9][0-9]* tests?, with 0 failures' "$RUNNER_TEMP/swift-test.log"

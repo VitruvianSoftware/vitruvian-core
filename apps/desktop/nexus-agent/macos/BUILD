@@ -139,7 +139,12 @@ sh_test(
     name = "mirror_build_test",
     size = "large",
     srcs = ["scripts/mirror_build_test.sh"],
-    data = ["Package.swift"] + glob(["Sources/**"]),
+    # The tests and the examples they share with the bot as well: the script
+    # also runs `swift test`.
+    data = ["Package.swift"] + glob([
+        "Sources/**",
+        "Tests/**",
+    ]) + ["//apps/desktop/nexus-agent:testdata_files"],
     env_inherit = ["DEVELOPER_DIR"],
     # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
     tags = [

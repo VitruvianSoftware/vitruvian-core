@@ -219,14 +219,17 @@ struct NexusAgentMermaidWebView: NSViewRepresentable {
             onRenderError()
         }
 
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        // The async form on purpose. The completion-handler form only counts
+        // as WebKit's method when its closure is annotated exactly as the SDK
+        // in use annotates it, and that differs between SDKs; written
+        // slightly off, it compiles with a warning and is never called.
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             if let url = navigationAction.request.url, url.scheme == errorScheme {
-                decisionHandler(.cancel)
                 onRenderError()
-                return
+                return .cancel
             }
-            decisionHandler(.allow)
+            return .allow
         }
     }
 }
