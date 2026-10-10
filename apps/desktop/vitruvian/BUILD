@@ -210,19 +210,44 @@ config_setting(
 # Everything not yet in a module of its own. main.swift holds top-level code,
 # which rules_swift allows by not passing -parse-as-library when a main.swift
 # is present.
+APP_SRCS = glob(
+    ["Sources/Vitruvian/**/*.swift"],
+    exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
+)
+
 swift_library(
     name = "VitruvianLib",
     package_name = SWIFT_PACKAGE,
-    srcs = glob(
-        ["Sources/Vitruvian/**/*.swift"],
-        exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
-    ),
+    srcs = APP_SRCS,
     copts = select({
         ":sample_tool": ["-DVITRUVIAN_SAMPLE_TOOL"],
         "//conditions:default": [],
     }),
     # Swift 6 language mode since REFACTOR.md step 6zzj. Each of its closures
     # that checks for the main thread at run time runs there.
+    features = ["swift.enable_v6"],
+    module_name = "Vitruvian",
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":FanControlKit",
+        ":HIDEventSystem",
+        ":VMStatisticsCompat",
+        ":VitruvianCore",
+        ":VitruvianDesign",
+        ":VitruvianServices",
+        ":VitruvianUI",
+    ],
+)
+
+# The same module, compiled as a build with the sample tool would compile it.
+# Nothing links it. It is built in CI (the pipeline unit below lists it), so
+# the lines of main.swift that only a --define=vitruvian_sample_tool=true
+# build compiles cannot stop compiling without anybody noticing.
+swift_library(
+    name = "VitruvianLibWithSampleTool",
+    package_name = SWIFT_PACKAGE,
+    srcs = APP_SRCS,
+    copts = ["-DVITRUVIAN_SAMPLE_TOOL"],
     features = ["swift.enable_v6"],
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
@@ -666,6 +691,7 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":Vitruvian",
+        ":VitruvianLibWithSampleTool",
         ":fan_helper_selftest",
         ":selftest",
         ":source_lints_test",
