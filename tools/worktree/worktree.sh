@@ -32,6 +32,7 @@
 #   bazel run //tools/worktree -- <branch> [base-ref]   # create (base defaults to origin/main)
 #   bazel run //tools/worktree -- --list                # list worktrees
 #   bazel run //tools/worktree -- --remove <branch>     # remove the worktree for <branch>
+#   bazel run //tools/worktree -- --remove <branch> --force   # ...with its uncommitted files
 #
 # Environment:
 #   WORKTREE_ROOT  parent dir for worktrees (default: <repo-parent>/<repo>-worktrees)
@@ -39,7 +40,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '22,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '22,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Resolve the repo root: prefer BUILD_WORKSPACE_DIRECTORY (set by `bazel run`),
@@ -68,6 +69,8 @@ case "${1:-}" in
     ;;
   --remove)
     br="${2:?--remove needs a <branch>}"
+    force=0
+    if [ "${3:-}" = "--force" ]; then force=1; fi
     # Where the branch is checked out, as git records it. A worktree made by
     # hand, or under another WORKTREE_ROOT, is not at the path this tool would
     # have chosen, so the path is looked up, not built from the name.
@@ -82,18 +85,40 @@ case "${1:-}" in
       echo "worktree: ${br} is checked out in the primary checkout, which is not removed" >&2
       exit 1
     fi
+    # A locked worktree is somebody's work in progress. It is kept, with or
+    # without --force: unlock it first (git worktree unlock <path>).
+    if git worktree list --porcelain | awk -v path="${dest}" '
+        /^worktree /{here = (substr($0, 10) == path)}
+        here && /^locked/{found = 1}
+        END{exit !found}'; then
+      echo "worktree: ${dest} is locked, so it is kept. Unlock it first: git worktree unlock ${dest}" >&2
+      exit 1
+    fi
+    # Uncommitted or untracked files are work nobody has saved. They are kept
+    # unless --force says otherwise. (Ignored files, such as the user.bazelrc
+    # this tool writes, do not count.)
+    unsaved="$(git -C "${dest}" status --porcelain 2>/dev/null || true)"
+    if [ -n "${unsaved}" ] && [ "${force}" != "1" ]; then
+      {
+        echo "worktree: ${dest} has uncommitted or untracked files, so it is kept:"
+        printf '%s\n' "${unsaved}" | head -20 | sed 's/^/  /'
+        echo "worktree: commit them, or remove it anyway with: --remove ${br} --force"
+      } >&2
+      exit 1
+    fi
     output_root="${HOME}/.cache/bazel/worktrees/${REPO_NAME}-$(slug "${br}")"
     if [ -d "${dest}" ] && [ -f "${dest}/user.bazelrc" ]; then
       (cd "${dest}" && bazel shutdown 2>/dev/null || true)
     fi
-    # git refuses a worktree with uncommitted or untracked files. This tool
-    # has always removed one anyway; it now says so.
-    if ! git worktree remove "${dest}" 2>/dev/null; then
+    if [ -n "${unsaved}" ]; then
       if ! git worktree remove --force "${dest}"; then
         echo "worktree: could not remove ${dest}" >&2
         exit 1
       fi
       echo "worktree: ${dest} had uncommitted or untracked files; they were removed with it" >&2
+    elif ! git worktree remove "${dest}"; then
+      echo "worktree: could not remove ${dest}" >&2
+      exit 1
     fi
     git worktree prune 2>/dev/null || true
     if [ -e "${dest}" ]; then

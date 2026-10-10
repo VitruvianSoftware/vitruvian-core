@@ -107,7 +107,37 @@ else
     fail "tried to remove the primary checkout (rc=$rc): $out"
 fi
 
-# 6. The branch is kept, as the tool says.
+# 6. Uncommitted work is not deleted unless asked.
+git worktree add -q -b fix/six "$work/wt/fix-six" main
+echo "half-written" >"$work/wt/fix-six/notes.txt"
+out="$(tool --remove fix/six 2>&1)"
+rc=$?
+if [ "$rc" -ne 0 ] && [ -f "$work/wt/fix-six/notes.txt" ] && grep -q "notes.txt" <<<"$out" && grep -q -- "--force" <<<"$out" && ! grep -q "worktree: removed" <<<"$out"; then
+    pass "a worktree with uncommitted files is kept, and says how to remove it anyway"
+else
+    fail "uncommitted work was deleted without being asked (rc=$rc): $out"
+fi
+out="$(tool --remove fix/six --force 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$work/wt/fix-six" ] && grep -q "worktree: removed .*/wt/fix-six " <<<"$out"; then
+    pass "--force removes it with its uncommitted files"
+else
+    fail "--force did not remove a worktree with uncommitted files (rc=$rc): $out"
+fi
+
+# 7. A locked worktree is somebody's work in progress: kept, even with --force.
+git worktree add -q -b fix/seven "$work/wt/fix-seven" main
+git worktree lock --reason "in use" "$work/wt/fix-seven"
+out="$(tool --remove fix/seven --force 2>&1)"
+rc=$?
+if [ "$rc" -ne 0 ] && [ -d "$work/wt/fix-seven" ] && grep -q "locked" <<<"$out"; then
+    pass "a locked worktree is kept"
+else
+    fail "a locked worktree was removed (rc=$rc): $out"
+fi
+git worktree unlock "$work/wt/fix-seven"
+
+# 8. The branch is kept, as the tool says.
 if git show-ref --verify --quiet refs/heads/fix/one && git show-ref --verify --quiet refs/heads/fix/two; then
     pass "keeps the branch"
 else
