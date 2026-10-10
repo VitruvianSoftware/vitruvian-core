@@ -96,10 +96,11 @@ class ThanosValuesTest(unittest.TestCase):
     def test_query_refuses_before_a_store_truncates(self):
         """The Querier's series cap is strictly below the per-store cap.
 
-        A store that hits its own cap first hands back a cut-off result, and
-        the Querier (partial response is on) passes it along as a success
-        with a warning: a wrong number. When the Querier's cap is the lower
-        one, the query fails outright instead.
+        The Querier should be the one that refuses a select that is too big.
+        This does not stop a store from dropping out of a query: the Store
+        Gateway adds its cap up across blocks and refuses long selects on its
+        own, and with partial response on that reaches the panel as a warning
+        (see the known limitation in applicationset.yaml).
         """
         query = flag_value(
             self.v.get("query", {}).get("extraArgs", []),
