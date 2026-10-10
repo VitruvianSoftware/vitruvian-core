@@ -28,6 +28,11 @@ package struct ToolServices {
         ProcessesAccess(gate: gate(.processes), backing: broker.backings.processes)
     }
 
+    package var storage: StorageAccess {
+        StorageAccess(gate: gate(.storage), keys: Set(manifest.preferences.map(\.key)),
+                      backing: broker.backings.storage)
+    }
+
     func gate(_ capability: Capability) -> () -> BrokerRefusal? {
         { [broker, manifest] in broker.refusal(of: capability, for: manifest) }
     }

@@ -72,16 +72,19 @@ package final class CapabilityBroker {
         package var open: OpenAccess.Backing
         package var clipboard: ClipboardAccess.Backing
         package var processes: ProcessesAccess.Backing
+        package var storage: StorageAccess.Backing
 
         package init(notify: NotifyAccess.Backing, open: OpenAccess.Backing, clipboard: ClipboardAccess.Backing,
-                     processes: ProcessesAccess.Backing) {
+                     processes: ProcessesAccess.Backing, storage: StorageAccess.Backing = .inert) {
             self.notify = notify
             self.open = open
             self.clipboard = clipboard
             self.processes = processes
+            self.storage = storage
         }
 
-        @MainActor package static let live = Backings(notify: .live, open: .live, clipboard: .live, processes: .live)
+        @MainActor package static let live = Backings(notify: .live, open: .live, clipboard: .live, processes: .live,
+                                                      storage: .live)
     }
 
     package let environment: Environment

@@ -13,6 +13,8 @@ enum ToolBrokerTests {
         checks(suite)
         smallCapabilities(suite)
         processes(suite)
+        preferences(suite)
+        messages(suite)
         host(suite)
         portManager(suite)
         manifestsAgree(suite)
@@ -176,6 +178,86 @@ enum ToolBrokerTests {
                          && none.processes.terminate(pid: 42, name: "node", startedAt: 7, force: false) {} == .notDeclared(.processes)
                          && kills.ended.count == 1,
                      "a tool that did not ask can end nothing, and is told every process is protected")
+    }
+
+    /// Saved values a fake reads, and what it was asked. Only the test's own
+    /// thread touches it.
+    nonisolated final class PreferenceBox: @unchecked Sendable {
+        var values: [String: Any] = [:]
+        var reads: [String] = []
+        var undeclared: [String] = []
+    }
+
+    static func preferences(_ suite: TestSuite) {
+        let box = PreferenceBox()
+        let world = World()
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in world.installed },
+                               isGranted: { world.granted.contains($0) },
+                               allows: { _, _ in world.allowed },
+                               reportUndeclared: { _, capability in world.undeclared.append(capability) }),
+            backings: .init(
+                notify: .init(beep: {}), open: .init(open: { _ in true }),
+                clipboard: .init(write: { _, _ in }), processes: .inert,
+                storage: .init(read: { key in
+                    box.reads.append(key)
+                    return box.values[key]
+                }, undeclaredKey: { box.undeclared.append($0) })))
+        let declared = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("urlCleaner")!, name: "urlCleaner", symbol: "link", commands: [])!,
+            group: .tools, capabilities: [CapabilityRequest(.storage, reason: "test")!],
+            preferences: [PreferenceDeclaration(key: DefaultsKey.urlCleanerEnabled, default: .bool(false)),
+                          PreferenceDeclaration(key: DefaultsKey.urlCleanerCustomParameters, default: .string(""))],
+            activation: [.onLaunch], enabledBy: DefaultsKey.urlCleanerEnabled)!
+
+        guard case .success(let reader) = broker.services(for: declared).storage.reader() else {
+            suite.expect(false, "a tool that asks for it gets a reader for its preferences")
+            return
+        }
+        suite.expect(reader.value(for: Preferences.urlCleanerEnabled) == false
+                         && box.reads == [DefaultsKey.urlCleanerEnabled],
+                     "a preference nothing saved reads as its default")
+        box.values[DefaultsKey.urlCleanerEnabled] = true
+        box.values[DefaultsKey.urlCleanerCustomParameters] = "ref"
+        suite.expect(reader.value(for: Preferences.urlCleanerEnabled)
+                         && reader.value(for: Preferences.urlCleanerCustomParameters) == "ref",
+                     "a tool reads the preferences its manifest declares")
+        box.values[DefaultsKey.urlCleanerCustomParameters] = 7
+        suite.expect(reader.value(for: Preferences.urlCleanerCustomParameters) == "",
+                     "a saved value of another type reads as the default")
+        let before = box.reads.count
+        suite.expect(reader.value(for: Preferences.urlCleanerSiteParameters) == "" && box.reads.count == before
+                         && box.undeclared == [DefaultsKey.urlCleanerSiteParameters],
+                     "a preference the manifest does not declare is not read, and is reported as a mistake")
+
+        if case .failure(let refusal) = broker.services(for: manifest([])).storage.reader() {
+            suite.expect(refusal == .notDeclared(.storage) && box.reads.count == before,
+                         "a tool that did not ask gets no reader")
+        } else {
+            suite.expect(false, "a tool that did not ask gets no reader")
+        }
+        world.installed = false
+        if case .failure(let refusal) = broker.services(for: declared).storage.reader() {
+            suite.expect(refusal == .notInstalled, "a tool removed in the hub gets no reader")
+        } else {
+            suite.expect(false, "a tool removed in the hub gets no reader")
+        }
+    }
+
+    static func messages(_ suite: TestSuite) {
+        var said: [String] = []
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in true }, isGranted: { _ in true }, allows: { _, _ in true },
+                               reportUndeclared: { _, _ in }),
+            backings: .init(
+                notify: .init(beep: {}, hud: { icon, message in said.append("\(icon): \(message)") }),
+                open: .init(open: { _ in true }), clipboard: .init(write: { _, _ in }), processes: .inert))
+        suite.expect(broker.services(for: manifest([.notify])).notify.hud(icon: "link", message: "Cleaned") == nil
+                         && said == ["link: Cleaned"],
+                     "a tool that asks for it can say something on screen")
+        suite.expect(broker.services(for: manifest([])).notify.hud(icon: "link", message: "x") == .notDeclared(.notify)
+                         && said.count == 1,
+                     "a refused message is not shown")
     }
 
     final class ProbeTool: BundledTool {

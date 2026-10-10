@@ -15,11 +15,13 @@ package enum Capability: String, CaseIterable, Hashable, Sendable {
     case processes
     /// Put text on the clipboard.
     case clipboardWrite = "clipboard.write"
+    /// Read the preferences the tool's manifest declares.
+    case storage
 
     /// The macOS grants no operation of this capability works without.
     package var ridesOn: [AppPermission] {
         switch self {
-        case .notify, .open, .processes, .clipboardWrite: return []
+        case .notify, .open, .processes, .clipboardWrite, .storage: return []
         }
     }
 }
