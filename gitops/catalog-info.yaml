@@ -357,7 +357,7 @@ metadata:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
     storybook.io/url: https://storybook.vitruviansoftware.dev
-    prometheus.io/rule: "storybook:requests_per_second|code_class,storybook:ready_pods|namespace"
+    prometheus.io/rule: "storybook:requests_per_second|code_class,storybook:ready_pods|namespace,storybook:cpu_cores|pod,storybook:memory_bytes|pod"
     backstage.io/kubernetes-id: storybook
     backstage.io/kubernetes-namespace: storybook
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=storybook
@@ -386,7 +386,7 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
-    prometheus.io/rule: "whoami:ready_pods|namespace"
+    prometheus.io/rule: "whoami:ready_pods|namespace,whoami:cpu_cores|pod,whoami:memory_bytes|pod"
     opentelemetry.io/service-name: whoami
     backstage.io/kubernetes-id: whoami
     backstage.io/kubernetes-namespace: whoami
