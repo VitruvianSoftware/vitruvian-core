@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import ApplicationServices
 import VitruvianCore
 import VitruvianDesign
 

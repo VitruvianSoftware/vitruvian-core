@@ -135,6 +135,9 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/CommandBar/CommandBarCatalog.swift`: the "Paste as plain text" row runs the tool's command through the registry, after the same delay. It keeps its id.
   - `Services/FeatureRuntime.swift`: Paste as plain text's arm hands it to the tool host; its own binding action is gone.
   - `Services/SelfUninstall.swift`: a full uninstall lets go of Paste as plain text's shortcut through the tool host.
+  - `bazel/source_lints.py`: Paste as plain text's two files join `MIGRATED_TOOLS`.
+  - `Tests/mutation_checks.py`: five mutations (a capability used without the grant it rides on; the host waiting for a grant a tool starts without; a paste pressing the tool's own shortcut; the menu walk pressing a switched-off item; a press without Accessibility asking every time).
+  - `Services/QuickTools/PastePlainService.swift`: `import ApplicationServices` is gone. Nothing in the file names Accessibility any more.
 - **2026-10-10**: Tool platform, the broker, stage B (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`):
   - New files, none with an upstream header: `Services/Platform/Broker/StorageAccess.swift` (a tool's preferences), `Services/Platform/Broker/ClipboardRewrite.swift` (one look at the clipboard), `Services/Platform/Broker/ClipboardWatcher.swift` (the one timer that looks, for the tools that ask), `Services/Platform/BundledTools.swift` (the list of tools), with their tests in `Tests/ToolBrokerTests.swift` and `Tests/URLCleanerTests.swift`.
   - `Services/URLCleanerService.swift`: takes what it reaches outside itself (the saved preferences, the clipboard lane, the pasteboard, its timer) as an `Environment`, so its timer and its copy can be tested. Nothing it does changed.
