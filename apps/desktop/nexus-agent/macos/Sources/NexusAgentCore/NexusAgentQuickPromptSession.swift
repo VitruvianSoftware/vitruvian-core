@@ -105,6 +105,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var draft = ""
     /// Bumped when the prompt is shown, so the view puts the caret back.
     @Published public var focusSerial = 0
+    /// True while the model's name is open for editing in the
+    /// conversation's header. The view shows its editor exactly while this
+    /// is true: it sets it on a click on the model's name, and clears it
+    /// when the name is saved or the header goes. It is kept here, and not
+    /// in the view, so that the window can ask what Esc means
+    /// (`pressEscape`) and close the editor (`cancelInlineEditing`).
+    @Published public var isEditingModel = false
     @Published public private(set) var mode: NexusAgentQuickPromptMode = .compact
     @Published public private(set) var sessions: [NexusAgentSessionSummary] = []
     /// True from the moment Clear All is asked for until its last delete
@@ -411,7 +418,14 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             return
         }
         guard let agentPath else {
-            messages.append(NexusAgentChatMessage(role: .agent, text: strings.missingAgent, isError: true))
+            // Named for the provider that was to run the turn: it is
+            // Claude's program that is missing when Claude is chosen.
+            let reason = strings.missingProgram(of: configuration.activeProvider)
+            messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
+            // With the chat out of sight nobody sees that bubble, so the
+            // host is told as it is of any other failed turn.
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                        failureDetail: reason))
             return
         }
         // Plan mode and worktree mode are the user's as they stand now, when
@@ -530,11 +544,17 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
     }
 
-    /// A turn that cannot even start says why in the conversation, and
-    /// leaves the prompt ready to be tried again.
+    /// A command that cannot even start says why in the conversation, and
+    /// leaves the prompt ready to be tried again. Whatever the reason (no
+    /// such program, an empty template, a template refused because the
+    /// prompt would name the program), the host is told as it is of any
+    /// other failed turn, in the bubble's words: with the chat out of
+    /// sight the bubble is seen by nobody.
     private func refuse(_ prompt: String, saying reason: String) {
         messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
         lastFailedPrompt = prompt
+        report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                    failureDetail: reason))
     }
 
     private func receiveCommand(_ data: Data, isErrors: Bool, turn current: Int) {
@@ -631,11 +651,14 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             stopTranscriptFollower()
             elapsedTimer?.invalidate()
             elapsedTimer = nil
-            replace(reply: strings.agentFailed, isError: true)
-            // Not reported to the host, as it never was: a host that shows
-            // every finished turn (Vitruvian's notch) would start showing
-            // this one. The bubble is the only word of it.
+            let reason = strings.agentFailed
+            replace(reply: reason, isError: true)
             replyID = nil
+            // A turn that could not start is a failed turn to the host, in
+            // the bubble's words: with the chat out of sight the bubble is
+            // seen by nobody, and the app would otherwise say nothing.
+            report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                        failureDetail: reason))
         }
     }
 
@@ -654,6 +677,37 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             awaitingModel = false
             agentDidExit(0, turn: turn)
         }
+    }
+
+    /// Closes whatever is being edited in place in the chat: the model's
+    /// name, which is the only such editor. True when one was open. The
+    /// view's editor goes with `isEditingModel`; what was typed in it is
+    /// not saved.
+    @discardableResult
+    public func cancelInlineEditing() -> Bool {
+        guard isEditingModel else { return false }
+        isEditingModel = false
+        return true
+    }
+
+    /// Esc, pressed in a window that shows this chat. The chat's own part
+    /// of the key is done here, as `NexusAgentEscapeKey` decides it: an
+    /// open editor is closed, or else the reply arriving in the
+    /// conversation on show is stopped. `.dismiss` comes back when there
+    /// was neither, and the key is then the window's.
+    ///
+    /// `stoppingReply` is false for a window whose Esc never stops a reply:
+    /// it closes, and the reply goes on arriving.
+    public func pressEscape(stoppingReply: Bool) -> NexusAgentEscapeKey.Action {
+        let action = NexusAgentEscapeKey.action(
+            inlineEditorOpen: isEditingModel,
+            replyToStop: stoppingReply && mode == .chat && isRunning)
+        switch action {
+        case .closeInlineEditor: cancelInlineEditing()
+        case .stopReply: stop()
+        case .dismiss: break
+        }
+        return action
     }
 
     public func newChat() {

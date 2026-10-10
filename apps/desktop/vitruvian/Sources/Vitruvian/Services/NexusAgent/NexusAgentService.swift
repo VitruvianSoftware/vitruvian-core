@@ -199,7 +199,8 @@ package final class NexusAgentService: NexusAgentEngine, NSWindowDelegate {
     }
 
     /// Esc closes the prompt, and so does a click outside it. A reply in
-    /// flight keeps streaming into the session while it is hidden.
+    /// flight keeps streaming into the session while it is hidden. With the
+    /// model name's editor open, Esc closes that editor and the prompt stays.
     private func installMonitors(for panel: NSPanel) {
         removeMonitors()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
@@ -214,6 +215,11 @@ package final class NexusAgentService: NexusAgentEngine, NSWindowDelegate {
             guard event.keyCode == UInt16(kVK_Escape) || isCmdW else { return event }
             // Mid-composition Esc belongs to the input method.
             if let editor = panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
+            // This monitor sees Esc before any field in the chat does, so
+            // the chat's part of the key is asked of the shared session
+            // first. Here that is only an open editor: this window's Esc
+            // has never stopped a reply.
+            if !isCmdW, self.session.pressEscape(stoppingReply: false) != .dismiss { return nil }
             self.hideQuickPrompt()
             return nil
         }

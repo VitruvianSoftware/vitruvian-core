@@ -272,4 +272,293 @@ final class SharedCasesTests: XCTestCase {
         XCTAssertEqual(checked, cases.count, "every case in the file was checked")
         XCTAssertGreaterThan(checked, 0, "at least one case was checked")
     }
+
+    // MARK: - agy flags
+
+    /// One row of `agy-flags.json`. `flags` is what the apps pass.
+    ///
+    /// Where the apps and the bot part ways: a row with an `environment`
+    /// sets variables in the bot's process before it starts, and the bot's
+    /// dotenv never replaces a variable that is already set, so there the
+    /// process wins over `.env`. The apps are started from the Dock or at
+    /// login, with an environment that is not the bot's and that nobody
+    /// sets on purpose, and they read the bot's settings from `.env` alone.
+    /// So such a row names what the apps pass in `apps`, the file's own
+    /// answer, and the bot's test checks `args`. With a file alone there is
+    /// no `apps`: the apps pass what the bot passes.
+    private struct FlagsCase {
+        let name: String
+        let env: String
+        let flags: [String]
+        let isOwnCommand: Bool
+        let setsProcessEnvironment: Bool
+    }
+
+    private func flagsCases(line: UInt = #line) -> [FlagsCase] {
+        let cases = loadCases("agy-flags.json", line: line)
+        let decoded: [FlagsCase] = cases.compactMap { item in
+            let name = item["name"] as? String ?? "(unnamed)"
+            guard let env = item["env"] as? String, let args = item["args"] as? [String] else {
+                XCTFail("\(name): needs an env and a list of args", line: line)
+                return nil
+            }
+            let hasEnvironment = item["environment"] != nil
+            let apps = item["apps"] as? [String]
+            guard hasEnvironment == (apps != nil) else {
+                XCTFail("\(name): a case has an apps list exactly when it has an environment", line: line)
+                return nil
+            }
+            if let custom = item["custom"], custom as? Bool != true {
+                XCTFail("\(name): custom is true or left out", line: line)
+                return nil
+            }
+            return FlagsCase(name: name, env: env, flags: apps ?? args, isOwnCommand: item["custom"] != nil,
+                             setsProcessEnvironment: hasEnvironment)
+        }
+        XCTAssertEqual(decoded.count, cases.count, "every case in the file was read", line: line)
+        return decoded
+    }
+
+    /// The flags a turn passes agy after the prompt and the format, for the
+    /// settings a `.env` gives.
+    private func agyFlags(for env: String, file: StaticString = #filePath, line: UInt = #line) -> [String] {
+        let arguments = NexusAgentSupport.agentArguments(prompt: "hi", configuration: NexusAgentEnvFile.parse(env),
+                                                         conversationID: nil)
+        XCTAssertEqual(Array(arguments.prefix(4)), ["-p", "hi", "--output-format", "stream-json"],
+                       "the flags follow the prompt and the format", file: file, line: line)
+        return Array(arguments.dropFirst(4))
+    }
+
+    func testAgyIsRunWithTheFlagsTheBotPasses() {
+        let cases = flagsCases()
+        var checked = 0
+        var ownCommands = 0
+        var withProcessEnvironment = 0
+        for item in cases {
+            if item.isOwnCommand {
+                // A command of the user's own is run from its template, and
+                // nothing of the effort or the thinking line is added to it.
+                let command = NexusAgentSupport.providerCommand(template: "print-arguments {prompt}",
+                                                                prompt: "hi", model: "")
+                XCTAssertEqual(command?.arguments, ["hi"] + item.flags, item.name)
+                ownCommands += 1
+            } else {
+                XCTAssertEqual(agyFlags(for: item.env), item.flags, item.name)
+            }
+            if item.setsProcessEnvironment { withProcessEnvironment += 1 }
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case in the file was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+        XCTAssertGreaterThan(ownCommands, 0, "a command of the user's own was checked")
+        XCTAssertGreaterThan(withProcessEnvironment, 0, "a case the bot's process environment decides was checked")
+    }
+
+    /// Saving from Settings with nothing changed must leave the bot running
+    /// agy with the flags it ran with before, whatever the effort line says
+    /// and however thinking was switched on. The page has no name for `HIGH`
+    /// or `max`, so this is where a save could quietly rewrite them.
+    func testSavingWithNothingChangedNeverChangesTheFlags() {
+        let cases = flagsCases().filter { !$0.isOwnCommand }
+        var checked = 0
+        for item in cases {
+            let saved = NexusAgentEnvFile.render(NexusAgentEnvFile.parse(item.env), over: item.env)
+            XCTAssertEqual(agyFlags(for: saved), item.flags, "\(item.name): after a save, which wrote\n\(saved)")
+            // A second save changes nothing more.
+            XCTAssertEqual(NexusAgentEnvFile.render(NexusAgentEnvFile.parse(saved), over: saved), saved,
+                           "\(item.name): saved twice")
+            checked += 1
+        }
+        XCTAssertEqual(checked, cases.count, "every case was checked")
+        XCTAssertGreaterThan(checked, 0, "at least one case was checked")
+    }
+
+    /// Choosing an effort in Settings is the user's word, and it replaces
+    /// whatever the line said, a word the page has no name for included.
+    func testChoosingAnEffortReplacesWhateverTheLineSaid() {
+        for written in ["HIGH", "max", "' high '", "low", ""] {
+            let before = "AGY_APPROVAL_MODE=default\nAGY_EFFORT=\(written)\n"
+            for chosen in NexusAgentEffort.allCases where chosen != NexusAgentEnvFile.parse(before).effort {
+                var edited = NexusAgentEnvFile.parse(before)
+                edited.effort = chosen
+                let expected = chosen == .automatic ? [] : ["--effort", chosen.rawValue]
+                let turn = NexusAgentSupport.agentArguments(prompt: "hi", configuration: edited, conversationID: nil)
+                XCTAssertEqual(Array(turn.dropFirst(4)), expected, "written \(written), chosen \(chosen): the turn")
+                let saved = NexusAgentEnvFile.render(edited, over: before)
+                XCTAssertEqual(agyFlags(for: saved), expected, "written \(written), chosen \(chosen): the save")
+            }
+        }
+    }
+
+    /// The page has no control for the thinking line, so a save leaves it
+    /// where it is, with every other key the page does not own.
+    func testSavingKeepsTheThinkingLine() {
+        for value in ["true", "false", "TRUE", ""] {
+            let before = "# mine\nAGY_EFFORT=low\nAGY_THINKING=\(value)\nSOMETHING_ELSE=kept\n"
+            var edited = NexusAgentEnvFile.parse(before)
+            edited.model = "m2"
+            edited.effort = .medium
+            let after = NexusAgentEnvFile.values(in: NexusAgentEnvFile.render(edited, over: before))
+            XCTAssertEqual(after["AGY_THINKING"], value, "AGY_THINKING=\(value) after a save")
+            XCTAssertEqual(after["SOMETHING_ELSE"], "kept")
+            XCTAssertEqual(after[NexusAgentEnvFile.modelKey], "m2")
+        }
+    }
+
+    // MARK: - The effort line and the thinking line, read and saved
+
+    /// The effort and thinking lines of a file, as a save would be judged
+    /// by them: a missing effort line counts as an empty one, which is how
+    /// a save writes it.
+    private func effortLines(_ env: String) -> [String?] {
+        let values = NexusAgentEnvFile.values(in: env)
+        return [values[NexusAgentEnvFile.effortKey] ?? "", values[NexusAgentEnvFile.thinkingKey]]
+    }
+
+    private let effortsWritten: [String?] = [nil, "", "low", "medium", "high", "HIGH", "max"]
+    private let thinkingWritten: [String?] = [nil, "true", "false", "TRUE", ""]
+
+    private func env(effort: String?, thinking: String?) -> String {
+        "AGY_APPROVAL_MODE=default\n# mine\n"
+            + (effort.map { "AGY_EFFORT=\($0)\n" } ?? "") + (thinking.map { "AGY_THINKING=\($0)\n" } ?? "")
+    }
+
+    /// What a page shows for the two lines: the effort line when it says
+    /// anything (a word with no name of its own as written), and otherwise
+    /// High exactly when thinking is `true`.
+    func testTheEffortShownIsTheEffortLineThenTheThinkingLine() {
+        for effort in effortsWritten {
+            for thinking in thinkingWritten {
+                let read = NexusAgentEnvFile.parse(env(effort: effort, thinking: thinking))
+                let name = "effort \(effort ?? "absent"), thinking \(thinking ?? "absent")"
+                switch effort {
+                case "max":
+                    XCTAssertEqual(read.unnamedEffort, "max", name)
+                    XCTAssertEqual(read.effort, .automatic, "\(name): thinking does not make a named effort of it")
+                case "HIGH", "high":
+                    XCTAssertNil(read.unnamedEffort, name)
+                    XCTAssertEqual(read.effort, .high, name)
+                case "low", "medium":
+                    XCTAssertNil(read.unnamedEffort, name)
+                    XCTAssertEqual(read.effort.rawValue, effort, name)
+                default:
+                    XCTAssertNil(read.unnamedEffort, name)
+                    XCTAssertEqual(read.effort, thinking == "true" ? .high : .automatic, name)
+                    XCTAssertEqual(read.effortIsFromThinkingLine, thinking == "true", name)
+                }
+            }
+        }
+    }
+
+    /// A save with nothing changed leaves both lines saying what they
+    /// said: `HIGH` is not respelled, `max` is not lost, and a High that
+    /// is `AGY_THINKING=true` is not written into the effort line.
+    func testASaveWithNothingChangedLeavesTheEffortAndThinkingLines() {
+        for effort in effortsWritten {
+            for thinking in thinkingWritten {
+                let before = env(effort: effort, thinking: thinking)
+                var untouched = NexusAgentEnvFile.parse(before)
+                untouched.model = "m2"
+                let saved = NexusAgentEnvFile.render(untouched, over: before)
+                XCTAssertEqual(effortLines(saved), effortLines(before),
+                               "effort \(effort ?? "absent"), thinking \(thinking ?? "absent"): wrote\n\(saved)")
+                XCTAssertEqual(agyFlags(for: saved), ["--model", "m2"] + agyFlags(for: before),
+                               "the model that was changed, then the effort as before")
+            }
+        }
+    }
+
+    /// An effort the user chose is what the file then says, whatever it
+    /// said before: over a word the page has no name for, and over a
+    /// thinking line that would otherwise still mean High. Only choosing
+    /// "automatic" touches the thinking line, and only when it is `true`.
+    func testChoosingAnEffortSticksWhateverTheTwoLinesSaid() {
+        var checked = 0
+        for effort in effortsWritten {
+            for thinking in thinkingWritten {
+                let before = env(effort: effort, thinking: thinking)
+                for chosen in NexusAgentEffort.allCases {
+                    var edited = NexusAgentEnvFile.parse(before)
+                    // Choosing what is already shown is not a choice: no
+                    // page can make it, and the lines stay as they are.
+                    guard chosen != edited.effort || edited.unnamedEffort != nil else { continue }
+                    edited.effort = chosen
+                    let name = "effort \(effort ?? "absent"), thinking \(thinking ?? "absent"), chosen \(chosen)"
+                    let saved = NexusAgentEnvFile.render(edited, over: before)
+                    let thinkingAfter = chosen == .automatic && thinking == "true" ? "false" : thinking
+                    XCTAssertEqual(effortLines(saved), [chosen.rawValue, thinkingAfter], "\(name): wrote\n\(saved)")
+                    XCTAssertEqual(agyFlags(for: saved), chosen == .automatic ? [] : ["--effort", chosen.rawValue], name)
+                    let reread = NexusAgentEnvFile.parse(saved)
+                    XCTAssertEqual(reread.effort, chosen, "\(name): read back")
+                    XCTAssertNil(reread.unnamedEffort, name)
+                    // And a save after that, with nothing changed, changes nothing.
+                    XCTAssertEqual(NexusAgentEnvFile.render(reread, over: saved), saved, "\(name): saved twice")
+                    checked += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(checked, 100, "the choices were checked")
+    }
+
+    /// The row a page selects for the effort, by its tag, and what
+    /// choosing a row does. Reading it and setting it back is no choice.
+    func testTheEffortChoiceIsTheRowAPageSelects() {
+        for (written, row) in [("max", "max"), ("HIGH", "high"), ("low", "low"), ("", "")] {
+            let before = "AGY_APPROVAL_MODE=default\nAGY_EFFORT=\(written)\nAGY_THINKING=true\n"
+            var read = NexusAgentEnvFile.parse(before)
+            let shown = written.isEmpty ? "high" : row
+            XCTAssertEqual(read.effortChoice, shown, "written \(written)")
+            read.effortChoice = shown
+            XCTAssertEqual(read, NexusAgentEnvFile.parse(before), "written \(written): the same row is not a choice")
+            XCTAssertEqual(NexusAgentEnvFile.render(read, over: before), NexusAgentEnvFile.render(NexusAgentEnvFile.parse(before), over: before))
+            read.effortChoice = "medium"
+            XCTAssertEqual(read.effort, .medium, "written \(written)")
+            XCTAssertNil(read.unnamedEffort, "written \(written): the word's row goes with the choice")
+            XCTAssertEqual(read.effortChoice, "medium")
+            XCTAssertEqual(NexusAgentEnvFile.values(in: NexusAgentEnvFile.render(read, over: before))["AGY_EFFORT"], "medium")
+        }
+    }
+
+    /// A failure's words on one line: the lines that are not blank, each
+    /// without the space around it, joined by single spaces.
+    func testAFailuresWordsOnOneLine() {
+        func notice(_ detail: String?) -> NexusAgentTurnNotice {
+            NexusAgentTurnNotice(providerName: "P", text: "a reply", failed: true, endedCleanly: false, failureDetail: detail)
+        }
+        XCTAssertEqual(notice("The agent stopped with an error.\nagy: quota exceeded").failureSummary,
+                       "The agent stopped with an error. agy: quota exceeded")
+        XCTAssertEqual(notice("\n  \n one \r\n\n\ttwo\t\nthree\n").failureSummary, "one two three")
+        XCTAssertEqual(notice("just one").failureSummary, "just one")
+        for none in [nil, "", " \n\t\n"] as [String?] {
+            XCTAssertNil(notice(none).failureSummary, "no words is nil, not an empty line")
+        }
+    }
+
+    /// Settings that were read from a file which has since gone are saved
+    /// into a new one. The effort is still what the old file meant: its
+    /// word as written, or High where only the thinking line said so,
+    /// since the new file has no thinking line.
+    func testTheEffortReadSurvivesTheFileGoing() {
+        for gone in [nil, "", "  \n"] as [String?] {
+            let word = NexusAgentEnvFile.render(NexusAgentEnvFile.parse("AGY_EFFORT=max\nAGY_THINKING=true\n"), over: gone)
+            XCTAssertEqual(NexusAgentEnvFile.values(in: word)[NexusAgentEnvFile.effortKey], "max")
+            XCTAssertEqual(agyFlags(for: word).suffix(2), ["--effort", "max"])
+            let thinking = NexusAgentEnvFile.render(NexusAgentEnvFile.parse("AGY_THINKING=true\n"), over: gone)
+            XCTAssertEqual(NexusAgentEnvFile.values(in: thinking)[NexusAgentEnvFile.effortKey], "high")
+            XCTAssertNil(NexusAgentEnvFile.values(in: thinking)[NexusAgentEnvFile.thinkingKey])
+        }
+    }
+
+    /// The old thinking name is dropped by every save, so a High that came
+    /// from it is written as an effort, and the bot goes on passing high.
+    func testAHighFromTheOldThinkingNameIsWrittenAsAnEffort() {
+        let before = "AGY_APPROVAL_MODE=default\nGEMINI_THINKING=true\n"
+        let read = NexusAgentEnvFile.parse(before)
+        XCTAssertEqual(read.effort, .high)
+        XCTAssertFalse(read.effortIsFromThinkingLine)
+        let saved = NexusAgentEnvFile.render(read, over: before)
+        XCTAssertEqual(NexusAgentEnvFile.values(in: saved)[NexusAgentEnvFile.effortKey], "high")
+        XCTAssertFalse(saved.contains("GEMINI_THINKING"))
+        XCTAssertEqual(agyFlags(for: saved), ["--effort", "high"])
+    }
 }

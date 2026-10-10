@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import AppKit
 import Combine
 import Darwin
 import Foundation
 import NexusAgentUI
+import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -36,8 +38,12 @@ enum NexusAgentTests {
         hostRemembersHistoryAndWorktreeMode(suite)
         backupDoesNotCarryProviderCommands(suite)
         hostTurnNotices(suite)
+        hostSaysWhyATurnFailed(suite)
+        missingProgramIsNamed(suite)
+        settingsShowAnUnknownEffortAsItself(suite)
         changesReachTheViews(suite)
         sharedChatWiring(suite)
+        notchHearsOfTheModelEditor(suite)
     }
 
     // MARK: - Wiring
@@ -93,6 +99,8 @@ enum NexusAgentTests {
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
         var agentTerminations = 0
+        /// While true the agent cannot be started: the launch throws.
+        var agentCannotStart = false
         var sessionList: [NexusAgentSessionSummary] = []
         var listedDirectories: [String] = []
         var listedProviders: [NexusAgentCLIProvider] = []
@@ -164,6 +172,7 @@ enum NexusAgentTests {
                 schedule: { [unowned self] _, work in pending.append(work) },
                 openFile: { [unowned self] in opened.append($0) },
                 launchAgent: { [unowned self] path, arguments, directory, _, onOutput, onExit in
+                    if agentCannotStart { throw CocoaError(.fileNoSuchFile) }
                     agentRuns.append((path, arguments, directory))
                     agentOutput = onOutput
                     agentExit = onExit
@@ -1100,6 +1109,230 @@ enum NexusAgentTests {
                      "a turn waiting on approval shows the tool in the notch, named for its provider")
     }
 
+    /// A host that only keeps the notices the shared session hands it, so
+    /// a test can ask what Vitruvian would say about a real turn without
+    /// the notch, a sound or a notification being touched.
+    @MainActor
+    private final class NoticeKeepingHost: NexusAgentHost {
+        var configuredBotDirectory = ""
+        var startsBotAtLaunch = false
+        var planMode = false
+        var hiddenClaudeSessionIDs: [String] = []
+        var chosenProviderID: UUID?
+        var savedProviders: [NexusAgentCLIProvider] = []
+        var promptHistory: [String] = []
+        var worktreeMode = false
+        let strings: NexusAgentHostStrings
+        var finished: [NexusAgentTurnNotice] = []
+
+        init(strings: NexusAgentHostStrings) { self.strings = strings }
+
+        func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {}
+        func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) { finished.append(notice) }
+    }
+
+    /// A failed turn's notice carries the words of the chat's error bubble,
+    /// and Vitruvian shows them: in the notch, and in the notification when
+    /// the chat is out of sight. They are shown whole, the non-blank lines
+    /// joined by one space, then cut: 80 characters in the notch and 200 in
+    /// the notification. The notices here are the ones the shared session
+    /// sends for real turns.
+    private static func hostSaysWhyATurnFailed(_ suite: TestSuite) {
+        typealias Host = VitruvianNexusAgentHost
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let strings = VitruvianNexusAgentHost(defaults: rig.defaults).strings
+        let host = NoticeKeepingHost(strings: strings)
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let failedTitle = strings.failedTitle(provider: strings.fallbackProviderName)
+
+        // The agent's program is there, but starting it fails.
+        rig.agentCannotStart = true
+        session.send("one", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        session.stopTranscriptFollower()
+        rig.agentCannotStart = false
+        let launch = host.finished.last
+        suite.expect(host.finished.count == 1 && launch?.failed == true && launch?.text == ""
+                     && launch?.failureDetail == strings.agentFailed,
+                     "a turn that cannot start sends a failed notice with the bubble's words and no reply")
+        if let launch {
+            let hidden = Host.announcement(finished: launch, isChatVisible: false, strings: strings)
+            suite.expect(hidden.notchTitle == failedTitle && hidden.notchDetail == strings.agentFailed
+                         && hidden.notchSymbol == "exclamationmark.triangle.fill" && !hidden.playsSound,
+                         "a turn that cannot start says why in the notch: \"\(hidden.notchDetail)\"")
+            suite.expect(hidden.notificationTitle == failedTitle && hidden.notificationBody == strings.agentFailed,
+                         "and, away from the chat, in the notification: \"\(hidden.notificationBody ?? "nil")\"")
+            let visible = Host.announcement(finished: launch, isChatVisible: true, strings: strings)
+            suite.expect(visible.notchDetail == strings.agentFailed && visible.notificationTitle == nil
+                         && visible.notificationBody == nil,
+                         "with the chat on screen the notch still says why, and there is no notification")
+        }
+
+        // The agent ran, complained in its own words and exited badly.
+        session.newChat()
+        session.send("two", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        rig.agentOutput?(Data("agy: quota exceeded\n".utf8))
+        rig.agentExit?(1)
+        session.stopTranscriptFollower()
+        let badExit = host.finished.last
+        let bubble = session.messages.last
+        suite.expect(host.finished.count == 2 && badExit?.failed == true && bubble?.isError == true
+                     && badExit?.failureDetail == bubble?.text
+                     && bubble?.text == strings.agentFailed + "\nagy: quota exceeded",
+                     "a bad exit sends a failed notice with the bubble's words: \"\(badExit?.failureDetail ?? "nil")\"")
+        if let badExit {
+            let hidden = Host.announcement(finished: badExit, isChatVisible: false, strings: strings)
+            let whole = strings.agentFailed + " agy: quota exceeded"
+            suite.expect(hidden.notchTitle == failedTitle && hidden.notchDetail == String(whole.prefix(80))
+                         && hidden.notificationTitle == failedTitle
+                         && hidden.notificationBody == whole && !hidden.playsSound,
+                         "a bad exit shows all of what went wrong on one line, the program's own complaint included: "
+                         + "\"\(hidden.notchDetail)\", \"\(hidden.notificationBody ?? "nil")\"")
+        }
+
+        // A turn that ends well is announced as it always was.
+        session.newChat()
+        session.send("three", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        rig.agentOutput?(Data(#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Hello\nand more"}}"#.utf8 + [0x0A]))
+        rig.agentExit?(0)
+        session.stopTranscriptFollower()
+        let good = host.finished.last
+        suite.expect(host.finished.count == 3 && good?.failed == false && good?.failureDetail == nil
+                     && good?.text == "Hello\nand more",
+                     "a turn that ends well carries no words for a failure")
+        if let good {
+            let doneTitle = strings.doneTitle(provider: strings.fallbackProviderName)
+            let hidden = Host.announcement(finished: good, isChatVisible: false, strings: strings)
+            suite.expect(hidden == Host.TurnAnnouncement(notchTitle: doneTitle, notchDetail: "Hello",
+                                                         notchSymbol: "sparkles", playsSound: true,
+                                                         notificationTitle: doneTitle, notificationBody: "Hello"),
+                         "a turn that ends well is announced as before: \(hidden)")
+        }
+
+        // The cut, and which words win, on notices made by hand.
+        let english = NexusAgentHostStrings()
+        let long = String(repeating: "a", count: 300)
+        func failure(_ detail: String?, reply: String = "") -> Host.TurnAnnouncement {
+            Host.announcement(
+                finished: NexusAgentTurnNotice(providerName: "Claude", text: reply, failed: true, endedCleanly: false,
+                                               failureDetail: detail),
+                isChatVisible: false, strings: english)
+        }
+        let joined = failure("\n   \nStopped with an error.\n\n  quota exceeded  \r\ntry later\n")
+        suite.expect(joined.notchDetail == "Stopped with an error. quota exceeded try later"
+                     && joined.notificationBody == "Stopped with an error. quota exceeded try later",
+                     "what went wrong is shown whole: its non-blank lines, joined by one space: \"\(joined.notchDetail)\"")
+        let cut = failure("short\n" + long)
+        suite.expect(cut.notchDetail == String(("short " + long).prefix(80)) && cut.notchDetail.count == 80
+                     && cut.notificationBody == String(("short " + long).prefix(200))
+                     && cut.notificationBody?.count == 200,
+                     "the joined line is then cut: 80 characters in the notch and 200 in the notification")
+        let both = failure("Lost the connection", reply: "Half a reply\nand its second line")
+        suite.expect(both.notchDetail == "Lost the connection" && both.notificationBody == "Lost the connection"
+                     && both.notchTitle == "Claude — Failed" && both.notificationTitle == "Claude — Failed",
+                     "a failed turn with part of a reply and words for the failure shows the failure")
+        for none in [nil, "", " \n "] as [String?] {
+            let replyOnly = failure(none, reply: "Half a reply\nand its second line")
+            suite.expect(replyOnly.notchDetail == "Half a reply"
+                         && replyOnly.notificationBody == "Half a reply\nand its second line",
+                         "a failed turn with no words for the failure shows the reply, as before")
+            let neither = failure(none)
+            suite.expect(neither.notchTitle == "Claude — Failed" && neither.notchDetail.isEmpty
+                         && neither.notificationTitle == "Claude — Failed" && neither.notificationBody == "",
+                         "a failed turn with neither is announced as before, with nothing under the title")
+        }
+    }
+
+    /// The chat's bubble and the Settings page say which program is missing.
+    /// agy keeps this app's own sentence, in every language it has; any
+    /// other provider gets the shared English sentence around its program.
+    private static func missingProgramIsNamed(_ suite: TestSuite) {
+        let own = NexusAgentCLIProvider(id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-00000000000A")!,
+                                        name: "My LLM", commandTemplate: "llm {prompt}", isBuiltIn: false)
+        var sentences: Set<String> = []
+        for language in AppLanguage.allCases {
+            let strings = VitruvianNexusAgentHost.strings(for: language)
+            let translated = FeatureStrings.nexusAgent(language).missingAgent
+            sentences.insert(translated)
+            suite.expect(strings.missingProgram(of: .antigravity) == translated && translated.contains("agy"),
+                         "\(language): agy missing keeps this app's sentence: \(strings.missingProgram(of: .antigravity))")
+            suite.expect(strings.missingProgram(of: .claude) == "Could not find 'claude' in PATH. Is it installed?"
+                         && strings.missingProgram(of: .ollama) == "Could not find 'ollama' in PATH. Is it installed?"
+                         && strings.missingProgram(of: own) == "Could not find 'llm' in PATH. Is it installed?",
+                         "\(language): any other missing program is named: \(strings.missingProgram(of: .claude))")
+        }
+        suite.expect(sentences.count > 5 && sentences.contains("The Antigravity CLI (agy) was not found."),
+                     "the agy sentence is the translated one, English included (\(sentences.count) wordings)")
+
+        // The page's line: the service's own, while the program is missing.
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        let strings = VitruvianNexusAgentHost(defaults: rig.defaults).strings
+        suite.expect(service.agentPath == nil && service.missingProgramText == strings.missingAgent,
+                     "Settings says agy is missing in this app's words: \(service.missingProgramText ?? "nil")")
+        service.updateActiveProvider(.claude)
+        suite.expect(service.missingProgramText == "Could not find 'claude' in PATH. Is it installed?",
+                     "Settings names Claude when Claude is what is missing: \(service.missingProgramText ?? "nil")")
+        service.updateActiveProvider(own)
+        suite.expect(service.missingProgramText == "Could not find 'llm' in PATH. Is it installed?",
+                     "Settings names a command's own program: \(service.missingProgramText ?? "nil")")
+        // And the chat's bubble says the same. A session of its own, with
+        // a host that only keeps notices: nothing is announced for real.
+        let session = NexusAgentQuickPromptSession(environment: rig.environment,
+                                                   host: NoticeKeepingHost(strings: strings))
+        for provider in [NexusAgentCLIProvider.antigravity, .claude, own] {
+            service.updateActiveProvider(provider)
+            session.newChat()
+            session.send("hi", configuration: service.configuration, agentPath: service.agentPath)
+            suite.expect(session.messages.last?.isError == true
+                         && session.messages.last?.text == service.missingProgramText,
+                         "\(provider.name): the chat's bubble says what the page says: \(session.messages.last?.text ?? "nil")")
+        }
+        rig.executables.insert("/opt/homebrew/bin/llm")
+        service.updateActiveProvider(.antigravity)
+        service.updateActiveProvider(own)
+        suite.expect(service.agentPath != nil && service.missingProgramText == nil,
+                     "with the program installed the page has no such line")
+        service.updateActiveProvider(.antigravity)
+    }
+
+    /// The effort picker of the Settings page is bound to the shared
+    /// `effortChoice`: a word in `.env` that is none of the page's four
+    /// rows is a row of its own, kept by a save that leaves it and replaced
+    /// by a choice.
+    private static func settingsShowAnUnknownEffortAsItself(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.installBot()
+        let env = rig.bot + "/.env"
+        func written() -> String? { NexusAgentEnvFile.values(in: rig.files[env] ?? "")["AGY_EFFORT"] }
+        let service = NexusAgentService(environment: rig.environment)
+
+        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:real\nAGY_EFFORT=max\nAGY_THINKING=true\n"
+        service.load()
+        var draft = service.configuration
+        suite.expect(draft.effortChoice == "max" && draft.unnamedEffort == "max",
+                     "an effort word the page has no row for is the row selected: \(draft.effortChoice)")
+        suite.expect(NexusAgentSettingsView.unknownEffortRow("max") == "max (from .env)",
+                     "and its row says where it comes from: \(NexusAgentSettingsView.unknownEffortRow("max"))")
+        draft.model = "m2"
+        draft.effortChoice = "max"
+        suite.expect(service.save(draft) && written() == "max" && service.configuration.effortChoice == "max",
+                     "a save that leaves the effort alone keeps the word: \(written() ?? "nil")")
+        draft = service.configuration
+        draft.effortChoice = "low"
+        suite.expect(draft.unnamedEffort == nil && draft.effort == .low && service.save(draft) && written() == "low"
+                     && service.configuration.effortChoice == "low",
+                     "choosing a row replaces the word, and its row goes: \(written() ?? "nil")")
+
+        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:real\nAGY_EFFORT=HIGH\n"
+        service.load()
+        draft = service.configuration
+        suite.expect(draft.effortChoice == "high" && draft.unnamedEffort == nil && service.save(draft) && written() == "HIGH",
+                     "a row's name in other letters is that row, and is not respelled by a save: \(written() ?? "nil")")
+    }
+
     /// The service is an engine from another module with its own published
     /// values added. SwiftUI redraws from `objectWillChange`, so a change to
     /// either half, and to the chat session, has to reach it.
@@ -1210,6 +1443,76 @@ enum NexusAgentTests {
                      && english.newChatShortcut == " (⌘N)"
                      && english.environmentHint != NexusAgentChatStrings().environmentHint,
                      "the two lines that name this app's shortcuts are this app's, whatever the shared chat says by default")
+    }
+
+    // MARK: - The notch hears of the model name's editor
+
+    /// In the notch, Escape is the island's key: it closes a layer the
+    /// page has reported before it closes the island. The open editor is
+    /// such a layer, and it opens with a change to the chat SESSION alone;
+    /// nothing the service publishes changes with it. So the chat is drawn
+    /// here as the notch draws it, off screen, the editor is opened the way
+    /// a click on the model's name opens it, and what the island would be
+    /// told is recorded in place of telling it.
+    private static func notchHearsOfTheModelEditor(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        var layers: [(() -> Void)?] = []
+        var layersFromTheWindow = 0
+        func drawn(embeddedInNotch: Bool) -> NSHostingView<NexusAgentQuickPromptView> {
+            let host = NSHostingView(rootView: NexusAgentQuickPromptView(
+                embeddedInNotch: embeddedInNotch, service: service,
+                setNotchLayer: { if embeddedInNotch { layers.append($0) } else { layersFromTheWindow += 1 } }))
+            host.sizingOptions = []
+            host.frame = CGRect(x: 0, y: 0, width: 520, height: 420)
+            host.layoutSubtreeIfNeeded()
+            return host
+        }
+        /// Lets SwiftUI deliver what is due, until `done` or for `limit` seconds.
+        func wait(_ limit: TimeInterval = 2, until done: () -> Bool = { false }) {
+            let deadline = Date().addingTimeInterval(limit)
+            while !done(), Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            }
+        }
+
+        let inNotch = drawn(embeddedInNotch: true)
+        wait(0.3)
+        suite.expect(layers.isEmpty, "with no editor open the island is told of no layer")
+
+        service.session.isEditingModel = true
+        wait { !layers.isEmpty }
+        suite.expect(layers.count == 1 && layers.first.map { $0 != nil } == true,
+                     "opening the model name's editor in the notch tells the island of a layer to close")
+
+        // What Escape does in the island: it runs the layer's close.
+        if let close = layers.first.flatMap({ $0 }) { close() }
+        suite.expect(!service.session.isEditingModel, "closing that layer closes the editor")
+        wait { layers.count >= 2 }
+        suite.expect(layers.count == 2 && layers.last.map { $0 == nil } == true,
+                     "and the island is told the layer is gone, so the next Escape closes the island")
+
+        // Saved or cancelled from inside the chat: the same.
+        service.session.isEditingModel = true
+        wait { layers.count >= 3 }
+        service.session.isEditingModel = false
+        wait { layers.count >= 4 }
+        suite.expect(layers.count == 4 && layers[2] != nil && layers[3] == nil,
+                     "an editor closed from inside the chat is reported gone too")
+
+        // The floating window asks the session itself, and has no island.
+        // The chat drawn for the notch is still there, so each is counted
+        // apart: the same two changes reach the notch's and not the window's.
+        let floating = drawn(embeddedInNotch: false)
+        service.session.isEditingModel = true
+        wait { layers.count >= 5 }
+        service.session.isEditingModel = false
+        wait { layers.count >= 6 }
+        wait(0.3)
+        suite.expect(layers.count == 6 && layersFromTheWindow == 0,
+                     "the chat in its own window tells the island nothing")
+        withExtendedLifetime((inNotch, floating)) {}
     }
 
     // MARK: - Antigravity Telemetry & Quota

@@ -62,7 +62,8 @@ public protocol NexusAgentHost: AnyObject {
 public struct NexusAgentHostStrings: Sendable {
     /// The title of a session that has none.
     public var untitledSession: String
-    /// The agent's CLI is not installed.
+    /// agy is not installed. Said only of agy, which it names: for any
+    /// other program see `missingProgram(of:)`.
     public var missingAgent: String
     /// The agent's CLI could not start, or stopped with an error and no reply.
     public var agentFailed: String
@@ -174,6 +175,22 @@ public struct NexusAgentHostStrings: Sendable {
         "\(commandNotFoundPrefix)\(program)\(commandNotFoundSuffix)"
     }
 
+    /// What to say when `provider`'s program is not installed, naming the
+    /// program that was looked for. agy has a sentence of its own, which
+    /// an app may have translated. Any other program gets the sentence a
+    /// missing command gets, around its name: `claude`, `ollama`, or the
+    /// first word of a command of the user's own, as its template has it.
+    public func missingProgram(of provider: NexusAgentCLIProvider) -> String {
+        switch provider.route {
+        case .antigravity:
+            return missingAgent
+        case .claude, .ollama:
+            return commandNotFound(provider.executableName)
+        case .custom:
+            return commandNotFound(NexusAgentSupport.templateWords(provider.commandTemplate).first ?? "")
+        }
+    }
+
     public func commandExited(status: Int32) -> String {
         "\(commandExitedPrefix)\(status)"
     }
@@ -229,5 +246,18 @@ public struct NexusAgentTurnNotice: Sendable {
         self.failed = failed
         self.endedCleanly = endedCleanly
         self.failureDetail = failureDetail
+    }
+
+    /// `failureDetail` on one line, for a place that has only one: its
+    /// lines that are not blank, each without the space around it, joined
+    /// by single spaces. Nil when there are no words. All of it is kept,
+    /// because the first line alone is often the general "stopped with an
+    /// error" and the program's own complaint comes after it; the app cuts
+    /// the line to the length it has room for.
+    public var failureSummary: String? {
+        let lines = (failureDetail ?? "").components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return lines.isEmpty ? nil : lines.joined(separator: " ")
     }
 }

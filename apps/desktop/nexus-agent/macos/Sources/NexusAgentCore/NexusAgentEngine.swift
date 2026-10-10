@@ -247,6 +247,13 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// The host's text as it is right now, for a view that shows some of it.
     public var hostStrings: NexusAgentHostStrings { host.strings }
 
+    /// What a page says while the active provider's program cannot be
+    /// found, naming that program; nil when it is there. The chat says the
+    /// same in its error bubble when a prompt is sent.
+    public var missingProgramText: String? {
+        agentPath == nil ? host.strings.missingProgram(of: configuration.activeProvider) : nil
+    }
+
     public let session: NexusAgentQuickPromptSession
     private let environment: Environment
     private let host: any NexusAgentHost

@@ -140,9 +140,15 @@ package struct NexusAgentSettingsView: View {
                 }
             }
             TextField(strings.model, text: $draft.model, prompt: Text(strings.modelPlaceholder))
-            Picker(strings.effort, selection: $draft.effort) {
+            // Bound to the row's tag, not the effort: a word in `.env` that
+            // is none of the four efforts is shown as a row of its own, and
+            // stays in the file until another row is picked.
+            Picker(strings.effort, selection: $draft.effortChoice) {
                 ForEach(NexusAgentEffort.allCases) { effort in
-                    Text(strings.effortName(effort)).tag(effort)
+                    Text(strings.effortName(effort)).tag(effort.rawValue)
+                }
+                if let written = draft.unnamedEffort {
+                    Text(Self.unknownEffortRow(written)).tag(written)
                 }
             }
             HStack {
@@ -165,8 +171,10 @@ package struct NexusAgentSettingsView: View {
                 Label(strings.quickPromptTitle, systemImage: "paperplane")
             }
             caption(strings.quickPromptCaption)
-            if service.agentPath == nil {
-                Text(strings.missingAgent)
+            // Names the program of the provider in use: this app's own
+            // sentence for agy, the shared one for any other.
+            if let missing = service.missingProgramText {
+                Text(missing)
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -210,6 +218,12 @@ package struct NexusAgentSettingsView: View {
     }
 
     // MARK: - Helpers
+
+    /// The label of the row for an effort word the page has no name for.
+    /// Said in English in every language, like the file and key it names.
+    package static func unknownEffortRow(_ written: String) -> String {
+        "\(written) (from .env)"
+    }
 
     private func caption(_ text: String) -> some View {
         Text(text)

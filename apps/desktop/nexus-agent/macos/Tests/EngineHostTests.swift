@@ -75,6 +75,8 @@ final class EngineHostTests: XCTestCase {
         var agentRuns: [(path: String, arguments: [String], directory: String)] = []
         var agentOutput: (@MainActor @Sendable (Data) -> Void)?
         var agentExit: (@MainActor @Sendable (Int32) -> Void)?
+        /// While true the agent cannot be started: the launch throws.
+        var agentCannotStart = false
         /// Programs the rig says can be run, for the lookups that ask.
         var executables: Set<String> = []
         /// A provider's own command, as the session asked for it to be run,
@@ -193,6 +195,7 @@ final class EngineHostTests: XCTestCase {
                 schedule: { _, _ in },
                 openFile: { _ in },
                 launchAgent: { [unowned self] path, arguments, directory, _, onOutput, onExit in
+                    if agentCannotStart { throw CocoaError(.fileNoSuchFile) }
                     agentRuns.append((path, arguments, directory))
                     agentOutput = onOutput
                     agentExit = onExit
@@ -1072,7 +1075,81 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.text, "Could not find 'llm' in PATH. Is it installed?")
         XCTAssertEqual(session.messages.last?.isError, true)
         XCTAssertEqual(session.lastFailedPrompt, "hi", "it can be tried again once the program is there")
-        XCTAssertTrue(host.finished.isEmpty, "no turn ran, so none is reported")
+        XCTAssertEqual(host.finished.map(\.notice.failed), [true],
+                       "the turn could not start, and the host is told so once, as of any failed turn")
+    }
+
+    /// A command of the user's own that is refused before anything runs:
+    /// its program is not installed, its template is empty, or its template
+    /// would take the program's name from the prompt. Each says why in an
+    /// error bubble, and with the chat out of sight nobody sees a bubble,
+    /// so each is a failed turn to the host too, in the bubble's words.
+    func testACommandRefusedBeforeItStartsIsAFailedTurn() {
+        let refusals: [(why: String, template: String, bubble: String)] = [
+            ("the program is not installed", "llm -m {model} \"{prompt}\"",
+             "Could not find 'llm' in PATH. Is it installed?"),
+            ("the template is empty", "  ", "Invalid command template:   "),
+            ("the prompt would name the program", "{prompt} -rf x",
+             "Could not find '{prompt}' in PATH. Is it installed?"),
+            ("the prompt would be part of the program's name", "my{prompt} x",
+             "Could not find 'my{prompt}' in PATH. Is it installed?"),
+        ]
+        for (why, template, words) in refusals {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            // The program the prompt names is there: it is the template
+            // that is refused, not a lookup that failed.
+            rig.executables = ["/usr/bin/rm", "/usr/bin/myrm"]
+            let host = RecordingHost()
+            let engine = NexusAgentEngine(environment: rig.environment, host: host)
+            engine.updateActiveProvider(ownProvider(template))
+
+            engine.session.send("rm", configuration: engine.configuration, agentPath: engine.agentPath)
+
+            XCTAssertTrue(rig.commandRuns.isEmpty, why)
+            XCTAssertTrue(rig.agentRuns.isEmpty, why)
+            XCTAssertFalse(engine.session.isRunning, why)
+            let bubble = engine.session.messages.last
+            XCTAssertEqual(bubble?.isError, true, why)
+            XCTAssertEqual(bubble?.text, words, why)
+            XCTAssertEqual(engine.session.lastFailedPrompt, "rm", why)
+            XCTAssertEqual(host.finished.count, 1, "\(why): the host is told, once")
+            let notice = host.finished.first?.notice
+            XCTAssertEqual(notice?.providerName, "My LLM", why)
+            XCTAssertEqual(notice?.failed, true, why)
+            XCTAssertEqual(notice?.endedCleanly, false, why)
+            XCTAssertEqual(notice?.text, "", "\(why): there was no reply")
+            XCTAssertEqual(notice?.failureDetail, words, "\(why): the notice carries what the bubble says")
+            XCTAssertEqual(announcedOutOfSight(notice),
+                           NexusAgentTurnAnnouncement(playsSound: false,
+                                                      notificationTitle: "My LLM — Failed",
+                                                      notificationBody: words),
+                           why)
+        }
+    }
+
+    /// After a refusal the chat is usable: once the program is installed
+    /// the same prompt runs, and that turn is reported as any other.
+    func testATurnAfterARefusedCommandIsReportedAsAnyOther() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+        let configuration = NexusAgentConfiguration(activeProvider: ownProvider("llm {prompt}"))
+
+        session.send("hi", configuration: configuration, agentPath: nil)
+        XCTAssertEqual(host.finished.map(\.notice.failed), [true])
+        XCTAssertEqual(host.finished.first?.isChatVisible, true,
+                       "with no engine there is no window to be away from")
+
+        rig.executables = ["/opt/homebrew/bin/llm"]
+        session.send("hi", configuration: configuration, agentPath: nil)
+        XCTAssertEqual(rig.commandRuns.count, 1)
+        rig.commandOutput?(Data("hello".utf8))
+        rig.commandExit?(0)
+        XCTAssertEqual(host.finished.map(\.notice.failed), [true, false], "one report per turn")
+        XCTAssertNil(host.finished.last?.notice.failureDetail)
+        XCTAssertNil(session.lastFailedPrompt)
     }
 
     func testACommandIsLookedForWhereTheStandaloneLooks() {
@@ -2459,6 +2536,168 @@ final class EngineHostTests: XCTestCase {
                        NexusAgentTurnAnnouncement(playsSound: false,
                                                   notificationTitle: "Antigravity CLI — Failed",
                                                   notificationBody: "The agent stopped with an error.\nagy: quota exceeded"))
+    }
+
+    // MARK: - A turn that cannot be started is a failed turn
+
+    /// The agent's program is there but starting it fails. The chat says so
+    /// in an error bubble; with the chat out of sight that bubble is seen
+    /// by nobody, so the host is told too, in the bubble's words. The same
+    /// for every provider whose turns are run this way.
+    func testAnAgentThatCannotBeStartedIsAFailedTurn() {
+        let providers: [(NexusAgentCLIProvider, path: String, model: String)] = [
+            (.antigravity, "/fake/agy", ""), (.claude, "/fake/claude", ""), (.ollama, "/fake/ollama", "m"),
+        ]
+        for (provider, path, model) in providers {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            rig.agentCannotStart = true
+            let host = RecordingHost()
+            let engine = NexusAgentEngine(environment: rig.environment, host: host)
+            engine.updateActiveProvider(provider)
+            var configuration = engine.configuration
+            configuration.model = model
+
+            engine.session.send("do it", configuration: configuration, agentPath: path)
+            engine.session.stopTranscriptFollower()
+
+            XCTAssertFalse(engine.session.isRunning, provider.name)
+            XCTAssertTrue(rig.agentRuns.isEmpty, provider.name)
+            let bubble = engine.session.messages.last
+            XCTAssertEqual(bubble?.isError, true, provider.name)
+            XCTAssertEqual(bubble?.text, host.strings.agentFailed, provider.name)
+            XCTAssertEqual(host.finished.count, 1, "\(provider.name): the host is told, once")
+            let notice = host.finished.first?.notice
+            XCTAssertEqual(notice?.providerName, provider.name)
+            XCTAssertEqual(notice?.failed, true, provider.name)
+            XCTAssertEqual(notice?.endedCleanly, false, provider.name)
+            XCTAssertEqual(notice?.text, "", "\(provider.name): there was no reply")
+            XCTAssertEqual(notice?.failureDetail, bubble?.text, "\(provider.name): the notice carries what the bubble says")
+            XCTAssertEqual(announcedOutOfSight(notice),
+                           NexusAgentTurnAnnouncement(playsSound: false,
+                                                      notificationTitle: "\(provider.name) — Failed",
+                                                      notificationBody: host.strings.agentFailed),
+                           provider.name)
+
+            // The chat is usable again, and the next turn is reported as any other.
+            rig.agentCannotStart = false
+            engine.session.send("again", configuration: configuration, agentPath: path)
+            XCTAssertEqual(rig.agentRuns.count, 1, provider.name)
+            rig.agentExit?(0)
+            engine.session.stopTranscriptFollower()
+            XCTAssertEqual(host.finished.count, 2, provider.name)
+            XCTAssertEqual(host.finished.last?.notice.failed, false, provider.name)
+        }
+    }
+
+    /// The agent's program is not installed at all: the same failed turn,
+    /// in the words of the bubble that says it is missing.
+    func testAnAgentThatIsNotInstalledIsAFailedTurn() {
+        for provider in [NexusAgentCLIProvider.antigravity, .claude, .ollama] {
+            let rig = Rig()
+            defer { rig.tearDown() }
+            let host = RecordingHost()
+            let engine = NexusAgentEngine(environment: rig.environment, host: host)
+            engine.updateActiveProvider(provider)
+
+            engine.session.send("do it", configuration: engine.configuration, agentPath: nil)
+
+            XCTAssertFalse(engine.session.isRunning, provider.name)
+            XCTAssertTrue(rig.agentRuns.isEmpty, provider.name)
+            XCTAssertTrue(rig.programRuns.isEmpty, "\(provider.name): nothing is asked of a program that is not there")
+            let bubble = engine.session.messages.last
+            XCTAssertEqual(bubble?.isError, true, provider.name)
+            XCTAssertEqual(bubble?.text, wordsForMissing(provider), provider.name)
+            XCTAssertEqual(host.finished.count, 1, "\(provider.name): the host is told, once")
+            let notice = host.finished.first?.notice
+            XCTAssertEqual(notice?.providerName, provider.name)
+            XCTAssertEqual(notice?.failed, true, provider.name)
+            XCTAssertEqual(notice?.endedCleanly, false, provider.name)
+            XCTAssertEqual(notice?.text, "", provider.name)
+            XCTAssertEqual(notice?.failureDetail, wordsForMissing(provider), provider.name)
+            XCTAssertEqual(announcedOutOfSight(notice)?.notificationBody, wordsForMissing(provider), provider.name)
+        }
+    }
+
+    /// What the chat says when a built-in provider's program is not
+    /// installed: agy's own sentence for agy, and for the others the
+    /// sentence a missing command gets, naming the program looked for.
+    private func wordsForMissing(_ provider: NexusAgentCLIProvider) -> String {
+        switch provider.id {
+        case NexusAgentCLIProvider.claude.id: return "Could not find 'claude' in PATH. Is it installed?"
+        case NexusAgentCLIProvider.ollama.id: return "Could not find 'ollama' in PATH. Is it installed?"
+        default: return "The Antigravity CLI (agy) was not found."
+        }
+    }
+
+    /// The sentence names the program that was looked for, in the host's
+    /// words: agy's is the host's own (a translation is kept word for
+    /// word), any other is built around the program's name. The page asks
+    /// the engine for the same sentence while the program is missing.
+    func testAMissingProgramIsNamed() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.strings.missingAgent = "agy fehlt."
+        host.strings.commandNotFoundPrefix = "Nicht gefunden: "
+        host.strings.commandNotFoundSuffix = "."
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        let cases: [(NexusAgentCLIProvider, String)] = [
+            (.antigravity, "agy fehlt."), (.claude, "Nicht gefunden: claude."), (.ollama, "Nicht gefunden: ollama."),
+            (ownProvider(), "Nicht gefunden: llm."),
+            (ownProvider("\"/Applications/My Tool/run\" {prompt}"), "Nicht gefunden: /Applications/My Tool/run."),
+        ]
+        for (provider, words) in cases {
+            XCTAssertEqual(host.strings.missingProgram(of: provider), words, provider.commandTemplate)
+            engine.updateActiveProvider(provider)
+            XCTAssertNil(engine.agentPath, provider.commandTemplate)
+            XCTAssertEqual(engine.missingProgramText, words, provider.commandTemplate)
+            engine.session.newChat()
+            engine.session.send("hi", configuration: engine.configuration, agentPath: engine.agentPath)
+            XCTAssertEqual(engine.session.messages.last?.text, words, provider.commandTemplate)
+            XCTAssertEqual(host.finished.last?.notice.failureDetail, words, provider.commandTemplate)
+        }
+        XCTAssertEqual(host.finished.count, cases.count, "one failed notice each")
+
+        // Once the program is there the page has nothing to say.
+        rig.executables = ["/opt/homebrew/bin/llm"]
+        engine.updateActiveProvider(ownProvider())
+        XCTAssertNotNil(engine.agentPath)
+        XCTAssertNil(engine.missingProgramText)
+    }
+
+    /// A turn stopped while it was still waiting to start (Ollama being
+    /// asked for its models) never reaches the launch, so it is a stopped
+    /// turn and not a failed one, even when the launch would have failed.
+    func testATurnStoppedBeforeItStartsIsNotAFailedTurn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.programOutput = ollamaListing
+        rig.holdsProgram = true
+        rig.agentCannotStart = true
+        let host = RecordingHost()
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: host)
+
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { !rig.programRuns.isEmpty }
+        session.stop()
+        rig.finishProgram()
+        await rig.settle()
+
+        XCTAssertEqual(host.finished.count, 1, "the stop is the only thing reported")
+        XCTAssertEqual(host.finished.first?.notice.failed, false)
+        XCTAssertNil(host.finished.first?.notice.failureDetail)
+        XCTAssertEqual(session.messages.last?.text, host.strings.replyStopped)
+        XCTAssertEqual(session.messages.last?.isError, false)
+
+        // Dropped by New chat while waiting: nothing at all is reported.
+        rig.holdsProgram = true
+        session.send("hi", configuration: NexusAgentConfiguration(activeProvider: .ollama), agentPath: "/fake/ollama")
+        await rig.wait { rig.programRuns.count == 2 }
+        session.newChat()
+        rig.finishProgram()
+        await rig.settle()
+        XCTAssertEqual(host.finished.count, 1, "a turn dropped by New chat is not reported")
     }
 
     func testAnErrorTheAgentReportsItselfIsTheFailuresWords() {

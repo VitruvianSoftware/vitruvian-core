@@ -120,6 +120,37 @@ struct QuickPromptDragHandle: NSViewRepresentable {
     }
 }
 
+/// Sits behind a prompt field, draws nothing, and says when the field is in
+/// the window. SwiftUI has no word for "this field can take the caret now":
+/// `onAppear` comes before the field's AppKit view is in the window, and a
+/// caret asked for then is lost. This view is put in the window in the same
+/// pass as the field it is behind. One turn of the main queue after it is
+/// told it has a window, that pass is over, and the field is there to ask.
+struct PromptFieldArrival: NSViewRepresentable {
+    let arrived: () -> Void
+
+    func makeNSView(context: Context) -> ArrivalView {
+        let view = ArrivalView()
+        view.arrived = arrived
+        return view
+    }
+
+    func updateNSView(_ nsView: ArrivalView, context: Context) {
+        nsView.arrived = arrived
+    }
+
+    final class ArrivalView: NSView {
+        var arrived: (() -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            // Leaving a window is told here too, with no window.
+            guard window != nil else { return }
+            DispatchQueue.main.async { [weak self] in self?.arrived?() }
+        }
+    }
+}
+
 /// Compact provider picker button beside the prompt bar.
 struct ModularProviderButtonView: View {
     @ObservedObject var engine: NexusAgentEngine
@@ -195,11 +226,15 @@ struct ChatProviderBadge: View {
     }
 }
 
-/// Compact clickable model badge for the chat header.
+/// Compact clickable model badge for the chat header. A click turns it into
+/// a field for the model's name. Whether that field is open is the
+/// session's to say (`isEditingModel`), not the badge's own, because the
+/// window takes Esc before the field can: the window asks the session what
+/// the key means, the session clears the flag, and the field is gone.
 struct ChatModelBadge: View {
     @ObservedObject var engine: NexusAgentEngine
+    @ObservedObject var session: NexusAgentQuickPromptSession
     let strings: NexusAgentChatStrings
-    @State private var isEditing = false
     @State private var draft = ""
     @State private var isHovered = false
     @FocusState private var isFocused: Bool
@@ -210,7 +245,7 @@ struct ChatModelBadge: View {
     }
 
     var body: some View {
-        if isEditing {
+        if session.isEditingModel {
             TextField(strings.modelNamePlaceholder, text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
@@ -230,16 +265,25 @@ struct ChatModelBadge: View {
                     var next = engine.configuration
                     next.model = draft.trimmingCharacters(in: .whitespaces)
                     engine.save(next)
-                    isEditing = false
+                    session.isEditingModel = false
                 }
-                .onExitCommand { isEditing = false }
+                // Only reached where no window takes Esc first.
+                .onExitCommand { session.isEditingModel = false }
+                // The field starts from the model in use, and takes the
+                // caret a moment after it is there.
+                .onAppear {
+                    draft = engine.configuration.model
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isFocused = true
+                    }
+                }
+                // The field went with its header (a new chat, the session
+                // list opened over the conversation): nothing is being
+                // edited any more.
+                .onDisappear { session.cancelInlineEditing() }
         } else {
             Button {
-                draft = engine.configuration.model
-                isEditing = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isFocused = true
-                }
+                session.isEditingModel = true
             } label: {
                 Text(displayName)
                     .font(.system(size: 10, weight: .medium, design: engine.configuration.model.isEmpty ? .default : .monospaced))

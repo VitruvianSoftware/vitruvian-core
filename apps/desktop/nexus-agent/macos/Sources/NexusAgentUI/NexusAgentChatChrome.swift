@@ -44,12 +44,6 @@ public struct NexusAgentChatChrome {
     /// it, and the standalone app still offers it; an app whose drawer
     /// never did passes false.
     public var offersClearAll: Bool
-    /// What the top field says while the session list is open under it.
-    /// What is typed there is a prompt, and Return sends it; the list has
-    /// a filter field of its own. False, the default, shows the filter's
-    /// words there all the same, which is what Vitruvian has always shown.
-    /// True keeps the prompt's own placeholder.
-    public var keepsPromptPlaceholderOverSessions: Bool
 
     public init(backdrop: AnyView = AnyView(Color.clear),
                 isEmbedded: Bool = false,
@@ -58,8 +52,7 @@ public struct NexusAgentChatChrome {
                 dockToNotch: (() -> Void)? = nil,
                 dockToNotchHelp: String = "",
                 errorScheme: String = "nexus-agent-error",
-                offersClearAll: Bool = true,
-                keepsPromptPlaceholderOverSessions: Bool = false) {
+                offersClearAll: Bool = true) {
         self.backdrop = backdrop
         self.isEmbedded = isEmbedded
         self.isPinned = isPinned
@@ -68,6 +61,5 @@ public struct NexusAgentChatChrome {
         self.dockToNotchHelp = dockToNotchHelp
         self.errorScheme = errorScheme
         self.offersClearAll = offersClearAll
-        self.keepsPromptPlaceholderOverSessions = keepsPromptPlaceholderOverSessions
     }
 }
