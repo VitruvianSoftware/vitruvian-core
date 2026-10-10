@@ -1,22 +1,22 @@
 ---
 layout: null
-permalink: /downloads/latest/vitruvian-desktop.dmg
+permalink: /downloads/latest/vitruvian-remote.apk
 sitemap: false
 ---
-{%- assign desktop = site.data.downloads.categories | where: "id", "desktop" | first -%}
-{%- assign app = desktop.items | where: "id", "vitruvian-desktop" | first -%}
+{%- assign mobile = site.data.downloads.categories | where: "id", "mobile" | first -%}
+{%- assign app = mobile.items | where: "id", "android-remote" | first -%}
 {%- assign dl = app.downloads | first -%}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>Downloading Vitruvian Desktop...</title>
+    <title>Downloading Vitruvian Remote...</title>
     <link rel="canonical" href="{{ dl.url }}">
     <meta http-equiv="refresh" content="0; url={{ dl.url }}">
     <meta name="robots" content="noindex">
   </head>
   <body>
-    <p>Downloading latest Vitruvian Desktop release (v{{ app.version }})...</p>
+    <p>Downloading latest Vitruvian Remote release (v{{ app.version }})...</p>
     <p>If your download does not start automatically, <a href="{{ dl.url }}">click here to download</a>.</p>
     <script>window.location.replace("{{ dl.url }}");</script>
   </body>

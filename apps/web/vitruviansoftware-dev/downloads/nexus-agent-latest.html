@@ -3,7 +3,8 @@ layout: null
 permalink: /downloads/latest/nexus-agent.dmg
 sitemap: false
 ---
-{%- assign app = site.data.downloads.categories[0].items | where: "id", "nexus-agent" | first -%}
+{%- assign desktop = site.data.downloads.categories | where: "id", "desktop" | first -%}
+{%- assign app = desktop.items | where: "id", "nexus-agent" | first -%}
 {%- assign dl = app.downloads | where: "arch", "Universal" | first -%}
 <!DOCTYPE html>
 <html lang="en">
