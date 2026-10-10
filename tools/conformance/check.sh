@@ -422,6 +422,7 @@ ROWS_ACTION_PINS=""
 ROWS_GITLEAKS=""
 ROWS_OCIBASE=""
 ROWS_PROMGRAPH=""
+ROWS_PROMALERT=""
 ROWS_TECHDOCS=""
 ROWS_PROJKIND=""
 
@@ -464,6 +465,7 @@ emit() {
     gitleaks)     ROWS_GITLEAKS="${ROWS_GITLEAKS}${_row}" ;;
     ocibase)      ROWS_OCIBASE="${ROWS_OCIBASE}${_row}" ;;
     promgraph)    ROWS_PROMGRAPH="${ROWS_PROMGRAPH}${_row}" ;;
+    promalert)    ROWS_PROMALERT="${ROWS_PROMALERT}${_row}" ;;
     techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
     projkind)     ROWS_PROJKIND="${ROWS_PROJKIND}${_row}" ;;
 
@@ -4019,6 +4021,127 @@ EOF
     OK_COUNT=$((OK_COUNT + 1))
   fi
 }
+# ---------------------------------------------------------------------------
+# check_backstage_prometheus_alerts
+#
+# The Prometheus tab on a Backstage component page also has an alerts table,
+# driven by the component's `prometheus.io/alert` annotation: `all`, or a
+# comma-separated list of alert names. On its own that annotation filters by
+# rule name only, never by what the alert is about. A second annotation,
+# `prometheus.io/labels: k=v`, narrows the table to alerts whose labels equal
+# those pairs exactly (no regex, no trimming).
+#
+# Until 2026-10-10 every catalog-info.yaml said `prometheus.io/alert: all` and
+# nothing else, so every component page listed every alert in the cluster. The
+# table was full and looked right; it just was not about the component.
+#
+# So: an entity that asks for an alerts table must scope it to its own
+# namespace -- `prometheus.io/labels: namespace=<ns>`, where <ns> is the
+# entity's own `backstage.io/kubernetes-namespace`. A labels line with no
+# alert line is read by nothing. And an alert named explicitly must be an
+# `alert:` rule in the Prometheus ApplicationSet, or the table is empty
+# forever. A root with no `prometheus.io/alert` annotation reports nothing.
+# ---------------------------------------------------------------------------
+check_backstage_prometheus_alerts() {
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, re
+
+root = os.environ.get("ROOT", ".")
+rules_path = os.path.join(root, "gitops/argocd/platform/prometheus/applicationset.yaml")
+alerts = set()
+if os.path.isfile(rules_path):
+    for line in open(rules_path, encoding="utf-8"):
+        m = re.match(r"\s*(?:-\s+)?alert:\s*['\"]?([^'\"\s#]+)", line)
+        if m:
+            alerts.add(m.group(1))
+
+KEYS = {
+    "alert": "prometheus.io/alert",
+    "labels": "prometheus.io/labels",
+    "ns": "backstage.io/kubernetes-namespace",
+}
+
+def annotation(doc, key):
+    # None when absent; a comment line never matches because the key must be
+    # the first thing on the line.
+    for line in doc:
+        m = re.match(r"\s*" + re.escape(key) + r":\s*(.*?)\s*(?:#.*)?$", line)
+        if m:
+            return m.group(1).strip().strip("'\"")
+    return None
+
+def entity_name(doc):
+    for line in doc:
+        m = re.match(r"  name:\s*['\"]?([^'\"\s#]+)", line)
+        if m:
+            return m.group(1)
+    return "(unnamed)"
+
+skip = {"node_modules", ".git", "vendor", "dist"}
+total = 0
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = sorted(d for d in dirnames if d not in skip and not d.startswith("bazel-"))
+    if "catalog-info.yaml" not in filenames:
+        continue
+    path = os.path.join(dirpath, "catalog-info.yaml")
+    rel = os.path.relpath(path, root)
+    docs, cur = [], []
+    for line in open(path, encoding="utf-8"):
+        if re.match(r"---\s*$", line):
+            docs.append(cur)
+            cur = []
+        else:
+            cur.append(line.rstrip("\n"))
+    docs.append(cur)
+    for doc in docs:
+        alert = annotation(doc, KEYS["alert"])
+        labels = annotation(doc, KEYS["labels"])
+        ns = annotation(doc, KEYS["ns"])
+        name = entity_name(doc)
+        if alert is None:
+            if labels is not None:
+                print(f"FAIL\t{rel}\t{name}: {labels or '(empty)'}\tprometheus.io/labels without prometheus.io/alert, so nothing reads it")
+            continue
+        total += 1
+        if not ns:
+            print(f"FAIL\t{rel}\t{name}: {labels or '(no labels)'}\tprometheus.io/alert on an entity with no backstage.io/kubernetes-namespace to scope it to")
+        elif labels is None:
+            print(f"FAIL\t{rel}\t{name}: (no labels)\tprometheus.io/alert without prometheus.io/labels lists every alert in the cluster; want namespace={ns}")
+        elif labels != f"namespace={ns}":
+            print(f"FAIL\t{rel}\t{name}: {labels or '(empty)'}\tprometheus.io/labels is not exactly namespace={ns}, this entity's own namespace")
+        if alert != "all":
+            for wanted in alert.split(","):
+                wanted = wanted.strip()
+                if wanted not in alerts:
+                    print(f"FAIL\t{rel}\t{name}: {wanted or '(empty)'}\tprometheus.io/alert names an alert that is no alert rule")
+print(f"TOTAL\t{total}")
+PY
+)"
+
+  local total_seen=0 has_failures=0
+  while IFS="$(printf '\t')" read -r status file found why; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL) total_seen="$file" ;;
+      FAIL)
+        emit "promalert" "$GLYPH_FAIL" "$C_RED" "$file" "$found" "namespace=<own namespace>" \
+          "$why" "set prometheus.io/labels: namespace=<the entity's backstage.io/kubernetes-namespace> beside prometheus.io/alert, name only alert rules from gitops/argocd/platform/prometheus/applicationset.yaml, or remove both annotations"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  [ "$total_seen" -gt 0 ] || return 0
+  if [ "$has_failures" -eq 0 ]; then
+    emit "promalert" "$GLYPH_OK" "$C_GREEN" "catalog-info.yaml" "${total_seen} alert table(s)" "namespace=<own namespace>" \
+      "every alerts table is scoped to its component's namespace" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
 
 check_naming_conventions
 check_owners
@@ -4031,6 +4154,7 @@ check_action_sha_pins
 check_gitleaks_allowlist_paths
 check_oci_base_registry
 check_backstage_prometheus_graphs
+check_backstage_prometheus_alerts
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -4066,6 +4190,7 @@ print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit
 print_group "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)" "$ROWS_GITLEAKS"
 print_group "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)" "$ROWS_OCIBASE"
 print_group "Backstage Prometheus graphs (every prometheus.io/rule names a recording rule)" "$ROWS_PROMGRAPH"
+print_group "Backstage Prometheus alerts (each component lists only its own namespace's alerts)" "$ROWS_PROMALERT"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Chart-owned CRDs (turning a chart's CRD install off lets Argo CD prune them, deleting every object)" "$ROWS_CRDOWN"

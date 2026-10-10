@@ -50,38 +50,97 @@ for part in "$APP" "$HELPER" "$ADAPTER" "$MOUSE_TOOL"; do
 done
 # Bazel's outputs are read-only; signing rewrites them in place.
 chmod -R u+w "$APP"
-xattr -cr "$APP"
+find "$APP" -exec xattr -c {} + 2>/dev/null || true
 
 DEVELOPER_ID="$(security find-identity -v -p codesigning 2>/dev/null \
     | grep 'Developer ID Application' \
     | head -1 \
     | sed -E 's/.*"(.*)".*/\1/' || true)"
-if [[ -n "$DEVELOPER_ID" ]]; then
-    echo "▸ Signing with $DEVELOPER_ID…"
-    codesign --force --options runtime --timestamp \
-        --identifier "$FAN_HELPER_ID" --sign "$DEVELOPER_ID" "$HELPER"
-    codesign --force --options runtime --timestamp \
-        --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$DEVELOPER_ID" "$ADAPTER"
-    codesign --force --options runtime --timestamp \
-        --identifier "$MOUSE_TOOL_ID" --sign "$DEVELOPER_ID" "$MOUSE_TOOL"
-    codesign --force --options runtime --timestamp \
-        --entitlements "$ENTITLEMENTS" --sign "$DEVELOPER_ID" "$APP"
-else
-    echo "▸ No Developer ID identity installed; signing ad-hoc…"
-    codesign --force --identifier "$FAN_HELPER_ID" --sign - "$HELPER"
-    codesign --force --identifier "$NOW_PLAYING_ADAPTER_ID" --sign - "$ADAPTER"
-    codesign --force --identifier "$MOUSE_TOOL_ID" --sign - "$MOUSE_TOOL"
-    codesign --force --sign - "$APP"
-fi
-codesign --verify --strict "$HELPER"
-codesign --verify --strict "$ADAPTER"
-codesign --verify --strict "$MOUSE_TOOL"
-codesign --verify --deep --strict "$APP"
 
+sign_bundle() {
+    local target_app="$1"
+    local helper="$target_app/Contents/Library/LaunchServices/$FAN_HELPER_ID"
+    local adapter="$target_app/Contents/Frameworks/libVitruvianNowPlaying.dylib"
+    local mouse_tool="$target_app/Contents/Helpers/gravastar-mouse"
+
+    chmod -R u+w "$target_app"
+    find "$target_app" -exec xattr -c {} + 2>/dev/null || true
+
+    if [[ -n "$DEVELOPER_ID" ]]; then
+        echo "▸ Signing with $DEVELOPER_ID…"
+        codesign --force --options runtime --timestamp \
+            --identifier "$FAN_HELPER_ID" --sign "$DEVELOPER_ID" "$helper"
+        codesign --force --options runtime --timestamp \
+            --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$DEVELOPER_ID" "$adapter"
+        codesign --force --options runtime --timestamp \
+            --identifier "$MOUSE_TOOL_ID" --sign "$DEVELOPER_ID" "$mouse_tool"
+        codesign --force --options runtime --timestamp \
+            --entitlements "$ENTITLEMENTS" --sign "$DEVELOPER_ID" "$target_app"
+    else
+        echo "▸ No Developer ID identity installed; signing ad-hoc…"
+        codesign --force --identifier "$FAN_HELPER_ID" --sign - "$helper"
+        codesign --force --identifier "$NOW_PLAYING_ADAPTER_ID" --sign - "$adapter"
+        codesign --force --identifier "$MOUSE_TOOL_ID" --sign - "$mouse_tool"
+        codesign --force --sign - "$target_app"
+    fi
+    codesign --verify --strict "$helper"
+    codesign --verify --strict "$adapter"
+    codesign --verify --strict "$mouse_tool"
+    codesign --verify --deep --strict "$target_app"
+}
+
+# Sign and notarize universal bundle
+sign_bundle "$APP"
 ./Tools/notarize.sh "$APP"
-./Tools/make-dmg.sh "$APP"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
-DMG="dist/Vitruvian-$VERSION.dmg"
-./Tools/notarize.sh "$DMG"
-echo "✓ Release DMG: $PWD/$DMG"
+mkdir -p dist
+
+echo "▸ Packaging Universal DMG & ZIP…"
+./Tools/make-dmg.sh "$APP" "dist/Vitruvian-$VERSION-universal.dmg"
+cp -f "dist/Vitruvian-$VERSION-universal.dmg" "dist/Vitruvian-$VERSION.dmg"
+rm -f "dist/Vitruvian-$VERSION-universal.zip"
+ditto -c -k --keepParent "$APP" "dist/Vitruvian-$VERSION-universal.zip"
+
+echo "▸ Thinning and packaging Apple Silicon (arm64) DMG…"
+STAGE_ARM64="$STAGE/arm64"
+mkdir -p "$STAGE_ARM64"
+ditto "$APP" "$STAGE_ARM64/Vitruvian.app"
+APP_ARM64="$STAGE_ARM64/Vitruvian.app"
+for bin in "$APP_ARM64/Contents/MacOS/Vitruvian" \
+           "$APP_ARM64/Contents/Library/LaunchServices/$FAN_HELPER_ID" \
+           "$APP_ARM64/Contents/Frameworks/libVitruvianNowPlaying.dylib" \
+           "$APP_ARM64/Contents/Helpers/gravastar-mouse"; do
+    if lipo -info "$bin" | grep -q "arm64"; then
+        lipo "$bin" -thin arm64 -output "$bin"
+    fi
+done
+sign_bundle "$APP_ARM64"
+./Tools/notarize.sh "$APP_ARM64"
+./Tools/make-dmg.sh "$APP_ARM64" "dist/Vitruvian-$VERSION-arm64.dmg"
+
+echo "▸ Thinning and packaging Intel (x86_64) DMG…"
+STAGE_X86_64="$STAGE/x86_64"
+mkdir -p "$STAGE_X86_64"
+ditto "$APP" "$STAGE_X86_64/Vitruvian.app"
+APP_X86_64="$STAGE_X86_64/Vitruvian.app"
+for bin in "$APP_X86_64/Contents/MacOS/Vitruvian" \
+           "$APP_X86_64/Contents/Library/LaunchServices/$FAN_HELPER_ID" \
+           "$APP_X86_64/Contents/Frameworks/libVitruvianNowPlaying.dylib" \
+           "$APP_X86_64/Contents/Helpers/gravastar-mouse"; do
+    if lipo -info "$bin" | grep -q "x86_64"; then
+        lipo "$bin" -thin x86_64 -output "$bin"
+    fi
+done
+sign_bundle "$APP_X86_64"
+./Tools/notarize.sh "$APP_X86_64"
+./Tools/make-dmg.sh "$APP_X86_64" "dist/Vitruvian-$VERSION-x86_64.dmg"
+
+echo "▸ Notarizing DMGs…"
+./Tools/notarize.sh "dist/Vitruvian-$VERSION-universal.dmg"
+./Tools/notarize.sh "dist/Vitruvian-$VERSION-arm64.dmg"
+./Tools/notarize.sh "dist/Vitruvian-$VERSION-x86_64.dmg"
+./Tools/notarize.sh "dist/Vitruvian-$VERSION.dmg"
+
+echo "✓ Release artifacts ready in dist/:"
+ls -lh dist/Vitruvian-$VERSION*

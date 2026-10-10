@@ -283,8 +283,6 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      # Imports the Developer ID identity into a temporary keychain; a
-      # no-op when the secrets are not set.
       - name: Import the signing identity
         env:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
@@ -327,13 +325,19 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      # Imports the Developer ID identity into a temporary keychain; a
-      # no-op when the secrets are not set.
       - name: Import the signing identity
         env:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
         run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
+
+      - name: Mint App token for the Homebrew tap
+        id: tap-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: homebrew-tap
 
       - name: Build, package and publish the DMG
         env:
@@ -343,6 +347,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Cache-only: reuse the build the macOS pipeline unit cached.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
           NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}

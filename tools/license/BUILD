@@ -57,6 +57,7 @@ _IGNORE_GLOBS = [
     "**/coverage/**",
     ".remember/**",
     ".agents/**",
+    ".claude/**",
     # design-sync working state: the generated claude.ai/design bundle, the
     # full-vocabulary stylesheet it ships, the staged converter scripts and the
     # reference storybook build (see .design-sync/NOTES.md). All gitignored, so
