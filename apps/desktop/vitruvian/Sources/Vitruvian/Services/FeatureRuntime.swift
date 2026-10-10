@@ -517,6 +517,7 @@ package final class FeatureRuntime: ObservableObject {
         case .monitorPlan: SystemMonitor.shared.planDidChange()
         case .monitorAlerts: MonitorAlertService.shared.syncWithPreferences()
         case .fanControl: FanControlService.shared.syncWithPreferences()
+        case .tool(let id): ToolHost.shared.sync(id)
         }
     }
 }
@@ -524,8 +525,10 @@ package final class FeatureRuntime: ObservableObject {
 /// One thing a feature's binding does to a live service, named so a test can
 /// read a feature's bindings without bringing any service to life. Most sync
 /// a service with its preferences; the `stop…`, `cancel…`, `close…` and
-/// `reset…` ones tear down what an uninstalled feature left running.
-package enum FeatureBindingAction: Hashable, CaseIterable {
+/// `reset…` ones tear down what an uninstalled feature left running. `tool`
+/// hands a feature that has become a tool to the tool host, which decides
+/// whether it runs.
+package enum FeatureBindingAction: Hashable {
     case windowUseTracker, appSwitcher, dockPreview, dockClick, windowMaximizer, windowLayout, pointerDisplay
     case autoQuit, spacesOrder, scrollInverter, focusFollowsMouse, smoothScroll, mouseAcceleration, mouseNavigation
     case mouseButtonShortcuts, middleClick, mouseClickDebounce, keyboardDebounce, quitProtection, superKey
@@ -542,6 +545,8 @@ package enum FeatureBindingAction: Hashable, CaseIterable {
     case scratchpad, commandBar, nexusAgent
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
     case appUpdates, monitorPlan, monitorAlerts, fanControl
+    /// A feature that has become a tool: the tool host starts or stops it.
+    case tool(ToolID)
 }
 
 /// The pointer and keyboard features a normal quit takes down at once, in

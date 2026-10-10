@@ -19,6 +19,8 @@ enum ToolBrokerTests {
         oneLook(suite)
         clipboard(suite)
         host(suite)
+        runRule(suite)
+        hostRunsTools(suite)
         portManager(suite)
         manifestsAgree(suite)
     }
@@ -267,12 +269,19 @@ enum ToolBrokerTests {
         static let manifest = ToolBrokerTests.manifest([.notify])
         static var built = 0
         let services: ToolServices
+        var starts = 0
         var stops = 0
         init(services: ToolServices) {
             self.services = services
             Self.built += 1
         }
-        func stop() { stops += 1 }
+        func start() { starts += 1 }
+        func stop() {
+            stops += 1
+            ToolBrokerTests.events.append("portManager stop")
+        }
+        func run(_ command: CommandID) {}
+        func canRun(_ command: CommandID) -> Bool { false }
     }
 
     static func host(_ suite: TestSuite) {
@@ -293,6 +302,148 @@ enum ToolBrokerTests {
         host.stopAll()
         host.stopAll()
         suite.expect(first.stops == 2 && ProbeTool.built == 1, "quitting stops every built tool, and builds none")
+    }
+
+    /// What the probes below were asked, in order.
+    static var events: [String] = []
+
+    /// A tool with a switch and a command, to watch the host start, stop
+    /// and run it.
+    final class LifecycleProbe: BundledTool {
+        static let probe = CommandID("homebrew/probe")!
+        static let manifest = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("homebrew")!, name: "homebrew", symbol: "shippingbox",
+                                 commands: [CommandDescriptor(id: probe, title: "probe", symbol: "shippingbox",
+                                                              surfaces: [])!])!,
+            group: .tools, capabilities: [],
+            preferences: [PreferenceDeclaration(key: "probeSwitch", default: .bool(false))],
+            activation: [.onLaunch, .onCommand], enabledBy: "probeSwitch")!
+        static var built = 0
+        init(services: ToolServices) { Self.built += 1 }
+        func start() { ToolBrokerTests.events.append("start") }
+        func stop() { ToolBrokerTests.events.append("stop") }
+        func run(_ command: CommandID) { ToolBrokerTests.events.append("run \(command.name)") }
+        func canRun(_ command: CommandID) -> Bool { true }
+    }
+
+    /// The rule itself, against every combination of what it is told. A
+    /// tool with no switch is `nil`.
+    static func runRule(_ suite: TestSuite) {
+        for installed in [false, true] {
+            for switchedOn in [nil, false, true] as [Bool?] {
+                for holdsGrants in [false, true] {
+                    let runs = installed && switchedOn != false && holdsGrants
+                    let name = switchedOn.map { "switched \($0 ? "on" : "off")" } ?? "no switch"
+                    suite.expect(ToolHost.shouldRun(installed: installed, switchedOn: switchedOn,
+                                                    holdsGrants: holdsGrants) == runs,
+                                 "installed \(installed), \(name), grants held \(holdsGrants): the tool "
+                                     + (runs ? "should run" : "should not run"))
+                }
+            }
+        }
+        var asked: [String] = []
+        let stopsEarly = ToolHost.shouldRun(installed: false,
+                                            switchedOn: { asked.append("switch"); return true }(),
+                                            holdsGrants: { asked.append("grants"); return true }())
+        suite.expect(!stopsEarly && asked.isEmpty,
+                     "a tool that is not installed is not asked about its switch or its grants")
+    }
+
+    static func hostRunsTools(_ suite: TestSuite) {
+        let rig = URLCleanerTests.CleanerRig()
+        defer { rig.close() }
+        let feature = AppFeature.homebrew
+        let id = LifecycleProbe.manifest.id
+        let command = LifecycleProbe.probe
+        func set(installed: Bool, on: Bool) {
+            rig.defaults.set(installed, forKey: feature.availabilityKey)
+            rig.defaults.set(on, forKey: "probeSwitch")
+        }
+
+        // The run rule, against every combination.
+        for installed in [false, true] {
+            for on in [false, true] {
+                LifecycleProbe.built = 0
+                events = []
+                let host = ToolHost(broker: rig.broker(), tools: [LifecycleProbe.self])
+                set(installed: installed, on: on)
+                host.sync(id)
+                let runs = installed && on
+                suite.expect(host.shouldRun(LifecycleProbe.manifest) == runs && events == (runs ? ["start"] : [])
+                                 && LifecycleProbe.built == (runs ? 1 : 0) && host.running == (runs ? [id] : []),
+                             "installed \(installed), switched on \(on): the host "
+                                 + (runs ? "starts the tool" : "leaves the tool unbuilt"))
+            }
+        }
+
+        LifecycleProbe.built = 0
+        ProbeTool.built = 0
+        events = []
+        let host = ToolHost(broker: rig.broker(), tools: [LifecycleProbe.self, ProbeTool.self])
+        rig.defaults.set(false, forKey: AppFeature.portManager.availabilityKey)
+        set(installed: true, on: false)
+        host.sync(ProbeTool.manifest.id)
+        host.sync(id)
+        host.sync(ToolID("screenshot")!)
+        host.stopAll()
+        suite.expect(events.isEmpty && host.built.isEmpty && LifecycleProbe.built == 0 && ProbeTool.built == 0,
+                     "a tool that should not run and was never built is not built to be stopped")
+        rig.defaults.set(true, forKey: AppFeature.portManager.availabilityKey)
+        set(installed: true, on: true)
+        host.sync(ProbeTool.manifest.id)
+        host.sync(id)
+        host.sync(id)
+        suite.expect(events == ["start", "start"] && host.running == [ProbeTool.manifest.id, id]
+                         && LifecycleProbe.built == 1 && host.tool(ProbeTool.self).starts == 1,
+                     "deciding again while a tool runs starts the same tool again, as a sync always did")
+        set(installed: true, on: false)
+        host.sync(id)
+        host.sync(id)
+        suite.expect(events.suffix(2) == ["stop", "stop"] && host.running == [ProbeTool.manifest.id],
+                     "switching a tool off stops it, and stopping twice is safe")
+        set(installed: true, on: true)
+        host.sync(id)
+        events = []
+        host.stopAll()
+        suite.expect(events == ["stop", "portManager stop"] && host.running.isEmpty && LifecycleProbe.built == 1,
+                     "quitting stops what is running, last started first, and builds nothing")
+
+        // Commands.
+        set(installed: true, on: false)
+        events = []
+        suite.expect(host.canRun(command),
+                     "a command can run while the tool's switch is off: the switch is for background work")
+        host.run(command)
+        suite.expect(events == ["run probe"], "the host hands a command to its tool")
+        suite.expect(!host.canRun(CommandID("homebrew/unknown")!) && !host.canRun(CommandID("screenshot/capture")!),
+                     "the host runs only a command that a manifest it holds declares")
+
+        // The registry runs a tool's command through the host, which it
+        // reaches only when a command is run or asked about.
+        let registry = ToolRegistry(isAvailable: { $0.isAvailable(in: rig.defaults) })
+        var reached = 0
+        BuiltinTools.install(into: registry, tools: [LifecycleProbe.self, ProbeTool.self], host: {
+            reached += 1
+            return host
+        })
+        suite.expect(reached == 0 && LifecycleProbe.built == 1 && events == ["run probe"],
+                     "installing the built-in tools reaches for no host and builds no tool")
+        suite.expect(registry.tool(id) == LifecycleProbe.manifest.tool && registry.hasHandler(for: command)
+                         && registry.name(for: id, language: .systemDefault)
+                             == feature.hubTitle(Strings.localized(.systemDefault), hub: FeatureStrings.hub(.systemDefault)),
+                     "a tool the host holds is registered as its manifest describes it, under the hub's name")
+        suite.expect(ToolSurface.allCases.allSatisfy { surface in
+            !registry.commands(on: surface).contains { $0.id == command }
+        }, "a command that asks for no surface is listed on none")
+        suite.expect(reached == 0, "listing commands reaches for no host")
+        suite.expect(registry.run(command) && events == ["run probe", "run probe"] && reached > 0,
+                     "the registry runs a tool's command through the host")
+        set(installed: false, on: true)
+        host.run(command)
+        reached = 0
+        suite.expect(!host.canRun(command) && !registry.run(command) && events == ["run probe", "run probe"]
+                         && reached == 0,
+                     "a tool removed in the hub runs no command, and the registry says so before asking the host")
     }
 
     static func portManager(_ suite: TestSuite) {
