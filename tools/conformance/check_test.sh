@@ -935,28 +935,61 @@ promgraph_rows() {
   '
 }
 
-# write_graph_component <root> <app> <annotation value> — one component, and the
-# single rule the fixture cluster records.
+# --- check_backstage_prometheus_alerts ----------------------------------------
+# A component's alerts table has to be narrowed to the component's own
+# namespace, or it lists every alert in the cluster. These rows come from the
+# same two runs as the graph cases below: each run of the checker costs seconds
+# against this test's timeout, so the alert fixtures ride along.
+promalert_rows() {
+  printf '%s\n' "$1" | awk '
+    /^Backstage Prometheus alerts/ {in_s=1; next}
+    in_s && /^[A-Za-z]/ && !/^ / {in_s=0}
+    in_s && index($0, "catalog-info.yaml") {print}
+  '
+}
+
+# add_annotations <root> <app> <annotation line>... — append annotations to a
+# component written by write_graph_component.
+add_annotations() {
+  _file="$1/apps/web/$2/catalog-info.yaml"
+  shift 2
+  for _line in "$@"; do
+    printf '    %s\n' "$_line" >> "$_file"
+  done
+}
+
+# write_graph_component <root> <app> <annotation value> — one component, plus
+# the single recording rule and the single alert rule the fixture cluster has.
 write_graph_component() {
   mkdir -p "$1/gitops/argocd/platform/prometheus" "$1/apps/web/$2"
-  printf '      - record: demo:cpu_cores\n        expr: vector(1)\n' \
+  printf '      - record: demo:cpu_cores\n        expr: vector(1)\n      - alert: DemoDown\n        expr: vector(1)\n' \
     > "$1/gitops/argocd/platform/prometheus/applicationset.yaml"
   printf 'metadata:\n  annotations:\n    prometheus.io/rule: %s\n' "$3" \
     > "$1/apps/web/$2/catalog-info.yaml"
 }
 
-# The fixed state: the graph names a rule that is recorded.
+# The fixed state: the graph names a rule that is recorded, and the alerts
+# table is narrowed to the component's own namespace.
 case_promgraph_recorded_rule() {
   root="$(new_root)"
   write_graph_component "$root" demo '"demo:cpu_cores|pod"'
+  add_annotations "$root" demo \
+    'prometheus.io/alert: all' \
+    'prometheus.io/labels: namespace=demo' \
+    'backstage.io/kubernetes-namespace: demo'
   out="$(run_check "$root")"
   expect "a graph that names a recording rule passes" \
     "$(promgraph_rows "$out")" "✓"
+  expect "an alerts table scoped to the component's own namespace passes" \
+    "$(promalert_rows "$out")" "✓"
+  expect "the passing row counts the one alerts table it checked" \
+    "$(promalert_rows "$out")" "1 alert table(s)"
   rm -rf "$root"
 }
 
-# Three ways to get it wrong, one component each, checked in a single run
-# because every run of the checker costs seconds against this test's timeout.
+# Three ways to get a graph wrong and five ways to get an alerts table wrong,
+# one component each, checked in a single run because every run of the checker
+# costs seconds against this test's timeout.
 case_promgraph_bad_annotations() {
   root="$(new_root)"
   # The 2026-10-09 state: the app's own name, which is no metric.
@@ -965,7 +998,47 @@ case_promgraph_bad_annotations() {
   write_graph_component "$root" byexpr '"sum(rate(http_requests_total[5m]))"'
   # One unrecorded rule in a list fails even when the others are fine.
   write_graph_component "$root" bylist '"demo:cpu_cores|pod,demo:memory_bytes|pod"'
+  # The 2026-10-10 state: "all" with nothing narrowing it.
+  write_graph_component "$root" nolabels '"demo:cpu_cores|pod"'
+  add_annotations "$root" nolabels \
+    'prometheus.io/alert: all' \
+    'backstage.io/kubernetes-namespace: nolabels'
+  # Narrowed, but to somebody else's namespace.
+  write_graph_component "$root" wrongns '"demo:cpu_cores|pod"'
+  add_annotations "$root" wrongns \
+    'prometheus.io/alert: all' \
+    'prometheus.io/labels: namespace=other' \
+    'backstage.io/kubernetes-namespace: wrongns'
+  # A labels line the plugin never reads, because there is no alerts table.
+  write_graph_component "$root" orphan '"demo:cpu_cores|pod"'
+  add_annotations "$root" orphan \
+    'prometheus.io/labels: namespace=orphan' \
+    'backstage.io/kubernetes-namespace: orphan'
+  # Correctly scoped, but one of the two named alerts is no rule.
+  write_graph_component "$root" norule '"demo:cpu_cores|pod"'
+  add_annotations "$root" norule \
+    'prometheus.io/alert: DemoDown,NoSuchAlert' \
+    'prometheus.io/labels: namespace=norule' \
+    'backstage.io/kubernetes-namespace: norule'
+  # An alerts table on an entity that has no namespace to narrow it to.
+  write_graph_component "$root" nons '"demo:cpu_cores|pod"'
+  add_annotations "$root" nons \
+    'prometheus.io/alert: all' \
+    'prometheus.io/labels: namespace=nons'
   out="$(run_check "$root")"
+  arows="$(promalert_rows "$out")"
+  expect "an alerts table with no labels line fails" \
+    "$(printf '%s\n' "$arows" | grep 'apps/web/nolabels/')" "without prometheus.io/labels"
+  expect "a labels line naming another namespace fails" \
+    "$(printf '%s\n' "$arows" | grep 'apps/web/wrongns/')" "not exactly namespace=wrongns"
+  expect "a labels line with no alerts table fails" \
+    "$(printf '%s\n' "$arows" | grep 'apps/web/orphan/')" "without prometheus.io/alert"
+  expect "an alert name that is no alert rule fails on that name" \
+    "$(printf '%s\n' "$arows" | grep 'apps/web/norule/')" "NoSuchAlert"
+  expect "the alert name that IS a rule is not reported" \
+    "norule-rows=$(printf '%s\n' "$arows" | grep -c 'apps/web/norule/')" "norule-rows=1"
+  expect "an alerts table on an entity with no namespace fails" \
+    "$(printf '%s\n' "$arows" | grep 'apps/web/nons/')" "no backstage.io/kubernetes-namespace"
   rows="$(promgraph_rows "$out")"
   expect "a graph named after the app, with no such rule, fails" \
     "$(printf '%s\n' "$rows" | grep 'apps/web/byname/')" "no recording rule with this name"

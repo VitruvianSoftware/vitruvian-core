@@ -32,7 +32,11 @@ metadata:
     backstage.io/techdocs-ref: dir:.
     opentelemetry.io/service-name: mcp-slack
     prometheus.io/rule: "mcp_slack:requests_per_second|code_class,mcp_slack:ready_pods|namespace,mcp_slack:cpu_cores|pod,mcp_slack:memory_bytes|pod"
+    # "all" plus the labels line = every alert rule, but only the alerts whose
+    # namespace label is this component's namespace. Without the labels line
+    # the page lists every alert in the cluster.
     prometheus.io/alert: all
+    prometheus.io/labels: namespace=mcp-slack
     backstage.io/kubernetes-id: mcp-slack
     backstage.io/kubernetes-namespace: mcp-slack
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=mcp-slack

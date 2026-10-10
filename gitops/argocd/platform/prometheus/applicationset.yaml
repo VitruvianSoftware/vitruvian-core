@@ -794,6 +794,10 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      # The Backstage page for this app lists an alert only when its
+                      # namespace label matches. The sum() above drops every label,
+                      # so the namespace is named here.
+                      namespace: mcp-slack
                     annotations:
                       summary: "mcp-slack failing {{ $value | humanizePercentage }} of requests"
                       description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Split the class before debugging: 503 means the IdP was unreachable and the token was never judged (IdpUnavailableError — check Zitadel/JWKS, not this server); 500 means an unexpected failure in this server (check pod logs). The alert fires on both because either is an outage, but they are different systems."
@@ -865,6 +869,10 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      # The Backstage page for this app lists an alert only when its
+                      # namespace label matches. The sum() above drops every label,
+                      # so the namespace is named here.
+                      namespace: mcp-slack
                     annotations:
                       summary: "mcp-slack cannot reach Zitadel (sustained 503)"
                       description: "mcp-slack has been returning IdpUnavailableError (503) for >10m — the server could not reach the IdP to verify tokens. This is our failure, not the caller's. Does NOT indicate pod-down (an Envoy-generated 503 is not counted here), and does NOT yet cover a slow IdP — JWKSTimeout still returns 401, tracked on #1418."
@@ -931,6 +939,10 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      # The Backstage page for this app lists an alert only when its
+                      # namespace label matches. The sum() above drops every label,
+                      # so the namespace is named here.
+                      namespace: mcp-slack
                     annotations:
                       summary: "mcp-slack repeatedly refusing a validly-signed token (sustained 403)"
                       description: "Someone holding a validly-signed token audienced for the mcp-slack project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: mcp-slack: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
