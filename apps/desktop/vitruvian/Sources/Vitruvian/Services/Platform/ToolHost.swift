@@ -61,9 +61,10 @@ package final class ToolHost {
 
     /// The run rule: a tool should be running when it is installed in the
     /// hub, switched on when it has a switch (`nil` when it has none), and
-    /// holding every macOS grant its capabilities ride on. This is the
-    /// check each service made for itself before it became a tool. A tool
-    /// that is not installed is not asked about the rest.
+    /// holding every macOS grant it needs to start
+    /// (`ToolManifest.grantsNeededToStart`). This is the check each service
+    /// made for itself before it became a tool. A tool that is not
+    /// installed is not asked about the rest.
     nonisolated package static func shouldRun(installed: Bool, switchedOn: @autoclosure () -> Bool?,
                                               holdsGrants: @autoclosure () -> Bool) -> Bool {
         guard installed else { return false }
@@ -77,8 +78,7 @@ package final class ToolHost {
         Self.shouldRun(
             installed: broker.environment.isInstalled(manifest.id),
             switchedOn: manifest.enabledBy.map { (broker.backings.storage.read($0) as? Bool) == true },
-            holdsGrants: manifest.capabilities.flatMap(\.capability.ridesOn)
-                .allSatisfy(broker.environment.isGranted))
+            holdsGrants: manifest.grantsNeededToStart.allSatisfy(broker.environment.isGranted))
     }
 
     /// Starts or stops the tool with this id so that it matches
@@ -104,6 +104,14 @@ package final class ToolHost {
         let id = type.manifest.id
         if types[id] == nil { types[id] = type }
         sync(id)
+    }
+
+    /// Stops the tool with this id at once, whatever the run rule says, and
+    /// builds nothing. For the moments the app lets go of every input it
+    /// holds, such as a full uninstall. The next `sync` starts it again.
+    package func suspend(_ id: ToolID) {
+        running.removeAll { $0 == id }
+        tools[id]?.stop()
     }
 
     /// Stops every built tool, and builds none: first the running ones,

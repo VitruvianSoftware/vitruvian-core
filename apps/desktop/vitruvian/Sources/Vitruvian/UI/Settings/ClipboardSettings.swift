@@ -10,10 +10,8 @@ package struct ClipboardSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var history = ClipboardHistoryService.shared
-    @ObservedObject private var pastePlain = PastePlainService.shared
     @ObservedObject private var permissions = Permissions.shared
     @State private var clearingIDs: Set<UUID>?
-    @AppStorage(Preferences.pastePlainEnabled) private var pastePlainEnabled: Bool
     @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var limit: Int
     @AppStorage(Preferences.clipboardHistorySkipSensitive) private var skipSensitive: Bool
@@ -108,30 +106,8 @@ package struct ClipboardSettings: View {
             }
 
             if AppFeature.pastePlain.isAvailable {
-                Section {
-                    Toggle(l10n.s.pastePlainName, isOn: $pastePlainEnabled)
-                        .onChange(of: pastePlainEnabled) { _, _ in
-                            PastePlainService.shared.syncWithPreferences()
-                        }
-                    Text(l10n.s.pastePlainCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ShortcutPreferenceRow(role: .pastePlain,
-                                          isEnabled: pastePlainEnabled) {
-                        PastePlainService.shared.syncWithPreferences()
-                    }
-                    if pastePlainEnabled, pastePlain.shortcutRegistrationFailed {
-                        Text(l10n.s.shortcutUnavailable)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    if pastePlainEnabled, !permissions.accessibility {
-                        PermissionRow(kind: .accessibility)
-                    }
-                } header: {
-                    Text(l10n.s.pastePlainName)
-                }
-                .settingsFormSectionAnchor(.pastePlain)
+                // Paste as plain text's section is a view of its own.
+                PastePlainSettingsSection(accessibilityGranted: permissions.accessibility)
             }
 
             if AppFeature.clipboardHistory.isAvailable {

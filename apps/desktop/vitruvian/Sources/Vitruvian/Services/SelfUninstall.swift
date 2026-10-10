@@ -329,7 +329,8 @@ package enum SelfUninstall {
         case .dockClick: DockClickService.shared.suspend()
         case .middleClick: MiddleClickService.shared.suspend()
         case .quitProtection: QuitProtectionService.shared.suspend()
-        case .pastePlain: PastePlainService.shared.suspend()
+        // A tool: the tool host stops it, which gives its shortcut back.
+        case .pastePlain: ToolHost.shared.suspend(PastePlainService.manifest.id)
         case .snippetLibrary: SnippetLibraryService.shared.suspend()
         case .textSnippets: TextSnippetService.shared.suspend()
         case .screenCapture: ScreenCaptureService.shared.suspend()

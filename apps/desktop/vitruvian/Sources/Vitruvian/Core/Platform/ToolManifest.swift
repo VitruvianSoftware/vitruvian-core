@@ -21,11 +21,17 @@ package enum Capability: String, CaseIterable, Hashable, Sendable {
     case clipboardRewrite = "clipboard.rewrite"
     /// Read the preferences the tool's manifest declares.
     case storage
+    /// Hold a global shortcut.
+    case hotkey
+    /// Paste, and press a menu command, in the app in front.
+    case keystrokes
 
     /// The macOS grants no operation of this capability works without.
     package var ridesOn: [AppPermission] {
         switch self {
-        case .notify, .open, .processes, .clipboardWrite, .clipboardRead, .clipboardRewrite, .storage: return []
+        case .notify, .open, .processes, .clipboardWrite, .clipboardRead, .clipboardRewrite, .storage, .hotkey:
+            return []
+        case .keystrokes: return [.accessibility]
         }
     }
 }
@@ -36,11 +42,19 @@ package enum Capability: String, CaseIterable, Hashable, Sendable {
 package struct CapabilityRequest: Equatable, Sendable {
     package let capability: Capability
     package let reason: String
+    /// True when the tool starts without the macOS grants this capability
+    /// rides on, and asks for them when it first needs one. Every operation
+    /// of the capability is still refused until the grant is there.
+    package let startsWithoutGrant: Bool
 
-    package init?(_ capability: Capability, reason: String) {
-        guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    /// Nil without a reason. Nil too when `startsWithoutGrant` is set on a
+    /// capability that rides on no grant: there is nothing to start without.
+    package init?(_ capability: Capability, reason: String, startsWithoutGrant: Bool = false) {
+        guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !startsWithoutGrant || !capability.ridesOn.isEmpty else { return nil }
         self.capability = capability
         self.reason = reason
+        self.startsWithoutGrant = startsWithoutGrant
     }
 }
 
@@ -110,5 +124,11 @@ package struct ToolManifest: Equatable, Sendable {
 
     package func declares(_ capability: Capability) -> Bool {
         capabilities.contains { $0.capability == capability }
+    }
+
+    /// The macOS grants the tool must hold before the host starts it: those
+    /// its capabilities ride on, less the ones it says it starts without.
+    package var grantsNeededToStart: [AppPermission] {
+        capabilities.filter { !$0.startsWithoutGrant }.flatMap(\.capability.ridesOn)
     }
 }

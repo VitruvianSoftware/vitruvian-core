@@ -1174,12 +1174,15 @@ enum ClipboardFeatureTests {
         pasteboardAccess.async { plainWedge.wait() }
         var pastedPlain: String?
         var pastedPlainOnMain = false
-        PastePlainService.readPlainText(on: pasteboardAccess,
-                                        from: { NSPasteboard(name: NSPasteboard.Name("vitru.tests.paste-plain")) },
-                                        then: { text in
-                                            pastedPlain = text
-                                            pastedPlainOnMain = Thread.isMainThread
-                                        })
+        ClipboardWatcher(environment: .init(
+            lane: { pasteboardAccess.async($0) },
+            main: { work in DispatchQueue.main.async { work() } },
+            pasteboard: { NSPasteboard(name: NSPasteboard.Name("vitru.tests.paste-plain")) },
+            every: { _, _, _ in {} }))
+            .readPlainText { text in
+                pastedPlain = text
+                pastedPlainOnMain = Thread.isMainThread
+            }
         let plainHeldUntil = Date().addingTimeInterval(0.1)
         while Date() < plainHeldUntil {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))

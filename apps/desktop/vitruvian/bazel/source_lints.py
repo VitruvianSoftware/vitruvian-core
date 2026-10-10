@@ -2234,6 +2234,17 @@ MIGRATED_TOOLS = {
             "urlCleanerDisabledParameters",
         ],
     },
+    "pastePlain": {
+        "files": [
+            "Sources/Vitruvian/Services/QuickTools/PastePlainService.swift",
+            "Sources/Vitruvian/UI/Settings/PastePlainSettingsSection.swift",
+        ],
+        "types": ["PastePlainService"],
+        # The manifest also declares `pastePlainShortcut`; the view that
+        # binds it is the shortcut row every feature shares, which is not
+        # one of these files.
+        "keys": ["pastePlainEnabled"],
+    },
 }
 
 # What a migrated tool's files may not name, and what to say.

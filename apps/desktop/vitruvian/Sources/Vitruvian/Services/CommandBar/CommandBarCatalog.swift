@@ -473,7 +473,8 @@ package enum CommandBarCatalog {
                 icon: .symbol("doc.plaintext"),
                 shortcut: roleShortcut(.pastePlain),
                 trouble: accessibilityTrouble(),
-                run: { _ in afterBeat { PastePlainService.shared.performPastePlain() } }))
+                // Paste as plain text is a tool: its command runs through the registry.
+                run: { _ in afterBeat { ToolRegistry.shared.run(PastePlainService.paste) } }))
         }
         if AppFeature.cleaningMode.isAvailable {
             entries.append(CommandBarEntry(

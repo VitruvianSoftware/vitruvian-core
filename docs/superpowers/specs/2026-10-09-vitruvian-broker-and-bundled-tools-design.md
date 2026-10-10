@@ -38,6 +38,40 @@ sub-project 3 puts a process boundary and a stranger's code behind it.
 5. The by-hand checks in section 10 are recorded with the Mac and macOS
    version they were run on.
 
+**As built, checked on 2026-10-09** against the code at the end of stage C.
+Two of the five are met as written. The sub-project is built; it is not done
+by its own list.
+
+1. **Met.** `BundledTools.all` lists the three types, each with a manifest.
+   `main.swift` calls `BuiltinTools.install()`, which registers each from its
+   manifest. `ToolBrokerTests.manifestsAgree` holds each manifest to its
+   `AppFeature` and to the registered defaults.
+2. **Met, for the files the lint lists.** `MIGRATED_TOOLS` has three rows and
+   ten files, and `source_lints_test` passes. Files that serve a tool and
+   belong to something else are outside it; section 8 names them.
+3. **Not met as written.** No arm is gone: the switches are exhaustive, so
+   each arm stays and says something else. The URL cleaner's and Paste as
+   plain text's return `.tool(id)`, and their own actions and `perform` arms
+   are gone. The Port manager's returns `[]`, as it did before this
+   sub-project: it has no background work, so there is nothing to hand the
+   host. The quit list names none of the three. The URL cleaner's line is
+   gone; the other two never had one; `ToolHost.stopAll()` stops them.
+   `SelfUninstall` keeps one line for Paste as plain text, which now calls
+   `ToolHost.suspend`.
+4. **Not met as written.** The tests pass, old and new. The expectations of
+   the tests that were there before each stage were kept, but not every
+   line. Two calls in `ClipboardFeatureTests` changed because the function
+   they called moved into the broker: the body of one helper in stage B, one
+   call site in stage C. Two expectations in `ToolPlatformTests`, written in
+   stage A, changed on purpose. The list of capability names grew in stages
+   B and C. "No capability rides on a macOS grant" became "one does:
+   `keystrokes`, on Accessibility" in stage C.
+5. **Not met.** None of the by-hand checks has been run by anyone, for any
+   of the three stages. The pull requests of stages A (#3027) and B (#3037)
+   list their checks and say "None are done". Stage C's fifteen are not done
+   either. Nothing in section 10's by-hand list is known to work on a real
+   Mac until somebody runs it.
+
 ## 2. What the assessment found
 
 Two read-only assessments ran on 2026-10-09 against `main` at `3ad6ed46d`.
@@ -176,7 +210,7 @@ that the JSON schema in sub-project 3 is a transcription, not a redesign.
 |---|---|---|
 | `tool` | `ToolDescriptor` (id, name, symbol, commands) | as today |
 | `group` | `FeatureGroup` | `AppFeature.group` |
-| `capabilities` | `[CapabilityRequest]`: a `Capability` and a reason | new |
+| `capabilities` | `[CapabilityRequest]`: a `Capability`, a reason, and whether the tool starts without the grants the capability rides on | new |
 | `preferences` | `[PreferenceDeclaration]`: storage key and default (a `PreferenceDeclaration.Value`, which carries the type) | the keys the feature has today, unchanged |
 | `activation` | `[Activation]`: `.onLaunch`, `.onCommand`, `.onShown` | what `FeatureRuntime.actions(for:)` does today |
 | `enabledBy` | a preference key, or none | `AppFeature.enabledKeys` |
@@ -240,9 +274,22 @@ protocol, and to the host the run rule (`ToolHost.shouldRun`),
 finds the tool should run, so it too must be safe to call twice. The host
 learns which tools exist from one list, `BundledTools.all`. The Port manager
 has no background work and no command: its `start` and `run` do nothing. The
-rule's grant clause is written and tested as a plain function, but no
-capability rides on a macOS grant until stage C, so no real tool reaches it
-yet; "the tool declared it can start without" is stage C's too.
+rule's grant clause was written and tested as a plain function in stage B,
+when no capability rode on a macOS grant.
+
+Stage C added the first capability that does, `keystrokes`, on
+Accessibility (`Capability.ridesOn`), so a real tool reaches the grant
+clause. It also added `CapabilityRequest.startsWithoutGrant` and
+`ToolManifest.grantsNeededToStart`. That is what "the tool declared it can
+start without" means in code, and it is said for each capability, not once
+for the tool: the host starts a tool when it holds the grants its
+capabilities ride on, less the ones a request says it starts without. A
+request for a capability that rides on nothing may not say so. Paste as
+plain text says it for `keystrokes`: its shortcut is taken with or without
+Accessibility, and the first press asks. Every `keystrokes` call is still
+refused until the grant is there. Stage C also added `ToolHost.suspend(id)`,
+which stops one tool at once whatever the rule says; a full uninstall calls
+it.
 
 A tool holds no singleton of its own and reaches for none. Everything it may
 touch arrives through `services`. The existing service class for each feature
@@ -264,6 +311,14 @@ migrated tools `FeatureRuntime` gets one action, `.tool(ToolID)`, that calls
 the host, and the tool's own arm in `actions(for:)` and `perform` goes.
 The exhaustive switches stay exhaustive: the arm now says "this one is a
 tool".
+
+As built, a change to a grant reaches the host with nothing new built for
+it. `AppDelegate` already subscribes to `Permissions`, and
+`FeatureRuntime.permissionDidChange` syncs every feature that declares the
+grant; a tool's arm is `.tool(id)`. The end of a shortcut recording reaches
+it the same way: `ShortcutCapture.end` syncs every feature that has a
+`GlobalShortcutRole`, the host calls `start`, and the tool takes its key
+again.
 
 As built, nothing watches the preferences. Whoever flips a tool's switch
 tells the host, as each caller told the service before: a view calls
@@ -308,7 +363,11 @@ Every operation runs the same three checks, in this order, before any work:
    call is in flight gets a refusal, not a crash.
 3. **Granted.** Any macOS permission the capability rides on is granted, and
    the grant store says the user allows it. For a bundled tool the grant
-   store always says yes (decision 6).
+   store always says yes (decision 6). As built, "is granted" is asked of
+   macOS at the moment of each call, not read from `Permissions`: its
+   values are published a main-queue hop late at launch, and afterwards lag
+   behind a change by up to a poll (2.5 seconds after a grant, 60 after a
+   revocation).
 
 A refusal is a value, `BrokerRefusal`, with one of four reasons: those three,
 and **unavailable**, when the host cannot offer the operation right now.
@@ -329,11 +388,11 @@ today, which is what keeps behaviour identical.
 | `open` | `openURL(url)` | none | `NSWorkspace` | Port manager |
 | `processes` | `scanner()` (start times and the listening-sockets report); `canTerminate`; `isProtected(pid, name)`; `terminate(pid, name, startedAt, force)` | none (admin prompt on demand) | `Shell` running `lsof`; `KillProcessService` | Port manager |
 | `clipboard.write` | `write(text, kind)`; `writeLink(link)`, a link as text and as a URL, signed as the app's own, first needed by the URL cleaner | none | `GeneralPasteboardAccess`; the broker's watcher | Port manager |
-| `clipboard.read` | `readText()` only. No plain stream of changes is built: none has a user. | none | the lane; the broker's watcher | URL cleaner |
+| `clipboard.read` | `readText()`; `readPlainText()`, the plain string, else the words of the RTF or HTML, first needed by Paste as plain text. No plain stream of changes is built: none has a user. | none | the lane; the broker's watcher | URL cleaner |
 | `clipboard.rewrite` | `rewriteLinks(rule)`; `stopRewritingLinks()`. `rewriteLinks` also needs `clipboard.read`. | none | the lane; the broker's watcher | URL cleaner |
 | `storage` | `reader()`, which gives a value with `value(for:)`, for keys the manifest declares. No `set`. | none | `UserDefaults` | URL cleaner |
-| `hotkey` | `bind(role)`; `unbind(role)`; `onPress` | none | `QuickToolHotkey`, `SystemShortcutTakeover` | Paste as plain text |
-| `keystrokes` | `paste(text)`; `pressFrontAppMenuItem(matching:)` | Accessibility | `TransientPaste`; the Accessibility menu walk | Paste as plain text |
+| `hotkey` | `bind(role, onPress, onRegistered)`; `unbind(role)`. A press, and whether macOS gave the key, are replies handed to `bind`. A tool binds only a role of its own feature, and never sees a hotkey id. | none | `HotkeyBindings` over `QuickToolHotkey`, which claims the key with `SystemShortcutTakeover` itself | Paste as plain text |
+| `keystrokes` | `refusal`, which asks "may I?" and does nothing; `requestGrant()`; `paste(text)`; `pressFrontAppMenuItem(matching: key equivalents)` | Accessibility | `TransientPaste`; `Permissions.requestAccessibility`; `FrontAppMenu`, the Accessibility menu walk | Paste as plain text |
 
 The listening-sockets report is `lsof`'s text, not parsed ports. The parser
 and the stability rule are the tool's own logic and stay in its file.
@@ -363,10 +422,23 @@ Notes on the ones that are not obvious:
   copied is a bigger thing to allow than reading it or adding to it.
 - **`keystrokes.paste`** is `TransientPaste` unchanged, timings included.
   Text snippets keep calling `TransientPaste` directly; they are not a tool
-  yet.
-- **`pressFrontAppMenuItem`** takes a list of acceptable titles and key
-  equivalents and returns whether it pressed one. The walk, its 0.35-second
-  limit per element and its cap of 600 elements stay as they are.
+  yet. As built, the paste lets go of the calling tool's own key when that
+  key is Command-V, and takes it again once the paste is typed: otherwise
+  the tool would be pressed by its own paste. `TransientPaste`'s call to
+  clipboard history's `ignoreNextChange` sits behind it without having
+  moved.
+- **`keystrokes.refusal` and `requestGrant()`** are there because the
+  Accessibility check comes before the clipboard is read. A tool asks
+  `refusal` first, so that without the grant nothing is read at all, and
+  `requestGrant()` shows the system prompt and the app's guide. The memory
+  of having asked once per launch stays in the tool.
+- **`pressFrontAppMenuItem`** takes a list of key equivalents, as plain
+  values (`MenuKeyEquivalent`: a character and the Accessibility modifier
+  mask), and returns whether it pressed one. It takes no titles: the code
+  it replaced never matched a title, on purpose, because titles change with
+  the language. It presses only an item that is enabled. The walk, its
+  0.35-second limit per element and its cap of 600 elements stay as they
+  are.
 - **`processes.terminate`** carries the process's start time, as the call
   does today, so a recycled PID is never killed by mistake.
 - **`storage`** refuses a key the manifest did not declare. That one rule is
@@ -414,6 +486,21 @@ singleton at all. The allow-list as built is `ToolHost`, `L10n` (the
 language a view draws in), `SettingsRouter` and `PanelInteractionState`. It
 grows only by review. The table of files grows
 by one row per migration, in the same pull request.
+
+As built the table has three rows. A file that serves a tool and belongs to
+something else is not in its row, so the rule does not check it. For Paste
+as plain text those are the Clipboard page (`ClipboardSettings.swift`), the
+shortcut row every feature shares, `QuickToolsSupport.swift` and the command
+bar's hand-built row. For the URL cleaner they are the menu panel's view
+that binds `panelUtilityURLCleaner` and the command bar's two rows.
+
+The lint lists whole files, which is why Paste as plain text's Settings
+section moved to a file of its own, `UI/Settings/PastePlainSettingsSection.swift`.
+`ClipboardSettings.swift` rightly calls clipboard history's services, so it
+cannot be in the row, and a section left inside it would be a view of a
+migrated tool that nothing checks. It is still a section of the Clipboard
+page, in the same place (section 13, default 4). The page decides whether it
+shows and hands it the Accessibility grant as a plain value.
 
 One exception, checked by the same rule: a view may bind a preference with
 `@AppStorage`, but only to a key its tool's manifest declares. A toggle that
@@ -485,10 +572,46 @@ Recorded in each pull request with the Mac and macOS version.
   before, not with "one entry", because the two features have a timer each:
   when history's fires first it records the raw link, and then the cleaned
   one.
-- **Paste as plain text**: the shortcut pastes plain text in an app with
-  "Paste and Match Style" and in one without; the clipboard holds the
-  original afterwards; with Accessibility revoked the press beeps or asks
-  once; recording another shortcut does not kill this one.
+- **Paste as plain text**, fifteen checks. The stage C plan's Task 8 gives
+  the steps for each, and a build from before the change to compare with.
+  1. In an app with "Paste and Match Style" (TextEdit) the shortcut pastes
+     the text in the style around it.
+  2. In an app without it (Terminal) the shortcut types the text.
+  3. A second later a plain Command-V still pastes the original, formatting
+     included.
+  4. Clipboard history shows the same entries as the build before.
+  5. A copy that is only HTML pastes as its words. No unit test runs that
+     branch.
+  6. Without Accessibility the first press asks, once, and pastes nothing;
+     the next beeps; the command bar's row beeps.
+  7. Granted while the app runs, the very next press pastes, with no
+     relaunch and no wait.
+  8. Taken away while the app runs, a press beeps and does not ask again.
+  9. Recording another feature's shortcut, or leaving a recording with
+     Escape, does not kill this one.
+  10. Its own shortcut re-recorded: the old combination stops and the new
+      one works, and Settings › Shortcuts shows the new one.
+  11. With the shortcut set to plain Command-V, one press pastes once, not
+      twice and not in a loop.
+  12. On Settings › Clipboard the section is where it was, with the same
+      header, switch, caption and shortcut row; the hub's link opens the
+      page with the section outlined; with the switch off the key is the
+      front app's again and the command bar's row still pastes.
+  13. The command bar's row keeps its place, its pin and its name across
+      the two builds, and there is one of it.
+  14. Removed in the hub, the shortcut, the row and the section go;
+      installed again, it works with its switch and shortcut as they were.
+  15. After quit the key is the front app's again; after a relaunch the
+      first press pastes and nothing asks for Accessibility; a text snippet
+      with a line break still expands.
+
+  `TransientPaste` has no unit test. Its guarantee in this sub-project is
+  that the file did not change. The full uninstall is not checked by hand,
+  because it removes the app; its one changed line is pinned by
+  `PastePlainTests.runRule`.
+
+As of 2026-10-09 none of these lists has been run, for any stage (section 1,
+condition 5).
 
 ## 11. Stages
 
@@ -497,21 +620,24 @@ release.
 
 | Stage | Builds | Migrates | Capabilities added |
 |---|---|---|---|
-| A | Manifest, tool interface, host, broker skeleton, both lints | Port manager | `notify`, `open`, `processes`, `clipboard.write` |
+| A (built) | Manifest, tool interface, host, broker skeleton, both lints | Port manager | `notify`, `open`, `processes`, `clipboard.write` |
 | B (built) | The broker's clipboard watcher, the host's start, stop and commands, the `FeatureRuntime` action | URL cleaner | `storage`, `clipboard.read`, `clipboard.rewrite`; also `writeLink` in `clipboard.write` and `hud` in `notify` |
-| C | Permission changes reaching the host, with the first test of the run rule's grant clause; a tool that may start without its grant; `Permissions` in place before the host's first decision at launch | Paste as plain text | `hotkey`, `keystrokes` |
+| C (built) | Permission changes reaching the host, with the first test of the run rule's grant clause; a tool that may start without its grant; the broker asks macOS about a grant at each call, so nothing waits on `Permissions` | Paste as plain text | `hotkey`, `keystrokes`; also `readPlainText` in `clipboard.read` |
 
-Stage A is built; its by-hand checks are in its pull request. Stage B is
-built; its pull request is not open yet, and its by-hand checks will be
-recorded there.
+All three stages are built. Stages A and B are merged (#3027, #3037); each
+pull request lists its by-hand checks and says none was done. Stage C's are
+not done either (section 1, condition 5).
 
-Stage B also leaves these for stage C or later, each with the first tool
-that needs it: commands that take an argument; `storage.set`; a plain stream
-of clipboard changes; an observer for a preference changed from outside the
-app; `TransientPaste`'s call to clipboard history's `ignoreNextChange`, which
-is real there and belongs behind `keystrokes.paste`. Clipboard history and
-auto-clear keep a timer each until they migrate. How a tool in another
-process answers a `ClipboardRewriteRule` is sub-project 3's question.
+Stage B left these for stage C or later, each with the first tool that
+needs it: commands that take an argument; `storage.set`; a plain stream of
+clipboard changes; an observer for a preference changed from outside the
+app; `TransientPaste`'s call to clipboard history's `ignoreNextChange`.
+Stage C did the last: the call is real there and now sits behind
+`keystrokes.paste`, without having moved. The rest still wait for the first
+tool that needs them, and so do titles in the menu press. Clipboard history
+and auto-clear keep a timer each until they migrate. How a tool in another
+process answers a `ClipboardRewriteRule` is sub-project 3's question, as is
+how it hears a press, which arrives more than once.
 
 Stage A is the large one: it carries all the new structure and the feature
 with the least to move. B and C are mostly one capability and one feature
@@ -539,7 +665,10 @@ three details of this spec, listed in its decisions table, and its last task
 brings this document in line. The stage B plan is
 `docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`; it changes
 five details of this spec, listed in its decisions table, and its last task
-does the same.
+does the same. The stage C plan is
+`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-c.md`; it changes
+eight details of this spec, listed in its decisions table, and its last
+task does the same.
 
 1. **`processes` as a new capability** (decision 2). *Default: yes.*
 2. **Keep the Port manager's dependency on Kill process** (decision 3).

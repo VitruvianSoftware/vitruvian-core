@@ -16,6 +16,7 @@ over the main checkout's.
 bazel run //tools/worktree -- <branch> [base-ref]   # create; base defaults to origin/main
 bazel run //tools/worktree -- --list                # list worktrees
 bazel run //tools/worktree -- --remove <branch>     # remove that worktree
+bazel run //tools/worktree -- --remove <branch> --force   # ...with its uncommitted files
 ```
 
 Then `cd` into the printed path and work there.
@@ -30,5 +31,8 @@ Then `cd` into the printed path and work there.
 - `--remove` finds the worktree by the branch checked out in it, so it works
   for a worktree made by hand under any directory name. It exits non-zero and
   removes nothing when no worktree has that branch.
+- `--remove` keeps a worktree that has uncommitted or untracked files, and lists
+  them. `--remove <branch> --force` removes it with them. A locked worktree
+  (`git worktree lock`) is kept either way: unlock it first.
 - `--remove` deletes the worktree but keeps the branch (`git branch -D <branch>`
   to drop the branch too).
