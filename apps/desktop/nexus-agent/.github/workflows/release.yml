@@ -105,11 +105,18 @@ jobs:
           cd macos
           swift build -c release --arch ${{ matrix.arch }}
 
+      # The executable and, beside it, the folder SwiftPM writes the chat
+      # view's resources to (the copy of Mermaid that draws diagrams).
+      # macos/scripts/bundle.sh copies that folder into the app and stops
+      # when it is missing.
       - name: Upload arch binary
         uses: actions/upload-artifact@v7
         with:
           name: NexusAgent-${{ matrix.arch }}
-          path: macos/.build/release/NexusAgent
+          path: |
+            macos/.build/release/NexusAgent
+            macos/.build/release/NexusAgent_NexusAgentUI.bundle
+          if-no-files-found: error
 
   package:
     needs: [detect, build-macos]
@@ -140,6 +147,8 @@ jobs:
             -output /tmp/universal/NexusAgent
           echo "==> Universal binary architectures:"
           lipo -info /tmp/universal/NexusAgent
+          # The resources are the same files for both architectures.
+          cp -R /tmp/arm64/NexusAgent_NexusAgentUI.bundle /tmp/universal/
 
       - name: Assemble .app bundles
         run: |

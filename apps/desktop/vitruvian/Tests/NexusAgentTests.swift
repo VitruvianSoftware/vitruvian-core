@@ -44,6 +44,8 @@ enum NexusAgentTests {
         changesReachTheViews(suite)
         sharedChatWiring(suite)
         notchHearsOfTheModelEditor(suite)
+        notchEscapeClosesTheModelEditorFirst(suite)
+        serviceTellsAHostOfItsOwn(suite)
     }
 
     // MARK: - Wiring
@@ -1295,6 +1297,27 @@ enum NexusAgentTests {
         suite.expect(service.agentPath != nil && service.missingProgramText == nil,
                      "with the program installed the page has no such line")
         service.updateActiveProvider(.antigravity)
+
+        // A command whose program is written with the model in it: the
+        // page names the program the chat looked for, never `{model}`.
+        let byModel = NexusAgentCLIProvider(id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-00000000000B")!,
+                                            name: "By model", commandTemplate: "{model} run {prompt}",
+                                            isBuiltIn: false)
+        rig.installBot()
+        for (model, program) in [("gemma3:4b", "gemma3:4b"), ("", NexusAgentSupport.templateFallbackModel)] {
+            // A file that says nothing is not read, so it always has a line.
+            rig.files[rig.bot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n" + (model.isEmpty ? "" : "AGY_MODEL=\(model)\n")
+            service.load()
+            service.updateActiveProvider(byModel)
+            let words = "Could not find '\(program)' in PATH. Is it installed?"
+            suite.expect(service.configuration.model == model && service.missingProgramText == words,
+                         "model '\(model)': Settings names the filled-in program: \(service.missingProgramText ?? "nil")")
+            session.newChat()
+            session.send("hi", configuration: service.configuration, agentPath: service.agentPath)
+            suite.expect(session.messages.last?.text == words,
+                         "model '\(model)': and so does the chat's bubble: \(session.messages.last?.text ?? "nil")")
+        }
+        service.updateActiveProvider(.antigravity)
     }
 
     /// The effort picker of the Settings page is bound to the shared
@@ -1513,6 +1536,94 @@ enum NexusAgentTests {
         suite.expect(layers.count == 6 && layersFromTheWindow == 0,
                      "the chat in its own window tells the island nothing")
         withExtendedLifetime((inNotch, floating)) {}
+    }
+
+    /// The two halves, joined: the chat drawn as the notch draws it reports
+    /// its open editor to a real island, and Escape then arrives as that
+    /// island's own key. The island is the module's `NotchService` over
+    /// test doubles (`NotchIslandFixture`), not the app's one: it draws
+    /// nothing and listens to nothing outside the test. With the editor
+    /// open, Escape closes the editor and the island stays open on the
+    /// chat; with it closed, Escape closes the island.
+    private static func notchEscapeClosesTheModelEditorFirst(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.nexus-agent-notch"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
+        for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
+        defaults.set(true, forKey: DefaultsKey.notchEnabled)
+        let fixture = NotchIslandFixture(defaults: defaults)
+        let island = fixture.start()
+        defer { island.stop() }
+
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        var reports = 0
+        // The chat as the Agents page embeds it. It tells this island what
+        // the app's chat tells the app's island, in the same words.
+        let chat = NSHostingView(rootView: NexusAgentQuickPromptView(
+            embeddedInNotch: true, service: service,
+            setNotchLayer: {
+                reports += 1
+                island.setPageLayer(.agents, close: $0)
+            }))
+        chat.sizingOptions = []
+        chat.frame = CGRect(x: 0, y: 0, width: 520, height: 420)
+        chat.layoutSubtreeIfNeeded()
+        /// Lets SwiftUI deliver what is due, until `done` or for two seconds.
+        func wait(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(2)
+            while !done(), Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            }
+        }
+        let escape: UInt16 = 53
+
+        island.open(.agents)
+        suite.expect(island.expanded && island.selected == .agents, "the island is open on the Agents page")
+
+        // As a click on the model's name opens it.
+        service.session.isEditingModel = true
+        wait { reports == 1 }
+        let taken = fixture.press(keyCode: escape)
+        suite.expect(taken && !service.session.isEditingModel,
+                     "with the model name's editor open, Escape in the island closes the editor")
+        suite.expect(island.expanded && island.selected == .agents, "and the island stays open on the chat")
+        wait { reports == 2 }
+        suite.expect(reports == 2, "the chat then tells the island the editor is gone: \(reports) reports")
+
+        fixture.press(keyCode: escape)
+        suite.expect(!island.expanded, "with no editor open, the next Escape closes the island")
+        withExtendedLifetime(chat) {}
+    }
+
+    // MARK: - A host of the caller's own
+
+    /// The service runs with a host it is handed in place of the app's
+    /// own, which is how Tools/NexusAgentWindowRun.swift lets a turn end
+    /// with nothing announced: the handed host is the one that is asked
+    /// for text and the one that is told of a turn.
+    private static func serviceTellsAHostOfItsOwn(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        var strings = NexusAgentHostStrings()
+        strings.missingAgent = "the handed host's words"
+        let host = NoticeKeepingHost(strings: strings)
+        let service = NexusAgentService(environment: rig.environment, host: host)
+        suite.expect(service.missingProgramText == "the handed host's words",
+                     "a service handed a host speaks in that host's words: \(service.missingProgramText ?? "nil")")
+        // No agent is installed in this rig, so the turn cannot start.
+        service.session.draft = "hello"
+        service.sendQuickPrompt()
+        suite.expect(host.finished.count == 1 && host.finished.first?.failed == true
+                     && host.finished.first?.failureDetail == "the handed host's words",
+                     "and tells that host of a turn, once: \(host.finished.count) notices")
+
+        let own = NexusAgentService(environment: rig.environment)
+        suite.expect(own.missingProgramText == VitruvianNexusAgentHost(defaults: rig.defaults).strings.missingAgent,
+                     "a service handed none keeps the app's own host: \(own.missingProgramText ?? "nil")")
     }
 
     // MARK: - Antigravity Telemetry & Quota

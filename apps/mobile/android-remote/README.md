@@ -92,13 +92,21 @@ screen does not know which posture it is in.
 Verify against a real Pixel 11 Pro Fold: the dp figures above are extrapolated
 from the 9/10 Pro Fold and are the only invented values in the design.
 
+## Download & Distribution
+
+Pre-compiled release APKs with multi-ABI support (`arm64-v8a` and `x86_64`) and SHA-256 checksum sidecars are published with every release:
+
+- **Permanent Vanity Download:** [`vitruviansoftware.dev/downloads/latest/vitruvian-remote.apk`](https://vitruviansoftware.dev/downloads/latest/vitruvian-remote.apk)
+- **Downloads Portal:** [`vitruviansoftware.dev/downloads/#mobile`](https://vitruviansoftware.dev/downloads/#mobile)
+- **GitHub Releases:** [`VitruvianSoftware/vitruvian-core/releases?q=android-remote`](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=android-remote)
+
+Releases are managed via release-please (`release-please-config.json`, `.release-please-manifest.json`) and automated via `.github/workflows/android-remote-release.yaml`. When a release PR merges on `main`, the workflow compiles the APK via `scripts/publish.sh` and attaches `VitruvianRemote-X.Y.Z.apk` to the tag.
+
 ## What is missing
 
 - **Exec runs as the user with no per-command policy.** A paired phone can run
   anything the user can. That is the product, but a per-macro allow-list
   would be a reasonable next fence.
-- **No release pipeline.** `:app` is debug-signed. A release needs a signing
-  config, a `versionCode` source and a distribution channel decided.
 - **No screenshot tests.** The design system's definition of done asks for a
   preview per component in both themes, screenshot-tested; the previews are not
   written yet.

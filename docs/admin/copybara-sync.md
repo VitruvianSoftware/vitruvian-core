@@ -425,8 +425,23 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
    mirror matches the subtree.
 10. **If the mirror is also the publisher** (GitHub Pages, a release, npm): the export push is the
     trigger. A green export means the change reached the mirror. It does **not** mean it is live;
-    check the thing itself. GitHub Pages settings (custom domain, HTTPS, build type) live on the
-    mirror and are not created by `sync.go`; `gh api repos/VitruvianSoftware/<repo>/pages` shows them.
+    check the thing itself.
+
+    **GitHub Pages and the custom domain belong to the mirror repo, not the monorepo.** Moving the
+    source here changes none of it. `sync.go` does not create any of it either; it is set up with the
+    `devx sites` command (`apps/cli/devx/cmd/sites.go`):
+    - `devx sites init --domain <zone>` enables workflow-based Pages on the repo and creates a
+      Cloudflare CNAME (DNS-only) for `<name>.<zone>` pointing at `<org>.github.io`.
+    - `devx sites verify` creates the org-level `_github-pages-challenge-<Org>` TXT record that GitHub
+      uses to verify the domain.
+    - `devx sites status` shows the Pages and certificate state.
+
+    To see the live state without the tool: `gh api repos/VitruvianSoftware/<repo>/pages` returns the
+    custom domain (`cname`), `build_type`, `protected_domain_state` and the certificate. For
+    `site-vitruviansoftware-dev` on 2026-10-10 that was `vitruviansoftware.dev`, `workflow`,
+    `verified`, certificate approved. The zone is on Cloudflare, and the apex has GitHub's four A
+    and four AAAA Pages addresses. `devx sites init` creates subdomain CNAMEs, so it is not what
+    created the apex records, and no Pulumi program in this repo declares them.
 
 #### Variant: one-way with PR-import
 

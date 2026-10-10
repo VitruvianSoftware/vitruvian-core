@@ -103,19 +103,96 @@ spec:
                 # tolerates zero resolved endpoints before 1b lands.
                 static:
                   - dnssrv+_grpc._tcp.prometheus-server-headless.monitoring.svc.cluster.local
-              # Per-query guardrails. Without them one wide ad-hoc query (e.g. an
-              # all-series selector in Explore) makes the Querier, both Store
-              # Gateways and the sidecars all load every series at once, and they
-              # OOM together -- 2026-09-29 21:04 and 21:44 UTC, at the new 2Gi
-              # limits. A capped query fails with a clear "limit exceeded" error
-              # instead of taking the metrics read path down for everyone.
-              # 300k = both Prometheus replicas' sidecars (pre-dedup) at the
-              # per-store cap below. Overriding extraArgs replaces the chart
-              # default list, so --log.level is restated.
+              # Per-query guardrails: the Querier must refuse a query it cannot
+              # serve instead of being killed by it. A refused query fails with a
+              # clear "limit exceeded" error on one panel; a killed Querier takes
+              # the metrics read path down for everyone.
+              #
+              # What happened on 2026-10-10: the ci-pipelines dashboard was left
+              # open on auto-refresh. One panel ("Slowest steps") selects
+              # cicd_duration_seconds_bucket{ci_span_type="step"}, about 86k
+              # series, three times in one expression. Measured cost is about
+              # 5.5 KB of Querier memory per series per select, so one run of
+              # that panel needs well over 1 GB against a 2Gi limit, and the
+              # dashboard sends about 11 queries at once. Both Queriers were
+              # OOM-killed 56 times in 3.5 hours and took a sidecar and a Store
+              # Gateway with them. The 300k series cap set after 2026-09-29 never
+              # applied: it is counted per select, and each select was far below it.
+              #
+              # --store.limits.request-series=50000 (per select). Above every
+              # other select the committed dashboards make (the next largest is
+              # under 18k) and below the 86k step select, which is now refused.
+              # Keep it BELOW the per-store cap (150k on the Store Gateway and on
+              # the Prometheus sidecars), so the Querier is the one that refuses.
+              #
+              # Known limitation, not fixed here: the lower cap does not stop a
+              # store from dropping out of a query. The Store Gateway adds up
+              # its series cap across every block it reads, so it refuses long
+              # selects well under 150k series (a 38k-series, 24h select was
+              # refused with "limit 150000 violated (got 189981)"). Partial
+              # response is on, so that refusal reaches the panel as a warning,
+              # not an error. Data older than what the sidecars hold (about 9.5
+              # days) can therefore come back incomplete with only a warning.
+              #
+              # --store.limits.request-samples=12000000 (per select). A series cap
+              # cannot see the time range: a few thousand series over 30 days
+              # is as heavy as many series over an hour. Thanos counts this as
+              # 120 samples per chunk of data it reads, so this allows about
+              # 100,000 chunks per select. At the 1m scrape interval one chunk
+              # is about 2 hours of one series from one Prometheus replica. A
+              # select that reads more than that is refused, whatever its
+              # series count.
+              #
+              # --query.max-concurrent=4 (was 8). Fewer queries hold memory at
+              # the same time; the rest wait in line instead of piling on. Four
+              # selects at the series cap come to about 1.1 GB at 5.5 KB a
+              # series, which fits under the limit; eight did not.
+              #
+              # --enable-auto-gomemlimit. Sets the Go soft memory limit from the
+              # container memory limit (0.9 of it by default, so about 1.8Gi of
+              # 2Gi). Without it Go has no limit and lets the heap double before
+              # collecting, so it runs past 2Gi while still holding garbage and
+              # the kernel kills the process. With it the collector runs harder
+              # as the limit gets close. It is a soft limit: it buys headroom, it
+              # does not make an oversized query fit, which is what the caps are
+              # for.
+              #
+              # --grpc.proxy-strategy=lazy. The two caps above are checked as
+              # series are handed to the query engine. By default ("eager") the
+              # Querier first reads every store's whole answer into memory, so
+              # the caps fired too late: on 2026-10-10 one 7-day select held
+              # 1.5 GB before it was refused, and a panel that runs two at once
+              # killed the Querier. With lazy it holds at most 20 answers per
+              # store at a time and refuses as soon as a cap is passed.
+              # The flag is hidden upstream (--help does not show it). If a
+              # later version drops it the Querier will not start, which is the
+              # cue to revisit this line.
+              # Before upgrading Thanos: from v0.41.0 stores send series in
+              # batches, and in v0.42.4 the limiter does not count batched
+              # messages, so these caps would silently stop applying. Do not
+              # upgrade past v0.40 without re-testing the caps (issue #2609
+              # tracks the upgrade).
+              #
+              # Accepted consequences, until issue #2606 cuts that metric down
+              # (only then can the caps be raised):
+              #  - the "Slowest steps" panel shows a limit error at any range;
+              #  - the samples cap also refuses the other panels built on the
+              #    cicd_duration_seconds histogram at long ranges. By the chunk
+              #    arithmetic above the ceiling is roughly 12,000 series at 6h,
+              #    4,000 at 24h and 600 at 7d, and that dashboard opens at 7d
+              #    on selects of 5k to 15k series. Those selects would need
+              #    several GB at 7d, so they were never servable in 2Gi; they
+              #    now fail with an error instead of killing the Querier.
+              #
+              # Overriding extraArgs replaces the chart default list, so
+              # --log.level is restated.
               extraArgs:
                 - --log.level=info
-                - --query.max-concurrent=8
-                - --store.limits.request-series=300000
+                - --enable-auto-gomemlimit
+                - --query.max-concurrent=4
+                - --store.limits.request-series=50000
+                - --store.limits.request-samples=12000000
+                - --grpc.proxy-strategy=lazy
               resources:
                 requests:
                   cpu: 100m
@@ -140,6 +217,8 @@ spec:
               # OOMed this tier.
               extraArgs:
                 - --store.limits.request-series=150000
+                # Go collects before the kernel kills at 2Gi (see the Querier note).
+                - --enable-auto-gomemlimit
               resources:
                 requests:
                   cpu: 100m

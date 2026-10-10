@@ -36,9 +36,13 @@ filegroup(
 # It takes the engine, its text and what differs between the apps as inputs,
 # so, like the core, it may import no Vitruvian module. A module of its own so
 # that the core stays free of SwiftUI.
+#
+# `data` is what the library needs beside it at run time: both apps' bundles
+# get these files in Contents/Resources, where NexusAgentMermaidPage looks.
 swift_library(
     name = "NexusAgentUI",
     srcs = [":shared_ui_sources"],
+    data = [":shared_ui_resources"],
     features = ["swift.enable_v6"],
     module_name = "NexusAgentUI",
     target_compatible_with = ["@platforms//os:macos"],
@@ -54,6 +58,20 @@ swift_library(
 filegroup(
     name = "shared_ui_sources",
     srcs = glob(["Sources/NexusAgentUI/**/*.swift"]),
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+)
+
+# What the chat view ships beside its code: the copy of Mermaid the diagram
+# cards draw with, and Mermaid's licence (../THIRD_PARTY_NOTICES.md). Listed by
+# name, as Package.swift lists them, so a file added to the folder is shipped
+# by both builds or by neither. Vitruvian's pin hashes these too: a newer
+# Mermaid is a change to that app.
+filegroup(
+    name = "shared_ui_resources",
+    srcs = [
+        "Sources/NexusAgentUI/Resources/mermaid.min.js",
+        "Sources/NexusAgentUI/Resources/mermaid-LICENSE.txt",
+    ],
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
@@ -78,8 +96,8 @@ alias(
     deprecation = "Target :NexusAgent_lib is deprecated. Use :NexusAgentLib instead. Will be removed in Phase 5.",
 )
 
-# Unit tests for the pure-logic pieces. Depends on NexusAgentCore only (NOT the
-# app lib), so no `@main` is linked in. macOS-only + `manual` like the app bundle,
+# Unit tests for the pure-logic pieces. Depends on the two shared libraries only
+# (NOT the app lib), so no `@main` is linked in. macOS-only + `manual` like the app bundle,
 # so a Linux `bazel build/test //...` skips it; the macОС CI leg runs it by
 # explicit label (#807).
 swift_test(
@@ -89,14 +107,19 @@ swift_test(
     # saved-settings key and only run tools that exist. SharedCasesTests reads
     # the examples it shares with the bot's tests. ChatSymbolsTests reads the
     # chat view's sources to prove every SF Symbol it draws exists.
+    # MermaidPageTests draws a diagram with the shipped copy of Mermaid.
     data = [
         ":shared_sources",
+        ":shared_ui_resources",
         ":shared_ui_sources",
         "//apps/desktop/nexus-agent:testdata_files",
     ],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-    deps = [":NexusAgentCore"],
+    deps = [
+        ":NexusAgentCore",
+        ":NexusAgentUI",
+    ],
 )
 
 alias(
@@ -140,8 +163,13 @@ sh_test(
     size = "large",
     srcs = ["scripts/mirror_build_test.sh"],
     # The tests and the examples they share with the bot as well: the script
-    # also runs `swift test`.
-    data = ["Package.swift"] + glob([
+    # also runs `swift test`. The release script and what it copies, because
+    # the script also packages the build the way a release does.
+    data = [
+        "Package.swift",
+        "scripts/bundle.sh",
+    ] + glob([
+        "Resources/**",
         "Sources/**",
         "Tests/**",
     ]) + ["//apps/desktop/nexus-agent:testdata_files"],
@@ -152,6 +180,35 @@ sh_test(
         "manual",
     ],
     target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The app Bazel built holds the copy of Mermaid the chat view ships
+# (scripts/bazel_app_holds_mermaid_test.sh says why nothing else would notice).
+# It reads the archive `:NexusAgent` already produced, so it costs no build
+# where the app is built: the macos-build job of .github/workflows/ci.yaml,
+# which runs it by label. It is deliberately not in the unit below, which does
+# not build the app and would have to.
+sh_test(
+    name = "app_holds_mermaid_test",
+    size = "small",
+    srcs = ["scripts/bazel_app_holds_mermaid_test.sh"],
+    args = [
+        "NexusAgent",
+        "$(rootpaths :NexusAgent)",
+        "$(rootpaths :shared_ui_resources)",
+    ],
+    data = [
+        ":NexusAgent",
+        ":shared_ui_resources",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The Vitruvian desktop app runs the same check on its own archive.
+exports_files(
+    ["scripts/bazel_app_holds_mermaid_test.sh"],
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
 pipeline_unit(

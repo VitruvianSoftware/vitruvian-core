@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.37.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.37.1...vitruvian-v3.37.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** diagrams are drawn with a bundled copy of Mermaid, not a script fetched from a CDN ([#3043](https://github.com/VitruvianSoftware/vitruvian-core/issues/3043)) ([f249a2e](https://github.com/VitruvianSoftware/vitruvian-core/commit/f249a2eb389425c09d0fbb236998028d8063ddab))
+
 ## [3.37.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.37.0...vitruvian-v3.37.1) (2026-10-10)
 
 

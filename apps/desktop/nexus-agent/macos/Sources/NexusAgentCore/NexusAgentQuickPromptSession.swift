@@ -507,17 +507,18 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
         // A template that would take its program's name from the prompt has
         // no program (see `providerCommand`): it is refused as a program
-        // that is not installed, naming the word as written.
-        guard !command.executable.isEmpty else {
-            refuse(text, saying: strings.commandNotFound(NexusAgentSupport.templateWords(template).first ?? ""))
-            return
-        }
-        guard let path = NexusAgentSupport.executablePath(
-            named: command.executable,
-            pathVariable: environment.processEnvironment["PATH"] ?? "",
-            isExecutable: environment.isExecutable,
-            fileExists: environment.fileExists) else {
-            refuse(text, saying: strings.commandNotFound(command.executable))
+        // that is not installed, naming the word as written. A program that
+        // is looked for and not found is named as it was looked for. Either
+        // way the sentence is the provider's `missingProgram`, the one a
+        // settings page shows, so the two always name the same program.
+        guard !command.executable.isEmpty,
+              let path = NexusAgentSupport.executablePath(
+                  named: command.executable,
+                  pathVariable: environment.processEnvironment["PATH"] ?? "",
+                  isExecutable: environment.isExecutable,
+                  fileExists: environment.fileExists) else {
+            refuse(text, saying: strings.missingProgram(of: configuration.activeProvider,
+                                                        model: configuration.model))
             return
         }
         // A plain command keeps no transcript to follow.
